@@ -360,6 +360,9 @@ message UpdateConsumerOnProducerMetadataRequestPB {
   optional string stream_id = 2;
   optional string consumer_tablet_id = 3;
   optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;
+  optional uint32 colocation_id = 5;
+  optional uint32 producer_schema_version = 6;
+  optional uint32 consumer_schema_version = 7;
 }
 
 message UpdateConsumerOnProducerMetadataResponsePB {
@@ -368,6 +371,8 @@ message UpdateConsumerOnProducerMetadataResponsePB {
 
   // The last Consumer schema version that was EquivalentForDataCopy with the Producer
   optional uint32 last_compatible_consumer_schema_version = 3;
+
+  optional cdc.SchemaVersionsPB schema_versions = 4;
 }
 
 message GetXClusterEstimatedDataLossRequestPB {}

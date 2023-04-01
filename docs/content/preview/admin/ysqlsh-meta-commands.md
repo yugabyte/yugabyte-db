@@ -12,8 +12,6 @@ menu:
 type: docs
 ---
 
-## Overview
-
 Similarly to psql, ysqlsh provides a number of meta-commands that make ysqlsh more suitable for administration or scripting. Meta-commands are often called slash or backslash commands. Anything you enter in ysqlsh that begins with an unquoted backslash is a meta-command that is processed by ysqlsh itself.
 
 {{< note title="Cloud shell" >}}
@@ -22,7 +20,11 @@ For security reasons, the YugabyteDB Managed cloud shell only has access to a su
 
 {{< /note >}}
 
-The format of a ysqlsh command is the backslash (`\`), followed immediately by a command verb, then any arguments. The arguments are separated from the command verb and each other by any number of whitespace characters.
+For examples of using meta-commands, see [ysqlsh meta-command examples](../ysqlsh-meta-examples/).
+
+## Syntax
+
+The format of a ysqlsh command is the backslash (`\`), followed immediately by a command verb, then any arguments. Arguments are separated from the command verb and each other by any number of whitespace characters.
 
 To include whitespace in an argument you can quote it with single quotes (`' '`). To include a single quote in an argument, write two single quotes in single-quoted text (`' ... '' ...'`). Anything contained in single quotes is furthermore subject to C-like substitutions for `\n` (new line), `\t` (tab), `\b` (backspace), `\r` (carriage return), `\f` (form feed), `\digits` (octal), and `\xdigits` (hexadecimal). A backslash preceding any other character in single-quoted text quotes that single character, whatever it is.
 
@@ -50,7 +52,7 @@ Establishes a new connection to a YugabyteDB server. The connection parameters t
 
 Where the command omits *dname*, *user*, *host*, or *port*, the new connection can reuse values from the previous connection. By default, values from the previous connection are reused except when processing a *conninfo* string. Passing a first argument of `-reuse-previous=on` or `-reuse-previous=off` overrides that default. When the command neither specifies nor reuses a particular parameter, the `libpq` default is used. Specifying any of *dbname*, *username*, *host*, or *port* as `-` is equivalent to omitting that parameter.
 
-If the new connection is successfully made, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if ysqlsh is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts aren't accidentally acting on the wrong database on the other hand.
+If the new connection is successful, the previous connection is closed. If the connection attempt failed (wrong user name, access denied, etc.), the previous connection is only kept if ysqlsh is in interactive mode. When executing a non-interactive script, processing immediately stops with an error. This distinction was chosen as a user convenience against typos on the one hand, and a safety mechanism that scripts aren't accidentally acting on the wrong database on the other hand.
 
 Examples:
 
@@ -62,17 +64,17 @@ Examples:
 \C [ title ]
 ```
 
-Sets the title of any tables being printed as the result of a query or unset any such title. This command is equivalent to [\pset title](#title-or-c). (The name of this command derives from "caption", as it was previously only used to set the caption in an HTML table.)
+Sets the title of any tables being printed as the result of a query or unset any such title. This command is equivalent to [\pset title](../ysqlsh-pset-options/#title-or-c). (The name of this command derives from "caption", as it was previously only used to set the caption in an HTML table.)
 
 ##### \cd [ *directory* ]
 
 Changes the current working directory to *directory*. Without argument, changes to the current user's home directory.
 
-{{< note title="Tip" >}}
+{{< tip title="Tip" >}}
 
 To print your current working directory, use `\! pwd`.
 
-{{< /note >}}
+{{< /tip >}}
 
 ##### \conninfo
 
@@ -88,13 +90,9 @@ For `\copy ... from stdin`, data rows are read from the same source that issued 
 
 The syntax of this command is similar to that of the SQL `COPY` statement. All options other than the data source or destination are as specified for `COPY`. Because of this, special parsing rules apply to the `\copy` meta-command. Unlike most other meta-commands, the entire remainder of the line is always taken to be the arguments of `\copy`, and neither variable interpolation nor backquote expansion are performed in the arguments.
 
-{{< note title="Tip" >}}
+{{< note title="Note" >}}
 
 Another way to obtain the same result as `\copy ... to` is to use the SQL [COPY ... TO STDOUT](../../api/ysql/the-sql-language/statements/cmd_copy) statement and terminate it with `\g *filename*` or `\g |*program*`. Unlike `\copy`, this method allows the command to span multiple lines; also, variable interpolation and backquote expansion can be used.
-
-{{< /note >}}
-
-{{< note title="Tip" >}}
 
 These operations aren't as efficient as the SQL `COPY` statement with a file or program data source or destination, because all data must pass through the client-server connection. For large amounts of data, the SQL `COPY` statement might be preferable.
 
@@ -128,7 +126,7 @@ By default, only user-created objects are shown; supply a pattern or the `S` mod
 
 {{< note title="Note" >}}
 
-If `\d` is used without a *pattern* argument, it is equivalent to `\dtvmsE`, which shows a list of all visible tables, views, materialized views, sequences, and foreign tables. This is purely a convenience measure.
+If `\d` is used without a *pattern* argument, it is equivalent to `\dtvmsE`, which shows a list of all visible tables, views, materialized views, sequences, and foreign tables.
 
 {{< /note >}}
 
@@ -182,11 +180,7 @@ Lists foreign tables (mnemonic: "external tables"). If *pattern* is specified, o
 
 Lists user mappings (mnemonic: "external users"). If *pattern* is specified, only those mappings whose user names match the pattern are listed. If the form `\deu+` is used, additional information about each mapping is shown.
 
-{{< note title="Caution" >}}
-
-`\deu+` might also display the user name and password of the remote user, so care should be taken not to disclose them.
-
-{{< /note >}}
+Note: `\deu+` might also display the user name and password of the remote user, so care should be taken not to disclose them.
 
 ##### \dew[+] [ [pattern](#patterns) ]
 
@@ -232,7 +226,7 @@ Lists tables and indexes in database tablegroups matching the *pattern*. If the 
 
 ##### \dl
 
-This is an alias for [`\lo_list`](#lo-list), which shows a list of large objects.
+Alias for [`\lo_list`](#lo-list), which shows a list of large objects.
 
 ##### \dL[S+] [ [pattern](#patterns) ]
 
@@ -311,15 +305,15 @@ Mon Dec 16 21:40:57 CEST 2019
 
 If the first argument is an unquoted `-n`, the trailing newline isn't written.
 
-{{< note title="Tip" >}}
+{{< tip title="Tip" >}}
 
 If you use the `\o` command to redirect your query output, you might wish to use [\qecho](#qecho-text) instead of this command.
 
-{{< /note >}}
+{{< /tip >}}
 
 ##### \ef [ *function_description* [ *line_number* ] ]
 
-This command fetches and edits the definition of the named function, in the form of a [CREATE OR REPLACE FUNCTION](../../api/ysql/the-sql-language/statements/ddl_create_function) statement. Editing is done in the same way as for [\edit](#e-edit-filename-line-number). After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
+Fetches and edits the definition of the named function, in the form of a [CREATE OR REPLACE FUNCTION](../../api/ysql/the-sql-language/statements/ddl_create_function) statement. Editing is done in the same way as for [\edit](#e-edit-filename-line-number). After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
 
 The target function can be specified by name alone, or by name and arguments, for example, `foo(integer, text)`. The argument types must be given if there is more than one function of the same name.
 
@@ -345,7 +339,7 @@ Repeats the most recent server error message at maximum verbosity, as though [VE
 
 ##### \ev [ view_name [ line_number ] ]
 
-This command fetches and edits the definition of the named view, in the form of a `CREATE OR REPLACE VIEW` statement. Editing is done in the same way as for \edit. After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
+Fetches and edits the definition of the named view, in the form of a `CREATE OR REPLACE VIEW` statement. Editing is done in the same way as for \edit. After the editor exits, the updated command waits in the query buffer; type semicolon (`;`) or [\g](#g-filename-g-command) to send it, or [\r](#r-reset) to cancel.
 
 If no view is specified, a blank `CREATE VIEW` template is presented for editing.
 
@@ -355,7 +349,7 @@ Unlike most other meta-commands, the entire remainder of the line is always take
 
 ##### \f [ string ]
 
-Sets the field separator for unaligned query output. The default is the vertical bar (`|`). It is equivalent to [\pset fieldsep](#pset-option-value).
+Sets the field separator for unaligned query output. The default is the vertical bar (`|`). It is equivalent to [\pset fieldsep](../ysqlsh-pset-options/#pset-option-value).
 
 ##### \g [ filename ], \g [ |command ]
 
@@ -429,7 +423,7 @@ To simplify typing, commands that consists of several words don't have to be quo
 
 ##### \H, \html
 
-Turns on HTML query output format. If the HTML format is already on, it is switched back to the default aligned text format. This command is for compatibility and convenience, but see [\pset](#pset-option-value) about setting other output options.
+Turns on HTML query output format. If the HTML format is already on, it is switched back to the default aligned text format. This command is for compatibility and convenience. See [\pset](#pset-option-value) about setting other output options.
 
 ##### \i *filename*, \include *filename*
 
@@ -531,11 +525,7 @@ If the argument begins with `|`, then the entire remainder of the line is taken 
 
 "Query results" includes all tables, command responses, and notices obtained from the database server, as well as output of various backslash commands that query the database (such as `\d`); but not error messages.
 
-{{< note title="Tip" >}}
-
 To intersperse text output in between query results, use `\qecho`.
-
-{{< /note >}}
 
 ##### \p, \print
 
@@ -547,25 +537,21 @@ Changes the password of the specified user (by default, the current user). This 
 
 ##### \prompt [ *text* ] *name*
 
-Prompts the user to supply text, which is assigned to the variable *name*. An optional prompt string, *text*, can be specified. (For multi-word prompts, surround the text with single quotes.)
+Prompts the user to supply text, which is assigned to the variable *name*. An optional prompt string, *text*, can be specified. (For multi-word prompts, enclose the text in single quotes.)
 
 By default, `\prompt` uses the terminal for input and output. However, if the `-f` command line switch was used, `\prompt` uses standard input and standard output.
 
 ##### \pset [ *option* [ *value* ] ]
 
-This command sets options affecting the output of query result tables. *option* indicates which option is to be set. The semantics of value vary depending on the selected option. For some options, omitting value causes the option to be toggled or unset, as described under the particular option. If no such behavior is mentioned, then omitting value just results in the current setting being displayed.
+Sets options affecting the output of query result tables. *option* indicates which option is to be set. The semantics of *value* vary depending on the selected option. For some options, omitting value causes the option to be toggled or unset, as described under the particular option. If no such behavior is mentioned, then omitting value just results in the current setting being displayed.
 
 `\pset` without any arguments displays the current status of all printing options.
 
-The *options* are defined in [pset options](#pset-options).
+The *options* are defined in [pset options](../ysqlsh-pset-options/#pset-options).
 
-Illustrations of how these different formats look can be seen in the [Examples](#examples) section.
+For examples using `\pset`, see [ysqlsh meta-command examples](../ysqlsh-meta-examples/).
 
-{{< note title="Tip" >}}
-
-There are various shortcut commands for [`\pset`](#pset-option-value). See `\a`, `\C`, `\f`, `\H`, `\t`, `\T`, and `\x`.
-
-{{< /note >}}
+There are various shortcut commands for `\pset`. See `\a`, `\C`, `\f`, `\H`, `\t`, `\T`, and `\x`.
 
 ##### \q, \quit
 
@@ -573,7 +559,7 @@ Quits ysqlsh. In a script file, only execution of that script is terminated.
 
 ##### \qecho *text* [ ... ]
 
-This command is identical to `\echo` except that the output is written to the query output channel, as set by `\o`.
+Identical to `\echo` except that the output is written to the query output channel, as set by `\o`.
 
 ##### \r, \reset
 
@@ -581,7 +567,7 @@ Resets (clears) the query buffer.
 
 ##### \s [ *filename* ]
 
-Print ysqlsh's command line history to *filename8. If filename is omitted, the history is written to the standard output (using the pager if appropriate). This command isn't available if ysqlsh was built without [Readline](../ysqlsh/#command-line-editing) support.
+Print ysqlsh's command line history to *filename*. If filename is omitted, the history is written to the standard output (using the pager if appropriate). This command isn't available if ysqlsh was built without [Readline](../ysqlsh/#command-line-editing) support.
 
 ##### \set [ *name* [ *value* [ ... ] ] ]
 
@@ -601,7 +587,7 @@ This command is unrelated to the SQL `SET` statement.
 
 ##### \setenv *name* [ *value* ]
 
-Sets the [environment variable](../ysqlsh/#environment-variables) *name* to *value*, or if *value* isn't supplied, un-sets the environment variable. Example:
+Sets the [environment variable](../ysqlsh/#environment-variables) *name* to *value*, or if *value* isn't supplied, un-sets the environment variable. For example:
 
 ```sql
 testdb=> \setenv PAGER less
@@ -610,7 +596,7 @@ testdb=> \setenv LESS -imx4F
 
 ##### \sf[+] function_description
 
-This command fetches and shows the definition of the named function, in the form of a [`CREATE OR REPLACE FUNCTION`](../../api/ysql/the-sql-language/statements/ddl_create_function) statement. The definition is printed to the current query output channel, as set by `\o`.
+Fetches and shows the definition of the named function, in the form of a [CREATE OR REPLACE FUNCTION](../../api/ysql/the-sql-language/statements/ddl_create_function) statement. The definition is printed to the current query output channel, as set by `\o`.
 
 The target function can be specified by name alone, or by name and arguments, for example, `foo(integer, text)`. The argument types must be given if there is more than one function of the same name.
 
@@ -620,7 +606,7 @@ Unlike most other meta-commands, the entire remainder of the line is always take
 
 ##### \sv[+] *view_name*
 
-This command fetches and shows the definition of the named view, in the form of a [CREATE OR REPLACE VIEW](../../api/ysql/the-sql-language/statements/ddl_create_view) statement. The definition is printed to the current query output channel, as set by `\o`.
+Fetches and shows the definition of the named view, in the form of a [CREATE OR REPLACE VIEW](../../api/ysql/the-sql-language/statements/ddl_create_view) statement. The definition is printed to the current query output channel, as set by `\o`.
 
 If `+` is appended to the command name, then the output lines are numbered from `1`.
 
@@ -628,11 +614,11 @@ Unlike most other meta-commands, the entire remainder of the line is always take
 
 ##### \t
 
-Toggles the display of output column name headings and row count footer. This command is equivalent to [\pset tuples_only](#tuples-only-or-t) and is provided for convenience.
+Toggles the display of output column name headings and row count footer. This command is equivalent to [\pset tuples_only](../ysqlsh-pset-options/#tuples-only-or-t) and is provided for convenience.
 
 ##### \T *table_options*
 
-Specifies attributes to be placed in the `table` tag in HTML output format. This command is equivalent to [\pset tableattr <table_options>](#tableattr-or-t).
+Specifies attributes to be placed in the `table` tag in HTML output format. This command is equivalent to [\pset tableattr <table_options>](../ysqlsh-pset-options/#tableattr-or-t).
 
 ##### \timing [ on | off ]
 
@@ -652,13 +638,13 @@ If the argument begins with `|`, then the entire remainder of the line is taken 
 
 ##### \watch [ *seconds* ]
 
-Repeatedly execute the current query buffer (as [`\g`](#g-filename-g-command) does) until interrupted or the query fails. Wait the specified number of seconds (default `2`) between executions. Each query result is displayed with a header that includes the [\pset title string](#title-or-c) (if any), the time as of query start, and the delay interval.
+Repeatedly execute the current query buffer (as [`\g`](#g-filename-g-command) does) until interrupted or the query fails. Wait the specified number of seconds (default `2`) between executions. Each query result is displayed with a header that includes the [\pset title string](../ysqlsh-pset-options/#title-or-c) (if any), the time as of query start, and the delay interval.
 
 If the current query buffer is empty, the most recently sent query is re-executed instead.
 
 ##### \x [ on | off | auto ]
 
-Sets or toggles expanded table formatting mode. As such, it is equivalent to [\pset expanded](#expanded-or-x).
+Sets or toggles expanded table formatting mode. As such, it is equivalent to [\pset expanded](../ysqlsh-pset-options/#expanded-or-x).
 
 ##### \z [ [pattern](#patterns) ]
 
@@ -674,7 +660,7 @@ Unlike most other meta-commands, the entire remainder of the line is always take
 
 ##### \\? [ *topic* ]
 
-Shows help information. The optional *topic* parameter (defaulting to `commands`) selects which part of ysqlsh is explained: `commands` describes ysqlsh backslash commands; `options` describes the command-line options that can be passed to ysqlsh; and `variables` shows help about ysqlsh configuration variables.
+Shows help. The optional *topic* parameter (defaulting to `commands`) selects which part of ysqlsh is explained: `commands` describes ysqlsh backslash commands; `options` describes the command-line options that can be passed to ysqlsh; and `variables` shows help about ysqlsh configuration variables.
 
 ## Patterns
 
@@ -687,328 +673,3 @@ In a pattern, `*` matches any sequence of characters (including no characters) a
 A pattern that contains a dot (`.`) is interpreted as a schema name pattern followed by an object name pattern. For example, `\dt foo*.*bar*` displays all tables whose table name includes bar that are in schemas whose schema name starts with foo. When no dot appears, then the pattern matches only objects that are visible in the current schema search path. Again, a dot in double quotes loses its special meaning and is matched literally.
 
 Advanced users can use regular-expression notations such as character classes, for example `[0-9]` to match any digit. All regular expression special characters work as specified, except for `.` which is taken as a separator as mentioned above, `*` which is translated to the regular-expression notation `.*`, `?` which is translated to `.`, and `$` which is matched literally. You can emulate these pattern characters at need by writing `?` for `.`, (`R+|`) for `R*`, or (`R|`) for `R?`. `$` isn't needed as a regular-expression character because the pattern must match the whole name, unlike the usual interpretation of regular expressions (in other words, `$` is automatically appended to your pattern). Write `*` at the beginning and/or end if you don't wish the pattern to be anchored. Note that in double quotes, all regular expression special characters lose their special meanings and are matched literally. Also, the regular expression special characters are matched literally in operator name patterns (that is, the argument of `\do`).
-
-## pset options
-
-Various adjustable printing options are supported.
-
-### border
-
-The *value* must be a number. In general, the higher the number, the more borders and lines the tables have, but details depend on the particular format. In HTML, this translates directly into the `border=...` attribute. In most other formats only values `0` (no border), `1` (internal dividing lines), and `2` (table frame) make sense, and values greater than `2` are treated as `border = 2`. The latex and latex-longtable formats additionally allow a value of `3` to add dividing lines between data rows.
-
-### columns
-
-Sets the target width for the `wrapped` format, and also the width limit for determining whether output is wide enough to require the pager or switch to the vertical display in expanded auto mode. The default value `0` causes the target width to be controlled by the environment variable [COLUMNS](../ysqlsh/#columns), or the detected screen width if `COLUMNS` isn't set. In addition, if columns is `0`, then the `wrapped` format only affects screen output. If columns is nonzero, then file and pipe output is wrapped to that width as well.
-
-### expanded (or x)
-
-If *value* is specified it must be either `on` or `off`, which enables or disables expanded mode, or `auto`. If *value* is omitted, the command toggles between the `on` and `off` settings. When expanded mode is enabled, query results are displayed in two columns; the column name is on the left, and the data on the right. This is useful if the data won't fit on the screen in the normal horizontal mode. In the `auto` setting, the expanded mode is used whenever the query output has more than one column and is wider than the screen; otherwise, the regular mode is used. The `auto` setting is only effective in the aligned and wrapped formats. In other formats, it always behaves as if the expanded mode is `off`.
-
-### fieldsep
-
-Specifies the field separator to be used in unaligned output format. That way, one can create, for example, tab- or comma-separated output, which other programs might prefer. To set a tab as field separator, run the command [\pset fieldsep '\t'](#fieldsep). The default field separator is `|` (a vertical bar).
-
-### fieldsep_zero
-
-Sets the field separator to use in unaligned output format to a zero byte.
-
-### footer
-
-If a *value* is specified, it must be either `on` or `off`, which enables or disables display of the table footer (the (n rows) count). If the value is omitted, the command toggles footer display `on` or `off`.
-
-### format
-
-Sets the output format to one of `unaligned`, `aligned`, `wrapped`, `html`, `asciidoc`, `latex` (uses `tabular`), `latex-longtable`, or `troff-ms`. Unique abbreviations are allowed.
-
-`unaligned` format writes all columns of a row on one line, separated by the currently active field separator. Use this option to create output intended to be read in by other programs (for example, tab-separated or comma-separated format).
-
-`aligned` format is the standard, human-readable, nicely formatted text output; this is the default.
-
-`wrapped` format is like aligned but wraps wide data values across lines to make the output fit in the target column width. The target width is determined as described under the columns option. Note that ysqlsh doesn't attempt to wrap column header titles; therefore, `wrapped` format behaves the same as aligned if the total width needed for column headers exceeds the target.
-
-The `html`, `asciidoc`, `latex`, `latex-longtable`, and `troff-ms` formats put out tables that are intended to be included in documents using the respective markup language. They aren't complete documents! This might not be necessary in HTML, but in LaTeX you must have a complete document wrapper. `latex-longtable` also requires the LaTeX longtable and booktabs packages.
-
-### linestyle
-
-Sets the border line drawing style to one of `ascii` or `unicode`. Unique abbreviations are allowed. (That would mean one letter is enough.) The default setting is `ascii`. This option only affects the `aligned` and `wrapped` output formats.
-
-`ascii` style uses plain ASCII characters. Newlines in data are shown using a `+` symbol in the right-hand margin. When the `wrapped` format wraps data from one line to the next without a newline character, a dot (`.`) is shown in the right-hand margin of the first line, and again in the left-hand margin of the following line.
-
-`unicode` style uses Unicode box-drawing characters. Newlines in data are shown using a carriage return symbol in the right-hand margin. When the data is wrapped from one line to the next without a newline character, an ellipsis symbol is shown in the right-hand margin of the first line, and again in the left-hand margin of the following line.
-
-When the `border` setting is greater than `0` (zero), the `linestyle` option also determines the characters with which the border lines are drawn. Plain ASCII characters work everywhere, but Unicode characters look nicer on displays that recognize them.
-
-### null
-
-Sets the string to be printed in place of a null value. The default is to print nothing, which can be mistaken for an empty string. For example, one might prefer `\pset null '(null)'`.
-
-### numericlocale
-
-If *value* is specified, it must be either `on` or `off`, which enables or disables display of a locale-specific character to separate groups of digits to the left of the decimal marker. If *value* is omitted, the command toggles between regular and locale-specific numeric output.
-
-### pager
-
-Controls use of a pager program for query and ysqlsh help output. If the environment variable [PAGER](../ysqlsh/#pager) is set, the output is piped to the specified program. Otherwise, a platform-dependent default (such as `more`) is used.
-
-When the `pager` option is `off`, the pager program isn't used. When the `pager` option is `on`, the pager is used when appropriate; that is, when the output is to a terminal and doesn't fit on the screen. The `pager` option can also be set to `always`, which causes the pager to be used for all terminal output regardless of whether it fits on the screen. `\pset pager` without a *value* toggles pager use `on` and `off`.
-
-### pager_min_lines
-
-If `pager_min_lines` is set to a number greater than the page height, the pager program isn't called unless there are at least this many lines of output to show. The default setting is `0`.
-
-### recordsep
-
-Specifies the record (line) separator to use in unaligned output format. The default is a newline character.
-
-### recordsep_zero
-
-Sets the record separator to use in unaligned output format to a zero byte.
-
-### tableattr (or T)
-
-In `HTML` format, this specifies attributes to be placed inside the `table` tag. This could, for example, be `cellpadding` or `bgcolor`. Note that you probably don't want to specify border here, as that is already taken care of by [`\pset border`](#border). If no value is given, the table attributes are unset.
-
-In `latex-longtable` format, this controls the proportional width of each column containing a left-aligned data type. It is specified as a whitespace-separated list of values, for example, `'0.2 0.2 0.6'`. Unspecified output columns use the last specified value.
-
-### title (or C)
-
-Sets the table title for any subsequently printed tables. This can be used to give your output descriptive tags. If no *value* is given, the title is unset.
-
-### tuples_only (or t)
-
-If *value* is specified, it must be either `on` or `off`, which enables or disables tuples-only mode. If *value* is omitted, the command toggles between regular and tuples-only output. Regular output includes extra information such as column headers, titles, and various footers. In tuples-only mode, only actual table data is shown.
-
-### unicode_border_linestyle
-
-Sets the border drawing style for the `unicode` line style to one of `single` or `double`.
-
-### unicode_column_linestyle
-
-Sets the column drawing style for the `unicode` line style to one of `single` or `double`.
-
-### unicode_header_linestyle
-
-Sets the header drawing style for the `unicode` line style to one of `single` or `double`.
-
-## Examples
-
-The first example shows how to spread a SQL statement over several lines of input. Notice the changing prompt:
-
-```sql
-testdb=> CREATE TABLE my_table (
-testdb(>  first integer not null default 0,
-testdb(>  second text)
-testdb-> ;
-CREATE TABLE
-```
-
-Now look at the table definition again:
-
-```sql
-testdb=> \d my_table
-```
-
-```output
-              Table "public.my_table"
- Column |  Type   | Collation | Nullable | Default
---------+---------+-----------+----------+---------
- first  | integer |           | not null | 0
- second | text    |           |          |
-```
-
-To change the prompt to something more interesting:
-
-```sql
-testdb=> \set PROMPT1 '%n@%m %~%R%# '
-```
-
-```output
-peter@localhost testdb=>
-```
-
-Assume you've filled the table with data and want to take a look at it:
-
-```sql
-peter@localhost testdb=> SELECT * FROM my_table;
-```
-
-```output
- first | second
--------+--------
-     1 | one
-     2 | two
-     3 | three
-     4 | four
-(4 rows)
-```
-
-You can display tables in different ways by using the [`\pset`](#pset-option-value) command:
-
-```sql
-peter@localhost testdb=> \pset border 2
-```
-
-```output
-Border style is 2.
-```
-
-```sql
-peter@localhost testdb=> SELECT * FROM my_table;
-```
-
-```output
-+-------+--------+
-| first | second |
-+-------+--------+
-|     1 | one    |
-|     2 | two    |
-|     3 | three  |
-|     4 | four   |
-+-------+--------+
-(4 rows)
-```
-
-```sql
-peter@localhost testdb=> \pset border 0
-```
-
-```output
-Border style is 0.
-```
-
-```sql
-peter@localhost testdb=> SELECT * FROM my_table;
-```
-
-```output
-first second
------ ------
-    1 one
-    2 two
-    3 three
-    4 four
-(4 rows)
-```
-
-```sql
-peter@localhost testdb=> \pset border 1
-```
-
-```output
-Border style is 1.
-```
-
-```sql
-peter@localhost testdb=> \pset format unaligned
-```
-
-```output
-Output format is unaligned.
-```
-
-```sql
-peter@localhost testdb=> \pset fieldsep ","
-```
-
-```output
-Field separator is ",".
-```
-
-```sql
-peter@localhost testdb=> \pset tuples_only
-```
-
-```output
-Showing only tuples.
-```
-
-```sql
-peter@localhost testdb=> SELECT second, first FROM my_table;
-```
-
-```output
-one,1
-two,2
-three,3
-four,4
-```
-
-Alternatively, use the short commands:
-
-```sql
-peter@localhost testdb=> \a \t \x
-```
-
-```output
-Output format is aligned.
-Tuples only is off.
-Expanded display is on.
-```
-
-```sql
-peter@localhost testdb=> SELECT * FROM my_table;
-```
-
-```output
--[ RECORD 1 ]-
-first  | 1
-second | one
--[ RECORD 2 ]-
-first  | 2
-second | two
--[ RECORD 3 ]-
-first  | 3
-second | three
--[ RECORD 4 ]-
-first  | 4
-second | four
-```
-
-When suitable, query results can be shown in a crosstab representation with the `\crosstabview` command:
-
-```sql
-testdb=> SELECT first, second, first > 2 AS gt2 FROM my_table;
-```
-
-```output
- first | second | gt2
--------+--------+-----
-     1 | one    | f
-     2 | two    | f
-     3 | three  | t
-     4 | four   | t
-(4 rows)
-```
-
-```sql
-testdb=> \crosstabview first second
-```
-
-```output
- first | one | two | three | four
--------+-----+-----+-------+------
-     1 | f   |     |       |
-     2 |     | f   |       |
-     3 |     |     | t     |
-     4 |     |     |       | t
-(4 rows)
-```
-
-This second example shows a multiplication table with rows sorted in reverse numerical order and columns with an independent, ascending numerical order.
-
-```sql
-testdb=> SELECT t1.first as "A", t2.first+100 AS "B", t1.first*(t2.first+100) as "AxB",
-testdb(> row_number() over(order by t2.first) AS ord
-testdb(> FROM my_table t1 CROSS JOIN my_table t2 ORDER BY 1 DESC
-testdb(> \crosstabview "A" "B" "AxB" ord
-```
-
-```output
- A | 101 | 102 | 103 | 104
----+-----+-----+-----+-----
- 4 | 404 | 408 | 412 | 416
- 3 | 303 | 306 | 309 | 312
- 2 | 202 | 204 | 206 | 208
- 1 | 101 | 102 | 103 | 104
-(4 rows)
-```

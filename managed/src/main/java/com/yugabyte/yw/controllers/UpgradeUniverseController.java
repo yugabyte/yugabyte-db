@@ -385,9 +385,9 @@ public class UpgradeUniverseController extends AuthenticatedController {
 
     log.info(
         "Upgrade for universe {} [ {} ] customer {}.",
-        universe.name,
-        universe.universeUUID,
-        customer.uuid);
+        universe.getName(),
+        universe.getUniverseUUID(),
+        customer.getUuid());
 
     // prevent race condition in the case userIntent updates before we createAuditEntry
     UserIntent userIntent =
@@ -410,6 +410,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
             request().body().asJson(),
             taskUuid,
             additionalDetails);
-    return new YBPTask(taskUuid, universe.universeUUID).asResult();
+    return new YBPTask(taskUuid, universe.getUniverseUUID()).asResult();
   }
 }

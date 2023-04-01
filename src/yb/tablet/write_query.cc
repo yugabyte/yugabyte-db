@@ -45,8 +45,13 @@
 #include "yb/util/metrics.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
+#include "yb/util/flags.h"
 
 using namespace std::placeholders;
+using namespace std::literals;
+
+DEFINE_test_flag(bool, writequery_stuck_from_callback_leak, false,
+    "Simulate WriteQuery stuck because of the update index flushed rpc call back leak");
 
 namespace yb {
 namespace tablet {
@@ -501,8 +506,9 @@ Status WriteQuery::DoExecute() {
   docdb::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
-      isolation_level_, kind(), row_mark_type, transactional_table, write_batch.has_transaction(),
-      deadline(), partial_range_key_intents, tablet->shared_lock_manager()));
+      tablet->metrics()->failed_batch_lock, isolation_level_, kind(), row_mark_type,
+      transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
+      tablet->shared_lock_manager()));
 
   TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
@@ -907,6 +913,9 @@ void WriteQuery::UpdateQLIndexes() {
 void WriteQuery::UpdateQLIndexesFlushed(
     const client::YBSessionPtr& session, const client::YBTransactionPtr& txn,
     const IndexOps& index_ops, client::FlushStatus* flush_status) {
+  while (GetAtomicFlag(&FLAGS_TEST_writequery_stuck_from_callback_leak)) {
+    std::this_thread::sleep_for(100ms);
+  }
   std::unique_ptr<WriteQuery> query(std::move(self_));
 
   const auto& status = flush_status->status;

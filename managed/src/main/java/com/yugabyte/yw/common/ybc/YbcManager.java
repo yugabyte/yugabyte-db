@@ -94,11 +94,12 @@ public class YbcManager {
   public boolean deleteNfsDirectory(Backup backup) {
     YbcClient ybcClient = null;
     try {
-      ybcClient = getYbcClient(backup.universeUUID);
+      ybcClient = getYbcClient(backup.getUniverseUUID());
       CustomerConfigStorageNFSData configData =
           (CustomerConfigStorageNFSData)
               customerConfigService
-                  .getOrBadRequest(backup.customerUUID, backup.getBackupInfo().storageConfigUUID)
+                  .getOrBadRequest(
+                      backup.getCustomerUUID(), backup.getBackupInfo().storageConfigUUID)
                   .getDataObject();
       String nfsDir = configData.backupLocation;
       for (String location : backupUtil.getBackupLocations(backup)) {
@@ -114,18 +115,18 @@ public class YbcManager {
         if (!nfsDirDeleteResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
           LOG.error(
               "Nfs Dir deletion for backup {} failed with error: {}.",
-              backup.backupUUID,
+              backup.getBackupUUID(),
               nfsDirDeleteResponse.getStatus().getErrorMessage());
           return false;
         }
       }
     } catch (Exception e) {
-      LOG.error("Backup {} deletion failed with error: {}", backup.backupUUID, e.getMessage());
+      LOG.error("Backup {} deletion failed with error: {}", backup.getBackupUUID(), e.getMessage());
       return false;
     } finally {
       ybcClientService.closeClient(ybcClient);
     }
-    LOG.debug("Nfs dir for backup {} is successfully deleted.", backup.backupUUID);
+    LOG.debug("Nfs dir for backup {} is successfully deleted.", backup.getBackupUUID());
     return true;
   }
 
@@ -140,7 +141,7 @@ public class YbcManager {
       if (!abortTaskResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
         LOG.error(
             "Aborting backup {} task errored out with {}.",
-            backup.backupUUID,
+            backup.getBackupUUID(),
             abortTaskResponse.getStatus().getErrorMessage());
         return;
       }
@@ -151,15 +152,17 @@ public class YbcManager {
       if (!taskResultResponse.getTaskStatus().equals(ControllerStatus.ABORT)) {
         LOG.error(
             "Aborting backup {} task errored out and is in {} state.",
-            backup.backupUUID,
+            backup.getBackupUUID(),
             taskResultResponse.getTaskStatus());
         return;
       } else {
-        LOG.info("Backup {} task is successfully aborted on Yb-controller.", backup.backupUUID);
-        deleteYbcBackupTask(backup.universeUUID, taskID, ybcClient);
+        LOG.info(
+            "Backup {} task is successfully aborted on Yb-controller.", backup.getBackupUUID());
+        deleteYbcBackupTask(backup.getUniverseUUID(), taskID, ybcClient);
       }
     } catch (Exception e) {
-      LOG.error("Backup {} task abort failed with error: {}.", backup.backupUUID, e.getMessage());
+      LOG.error(
+          "Backup {} task abort failed with error: {}.", backup.getBackupUUID(), e.getMessage());
     } finally {
       ybcClientService.closeClient(ybcClient);
     }
@@ -215,7 +218,7 @@ public class YbcManager {
       if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
         throw new Exception(
             String.format(
-                "Failed to send download success marker request, failure status: {}",
+                "Failed to send download success marker request, failure status: %s",
                 downloadSuccessMarkerResponse.getStatus().getCode().name()));
       }
       BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
@@ -239,7 +242,7 @@ public class YbcManager {
       if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(
-                "Failed to download success marker, failure status: {}",
+                "Failed to download success marker, failure status: %s",
                 downloadSuccessMarkerResultResponse.getTaskStatus().name()));
       }
       LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
@@ -439,7 +442,7 @@ public class YbcManager {
       if (!throttleParametersGetResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
         throw new RuntimeException(
             String.format(
-                "Getting throttle params failed with exception: {}",
+                "Getting throttle params failed with exception: %s",
                 throttleParametersGetResponse.getStatus()));
       }
       ControllerObjectTaskThrottleParameters throttleParams =
@@ -537,7 +540,7 @@ public class YbcManager {
   }
 
   private Region getFirstRegion(Universe universe, Cluster cluster) {
-    Customer customer = Customer.get(universe.customerId);
+    Customer customer = Customer.get(universe.getCustomerId());
     UUID providerUuid = UUID.fromString(cluster.userIntent.provider);
     UUID regionUuid = cluster.userIntent.regionList.get(0);
     return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);

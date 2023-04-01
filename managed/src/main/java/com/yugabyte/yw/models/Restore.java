@@ -15,7 +15,6 @@ import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.RestoreResp.RestoreRespBuilder;
 import com.yugabyte.yw.models.filters.RestoreFilter;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedQuery.SortByIF;
 import com.yugabyte.yw.models.paging.PagedQuery.SortDirection;
@@ -32,8 +31,6 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
@@ -49,18 +46,21 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @ApiModel(description = "Universe level restores")
 @Entity
+@Getter
+@Setter
 public class Restore extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Restore.class);
   public static final String BACKUP_UNIVERSE_UUID =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
   public static final Pattern PATTERN = Pattern.compile(BACKUP_UNIVERSE_UUID);
-  SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   public static final Finder<UUID, Restore> find = new Finder<UUID, Restore>(Restore.class) {};
 
@@ -112,78 +112,46 @@ public class Restore extends Model {
 
   @ApiModelProperty(value = "Restore UUID", accessMode = READ_ONLY)
   @Id
-  public UUID restoreUUID;
+  private UUID restoreUUID;
 
   @ApiModelProperty(value = "Customer UUID that owns this restore", accessMode = READ_ONLY)
   @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @ApiModelProperty(value = "Universe UUID where the restore takes place", accessMode = READ_ONLY)
   @Column(nullable = false)
-  public UUID universeUUID;
+  private UUID universeUUID;
 
   @ApiModelProperty(
       value = "Source universe UUID that created the backup for the restore",
       accessMode = READ_ONLY)
   @Column
-  public UUID sourceUniverseUUID;
+  private UUID sourceUniverseUUID;
 
   @ApiModelProperty(value = "Storage Config UUID that created the backup", accessMode = READ_ONLY)
   @Column
-  public UUID storageConfigUUID;
+  private UUID storageConfigUUID;
 
   @ApiModelProperty(value = "Universe name that created the backup", accessMode = READ_ONLY)
   @Column
-  public String sourceUniverseName;
+  private String sourceUniverseName;
 
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "State of the restore", accessMode = READ_ONLY)
   private State state;
 
-  public State getState() {
-    return state;
-  }
-
-  public void setState(State state) {
-    this.state = state;
-  }
-
   @ApiModelProperty(value = "Restore task UUID", accessMode = READ_ONLY)
   @Column(unique = true)
-  public UUID taskUUID;
-
-  public UUID getTaskUUID() {
-    return taskUUID;
-  }
-
-  public void setTaskUUID(UUID uuid) {
-    this.taskUUID = uuid;
-  }
+  private UUID taskUUID;
 
   @ApiModelProperty(value = "Restore size in bytes", accessMode = READ_ONLY)
   @Column
-  public long restoreSizeInBytes = 0L;
+  private long restoreSizeInBytes = 0L;
 
   @CreatedTimestamp private Date createTime;
 
-  public Date getCreateTime() {
-    return createTime;
-  }
-
-  public void setCreateTime(Date createTime) {
-    this.createTime = createTime;
-  }
-
   @UpdatedTimestamp private Date updateTime;
-
-  public Date getUpdateTime() {
-    return updateTime;
-  }
-
-  public void setUpdateTime(Date updateTime) {
-    this.updateTime = updateTime;
-  }
 
   private static final Multimap<State, State> ALLOWED_TRANSITIONS =
       ImmutableMultimap.<State, State>builder()
@@ -199,51 +167,27 @@ public class Restore extends Model {
           .put(State.Aborted, State.Failed)
           .build();
 
-  public static List<TaskInfo> restoreSubtasksList = new ArrayList<>();
-
-  public static List<TaskInfo> getRestoreSubtasks(List<TaskInfo> taskInfo) {
-    if (restoreSubtasksList.size() != 0) {
-      return restoreSubtasksList;
-    }
-    for (TaskInfo task : taskInfo) {
-      if (task.getTaskType() == TaskType.RestoreBackupYb
-          || task.getTaskType() == TaskType.RestoreBackupYbc) {
-        restoreSubtasksList.add(task);
-      }
-    }
-    return restoreSubtasksList;
-  }
-
-  public static State fetchStateFromTaskInfoState(TaskInfo.State state) {
-    State restoreState = State.Created;
-    for (State s : State.values()) {
-      if (s.allowedStates().contains(state)) {
-        restoreState = s;
-      } else {
-        LOG.error("{} is not a valid state of {} in Tasktype Restore", state, s);
-      }
-    }
-    return restoreState;
-  }
-
   public static Restore create(UUID taskUUID, RestoreBackupParams taskDetails) {
     Restore restore = new Restore();
-    restore.restoreUUID = taskDetails.prefixUUID;
-    restore.universeUUID = taskDetails.universeUUID;
-    restore.customerUUID = taskDetails.customerUUID;
-    restore.taskUUID = taskUUID;
+    restore.setRestoreUUID(taskDetails.prefixUUID);
+    restore.setUniverseUUID(taskDetails.getUniverseUUID());
+    restore.setCustomerUUID(taskDetails.customerUUID);
+    restore.setTaskUUID(taskUUID);
     String storageLocation = "";
     if (!CollectionUtils.isEmpty(taskDetails.backupStorageInfoList)) {
       storageLocation = taskDetails.backupStorageInfoList.get(0).storageLocation;
     }
     Matcher matcher = PATTERN.matcher(storageLocation);
     if (matcher.find()) {
-      restore.sourceUniverseUUID = UUID.fromString(matcher.group(0));
+      restore.setSourceUniverseUUID(UUID.fromString(matcher.group(0)));
     }
-    boolean isSourceUniversePresent = BackupUtil.checkIfUniverseExists(restore.sourceUniverseUUID);
-    restore.sourceUniverseName =
-        isSourceUniversePresent ? Universe.getOrBadRequest(restore.sourceUniverseUUID).name : "";
-    restore.storageConfigUUID = taskDetails.storageConfigUUID;
+    boolean isSourceUniversePresent =
+        BackupUtil.checkIfUniverseExists(restore.getSourceUniverseUUID());
+    restore.setSourceUniverseName(
+        isSourceUniversePresent
+            ? Universe.getOrBadRequest(restore.getSourceUniverseUUID()).getName()
+            : "");
+    restore.setStorageConfigUUID(taskDetails.storageConfigUUID);
     restore.setState(State.InProgress);
     restore.setUpdateTime(restore.getCreateTime());
     restore.save();
@@ -260,7 +204,7 @@ public class Restore extends Model {
     } else {
       LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", getState(), finalState);
     }
-    setUpdateTime(taskInfo.getLastUpdateTime());
+    setUpdateTime(taskInfo.getUpdateTime());
     save();
   }
 
@@ -279,9 +223,9 @@ public class Restore extends Model {
     }
     Restore restore = restoreIfPresent.get();
     UniverseDefinitionTaskParams universeTaskParams =
-        Universe.getOrBadRequest(restore.universeUUID).getUniverseDetails();
+        Universe.getOrBadRequest(restore.getUniverseUUID()).getUniverseDetails();
     int replicationFactor = universeTaskParams.getPrimaryCluster().userIntent.replicationFactor;
-    restore.restoreSizeInBytes += replicationFactor * backupSize;
+    restore.setRestoreSizeInBytes(restore.getRestoreSizeInBytes() + replicationFactor * backupSize);
     restore.save();
   }
 
@@ -315,25 +259,26 @@ public class Restore extends Model {
 
   public static RestoreResp toRestoreResp(Restore restore) {
     String targetUniverseName =
-        BackupUtil.checkIfUniverseExists(restore.universeUUID)
-            ? Universe.getOrBadRequest(restore.universeUUID).name
+        BackupUtil.checkIfUniverseExists(restore.getUniverseUUID())
+            ? Universe.getOrBadRequest(restore.getUniverseUUID()).getName()
             : "";
-    Boolean isSourceUniversePresent = BackupUtil.checkIfUniverseExists(restore.sourceUniverseUUID);
+    Boolean isSourceUniversePresent =
+        BackupUtil.checkIfUniverseExists(restore.getSourceUniverseUUID());
     State state = restore.getState();
     List<RestoreKeyspace> restoreKeyspaceList =
-        RestoreKeyspace.fetchRestoreKeyspaceFromRestoreUUID(restore.restoreUUID);
+        RestoreKeyspace.fetchRestoreKeyspaceFromRestoreUUID(restore.getRestoreUUID());
     RestoreRespBuilder builder =
         RestoreResp.builder()
-            .restoreUUID(restore.restoreUUID)
+            .restoreUUID(restore.getRestoreUUID())
             .createTime(restore.getCreateTime())
             .updateTime(restore.getUpdateTime())
             .targetUniverseName(targetUniverseName)
-            .sourceUniverseName(restore.sourceUniverseName)
-            .customerUUID(restore.customerUUID)
-            .universeUUID(restore.universeUUID)
-            .sourceUniverseUUID(restore.sourceUniverseUUID)
+            .sourceUniverseName(restore.getSourceUniverseName())
+            .customerUUID(restore.getCustomerUUID())
+            .universeUUID(restore.getUniverseUUID())
+            .sourceUniverseUUID(restore.getSourceUniverseUUID())
             .state(state)
-            .restoreSizeInBytes(restore.restoreSizeInBytes)
+            .restoreSizeInBytes(restore.getRestoreSizeInBytes())
             .restoreKeyspaceList(restoreKeyspaceList)
             .isSourceUniversePresent(isSourceUniversePresent);
     return builder.build();

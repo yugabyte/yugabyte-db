@@ -7,8 +7,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.yugabyte.yw.common.PlatformServiceException;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -155,7 +153,7 @@ public class FileUtils {
       File file = new File(filePath);
       fileSize = file.length();
     } catch (Exception e) {
-      LOG.error(String.format("Cannot open or get size of file with pathname {}", filePath), e);
+      LOG.error("Cannot open or get size of file with pathname " + filePath, e);
       fileSize = 0;
     }
 

@@ -5,24 +5,11 @@ package com.yugabyte.yw.common.ybc;
 import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
-
-import java.util.Arrays;
-import java.util.HashSet;
-
-import org.apache.commons.lang3.StringUtils;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.YbcClient;
-import org.yb.ybc.PingRequest;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -31,6 +18,14 @@ import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import java.util.Arrays;
+import java.util.HashSet;
+import org.apache.commons.lang3.StringUtils;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.yb.client.YbcClient;
 
 @RunWith(MockitoJUnitRunner.class)
 public class YbcManagerTest extends FakeDBApplication {
@@ -57,7 +52,7 @@ public class YbcManagerTest extends FakeDBApplication {
             mockNodeManager);
     spyYbcManager = spy(ybcManager);
     testCustomer = ModelFactory.testCustomer();
-    testUniverse = ModelFactory.createUniverse(testCustomer.getCustomerId());
+    testUniverse = ModelFactory.createUniverse(testCustomer.getId());
     ModelFactory.addNodesToUniverse(testUniverse.getUniverseUUID(), 3);
   }
 
@@ -98,7 +93,6 @@ public class YbcManagerTest extends FakeDBApplication {
         .when(mockYbcClientService.getNewClient(eq("127.0.0.3"), anyInt(), eq(null)))
         .thenReturn(mockYbcClient_Ip3);
 
-    when(spyYbcManager.ybcPingCheck(any(YbcClient.class))).thenReturn(false);
     when(spyYbcManager.ybcPingCheck(eq(mockYbcClient_Ip2))).thenReturn(true);
     Pair<YbcClient, String> clientIpPair =
         spyYbcManager.getAvailableYbcClientIpPair(testUniverse.getUniverseUUID(), null);

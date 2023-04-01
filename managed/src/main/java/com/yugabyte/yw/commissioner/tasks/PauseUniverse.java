@@ -51,7 +51,8 @@ public class PauseUniverse extends UniverseTaskBase {
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       if (universe.getUniverseDetails().universePaused) {
-        String msg = "Unable to pause universe \"" + universe.name + "\" as it is already paused.";
+        String msg =
+            "Unable to pause universe \"" + universe.getName() + "\" as it is already paused.";
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -129,7 +130,7 @@ public class PauseUniverse extends UniverseTaskBase {
             u.setUniverseDetails(universeDetails);
           });
 
-      metricService.markSourceInactive(params().customerUUID, params().universeUUID);
+      metricService.markSourceInactive(params().customerUUID, params().getUniverseUUID());
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
@@ -143,7 +144,7 @@ public class PauseUniverse extends UniverseTaskBase {
     Collection<NodeDetails> activeNodes = new HashSet<>();
     for (NodeDetails node : universeNodes) {
       NodeTaskParams nodeParams = new NodeTaskParams();
-      nodeParams.universeUUID = taskParams().universeUUID;
+      nodeParams.setUniverseUUID(taskParams().getUniverseUUID());
       nodeParams.nodeName = node.nodeName;
       nodeParams.nodeUuid = node.nodeUuid;
       nodeParams.azUuid = node.azUuid;

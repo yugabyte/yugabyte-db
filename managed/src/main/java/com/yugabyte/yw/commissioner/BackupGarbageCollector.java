@@ -111,29 +111,31 @@ public class BackupGarbageCollector {
       customersList.forEach(
           (customer) -> {
             List<CustomerConfig> configList =
-                CustomerConfig.getAllStorageConfigsQueuedForDeletion(customer.uuid);
+                CustomerConfig.getAllStorageConfigsQueuedForDeletion(customer.getUuid());
             configList.forEach(
                 (config) -> {
                   try {
                     List<Backup> backupList =
                         Backup.findAllBackupsQueuedForDeletionWithCustomerConfig(
-                            config.configUUID, customer.uuid);
-                    backupList.forEach(backup -> deleteBackup(customer.uuid, backup.backupUUID));
+                            config.getConfigUUID(), customer.getUuid());
+                    backupList.forEach(
+                        backup -> deleteBackup(customer.getUuid(), backup.getBackupUUID()));
                   } catch (Exception e) {
                     log.error(
                         "Error occurred while deleting backups associated with {} storage config",
-                        config.configName);
+                        config.getConfigName());
                   } finally {
                     config.delete();
-                    log.info("Customer Storage config {} is deleted", config.configName);
+                    log.info("Customer Storage config {} is deleted", config.getConfigName());
                   }
                 });
           });
       customersList.forEach(
           (customer) -> {
-            List<Backup> backupList = Backup.findAllBackupsQueuedForDeletion(customer.uuid);
+            List<Backup> backupList = Backup.findAllBackupsQueuedForDeletion(customer.getUuid());
             if (backupList != null) {
-              backupList.forEach((backup) -> deleteBackup(customer.uuid, backup.backupUUID));
+              backupList.forEach(
+                  (backup) -> deleteBackup(customer.getUuid(), backup.getBackupUUID()));
             }
           });
       // Delete expired backups
@@ -174,8 +176,8 @@ public class BackupGarbageCollector {
       } else {
         log.error(
             "Cannot delete expired backup {} as storage config {} does not exists",
-            backup.backupUUID,
-            backup.storageConfigUUID);
+            backup.getBackupUUID(),
+            backup.getStorageConfigUUID());
         backup.transitionState(BackupState.FailedToDelete);
       }
     }
@@ -194,9 +196,9 @@ public class BackupGarbageCollector {
     backupsToDelete.addAll(
         expiredBackups
             .stream()
-            .filter(backup -> !backup.state.equals(BackupState.Completed))
+            .filter(backup -> !backup.getState().equals(BackupState.Completed))
             .collect(Collectors.toList()));
-    expiredBackups.removeIf(backup -> !backup.state.equals(BackupState.Completed));
+    expiredBackups.removeIf(backup -> !backup.getState().equals(BackupState.Completed));
     int numBackupsToDelete =
         Math.min(expiredBackups.size(), Math.max(0, totalBackupsCount - minNumBackupsToRetain));
     if (numBackupsToDelete > 0) {
@@ -216,28 +218,31 @@ public class BackupGarbageCollector {
   }
 
   private void runDeleteBackupTask(Customer customer, Backup backup) {
-    if (Backup.IN_PROGRESS_STATES.contains(backup.state)) {
-      log.warn("Cannot delete backup {} since it is in a progress state", backup.backupUUID);
+    if (Backup.IN_PROGRESS_STATES.contains(backup.getState())) {
+      log.warn("Cannot delete backup {} since it is in a progress state", backup.getBackupUUID());
       return;
-    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(customer.uuid, backup.backupUUID)) {
+    } else if (taskInfoManager.isDeleteBackupTaskAlreadyPresent(
+        customer.getUuid(), backup.getBackupUUID())) {
       log.warn(
           "Cannot delete backup {} since a delete backup task is already present",
-          backup.backupUUID);
+          backup.getBackupUUID());
       return;
     }
     DeleteBackupYb.Params taskParams = new DeleteBackupYb.Params();
     taskParams.customerUUID = customer.getUuid();
-    taskParams.backupUUID = backup.backupUUID;
+    taskParams.backupUUID = backup.getBackupUUID();
     UUID taskUUID = commissioner.submit(TaskType.DeleteBackupYb, taskParams);
     String target =
-        !StringUtils.isEmpty(backup.universeName)
-            ? backup.universeName
-            : String.format("univ-%s", backup.universeUUID.toString());
+        !StringUtils.isEmpty(backup.getUniverseName())
+            ? backup.getUniverseName()
+            : String.format("univ-%s", backup.getUniverseUUID().toString());
     log.info(
-        "Submitted task to delete expired backup {}, task uuid = {}.", backup.backupUUID, taskUUID);
+        "Submitted task to delete expired backup {}, task uuid = {}.",
+        backup.getBackupUUID(),
+        taskUUID);
     CustomerTask.create(
         customer,
-        backup.backupUUID,
+        backup.getBackupUUID(),
         taskUUID,
         CustomerTask.TargetType.Backup,
         CustomerTask.TaskType.Delete,
@@ -247,7 +252,7 @@ public class BackupGarbageCollector {
   public synchronized void deleteBackup(UUID customerUUID, UUID backupUUID) {
     Backup backup = Backup.maybeGet(customerUUID, backupUUID).orElse(null);
     // Backup is already deleted.
-    if (backup == null || backup.state == BackupState.Deleted) {
+    if (backup == null || backup.getState() == BackupState.Deleted) {
       if (backup != null) {
         backup.delete();
       }
@@ -262,18 +267,18 @@ public class BackupGarbageCollector {
 
       UUID storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
       CustomerConfig customerConfig =
-          customerConfigService.getOrBadRequest(backup.customerUUID, storageConfigUUID);
+          customerConfigService.getOrBadRequest(backup.getCustomerUUID(), storageConfigUUID);
       if (isCredentialUsable(customerConfig)) {
         List<String> backupLocations = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
         try {
-          switch (customerConfig.name) {
+          switch (customerConfig.getName()) {
               // for cases S3, AZ, GCS, we get Util from CloudUtil class
             case S3:
             case GCS:
             case AZ:
-              CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.name);
+              CloudUtil cloudUtil = CloudUtil.getCloudUtil(customerConfig.getName());
               backupLocations = backupUtil.getBackupLocations(backup);
               cloudUtil.deleteKeyIfExists(customerConfig.getDataObject(), backupLocations.get(0));
               cloudUtil.deleteStorage(customerConfig.getDataObject(), backupLocations);
@@ -288,7 +293,7 @@ public class BackupGarbageCollector {
                         ? ImmutableList.of(backupParams)
                         : backupParams.backupList;
                 boolean success;
-                if (backup.category.equals(BackupCategory.YB_CONTROLLER)) {
+                if (backup.getCategory().equals(BackupCategory.YB_CONTROLLER)) {
                   success = ybcManager.deleteNfsDirectory(backup);
                 } else {
                   success = deleteScriptBackup(backupList);
@@ -301,29 +306,30 @@ public class BackupGarbageCollector {
                 }
               } else {
                 backup.delete();
-                log.info("NFS Backup {} is deleted as universe is not present", backup.backupUUID);
+                log.info(
+                    "NFS Backup {} is deleted as universe is not present", backup.getBackupUUID());
               }
               break;
             default:
               backup.transitionState(Backup.BackupState.FailedToDelete);
               log.error(
                   "Backup {} deletion failed due to invalid Config type {} provided",
-                  backup.backupUUID,
-                  customerConfig.name);
+                  backup.getBackupUUID(),
+                  customerConfig.getName());
           }
         } catch (Exception e) {
-          log.error(" Error in deleting backup " + backup.backupUUID.toString(), e);
+          log.error(" Error in deleting backup " + backup.getBackupUUID().toString(), e);
           backup.transitionState(Backup.BackupState.FailedToDelete);
         }
       } else {
         log.error(
             "Error while deleting backup {} due to invalid storage config {} : {}",
-            backup.backupUUID,
+            backup.getBackupUUID(),
             storageConfigUUID);
         backup.transitionState(BackupState.FailedToDelete);
       }
     } catch (Exception e) {
-      log.error("Error while deleting backup " + backup.backupUUID, e);
+      log.error("Error while deleting backup " + backup.getBackupUUID(), e);
       backup.transitionState(BackupState.FailedToDelete);
     } finally {
       // Re-enable cert checking as it applies globally
@@ -332,7 +338,7 @@ public class BackupGarbageCollector {
   }
 
   private Boolean isUniversePresent(Backup backup) {
-    Optional<Universe> universe = Universe.maybeGet(backup.getBackupInfo().universeUUID);
+    Optional<Universe> universe = Universe.maybeGet(backup.getBackupInfo().getUniverseUUID());
     return universe.isPresent();
   }
 
@@ -390,8 +396,8 @@ public class BackupGarbageCollector {
     }
     log.debug(
         "Successfully validated storage config {} assigned to backup {}",
-        backup.storageConfigUUID,
-        backup.backupUUID);
+        backup.getStorageConfigUUID(),
+        backup.getBackupUUID());
     return true;
   }
 }

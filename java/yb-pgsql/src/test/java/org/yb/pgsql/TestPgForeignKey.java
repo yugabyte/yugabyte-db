@@ -256,8 +256,9 @@ public class TestPgForeignKey extends BasePgSQLTest {
       extraStmt.execute("BEGIN");
       extraStmt.execute("SELECT * FROM parent WHERE k = 1 FOR UPDATE");
 
-      runInvalidQuery(
-        stmt, "INSERT INTO child VALUES(1, 1)", "conflicts with higher priority transaction");
+      runInvalidQuery(stmt, "INSERT INTO child VALUES(1, 1)", true,
+        "could not serialize access due to concurrent update",
+        "conflicts with higher priority transaction");
       extraStmt.execute("ROLLBACK");
       assertNoRows(stmt, "SELECT * FROM child");
 

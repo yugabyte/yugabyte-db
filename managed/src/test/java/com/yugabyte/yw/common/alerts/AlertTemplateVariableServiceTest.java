@@ -77,7 +77,7 @@ public class AlertTemplateVariableServiceTest extends FakeDBApplication {
     alertTemplateVariableService.save(variable2);
 
     // Second customer with one channel.
-    UUID newCustomerUUID = ModelFactory.testCustomer().uuid;
+    UUID newCustomerUUID = ModelFactory.testCustomer().getUuid();
     AlertTemplateVariable otherCustomerVariable = createTestVariable(newCustomerUUID, "test2");
 
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(defaultCustomerUuid);
@@ -142,7 +142,7 @@ public class AlertTemplateVariableServiceTest extends FakeDBApplication {
     Customer defaultCustomer = Customer.get(defaultCustomerUuid);
     AlertConfiguration configuration =
         ModelFactory.createAlertConfiguration(
-            defaultCustomer, ModelFactory.createUniverse(defaultCustomer.getCustomerId()));
+            defaultCustomer, ModelFactory.createUniverse(defaultCustomer.getId()));
     configuration.setLabels(ImmutableMap.of("test", "foo", "test1", "bar"));
     alertConfigurationService.save(configuration);
 
@@ -180,7 +180,7 @@ public class AlertTemplateVariableServiceTest extends FakeDBApplication {
     Customer defaultCustomer = Customer.get(defaultCustomerUuid);
     AlertConfiguration configuration =
         ModelFactory.createAlertConfiguration(
-            defaultCustomer, ModelFactory.createUniverse(defaultCustomer.getCustomerId()));
+            defaultCustomer, ModelFactory.createUniverse(defaultCustomer.getId()));
     configuration.setLabels(ImmutableMap.of("test", "foo", "test1", "bar"));
     alertConfigurationService.save(configuration);
 

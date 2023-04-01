@@ -73,6 +73,6 @@ public class UniverseController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.Delete,
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 }

@@ -92,7 +92,8 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     beanValidator.validate(customerConfig);
 
     String configName = customerConfig.getConfigName();
-    CustomerConfig existentConfig = CustomerConfig.get(customerConfig.customerUUID, configName);
+    CustomerConfig existentConfig =
+        CustomerConfig.get(customerConfig.getCustomerUUID(), configName);
     if (existentConfig != null) {
       if (!existentConfig.getConfigUUID().equals(customerConfig.getConfigUUID())) {
         beanValidator
@@ -163,7 +164,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     }
   }
 
-  private class CloudClientsFactoryImpl implements CloudClientsFactory {
+  private static class CloudClientsFactoryImpl implements CloudClientsFactory {
     @Override
     public Storage createGcpStorage(CustomerConfigStorageGCSData configData)
         throws IOException, UnsupportedEncodingException {

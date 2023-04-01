@@ -43,7 +43,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
@@ -52,7 +52,7 @@ public class ChangeAdminPassword extends UniverseTaskBase {
       log.info("Running {}", getName());
 
       DatabaseSecurityFormData dbData = new DatabaseSecurityFormData();
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       if (taskParams().primaryCluster.userIntent.enableYCQL
           && taskParams().primaryCluster.userIntent.enableYCQLAuth) {
         dbData.ycqlCurrAdminPassword = taskParams().ycqlCurrentPassword;

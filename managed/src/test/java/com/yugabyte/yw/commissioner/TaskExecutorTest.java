@@ -168,7 +168,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               ITask task = (ITask) objects[0];
               // Create a new task info object.
               TaskInfo taskInfo = new TaskInfo(TaskType.BackupUniverse);
-              taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+              taskInfo.setDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
               taskInfo.setOwner("test-owner");
               return taskInfo;
             })
@@ -197,7 +197,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     assertEquals(0, subTaskInfos.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in task"));
   }
 
@@ -262,11 +262,11 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(1, subTasksByPosition.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
 
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Failed to execute task"));
 
     assertEquals(TaskInfo.State.Failure, subTaskInfos.get(0).getTaskState());
-    errMsg = subTaskInfos.get(0).getTaskDetails().get("errorString").asText();
+    errMsg = subTaskInfos.get(0).getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in subtask"));
   }
 
@@ -552,7 +552,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(subTask).setUserTaskUUID(eq(taskUUID));
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
+    JsonNode errNode = taskInfo.getSubTasks().get(0).getDetails().get("errorString");
     assertThat(errNode.toString(), containsString("is aborted while waiting"));
   }
 

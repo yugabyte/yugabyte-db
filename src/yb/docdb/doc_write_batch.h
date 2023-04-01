@@ -361,7 +361,7 @@ class DocWriteBatch {
   KeyBuffer packed_row_key_;
   const SchemaPacking* packed_row_packing_;
   ValueBuffer packed_row_value_;
-  DocHybridTime packed_row_write_time_;
+  EncodedDocHybridTime packed_row_write_time_;
 
   MonoDelta ttl_;
 };

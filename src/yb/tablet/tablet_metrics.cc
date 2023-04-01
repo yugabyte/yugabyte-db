@@ -130,6 +130,24 @@ METRIC_DEFINE_counter(tablet, tablet_data_corruptions,
   yb::MetricUnit::kUnits,
   "Number of times this tablet was flagged for corrupted data");
 
+METRIC_DEFINE_counter(tablet, failed_batch_lock,
+  "Batch Lock Timeout",
+  yb::MetricUnit::kUnits,
+  "Number of times that WriteQuery fails to obtain batch lock");
+
+METRIC_DEFINE_counter(tablet, docdb_keys_found, "Total Keys Found in RocksDB",
+    yb::MetricUnit::kKeys,
+    "Number of keys found in RocksDB searches (valid and invalid)");
+
+METRIC_DEFINE_counter(tablet, docdb_obsolete_keys_found, "Obsolete Keys Found in RocksDB",
+    yb::MetricUnit::kKeys,
+    "Number of obsolete keys (e.g. deleted, expired) found in RocksDB searches.");
+
+METRIC_DEFINE_counter(tablet, docdb_obsolete_keys_found_past_cutoff,
+    "Obsolete Keys Found in RocksDB",
+    yb::MetricUnit::kKeys,
+    "Number of obsolete keys found in RocksDB searches that were past history cutoff");
+
 using strings::Substitute;
 
 namespace yb {
@@ -152,7 +170,11 @@ TabletMetrics::TabletMetrics(const scoped_refptr<MetricEntity>& table_entity,
     MINIT(tablet_entity, consistent_prefix_read_requests),
     MINIT(tablet_entity, pgsql_consistent_prefix_read_rows),
     MINIT(tablet_entity, tablet_data_corruptions),
-    MINIT(tablet_entity, rows_inserted) {
+    MINIT(tablet_entity, rows_inserted),
+    MINIT(tablet_entity, failed_batch_lock),
+    MINIT(tablet_entity, docdb_keys_found),
+    MINIT(tablet_entity, docdb_obsolete_keys_found),
+    MINIT(tablet_entity, docdb_obsolete_keys_found_past_cutoff) {
 }
 #undef MINIT
 

@@ -82,7 +82,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
       String subnetName = "Subnet - " + Integer.toString(i);
       Region r = Region.create(testProvider, regionCode, regionName, "default-image");
       AvailabilityZone.createOrThrow(r, azCode, azName, subnetName);
-      regionUUIDs.add(r.uuid);
+      regionUUIDs.add(r.getUuid());
     }
     return regionUUIDs;
   }
@@ -100,17 +100,17 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.privateKey = pkPath;
     keyInfo.sshPort = 3333;
-    if (AccessKey.get(testProvider.uuid, keyCode) == null) {
-      AccessKey.create(testProvider.uuid, keyCode, keyInfo);
+    if (AccessKey.get(testProvider.getUuid(), keyCode) == null) {
+      AccessKey.create(testProvider.getUuid(), keyCode, keyInfo);
     }
 
     UniverseDefinitionTaskParams uniParams = new UniverseDefinitionTaskParams();
-    uniParams.nodePrefix = "yb-1-" + testUniverse.name;
+    uniParams.nodePrefix = "yb-1-" + testUniverse.getName();
     UserIntent userIntent = new UniverseDefinitionTaskParams.UserIntent();
     userIntent.accessKeyCode = keyCode;
     userIntent.ybSoftwareVersion = softwareVersion;
     userIntent.numNodes = 3;
-    userIntent.provider = testProvider.uuid.toString();
+    userIntent.provider = testProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     userIntent.regionList = getMockRegionUUIDs(3);
     // userIntent.enableYSQLAuth = false;
@@ -121,14 +121,14 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     testUniverse.setUniverseDetails(uniParams);
     testUniverse =
         Universe.saveDetails(
-            testUniverse.universeUUID,
+            testUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, uniParams.nodePrefix));
   }
 
   @Before
   public void setUp() {
     testCustomer = ModelFactory.testCustomer();
-    testUniverse = createUniverse("Universe-1", testCustomer.getCustomerId());
+    testUniverse = createUniverse("Universe-1", testCustomer.getId());
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.disableXxHashChecksum))).thenReturn(false);
@@ -140,12 +140,12 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   public void testRestoreS3Backup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST103");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
+    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.getConfigUUID());
+    testBackup = Backup.create(testCustomer.getUuid(), backupParams);
     RestoreBackupParams restoreBackupParams =
         getRestoreBackupParams(
             ActionType.RESTORE,
-            storageConfig.configUUID,
+            storageConfig.getConfigUUID(),
             testBackup.getBackupInfo().backupList.get(0).storageLocation);
     List<String> expectedCommand =
         getExpectedRestoreBackupCommand(restoreBackupParams, ActionType.RESTORE, "s3");
@@ -158,12 +158,12 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   public void testRestoreNfsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST37");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
+    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.getConfigUUID());
+    testBackup = Backup.create(testCustomer.getUuid(), backupParams);
     RestoreBackupParams restoreBackupParams =
         getRestoreBackupParams(
             ActionType.RESTORE,
-            storageConfig.configUUID,
+            storageConfig.getConfigUUID(),
             testBackup.getBackupInfo().backupList.get(0).storageLocation);
     List<String> expectedCommand =
         getExpectedRestoreBackupCommand(restoreBackupParams, ActionType.RESTORE, "nfs");
@@ -176,12 +176,12 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   public void testRestoreGcsBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST51");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
+    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.getConfigUUID());
+    testBackup = Backup.create(testCustomer.getUuid(), backupParams);
     RestoreBackupParams restoreBackupParams =
         getRestoreBackupParams(
             ActionType.RESTORE,
-            storageConfig.configUUID,
+            storageConfig.getConfigUUID(),
             testBackup.getBackupInfo().backupList.get(0).storageLocation);
     List<String> expectedCommand =
         getExpectedRestoreBackupCommand(restoreBackupParams, ActionType.RESTORE, "gcs");
@@ -194,12 +194,12 @@ public class RestoreManagerYbTest extends FakeDBApplication {
   public void testRestoreUniverseBackup() {
     setupUniverse(ModelFactory.awsProvider(testCustomer));
     CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST39");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
+    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.getConfigUUID());
+    testBackup = Backup.create(testCustomer.getUuid(), backupParams);
     RestoreBackupParams restoreBackupParams =
         getRestoreBackupParams(
             ActionType.RESTORE,
-            storageConfig.configUUID,
+            storageConfig.getConfigUUID(),
             testBackup.getBackupInfo().backupList.get(0).storageLocation);
     Map<String, String> expectedEnvVars = storageConfig.dataAsMap();
     restoreManagerYb.runCommand(restoreBackupParams);
@@ -208,98 +208,12 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     verify(shellProcessHandler, times(1)).run(expectedCommand, expectedEnvVars);
   }
 
-  @Test
-  public void testRestoreS3BackupWithRestoreTimeStamp() {
-    setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST41");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
-    RestoreBackupParams restoreBackupParams =
-        getRestoreBackupParams(
-            ActionType.RESTORE,
-            storageConfig.configUUID,
-            testBackup.getBackupInfo().backupList.get(0).storageLocation);
-    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    Date date = new Date();
-    restoreBackupParams.restoreTimeStamp = formatter.format(date);
-    try {
-      restoreManagerYb.runCommand(restoreBackupParams);
-    } catch (Exception e) {
-      assertNull(e);
-    }
-  }
-
-  @Test
-  public void testRestoreNfsBackupWithRestoreTimeStamp() {
-    setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createNfsStorageConfig(testCustomer, "TEST42");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
-    RestoreBackupParams restoreBackupParams =
-        getRestoreBackupParams(
-            ActionType.RESTORE,
-            storageConfig.configUUID,
-            testBackup.getBackupInfo().backupList.get(0).storageLocation);
-    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    Date date = new Date();
-    restoreBackupParams.restoreTimeStamp = formatter.format(date);
-    try {
-      restoreManagerYb.runCommand(restoreBackupParams);
-    } catch (Exception e) {
-      assertNull(e);
-    }
-  }
-
-  @Test
-  public void testRestoreGcsBackupWithRestoreTimeStamp() {
-    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-    Date date = new Date(System.currentTimeMillis() - 300 * 1000);
-    setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createGcsStorageConfig(testCustomer, "TEST43");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
-    RestoreBackupParams restoreBackupParams =
-        getRestoreBackupParams(
-            ActionType.RESTORE,
-            storageConfig.configUUID,
-            testBackup.getBackupInfo().backupList.get(0).storageLocation);
-    restoreBackupParams.restoreTimeStamp = formatter.format(date);
-    try {
-      restoreManagerYb.runCommand(restoreBackupParams);
-    } catch (Exception e) {
-      assertNull(e);
-    }
-  }
-
-  @Test
-  public void testRestoreBackupWithInvalidTimeStamp() {
-    setupUniverse(ModelFactory.awsProvider(testCustomer));
-    CustomerConfig storageConfig = ModelFactory.createS3StorageConfig(testCustomer, "TEST44");
-    BackupTableParams backupParams = getBackupUniverseParams(storageConfig.configUUID);
-    testBackup = Backup.create(testCustomer.uuid, backupParams);
-    RestoreBackupParams restoreBackupParams =
-        getRestoreBackupParams(
-            ActionType.RESTORE,
-            storageConfig.configUUID,
-            testBackup.getBackupInfo().backupList.get(0).storageLocation);
-    SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-    Date date = new Date();
-    restoreBackupParams.restoreTimeStamp = formatter.format(date);
-    try {
-      restoreManagerYb.runCommand(restoreBackupParams);
-    } catch (Exception e) {
-      assertEquals(
-          "Invalid restore timeStamp format, Please provide it in yyyy-MM-dd HH:mm:ss format",
-          e.getMessage());
-    }
-  }
-
   private RestoreBackupParams getRestoreBackupParams(
       ActionType actionType, UUID configUUID, String storageLocation) {
     RestoreBackupParams restoreParams = new RestoreBackupParams();
     List<BackupStorageInfo> backupStorageInfoList = new ArrayList<>();
 
-    restoreParams.universeUUID = testUniverse.universeUUID;
+    restoreParams.setUniverseUUID(testUniverse.getUniverseUUID());
     restoreParams.parallelism = 3;
     restoreParams.storageConfigUUID = configUUID;
     restoreParams.actionType = actionType;
@@ -317,7 +231,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     RestoreBackupParams restoreParams = new RestoreBackupParams();
     List<BackupStorageInfo> backupStorageInfoList = new ArrayList<>();
 
-    restoreParams.universeUUID = testUniverse.universeUUID;
+    restoreParams.setUniverseUUID(testUniverse.getUniverseUUID());
     restoreParams.parallelism = 3;
     restoreParams.storageConfigUUID = configUUID;
     restoreParams.actionType = actionType;
@@ -333,11 +247,11 @@ public class RestoreManagerYbTest extends FakeDBApplication {
 
   private List<String> getExpectedRestoreBackupCommand(
       RestoreBackupParams restoreParams, ActionType actionType, String storageType) {
-    AccessKey accessKey = AccessKey.get(testProvider.uuid, keyCode);
+    AccessKey accessKey = AccessKey.get(testProvider.getUuid(), keyCode);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     UserIntent userIntent = testUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (testProvider.code.equals("kubernetes")) {
+    if (testProvider.getCode().equals("kubernetes")) {
       PlacementInfo pi = testUniverse.getUniverseDetails().getPrimaryCluster().placementInfo;
       podAddrToConfig =
           KubernetesUtil.getKubernetesConfigPerPod(
@@ -374,7 +288,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     if (backupStorageInfo.sse) {
       cmd.add("--sse");
     }
-    if (testProvider.code.equals("kubernetes")) {
+    if (testProvider.getCode().equals("kubernetes")) {
       cmd.add("--k8s_config");
       cmd.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
@@ -401,7 +315,7 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     }
     if (userIntent.enableNodeToNodeEncrypt) {
       cmd.add("--certs_dir");
-      cmd.add(testProvider.code.equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_DIR);
+      cmd.add(testProvider.getCode().equals("kubernetes") ? K8S_CERT_PATH : VM_CERT_DIR);
     }
     cmd.add(actionType.name().toLowerCase());
     boolean verboseLogsEnabled =
@@ -416,17 +330,17 @@ public class RestoreManagerYbTest extends FakeDBApplication {
     BackupTableParams backupTableParams = new BackupTableParams();
     backupTableParams.tableUUID = UUID.randomUUID();
     backupTableParams.storageConfigUUID = storageUUID;
-    backupTableParams.universeUUID = testUniverse.universeUUID;
+    backupTableParams.setUniverseUUID(testUniverse.getUniverseUUID());
     List<BackupTableParams> backupList = new ArrayList<>();
     BackupTableParams b1Params = new BackupTableParams();
     b1Params.setTableName("mock_table");
     b1Params.setKeyspace("mock_ks");
-    b1Params.universeUUID = testUniverse.universeUUID;
+    b1Params.setUniverseUUID(testUniverse.getUniverseUUID());
     b1Params.storageConfigUUID = storageUUID;
     backupList.add(b1Params);
     BackupTableParams b2Params = new BackupTableParams();
     b2Params.setKeyspace("mock_ysql");
-    b2Params.universeUUID = testUniverse.universeUUID;
+    b2Params.setUniverseUUID(testUniverse.getUniverseUUID());
     b2Params.storageConfigUUID = storageUUID;
     backupList.add(b2Params);
     backupTableParams.backupList = backupList;

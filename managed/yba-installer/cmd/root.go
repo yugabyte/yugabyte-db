@@ -17,8 +17,11 @@ const (
 	PrometheusServiceName string = "prometheus"
 )
 
-var force bool
-var logLevel string
+var (
+	force             bool
+	logLevel          string
+	skipVersionChecks bool = false
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "yba-ctl",

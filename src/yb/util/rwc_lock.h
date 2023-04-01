@@ -129,8 +129,8 @@ class RWCLock {
   // Requires that the current thread holds the lock in Write mode.
   // Upon return, guarantees:
   // - No other thread holds the lock in any mode.
-  void UpgradeToCommitLock();
-  void CommitUnlock();
+  void UpgradeToCommitLock() ACQUIRE(lock_);
+  void CommitUnlock() RELEASE(lock_);
 
   // If write lock was acquired in one thread and then used in another thread the below method
   // should be invoked in a new thread.

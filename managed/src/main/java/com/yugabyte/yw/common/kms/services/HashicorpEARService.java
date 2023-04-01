@@ -11,20 +11,25 @@
 
 package com.yugabyte.yw.common.kms.services;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.HashicorpVaultAlgorithm;
-import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil.VaultSecretEngineBuilder;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
-import java.util.UUID;
+import java.security.SecureRandom;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -178,7 +183,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
     LOG.debug("updateCurrentAuthConfigProperties called for {}", configUUID.toString());
     try {
       KmsConfig config = KmsConfig.getOrBadRequest(configUUID);
-      UUID customerUUID = config.customerUUID;
+      UUID customerUUID = config.getCustomerUUID();
 
       UpdateAuthConfigProperties(customerUUID, configUUID, authConfig);
     } catch (Exception e) {
@@ -227,16 +232,25 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
     LOG.info("cleanupWithService called: {}, {}", universeUUID, configUUID);
   }
 
-  public void refreshService(UUID configUUID) {
-    LOG.debug("Starting refresh Hashicorp KMS with KMS config '{}'.", configUUID);
-    try {
-      ObjectNode authConfig = getAuthConfig(configUUID);
-      HashicorpEARServiceUtil.refreshServiceUtil(configUUID, authConfig);
-      LOG.info("Refreshed Hashicorp KMS with config '{}'.", configUUID);
-    } catch (Exception e) {
-      final String errMsg = "Error occurred while refreshing Hashicorp KMS.";
-      LOG.error(errMsg, e);
-      throw new RuntimeException(errMsg, e);
+  @Override
+  public void refreshKmsWithService(UUID configUUID, ObjectNode authConfig) throws Exception {
+    // Refresh TTL info in the authConfig object.
+    VaultSecretEngineBase vaultSecretEngine =
+        VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
+    HashicorpEARServiceUtil.updateAuthConfigObj(configUUID, vaultSecretEngine, authConfig);
+    final String engineKey = HashicorpEARServiceUtil.getVaultKeyForUniverse(authConfig);
+
+    // Test if able to encrypt.
+    byte[] randomUniverseKey = new byte[32];
+    SecureRandom.getInstanceStrong().nextBytes(randomUniverseKey);
+    byte[] randomEncryptedBytes = vaultSecretEngine.encryptString(engineKey, randomUniverseKey);
+    // Test if able to decrypt.
+    byte[] decryptedBytes = vaultSecretEngine.decryptString(engineKey, randomEncryptedBytes);
+
+    if (!Arrays.equals(decryptedBytes, randomUniverseKey)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Could not get decrypted bytes in Hashicorp KMS config '%s'.", configUUID));
     }
   }
 

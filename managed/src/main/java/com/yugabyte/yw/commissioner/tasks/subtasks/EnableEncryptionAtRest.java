@@ -51,20 +51,21 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
     try {
       log.info("Running {}: hostPorts={}.", getName(), hostPorts);
-      KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(taskParams().universeUUID);
+      KmsHistory activeKmsHistory =
+          EncryptionAtRestUtil.getActiveKey(taskParams().getUniverseUUID());
       UUID kmsConfigUUID = taskParams().encryptionAtRestConfig.kmsConfigUUID;
       if (kmsConfigUUID == null) {
         throw new RuntimeException(
             "KMS config passed cannot be null when enabling encryption at rest.");
       }
-      if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().universeUUID) == 0
-          || kmsConfigUUID.equals(activeKmsHistory.configUuid)) {
+      if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) == 0
+          || kmsConfigUUID.equals(activeKmsHistory.getConfigUuid())) {
         // This is for both the following cases:
         // 1. Universe key creation when no universe key exists on the universe.
         // 2. Universe key rotation if the given KMS config equals the active one.
@@ -72,7 +73,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         final byte[] universeKeyRef =
             keyManager.generateUniverseKey(
                 taskParams().encryptionAtRestConfig.kmsConfigUUID,
-                taskParams().universeUUID,
+                taskParams().getUniverseUUID(),
                 taskParams().encryptionAtRestConfig);
 
         if (universeKeyRef == null || universeKeyRef.length == 0) {
@@ -81,7 +82,7 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
 
         final byte[] universeKeyVal =
             keyManager.getUniverseKey(
-                taskParams().universeUUID,
+                taskParams().getUniverseUUID(),
                 taskParams().encryptionAtRestConfig.kmsConfigUUID,
                 universeKeyRef,
                 taskParams().encryptionAtRestConfig);
@@ -115,24 +116,25 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         }
 
         EncryptionAtRestUtil.activateKeyRef(
-            taskParams().universeUUID,
+            taskParams().getUniverseUUID(),
             taskParams().encryptionAtRestConfig.kmsConfigUUID,
             universeKeyRef);
 
         universe.incrementVersion();
-        log.info("Incremented universe version to {} ", universe.version);
-      } else if (activeKmsHistory != null && !kmsConfigUUID.equals(activeKmsHistory.configUuid)) {
+        log.info("Incremented universe version to {} ", universe.getVersion());
+      } else if (activeKmsHistory != null
+          && !kmsConfigUUID.equals(activeKmsHistory.getConfigUuid())) {
         // Master key rotation case, when the given KMS config differs from the active one.
         log.info(
             String.format(
                 "Rotating master key for universe '%s' from '%s' to '%s'.",
-                taskParams().universeUUID.toString(),
-                activeKmsHistory.configUuid.toString(),
+                taskParams().getUniverseUUID().toString(),
+                activeKmsHistory.getConfigUuid().toString(),
                 kmsConfigUUID.toString()));
-        keyManager.reEncryptActiveUniverseKeys(taskParams().universeUUID, kmsConfigUUID);
+        keyManager.reEncryptActiveUniverseKeys(taskParams().getUniverseUUID(), kmsConfigUUID);
 
         universe.incrementVersion();
-        log.info("Incremented universe version to {} ", universe.version);
+        log.info("Incremented universe version to {} ", universe.getVersion());
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage(), e);

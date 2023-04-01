@@ -126,9 +126,12 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // Checks cluster-config response encryption_info.encryption_enabled
         clusterConfigResponse := <-clusterConfigFuture
         isEncryptionAtRestEnabled := false
+        var clusterReplicationFactor int32
         if clusterConfigResponse.Error == nil {
                 resultConfig := clusterConfigResponse.ClusterConfig
                 isEncryptionAtRestEnabled = resultConfig.EncryptionInfo.EncryptionEnabled
+                clusterReplicationFactor = int32(resultConfig.ReplicationInfo.
+                                                   LiveReplicas.NumReplicas)
         }
         // Determine if encryption in transit is enabled
         // It is enabled if and only if each master and tserver has the flags:
@@ -223,6 +226,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 ClusterInfo: models.ClusterInfo{
                     NumNodes:       numNodes,
                     FaultTolerance: faultTolerance,
+                    ReplicationFactor: clusterReplicationFactor,
                     NodeInfo: models.ClusterNodeInfo{
                         MemoryMb:       ramUsageMb,
                         DiskSizeGb:     totalDiskGb,

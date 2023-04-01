@@ -159,6 +159,7 @@ extern int	errcode_for_socket_access(void);
 
 extern int	errmsg(const char *fmt,...) pg_attribute_printf(1, 2);
 extern int	yb_errmsg_from_status_data(const char *fmt, const size_t nargs, const char** args);
+extern int	yb_detail_from_status_data(const char *fmt, const size_t nargs, const char** args);
 extern int	errmsg_internal(const char *fmt,...) pg_attribute_printf(1, 2);
 
 extern int errmsg_plural(const char *fmt_singular, const char *fmt_plural,

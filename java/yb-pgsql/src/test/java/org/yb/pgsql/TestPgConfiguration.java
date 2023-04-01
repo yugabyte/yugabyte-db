@@ -539,7 +539,7 @@ public class TestPgConfiguration extends BasePgSQLTest {
     }
   }
 
-  private int spawnTServer() throws Exception {
+  protected int spawnTServer() throws Exception {
     return spawnTServerWithFlags(Collections.emptyMap());
   }
 }

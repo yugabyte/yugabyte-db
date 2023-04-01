@@ -111,11 +111,13 @@ import org.yb.CommonTypes.YQLDatabase;
 import org.yb.Schema;
 import org.yb.annotations.InterfaceAudience;
 import org.yb.annotations.InterfaceStability;
+import org.yb.cdc.CdcConsumer.XClusterRole;
 import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterClientOuterClass;
 import org.yb.master.MasterClientOuterClass.GetTableLocationsResponsePB;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
+import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.*;
 
 import javax.net.ssl.KeyManagerFactory;
@@ -311,7 +313,7 @@ public class AsyncYBClient implements AutoCloseable {
     this.bootstrap = b.createBootstrap(eventLoopGroup);
     this.masterAddresses = b.masterAddresses;
     this.masterTable = new YBTable(this, MASTER_TABLE_NAME_PLACEHOLDER,
-        MASTER_TABLE_NAME_PLACEHOLDER, null, null);
+        MASTER_TABLE_NAME_PLACEHOLDER, null, null, false);
     this.defaultOperationTimeoutMs = b.defaultOperationTimeoutMs;
     this.defaultAdminOperationTimeoutMs = b.defaultAdminOperationTimeoutMs;
     this.certFile = b.certFile;
@@ -577,6 +579,25 @@ public class AsyncYBClient implements AutoCloseable {
     Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
+   * Get the status of the server.
+   * @param hp the host and port of the server.
+   * @return a deferred object that yields auto flag config for each server.
+   */
+  public Deferred<GetStatusResponse> getStatus(final HostAndPort hp) {
+    checkIsClosed();
+    TabletClient client = newSimpleClient(hp);
+    if (client == null) {
+      throw new IllegalStateException("Could not create a client to " + hp.toString());
+    }
+    GetStatusRequest rpc = new GetStatusRequest();
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    Deferred<GetStatusResponse> d = rpc.getDeferred();
+    rpc.attempt++;
+    client.sendRpc(rpc);
     return d;
   }
 
@@ -1268,6 +1289,21 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * It sets the universe role for transactional xClusters.
+   *
+   * @param role The role to set the universe to
+   * @return A deferred object that yields a {@link ChangeXClusterRoleResponse} which contains
+   *         an {@link MasterErrorPB} object specifying whether the operation was successful
+   */
+  public Deferred<ChangeXClusterRoleResponse> changeXClusterRole(XClusterRole role) {
+    checkIsClosed();
+    ChangeXClusterRoleRequest request =
+        new ChangeXClusterRoleRequest(this.masterTable, role);
+    request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(request);
+  }
+
+  /**
    * It returns a list of CDC streams for a tableId or namespacedId based on its arguments.
    *
    * <p>Note: For xCluster purposes, use tableId and set {@code idType} to {@code TABLE_ID}.</p>
@@ -1524,7 +1560,8 @@ public class AsyncYBClient implements AutoCloseable {
             response.getSchema(),
             response.getPartitionSchema(),
             response.getTableType(),
-            response.getNamespace());
+            response.getNamespace(),
+            response.isColocated());
         return helper.attemptOpen(response.isCreateTableDone(), table, name);
       }
     });
@@ -1551,7 +1588,8 @@ public class AsyncYBClient implements AutoCloseable {
             response.getSchema(),
             response.getPartitionSchema(),
             response.getTableType(),
-            response.getNamespace());
+            response.getNamespace(),
+            response.isColocated());
         return helper.attemptOpen(response.isCreateTableDone(), table, tableUUID);
       }
     });
@@ -2128,10 +2166,10 @@ public class AsyncYBClient implements AutoCloseable {
       // this will save us a Master lookup.
       RemoteTablet tablet = getTablet(tableId, partitionKey);
       if (tablet != null && clientFor(tablet) != null) {
-
         return Deferred.fromResult(null);  // Looks like no lookup needed.
       }
     }
+
 
     int numTablets = numTabletsInTable;
     if (numTabletsInTable != DEFAULT_MAX_TABLETS) {
@@ -2405,18 +2443,30 @@ public class AsyncYBClient implements AutoCloseable {
       Slice tabletId = rt.tabletId;
 
       // If we already know about this one, just refresh the locations
+      // But in case of colocated tables, it is possible that we may already know about this one
+      // tablet, but we still need to update the relevant table to tablet mapping.
       RemoteTablet currentTablet = tablet2client.get(tabletId);
       if (currentTablet != null) {
         currentTablet.refreshServers(tabletPb);
-        continue;
+        // Only in case the current tablet ID matches the one in request, it would mean that the
+        // fetched tablet is a duplicate tablet, otherwise consider it the colocated case and move
+        // ahead with processing.
+        if (currentTablet.tableId.equals(tableId)) {
+          continue;
+        }
       }
 
       // Putting it here first doesn't make it visible because tabletsCache is always looked up
       // first.
       RemoteTablet oldRt = tablet2client.putIfAbsent(tabletId, rt);
       if (oldRt != null) {
-        // someone beat us to it
-        continue;
+        // Only move ahead if the table IDs match, meaning that the oldRt belongs to the same
+        // table-tablet combination, otherwise it is possible that we are fetching the same tablet
+        // for different tables in case of colocation - in this case, move ahead to process further.
+        if (oldRt.tableId.equals(tableId)) {
+          // someone beat us to it
+          continue;
+        }
       }
       LOG.info("Discovered tablet {} for table {} with partition {}",
                tabletId.toString(Charset.defaultCharset()), tableName, rt.getPartition());
@@ -2476,6 +2526,7 @@ public class AsyncYBClient implements AutoCloseable {
 
   RemoteTablet getFirstTablet(String tableId) {
     ConcurrentSkipListMap<byte[], RemoteTablet> tablets = tabletsCache.get(tableId);
+
     if (tablets == null) {
       return null;
     }
@@ -3066,14 +3117,11 @@ public class AsyncYBClient implements AutoCloseable {
           // TODO: Implement some policy so that the correct TS host/port can be picked.
           for (CommonNet.HostPortPB address : addresses) {
             try {
-              if (InetAddress.getByName(address.getHost())
-                      .isReachable((int) defaultOperationTimeoutMs)) {
-                addTabletClient(uuid, address.getHost(), address.getPort(),
+              addTabletClient(uuid, address.getHost(), address.getPort(),
                   replica.getRole().equals(CommonTypes.PeerRole.LEADER));
 
-                // If connection is successful, do not retry on any other host address.
-                break;
-              }
+              // If connection is successful, do not retry on any other host address.
+              break;
             } catch (UnknownHostException ex) {
               lookupExceptions.add(ex);
             } catch (IOException e) {

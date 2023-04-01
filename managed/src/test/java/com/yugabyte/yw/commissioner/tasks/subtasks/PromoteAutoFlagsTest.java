@@ -65,7 +65,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   @Test
   public void testPromoteAutoFlagException() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenThrow(new Exception("Error promoting auto flags"));
     PromoteAutoFlags task = AbstractTaskBase.createTask(PromoteAutoFlags.class);
@@ -79,7 +79,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   @Test
   public void voidTestPromoteAutoFlagFail() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenReturn(
             new PromoteAutoFlagsResponse(
@@ -122,7 +122,7 @@ public class PromoteAutoFlagsTest extends CommissionerBaseTest {
   @Test
   public void testPromoteAutoFlagSuccess() throws Exception {
     PromoteAutoFlags.Params params = new PromoteAutoFlags.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
         .thenReturn(
             new PromoteAutoFlagsResponse(

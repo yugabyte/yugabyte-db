@@ -87,6 +87,7 @@ message PgHeartbeatRequestPB {
 message PgHeartbeatResponsePB {
   AppStatusPB status = 1;
   uint64 session_id = 2;
+  bytes instance_id = 3;
 }
 
 message PgObjectIdPB {
@@ -551,6 +552,10 @@ message PgFetchSequenceTupleRequestPB {
   int64 seq_oid = 3;
   uint64 ysql_catalog_version = 4;
   uint64 ysql_db_catalog_version = 10;
+  // The number of values to fetch. If the cache method is connection, this quantity
+  // of values will be returned to the connection. If the cache method is server,
+  // this quantity will be retrieved from the master server when it is exhausted, and
+  // only one value will be returned to the connection.
   uint32 fetch_count = 5;
   int64 inc_by = 6;
   int64 min_value = 7;

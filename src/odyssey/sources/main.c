@@ -8,7 +8,7 @@
 #include <odyssey.h>
 #include <stdlib.h>
 
-int main(int argc, char *argv[])
+int odyssey_main(int argc, char *argv[])
 {
 	od_instance_t odyssey;
 	od_instance_init(&odyssey);

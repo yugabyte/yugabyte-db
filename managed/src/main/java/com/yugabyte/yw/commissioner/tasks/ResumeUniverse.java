@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -30,8 +32,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-
-import static com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType.RotatingCert;
 
 @Slf4j
 public class ResumeUniverse extends UniverseDefinitionTaskBase {
@@ -81,8 +81,8 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
         CertificateInfo rootCert = CertificateInfo.get(universeDetails.rootCA);
 
         if (rootCert == null) {
-          log.error("Root certificate not found for {}", universe.universeUUID);
-        } else if (rootCert.certType == CertConfigType.SelfSigned) {
+          log.error("Root certificate not found for {}", universe.getUniverseUUID());
+        } else if (rootCert.getCertType() == CertConfigType.SelfSigned) {
           SubTaskGroupType certRotate = RotatingCert;
           taskParams().rootCA = universeDetails.rootCA;
           taskParams().setClientRootCA(universeDetails.getClientRootCA());
@@ -98,7 +98,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       createStartMasterProcessTasks(masterNodeList);
 
-      if (EncryptionAtRestUtil.getNumUniverseKeys(universe.universeUUID) > 0) {
+      if (EncryptionAtRestUtil.getNumUniverseKeys(universe.getUniverseUUID()) > 0) {
         createSetActiveUniverseKeysTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -143,7 +143,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
             u.setUniverseDetails(details);
           });
 
-      metricService.markSourceActive(params().customerUUID, params().universeUUID);
+      metricService.markSourceActive(params().customerUUID, params().getUniverseUUID());
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
@@ -22,6 +23,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -37,7 +39,6 @@ import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
-import play.api.Play;
 import play.libs.Json;
 
 @Slf4j
@@ -74,6 +75,8 @@ public abstract class AbstractTaskBase implements ITask {
   protected final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final TaskExecutor taskExecutor;
+  protected final HealthChecker healthChecker;
+  protected final NodeManager nodeManager;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -91,6 +94,8 @@ public abstract class AbstractTaskBase implements ITask {
     this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
     this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
     this.taskExecutor = baseTaskDependencies.getTaskExecutor();
+    this.healthChecker = baseTaskDependencies.getHealthChecker();
+    this.nodeManager = baseTaskDependencies.getNodeManager();
   }
 
   protected ITaskParams taskParams() {
@@ -182,7 +187,7 @@ public abstract class AbstractTaskBase implements ITask {
               nodeName,
               currentStatus,
               nodeStatus,
-              universe.universeUUID);
+              universe.getUniverseUUID());
           nodeStatus.fillNodeStates(node);
           if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;
@@ -203,7 +208,7 @@ public abstract class AbstractTaskBase implements ITask {
    * @return Task instance with injected dependencies
    */
   public static <T extends ITask> T createTask(Class<T> taskClass) {
-    return Play.current().injector().instanceOf(TaskExecutor.class).createTask(taskClass);
+    return StaticInjectorHolder.injector().instanceOf(TaskExecutor.class).createTask(taskClass);
   }
 
   public int getSleepMultiplier() {

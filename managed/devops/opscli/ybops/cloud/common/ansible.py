@@ -176,8 +176,14 @@ class AnsibleProcess(object):
 
                 devops_path = os.path.join(node_agent_home, "pkg", "devops")
                 thirdparty_path = os.path.join(node_agent_home, "pkg", "thirdparty")
-                process_args = [os.path.join(devops_path, "bin", "ansible-playbook.sh"),
-                                os.path.join(devops_path, os.path.basename(filename))]
+                # Pass local ansible env vars to remote shell.
+                process_args = []
+                for env_var, value in os.environ.items():
+                    if env_var.startswith("ANSIBLE") and env_var != "ANSIBLE_LOCAL_TEMP":
+                        process_args.append("{}={}".format(env_var, value))
+
+                process_args.extend([os.path.join(devops_path, "bin", "ansible-playbook.sh"),
+                                     os.path.join(devops_path, os.path.basename(filename))])
                 if local_package_path is not None:
                     local_package_path = thirdparty_path
                 playbook_args.update({

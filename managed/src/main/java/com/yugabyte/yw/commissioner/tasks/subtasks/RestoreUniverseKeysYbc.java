@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Universe;
-import java.util.function.Consumer;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -47,7 +46,7 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
@@ -69,7 +68,7 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
               taskParams().customerUUID, taskParams().storageConfigUUID, taskId, backupStorageInfo);
       String successMarkerString =
           ybcManager.downloadSuccessMarker(
-              downloadSuccessMarkerRequest, taskParams().universeUUID, taskId);
+              downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), taskId);
       if (StringUtils.isEmpty(successMarkerString)) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
@@ -82,7 +81,10 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
       if (universeKeys != null && !universeKeys.isNull()) {
         restoreResult =
             keyManager.restoreUniverseKeyHistory(
-                ybService, taskParams().universeUUID, taskParams().kmsConfigUUID, universeKeys);
+                ybService,
+                taskParams().getUniverseUUID(),
+                taskParams().kmsConfigUUID,
+                universeKeys);
       }
 
       switch (restoreResult) {
@@ -93,7 +95,7 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
           log.info(
               String.format(
                   "Error occurred restoring encryption keys to universe %s",
-                  taskParams().universeUUID));
+                  taskParams().getUniverseUUID()));
         case RESTORE_SUCCEEDED:
           ///////////////
           // Restore state of encryption in universe having backup restored into

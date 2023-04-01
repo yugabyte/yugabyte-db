@@ -25,8 +25,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import javax.inject.Singleton;
 import play.libs.Json;
 
+@Singleton
 public class RegionHandler {
 
   @Inject NetworkManager networkManager;
@@ -86,7 +88,7 @@ public class RegionHandler {
     }
 
     Map<String, Object> regionMetadata =
-        configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
+        configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.getCode()));
 
     Region region;
     // If we have region metadata we create the region with that metadata or else we assume
@@ -95,7 +97,7 @@ public class RegionHandler {
       JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
       region = Region.createWithMetadata(provider, regionCode, metaData);
 
-      if (provider.code.equals("gcp")) {
+      if (provider.getCode().equals("gcp")) {
         JsonNode zoneInfo = getZoneInfoOrFail(provider, region);
         // TODO(bogdan): change this and add test...
         List<String> zones = Json.fromJson(zoneInfo.get(regionCode).get("zones"), List.class);
@@ -108,9 +110,10 @@ public class RegionHandler {
               "Region Bootstrap failed. Invalid number of subnets for region " + regionCode);
         }
         String subnet = subnetworks.get(0);
-        region.zones = new ArrayList<>();
+        region.setZones(new ArrayList<>());
         zones.forEach(
-            zone -> region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+            zone ->
+                region.getZones().add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
       } else {
         // TODO: Move this to commissioner framework, Bootstrap the region with VPC, subnet etc.
         // TODO(bogdan): is this even used???
@@ -121,10 +124,10 @@ public class RegionHandler {
         JsonNode vpcInfo = getVpcInfoOrFail(region);
         Map<String, String> zoneSubnets =
             Json.fromJson(vpcInfo.get(regionCode).get("zones"), Map.class);
-        region.zones = new ArrayList<>();
+        region.setZones(new ArrayList<>());
         zoneSubnets.forEach(
             (zone, subnet) ->
-                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+                region.getZones().add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
       }
     } else {
       region =
@@ -140,12 +143,12 @@ public class RegionHandler {
   private JsonNode getZoneInfoOrFail(Provider provider, Region region) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
     String gcpNetwork = gcpCloudInfo.getDestVpcId();
-    JsonNode zoneInfo = cloudQueryHelper.getZones(region.uuid, gcpNetwork);
-    if (zoneInfo.has("error") || !zoneInfo.has(region.code)) {
+    JsonNode zoneInfo = cloudQueryHelper.getZones(region.getUuid(), gcpNetwork);
+    if (zoneInfo.has("error") || !zoneInfo.has(region.getCode())) {
       region.delete();
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR,
-          "Region Bootstrap failed. Unable to fetch zones for " + region.code);
+          "Region Bootstrap failed. Unable to fetch zones for " + region.getCode());
     }
     return zoneInfo;
   }
@@ -153,8 +156,8 @@ public class RegionHandler {
   // TODO: Use @Transactionally on controller method to get rid of region.delete()
   // TODO: Move this to NetworkManager after getting rid of region.delete()
   private JsonNode getVpcInfoOrFail(Region region) {
-    JsonNode vpcInfo = networkManager.bootstrap(region.uuid, null, null /* customPayload */);
-    if (vpcInfo.has("error") || !vpcInfo.has(region.code)) {
+    JsonNode vpcInfo = networkManager.bootstrap(region.getUuid(), null, null /* customPayload */);
+    if (vpcInfo.has("error") || !vpcInfo.has(region.getCode())) {
       region.delete();
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Region Bootstrap failed.");
     }

@@ -4,9 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertValues;
-import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.core.IsNull.notNullValue;
@@ -32,7 +32,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -85,10 +84,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       UUID providerUUID, int status, String... zones) {
     String zoneParams = Arrays.stream(zones).collect(Collectors.joining("&zone=", "?zone=", ""));
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "GET",
             "/api/customers/"
-                + customer.uuid
+                + customer.getUuid()
                 + "/providers/"
                 + providerUUID
                 + "/instance_types"
@@ -99,9 +98,13 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
   private JsonNode doCreateInstanceTypeAndVerify(UUID providerUUID, JsonNode bodyJson, int status) {
     Result result =
-        FakeApiHelper.doRequestWithBody(
+        doRequestWithBody(
             "POST",
-            "/api/customers/" + customer.uuid + "/providers/" + providerUUID + "/instance_types",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/providers/"
+                + providerUUID
+                + "/instance_types",
             bodyJson);
 
     assertEquals(status, result.status());
@@ -111,10 +114,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   private JsonNode doGetInstanceTypeAndVerify(
       UUID providerUUID, String instanceTypeCode, int status) {
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "GET",
             "/api/customers/"
-                + customer.uuid
+                + customer.getUuid()
                 + "/providers/"
                 + providerUUID
                 + "/instance_types/"
@@ -126,10 +129,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   private JsonNode doDeleteInstanceTypeAndVerify(
       UUID providerUUID, String instanceTypeCode, int status) {
     Result result =
-        FakeApiHelper.doRequest(
+        doRequest(
             "DELETE",
             "/api/customers/"
-                + customer.uuid
+                + customer.getUuid()
                 + "/providers/"
                 + providerUUID
                 + "/instance_types/"
@@ -149,7 +152,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       instanceDetails.setDefaultMountPaths();
       String code = "c3.i" + i;
       instanceTypes.put(
-          code, InstanceType.upsert(awsProvider.uuid, code, 2, 10.5, instanceDetails));
+          code, InstanceType.upsert(awsProvider.getUuid(), code, 2, 10.5, instanceDetails));
     }
     return instanceTypes;
   }
@@ -161,20 +164,20 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
         assertPlatformException(() -> doListInstanceTypesAndVerify(randomUUID, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testListEmptyInstanceTypeWithValidProviderUUID() {
-    JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.getUuid(), OK);
     assertEquals(0, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testListInstanceTypeWithValidProviderUUID() {
     Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
-    JsonNode json = doListInstanceTypesAndVerify(awsProvider.uuid, OK);
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.getUuid(), OK);
     checkListResponse(instanceTypes, json);
   }
 
@@ -182,7 +185,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   public void testListInstanceTypeWithValidProviderUUID_filtered_ignoreNoCloud() {
     Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
     when(mockCloudAPIFactory.get(any())).thenReturn(null);
-    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json =
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
   }
 
@@ -193,7 +197,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenThrow(thrown);
-    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json =
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
   }
 
@@ -211,7 +216,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any()))
         .thenReturn(allInstancesEverywhere);
 
-    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json =
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
 
     verify(mockCloudAPI, times(1))
@@ -233,7 +239,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenReturn(cloudResponse);
 
-    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json =
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
     assertEquals(0, json.size());
 
     verify(mockCloudAPI, times(1))
@@ -253,7 +260,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
 
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenReturn(cloudResponse);
 
-    JsonNode json = doListFilteredInstanceTypeAndVerify(awsProvider.uuid, OK, "zone1", "zone2");
+    JsonNode json =
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
     assertEquals(1, json.size());
     InstanceType expectedInstanceType = instanceTypes.get("c3.i1");
     assertValue(json.path(0), "instanceTypeCode", expectedInstanceType.getInstanceTypeCode());
@@ -274,12 +282,12 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       assertValue(instance, "instanceTypeCode", expectedInstanceType.getInstanceTypeCode());
       assertThat(
           instance.get("numCores").asDouble(),
-          allOf(notNullValue(), equalTo(expectedInstanceType.numCores)));
+          allOf(notNullValue(), equalTo(expectedInstanceType.getNumCores())));
       assertThat(
           instance.get("memSizeGB").asDouble(),
-          allOf(notNullValue(), equalTo(expectedInstanceType.memSizeGB)));
+          allOf(notNullValue(), equalTo(expectedInstanceType.getMemSizeGB())));
 
-      InstanceTypeDetails itd = expectedInstanceType.instanceTypeDetails;
+      InstanceTypeDetails itd = expectedInstanceType.getInstanceTypeDetails();
       List<VolumeDetails> detailsList = itd.volumeDetailsList;
       VolumeDetails targetDetails = detailsList.get(0);
       JsonNode itdNode = instance.get("instanceTypeDetails");
@@ -293,7 +301,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     }
     List<String> expectedCodes = new ArrayList<>(instanceTypes.keySet());
     assertValues(json, "instanceTypeCode", expectedCodes);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -311,19 +319,21 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
             () -> doCreateInstanceTypeAndVerify(randomUUID, instanceTypeJson, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testCreateInstanceTypeWithInvalidParams() {
     Result result =
         assertPlatformException(
-            () -> doCreateInstanceTypeAndVerify(awsProvider.uuid, Json.newObject(), BAD_REQUEST));
+            () ->
+                doCreateInstanceTypeAndVerify(
+                    awsProvider.getUuid(), Json.newObject(), BAD_REQUEST));
     assertErrorNodeValue(Json.parse(contentAsString(result)), "idKey", "This field is required");
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "memSizeGB", "This field is required");
     assertErrorNodeValue(Json.parse(contentAsString(result)), "numCores", "This field is required");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -341,7 +351,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.put("memSizeGB", 10.9);
     instanceTypeJson.put("numCores", 3);
     instanceTypeJson.set("instanceTypeDetails", Json.toJson(details));
-    JsonNode json = doCreateInstanceTypeAndVerify(awsProvider.uuid, instanceTypeJson, OK);
+    JsonNode json = doCreateInstanceTypeAndVerify(awsProvider.getUuid(), instanceTypeJson, OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "10.9");
     assertValue(json, "numCores", "3.0");
@@ -351,7 +361,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertValue(machineDetailsNode, "volumeSizeGB", "10");
     assertValue(machineDetailsNode, "volumeType", "EBS");
     assertValue(machineDetailsNode, "mountPath", "/mnt/d0");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -360,13 +370,14 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     // Setup a soft deleted instance type
     InstanceType it =
         InstanceType.upsert(
-            awsProvider.uuid,
+            awsProvider.getUuid(),
             sharedInstanceTypeCode,
             3,
             5.0,
             new InstanceType.InstanceTypeDetails());
-    JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
-    it = InstanceType.get(awsProvider.uuid, it.getInstanceTypeCode());
+    JsonNode json =
+        doDeleteInstanceTypeAndVerify(awsProvider.getUuid(), it.getInstanceTypeCode(), OK);
+    it = InstanceType.get(awsProvider.getUuid(), it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());
     assertFalse(it.isActive());
 
@@ -384,7 +395,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     instanceTypeJson.put("memSizeGB", 11.9);
     instanceTypeJson.put("numCores", 4);
     instanceTypeJson.set("instanceTypeDetails", Json.toJson(details));
-    json = doCreateInstanceTypeAndVerify(awsProvider.uuid, instanceTypeJson, OK);
+    json = doCreateInstanceTypeAndVerify(awsProvider.getUuid(), instanceTypeJson, OK);
     assertValue(json, "instanceTypeCode", sharedInstanceTypeCode);
     assertValue(json, "memSizeGB", "11.9");
     assertValue(json, "numCores", "4.0");
@@ -394,7 +405,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertValue(machineDetailsNode, "volumeSizeGB", "10");
     assertValue(machineDetailsNode, "volumeType", "EBS");
     assertValue(machineDetailsNode, "mountPath", "/mnt/d0");
-    assertAuditEntry(2, customer.uuid);
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
@@ -405,8 +416,9 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 20;
     volumeDetails.mountPath = "/tmp/path/";
     details.volumeDetailsList.add(volumeDetails);
-    InstanceType it = InstanceType.upsert(onPremProvider.uuid, "test-i1", 3, 5.0, details);
-    JsonNode json = doGetInstanceTypeAndVerify(onPremProvider.uuid, it.getInstanceTypeCode(), OK);
+    InstanceType it = InstanceType.upsert(onPremProvider.getUuid(), "test-i1", 3, 5.0, details);
+    JsonNode json =
+        doGetInstanceTypeAndVerify(onPremProvider.getUuid(), it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
     assertValue(json, "numCores", "3.0");
@@ -416,7 +428,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     assertValue(machineDetailsNode, "volumeSizeGB", "20");
     assertValue(machineDetailsNode, "volumeType", "SSD");
     assertValue(machineDetailsNode, "mountPath", "/tmp/path/");
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -427,8 +439,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 20;
     details.volumeDetailsList.add(volumeDetails);
     details.volumeDetailsList.add(volumeDetails);
-    InstanceType it = InstanceType.upsert(awsProvider.uuid, "test-i1", 3, 5.0, details);
-    JsonNode json = doGetInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
+    InstanceType it = InstanceType.upsert(awsProvider.getUuid(), "test-i1", 3, 5.0, details);
+    JsonNode json = doGetInstanceTypeAndVerify(awsProvider.getUuid(), it.getInstanceTypeCode(), OK);
     assertValue(json, "instanceTypeCode", "test-i1");
     assertValue(json, "memSizeGB", "5.0");
     assertValue(json, "numCores", "3.0");
@@ -442,7 +454,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       assertValue(machineDetailsNode, "volumeType", "SSD");
       assertValue(machineDetailsNode, "mountPath", String.format("/mnt/d%d", i));
     }
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -450,10 +462,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     Result result =
         assertPlatformException(
-            () -> doGetInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
+            () -> doGetInstanceTypeAndVerify(awsProvider.getUuid(), fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -465,19 +477,20 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
             () -> doGetInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testDeleteInstanceTypeWithValidParams() {
     InstanceType it =
         InstanceType.upsert(
-            awsProvider.uuid, "test-i1", 3, 5.0, new InstanceType.InstanceTypeDetails());
-    JsonNode json = doDeleteInstanceTypeAndVerify(awsProvider.uuid, it.getInstanceTypeCode(), OK);
-    it = InstanceType.get(awsProvider.uuid, it.getInstanceTypeCode());
+            awsProvider.getUuid(), "test-i1", 3, 5.0, new InstanceType.InstanceTypeDetails());
+    JsonNode json =
+        doDeleteInstanceTypeAndVerify(awsProvider.getUuid(), it.getInstanceTypeCode(), OK);
+    it = InstanceType.get(awsProvider.getUuid(), it.getInstanceTypeCode());
     assertTrue(json.get("success").asBoolean());
     assertFalse(it.isActive());
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -485,10 +498,12 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     String fakeInstanceCode = "foo";
     Result result =
         assertPlatformException(
-            () -> doDeleteInstanceTypeAndVerify(awsProvider.uuid, fakeInstanceCode, BAD_REQUEST));
+            () ->
+                doDeleteInstanceTypeAndVerify(
+                    awsProvider.getUuid(), fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Instance type not found: " + fakeInstanceCode);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -500,6 +515,6 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
             () -> doDeleteInstanceTypeAndVerify(randomUUID, fakeInstanceCode, BAD_REQUEST));
     assertErrorNodeValue(
         Json.parse(contentAsString(result)), "Invalid Provider UUID: " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 }

@@ -16,17 +16,15 @@ import akka.stream.javadsl.Source;
 import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.models.CustomerLicense;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerLicense;
 import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -48,7 +46,7 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
 
   private Result uploadLicenseFile(
       boolean uploadFile, String licenseType, File licenseFile, String licenseContent) {
-    String uri = "/api/customers/" + defaultCustomer.uuid + "/licenses";
+    String uri = "/api/customers/" + defaultCustomer.getUuid() + "/licenses";
 
     if (uploadFile) {
       List<Http.MultipartFormData.Part<Source<ByteString, ?>>> bodyData = new ArrayList<>();
@@ -59,14 +57,13 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
             new Http.MultipartFormData.FilePart<>(
                 "licenseFile", "license.txt", "application/octet-stream", uploadedFile));
       }
-      return FakeApiHelper.doRequestWithAuthTokenAndMultipartData(
+      return doRequestWithAuthTokenAndMultipartData(
           "POST", uri, defaultUser.createAuthToken(), bodyData, mat);
     } else {
       ObjectNode bodyJson = Json.newObject();
       bodyJson.put("licenseType", licenseType);
       bodyJson.put("licenseContent", licenseContent);
-      return FakeApiHelper.doRequestWithAuthTokenAndBody(
-          "POST", uri, defaultUser.createAuthToken(), bodyJson);
+      return doRequestWithAuthTokenAndBody("POST", uri, defaultUser.createAuthToken(), bodyJson);
     }
   }
 
@@ -76,13 +73,14 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
     File licenseFile = new File(tmpFile);
     String licenseType = "test_license_type";
     CustomerLicense license =
-        CustomerLicense.create(defaultCustomer.uuid, licenseFile.getAbsolutePath(), licenseType);
+        CustomerLicense.create(
+            defaultCustomer.getUuid(), licenseFile.getAbsolutePath(), licenseType);
     when(mockCustomerLicenseManager.uploadLicenseFile(any(), any(), any(), any()))
         .thenReturn(license);
     Result result = uploadLicenseFile(true, licenseType, licenseFile, null);
     JsonNode node = Json.parse(contentAsString(result));
     assertValue(node, "licenseType", licenseType);
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -90,13 +88,14 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
     String licenseContent = "LICENSE FILE CONTENT";
     String licenseType = "test_license_type_2";
     String fileName = licenseType + ".txt";
-    CustomerLicense license = CustomerLicense.create(defaultCustomer.uuid, fileName, licenseType);
+    CustomerLicense license =
+        CustomerLicense.create(defaultCustomer.getUuid(), fileName, licenseType);
     when(mockCustomerLicenseManager.uploadLicenseFile(any(), any(), any(), any()))
         .thenReturn(license);
     Result result = uploadLicenseFile(false, licenseType, null, licenseContent);
     JsonNode node = Json.parse(contentAsString(result));
     assertValue(node, "licenseType", licenseType);
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -106,6 +105,6 @@ public class CustomerLicenseControllerTest extends FakeDBApplication {
     String licenseType = "test_license_type";
     Result result = assertPlatformException(() -> uploadLicenseFile(true, licenseType, null, null));
     assertBadRequest(result, "License file must contain valid file content.");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 }

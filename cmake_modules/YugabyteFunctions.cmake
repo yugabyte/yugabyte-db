@@ -42,18 +42,31 @@ macro(assert_vars_defined)
   unset(_var_name_tmp)
 endmacro()
 
+macro(yb_put_var_into_cache var_name data_type)
+  if(NOT DEFINED ${var_name})
+    message(FATAL_ERROR
+            "Variable ${var_name} is not defined, cannot put it into CMake cache.")
+  endif()
+  if(NOT "${data_type}" MATCHES "^(STRING|BOOL)$")
+    message(FATAL_ERROR
+            "Data type ${data_type} not allowed when putting variable ${var_name} into cache.")
+  endif()
+  set("${var_name}" "${${var_name}}" CACHE ${data_type}
+      "YugabyteDB configuration variable ${var_name} set using yb_put_var_into_cache" FORCE)
+endmacro()
+
 # Puts the given list of variables as INTERNAL CACHE variables.
 # See for more details:
 # - https://cmake.org/cmake/help/book/mastering-cmake/chapter/CMake%20Cache.html
 # - https://cmake.org/cmake/help/latest/command/set.html
-macro(yb_put_vars_into_cache)
+macro(yb_put_string_vars_into_cache)
   foreach(_var_name_tmp IN ITEMS ${ARGN})
     if(NOT DEFINED ${_var_name_tmp})
       message(FATAL_ERROR
               "Variable ${_var_name_tmp} is not defined, cannot put it into CMake cache.")
     endif()
     set("${_var_name_tmp}" "${${_var_name_tmp}}" CACHE INTERNAL
-        "Internal variable ${_var_name_tmp} (from yb_put_vars_into_cache)")
+        "Internal variable ${_var_name_tmp} (from yb_put_string_vars_into_cache)")
   endforeach()
   unset(_var_name_tmp)
 endmacro()
@@ -236,21 +249,23 @@ function(DETECT_BREW)
             "IS_GCC=${IS_GCC}, "
             "COMPILER_VERSION=${COMPILER_VERSION}, "
             "LINUXBREW_DIR=${LINUXBREW_DIR}")
-    if("${LINUXBREW_DIR}" STREQUAL "")
-      if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
-        file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt" LINUXBREW_DIR)
-      else()
-        set(LINUXBREW_DIR "$ENV{HOME}/.linuxbrew-yb-build")
-      endif()
+
+    if("${LINUXBREW_DIR}" STREQUAL "" AND
+       EXISTS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt")
+      file(STRINGS "${CMAKE_CURRENT_BINARY_DIR}/linuxbrew_path.txt" LINUXBREW_DIR)
     endif()
-    if(EXISTS "${LINUXBREW_DIR}/bin" AND
-       EXISTS "${LINUXBREW_DIR}/lib")
-      message("Linuxbrew found at ${LINUXBREW_DIR}")
-      set(ENV{YB_LINUXBREW_DIR} "${LINUXBREW_DIR}")
-      set(USING_LINUXBREW TRUE)
+    if("${LINUXBREW_DIR}" STREQUAL "")
+      set(USING_LINUXBREW FALSE)
+      message("Not using Linuxbrew")
     else()
-      message("Not using Linuxbrew: no valid Linuxbrew installation found at "
-              "${LINUXBREW_DIR}")
+      if(EXISTS "${LINUXBREW_DIR}/bin" AND EXISTS "${LINUXBREW_DIR}/lib")
+        message("Linuxbrew found at ${LINUXBREW_DIR}")
+        set(ENV{YB_LINUXBREW_DIR} "${LINUXBREW_DIR}")
+        set(USING_LINUXBREW TRUE)
+      else()
+        message(FATAL_ERROR
+                "Linuxbrew is enabled but ${LINUXBREW_DIR} is not a valid Linuxbrew directory")
+      endif()
     endif()
   endif()
 
@@ -302,7 +317,10 @@ function(_CHECK_LIB_DIR DIR_PATH DESCRIPTION)
   if (DIR_PATH STREQUAL "")
     message(FATAL_ERROR "Trying to add an empty ${DESCRIPTION}.")
   endif()
-  if(NOT EXISTS "${DIR_PATH}")
+  if(NOT EXISTS "${DIR_PATH}" AND
+     # The postgres/lib subdirectory of the build directory is a known case of a library directory
+     # that does not exist in the beginning of the build. Skip the message in that case.
+     NOT "${DIR_PATH}" STREQUAL "${YB_BUILD_ROOT}/postgres/lib")
     message(
       WARNING
       "Adding a non-existent ${DESCRIPTION} '${DIR_PATH}'. "
@@ -401,8 +419,16 @@ function(add_executable name)
     # differently depending on the OS.
     target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
     if("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
-      target_link_libraries(${name} absl)
+      target_link_libraries("${name}" absl)
+    else()
+      target_link_libraries("${name}" profiler)
     endif()
+    if(IS_CLANG)
+      # Static tcmalloc library depends on libc++ when building with Clang.
+      target_link_libraries("${name}" c++)
+    endif()
+    # Link with libm because tcmalloc requires the log2 function.
+    target_link_libraries("${name}" m)
   endif()
 
   yb_process_pch(${name})
@@ -887,7 +913,7 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   endif()
 
   if("$ENV{YB_SKIP_FINAL_LTO_LINK}" STREQUAL "1")
-    message("Skipping adding LTO target ${output_exe_name} because the YB_SKIP_FINAL_LTO_LINK"
+    message("Skipping adding LTO target ${output_exe_name} because the YB_SKIP_FINAL_LTO_LINK "
             "environment variable is set to 1")
     return()
   endif()
@@ -929,3 +955,53 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
   add_dependencies("${output_exe_name}" "${dynamic_exe_name}")
 endfunction()
+
+# -------------------------------------------------------------------------------------------------
+
+macro(yb_setup_odyssey)
+  set(OD_EXTRA_COMPILER_FLAGS
+      -Wno-implicit-fallthrough
+      -Wno-missing-field-initializers
+      -Wno-strict-prototypes
+      -Wno-unused-but-set-variable
+      -Wno-unused-function
+      -Wno-unused-parameter
+      -Wno-unused-variable
+      # This is needed to e.g. have access to pthread_setname_np when including pthread.h.
+      -D_GNU_SOURCE
+     )
+  if(IS_CLANG)
+    list(APPEND OD_EXTRA_COMPILER_FLAGS
+         -Wno-language-extension-token
+         -Wno-shorten-64-to-32
+         -Wno-static-in-inline
+         -Wno-pointer-bool-conversion
+         -Wno-newline-eof
+        )
+  endif()
+  if(IS_GCC)
+    list(APPEND OD_EXTRA_COMPILER_FLAGS
+         -Wno-pedantic
+         -Wno-incompatible-pointer-types
+        )
+  endif()
+
+  set(MACHINARIUM_INCLUDE_DIRS "${YB_SRC_ROOT}/src/odyssey/third_party/machinarium/sources")
+  set(MACHINARIUM_LIBRARIES "machine_library_static")
+
+  set(KIWI_INCLUDE_DIRS "${YB_SRC_ROOT}/src/odyssey/third_party/kiwi")
+  set(KIWI_LIBRARIES "kw_library_static")
+
+  set(POSTGRESQL_INCLUDE_DIR "${YB_BUILD_ROOT}/postgres_build/src/include")
+  set(POSTGRESQL_LIBPGPORT "${PG_PORT_STATIC_LIB}")
+  set(POSTGRESQL_LIBRARY "${PG_COMMON_STATIC_LIB}")
+  set(PQ_LIBRARY "${LIBPQ_SHARED_LIB}")
+  set(od_binary "odyssey")
+  set(OD_EXTRA_LIBRARIES ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY})
+  set(od_extra_dependencies "postgres")
+  set(OD_EXTRA_EXE_LINKER_FLAGS "-L${YB_BUILD_ROOT}/lib")
+
+  add_subdirectory(src/odyssey/third_party/machinarium)
+  add_subdirectory(src/odyssey/third_party/kiwi)
+  add_subdirectory(src/odyssey)
+endmacro()

@@ -321,11 +321,12 @@ class MergingIterator : public InternalIterator {
     return current_->IsKeyPinned();
   }
 
-  bool ScanForward(
+  ScanForwardResult ScanForward(
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
     LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
 
+    ScanForwardResult result;
     do {
       const auto key = rocksdb::ExtractUserKey(current_->key());
       if (!upperbound.empty() && user_key_comparator->Compare(key, upperbound) >= 0) {
@@ -340,18 +341,46 @@ class MergingIterator : public InternalIterator {
         const auto next_user_key = rocksdb::ExtractUserKey(next_iterator->key());
         if (upperbound.empty() || user_key_comparator->Compare(next_user_key, upperbound) < 0) {
           next_upperbound = next_user_key;
+
+          // Handle the duplicate keys. Currently YB RegularDB only has duplicate keys for
+          // TransactionApplyState.
+          if (key == next_user_key) {
+            bool skip_key = false;
+            if (key_filter_callback) {
+              auto kf_result =
+                  (*key_filter_callback)(/*prefixed_key=*/Slice(), /*shared_bytes=*/0, key);
+              skip_key = kf_result.skip_key;
+            }
+
+            if (!skip_key) {
+              if (!(*scan_callback)(key, value())) {
+                result.reached_upperbound = false;
+                return result;
+              }
+            }
+
+            Next();
+            result.number_of_keys_visited++;
+            if (!Valid()) {
+              break;
+            }
+          }
         }
       }
 
-      if (!current_->ScanForward(
-              user_key_comparator, next_upperbound, key_filter_callback, scan_callback)) {
-        return false;
+      auto current_result = current_->ScanForward(
+          user_key_comparator, next_upperbound, key_filter_callback, scan_callback);
+      result.number_of_keys_visited += current_result.number_of_keys_visited;
+      if (!current_result.reached_upperbound) {
+        result.reached_upperbound = false;
+        return result;
       }
 
       UpdateHeapAfterCurrentAdvancement();
     } while (Valid());
 
-    return true;
+    result.reached_upperbound = true;
+    return result;
   }
 
  private:

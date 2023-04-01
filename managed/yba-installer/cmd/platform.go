@@ -7,13 +7,13 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
-	"github.com/jimmidyson/pemtokeystore"
 	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
@@ -99,7 +99,10 @@ func (plat Platform) Install() error {
 	plat.copyYbcPackages()
 	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
-	convertCertsToKeyStoreFormat()
+	err := createPemFormatKeyAndCert()
+	if err != nil {
+		return err
+	}
 
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
@@ -133,7 +136,7 @@ func (plat Platform) createNecessaryDirectories() {
 
 func (plat Platform) untarDevopsAndYugawarePackages() {
 
-	log.Info("Extracting devops and yugaware pacakges.")
+	log.Info("Extracting devops and yugaware packages.")
 
 	packageFolderPath := plat.yugabyteDir()
 
@@ -461,29 +464,56 @@ func (plat Platform) Upgrade() error {
 	return err
 }
 
-func convertCertsToKeyStoreFormat() {
+func createPemFormatKeyAndCert() error {
+	keyFile := viper.GetString("server_key_path")
+	certFile := viper.GetString("server_cert_path")
+	log.Info(fmt.Sprintf("Generating concatenated PEM from %s %s ", keyFile, certFile))
 
-	keyStorePath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerKeyStorePath)
-	// ignore errors if the file doesn't exist
-	os.Remove(keyStorePath)
-
-	log.Info(fmt.Sprintf("Generating key store from %s %s ", viper.GetString("server_cert_path"), viper.GetString("server_key_path")))
-	var opts pemtokeystore.Options
-	opts.KeystorePath = keyStorePath
-	opts.KeystorePassword = viper.GetString("platform.keyStorePassword")
-	opts.CertFiles = map[string]string{"myserver": viper.GetString("server_cert_path")}
-	opts.PrivateKeyFiles = map[string]string{"myserver": viper.GetString("server_key_path")}
-	err := pemtokeystore.CreateKeystore(opts)
+	// Open and read the key file.
+	keyIn, err := os.Open(keyFile)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("failed to convert cert to keystore: %s", err))
-		return
+		log.Error(fmt.Sprintf("Failed to open server.key for reading with error: %s", err))
+		return err
 	}
+	defer keyIn.Close()
+
+	// Open and read the cert file.
+	certIn, err := os.Open(certFile)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to open server.cert for reading with error: %s", err))
+		return err
+	}
+	defer certIn.Close()
+
+	// Create this new concatenated PEM file to write key and cert in order.
+	serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
+	pemFile, err := os.OpenFile(serverPemPath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
+		return err
+	}
+	defer pemFile.Close()
+
+	// Append the key file into server.pem file.
+	n, err := io.Copy(pemFile, keyIn)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to append server.key to server.pem with error: %s", err))
+		return err
+	}
+	log.Debug(fmt.Sprintf("Wrote %d bytes of %s to %s\n", n, keyFile, serverPemPath))
+	// Append the cert file into server.pem file.
+	n1, err := io.Copy(pemFile, certIn)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to append server.cert to server.pem with error: %s", err))
+		return err
+	}
+	log.Debug(fmt.Sprintf("Wrote %d bytes of %s to %s\n", n1, certFile, serverPemPath))
 
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
-
 	}
+	return nil
 }
 
 // CreateCronJob creates the cron job for managing YBA platform with cron script in non-root.

@@ -29,6 +29,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
@@ -52,9 +53,12 @@
 
 #include "yb/rocksdb/db.h"
 
+#include "yb/tablet/tablet_metrics.h"
+
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/metrics.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
@@ -92,9 +96,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false),
       doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
       end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
           doc_read_context_.schema.num_key_columns())) {
@@ -117,9 +119,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false),
       doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
       end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
           doc_read_context_.schema.num_key_columns())) {
@@ -143,9 +143,7 @@ DocRowwiseIterator::DocRowwiseIterator(
       deadline_(deadline),
       read_time_(read_time),
       doc_db_(doc_db),
-      has_bound_key_(false),
       pending_op_(pending_op_counter),
-      done_(false),
       doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
       end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
           doc_read_context_.schema.num_key_columns())) {
@@ -200,19 +198,6 @@ void DocRowwiseIterator::Init(TableType table_type, const Slice& sub_doc_key) {
   InitResult();
 }
 
-void DocRowwiseIterator::InitScanChoices(
-    const DocQLScanSpec& doc_spec, const KeyBytes& lower_doc_key, const KeyBytes& upper_doc_key) {
-  scan_choices_ =
-      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
-}
-
-void DocRowwiseIterator::InitScanChoices(
-    const DocPgsqlScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-    const KeyBytes& upper_doc_key) {
-  scan_choices_ =
-      ScanChoices::Create(doc_read_context_.schema, doc_spec, lower_doc_key, upper_doc_key);
-}
-
 template <class T>
 Status DocRowwiseIterator::DoInit(const T& doc_spec) {
   CheckInitOnce();
@@ -252,8 +237,8 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
     }
   }
 
-  InitScanChoices(
-      doc_spec,
+  scan_choices_ = ScanChoices::Create(
+      doc_read_context_.schema, doc_spec,
       !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
       is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key);
   if (is_forward_scan_) {
@@ -271,15 +256,14 @@ Status DocRowwiseIterator::DoInit(const T& doc_spec) {
   return Status::OK();
 }
 
-Status DocRowwiseIterator::Init(const QLScanSpec& spec) {
-  table_type_ = TableType::YQL_TABLE_TYPE;
-  return DoInit(down_cast<const DocQLScanSpec&>(spec));
-}
+Status DocRowwiseIterator::Init(const YQLScanSpec& spec) {
+  table_type_ = spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
+                                                     : TableType::PGSQL_TABLE_TYPE;
+  if (table_type_ == TableType::PGSQL_TABLE_TYPE) {
+    ConfigureForYsql();
+  }
 
-Status DocRowwiseIterator::Init(const PgsqlScanSpec& spec) {
-  table_type_ = TableType::PGSQL_TABLE_TYPE;
-  ConfigureForYsql();
-  return DoInit(down_cast<const DocPgsqlScanSpec&>(spec));
+  return DoInit(spec);
 }
 
 void DocRowwiseIterator::ConfigureForYsql() {
@@ -318,6 +302,22 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
   return Status::OK();
 }
 
+void DocRowwiseIterator::Done() {
+  done_ = true;
+  if (!doc_db_.metrics || !keys_found_) {
+    return;
+  }
+
+  doc_db_.metrics->docdb_keys_found->IncrementBy(keys_found_);
+  if (obsolete_keys_found_) {
+    doc_db_.metrics->docdb_obsolete_keys_found->IncrementBy(obsolete_keys_found_);
+    if (obsolete_keys_found_past_cutoff_) {
+      doc_db_.metrics->docdb_obsolete_keys_found_past_cutoff->IncrementBy(
+          obsolete_keys_found_past_cutoff_);
+    }
+  }
+}
+
 Result<bool> DocRowwiseIterator::HasNext() {
   VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", row_ready_: "
           << row_ready_ << ", done_: " << done_;
@@ -338,21 +338,22 @@ Result<bool> DocRowwiseIterator::HasNext() {
   bool doc_found = false;
   while (!doc_found) {
     if (!db_iter_->valid() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
-      done_ = true;
+      Done();
       return false;
     }
 
-    const auto key_data = db_iter_->FetchKey();
-    if (!key_data.ok()) {
-      VLOG(4) << __func__ << ", key data: " << key_data.status();
-      has_next_status_ = key_data.status();
+    const auto key_data_result = db_iter_->FetchKey();
+    if (!key_data_result.ok()) {
+      VLOG(4) << __func__ << ", key data: " << key_data_result.status();
+      has_next_status_ = key_data_result.status();
       return has_next_status_;
     }
+    const auto& key_data = *key_data_result;
 
-    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data->key);
+    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data.key);
     if (debug_dump_) {
-      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data->key)
-                << ", " << key_data->key.ToDebugHexString();
+      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data.key)
+                << ", " << key_data.key.ToDebugHexString();
     }
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
@@ -360,19 +361,19 @@ Result<bool> DocRowwiseIterator::HasNext() {
     // check it here instead of after GetSubDocument() below because we want to avoid the extra
     // expensive FetchKey() call just to fetch and validate the key.
     if (!iter_key_.data().empty() &&
-        (is_forward_scan_ ? iter_key_.CompareTo(key_data->key) >= 0
-                          : iter_key_.CompareTo(key_data->key) <= 0)) {
+        (is_forward_scan_ ? iter_key_.CompareTo(key_data.key) >= 0
+                          : iter_key_.CompareTo(key_data.key) <= 0)) {
       // TODO -- could turn this check off in TPCC?
       has_next_status_ = STATUS_SUBSTITUTE(Corruption, "Infinite loop detected at $0",
-                                           FormatSliceAsStr(key_data->key));
+                                           FormatSliceAsStr(key_data.key));
       return has_next_status_;
     }
-    iter_key_.Reset(key_data->key);
+    iter_key_.Reset(key_data.key);
     VLOG(4) << " Current iter_key_ is " << iter_key_;
 
     // e.g in cotable, row may point outside table bounds.
     if (!DocKeyBelongsTo(iter_key_, doc_read_context_.schema)) {
-      done_ = true;
+      Done();
       return false;
     }
 
@@ -393,7 +394,7 @@ Result<bool> DocRowwiseIterator::HasNext() {
     }
 
     if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
-      done_ = true;
+      Done();
       return false;
     }
 
@@ -453,9 +454,12 @@ Result<bool> DocRowwiseIterator::HasNext() {
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
-    } else {
-      doc_found = *doc_found_res;
     }
+    doc_found = *doc_found_res;
+    // Use the write_time of the entire row.
+    // May lose some precision by not examining write time of every column.
+    IncrementKeyFoundStats(!doc_found, key_data.write_time);
+
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();
       RETURN_NOT_OK(has_next_status_);
@@ -466,6 +470,26 @@ Result<bool> DocRowwiseIterator::HasNext() {
   }
   row_ready_ = true;
   return true;
+}
+
+void DocRowwiseIterator::IncrementKeyFoundStats(
+    const bool obsolete, const EncodedDocHybridTime& write_time) {
+  if (doc_db_.metrics) {
+    ++keys_found_;
+    if (obsolete) {
+      ++obsolete_keys_found_;
+      if (history_cutoff_.empty() && doc_db_.retention_policy) {
+        // Lazy initialization to avoid extra steps in most cases.
+        // It is expected that we will find obsolete keys quite rarely.
+        history_cutoff_.Assign(DocHybridTime(doc_db_.retention_policy->ProposedHistoryCutoff()));
+      }
+      if (write_time < history_cutoff_) {
+        // If the obsolete key found was written before the history cutoff, then count
+        // record this in addition (since it can be removed via compaction).
+        ++obsolete_keys_found_past_cutoff_;
+      }
+    }
+  }
 }
 
 string DocRowwiseIterator::ToString() const {
@@ -512,17 +536,12 @@ void DocRowwiseIterator::SkipRow() {
   row_ready_ = false;
 }
 
-HybridTime DocRowwiseIterator::RestartReadHt() {
-  auto max_seen_ht = db_iter_->max_seen_ht();
-  if (max_seen_ht.is_valid() && max_seen_ht > db_iter_->read_time().read) {
-    VLOG(4) << "Restart read: " << max_seen_ht << ", original: " << db_iter_->read_time();
-    return max_seen_ht;
-  }
-  return HybridTime::kInvalid;
+Result<HybridTime> DocRowwiseIterator::RestartReadHt() {
+  return db_iter_->RestartReadHt();
 }
 
 HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
-  return db_iter_->max_seen_ht();
+  return db_iter_->TEST_MaxSeenHt();
 }
 
 bool DocRowwiseIterator::IsNextStaticColumn() const {

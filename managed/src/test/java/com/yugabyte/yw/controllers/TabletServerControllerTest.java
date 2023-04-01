@@ -46,24 +46,24 @@ public class TabletServerControllerTest extends FakeDBApplication {
   @Test
   public void testListTabletServersWrapperSuccess() {
     Customer customer = ModelFactory.testCustomer();
-    Universe u1 = createUniverse(customer.getCustomerId());
-    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
-    Result r = tabletController.listTabletServers(customer.uuid, u1.universeUUID);
+    Universe u1 = createUniverse(customer.getId());
+    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    Result r = tabletController.listTabletServers(customer.getUuid(), u1.getUniverseUUID());
     assertEquals(200, r.status());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testListTabletServersWrapperFailure() {
     when(mockApiHelper.getRequest(anyString())).thenThrow(new RuntimeException("Unknown Error"));
     Customer customer = ModelFactory.testCustomer();
-    Universe u1 = createUniverse(customer.getCustomerId());
-    u1 = Universe.saveDetails(u1.universeUUID, ApiUtils.mockUniverseUpdater());
-    UUID universeUUID = u1.universeUUID;
+    Universe u1 = createUniverse(customer.getId());
+    u1 = Universe.saveDetails(u1.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
+    UUID universeUUID = u1.getUniverseUUID();
     Result result =
         assertPlatformException(
-            () -> tabletController.listTabletServers(customer.uuid, universeUUID));
+            () -> tabletController.listTabletServers(customer.getUuid(), universeUUID));
     assertEquals(500, result.status());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 }

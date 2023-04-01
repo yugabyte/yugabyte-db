@@ -33,95 +33,101 @@ public class FakeApiHelper {
     Users user;
     if (customer == null) {
       customer = Customer.create("vc", "Valid Customer");
-      user = Users.create("foo@bar.com", "password", Role.Admin, customer.uuid, false);
+      user = Users.create("foo@bar.com", "password", Role.Admin, customer.getUuid(), false);
     }
-    user = Users.find.query().where().eq("customer_uuid", customer.uuid).findOne();
+    user = Users.find.query().where().eq("customer_uuid", customer.getUuid()).findOne();
     return user.createAuthToken();
   }
 
-  public static Result doRequest(String method, String url) {
-    return doRequestWithAuthToken(method, url, getAuthToken());
+  public static Result doRequest(Application app, String method, String url) {
+    return doRequestWithAuthToken(app, method, url, getAuthToken());
   }
 
-  public static Result doGetRequestNoAuth(String url) {
+  public static Result doGetRequestNoAuth(Application app, String url) {
     Http.RequestBuilder request = Helpers.fakeRequest("GET", url);
-    return route(request);
+    return route(app, request);
   }
 
-  public static Result doRequestWithAuthToken(String method, String url, String authToken) {
+  public static Result doRequestWithAuthToken(
+      Application app, String method, String url, String authToken) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url).header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken);
-    return route(request);
+    return route(app, request);
   }
 
-  public static Result doRequestWithJWT(String method, String url, String authToken) {
+  public static Result doRequestWithJWT(
+      Application app, String method, String url, String authToken) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url).header(TokenAuthenticator.API_JWT_HEADER, authToken);
-    return route(request);
+    return route(app, request);
   }
 
   public static Result doRequestWithCustomHeaders(
-      String method, String url, Map<String, String> headers) {
+      Application app, String method, String url, Map<String, String> headers) {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url);
     for (Map.Entry<String, String> headerEntry : headers.entrySet()) {
       request.header(headerEntry.getKey(), headerEntry.getValue());
     }
-    return route(request);
+    return route(app, request);
   }
 
-  public static Result doRequestWithHAToken(String method, String url, String haToken) {
+  public static Result doRequestWithHAToken(
+      Application app, String method, String url, String haToken) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url)
             .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken);
-    return route(request);
+    return route(app, request);
   }
 
   public static Result doRequestWithHATokenAndBody(
-      String method, String url, String haToken, JsonNode body) {
+      Application app, String method, String url, String haToken, JsonNode body) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url)
             .header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER, haToken)
             .bodyJson(body);
-    return route(request);
+    return route(app, request);
   }
 
-  public static Result doRequestWithBody(String method, String url, JsonNode body) {
-    return doRequestWithAuthTokenAndBody(method, url, getAuthToken(), body);
+  public static Result doRequestWithBody(
+      Application app, String method, String url, JsonNode body) {
+    return doRequestWithAuthTokenAndBody(app, method, url, getAuthToken(), body);
   }
 
   public static Result doRequestWithAuthTokenAndBody(
-      String method, String url, String authToken, JsonNode body) {
+      Application app, String method, String url, String authToken, JsonNode body) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url)
             .header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken)
             .bodyJson(body);
-    return route(request);
+    return route(app, request);
   }
 
   public static Result doRequestWithBodyAndWithoutAuthToken(
-      String method, String url, JsonNode body) {
+      Application app, String method, String url, JsonNode body) {
     Http.RequestBuilder request = Helpers.fakeRequest(method, url).bodyJson(body);
-    return route(request);
+    return route(app, request);
   }
 
   public static Result doRequestWithJWTAndBody(
-      String method, String url, String authToken, JsonNode body) {
+      Application app, String method, String url, String authToken, JsonNode body) {
     Http.RequestBuilder request =
         Helpers.fakeRequest(method, url)
             .header(TokenAuthenticator.API_JWT_HEADER, authToken)
             .bodyJson(body);
-    return route(request);
+    return route(app, request);
   }
 
   public static Result doRequestWithMultipartData(
+      Application app,
       String method,
       String url,
       List<Http.MultipartFormData.Part<Source<ByteString, ?>>> data,
       Materializer mat) {
-    return doRequestWithAuthTokenAndMultipartData(method, url, getAuthToken(), data, mat);
+    return doRequestWithAuthTokenAndMultipartData(app, method, url, getAuthToken(), data, mat);
   }
 
   public static Result doRequestWithAuthTokenAndMultipartData(
+      Application app,
       String method,
       String url,
       String authToken,
@@ -131,7 +137,7 @@ public class FakeApiHelper {
         Helpers.fakeRequest(method, url)
             .header(TokenAuthenticator.AUTH_TOKEN_HEADER, authToken)
             .bodyMultipart(data, Files.singletonTemporaryFileCreator(), mat);
-    return route(request);
+    return route(app, request);
   }
 
   /**
@@ -139,7 +145,7 @@ public class FakeApiHelper {
    * then use this function instead of Helpers.route(). Alternatively change the test to expect that
    * YWException get thrown
    */
-  public static Result routeWithYWErrHandler(Http.RequestBuilder requestBuilder, Application app)
+  public static Result routeWithYWErrHandler(Application app, Http.RequestBuilder requestBuilder)
       throws InterruptedException, ExecutionException, TimeoutException {
     YWErrorHandler YWErrorHandler = app.injector().instanceOf(YWErrorHandler.class);
     CompletableFuture<Result> future =

@@ -16,17 +16,21 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
 import com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
+import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Audit;
@@ -35,6 +39,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -72,6 +77,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final BackupUtil backupUtil;
   private final CustomerConfigService customerConfigService;
   private final YBClientService ybService;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public XClusterConfigController(
@@ -79,12 +85,14 @@ public class XClusterConfigController extends AuthenticatedController {
       MetricQueryHelper metricQueryHelper,
       BackupUtil backupUtil,
       CustomerConfigService customerConfigService,
-      YBClientService ybService) {
+      YBClientService ybService,
+      RuntimeConfGetter confGetter) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupUtil = backupUtil;
     this.customerConfigService = customerConfigService;
     this.ybService = ybService;
+    this.confGetter = confGetter;
   }
 
   /**
@@ -140,27 +148,86 @@ public class XClusterConfigController extends AuthenticatedController {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, e.getMessage());
     }
 
-    // If the enable_replicate_transaction_status_table gflag is set, we do not support N:1
-    // replication architecture, i.e., only one universe can replicate to the target universe.
-    if (XClusterConfigTaskBase.isTransactionalReplication(sourceUniverse, targetUniverse)) {
-      List<XClusterConfig> xClusterConfigs =
-          XClusterConfig.getByTargetUniverseUUID(targetUniverse.universeUUID);
-      List<UUID> otherSourceUniverses =
-          xClusterConfigs
-              .stream()
-              .filter(
-                  xClusterConfig ->
-                      !xClusterConfig.sourceUniverseUUID.equals(sourceUniverse.universeUUID))
-              .map(xClusterConfig -> xClusterConfig.sourceUniverseUUID)
-              .collect(Collectors.toList());
-      if (!otherSourceUniverses.isEmpty()) {
+    // For now, we detect whether the replication is txn based on gflags. It will be user input
+    // later.
+    createFormData.configType =
+        XClusterConfigTaskBase.isTransactionalReplication(sourceUniverse, targetUniverse)
+            ? ConfigType.Txn
+            : ConfigType.Basic;
+
+    if (createFormData.configType.equals(ConfigType.Txn)) {
+      if (!confGetter.getGlobalConf(GlobalConfKeys.transactionalXClusterEnabled)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "Support for transactional xCluster configs is disabled in YBA. You may enable it "
+                + "by setting xcluster.transactional.enabled to true in the application.conf");
+      }
+
+      // Check YBDB software version.
+      if (!XClusterConfigTaskBase.supportsTxnXCluster(sourceUniverse)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             String.format(
-                "N:1 replication architecture is not supported when the gflag "
-                    + "enable_replicate_transaction_status_table is set; other universes already "
-                    + "replicating to the target universe are %s",
-                otherSourceUniverses));
+                "Transactional XCluster is not supported in this version of the "
+                    + "source universe (%s); please upgrade",
+                sourceUniverse
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .ybSoftwareVersion));
+      }
+      if (!XClusterConfigTaskBase.supportsTxnXCluster(targetUniverse)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Transactional XCluster is not supported in this version of the "
+                    + "target universe (%s); please upgrade",
+                targetUniverse
+                    .getUniverseDetails()
+                    .getPrimaryCluster()
+                    .userIntent
+                    .ybSoftwareVersion));
+      }
+
+      // There cannot exist more than one xCluster config when its type is transactional.
+      List<XClusterConfig> sourceUniverseXClusterConfigs =
+          XClusterConfig.getByUniverseUuid(sourceUniverse.getUniverseUUID());
+      List<XClusterConfig> targetUniverseXClusterConfigs =
+          XClusterConfig.getByUniverseUuid(targetUniverse.getUniverseUUID());
+      if (!sourceUniverseXClusterConfigs.isEmpty() || !targetUniverseXClusterConfigs.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "To create a transactional xCluster, you have to delete all the existing xCluster "
+                + "configs on the source and target universes. There could exist at most one "
+                + "transactional xCluster config.");
+      }
+      // Savepoints must be disabled for txn xCluster.
+      Cluster sourceUniversePrimaryCluster =
+          sourceUniverse.getUniverseDetails().getPrimaryCluster();
+      Cluster targetUniversePrimaryCluster =
+          targetUniverse.getUniverseDetails().getPrimaryCluster();
+      if (!Objects.equals(
+              sourceUniversePrimaryCluster.userIntent.masterGFlags.get(
+                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
+              "false")
+          || !Objects.equals(
+              sourceUniversePrimaryCluster.userIntent.tserverGFlags.get(
+                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
+              "false")
+          || !Objects.equals(
+              targetUniversePrimaryCluster.userIntent.masterGFlags.get(
+                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
+              "false")
+          || !Objects.equals(
+              targetUniversePrimaryCluster.userIntent.tserverGFlags.get(
+                  XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME),
+              "false")) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "To create a transactional xCluster, you have set %s to `false` on both "
+                    + "source and target universes",
+                XClusterConfigTaskBase.ENABLE_PG_SAVEPOINTS_GFLAG_NAME));
       }
     }
 
@@ -178,7 +245,9 @@ public class XClusterConfigController extends AuthenticatedController {
             createFormData.tables,
             createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null /* currentReplicationGroupName */,
+            createFormData.configType);
 
     if (createFormData.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
@@ -199,23 +268,23 @@ public class XClusterConfigController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
     CustomerTask.create(
         customer,
-        sourceUniverse.universeUUID,
+        sourceUniverse.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
         CustomerTask.TaskType.Create,
-        xClusterConfig.name);
+        xClusterConfig.getName());
 
-    log.info("Submitted create XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
+    log.info("Submitted create XClusterConfig({}), task {}", xClusterConfig.getUuid(), taskUUID);
 
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.XClusterConfig,
-            Objects.toString(xClusterConfig.uuid, null),
+            Objects.toString(xClusterConfig.getUuid(), null),
             Audit.ActionType.Create,
             Json.toJson(createFormData),
             taskUUID);
-    return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
+    return new YBPTask(taskUUID, xClusterConfig.getUuid()).asResult();
   }
 
   /**
@@ -234,12 +303,11 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
 
     JsonNode lagMetricData;
-
     try {
       Set<String> streamIds = xClusterConfig.getStreamIdsWithReplicationSetup();
       log.info(
           "Querying lag metrics for XClusterConfig({}) using CDC stream IDs: {}",
-          xClusterConfig.uuid,
+          xClusterConfig.getUuid(),
           streamIds);
 
       // Query for replication lag
@@ -249,7 +317,7 @@ public class XClusterConfigController extends AuthenticatedController {
       String startTime = Long.toString(Instant.now().minus(Duration.ofMinutes(1)).getEpochSecond());
       metricParams.put("start", startTime);
       ObjectNode filterJson = Json.newObject();
-      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
+      Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
       String nodePrefix = sourceUniverse.getUniverseDetails().nodePrefix;
       filterJson.put("node_prefix", nodePrefix);
       String streamIdFilter = String.join("|", streamIds);
@@ -262,7 +330,7 @@ public class XClusterConfigController extends AuthenticatedController {
       String errorMsg =
           String.format(
               "Failed to get lag metric data for XClusterConfig(%s): %s",
-              xClusterConfig.uuid, e.getMessage());
+              xClusterConfig.getUuid(), e.getMessage());
       log.error(errorMsg);
       lagMetricData = Json.newObject().put("error", errorMsg);
     }
@@ -270,7 +338,8 @@ public class XClusterConfigController extends AuthenticatedController {
     // Check whether the replication is broken for the tables.
     Set<String> tableIdsInRunningStatus =
         xClusterConfig.getTableIdsInStatus(
-            xClusterConfig.getTables(), XClusterTableConfig.Status.Running);
+            xClusterConfig.getTableIds(true /* includeTxnTableIfExists */),
+            XClusterTableConfig.Status.Running);
     Map<String, Boolean> isBootstrapRequiredMap;
     try {
       isBootstrapRequiredMap =
@@ -284,18 +353,25 @@ public class XClusterConfigController extends AuthenticatedController {
               .stream()
               .collect(Collectors.toMap(tableId -> tableId, tableId -> true));
     }
+    boolean isTxnTableInErrorStatus =
+        xClusterConfig.getType().equals(ConfigType.Txn)
+            && (Objects.isNull(
+                    isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()))
+                || isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()));
     Set<String> tableIdsInErrorStatus =
         isBootstrapRequiredMap
             .entrySet()
             .stream()
-            .filter(Map.Entry::getValue)
+            .filter(e -> e.getValue() || isTxnTableInErrorStatus)
             .map(Map.Entry::getKey)
             .collect(Collectors.toSet());
+    // We do not update the xCluster config object in the DB intentionally because `Error` is
+    // only a user facing status.
     xClusterConfig
-        .getTableDetails()
+        .getTableDetails(true /* includeTxnTableIfExists */)
         .stream()
-        .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.status = XClusterTableConfig.Status.Error);
+        .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.getTableId()))
+        .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.Error));
 
     // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();
@@ -330,16 +406,16 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfig.getValidConfigOrBadRequest(customer, xclusterConfigUUID);
     verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
     Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.sourceUniverseUUID, customer);
+        Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
+        Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
     Map<String, List<String>> mainTableToAddIndexTablesMap = null;
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableToAddInfoList = null;
     Set<String> tableIdsToAdd = null;
     Set<String> tableIdsToRemove = null;
     if (editFormData.tables != null) {
-      Set<String> currentTableIds = xClusterConfig.getTables();
+      Set<String> currentTableIds = xClusterConfig.getTableIds();
       Pair<Set<String>, Set<String>> tableIdsToAddTableIdsToRemovePair =
           XClusterConfigTaskBase.getTableIdsDiff(currentTableIds, editFormData.tables);
       tableIdsToAdd = tableIdsToAddTableIdsToRemovePair.getFirst();
@@ -347,11 +423,10 @@ public class XClusterConfigController extends AuthenticatedController {
       log.info("tableIdsToAdd are {}; tableIdsToRemove are {}", tableIdsToAdd, tableIdsToRemove);
 
       // For backward compatibility; if table is in replication, no need fot bootstrapping.
-      xClusterConfig.setNeedBootstrapForTables(
+      xClusterConfig.updateNeedBootstrapForTables(
           xClusterConfig.getTableIdsWithReplicationSetup(), false /* needBootstrap */);
 
       if (!tableIdsToAdd.isEmpty()) {
-        // Add index tables.
         Set<String> allTableIds =
             editFormData.bootstrapParams == null
                 ? tableIdsToAdd
@@ -370,13 +445,15 @@ public class XClusterConfigController extends AuthenticatedController {
         Set<String> indexTableIdSetToAdd =
             indexTableIdSet
                 .stream()
-                .filter(tableId -> !xClusterConfig.getTables().contains(tableId))
+                .filter(tableId -> !xClusterConfig.getTableIds().contains(tableId))
                 .collect(Collectors.toSet());
         allTableIds.addAll(indexTableIdSet);
         tableIdsToAdd.addAll(indexTableIdSetToAdd);
 
         verifyTablesNotInReplication(
-            tableIdsToAdd, xClusterConfig.sourceUniverseUUID, xClusterConfig.targetUniverseUUID);
+            tableIdsToAdd,
+            xClusterConfig.getSourceUniverseUUID(),
+            xClusterConfig.getTargetUniverseUUID());
 
         requestedTableToAddInfoList =
             XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
@@ -385,17 +462,18 @@ public class XClusterConfigController extends AuthenticatedController {
                 editFormData.bootstrapParams,
                 sourceUniverse,
                 targetUniverse,
-                xClusterConfig.getReplicationGroupName());
+                xClusterConfig.getReplicationGroupName(),
+                xClusterConfig.getType());
 
         CommonTypes.TableType tableType = requestedTableToAddInfoList.get(0).getTableType();
-        if (!xClusterConfig.tableType.equals(XClusterConfig.TableType.UNKNOWN)) {
+        if (!xClusterConfig.getTableType().equals(XClusterConfig.TableType.UNKNOWN)) {
           if (!xClusterConfig.getTableTypeAsCommonType().equals(tableType)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,
                 String.format(
                     "The xCluster config has a type of %s, but the tables to be added have a "
                         + "type of %s",
-                    xClusterConfig.tableType,
+                    xClusterConfig.getTableType(),
                     XClusterConfig.XClusterConfigTableTypeCommonTypesTableTypeBiMap.inverse()
                         .get(tableType)));
           }
@@ -404,7 +482,7 @@ public class XClusterConfigController extends AuthenticatedController {
         if (!editFormData.dryRun) {
           // Save the to-be-added tables in the DB.
           xClusterConfig.addTablesIfNotExist(tableIdsToAdd, editFormData.bootstrapParams);
-          xClusterConfig.setIndexTableForTables(indexTableIdSetToAdd, true /* indexTable */);
+          xClusterConfig.updateIndexTableForTables(indexTableIdSetToAdd, true /* indexTable */);
         }
       }
 
@@ -443,12 +521,20 @@ public class XClusterConfigController extends AuthenticatedController {
     if (editFormData.name != null) {
       if (XClusterConfig.getByNameSourceTarget(
               editFormData.name,
-              xClusterConfig.sourceUniverseUUID,
-              xClusterConfig.targetUniverseUUID)
+              xClusterConfig.getSourceUniverseUUID(),
+              xClusterConfig.getTargetUniverseUUID())
           != null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "XClusterConfig with same name already exists");
       }
+    }
+
+    // Change role is allowed only for txn xCluster configs.
+    if (!xClusterConfig.getType().equals(ConfigType.Txn)
+        && (Objects.nonNull(editFormData.sourceRole) || Objects.nonNull(editFormData.targetRole))) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Changing xCluster role can be applied only to transactional xCluster configs");
     }
 
     if (editFormData.dryRun) {
@@ -467,13 +553,13 @@ public class XClusterConfigController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, params);
     CustomerTask.create(
         customer,
-        xClusterConfig.sourceUniverseUUID,
+        xClusterConfig.getSourceUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
         CustomerTask.TaskType.Edit,
-        xClusterConfig.name);
+        xClusterConfig.getName());
 
-    log.info("Submitted edit XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
+    log.info("Submitted edit XClusterConfig({}), task {}", xClusterConfig.getUuid(), taskUUID);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -483,7 +569,7 @@ public class XClusterConfigController extends AuthenticatedController {
             Audit.ActionType.Edit,
             Json.toJson(editFormData),
             taskUUID);
-    return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
+    return new YBPTask(taskUUID, xClusterConfig.getUuid()).asResult();
   }
 
   /**
@@ -516,9 +602,9 @@ public class XClusterConfigController extends AuthenticatedController {
         parseRestartFormData(customerUUID, xClusterConfig);
     verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
     Universe sourceUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.sourceUniverseUUID, customer);
+        Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     Universe targetUniverse =
-        Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
+        Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
     Set<String> tableIds = restartFormData.tables;
     // Add index tables.
@@ -546,17 +632,11 @@ public class XClusterConfigController extends AuthenticatedController {
             bootstrapParams,
             sourceUniverse,
             targetUniverse,
-            xClusterConfig.getReplicationGroupName());
+            xClusterConfig.getReplicationGroupName(),
+            xClusterConfig.getType());
 
     if (restartFormData.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
-    } else {
-      // Set table type for old xCluster configs.
-      xClusterConfig.setTableType(requestedTableInfoList);
-      if (bootstrapParams != null) {
-        // Set needBootstrap to true for all tables. It will check if it is required.
-        xClusterConfig.setNeedBootstrapForTables(bootstrapParams.tables, true /* needBootstrap */);
-      }
     }
 
     // Submit task to edit xCluster config.
@@ -570,13 +650,13 @@ public class XClusterConfigController extends AuthenticatedController {
     UUID taskUUID = commissioner.submit(TaskType.RestartXClusterConfig, params);
     CustomerTask.create(
         customer,
-        xClusterConfig.sourceUniverseUUID,
+        xClusterConfig.getSourceUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.XClusterConfig,
         CustomerTask.TaskType.Restart,
-        xClusterConfig.name);
+        xClusterConfig.getName());
 
-    log.info("Submitted restart XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
+    log.info("Submitted restart XClusterConfig({}), task {}", xClusterConfig.getUuid(), taskUUID);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -585,7 +665,7 @@ public class XClusterConfigController extends AuthenticatedController {
             xClusterConfigUUID.toString(),
             Audit.ActionType.Restart,
             taskUUID);
-    return new YBPTask(taskUUID, xClusterConfig.uuid).asResult();
+    return new YBPTask(taskUUID, xClusterConfig.getUuid()).asResult();
   }
 
   /**
@@ -611,13 +691,13 @@ public class XClusterConfigController extends AuthenticatedController {
 
     Universe sourceUniverse = null;
     Universe targetUniverse = null;
-    if (xClusterConfig.sourceUniverseUUID != null) {
+    if (xClusterConfig.getSourceUniverseUUID() != null) {
       sourceUniverse =
-          Universe.getValidUniverseOrBadRequest(xClusterConfig.sourceUniverseUUID, customer);
+          Universe.getValidUniverseOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
     }
-    if (xClusterConfig.targetUniverseUUID != null) {
+    if (xClusterConfig.getTargetUniverseUUID() != null) {
       targetUniverse =
-          Universe.getValidUniverseOrBadRequest(xClusterConfig.targetUniverseUUID, customer);
+          Universe.getValidUniverseOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
     }
 
     // Submit task to delete xCluster config
@@ -626,21 +706,21 @@ public class XClusterConfigController extends AuthenticatedController {
     if (sourceUniverse != null) {
       CustomerTask.create(
           customer,
-          sourceUniverse.universeUUID,
+          sourceUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.XClusterConfig,
           CustomerTask.TaskType.Delete,
-          xClusterConfig.name);
+          xClusterConfig.getName());
     } else if (targetUniverse != null) {
       CustomerTask.create(
           customer,
-          targetUniverse.universeUUID,
+          targetUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.XClusterConfig,
           CustomerTask.TaskType.Delete,
-          xClusterConfig.name);
+          xClusterConfig.getName());
     }
-    log.info("Submitted delete XClusterConfig({}), task {}", xClusterConfig.uuid, taskUUID);
+    log.info("Submitted delete XClusterConfig({}), task {}", xClusterConfig.getUuid(), taskUUID);
 
     auditService()
         .createAuditEntryWithReqBody(
@@ -662,22 +742,34 @@ public class XClusterConfigController extends AuthenticatedController {
       value = "Sync xcluster config",
       response = YBPTask.class)
   public Result sync(UUID customerUUID, UUID targetUniverseUUID) {
-    log.info("Received sync XClusterConfig request for universe({})", targetUniverseUUID);
-
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe targetUniverse = Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
+    XClusterConfigTaskParams params;
+    Universe targetUniverse;
+    if (targetUniverseUUID != null) {
+      log.info("Received sync XClusterConfig request for universe({})", targetUniverseUUID);
+      targetUniverse = Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
+      params = new XClusterConfigTaskParams(targetUniverseUUID);
+    } else {
+      JsonNode requestBody = request().body().asJson();
+      XClusterConfigSyncFormData formData =
+          formFactory.getFormDataOrBadRequest(requestBody, XClusterConfigSyncFormData.class);
+      log.info(
+          "Received sync XClusterConfig request for universe({}) replicationGroupName({})",
+          formData.targetUniverseUUID,
+          formData.replicationGroupName);
+      targetUniverse = Universe.getValidUniverseOrBadRequest(formData.targetUniverseUUID, customer);
+      params = new XClusterConfigTaskParams(formData);
+    }
 
-    // Submit task to sync xCluster config
-    XClusterConfigTaskParams params = new XClusterConfigTaskParams(targetUniverseUUID);
     UUID taskUUID = commissioner.submit(TaskType.SyncXClusterConfig, params);
     CustomerTask.create(
         customer,
-        targetUniverseUUID,
+        targetUniverse.getUniverseUUID(),
         taskUUID,
         TargetType.XClusterConfig,
         CustomerTask.TaskType.Sync,
-        targetUniverse.name);
+        targetUniverse.getName());
 
     log.info(
         "Submitted sync XClusterConfig for universe({}), task {}", targetUniverseUUID, taskUUID);
@@ -686,7 +778,7 @@ public class XClusterConfigController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe,
-            targetUniverseUUID.toString(),
+            targetUniverse.getUniverseUUID().toString(),
             Audit.ActionType.SyncXClusterConfig,
             taskUUID);
     return new YBPTask(taskUUID).asResult();
@@ -710,10 +802,12 @@ public class XClusterConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData",
           paramType = "body",
           required = true))
-  public Result needBootstrapTable(UUID customerUuid, UUID sourceUniverseUuid) {
+  public Result needBootstrapTable(
+      UUID customerUuid, UUID sourceUniverseUuid, String configTypeString) {
     log.info("Received needBootstrapTable request for sourceUniverseUuid={}", sourceUniverseUuid);
 
     // Parse and validate request.
+    XClusterConfig.ConfigType configType = ConfigType.getFromString(configTypeString);
     Customer customer = Customer.getOrBadRequest(customerUuid);
     XClusterConfigNeedBootstrapFormData needBootstrapFormData =
         formFactory.getFormDataOrBadRequest(
@@ -723,9 +817,20 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfigTaskBase.convertTableUuidStringsToTableIdSet(needBootstrapFormData.tables);
 
     try {
-      Map<String, Boolean> isBootstrapRequiredMap =
-          XClusterConfigTaskBase.isBootstrapRequired(
-              ybService, needBootstrapFormData.tables, sourceUniverseUuid);
+      Map<String, Boolean> isBootstrapRequiredMap;
+      // For transactional xCluster, if the transaction status table needs bootstrapping, we have
+      // to get the bootstrapping parameters in the UI so always pass true.
+      if (configType.equals(ConfigType.Txn)) {
+        isBootstrapRequiredMap =
+            needBootstrapFormData
+                .tables
+                .stream()
+                .collect(Collectors.toMap(tableId -> tableId, tableId -> true));
+      } else {
+        isBootstrapRequiredMap =
+            XClusterConfigTaskBase.isBootstrapRequired(
+                ybService, needBootstrapFormData.tables, sourceUniverseUuid);
+      }
       return PlatformResults.withData(isBootstrapRequiredMap);
     } catch (Exception e) {
       log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
@@ -830,16 +935,16 @@ public class XClusterConfigController extends AuthenticatedController {
 
     // Ensure exactly one edit form field is specified
     int numEditOps = 0;
-    numEditOps += (formData.name != null) ? 1 : 0;
-    numEditOps += (formData.status != null) ? 1 : 0;
+    numEditOps += formData.name != null ? 1 : 0;
+    numEditOps += formData.status != null ? 1 : 0;
     numEditOps += (formData.tables != null && !formData.tables.isEmpty()) ? 1 : 0;
+    numEditOps += formData.sourceRole != null ? 1 : 0;
+    numEditOps += formData.targetRole != null ? 1 : 0;
     if (numEditOps == 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Must specify an edit operation");
     } else if (numEditOps > 1) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
-          "Exactly one edit request (either editName, editStatus, editTables) is allowed in "
-              + "one call.");
+          BAD_REQUEST, "Exactly one edit request is allowed in one call");
     }
 
     if (formData.tables != null && !formData.tables.isEmpty()) {
@@ -883,7 +988,7 @@ public class XClusterConfigController extends AuthenticatedController {
           formData.bootstrapParams.backupRequestParams, customerUUID);
     }
 
-    Set<String> tableIds = xClusterConfig.getTables();
+    Set<String> tableIds = xClusterConfig.getTableIds();
     if (!formData.tables.isEmpty()) {
       // Make sure the selected tables are already part of the xCluster config.
       Set<String> notFoundTableIds = new HashSet<>();
@@ -900,7 +1005,7 @@ public class XClusterConfigController extends AuthenticatedController {
                 notFoundTableIds));
       }
 
-      if (xClusterConfig.status == XClusterConfig.XClusterConfigStatusType.Failed
+      if (xClusterConfig.getStatus() == XClusterConfig.XClusterConfigStatusType.Failed
           && formData.tables.size() < xClusterConfig.getTableIdsExcludeIndexTables().size()) {
         throw new PlatformServiceException(
             BAD_REQUEST,
@@ -940,7 +1045,7 @@ public class XClusterConfigController extends AuthenticatedController {
           String.format(
               "%s task is not allowed; with status `%s`, the allowed tasks are %s",
               taskType,
-              xClusterConfig.status,
+              xClusterConfig.getStatus(),
               XClusterConfigTaskBase.getAllowedTasks(xClusterConfig)));
     }
   }
@@ -960,7 +1065,7 @@ public class XClusterConfigController extends AuthenticatedController {
         XClusterConfig.getBetweenUniverses(sourceUniverseUUID, targetUniverseUUID);
     xClusterConfigs.forEach(
         config -> {
-          Set<String> tablesInReplication = config.getTables();
+          Set<String> tablesInReplication = config.getTableIds();
           tablesInReplication.retainAll(tableIds);
           if (!tablesInReplication.isEmpty()) {
             throw new PlatformServiceException(

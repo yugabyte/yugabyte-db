@@ -523,6 +523,21 @@ message SysSnapshotEntryPB {
   optional fixed64 previous_snapshot_hybrid_time = 7;
 }
 
+message SchemaVersionMappingPB {
+  required uint32 producer_schema_version = 1;
+  required uint32 consumer_schema_version = 2;
+}
+
+message ColocatedSchemaVersionMappingPB {
+  required uint32 colocation_id = 1;
+  required SchemaVersionMappingPB schema_version_mapping = 2;
+}
+
+message SchemaVersionMappingEntryPB {
+  optional SchemaVersionMappingPB schema_version_mapping = 1;
+  repeated ColocatedSchemaVersionMappingPB colocated_schema_versions = 2;
+}
+
 // The data part of a SysRowEntry in the sys.catalog table for a universe replication record.
 message SysUniverseReplicationEntryPB {
   enum State {
@@ -567,6 +582,9 @@ message SysUniverseReplicationEntryPB {
   optional bool is_ns_replication = 7 [default = false];
   optional NamespaceIdentifierPB producer_namespace = 8;
   optional NamespaceIdentifierPB consumer_namespace = 9;
+
+  // Mapping from Producer Table ID to Producer->Consumer schema version mappings
+  map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
 }
 
 message XClusterSafeTimePB {

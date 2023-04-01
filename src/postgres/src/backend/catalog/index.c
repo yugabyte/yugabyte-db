@@ -2514,11 +2514,24 @@ index_build(Relation heapRelation,
 	}
 
 	/*
-	 * Update heap and index pg_class rows
+	 * Sanity check to ensure concurrent index builds don't reach this
+	 * code-path. In YB, we don't compute stats during a concurrent index build
+	 * so we shouldn't update them here.
 	 */
+	if (IsYugaByteEnabled())
+		Assert(!indexInfo->ii_Concurrent);
+
+	/*
+	 * Update heap and index pg_class rows
+	 *
+	 * YB TODO(fizaa): Properly update reltuples for the indexed table
+	 * (see GH #16506). Currently, we don't compute this statistic during a
+	 * non-concurrent index build so we should not update it here.
+	 */
+
 	index_update_stats(heapRelation,
 					   true,
-					   stats->heap_tuples);
+					   IsYBRelation(heapRelation) ? -1 : stats->heap_tuples);
 
 	index_update_stats(indexRelation,
 					   false,
@@ -3165,6 +3178,7 @@ IndexBuildHeapRangeScanInternal(Relation heapRelation,
 		{
 			/* In YugaByte mode DocDB will only send live tuples. */
 			tupleIsAlive = true;
+			reltuples += 1;
 		}
 
 		if (!IsYBRelation(indexRelation))

@@ -73,15 +73,15 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     // create default universe
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.numNodes = 3;
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     defaultUniverse =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
     when(mockNodeManager.nodeCommand(any(), any()))
@@ -91,11 +91,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
                 ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
                 if (params.nodeUuid == null) {
-                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                  listResponse.message = "{\"universe_uuid\":\"" + params.getUniverseUUID() + "\"}";
                 } else {
                   listResponse.message =
                       "{\"universe_uuid\":\""
-                          + params.universeUUID
+                          + params.getUniverseUUID()
                           + "\", "
                           + "\"node_uuid\": \""
                           + params.nodeUuid
@@ -359,7 +359,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       assertEquals(taskType, tasks.get(0).getTaskType());
       JsonNode expectedResults = details.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -370,12 +370,13 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
 
-    NodeDetails node = Universe.getOrBadRequest(defaultUniverse.universeUUID).getNode("host-n1");
+    NodeDetails node =
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNode("host-n1");
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
@@ -393,7 +394,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         createUniverse(
             "Test Universe 2",
             UUID.randomUUID(),
-            customer.getCustomerId(),
+            customer.getId(),
             CloudType.aws,
             null,
             null,
@@ -401,7 +402,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
@@ -412,7 +413,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             Collections.emptyList());
     universe =
         Universe.saveDetails(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(
                 userIntent,
                 "host",
@@ -423,12 +424,12 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             universe.getUniverseDetails(), NodeTaskParams.class);
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
 
-    NodeDetails node = Universe.getOrBadRequest(universe.universeUUID).getNode("host-n1");
+    NodeDetails node = Universe.getOrBadRequest(universe.getUniverseUUID()).getNode("host-n1");
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
@@ -442,25 +443,26 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   @Test
   public void testStopNonMasterNode() {
     Customer customer = ModelFactory.testCustomer("tc4", "Test Customer 4");
-    Universe universe = createUniverse(customer.getCustomerId());
+    Universe universe = createUniverse(customer.getId());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 5;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     universe =
         Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
 
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             universe.getUniverseDetails(), NodeTaskParams.class);
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n4");
     assertEquals(Success, taskInfo.getTaskState());
 
-    NodeDetails node = Universe.getOrBadRequest(universe.universeUUID).getNode("host-n4");
+    NodeDetails node = Universe.getOrBadRequest(universe.getUniverseUUID()).getNode("host-n4");
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
@@ -476,17 +478,11 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     Customer customer = ModelFactory.testCustomer("tc2", "Test Customer 2");
     Universe universe =
         createUniverse(
-            "Test Universe",
-            UUID.randomUUID(),
-            customer.getCustomerId(),
-            CloudType.aws,
-            null,
-            null,
-            true);
+            "Test Universe", UUID.randomUUID(), customer.getId(), CloudType.aws, null, null, true);
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 5;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.replicationFactor = 3;
     PlacementInfo placementInfo =
         PlacementInfoUtil.getPlacementInfo(
@@ -497,7 +493,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             Collections.emptyList());
     universe =
         Universe.saveDetails(
-            universe.universeUUID,
+            universe.getUniverseUUID(),
             ApiUtils.mockUniverseUpdater(
                 userIntent,
                 "host",
@@ -509,12 +505,12 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             universe.getUniverseDetails(), NodeTaskParams.class);
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n4");
     assertEquals(Success, taskInfo.getTaskState());
 
-    NodeDetails node = Universe.getOrBadRequest(universe.universeUUID).getNode("host-n4");
+    NodeDetails node = Universe.getOrBadRequest(universe.getUniverseUUID()).getNode("host-n4");
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 
@@ -530,7 +526,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
     verify(mockNodeManager, times(0)).nodeCommand(any(), any());
     assertEquals(Failure, taskInfo.getTaskState());
@@ -541,7 +537,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     AtomicReference<String> nodeName = new AtomicReference<>();
     Universe universe =
         Universe.saveDetails(
-            defaultUniverse.universeUUID,
+            defaultUniverse.getUniverseUUID(),
             u -> {
               NodeDetails node =
                   u.getUniverseDetails()
@@ -560,13 +556,13 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             universe.getUniverseDetails(), NodeTaskParams.class);
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
 
     TaskInfo taskInfo = submitTask(taskParams, nodeName.get());
     assertEquals(Success, taskInfo.getTaskState());
 
     NodeDetails node =
-        Universe.getOrBadRequest(defaultUniverse.universeUUID).getNode(nodeName.get());
+        Universe.getOrBadRequest(defaultUniverse.getUniverseUUID()).getNode(nodeName.get());
     assertFalse(node.isTserver);
     assertFalse(node.isMaster);
 

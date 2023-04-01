@@ -56,7 +56,7 @@ public class TestOneOrTwoAdmins extends BasePgSQLTest {
 
   private static boolean isYBTxnException(PSQLException ex) {
     String msg = ex.getMessage();
-    return msg.contains("conflicts with higher priority transaction:") ||
+    return msg.contains("could not serialize access due to concurrent update") ||
            msg.contains("Transaction aborted:") ||
            msg.contains("Unknown transaction, could be recently aborted:");
   }

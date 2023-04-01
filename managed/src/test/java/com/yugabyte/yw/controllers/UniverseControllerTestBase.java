@@ -11,7 +11,11 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
@@ -66,6 +70,8 @@ import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
+import org.mockito.InjectMocks;
+import org.mockito.MockitoAnnotations;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -85,7 +91,6 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
 
   @Mock RuntimeConfigFactory mockRuntimeConfigFactory;
   @Mock RuntimeConfGetter mockConfGetter;
-  @Mock protected play.Configuration mockAppConfig;
 
   private HealthChecker healthChecker;
   protected Customer customer;
@@ -108,6 +113,12 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected QueryHelper mockQueryHelper;
   protected ReleaseManager mockReleaseManager;
   protected RuntimeConfigFactory runtimeConfigFactory;
+  protected ReleaseManager.ReleaseMetadata mockReleaseMetadata;
+  protected ReleaseManager.ReleaseMetadata mockYbcReleaseMetadata;
+
+  protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
+    return applicationBuilder;
+  }
 
   @Override
   protected Application provideApplication() {
@@ -134,11 +145,14 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
     when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockRuntimeConfig.getString("yb.storage.path"))
+        .thenReturn("/tmp/" + this.getClass().getSimpleName());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
 
-    return new GuiceApplicationBuilder()
+    return appOverrides(new GuiceApplicationBuilder())
         .disable(GuiceModule.class)
         .configure(testDatabase())
+        .configure("yb.storage.path", "/tmp/" + this.getClass().getSimpleName())
         .overrides(bind(YBClientService.class).toInstance(mockService))
         .overrides(bind(Commissioner.class).toInstance(mockCommissioner))
         .overrides(bind(MetricQueryHelper.class).toInstance(mockMetricQueryHelper))
@@ -150,7 +164,6 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(ShellProcessHandler.class).toInstance(mockShellProcessHandler))
         .overrides(bind(CallbackController.class).toInstance(mockCallbackController))
         .overrides(bind(PlaySessionStore.class).toInstance(mockSessionStore))
-        .overrides(bind(play.Configuration.class).toInstance(mockAppConfig))
         .overrides(bind(AlertConfigurationWriter.class).toInstance(mockAlertConfigurationWriter))
         .overrides(
             bind(RuntimeConfigFactory.class)
@@ -173,35 +186,35 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
       // Get existing PlacementInfo Cloud or set up a new one.
       Provider currentProvider = currentAz.getProvider();
       PlacementInfo.PlacementCloud cloudItem =
-          placementCloudMap.getOrDefault(currentProvider.uuid, null);
+          placementCloudMap.getOrDefault(currentProvider.getUuid(), null);
       if (cloudItem == null) {
         cloudItem = new PlacementInfo.PlacementCloud();
-        cloudItem.uuid = currentProvider.uuid;
-        cloudItem.code = currentProvider.code;
+        cloudItem.uuid = currentProvider.getUuid();
+        cloudItem.code = currentProvider.getCode();
         cloudItem.regionList = new ArrayList<>();
-        placementCloudMap.put(currentProvider.uuid, cloudItem);
+        placementCloudMap.put(currentProvider.getUuid(), cloudItem);
       }
 
       // Get existing PlacementInfo Region or set up a new one.
-      Region currentRegion = currentAz.region;
+      Region currentRegion = currentAz.getRegion();
       PlacementInfo.PlacementRegion regionItem =
-          placementRegionMap.getOrDefault(currentRegion.uuid, null);
+          placementRegionMap.getOrDefault(currentRegion.getUuid(), null);
       if (regionItem == null) {
         regionItem = new PlacementInfo.PlacementRegion();
-        regionItem.uuid = currentRegion.uuid;
-        regionItem.name = currentRegion.name;
-        regionItem.code = currentRegion.code;
+        regionItem.uuid = currentRegion.getUuid();
+        regionItem.name = currentRegion.getName();
+        regionItem.code = currentRegion.getCode();
         regionItem.azList = new ArrayList<>();
         cloudItem.regionList.add(regionItem);
-        placementRegionMap.put(currentRegion.uuid, regionItem);
+        placementRegionMap.put(currentRegion.getUuid(), regionItem);
       }
 
       // Get existing PlacementInfo AZ or set up a new one.
       PlacementInfo.PlacementAZ azItem = new PlacementInfo.PlacementAZ();
-      azItem.name = currentAz.name;
-      azItem.subnet = currentAz.subnet;
+      azItem.name = currentAz.getName();
+      azItem.subnet = currentAz.getSubnet();
       azItem.replicationFactor = 1;
-      azItem.uuid = currentAz.uuid;
+      azItem.uuid = currentAz.getUuid();
       azItem.numNodesInAZ = azToNumNodesMap.get(azUUID);
       regionItem.azList.add(azItem);
     }
@@ -228,15 +241,28 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
             .put("name", "some config name")
             .put("base_url", "some_base_url")
             .put("api_key", "some_api_token");
-    kmsConfig = ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", kmsConfigReq);
+    kmsConfig = ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", kmsConfigReq);
     authToken = user.createAuthToken();
     runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
 
-    when(mockAppConfig.getString("yb.storage.path"))
-        .thenReturn("/tmp/" + this.getClass().getSimpleName());
+    mockReleaseMetadata = spy(new ReleaseManager.ReleaseMetadata());
+    when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseMetadata);
+    doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
+        .when(mockReleaseMetadata)
+        .getFilePath(any());
+    // when(mockReleaseMetadata.getFilePath(any()))
+    //     .thenReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz");
 
-    when(mockRuntimeConfig.getString("yb.storage.path"))
-        .thenReturn("/tmp/" + this.getClass().getSimpleName());
+    mockYbcReleaseMetadata = spy(new ReleaseManager.ReleaseMetadata());
+    mockYbcReleaseMetadata.filePath =
+        "/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz";
+    when(mockReleaseManager.getYbcReleaseByVersion(any(), any(), any()))
+        .thenReturn(mockYbcReleaseMetadata);
+    doReturn("/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz")
+        .when(mockYbcReleaseMetadata)
+        .getFilePath(any());
+    // when(mockYbcReleaseMetadata.getFilePath(any()))
+    //     .thenReturn("/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz");
   }
 
   @After

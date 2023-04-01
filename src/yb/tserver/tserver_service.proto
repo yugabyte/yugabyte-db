@@ -98,6 +98,11 @@ service TabletServerService {
   // Returns all lock information requested, based on persisted intents and any requests waiting on
   // a persisted intent. These intents may correspond to explicit or implicit locks.
   rpc GetLockStatus(GetLockStatusRequestPB) returns (GetLockStatusResponsePB);
+
+  // Returns the schema version on the XCluster consumer side that is
+  // compatible with the schema provided in the request.
+  rpc GetCompatibleSchemaVersion(GetCompatibleSchemaVersionRequestPB)
+  returns (GetCompatibleSchemaVersionResponsePB);
 }
 
 message GetLockStatusRequestPB {
@@ -239,6 +244,10 @@ message UpdateTransactionWaitingForStatusRequestPB {
   optional bytes tablet_id = 2;
 
   repeated WaitingTransaction waiting_transactions = 3;
+
+  optional bytes tserver_uuid = 4;
+
+  optional bool is_full_update = 5 [ default = false];
 }
 
 message UpdateTransactionWaitingForStatusResponsePB {

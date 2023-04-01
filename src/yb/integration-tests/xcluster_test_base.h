@@ -15,6 +15,8 @@
 
 #include <string>
 
+#include <boost/optional.hpp>
+
 #include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/client/transaction_manager.h"
@@ -81,7 +83,7 @@ class XClusterTestBase : public YBTest {
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
     FLAGS_xcluster_safe_time_update_interval_secs = 1;
-    safe_time_propagation_timeout_ = MonoDelta::FromSeconds(30);
+    propagation_timeout_ = MonoDelta::FromSeconds(30 * kTimeMultiplier);
   }
 
   virtual Status InitClusters(const MiniClusterOptions& opts);
@@ -100,6 +102,8 @@ class XClusterTestBase : public YBTest {
       YBClient* client, const std::string& namespace_name, const std::string& table_name,
       uint32_t num_tablets, const client::YBSchema* schema);
 
+  virtual Status SetupUniverseReplication(const std::vector<std::string>& table_ids);
+
   virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& tables, bool leader_only = true);
 
@@ -115,11 +119,15 @@ class XClusterTestBase : public YBTest {
       const std::string& universe_id, const std::vector<std::shared_ptr<client::YBTable>>& tables,
       bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
 
+  Status SetupUniverseReplication(
+      MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
+      const std::string& universe_id, const std::vector<std::string>& table_ids,
+      bool leader_only = true, const std::vector<std::string>& bootstrap_ids = {});
+
   Status SetupNSUniverseReplication(
       MiniCluster* producer_cluster, MiniCluster* consumer_cluster, YBClient* consumer_client,
       const std::string& universe_id, const std::string& producer_ns_name,
-      const YQLDatabase& producer_ns_type,
-      bool leader_only = true);
+      const YQLDatabase& producer_ns_type, bool leader_only = true);
 
   Status VerifyUniverseReplication(master::GetUniverseReplicationResponsePB* resp);
 
@@ -163,7 +171,12 @@ class XClusterTestBase : public YBTest {
   Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
   Status WaitForValidSafeTimeOnAllTServers(
-      const NamespaceId& namespace_id, Cluster* cluster = nullptr);
+      const NamespaceId& namespace_id, Cluster* cluster = nullptr,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
+
+  Status WaitForRoleChangeToPropogateToAllTServers(
+      cdc::XClusterRole expected_xcluster_role, Cluster* cluster = nullptr,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
 
   Result<std::vector<CDCStreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
@@ -228,9 +241,13 @@ class XClusterTestBase : public YBTest {
   }
 
  protected:
+  CoarseTimePoint PropagationDeadline() const {
+    return CoarseMonoClock::Now() + propagation_timeout_;
+  }
+
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
-  MonoDelta safe_time_propagation_timeout_;
+  MonoDelta propagation_timeout_;
 
  private:
   // Function that translates the api response from a WaitForReplicationDrainResponsePB call into

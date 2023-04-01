@@ -72,7 +72,7 @@ public class AzuEARServiceTest extends FakeDBApplication {
   @Before
   public void setUp() {
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
     this.fakeUniverseKey = mockAzuEARServiceUtil.generateRandomBytes(numBytes);
     this.fakeWrappedUniverseKey = mockAzuEARServiceUtil.generateRandomBytes(numBytes);
 
@@ -145,7 +145,7 @@ public class AzuEARServiceTest extends FakeDBApplication {
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
         mockAzuEARService.createKeyWithService(
-            universe.universeUUID, configUUID, encryptionAtRestConfig);
+            universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
     assertArrayEquals(keyRef, fakeWrappedUniverseKey);
     // Invoked once in createKeyWithService() and twice in setUp() for testing
     verify(mockAzuEARServiceUtil, times(3)).generateRandomBytes(numBytes);
@@ -158,7 +158,7 @@ public class AzuEARServiceTest extends FakeDBApplication {
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
         mockAzuEARService.createKeyWithService(
-            universe.universeUUID, configUUID, encryptionAtRestConfig);
+            universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
     assertArrayEquals(keyRef, fakeWrappedUniverseKey);
     // Invoked once in createKeyWithService() and twice in setUp() for testing
     verify(mockAzuEARServiceUtil, times(3)).generateRandomBytes(numBytes);

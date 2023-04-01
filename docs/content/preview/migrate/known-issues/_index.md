@@ -4,7 +4,7 @@ headerTitle: Known issues and workarounds
 linkTitle: Known issues
 image: /images/section_icons/develop/learn.png
 headcontent: Unsupported features and known issues with workarounds when migrating data using YugabyteDB Voyager.
-description: Refer to the known issues when migrating data using YugabyteDB Voyager and suggested workarounds.
+description: Known issues and suggested workarounds for migrating data using YugabyteDB Voyager.
 type: indexpage
 showRightNav: true
 menu:
@@ -23,7 +23,7 @@ Currently, yb-voyager doesn't support the following features:
 | Feature | Description/Alternatives  | GitHub Issue |
 | :------ | :------------------------ | :----------- |
 | ALTER VIEW | YugabyteDB does not yet support any schemas containing `ALTER VIEW` statements. | [48](https://github.com/yugabyte/yb-voyager/issues/48) |
-| BLOB | yb-voyager currently ignores all columns of type BLOB. <br>Use another mechanism to load the attributes.| [43](https://github.com/yugabyte/yb-voyager/issues/43) |
+| Unsupported datatypes | Data migration is unsupported for some datatypes such as BLOB and XML. For others such as ANY and BFile, both schema and data migration is unsupported. Refer to [datatype mapping](../reference/datatype-mapping-oracle/) for the detailed list of datatypes. | |
 
 ## Known issues
 

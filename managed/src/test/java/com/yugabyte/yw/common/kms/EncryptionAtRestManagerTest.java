@@ -75,28 +75,28 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
     keyConfig = new EncryptionAtRestConfig();
     kmsConfig1 =
         KmsConfig.createKMSConfig(
-            testCustomer.uuid,
+            testCustomer.getUuid(),
             KeyProvider.AWS,
             new ObjectMapper().createObjectNode(),
             "kms-config-1");
     kmsConfig2 =
         KmsConfig.createKMSConfig(
-            testCustomer.uuid,
+            testCustomer.getUuid(),
             KeyProvider.AZU,
             new ObjectMapper().createObjectNode(),
             "kms-config-2");
     kmsConfig3 =
         KmsConfig.createKMSConfig(
-            testCustomer.uuid,
+            testCustomer.getUuid(),
             KeyProvider.GCP,
             new ObjectMapper().createObjectNode(),
             "kms-config-3");
     doReturn(universeKeyRef1)
         .when(mockEARService)
-        .createKey(testUniverse.universeUUID, kmsConfig1.configUUID, keyConfig);
+        .createKey(testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), keyConfig);
     doReturn(universeKeyRef2)
         .when(mockEARService)
-        .rotateKey(testUniverse.universeUUID, kmsConfig1.configUUID, keyConfig);
+        .rotateKey(testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), keyConfig);
     when(mockEARService.retrieveKey(any(), any(), any(byte[].class))).thenCallRealMethod();
     when(mockEARService.retrieveKey(any(), any(), any(), any())).thenCallRealMethod();
     doReturn(mockEARService).when(testManager2).getServiceInstance(anyString());
@@ -120,57 +120,60 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
   public void testGenerateUniverseKeyCreateUniverseKey() {
     // Ensure the universe has no existing KMS history.
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 0);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 0);
 
     // Create a universe key.
     byte[] universeKeyData =
         testManager2.generateUniverseKey(
-            kmsConfig1.configUUID, testUniverse.universeUUID, keyConfig);
+            kmsConfig1.getConfigUUID(), testUniverse.getUniverseUUID(), keyConfig);
     assertEquals(universeKeyRef1, universeKeyData);
 
     // After rotating the universe key, there should be 1 entry in the KMS history table.
     List<KmsHistory> kmsHistoryList =
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID());
     assertEquals(1, kmsHistoryList.size());
 
     // Verify the newly created universe key.
     assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef1), kmsHistoryList.get(0).uuid.keyRef);
-    assertEquals(0, kmsHistoryList.get(0).uuid.reEncryptionCount);
+        Base64.getEncoder().encodeToString(universeKeyRef1),
+        kmsHistoryList.get(0).getUuid().keyRef);
+    assertEquals(0, kmsHistoryList.get(0).getUuid().reEncryptionCount);
   }
 
   @Test
   public void testGenerateUniverseKeyRotateUniverseKey() {
     // Add a universe key already so it rotates universe key instead of creating.
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 0);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 0);
     EncryptionAtRestUtil.addKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     EncryptionAtRestUtil.activateKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 1);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 1);
 
     // Rotate the universe key.
     byte[] universeKeyData =
         testManager2.generateUniverseKey(
-            kmsConfig1.configUUID, testUniverse.universeUUID, keyConfig);
+            kmsConfig1.getConfigUUID(), testUniverse.getUniverseUUID(), keyConfig);
     assertEquals(universeKeyRef2, universeKeyData);
 
     // After rotating the universe key, there should be 2 entries in the KMS history table.
     List<KmsHistory> kmsHistoryList =
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID());
     assertEquals(2, kmsHistoryList.size());
 
     // Verify the newly rotated universe key.
     assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef2), kmsHistoryList.get(0).uuid.keyRef);
-    assertEquals(0, kmsHistoryList.get(0).uuid.reEncryptionCount);
+        Base64.getEncoder().encodeToString(universeKeyRef2),
+        kmsHistoryList.get(0).getUuid().keyRef);
+    assertEquals(0, kmsHistoryList.get(0).getUuid().reEncryptionCount);
 
     // Verify the previously existing universe key.
     assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef1), kmsHistoryList.get(1).uuid.keyRef);
-    assertEquals(0, kmsHistoryList.get(1).uuid.reEncryptionCount);
+        Base64.getEncoder().encodeToString(universeKeyRef1),
+        kmsHistoryList.get(1).getUuid().keyRef);
+    assertEquals(0, kmsHistoryList.get(1).getUuid().reEncryptionCount);
   }
 
   @Test
@@ -180,35 +183,37 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
     // Add a universe key so we can rotate master key.
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 0);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 0);
     EncryptionAtRestUtil.addKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     EncryptionAtRestUtil.activateKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 1);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 1);
 
     // Rotate master key from kmsConfig1 to kmsConfig2.
-    testManager2.reEncryptActiveUniverseKeys(testUniverse.universeUUID, kmsConfig2.configUUID);
+    testManager2.reEncryptActiveUniverseKeys(
+        testUniverse.getUniverseUUID(), kmsConfig2.getConfigUUID());
 
     // After rotating the master key, there should be 1 active entry in the
     // KMS history table with new master key.
     List<KmsHistory> activeKmsHistoryList =
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID());
     assertEquals(1, activeKmsHistoryList.size());
 
     // After rotating the master key, there should be 2 total entries in the
     // KMS history table for the universe.
     List<KmsHistory> allKmsHistoryList =
         KmsHistory.getAllTargetKeyRefs(
-            testUniverse.universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+            testUniverse.getUniverseUUID(), KmsHistoryId.TargetType.UNIVERSE_KEY);
     assertEquals(2, allKmsHistoryList.size());
 
     // Verify the newly re-encrypted universe key.
-    assertEquals(1, allKmsHistoryList.get(0).uuid.reEncryptionCount);
+    assertEquals(1, allKmsHistoryList.get(0).getUuid().reEncryptionCount);
     assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef1), allKmsHistoryList.get(0).uuid.keyRef);
-    assertTrue(allKmsHistoryList.get(0).active);
+        Base64.getEncoder().encodeToString(universeKeyRef1),
+        allKmsHistoryList.get(0).getUuid().keyRef);
+    assertTrue(allKmsHistoryList.get(0).isActive());
   }
 
   @Test
@@ -218,35 +223,37 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
     // Add a universe key so we can rotate master key.
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 0);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 0);
     EncryptionAtRestUtil.addKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     EncryptionAtRestUtil.activateKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 1);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 1);
 
     // Rotate master key from kmsConfig1 to kmsConfig2.
-    testManager2.reEncryptActiveUniverseKeys(testUniverse.universeUUID, kmsConfig2.configUUID);
+    testManager2.reEncryptActiveUniverseKeys(
+        testUniverse.getUniverseUUID(), kmsConfig2.getConfigUUID());
 
     // After rotating the master key, there should be 1 active entry in the
     // KMS history table with new master key.
     List<KmsHistory> activeKmsHistoryList =
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID());
     assertEquals(1, activeKmsHistoryList.size());
 
     // After rotating the master key, there should be 2 total entries in the
     // KMS history table for the universe.
     List<KmsHistory> allKmsHistoryList =
         KmsHistory.getAllTargetKeyRefs(
-            testUniverse.universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+            testUniverse.getUniverseUUID(), KmsHistoryId.TargetType.UNIVERSE_KEY);
     assertEquals(2, allKmsHistoryList.size());
 
     // Verify the newly re-encrypted universe key.
-    assertEquals(1, allKmsHistoryList.get(0).uuid.reEncryptionCount);
+    assertEquals(1, allKmsHistoryList.get(0).getUuid().reEncryptionCount);
     assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef2), allKmsHistoryList.get(0).uuid.keyRef);
-    assertTrue(allKmsHistoryList.get(0).active);
+        Base64.getEncoder().encodeToString(universeKeyRef2),
+        allKmsHistoryList.get(0).getUuid().keyRef);
+    assertTrue(allKmsHistoryList.get(0).isActive());
   }
 
   @Test
@@ -258,58 +265,61 @@ public class EncryptionAtRestManagerTest extends FakeDBApplication {
 
     // Add 2 universe keys with different KMS configs so we can rotate master key.
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 0);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 0);
     EncryptionAtRestUtil.addKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     EncryptionAtRestUtil.activateKeyRef(
-        testUniverse.universeUUID, kmsConfig1.configUUID, universeKeyRef1);
+        testUniverse.getUniverseUUID(), kmsConfig1.getConfigUUID(), universeKeyRef1);
     KmsHistory.createKmsHistory(
-            kmsConfig2.configUUID,
-            testUniverse.universeUUID,
+            kmsConfig2.getConfigUUID(),
+            testUniverse.getUniverseUUID(),
             TargetType.UNIVERSE_KEY,
             Base64.getEncoder().encodeToString(universeKeyRef2),
             0,
             Base64.getEncoder().encodeToString(universeKeyRef2))
         .save();
     EncryptionAtRestUtil.activateKeyRef(
-        testUniverse.universeUUID, kmsConfig2.configUUID, universeKeyRef2);
+        testUniverse.getUniverseUUID(), kmsConfig2.getConfigUUID(), universeKeyRef2);
     assertEquals(
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID).size(), 2);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID()).size(), 2);
 
     // After rotating the master key, there should be 2 total entries in the
     // KMS history table for the universe.
     List<KmsHistory> allKmsHistoryList =
         KmsHistory.getAllTargetKeyRefs(
-            testUniverse.universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+            testUniverse.getUniverseUUID(), KmsHistoryId.TargetType.UNIVERSE_KEY);
     assertEquals(2, allKmsHistoryList.size());
 
     // Rotate master key from kmsConfig2 to kmsConfig3.
-    testManager2.reEncryptActiveUniverseKeys(testUniverse.universeUUID, kmsConfig3.configUUID);
+    testManager2.reEncryptActiveUniverseKeys(
+        testUniverse.getUniverseUUID(), kmsConfig3.getConfigUUID());
 
     // After rotating the master key, there should be 2 active entries in the
     // KMS history table with new master key.
     List<KmsHistory> activeKmsHistoryList =
-        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.universeUUID);
+        KmsHistory.getAllUniverseKeysWithActiveMasterKey(testUniverse.getUniverseUUID());
     assertEquals(2, activeKmsHistoryList.size());
 
     // After rotating the master key, there should be 4 total entries in the
     // KMS history table for the universe.
     allKmsHistoryList =
         KmsHistory.getAllTargetKeyRefs(
-            testUniverse.universeUUID, KmsHistoryId.TargetType.UNIVERSE_KEY);
+            testUniverse.getUniverseUUID(), KmsHistoryId.TargetType.UNIVERSE_KEY);
     assertEquals(4, allKmsHistoryList.size());
 
     // Verify the newly re-encrypted universe key 2.
     System.out.println(allKmsHistoryList.toString());
-    assertEquals(1, allKmsHistoryList.get(0).uuid.reEncryptionCount);
+    assertEquals(1, allKmsHistoryList.get(0).getUuid().reEncryptionCount);
     assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef4), allKmsHistoryList.get(0).uuid.keyRef);
-    assertTrue(allKmsHistoryList.get(0).active);
+        Base64.getEncoder().encodeToString(universeKeyRef4),
+        allKmsHistoryList.get(0).getUuid().keyRef);
+    assertTrue(allKmsHistoryList.get(0).isActive());
 
     // Verify the newly re-encrypted universe key 1.
-    assertEquals(1, allKmsHistoryList.get(1).uuid.reEncryptionCount);
+    assertEquals(1, allKmsHistoryList.get(1).getUuid().reEncryptionCount);
     assertEquals(
-        Base64.getEncoder().encodeToString(universeKeyRef3), allKmsHistoryList.get(1).uuid.keyRef);
-    assertFalse(allKmsHistoryList.get(1).active);
+        Base64.getEncoder().encodeToString(universeKeyRef3),
+        allKmsHistoryList.get(1).getUuid().keyRef);
+    assertFalse(allKmsHistoryList.get(1).isActive());
   }
 }

@@ -33,3 +33,6 @@ export const KUBERNETES_PROVIDER_OPTIONS = {
     KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.TANZU]
   )
 } as const;
+
+export const QUAY_IMAGE_REGISTRY = 'quay.io/yugabyte/yugabyte';
+export const REDHAT_IMAGE_REGISTRY = 'registry.connect.redhat.com/yugabytedb/yugabyte';

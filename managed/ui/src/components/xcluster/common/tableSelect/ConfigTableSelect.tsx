@@ -176,11 +176,14 @@ export const ConfigTableSelect = ({
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails
+    xClusterConfig.tableDetails,
+    xClusterConfig.txnTableDetails
   );
 
   const tablesForSelection = tablesInConfig.filter(
-    (xClusterTable) => xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION
+    (xClusterTable) =>
+      xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
+      xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
   );
   const rowItems = getRowItemsFromTables(tablesForSelection);
   const sourceUniverse = sourceUniverseQuery.data;

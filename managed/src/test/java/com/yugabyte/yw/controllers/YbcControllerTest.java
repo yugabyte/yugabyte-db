@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.ApiUtils;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -50,7 +49,7 @@ public class YbcControllerTest extends FakeDBApplication {
         ModelFactory.createUniverse(
             "Test-Universe-1",
             UUID.randomUUID(),
-            defaultCustomer.getCustomerId(),
+            defaultCustomer.getId(),
             CloudType.aws,
             null,
             null,
@@ -59,7 +58,7 @@ public class YbcControllerTest extends FakeDBApplication {
         ModelFactory.createUniverse(
             "Test-Universe-2",
             UUID.randomUUID(),
-            defaultCustomer.getCustomerId(),
+            defaultCustomer.getId(),
             CloudType.aws,
             null,
             null,
@@ -70,30 +69,31 @@ public class YbcControllerTest extends FakeDBApplication {
   public void testDisableYbcSuccess() {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = disableYbc(defaultYbcUniverse.universeUUID);
+    Result result = disableYbc(defaultYbcUniverse.getUniverseUUID());
     assertOk(result);
     verify(mockCommissioner, times(1)).submit(any(), any());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testDisableYbcOnNonYbcUniverse() {
-    Result result = assertPlatformException(() -> disableYbc(defaultNonYbcUniverse.universeUUID));
+    Result result =
+        assertPlatformException(() -> disableYbc(defaultNonYbcUniverse.getUniverseUUID()));
     assertBadRequest(
         result,
         "Ybc is either not installed or enabled on universe: "
-            + defaultNonYbcUniverse.universeUUID);
+            + defaultNonYbcUniverse.getUniverseUUID());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
   @Test
   public void testDisableYbcOnUniverseNodesInTransit() {
     setUniverseNodesInTransit(defaultYbcUniverse);
-    Result result = assertPlatformException(() -> disableYbc(defaultYbcUniverse.universeUUID));
+    Result result = assertPlatformException(() -> disableYbc(defaultYbcUniverse.getUniverseUUID()));
     assertBadRequest(
         result,
         "Cannot disable ybc on universe "
-            + defaultYbcUniverse.universeUUID
+            + defaultYbcUniverse.getUniverseUUID()
             + " as it has nodes in one of "
             + "[Removed, Stopped, Decommissioned, Resizing, SystemdUpgrade, Terminated] states.");
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -104,21 +104,21 @@ public class YbcControllerTest extends FakeDBApplication {
   public void testUpgradeYbcSuccess(String ybcVersion) {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    Result result = upgradeYbc(defaultYbcUniverse.universeUUID, ybcVersion);
+    Result result = upgradeYbc(defaultYbcUniverse.getUniverseUUID(), ybcVersion);
     assertOk(result);
     verify(mockCommissioner, times(1)).submit(any(), any());
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
   public void testUpgradeYbcOnUniverseNodesInTransit() {
     setUniverseNodesInTransit(defaultYbcUniverse);
     Result result =
-        assertPlatformException(() -> upgradeYbc(defaultYbcUniverse.universeUUID, null));
+        assertPlatformException(() -> upgradeYbc(defaultYbcUniverse.getUniverseUUID(), null));
     assertBadRequest(
         result,
         "Cannot perform a ybc upgrade on universe "
-            + defaultYbcUniverse.universeUUID
+            + defaultYbcUniverse.getUniverseUUID()
             + " as it has nodes in one of "
             + "[Removed, Stopped, Decommissioned, Resizing, SystemdUpgrade, Terminated] states.");
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -127,26 +127,26 @@ public class YbcControllerTest extends FakeDBApplication {
   @Test
   public void testUpgradeYbcOnNonYbcUniverse() {
     Result result =
-        assertPlatformException(() -> upgradeYbc(defaultNonYbcUniverse.universeUUID, null));
+        assertPlatformException(() -> upgradeYbc(defaultNonYbcUniverse.getUniverseUUID(), null));
     assertBadRequest(
         result,
         "Ybc is either not installed or enabled on universe: "
-            + defaultNonYbcUniverse.universeUUID);
+            + defaultNonYbcUniverse.getUniverseUUID());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
   @Test
   public void testUpgradeExistingYbcVersion() {
-    String targetYbcVersion = defaultYbcUniverse.getUniverseDetails().ybcSoftwareVersion;
+    String targetYbcVersion = defaultYbcUniverse.getUniverseDetails().getYbcSoftwareVersion();
     Result result =
         assertPlatformException(
-            () -> upgradeYbc(defaultYbcUniverse.universeUUID, targetYbcVersion));
+            () -> upgradeYbc(defaultYbcUniverse.getUniverseUUID(), targetYbcVersion));
     assertBadRequest(
         result,
         "Ybc version "
             + targetYbcVersion
             + " is already present on universe "
-            + defaultYbcUniverse.universeUUID);
+            + defaultYbcUniverse.getUniverseUUID());
     verify(mockCommissioner, times(0)).submit(any(), any());
   }
 
@@ -159,13 +159,13 @@ public class YbcControllerTest extends FakeDBApplication {
         defaultNonYbcUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     userIntent.ybSoftwareVersion = "2.15.0.0-b2";
     Universe.saveDetails(
-        defaultNonYbcUniverse.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
-    Result result = installYbc(defaultNonYbcUniverse.universeUUID, ybcVersion);
+        defaultNonYbcUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
+    Result result = installYbc(defaultNonYbcUniverse.getUniverseUUID(), ybcVersion);
     assertOk(result);
-    result = installYbc(defaultYbcUniverse.universeUUID, ybcVersion);
+    result = installYbc(defaultYbcUniverse.getUniverseUUID(), ybcVersion);
     assertOk(result);
     verify(mockCommissioner, times(2)).submit(any(), any());
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -176,23 +176,24 @@ public class YbcControllerTest extends FakeDBApplication {
         defaultNonYbcUniverse.getUniverseDetails().getPrimaryCluster().userIntent;
     userIntent.ybSoftwareVersion = "2.13.0.0-b1";
     Universe.saveDetails(
-        defaultNonYbcUniverse.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+        defaultNonYbcUniverse.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
     Result result =
-        assertPlatformException(() -> installYbc(defaultNonYbcUniverse.universeUUID, "1.0.0-b2"));
+        assertPlatformException(
+            () -> installYbc(defaultNonYbcUniverse.getUniverseUUID(), "1.0.0-b2"));
     assertBadRequest(result, "Cannot install universe with DB version lower than 2.15.0.0-b1");
     verify(mockCommissioner, times(0)).submit(any(), any());
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
   public void testInstallYbcOnUniverseNodesInTransit() {
     setUniverseNodesInTransit(defaultYbcUniverse);
     Result result =
-        assertPlatformException(() -> installYbc(defaultYbcUniverse.universeUUID, null));
+        assertPlatformException(() -> installYbc(defaultYbcUniverse.getUniverseUUID(), null));
     assertBadRequest(
         result,
         "Cannot perform a ybc installation on universe "
-            + defaultYbcUniverse.universeUUID
+            + defaultYbcUniverse.getUniverseUUID()
             + " as it has nodes in one of "
             + "[Removed, Stopped, Decommissioned, Resizing, SystemdUpgrade, Terminated] states.");
     verify(mockCommissioner, times(0)).submit(any(), any());
@@ -206,30 +207,42 @@ public class YbcControllerTest extends FakeDBApplication {
             nodes.state = NodeState.Decommissioned;
           }
         };
-    Universe.saveDetails(universe.universeUUID, updater, false);
+    Universe.saveDetails(universe.getUniverseUUID(), updater, false);
   }
 
   private Result disableYbc(UUID universeUUID) {
     String url =
-        "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/ybc/disable";
-    return FakeApiHelper.doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/universes/"
+            + universeUUID
+            + "/ybc/disable";
+    return doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
   }
 
   private Result upgradeYbc(UUID universeUUID, String ybcVersion) {
     String url =
-        "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/ybc/upgrade";
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/universes/"
+            + universeUUID
+            + "/ybc/upgrade";
     if (!StringUtils.isEmpty(ybcVersion)) {
       url += "?ybcVersion=" + ybcVersion;
     }
-    return FakeApiHelper.doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
   }
 
   private Result installYbc(UUID universeUUID, String ybcVersion) {
     String url =
-        "/api/customers/" + defaultCustomer.uuid + "/universes/" + universeUUID + "/ybc/install";
+        "/api/customers/"
+            + defaultCustomer.getUuid()
+            + "/universes/"
+            + universeUUID
+            + "/ybc/install";
     if (!StringUtils.isEmpty(ybcVersion)) {
       url += "?ybcVersion=" + ybcVersion;
     }
-    return FakeApiHelper.doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
+    return doRequestWithAuthToken("PUT", url, defaultUser.createAuthToken());
   }
 }

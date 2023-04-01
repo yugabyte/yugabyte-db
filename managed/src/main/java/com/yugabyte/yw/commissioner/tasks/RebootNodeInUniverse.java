@@ -51,7 +51,8 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       currentNode = universe.getNode(taskParams().nodeName);
 
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -115,16 +116,18 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
       }
 
       // Start the tserver.
-      createTServerTaskForNode(currentNode, "start")
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      if (currentNode.isTserver) {
+        createTServerTaskForNode(currentNode, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      // Wait for the tablet server to be responsive.
-      createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        // Wait for the tablet server to be responsive.
+        createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-      createWaitForServerReady(
-              currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
-          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createWaitForServerReady(
+                currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
       if (universe.isYbcEnabled()) {
         createStartYbcTasks(Arrays.asList(currentNode))

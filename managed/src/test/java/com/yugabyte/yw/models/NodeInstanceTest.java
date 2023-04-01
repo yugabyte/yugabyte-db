@@ -27,10 +27,10 @@ public class NodeInstanceTest extends FakeDBApplication {
   private NodeInstance createNode() {
     NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
     nodeData.ip = "fake_ip";
-    nodeData.region = region.code;
-    nodeData.zone = zone.code;
+    nodeData.region = region.getCode();
+    nodeData.zone = zone.getCode();
     nodeData.instanceType = "default_instance_type";
-    return NodeInstance.create(zone.uuid, nodeData);
+    return NodeInstance.create(zone.getUuid(), nodeData);
   }
 
   @Test
@@ -40,13 +40,13 @@ public class NodeInstanceTest extends FakeDBApplication {
 
     assertNotNull(node);
     assertEquals(defaultNodeName, node.getNodeName());
-    assertEquals(zone.uuid, node.getZoneUuid());
+    assertEquals(zone.getUuid(), node.getZoneUuid());
 
     NodeInstanceFormData.NodeInstanceData details = node.getDetails();
     assertEquals("fake_ip", details.ip);
     assertEquals("default_instance_type", details.instanceType);
-    assertEquals(region.code, details.region);
-    assertEquals(zone.code, details.zone);
+    assertEquals(region.getCode(), details.region);
+    assertEquals(zone.getCode(), details.zone);
     assertEquals(defaultNodeName, details.nodeName);
   }
 
@@ -55,32 +55,32 @@ public class NodeInstanceTest extends FakeDBApplication {
     NodeInstance node = createNode();
     List<NodeInstance> nodes = null;
     // Return all instance types.
-    nodes = NodeInstance.listByZone(zone.uuid, null);
+    nodes = NodeInstance.listByZone(zone.getUuid(), null);
     assertEquals(nodes.size(), 1);
     assertEquals(nodes.get(0).getDetailsJson(), node.getDetailsJson());
 
     // Return by instance type.
-    nodes = NodeInstance.listByZone(zone.uuid, "default_instance_type");
+    nodes = NodeInstance.listByZone(zone.getUuid(), "default_instance_type");
     assertEquals(nodes.size(), 1);
     assertEquals(nodes.get(0).getDetailsJson(), node.getDetailsJson());
 
     // Check invalid instance type.
-    nodes = NodeInstance.listByZone(zone.uuid, "fail");
+    nodes = NodeInstance.listByZone(zone.getUuid(), "fail");
     assertEquals(nodes.size(), 0);
 
     // Update node to in use and confirm no more fetching.
     node.setInUse(true);
     node.save();
-    nodes = NodeInstance.listByZone(zone.uuid, null);
+    nodes = NodeInstance.listByZone(zone.getUuid(), null);
     assertEquals(nodes.size(), 0);
   }
 
   @Test
   public void testDeleteNodeInstanceByProviderWithValidProvider() {
     NodeInstance node = createNode();
-    List<NodeInstance> nodesListInitial = NodeInstance.listByZone(zone.uuid, null);
-    int response = NodeInstance.deleteByProvider(provider.uuid);
-    List<NodeInstance> nodesListFinal = NodeInstance.listByZone(zone.uuid, null);
+    List<NodeInstance> nodesListInitial = NodeInstance.listByZone(zone.getUuid(), null);
+    int response = NodeInstance.deleteByProvider(provider.getUuid());
+    List<NodeInstance> nodesListFinal = NodeInstance.listByZone(zone.getUuid(), null);
     assertEquals(nodesListInitial.size(), 1);
     assertEquals(nodesListFinal.size(), 0);
     assertEquals(response, 1);
@@ -89,10 +89,10 @@ public class NodeInstanceTest extends FakeDBApplication {
   @Test
   public void testDeleteNodeInstanceByProviderWithInvalidProvider() {
     NodeInstance node = createNode();
-    List<NodeInstance> nodesListInitial = NodeInstance.listByZone(zone.uuid, null);
+    List<NodeInstance> nodesListInitial = NodeInstance.listByZone(zone.getUuid(), null);
     UUID invalidProviderUUID = UUID.randomUUID();
     int response = NodeInstance.deleteByProvider(invalidProviderUUID);
-    List<NodeInstance> nodesListFinal = NodeInstance.listByZone(zone.uuid, null);
+    List<NodeInstance> nodesListFinal = NodeInstance.listByZone(zone.getUuid(), null);
     assertEquals(nodesListInitial.size(), 1);
     assertEquals(nodesListFinal.size(), 1);
     assertEquals(response, 0);

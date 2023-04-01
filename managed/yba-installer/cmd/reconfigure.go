@@ -5,8 +5,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
 )
 
 var reconfigureCmd = &cobra.Command{
@@ -17,7 +20,27 @@ var reconfigureCmd = &cobra.Command{
 	Long: `
     The reconfigure command is used to apply changes made to yba-ctl.yml to running 
 	YugabyteDB Anywhere services. The process involves restarting all associated services.`,
+	PreRun: func(cmd *cobra.Command, args []string) {
+		if !skipVersionChecks {
+			yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
+			if err != nil {
+				log.Fatal("Cannot reconfigure: " + err.Error())
+			}
+			if yugawareVersion != ybactl.Version {
+				log.Fatal("yba-ctl version does not match the installed YugabyteDB Anywhere version")
+			}
+		}
+	},
 	Run: func(cmd *cobra.Command, args []string) {
+		state, err := ybactlstate.LoadState()
+		if err != nil {
+			log.Fatal("unable to load yba installer state: " + err.Error())
+		}
+
+		if err := state.ValidateReconfig(); err != nil {
+			log.Fatal("invalid reconfigure: " + err.Error())
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("Stopping service " + name)
 			services[name].Stop()
@@ -45,12 +68,12 @@ var reconfigureCmd = &cobra.Command{
 			}
 		}
 
+		if err := ybactlstate.StoreState(state); err != nil {
+			log.Fatal("failed to write state: " + err.Error())
+		}
 	},
 }
 
 func init() {
-	// Reconfigure must be run from installed yba-ctl
-	if common.RunFromInstalled() {
-		rootCmd.AddCommand(reconfigureCmd)
-	}
+	rootCmd.AddCommand(reconfigureCmd)
 }

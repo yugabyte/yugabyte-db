@@ -26,6 +26,8 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import javax.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
@@ -51,14 +53,10 @@ public class AnsibleCreateServer extends NodeTaskBase {
     public boolean useSpotInstance = false;
     public Double spotPrice = 0.0;
 
-    // If this is set to the universe's AWS KMS CMK arn, AWS EBS volume
-    // encryption will be enabled
-    public String cmkArn;
-
     // If set, we will use this Amazon Resource Name of the user's
     // instance profile instead of an access key id and secret
     public String ipArnString;
-    public String machineImage;
+    @Getter @Setter private String machineImage;
   }
 
   @Override
@@ -71,8 +69,8 @@ public class AnsibleCreateServer extends NodeTaskBase {
     Provider p = taskParams().getProvider();
     boolean skipProvision = false;
 
-    if (p.code.equals(Common.CloudType.onprem.name())) {
-      skipProvision = p.details.skipProvisioning;
+    if (p.getCode().equals(Common.CloudType.onprem.name())) {
+      skipProvision = p.getDetails().skipProvisioning;
     }
 
     if (skipProvision) {
@@ -91,7 +89,7 @@ public class AnsibleCreateServer extends NodeTaskBase {
               .nodeCommand(NodeManager.NodeCommandType.Create, taskParams())
               .processErrors();
       setNodeStatus(NodeStatus.builder().nodeState(NodeState.InstanceCreated).build());
-      if (p.code.equals(CloudType.azu.name())) {
+      if (p.getCode().equals(CloudType.azu.name())) {
         // Parse into a json object.
         JsonNode jsonNodeTmp = Json.parse(response.message);
         if (jsonNodeTmp.isArray()) {
@@ -136,14 +134,14 @@ public class AnsibleCreateServer extends NodeTaskBase {
         super.onFailure(taskInfo, cause);
       } else {
         // TODO: retry in a different AZ?
-        log.warn("Instance creation in {} failed", params.getAZ().name);
+        log.warn("Instance creation in {} failed", params.getAZ().getName());
 
         AnsibleDestroyServer.Params destroyParams = new AnsibleDestroyServer.Params();
         destroyParams.deviceInfo = params.deviceInfo;
         destroyParams.azUuid = params.azUuid;
         destroyParams.nodeName = params.nodeName;
         destroyParams.nodeUuid = params.nodeUuid;
-        destroyParams.universeUUID = params.universeUUID;
+        destroyParams.setUniverseUUID(params.getUniverseUUID());
         destroyParams.isForceDelete = true;
         destroyParams.deleteNode = false;
         destroyParams.deleteRootVolumes = true;

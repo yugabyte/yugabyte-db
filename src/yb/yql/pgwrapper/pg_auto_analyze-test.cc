@@ -24,7 +24,10 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
+DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_table_mutation_counter);
+DECLARE_bool(ysql_enable_auto_analyze_service);
+
 namespace yb {
 namespace pgwrapper {
 namespace {
@@ -34,6 +37,8 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
   void SetUp() override {
     PgMiniTestBase::SetUp();
     FLAGS_ysql_enable_table_mutation_counter = true;
+    FLAGS_ysql_enable_auto_analyze_service = true;
+    ASSERT_OK(SET_FLAG(vmodule, "pg_auto_analyze*=5"));
   }
 
   size_t NumTabletServers() override {
@@ -48,7 +53,7 @@ class PgAutoAnalyzeTest : public PgMiniTestBase {
 
     stmt_executor();
 
-    auto table_mutations = node_level_mutation_counter->GetAndClear();
+    auto table_mutations = node_level_mutation_counter.GetAndClear();
     // There is no assertion that the sizes of expected_table_mutations matches table_mutations
     // because table_mutations also contains mutations to Pg sys catalog tables.
     for (auto [table_id, expected_mutations] : expected_table_mutations) {

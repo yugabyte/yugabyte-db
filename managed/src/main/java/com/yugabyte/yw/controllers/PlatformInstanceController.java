@@ -77,7 +77,7 @@ public class PlatformInstanceController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.PlatformInstance,
-            Objects.toString(instance.getUUID(), null),
+            Objects.toString(instance.getUuid(), null),
             Audit.ActionType.Create);
     return PlatformResults.withData(instance);
   }
@@ -89,7 +89,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     boolean instanceUUIDValid =
         instanceToDelete.isPresent()
-            && config.get().getInstances().stream().anyMatch(i -> i.getUUID().equals(instanceUUID));
+            && config.get().getInstances().stream().anyMatch(i -> i.getUuid().equals(instanceUUID));
 
     if (!instanceUUIDValid) {
       throw new PlatformServiceException(NOT_FOUND, "Invalid instance UUID");
@@ -134,7 +134,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     boolean instanceUUIDValid =
         instance.isPresent()
-            && config.get().getInstances().stream().anyMatch(i -> i.getUUID().equals(instanceUUID));
+            && config.get().getInstances().stream().anyMatch(i -> i.getUuid().equals(instanceUUID));
 
     if (!instanceUUIDValid) {
       throw new PlatformServiceException(NOT_FOUND, "Invalid platform instance UUID");

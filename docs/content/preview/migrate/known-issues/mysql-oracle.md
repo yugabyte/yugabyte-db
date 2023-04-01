@@ -2,7 +2,7 @@
 title: MySQL and Oracle source databases
 linkTitle: MySQL and Oracle
 headcontent: Known issues when migrating data from MySQL or Oracle.
-description: Refer to the MySQL and Oracle issues when migrating data using YugabyteDB Voyager.
+description: Known issues and suggested workarounds for migrating data from MySQL or Oracle.
 menu:
   preview:
     identifier: mysql-oracle-issues

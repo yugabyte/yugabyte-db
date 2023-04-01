@@ -19,7 +19,7 @@
 #include <boost/functional/hash.hpp>
 
 #include <google/protobuf/repeated_field.h>
-
+#include "yb/cdc/cdc_util.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 
@@ -70,7 +70,7 @@ namespace docdb {
 // Note: Value starts with the schema version (does not contain control fields, value type).
 Status ReplaceSchemaVersionInPackedValue(const Slice& value,
                                          const ValueControlFields& control_fields,
-                                         SchemaVersion schema_version,
+                                         const cdc::XClusterSchemaVersionMap schema_versions_map,
                                          ValueBuffer *out);
 class RowPacker {
  public:

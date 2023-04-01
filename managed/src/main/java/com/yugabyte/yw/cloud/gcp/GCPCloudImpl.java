@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -70,13 +71,15 @@ public class GCPCloudImpl implements CloudAPI {
   @Override
   public boolean isValidCreds(Provider provider, String region) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    String projectId = gcpCloudInfo.getGceProject();
-    if (StringUtils.isBlank(projectId)) {
-      log.error("Project ID is not set, skipping validation");
+    boolean useHostCredentials =
+        Optional.ofNullable(gcpCloudInfo.getUseHostCredentials()).orElse(false);
+    if (useHostCredentials) {
+      log.error("using host credentials for provisioning the provider, skipping validation");
       // TODO validate for service account.
       return true;
     }
     try {
+      String projectId = gcpCloudInfo.getGceProject();
       Compute compute = buildComputeClient(gcpCloudInfo);
       compute.instances().aggregatedList(projectId).setMaxResults(1L).execute();
     } catch (GeneralSecurityException | IOException e) {
@@ -130,7 +133,7 @@ public class GCPCloudImpl implements CloudAPI {
   private Compute buildComputeClient(GCPCloudInfo cloudInfo)
       throws GeneralSecurityException, IOException {
     ObjectMapper mapper = Json.mapper();
-    JsonNode gcpCredentials = cloudInfo.gceApplicationCredentials;
+    JsonNode gcpCredentials = cloudInfo.getGceApplicationCredentials();
     GoogleCredentials credentials =
         GoogleCredentials.fromStream(
             new ByteArrayInputStream(mapper.writeValueAsBytes(gcpCredentials)));

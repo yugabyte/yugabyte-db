@@ -29,13 +29,14 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
     try {
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
       Set<NodeDetails> allTservers = new HashSet<>();
       Set<NodeDetails> primaryTservers =
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
       allTservers.addAll(primaryTservers);
-      installYbcOnThePods(universe.name, primaryTservers, false, taskParams().ybcSoftwareVersion);
+      installYbcOnThePods(
+          universe.getName(), primaryTservers, false, taskParams().getYbcSoftwareVersion());
 
       if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
         Set<NodeDetails> replicaTservers =
@@ -43,13 +44,17 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
                 universe.getNodesInCluster(
                     universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
         allTservers.addAll(replicaTservers);
-        installYbcOnThePods(universe.name, replicaTservers, true, taskParams().ybcSoftwareVersion);
+        installYbcOnThePods(
+            universe.getName(), replicaTservers, true, taskParams().getYbcSoftwareVersion());
         performYbcAction(replicaTservers, true, "stop");
       }
 
       performYbcAction(primaryTservers, false, "stop");
       createWaitForYbcServerTask(allTservers);
-      createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+      createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Marks update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     } catch (Throwable t) {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);

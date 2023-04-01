@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
@@ -43,12 +44,13 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
 public class AccessManager extends DevopsBase {
 
-  private final play.Configuration appConfig;
+  private final Config appConfig;
   private final Commissioner commissioner;
 
   private static final String YB_CLOUD_COMMAND_TYPE = "access";
@@ -58,7 +60,7 @@ public class AccessManager extends DevopsBase {
   public static final String STORAGE_PATH = "yb.storage.path";
 
   @Inject
-  public AccessManager(play.Configuration appConfig, Commissioner commissioner) {
+  public AccessManager(Config appConfig, Commissioner commissioner) {
     this.appConfig = appConfig;
     this.commissioner = commissioner;
   }
@@ -176,11 +178,11 @@ public class AccessManager extends DevopsBase {
       boolean deleteRemote)
       throws IOException {
     Region region = Region.get(regionUUID);
-    final Provider provider = region.provider;
-    String keyFilePath = getOrCreateKeyFilePath(provider.uuid);
+    final Provider provider = region.getProvider();
+    String keyFilePath = getOrCreateKeyFilePath(provider.getUuid());
     // Removing paths from keyCode.
     keyCode = FileUtils.getFileName(keyCode);
-    AccessKey accessKey = AccessKey.get(provider.uuid, keyCode);
+    AccessKey accessKey = AccessKey.get(provider.getUuid(), keyCode);
     if (accessKey != null) {
       // This means the key must have been created before, so nothing to do.
       return accessKey;
@@ -224,7 +226,7 @@ public class AccessManager extends DevopsBase {
     keyInfo.setManagementState(AccessKey.KeyInfo.KeyManagementState.SelfManaged);
 
     // TODO: Move this code for ProviderDetails update elsewhere
-    ProviderDetails details = provider.details;
+    ProviderDetails details = provider.getDetails();
     details.sshUser = sshUser;
     details.sshPort = sshPort;
     details.airGapInstall = airGapInstall;
@@ -236,7 +238,7 @@ public class AccessManager extends DevopsBase {
 
     writeKeyFileData(keyInfo);
 
-    return AccessKey.create(provider.uuid, keyCode, keyInfo);
+    return AccessKey.create(provider.getUuid(), keyCode, keyInfo);
   }
 
   public AccessKey saveAndAddKey(
@@ -297,13 +299,15 @@ public class AccessManager extends DevopsBase {
       log.error(ioe.getMessage(), ioe);
       throw new RuntimeException("Could not create AccessKey", ioe);
     } finally {
-      try {
-        File tmpKeyFile = new File(tempFile.toString());
-        if (tmpKeyFile.exists()) {
-          Files.delete(tempFile);
+      if (tempFile != null) {
+        try {
+          File tmpKeyFile = new File(tempFile.toString());
+          if (tmpKeyFile.exists()) {
+            Files.delete(tempFile);
+          }
+        } catch (IOException e) {
+          log.error(e.getMessage(), e);
         }
-      } catch (IOException e) {
-        log.error(e.getMessage(), e);
       }
     }
 
@@ -377,9 +381,9 @@ public class AccessManager extends DevopsBase {
       boolean showSetupChrony) {
     List<String> commandArgs = new ArrayList<String>();
     Region region = Region.get(regionUUID);
-    String keyFilePath = getOrCreateKeyFilePath(region.provider.uuid);
+    String keyFilePath = getOrCreateKeyFilePath(region.getProvider().getUuid());
 
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, keyCode);
+    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), keyCode);
 
     commandArgs.add("--key_pair_name");
     commandArgs.add(keyCode);
@@ -433,27 +437,28 @@ public class AccessManager extends DevopsBase {
         log.error("Failed to read private file content: {}", e);
       }
       if (sshUser != null) {
-        region.provider.details.sshUser = sshUser;
+        region.getProvider().getDetails().sshUser = sshUser;
       } else {
         switch (region.getProviderCloudCode()) {
           case aws:
           case azu:
           case gcp:
             String defaultSshUser = region.getProviderCloudCode().getSshUser();
+            Common.CloudType.valueOf(region.getProvider().getCode()).getSshUser();
             if (defaultSshUser != null && !defaultSshUser.isEmpty()) {
-              region.provider.details.sshUser = defaultSshUser;
+              region.getProvider().getDetails().sshUser = defaultSshUser;
             }
         }
       }
-      region.provider.details.sshPort = sshPort;
-      region.provider.details.airGapInstall = airGapInstall;
-      region.provider.details.skipProvisioning = skipProvisioning;
-      region.provider.details.setUpChrony = setUpChrony;
-      region.provider.details.ntpServers = ntpServers;
-      region.provider.details.showSetUpChrony = showSetupChrony;
+      region.getProvider().getDetails().sshPort = sshPort;
+      region.getProvider().getDetails().airGapInstall = airGapInstall;
+      region.getProvider().getDetails().skipProvisioning = skipProvisioning;
+      region.getProvider().getDetails().setUpChrony = setUpChrony;
+      region.getProvider().getDetails().ntpServers = ntpServers;
+      region.getProvider().getDetails().showSetUpChrony = showSetupChrony;
       writeKeyFileData(keyInfo);
-      accessKey = AccessKey.create(region.provider.uuid, keyCode, keyInfo);
-      region.provider.save();
+      accessKey = AccessKey.create(region.getProvider().getUuid(), keyCode, keyInfo);
+      region.getProvider().save();
     }
 
     // Save if key needs to be deleted
@@ -498,34 +503,33 @@ public class AccessManager extends DevopsBase {
       throw new RuntimeException("Invalid Region UUID: " + regionUUID);
     }
 
-    switch (Common.CloudType.valueOf(region.provider.code)) {
+    switch (Common.CloudType.valueOf(region.getProvider().getCode())) {
       case aws:
       case azu:
       case gcp:
       case onprem:
-        return deleteKey(region.provider.uuid, region.uuid, keyCode);
+        return deleteKey(region.getProvider().getUuid(), region.getUuid(), keyCode);
       default:
         return null;
     }
   }
 
   public JsonNode deleteKeyByProvider(Provider provider, String keyCode, boolean deleteRemote) {
-    List<Region> regions = Region.getByProvider(provider.uuid);
+    List<Region> regions = Region.getByProvider(provider.getUuid());
     if (regions == null || regions.isEmpty()) {
       return null;
     }
 
-    if (Common.CloudType.valueOf(provider.code) == Common.CloudType.aws) {
-      ObjectMapper mapper = play.libs.Json.newDefaultMapper();
-      ArrayNode ret = mapper.getNodeFactory().arrayNode();
+    if (Common.CloudType.valueOf(provider.getCode()) == Common.CloudType.aws) {
+      ArrayNode ret = Json.mapper().getNodeFactory().arrayNode();
       regions
           .stream()
-          .map(r -> deleteKey(provider.uuid, r.uuid, keyCode, deleteRemote))
+          .map(r -> deleteKey(provider.getUuid(), r.getUuid(), keyCode, deleteRemote))
           .collect(Collectors.toList())
           .forEach(ret::add);
       return ret;
     } else {
-      return deleteKey(provider.uuid, regions.get(0).uuid, keyCode, deleteRemote);
+      return deleteKey(provider.getUuid(), regions.get(0).getUuid(), keyCode, deleteRemote);
     }
   }
 
@@ -657,7 +661,7 @@ public class AccessManager extends DevopsBase {
     Map<UUID, UUID> taskUUIDs = new HashMap<UUID, UUID>();
     for (Universe universe : universes) {
       // create universe task params
-      UUID universeUUID = universe.universeUUID;
+      UUID universeUUID = universe.getUniverseUUID();
       RotateAccessKeyParams taskParams =
           new RotateAccessKeyParams(customerUUID, providerUUID, universeUUID, newAccessKey);
       // trigger universe task
@@ -668,7 +672,7 @@ public class AccessManager extends DevopsBase {
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.RotateAccessKey,
-          universe.name);
+          universe.getName());
       taskUUIDs.put(universeUUID, taskUUID);
     }
     return taskUUIDs;

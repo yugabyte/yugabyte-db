@@ -27,7 +27,6 @@ import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.ScheduleResp.BackupInfo;
 import com.yugabyte.yw.models.ScheduleResp.ScheduleRespBuilder;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList.KeyspaceTablesListBuilder;
@@ -48,7 +47,6 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -69,22 +67,24 @@ import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
-import play.mvc.Http.Context;
 
 @Entity
 @Table(
     uniqueConstraints =
         @UniqueConstraint(columnNames = {"schedule_name", "customer_uuid", "owner_uuid"}))
 @ApiModel(description = "Backup schedule")
+@Getter
+@Setter
 public class Schedule extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Schedule.class);
-  SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
   public enum State {
     @EnumValue("Active")
@@ -122,21 +122,13 @@ public class Schedule extends Model {
 
   @Id
   @ApiModelProperty(value = "Schedule UUID", accessMode = READ_ONLY)
-  public UUID scheduleUUID;
-
-  public UUID getScheduleUUID() {
-    return scheduleUUID;
-  }
+  private UUID scheduleUUID;
 
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)
   @Column(nullable = false)
   private UUID customerUUID;
 
   @JsonProperty
-  public UUID getCustomerUUID() {
-    return customerUUID;
-  }
-
   @JsonIgnore
   public void setCustomerUUID(UUID customerUUID) {
     this.customerUUID = customerUUID;
@@ -148,38 +140,18 @@ public class Schedule extends Model {
   @Column(nullable = false, columnDefinition = "integer default 0")
   private int failureCount;
 
-  public int getFailureCount() {
-    return failureCount;
-  }
-
   @ApiModelProperty(value = "Frequency of the schedule, in milli seconds", accessMode = READ_WRITE)
   @Column(nullable = false)
   private long frequency;
-
-  public long getFrequency() {
-    return frequency;
-  }
-
-  public void setFrequency(long frequency) {
-    this.frequency = frequency;
-  }
 
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   private JsonNode taskParams;
 
-  public JsonNode getTaskParams() {
-    return taskParams;
-  }
-
   @ApiModelProperty(value = "Type of task to be scheduled.", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private TaskType taskType;
-
-  public TaskType getTaskType() {
-    return taskType;
-  }
 
   @ApiModelProperty(
       value = "Status of the task. Possible values are _Active_, _Paused_, or _Stopped_.",
@@ -187,10 +159,6 @@ public class Schedule extends Model {
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
   private State status = State.Active;
-
-  public State getStatus() {
-    return status;
-  }
 
   @Column
   @ApiModelProperty(value = "Cron expression for the schedule")
@@ -200,28 +168,12 @@ public class Schedule extends Model {
   @Column(nullable = false)
   private String scheduleName;
 
-  public String getScheduleName() {
-    return scheduleName;
-  }
-
   @ApiModelProperty(value = "Owner UUID for the schedule", accessMode = READ_ONLY)
   @Column(nullable = false)
   private UUID ownerUUID;
 
-  public UUID getOwnerUUID() {
-    return this.ownerUUID;
-  }
-
   @ApiModelProperty(value = "Time unit of frequency", accessMode = READ_WRITE)
   private TimeUnit frequencyTimeUnit;
-
-  public TimeUnit getFrequencyTimeUnit() {
-    return this.frequencyTimeUnit;
-  }
-
-  public void setFrequencyTimeunit(TimeUnit frequencyTimeUnit) {
-    this.frequencyTimeUnit = frequencyTimeUnit;
-  }
 
   @Column
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
@@ -230,10 +182,6 @@ public class Schedule extends Model {
       accessMode = READ_ONLY,
       example = "2022-12-12T13:07:18Z")
   private Date nextScheduleTaskTime;
-
-  public Date getNextScheduleTaskTime() {
-    return nextScheduleTaskTime;
-  }
 
   public void updateNextScheduleTaskTime(Date nextScheduleTime) {
     this.nextScheduleTaskTime = nextScheduleTime;
@@ -250,25 +198,9 @@ public class Schedule extends Model {
   @ApiModelProperty(value = "User who created the schedule policy", accessMode = READ_ONLY)
   private String userEmail;
 
-  public String getUserEmail() {
-    return userEmail;
-  }
-
-  public boolean getBacklogStatus() {
-    return this.backlogStatus;
-  }
-
   public void updateBacklogStatus(boolean backlogStatus) {
     this.backlogStatus = backlogStatus;
     save();
-  }
-
-  public String getCronExpression() {
-    return cronExpression;
-  }
-
-  public void setCronExpression(String cronExpression) {
-    this.cronExpression = cronExpression;
   }
 
   public void setCronExpressionAndTaskParams(String cronExpression, ITaskParams params) {
@@ -310,7 +242,7 @@ public class Schedule extends Model {
   }
 
   public void updateFrequencyTimeUnit(TimeUnit frequencyTimeUnit) {
-    setFrequencyTimeunit(frequencyTimeUnit);
+    setFrequencyTimeUnit(frequencyTimeUnit);
     save();
   }
 
@@ -348,7 +280,7 @@ public class Schedule extends Model {
       TimeUnit frequencyTimeUnit,
       String scheduleName) {
     Schedule schedule = new Schedule();
-    schedule.scheduleUUID = UUID.randomUUID();
+    schedule.setScheduleUUID(UUID.randomUUID());
     schedule.customerUUID = customerUUID;
     schedule.failureCount = 0;
     schedule.taskType = taskType;
@@ -358,9 +290,9 @@ public class Schedule extends Model {
     schedule.cronExpression = cronExpression;
     schedule.ownerUUID = ownerUUID;
     schedule.frequencyTimeUnit = frequencyTimeUnit;
-    schedule.userEmail = Util.maybeGetEmailFromContext(Context.current.get());
+    schedule.userEmail = Util.maybeGetEmailFromContext();
     schedule.scheduleName =
-        scheduleName != null ? scheduleName : "schedule-" + schedule.scheduleUUID;
+        scheduleName != null ? scheduleName : "schedule-" + schedule.getScheduleUUID();
     schedule.nextScheduleTaskTime = nextExpectedTaskTime(null, schedule);
     schedule.save();
     return schedule;
@@ -558,7 +490,7 @@ public class Schedule extends Model {
     ScheduleRespBuilder builder =
         ScheduleResp.builder()
             .scheduleName(schedule.scheduleName)
-            .scheduleUUID(schedule.scheduleUUID)
+            .scheduleUUID(schedule.getScheduleUUID())
             .customerUUID(schedule.customerUUID)
             .failureCount(schedule.failureCount)
             .frequency(schedule.frequency)
@@ -586,10 +518,10 @@ public class Schedule extends Model {
         builder.backupInfo(getV2ScheduleBackupInfo(params));
         builder.incrementalBackupFrequency(params.incrementalBackupFrequency);
         builder.incrementalBackupFrequencyTimeUnit(params.incrementalBackupFrequencyTimeUnit);
-        if (ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID)) {
+        if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
           Backup latestSuccessfulIncrementalBackup =
               ScheduleUtil.fetchLatestSuccessfulBackupForSchedule(
-                  schedule.customerUUID, schedule.scheduleUUID);
+                  schedule.customerUUID, schedule.getScheduleUUID());
           if (latestSuccessfulIncrementalBackup != null) {
             Date incrementalBackupExpectedTaskTime =
                 new Date(
@@ -609,7 +541,7 @@ public class Schedule extends Model {
         LOG.error(
             "Could not parse backup taskParams {} for schedule {}",
             scheduleTaskParams,
-            schedule.scheduleUUID);
+            schedule.getScheduleUUID());
       }
     } else {
       builder.taskParams(scheduleTaskParams);
@@ -661,7 +593,7 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .universeUUID(params.universeUUID)
+            .universeUUID(params.getUniverseUUID())
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)
@@ -692,7 +624,7 @@ public class Schedule extends Model {
     }
     BackupInfo backupInfo =
         BackupInfo.builder()
-            .universeUUID(params.universeUUID)
+            .universeUUID(params.getUniverseUUID())
             .keyspaceList(keySpaceResponseList)
             .storageConfigUUID(params.storageConfigUUID)
             .backupType(params.backupType)

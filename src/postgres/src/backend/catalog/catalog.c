@@ -281,8 +281,8 @@ IsSharedRelation(Oid relationId)
 		relationId == SubscriptionNameIndexId ||
 		relationId == YBCatalogVersionDbOidIndexId ||
 		relationId == YbProfileOidIndexId ||
-		relationId == YbRoleProfileOidIndexId ||
-		relationId == YbProfileRolnameIndexId)
+		relationId == YbProfileRolnameIndexId ||
+		relationId == YbRoleProfileOidIndexId)
 		return true;
 	/* These are their toast tables and toast indexes (see toasting.h) */
 	if (relationId == PgShdescriptionToastTable ||

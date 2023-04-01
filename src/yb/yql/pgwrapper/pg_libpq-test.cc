@@ -1502,6 +1502,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
+  ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access due to concurrent update");
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
@@ -3205,20 +3206,6 @@ class CoordinatedRunner {
   std::atomic<bool> error_detected_{false};
 };
 
-bool RetryableError(const Status& status) {
-  const auto msg = status.message().ToBuffer();
-  const std::string expected_errors[] = {"Try again",
-                                         "Catalog Version Mismatch",
-                                         "Restart read required at",
-                                         "schema version mismatch for table"};
-  for (const auto& expected : expected_errors) {
-    if (msg.find(expected) != std::string::npos) {
-      return true;
-    }
-  }
-  return false;
-}
-
 } // namespace
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
@@ -3238,7 +3225,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
     commands.emplace_back(
         [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
           const auto res = connection->Fetch("SELECT key FROM t");
-          return (res.ok() || RetryableError(res.status())) ? Status::OK() : res.status();
+          return (res.ok() || IsRetryable(res.status())) ? Status::OK() : res.status();
     });
   }
   CoordinatedRunner runner(std::move(commands));

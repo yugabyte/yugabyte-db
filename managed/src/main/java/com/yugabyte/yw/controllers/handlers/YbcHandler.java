@@ -36,7 +36,7 @@ public class YbcHandler {
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    if (!universeDetails.enableYbc || !universeDetails.ybcInstalled) {
+    if (!universeDetails.isEnableYbc() || !universeDetails.isYbcInstalled()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Ybc is either not installed or enabled on universe: " + universeUUID);
     }
@@ -45,14 +45,14 @@ public class YbcHandler {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot disable ybc on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
     }
 
     UniverseTaskParams taskParams = new UniverseTaskParams();
-    taskParams.universeUUID = universeUUID;
+    taskParams.setUniverseUUID(universeUUID);
     UUID taskUUID = commissioner.submit(TaskType.DisableYbc, taskParams);
     LOG.info(
         "Saved task uuid {} in customer tasks for Disabling Ybc {} for universe {}.",
@@ -64,7 +64,7 @@ public class YbcHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.DisableYbc,
-        universe.name);
+        universe.getName());
     return taskUUID;
   }
 
@@ -73,7 +73,7 @@ public class YbcHandler {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
-    if (!universeDetails.ybcInstalled || !universeDetails.enableYbc) {
+    if (!universeDetails.isYbcInstalled() || !universeDetails.isEnableYbc()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Ybc is either not installed or enabled on universe: " + universeUUID);
     }
@@ -82,7 +82,7 @@ public class YbcHandler {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot perform a ybc upgrade on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -93,15 +93,15 @@ public class YbcHandler {
       targetYbcVersion = ybcVersion;
     }
 
-    if (universeDetails.ybcSoftwareVersion.equals(targetYbcVersion)) {
+    if (universeDetails.getYbcSoftwareVersion().equals(targetYbcVersion)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Ybc version " + targetYbcVersion + " is already present on universe " + universeUUID);
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
-    taskParams.universeUUID = universeUUID;
-    taskParams.ybcSoftwareVersion = targetYbcVersion;
+    taskParams.setUniverseUUID(universeUUID);
+    taskParams.setYbcSoftwareVersion(targetYbcVersion);
     UUID taskUUID = commissioner.submit(TaskType.UpgradeUniverseYbc, taskParams);
     LOG.info(
         "Saved task uuid {} in customer tasks for upgrading Ybc {} for universe {}.",
@@ -113,7 +113,7 @@ public class YbcHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.UpgradeUniverseYbc,
-        universe.name);
+        universe.getName());
     return taskUUID;
   }
 
@@ -125,7 +125,7 @@ public class YbcHandler {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot perform a ybc installation on universe "
-              + universe.universeUUID
+              + universe.getUniverseUUID()
               + " as it has nodes in one of "
               + NodeDetails.IN_TRANSIT_STATES
               + " states.");
@@ -147,8 +147,8 @@ public class YbcHandler {
     }
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
-    taskParams.universeUUID = universeUUID;
-    taskParams.ybcSoftwareVersion = targetYbcVersion;
+    taskParams.setUniverseUUID(universeUUID);
+    taskParams.setYbcSoftwareVersion(targetYbcVersion);
     UUID taskUUID = commissioner.submit(TaskType.InstallYbcSoftware, taskParams);
     LOG.info(
         "Saved task uuid {} in customer tasks for installing Ybc {} for universe {}.",
@@ -160,7 +160,7 @@ public class YbcHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.InstallYbcSoftware,
-        universe.name);
+        universe.getName());
     return taskUUID;
   }
 }

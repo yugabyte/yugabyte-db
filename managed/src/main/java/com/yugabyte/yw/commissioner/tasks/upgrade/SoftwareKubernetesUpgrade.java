@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import javax.inject.Inject;
 
@@ -42,8 +43,8 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
               taskParams().ybSoftwareVersion,
               true,
               true,
-              taskParams().enableYbc,
-              taskParams().ybcSoftwareVersion);
+              taskParams().isEnableYbc(),
+              taskParams().getYbcSoftwareVersion());
           if (taskParams().upgradeSystemCatalog) {
             // Run YSQL upgrade on the universe
             createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
@@ -51,16 +52,18 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           }
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
-              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)) {
+              && CommonUtils.isAutoFlagSupported(taskParams().ybSoftwareVersion)
+              && !XClusterConfig.isUniverseXClusterParticipant(taskParams().getUniverseUUID())) {
             createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
+          }
+
+          if (taskParams().isEnableYbc()) {
+            createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
+                .setSubTaskGroupType(getTaskSubGroupType());
           }
           // Mark the final software version on the universe
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
-          if (taskParams().enableYbc) {
-            createUpdateYbcTask(taskParams().ybcSoftwareVersion)
-                .setSubTaskGroupType(getTaskSubGroupType());
-          }
         });
   }
 }

@@ -15,8 +15,6 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -35,10 +33,9 @@ import com.yugabyte.yw.commissioner.tasks.params.KMSConfigTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.services.SmartKeyEARService;
-import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
 import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
@@ -50,15 +47,12 @@ import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
 import play.mvc.Result;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EncryptionAtRestControllerTest extends FakeDBApplication {
-
-  @Mock play.Configuration mockAppConfig;
   private Customer customer;
   private Users user;
   private Universe universe;
@@ -80,7 +74,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         ImmutableMap.of("Authorization", String.format("Basic %s", mockApiKey));
     ObjectNode createReqPayload =
         Json.newObject()
-            .put("name", universe.universeUUID.toString())
+            .put("name", universe.getUniverseUUID().toString())
             .put("obj_type", algorithm)
             .put("key_size", keySize);
     ArrayNode keyOps = Json.newArray().add("EXPORT").add("APPMANAGEABLE");
@@ -95,7 +89,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         ImmutableMap.of("Authorization", String.format("Bearer %s", mockApiKey));
     String getKeyUrl = String.format("https://some_base_url/crypto/v1/keys/%s/export", mockKid);
     Map<String, String> mockQueryParams =
-        ImmutableMap.of("name", universe.universeUUID.toString(), "limit", "1");
+        ImmutableMap.of("name", universe.getUniverseUUID().toString(), "limit", "1");
     // confGetter is not used in class SmartKeyEARService, so we can pass null.
     when(mockEARManager.getServiceInstance(eq("SMARTKEY")))
         .thenReturn(new SmartKeyEARService(null));
@@ -103,25 +97,25 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
 
   @Test
   public void testListKMSConfigs() {
-    ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
-    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", Json.newObject());
+    String url = "/api/v1/customers/" + customer.getUuid() + "/kms_configs";
     Result listResult = doRequestWithAuthToken("GET", url, authToken);
     assertOk(listResult);
     JsonNode json = Json.parse(contentAsString(listResult));
     assertTrue(json.isArray());
     assertEquals(1, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testListEmptyConfigList() {
-    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    String url = "/api/v1/customers/" + customer.getUuid() + "/kms_configs";
     Result listResult = doRequestWithAuthToken("GET", url, authToken);
     assertOk(listResult);
     JsonNode json = Json.parse(contentAsString(listResult));
     assertTrue(json.isArray());
     assertEquals(json.size(), 0);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -129,8 +123,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
         .thenReturn(fakeTaskUUID);
-    ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
-    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", Json.newObject());
+    String url = "/api/v1/customers/" + customer.getUuid() + "/kms_configs";
     Result listResult = doRequestWithAuthToken("GET", url, authToken);
     assertOk(listResult);
     JsonNode json = Json.parse(contentAsString(listResult));
@@ -138,20 +132,20 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     assertEquals(json.size(), 1);
     UUID kmsConfigUUID =
         UUID.fromString(((ArrayNode) json).get(0).get("metadata").get("configUUID").asText());
-    url = "/api/v1/customers/" + customer.uuid + "/kms_configs/" + kmsConfigUUID.toString();
+    url = "/api/v1/customers/" + customer.getUuid() + "/kms_configs/" + kmsConfigUUID.toString();
     Result deleteResult = doRequestWithAuthToken("DELETE", url, authToken);
     assertOk(deleteResult);
     json = Json.parse(contentAsString(deleteResult));
     UUID taskUUID = UUID.fromString(json.get("taskUUID").asText());
     assertNotNull(taskUUID);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Ignore(
       "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
   @Test
   public void testCreateAndRecoverKey() {
-    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/SMARTKEY";
     ObjectNode kmsConfigReq =
         Json.newObject().put("base_url", "some_base_url").put("api_key", "some_api_token");
     Result createKMSResult =
@@ -160,9 +154,9 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     assertOk(createKMSResult);
     String url =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/kms/SMARTKEY/create_key";
     ObjectNode createPayload =
         Json.newObject()
@@ -176,12 +170,12 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(createKeyResult));
     String keyValue = json.get("value").asText();
     assertEquals(keyValue, mockEncryptionKey);
-    assertAuditEntry(2, customer.uuid);
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
   public void testCreateSMARTKEYKmsProviderWithInvalidAPIUrl() {
-    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/SMARTKEY";
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put("base_url", "some_base_url")
@@ -195,7 +189,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateSMARTKEYKmsProviderWithValidAPIUrlButInvalidAPIKey() {
-    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/SMARTKEY";
+    String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/SMARTKEY";
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put("base_url", "api.amer.smartkey.io")
@@ -209,7 +203,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAwsKmsProviderWithInvalidCreds() {
-    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
+    String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/AWS";
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName, "aws_accesscode")
@@ -226,7 +220,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateAwsKmsProviderWithValidCreds() {
-    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
+    String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/AWS";
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName, "valid_accessKey")
@@ -248,8 +242,14 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   @Test
   public void testRecoverKeyNotFound() {
     UUID configUUID =
-        ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject()).configUUID;
-    String url = "/api/customers/" + customer.uuid + "/universes/" + universe.universeUUID + "/kms";
+        ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", Json.newObject())
+            .getConfigUUID();
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/kms";
     ObjectNode body =
         Json.newObject()
             .put("reference", "NzNiYmY5M2UtNWYyNy00NzE3LTgyYTktMTVjYzUzMDIzZWRm")
@@ -258,16 +258,17 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         assertPlatformException(() -> doRequestWithAuthTokenAndBody("POST", url, authToken, body));
     JsonNode json = Json.parse(contentAsString(recoverKeyResult));
     String expectedErrorMsg =
-        String.format("No universe key found for universe %s", universe.universeUUID.toString());
+        String.format(
+            "No universe key found for universe %s", universe.getUniverseUUID().toString());
     assertErrorNodeValue(json, expectedErrorMsg);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testCreateKMSProviderWithDuplicateName() {
     ObjectNode authConfig = Json.newObject().put(AwsKmsAuthConfigField.CMK_ID.fieldName, "test_id");
-    ModelFactory.createKMSConfig(customer.uuid, "AWS", authConfig, "test");
-    String kmsConfigUrl = "/api/customers/" + customer.uuid + "/kms_configs/AWS";
+    ModelFactory.createKMSConfig(customer.getUuid(), "AWS", authConfig, "test");
+    String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/AWS";
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName, "valid_accessKey")
@@ -285,7 +286,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   public void testEditKMSConfigWithInvalidConfigUUID() {
     UUID invalidConfigUUID = UUID.randomUUID();
     String kmsConfigUrl =
-        "/api/customers/" + customer.uuid + "/kms_configs/" + invalidConfigUUID + "/edit";
+        "/api/customers/" + customer.getUuid() + "/kms_configs/" + invalidConfigUUID + "/edit";
     ObjectNode kmsConfigReq =
         Json.newObject()
             .put(AwsKmsAuthConfigField.ACCESS_KEY_ID.fieldName, "valid_accessKey")
@@ -300,15 +301,15 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
         "KMS config with config UUID "
             + invalidConfigUUID
             + " does not exist for customer "
-            + customer.uuid;
+            + customer.getUuid();
     assertBadRequest(updateKMSResult, errMsg);
   }
 
   @Test
   public void testEditKMSConfigWithValidParams() {
 
-    ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
-    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", Json.newObject());
+    String url = "/api/v1/customers/" + customer.getUuid() + "/kms_configs";
     Result listResult = doRequestWithAuthToken("GET", url, authToken);
     assertOk(listResult);
     JsonNode json = Json.parse(contentAsString(listResult));
@@ -317,7 +318,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     UUID kmsConfigUUID =
         UUID.fromString(((ArrayNode) json).get(0).get("metadata").get("configUUID").asText());
     String kmsConfigUrl =
-        "/api/v1/customers/" + customer.uuid + "/kms_configs/" + kmsConfigUUID + "/edit";
+        "/api/v1/customers/" + customer.getUuid() + "/kms_configs/" + kmsConfigUUID + "/edit";
     ObjectNode kmsConfigReq = Json.newObject().put("base_url", "api.amer.smartkey.io");
     UUID fakeTaskUUID = UUID.randomUUID();
     when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
@@ -325,13 +326,13 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     Result updateKMSResult =
         doRequestWithAuthTokenAndBody("POST", kmsConfigUrl, authToken, kmsConfigReq);
     assertOk(updateKMSResult);
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
   public void testEditKMSConfigName() {
-    ModelFactory.createKMSConfig(customer.uuid, "SMARTKEY", Json.newObject());
-    String url = "/api/v1/customers/" + customer.uuid + "/kms_configs";
+    ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", Json.newObject());
+    String url = "/api/v1/customers/" + customer.getUuid() + "/kms_configs";
     Result listResult = doRequestWithAuthToken("GET", url, authToken);
     assertOk(listResult);
     JsonNode json = Json.parse(contentAsString(listResult));
@@ -340,7 +341,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     UUID kmsConfigUUID =
         UUID.fromString(((ArrayNode) json).get(0).get("metadata").get("configUUID").asText());
     String kmsConfigUrl =
-        "/api/v1/customers/" + customer.uuid + "/kms_configs/" + kmsConfigUUID + "/edit";
+        "/api/v1/customers/" + customer.getUuid() + "/kms_configs/" + kmsConfigUUID + "/edit";
     ObjectNode kmsConfigReq =
         Json.newObject().put("base_url", "api.amer.smartkey.io").put("name", "test");
 
@@ -360,10 +361,10 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
             .put(AwsKmsAuthConfigField.ENDPOINT.fieldName, "https://kms.ap-south-1.amazonaws.com")
             .put("name", "test")
             .put(AwsKmsAuthConfigField.CMK_ID.fieldName, "3ccb9374-bc6e-4247-9cc5-2170ec77053e");
-    ModelFactory.createKMSConfig(customer.uuid, "AWS", kmsConfigReq, "test");
-    KmsConfig config = KmsConfig.listKMSConfigs(customer.uuid).get(0);
+    ModelFactory.createKMSConfig(customer.getUuid(), "AWS", kmsConfigReq, "test");
+    KmsConfig config = KmsConfig.listKMSConfigs(customer.getUuid()).get(0);
     String kmsConfigUrl =
-        "/api/customers/" + customer.uuid + "/kms_configs/" + config.configUUID + "/edit";
+        "/api/customers/" + customer.getUuid() + "/kms_configs/" + config.getConfigUUID() + "/edit";
     kmsConfigReq.put(AwsKmsAuthConfigField.REGION.fieldName, "ap-south-2");
     Result updateKMSResult =
         assertPlatformException(
@@ -389,11 +390,12 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
             .put(AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName, 2048);
 
     KmsConfig result =
-        KmsConfig.createKMSConfig(customer.uuid, keyProvider, kmsConfigReq, configName);
+        KmsConfig.createKMSConfig(customer.getUuid(), keyProvider, kmsConfigReq, configName);
 
     // Edit the key name field in the request body
     String kmsConfigUrl =
-        String.format("/api/customers/%s/kms_configs/%s/edit", customer.uuid, result.configUUID);
+        String.format(
+            "/api/customers/%s/kms_configs/%s/edit", customer.getUuid(), result.getConfigUUID());
     kmsConfigReq.put(AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName, "test-key-name-2");
 
     // Call the API and assert that the POST request throws exception

@@ -53,7 +53,7 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
   public String getName() {
     return super.getName()
         + "("
-        + taskParams().universeUUID
+        + taskParams().getUniverseUUID()
         + ", provider="
         + taskParams().providerUUID
         + ", lbName="
@@ -66,7 +66,7 @@ public class ManageLoadBalancerGroup extends UniverseTaskBase {
     Provider provider = Provider.getOrBadRequest(taskParams().providerUUID);
     CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCloudCode().name());
 
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UniverseDefinitionTaskParams.UserIntent userIntent = getUserIntent();
     List<Integer> ports = new ArrayList<>();
     if (userIntent.enableYSQL)

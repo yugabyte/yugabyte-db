@@ -46,6 +46,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/master/master_util.h"
 #include "yb/util/debug-util.h"
+#include "yb/util/thread.h"
 
 using std::string;
 using namespace std::literals;
@@ -1792,22 +1793,26 @@ Status CatalogManager::IsBootstrapRequired(
 
     // TODO: Submit the task to a thread pool.
     // Capture everything by value to increase their refcounts.
-    std::thread async_task([this, table_id, stream_id, deadline, data_lock, task_completed,
-                            table_bootstrap_required, finished_tasks, total_tasks, promise] {
-      bool bootstrap_required = false;
-      auto status = IsTableBootstrapRequired(table_id, stream_id, deadline, &bootstrap_required);
-      std::lock_guard<std::mutex> lock(*data_lock);
-      if (*task_completed) {
-        return;  // Prevent calling set_value below twice.
-      }
-      (*table_bootstrap_required)[table_id] = bootstrap_required;
-      if (!status.ok() || ++(*finished_tasks) == total_tasks) {
-        // Short-circuit if error already encountered.
-        *task_completed = true;
-        promise->set_value(status);
-      }
-    });
-    async_task.detach();
+    scoped_refptr<Thread> async_task;
+    RETURN_NOT_OK(Thread::Create(
+        "xrepl_catalog_manager", "is_bootstrap_required",
+        [this, table_id, stream_id, deadline, data_lock, task_completed, table_bootstrap_required,
+         finished_tasks, total_tasks, promise] {
+          bool bootstrap_required = false;
+          auto status =
+              IsTableBootstrapRequired(table_id, stream_id, deadline, &bootstrap_required);
+          std::lock_guard<std::mutex> lock(*data_lock);
+          if (*task_completed) {
+            return;  // Prevent calling set_value below twice.
+          }
+          (*table_bootstrap_required)[table_id] = bootstrap_required;
+          if (!status.ok() || ++(*finished_tasks) == total_tasks) {
+            // Short-circuit if error already encountered.
+            *task_completed = true;
+            promise->set_value(status);
+          }
+        },
+        &async_task));
   }
 
   // Wait until the first promise is raised, and prepare response.
@@ -1872,7 +1877,7 @@ CatalogManager::CreateUniverseReplicationInfoForProducer(
  * 1. SetupUniverseReplication: Validates user input & requests Producer schema.
  * 2. GetTableSchemaCallback:   Validates Schema compatibility & requests Producer CDC init.
  * 3. AddCDCStreamToUniverseAndInitConsumer:  Setup RPC connections for CDC Streaming
- * 4. InitCDCConsumer:          Initializes the Consumer settings to begin tailing data
+ * 4. InitXClusterConsumer:          Initializes the Consumer settings to begin tailing data
  */
 Status CatalogManager::SetupUniverseReplication(
     const SetupUniverseReplicationRequestPB* req,
@@ -2130,11 +2135,34 @@ Status CatalogManager::IsTableBootstrapRequired(
 Status CatalogManager::AddValidatedTableToUniverseReplication(
     scoped_refptr<UniverseReplicationInfo> universe,
     const TableId& producer_table,
-    const TableId& consumer_table) {
+    const TableId& consumer_table,
+    const SchemaVersion& producer_schema_version,
+    const SchemaVersion& consumer_schema_version,
+    const ColocationSchemaVersions& colocated_schema_versions) {
   auto l = universe->LockForWrite();
 
   auto map = l.mutable_data()->pb.mutable_validated_tables();
   (*map)[producer_table] = consumer_table;
+
+  SchemaVersionMappingEntryPB entry;
+  if (IsColocationParentTableId(consumer_table)) {
+    for (const auto& [colocation_id, producer_schema_version, consumer_schema_version] :
+        colocated_schema_versions) {
+      auto colocated_entry = entry.add_colocated_schema_versions();
+      auto colocation_mapping = colocated_entry->mutable_schema_version_mapping();
+      colocated_entry->set_colocation_id(colocation_id);
+      colocation_mapping->set_producer_schema_version(producer_schema_version);
+      colocation_mapping->set_consumer_schema_version(consumer_schema_version);
+    }
+  } else {
+    auto mapping = entry.mutable_schema_version_mapping();
+    mapping->set_producer_schema_version(producer_schema_version);
+    mapping->set_consumer_schema_version(consumer_schema_version);
+  }
+
+
+  auto schema_versions_map = l.mutable_data()->pb.mutable_schema_version_mappings();
+  (*schema_versions_map)[producer_table] = std::move(entry);
 
   // TODO: end of config validation should be where SetupUniverseReplication exits back to user
   LOG(INFO) << "UpdateItem in AddValidatedTable";
@@ -2241,8 +2269,12 @@ Status CatalogManager::AddValidatedTableAndCreateCdcStreams(
     scoped_refptr<UniverseReplicationInfo> universe,
     const std::unordered_map<TableId, std::string>& table_bootstrap_ids,
     const TableId& producer_table,
-    const TableId& consumer_table) {
-  RETURN_NOT_OK(AddValidatedTableToUniverseReplication(universe, producer_table, consumer_table));
+    const TableId& consumer_table,
+    const ColocationSchemaVersions& colocated_schema_versions) {
+  RETURN_NOT_OK(AddValidatedTableToUniverseReplication(universe, producer_table, consumer_table,
+                                                       cdc::kInvalidSchemaVersion,
+                                                       cdc::kInvalidSchemaVersion,
+                                                       colocated_schema_versions));
   return CreateCdcStreamsIfReplicationValidated(universe, table_bootstrap_ids);
 }
 
@@ -2340,8 +2372,12 @@ Status CatalogManager::ValidateTableAndCreateCdcStreams(
           IsBootstrapRequiredOnProducer(universe, producer_info->table_id, producer_bootstrap_ids));
     }
 
+    SchemaVersion producer_schema_version = producer_info->schema.version();
+    SchemaVersion consumer_schema_version = consumer_schema.version();
+    ColocationSchemaVersions colocated_schema_versions;
     RETURN_NOT_OK(AddValidatedTableToUniverseReplication(
-        universe, producer_info->table_id, consumer_schema.identifier().table_id()));
+        universe, producer_info->table_id, consumer_schema.identifier().table_id(),
+        producer_schema_version, consumer_schema_version, colocated_schema_versions));
   }
 
   return CreateCdcStreamsIfReplicationValidated(universe, producer_bootstrap_ids);
@@ -2384,6 +2420,8 @@ void CatalogManager::GetTablegroupSchemaCallback(
   // validated_consumer_tables contains the table IDs corresponding to that
   // from the producer tables.
   std::unordered_set<TableId> validated_consumer_tables;
+  ColocationSchemaVersions colocated_schema_versions;
+  colocated_schema_versions.reserve(infos->size());
   for (const auto& info : *infos) {
     // Validate each of the member table in the tablegroup.
     GetTableSchemaResponsePB resp;
@@ -2397,6 +2435,9 @@ void CatalogManager::GetTablegroupSchemaCallback(
       return;
     }
 
+    colocated_schema_versions.emplace_back(resp.schema().colocated_table_id().colocation_id(),
+                                           info.schema.version(),
+                                           resp.version());
     validated_consumer_tables.insert(resp.identifier().table_id());
   }
 
@@ -2489,7 +2530,11 @@ void CatalogManager::GetTablegroupSchemaCallback(
   }
 
   status = AddValidatedTableAndCreateCdcStreams(
-      universe, table_bootstrap_ids, producer_parent_table_id, consumer_parent_table_id);
+      universe,
+      table_bootstrap_ids,
+      producer_parent_table_id,
+      consumer_parent_table_id,
+      colocated_schema_versions);
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << producer_tablegroup_id << ": " << status;
@@ -2531,6 +2576,8 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
   // Validate table schemas.
   std::unordered_set<TableId> producer_parent_table_ids;
   std::unordered_set<TableId> consumer_parent_table_ids;
+  ColocationSchemaVersions colocated_schema_versions;
+  colocated_schema_versions.reserve(infos->size());
   for (const auto& info : *infos) {
     // Verify that we have a colocated table.
     if (!info.colocated) {
@@ -2554,6 +2601,9 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     producer_parent_table_ids.insert(GetColocatedDbParentTableId(info.table_name.namespace_id()));
     consumer_parent_table_ids.insert(
         GetColocatedDbParentTableId(resp.identifier().namespace_().id()));
+    colocated_schema_versions.emplace_back(resp.schema().colocated_table_id().colocation_id(),
+                                           info.schema.version(),
+                                           resp.version());
   }
 
   // Verify that we only found one producer and one consumer colocated parent table id.
@@ -2602,7 +2652,9 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
       universe,
       table_bootstrap_ids,
       *producer_parent_table_ids.begin(),
-      *consumer_parent_table_ids.begin());
+      *consumer_parent_table_ids.begin(),
+      colocated_schema_versions);
+
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << *producer_parent_table_ids.begin() << ": " << status;
@@ -2736,7 +2788,7 @@ void CatalogManager::AddCDCStreamToUniverseAndInitConsumer(
         l.mutable_data()->pb.set_state(SysUniverseReplicationEntryPB::FAILED);
       } else {
         auto cdc_rpc_tasks = *cdc_rpc_tasks_result;
-        Status s = InitCDCConsumer(
+        Status s = InitXClusterConsumer(
             consumer_info, HostPort::ToCommaSeparatedString(hp), l->pb.producer_id(),
             cdc_rpc_tasks);
         if (!s.ok()) {
@@ -2897,12 +2949,24 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
   return Status::OK();
 }
 
-Status CatalogManager::InitCDCConsumer(
+Status CatalogManager::InitXClusterConsumer(
     const std::vector<CDCConsumerStreamInfo>& consumer_info,
     const std::string& master_addrs,
     const std::string& producer_universe_uuid,
-    std::shared_ptr<CDCRpcTasks>
-        cdc_rpc_tasks) {
+    std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks) {
+
+  scoped_refptr<UniverseReplicationInfo> universe;
+  {
+    SharedLock lock(mutex_);
+    universe = FindPtrOrNull(universe_replication_map_, producer_universe_uuid);
+    if (universe == nullptr) {
+      return STATUS(NotFound, "Could not find CDC producer universe",
+                    producer_universe_uuid, MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
+    }
+  }
+
+  auto schema_version_mappings = universe->LockForRead()->pb.schema_version_mappings();
+
   // Get the tablets in the consumer table.
   cdc::ProducerEntryPB producer_entry;
   for (const auto& stream_info : consumer_info) {
@@ -2917,6 +2981,26 @@ Status CatalogManager::InitCDCConsumer(
     // Set the validated consumer schema version
     auto* producer_schema_pb = stream_entry.mutable_producer_schema();
     producer_schema_pb->set_last_compatible_consumer_schema_version(schema_version);
+    auto* schema_versions = stream_entry.mutable_schema_versions();
+    auto mapping = FindOrNull(schema_version_mappings, stream_info.producer_table_id);
+    SCHECK(mapping, NotFound, Format("No schema mapping for $0", stream_info.producer_table_id));
+    if (IsColocationParentTableId(stream_info.consumer_table_id)) {
+      // Get all the child tables and add their mappings
+      auto& colocated_schema_versions_pb = *stream_entry.mutable_colocated_schema_versions();
+      for (const auto& colocated_entry : mapping->colocated_schema_versions()) {
+        auto colocation_id = colocated_entry.colocation_id();
+        colocated_schema_versions_pb[colocation_id].set_current_producer_schema_version(
+            colocated_entry.schema_version_mapping().producer_schema_version());
+        colocated_schema_versions_pb[colocation_id].set_current_consumer_schema_version(
+            colocated_entry.schema_version_mapping().consumer_schema_version());
+      }
+    } else {
+      schema_versions->set_current_producer_schema_version(
+        mapping->schema_version_mapping().producer_schema_version());
+      schema_versions->set_current_consumer_schema_version(
+        mapping->schema_version_mapping().consumer_schema_version());
+    }
+
     (*producer_entry.mutable_stream_map())[stream_info.stream_id] = std::move(stream_entry);
   }
 
@@ -4095,115 +4179,99 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   }
   SCHECK(table, NotFound, Format("Missing table id $0", consumer_table_id));
 
-  // Colocated, Tablegroup schema changes are not handled yet.
-  if (IsColocationParentTableId(consumer_table_id)) {
-    LOG(INFO) << "XCluster Ignoring schema changes on parent colocated/tablegroup id: "
-              << consumer_table_id;
-    resp->set_should_wait(false);
-    return Status::OK();
+  // Use the stream ID to find ClusterConfig entry
+  auto cluster_config = ClusterConfig();
+  auto l = cluster_config->LockForWrite();
+  auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
+  auto producer_entry = FindOrNull(*producer_map, u_id);
+  SCHECK(producer_entry, NotFound, Format("Missing universe $0", u_id));
+  auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id);
+  SCHECK(stream_entry, NotFound, Format("Missing universe $0, stream $1", u_id, stream_id));
+  auto schema_cached = stream_entry->mutable_producer_schema();
+  // Clear out any cached schema version
+  schema_cached->Clear();
+
+  cdc::SchemaVersionsPB* schema_versions_pb = nullptr;
+
+  // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
+  if (IsColocationParentTableId(consumer_table_id) && req->colocation_id() != kColocationIdNotSet) {
+    auto map = stream_entry->mutable_colocated_schema_versions();
+    schema_versions_pb = &((*map)[req->colocation_id()]);
+  } else {
+    schema_versions_pb = stream_entry->mutable_schema_versions();
   }
 
-  auto current_consumer_schema_version = VERIFY_RESULT(GetTableSchemaVersion(consumer_table_id));
+  bool schema_versions_updated = false;
+  SchemaVersion current_producer_schema_version =
+      schema_versions_pb->current_producer_schema_version();
+  SchemaVersion current_consumer_schema_version =
+      schema_versions_pb->current_consumer_schema_version();
+  SchemaVersion old_producer_schema_version =
+      schema_versions_pb->old_producer_schema_version();
+  SchemaVersion old_consumer_schema_version =
+      schema_versions_pb->old_consumer_schema_version();
 
-  {
-    // Use the stream ID to find ClusterConfig entry.
-    auto cluster_config = ClusterConfig();
-    auto l = cluster_config->LockForWrite();
-    auto producer_map = l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
-    auto producer_entry = FindOrNull(*producer_map, u_id);
-    SCHECK(producer_entry, NotFound, Format("Missing universe $0", u_id));
-    auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id);
-    SCHECK(stream_entry, NotFound, Format("Missing universe $0, stream $1", u_id, stream_id));
-
-    auto schema_cached = stream_entry->mutable_producer_schema();
-    auto version_validated = schema_cached->validated_schema_version();
-
-    auto& producer_meta_pb = req->producer_change_metadata_request();
-    auto version_received = producer_meta_pb.schema_version();
-
-    if (version_validated > 0 && version_received <= version_validated) {
-      LOG(INFO) << "Received known schema (v" << version_received << "). Continuing Replication.";
-      resp->set_should_wait(false);
-      // The first cdc poller to process a compatible schema update will cause the
-      // replication to resume, but all subsequent pollers should also be sent the
-      // the last compatible consumer schema version
-      resp->set_last_compatible_consumer_schema_version(
-          schema_cached->last_compatible_consumer_schema_version());
-      return Status::OK();
-    }
-
-    // If we have a full schema, then we can do a schema comparison.
-    if (producer_meta_pb.has_schema()) {
-      // Grab the local Consumer schema and compare it to the Producer's schema.
-      auto& producer_schema_pb = producer_meta_pb.schema();
-      Schema consumer_schema, producer_schema;
-      RETURN_NOT_OK(SchemaFromPB(producer_schema_pb, &producer_schema));
-      RETURN_NOT_OK(table->GetSchema(&consumer_schema));
-
-      if (consumer_schema.EquivalentForDataCopy(producer_schema)) {
-        resp->set_should_wait(false);
-        // NOTE: If the consumer schema is first updated, followed by the Producer
-        // schema, then the replication never really halts, so we need to let the
-        // pollers know about the updated consumer schema version immediately so that
-        // subsequent records can use the update consumer schema version for rewriting packed rows.
-        resp->set_last_compatible_consumer_schema_version(current_consumer_schema_version);
-
-        LOG(INFO) << "Received Compatible Producer schema version: " << version_received;
-        // Update the schema version if we're functionally equivalent.
-        if (version_received > version_validated) {
-          DCHECK(!schema_cached->has_pending_schema());
-          schema_cached->set_validated_schema_version(version_received);
-          schema_cached->set_last_compatible_consumer_schema_version(
-              current_consumer_schema_version);
-        } else {
-          // Nothing to modify.  Don't write to sys catalog.
-          // When would this even happen given that we already check if we have already
-          // received this version
-          return Status::OK();
-        }
-      } else {
-        resp->set_should_wait(GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter));
-        std::string error_msg = Format(
-            "XCluster Schema mismatch $0 \n Consumer={$1} \n Producer={$2}", consumer_table_id,
-            consumer_schema.ToString(), producer_schema.ToString());
-        LOG(WARNING) << error_msg;
-
-        WARN_NOT_OK(
-            StoreReplicationErrors(
-                u_id, consumer_table_id, stream_id,
-                {std::make_pair(REPLICATION_SCHEMA_MISMATCH, std::move(error_msg))}),
-            "Failed to store schema mismatch replication error");
-
-        // Incompatible schema: store, wait for all tablet reports, then make the DDL change.
-        auto producer_schema = stream_entry->mutable_producer_schema();
-        if (!producer_schema->has_pending_schema()) {
-          // Copy the schema.
-          producer_schema->mutable_pending_schema()->CopyFrom(producer_schema_pb);
-          producer_schema->set_pending_schema_version(version_received);
-        } else {
-          // Why would we be getting different schema versions across tablets? Partial apply?
-          DCHECK_EQ(version_received, producer_schema->pending_schema_version());
-          // If we reach here, we have already processed and persisted the pending schema
-          // as a result of an update from a different tablet, so it should be sufficient to
-          // send the response back of whether or not to halt replication.
-          return Status::OK();
-        }
-      }
-
-      // Bump the ClusterConfig version so we'll broadcast new schema version & resume operation.
-      l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
-      RETURN_NOT_OK(CheckStatus(
-          sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
-          "Updating cluster config in sys-catalog"));
-      l.Commit();
+  // Incoming producer version is greater than anything we've seen before, update our cache.
+  if (req->producer_schema_version() > current_producer_schema_version) {
+    old_producer_schema_version = current_producer_schema_version;
+    old_consumer_schema_version = current_consumer_schema_version;
+    current_producer_schema_version = req->producer_schema_version();
+    current_consumer_schema_version = req->consumer_schema_version();
+    schema_versions_updated = true;
+  } else if (req->producer_schema_version() < current_producer_schema_version) {
+    // We are seeing an older schema version that we need to keep track of to handle old rows.
+    if (req->producer_schema_version() > old_producer_schema_version) {
+      old_producer_schema_version = req->producer_schema_version();
+      old_consumer_schema_version = req->consumer_schema_version();
+      schema_versions_updated = true;
     } else {
-      resp->set_should_wait(false);
-      // TODO (#14234): Support colocated tables / tablegroups.
-      // Need producer_meta_pb.has_add_table(), add_multiple_tables(),
-      //                       remove_table_id(), alter_table_id().
+      // If we have already seen this producer schema version in the past, we can ignore it OR
+      // We recieved an update from a different tablet, so consumer schema version should match
+      // or we received a new consumer schema version than what was cached locally.
+      DCHECK(req->producer_schema_version() < old_producer_schema_version ||
+             req->consumer_schema_version() >= old_consumer_schema_version);
     }
+  } else {
+    // If we have already seen this producer schema version, then verify that the consumer schema
+    // version matches what we saw from other tablets or we received a new one.
+    DCHECK(req->consumer_schema_version() >= current_consumer_schema_version);
   }
 
+  schema_versions_pb->set_current_producer_schema_version(current_producer_schema_version);
+  schema_versions_pb->set_current_consumer_schema_version(current_consumer_schema_version);
+  schema_versions_pb->set_old_producer_schema_version(old_producer_schema_version);
+  schema_versions_pb->set_old_consumer_schema_version(old_consumer_schema_version);
+
+  if (schema_versions_updated) {
+    // Bump the ClusterConfig version so we'll broadcast new schema versions.
+    l.mutable_data()->pb.set_version(l.mutable_data()->pb.version() + 1);
+    RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
+        "Updating cluster config in sys-catalog"));
+    l.Commit();
+  }
+
+  // Set the values for the response.
+  auto resp_schema_versions = resp->mutable_schema_versions();
+  resp_schema_versions->set_current_producer_schema_version(current_producer_schema_version);
+  resp_schema_versions->set_current_consumer_schema_version(current_consumer_schema_version);
+  resp_schema_versions->set_old_producer_schema_version(old_producer_schema_version);
+  resp_schema_versions->set_old_consumer_schema_version(old_consumer_schema_version);
+
+  LOG(INFO) << Format(
+      "Updated the schema versions for table $0 with stream id $1, colocation id $2."
+      "Current producer schema version:$3, current consumer schema version:$4 "
+      "old producer schema version:$5, old consumer schema version:$6, universe:$7",
+      req->producer_id(), req->stream_id(), req->colocation_id(),
+      current_producer_schema_version,
+      current_consumer_schema_version,
+      old_producer_schema_version,
+      old_consumer_schema_version,
+      u_id);
+
+  // Clear replication errors related to schema mismatch.
+  WARN_NOT_OK(ClearReplicationErrors(
+      u_id, consumer_table_id, stream_id, {REPLICATION_SCHEMA_MISMATCH}),
+      "Failed to store schema mismatch replication error");
   return Status::OK();
 }
 

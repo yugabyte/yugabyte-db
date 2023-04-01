@@ -28,6 +28,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="atlas-ycql/">
+      <img src="/images/develop/ecosystem-integrations/atlas-icon.png">
+      Apache Atlas
+    </a>
+  </li>
+
+  <li>
     <a href="apache-kafka/">
       <img src="/images/section_icons/develop/ecosystem/apache-kafka-icon.png">
       Apache Kafka

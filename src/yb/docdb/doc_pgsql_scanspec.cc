@@ -30,25 +30,27 @@
 namespace yb {
 namespace docdb {
 
-DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
-                                   const rocksdb::QueryId query_id,
-                                   const DocKey& doc_key,
-                                   const boost::optional<int32_t> hash_code,
-                                   const boost::optional<int32_t> max_hash_code,
-                                   const DocKey& start_doc_key,
-                                   bool is_forward_scan,
-                                   const size_t prefix_length)
-    : PgsqlScanSpec(schema, is_forward_scan, nullptr),
-      query_id_(query_id),
+DocPgsqlScanSpec::DocPgsqlScanSpec(
+    const Schema& schema,
+    const rocksdb::QueryId query_id,
+    const DocKey& doc_key,
+    const boost::optional<int32_t>
+        hash_code,
+    const boost::optional<int32_t>
+        max_hash_code,
+    const DocKey& start_doc_key,
+    bool is_forward_scan,
+    const size_t prefix_length)
+    : PgsqlScanSpec(
+          schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length,
+          /* where_expr = */ nullptr),
       hashed_components_(nullptr),
       range_components_(nullptr),
       options_groups_(schema.num_dockey_components()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
-      lower_doc_key_(doc_key.Encode()),
-      prefix_length_(prefix_length) {
-
+      lower_doc_key_(doc_key.Encode()) {
   // Compute lower and upper doc_key.
   // We add +inf as an extra component to make sure this is greater than all keys in range.
   // For lower bound, this is true already, because dockey + suffix is > dockey
@@ -78,20 +80,25 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(const Schema& schema,
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
     const rocksdb::QueryId query_id,
-    std::reference_wrapper<const std::vector<KeyEntryValue>> hashed_components,
-    std::reference_wrapper<const std::vector<KeyEntryValue>> range_components,
+    std::reference_wrapper<const std::vector<KeyEntryValue>>
+        hashed_components,
+    std::reference_wrapper<const std::vector<KeyEntryValue>>
+        range_components,
     const PgsqlConditionPB* condition,
-    const boost::optional<int32_t> hash_code,
-    const boost::optional<int32_t> max_hash_code,
-    const PgsqlExpressionPB *where_expr,
+    const boost::optional<int32_t>
+        hash_code,
+    const boost::optional<int32_t>
+        max_hash_code,
+    const PgsqlExpressionPB* where_expr,
     const DocKey& start_doc_key,
     bool is_forward_scan,
     const DocKey& lower_doc_key,
     const DocKey& upper_doc_key,
     const size_t prefix_length)
-    : PgsqlScanSpec(schema, is_forward_scan,  where_expr),
-      range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
-      query_id_(query_id),
+    : PgsqlScanSpec(
+          schema, is_forward_scan, query_id,
+          condition ? std::make_unique<QLScanRange>(schema, *condition) : nullptr, prefix_length,
+          where_expr),
       hashed_components_(&hashed_components.get()),
       range_components_(&range_components.get()),
       options_groups_(schema.num_dockey_components()),
@@ -99,16 +106,10 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       max_hash_code_(max_hash_code),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(lower_doc_key.Encode()),
-      upper_doc_key_(upper_doc_key.Encode()),
-      prefix_length_(prefix_length) {
-
+      upper_doc_key_(upper_doc_key.Encode()) {
   if (where_expr_) {
     // Should never get here until WHERE clause is supported.
     LOG(FATAL) << "DEVELOPERS: Add support for condition (where clause)";
-  }
-
-  if (range_bounds_) {
-    range_bounds_indexes_ = range_bounds_->GetColIds();
   }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
@@ -138,8 +139,9 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
 
   // We have hash or range columns with IN condition, try to construct the exact list of options to
   // scan for.
-  if (range_bounds_ &&
-      (range_bounds_->has_in_range_options() || range_bounds_->has_in_hash_options())) {
+  const auto rangebounds = range_bounds();
+  if (rangebounds &&
+      (rangebounds->has_in_range_options() || rangebounds->has_in_hash_options())) {
     DCHECK(condition);
     if (options_ == nullptr)
       options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
@@ -405,7 +407,7 @@ std::vector<KeyEntryValue> DocPgsqlScanSpec::range_components(const bool lower_b
                                                               bool use_strictness) const {
   return GetRangeKeyScanSpec(schema(),
                              range_components_,
-                             range_bounds_.get(),
+                             range_bounds(),
                              inclusivities,
                              lower_bound,
                              false,
@@ -459,14 +461,6 @@ std::shared_ptr<rocksdb::ReadFileFilter> DocPgsqlScanSpec::CreateFileFilter() co
                                                     std::move(upper_bound),
                                                     std::move(upper_bound_incl));
   }
-}
-
-Result<KeyBytes> DocPgsqlScanSpec::LowerBound() const {
-  return Bound(true /* lower_bound */);
-}
-
-Result<KeyBytes> DocPgsqlScanSpec::UpperBound() const {
-  return Bound(false /* upper_bound */);
 }
 
 const DocKey& DocPgsqlScanSpec::DefaultStartDocKey() {

@@ -15,10 +15,12 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
 import com.yugabyte.yw.models.KmsConfig;
@@ -70,7 +72,7 @@ public class EncryptionAtRestUtil {
 
   public static ObjectNode getAuthConfig(UUID configUUID) {
     KmsConfig config = KmsConfig.getOrBadRequest(configUUID);
-    return config.authConfig;
+    return config.getAuthConfig();
   }
 
   public static <N extends JsonNode> ObjectNode maskConfigData(
@@ -127,8 +129,7 @@ public class EncryptionAtRestUtil {
         String.format(
             "Retrieving universe key cache entry for universe %s and keyRef %s",
             universeUUID.toString(), Base64.getEncoder().encodeToString(keyRef)));
-    return Play.current()
-        .injector()
+    return StaticInjectorHolder.injector()
         .instanceOf(EncryptionAtRestUniverseKeyCache.class)
         .getCacheEntry(universeUUID, keyRef);
   }
@@ -138,8 +139,7 @@ public class EncryptionAtRestUtil {
         String.format(
             "Setting universe key cache entry for universe %s and keyRef %s",
             universeUUID.toString(), Base64.getEncoder().encodeToString(keyRef)));
-    Play.current()
-        .injector()
+    StaticInjectorHolder.injector()
         .instanceOf(EncryptionAtRestUniverseKeyCache.class)
         .setCacheEntry(universeUUID, keyRef, keyVal);
   }
@@ -148,8 +148,7 @@ public class EncryptionAtRestUtil {
     LOG.debug(
         String.format(
             "Removing universe key cache entry for universe %s", universeUUID.toString()));
-    Play.current()
-        .injector()
+    StaticInjectorHolder.injector()
         .instanceOf(EncryptionAtRestUniverseKeyCache.class)
         .removeCacheEntry(universeUUID);
   }
@@ -267,7 +266,7 @@ public class EncryptionAtRestUtil {
 
   public static String getPlainTextUniverseKey(KmsHistory kmsHistory) {
     return getPlainTextUniverseKey(
-        kmsHistory.uuid.targetUuid, kmsHistory.configUuid, kmsHistory.uuid.keyRef);
+        kmsHistory.getUuid().targetUuid, kmsHistory.getConfigUuid(), kmsHistory.getUuid().keyRef);
   }
 
   public static String getPlainTextUniverseKey(UUID universeUUID, UUID configUUID, String keyRef) {
@@ -275,7 +274,7 @@ public class EncryptionAtRestUtil {
     byte[] encryptedUniverseKey = Base64.getDecoder().decode(keyRef);
     byte[] plainTextUniverseKey =
         kmsConfig
-            .keyProvider
+            .getKeyProvider()
             .getServiceInstance()
             .retrieveKey(universeUUID, configUUID, encryptedUniverseKey);
     return Base64.getEncoder().encodeToString(plainTextUniverseKey);
@@ -310,7 +309,7 @@ public class EncryptionAtRestUtil {
   }
 
   public static File getUniverseBackupKeysFile(String storageLocation) {
-    play.Configuration appConfig = Play.current().injector().instanceOf(play.Configuration.class);
+    Config appConfig = StaticInjectorHolder.injector().instanceOf(Config.class);
     File backupKeysDir = new File(appConfig.getString("yb.storage.path"), "backupKeys");
 
     String[] dirParts = storageLocation.split("/");

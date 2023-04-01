@@ -38,7 +38,7 @@ public class NodeCertReloadTask extends NodeTaskBase {
     }
 
     // fetch cert file from DB, it might have been changed during rolling restart
-    String certFile = Universe.getOrBadRequest(params.universeUUID).getCertificateNodetoNode();
+    String certFile = Universe.getOrBadRequest(params.getUniverseUUID()).getCertificateNodetoNode();
 
     YBClient client = null;
     try {

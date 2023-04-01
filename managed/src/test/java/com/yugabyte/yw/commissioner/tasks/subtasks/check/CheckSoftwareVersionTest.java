@@ -3,16 +3,20 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -20,15 +24,21 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import play.libs.Json;
+import org.mockito.junit.MockitoJUnit;
+import org.mockito.junit.MockitoRule;
+import org.yb.client.YBClient;
 
 @RunWith(JUnitParamsRunner.class)
 public class CheckSoftwareVersionTest extends CommissionerBaseTest {
 
+  @Rule public MockitoRule mockitoRule = MockitoJUnit.rule();
+
   private Universe defaultUniverse;
   private NodeDetails node;
+  private YBClient mockClient;
 
   @Override
   @Before
@@ -44,6 +54,12 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     details.nodeDetailsSet.add(node);
     defaultUniverse.setUniverseDetails(details);
     defaultUniverse.save();
+    mockClient = mock(YBClient.class);
+    try {
+      lenient().when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+    } catch (Exception ignored) {
+      fail();
+    }
   }
 
   @Test
@@ -56,16 +72,14 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
   public void testDifferentVersionFail(String version1, String nodeVersion, String nodeBuild) {
     updateUniverseVersion(defaultUniverse, version1);
     try {
-      ObjectNode objectNode = Json.newObject();
-      objectNode.put("version_number", nodeVersion);
-      objectNode.put("build_number", nodeBuild);
-      when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
+      when(mockClient.getStatus(any(), anyInt()))
+          .thenReturn(TestUtils.prepareGetStatusResponse(nodeVersion, nodeBuild));
     } catch (Exception ignored) {
       fail();
     }
     CheckSoftwareVersion task = AbstractTaskBase.createTask(CheckSoftwareVersion.class);
     CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeName = node.nodeName;
     params.requiredVersion = version1;
     task.initialize(params);
@@ -92,16 +106,14 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
       String version, String nodeVersion, String nodeBuild) {
     updateUniverseVersion(defaultUniverse, version);
     try {
-      ObjectNode objectNode = Json.newObject();
-      objectNode.put("version_number", nodeVersion);
-      objectNode.put("build_number", nodeBuild);
-      when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
+      when(mockClient.getStatus(any(), anyInt()))
+          .thenReturn(TestUtils.prepareGetStatusResponse(nodeVersion, nodeBuild));
     } catch (Exception ignored) {
       fail();
     }
     CheckSoftwareVersion task = AbstractTaskBase.createTask(CheckSoftwareVersion.class);
     CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeName = node.nodeName;
     params.requiredVersion = version;
     task.initialize(params);
@@ -111,27 +123,17 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
   @Test
   public void testMissingVersionDetails() {
     try {
-      ObjectNode objectNode = Json.newObject();
-      when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
       CheckSoftwareVersion task = AbstractTaskBase.createTask(CheckSoftwareVersion.class);
       CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
-      params.universeUUID = defaultUniverse.universeUUID;
+      params.setUniverseUUID(defaultUniverse.getUniverseUUID());
       params.nodeName = node.nodeName;
       params.requiredVersion = "2.17.0.0-b1";
       task.initialize(params);
+      when(mockClient.getStatus(anyString(), anyInt()))
+          .thenThrow(new RuntimeException("Unable to get the status"));
       PlatformServiceException pe = assertThrows(PlatformServiceException.class, () -> task.run());
-      objectNode.put("version_number", "2.17.0.0");
-      when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
       assertEquals(INTERNAL_SERVER_ERROR, pe.getHttpStatus());
-      assertEquals(
-          "Could not find version number on address " + node.cloudInfo.private_ip, pe.getMessage());
-      pe = assertThrows(PlatformServiceException.class, () -> task.run());
-      assertEquals(INTERNAL_SERVER_ERROR, pe.getHttpStatus());
-      assertEquals(
-          "Could not find build number on address " + node.cloudInfo.private_ip, pe.getMessage());
-      objectNode.put("build_number", "1");
-      when(mockApiHelper.getRequest(anyString())).thenReturn(objectNode);
-      task.run();
+      assertEquals("Unable to get the status", pe.getMessage());
     } catch (Exception ignored) {
       fail();
     }

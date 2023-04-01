@@ -128,7 +128,9 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   ConnectionPtr connection() const;
   ConnectionContext& connection_context() const;
 
-  Trace* trace();
+  inline Trace* trace() const EXCLUDES(mutex_) {
+    return trace_.load(std::memory_order_relaxed);
+  }
 
   // When this InboundCall was received (instantiated).
   // Should only be called once on a given instance.
@@ -214,7 +216,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
 
   // For requests that have requested traces to be collected, we will ensure
   // that trace_ is not null and can be used for collecting the requested data.
-  void EnsureTraceCreated();
+  void EnsureTraceCreated() EXCLUDES(mutex_);
 
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
@@ -239,9 +241,6 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   CallData request_data_;
   std::atomic<size_t> request_data_memory_usage_{0};
 
-  // The trace buffer.
-  scoped_refptr<Trace> trace_;
-
   // Timing information related to this RPC call.
   InboundCallTiming timing_;
 
@@ -252,10 +251,14 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   scoped_refptr<Counter> rpc_method_response_bytes_;
   scoped_refptr<Histogram> rpc_method_handler_latency_;
 
-  bool cleared_ = false;
   mutable simple_spinlock mutex_;
+  bool cleared_ GUARDED_BY(mutex_) = false;
 
  private:
+  // The trace buffer.
+  scoped_refptr<Trace> trace_holder_ GUARDED_BY(mutex_);
+  std::atomic<Trace*> trace_ = nullptr;
+
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
   RpcMetrics* rpc_metrics_;

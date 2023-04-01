@@ -37,10 +37,10 @@ The following table includes a list of supported data type mappings for migratin
 | MEDIUMTEXT | TEXT |
 | TEXT | TEXT |
 | LONGTEXT | TEXT |
-| TINYBLOB | BYTEA |
-| BLOB | BYTEA |
-| MEDIUMBLOB | BYTEA |
-| LONGBLOB | BYTEA |
+| TINYBLOB | BYTEA | Data is ignored during export. |
+| BLOB | BYTEA | Data is ignored during export. |
+| MEDIUMBLOB | BYTEA | Data is ignored during export. |
+| LONGBLOB | BYTEA | Data is ignored during export. |
 | DATE | TIMESTAMP |
 | TIME | TIME WITHOUT TIMEZONE |
 | DATETIME | TIMESTAMP WITHOUT TIMEZONE |

@@ -15,6 +15,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -81,7 +82,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           if (taskParams().isSoftwareUpdateViaVm) {
             // Promote Auto flags on compatible versions.
             if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
-                && CommonUtils.isAutoFlagSupported(newVersion)) {
+                && CommonUtils.isAutoFlagSupported(newVersion)
+                && !XClusterConfig.isUniverseXClusterParticipant(taskParams().getUniverseUUID())) {
               createCheckSoftwareVersionTask(nodeSet, newVersion)
                   .setSubTaskGroupType(getTaskSubGroupType());
               createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
@@ -209,13 +211,13 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           UserIntent userIntent = cluster.userIntent;
           fillCreateParamsForNode(params, userIntent, node);
           params.numVolumes = numVolumes;
-          params.machineImage = machineImage;
+          params.setMachineImage(machineImage);
           params.bootDisksPerZone = this.replacementRootVolumes;
 
           log.info(
               "Creating {} root volumes using {} in AZ {}",
               params.numVolumes,
-              params.machineImage,
+              params.getMachineImage(),
               node.cloudInfo.az);
 
           CreateRootVolumes task = createTask(CreateRootVolumes.class);
@@ -232,7 +234,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
-    replaceParams.universeUUID = taskParams().universeUUID;
+    replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerZone = this.replacementRootVolumes;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);

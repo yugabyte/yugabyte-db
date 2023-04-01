@@ -504,11 +504,11 @@ bool		yb_enable_memory_tracking = true;
 int			log_min_error_statement = ERROR;
 int			log_min_messages = WARNING;
 int			client_min_messages = NOTICE;
-int         log_min_duration_sample = -1;
+int			log_min_duration_sample = -1;
 int			log_min_duration_statement = -1;
 int			log_temp_files = -1;
-double      log_statement_sample_rate = 1.0;
-double      log_xact_sample_rate = 0;
+double		log_statement_sample_rate = 1.0;
+double		log_xact_sample_rate = 0;
 int			trace_recovery_messages = LOG;
 
 int			temp_file_limit = -1;
@@ -2991,10 +2991,10 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"log_min_duration_sample", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Sets the minimum execution time above which "
-						  "a sample of statements will be logged."
-						  " Sampling is determined by log_statement_sample_rate."),
-				gettext_noop("Zero log a sample of all queries. -1 turns this feature off."),
-			 	GUC_UNIT_MS
+						 "a sample of statements will be logged."
+						 " Sampling is determined by log_statement_sample_rate."),
+			gettext_noop("Zero log a sample of all queries. -1 turns this feature off."),
+			GUC_UNIT_MS
 		},
 		&log_min_duration_sample,
 		-1, -1, INT_MAX,
@@ -3811,6 +3811,16 @@ static struct config_real ConfigureNamesReal[] =
 	},
 
 	{
+		{"log_statement_sample_rate", PGC_SUSET, LOGGING_WHEN,
+			gettext_noop("Fraction of statements exceeding log_min_duration_sample to be logged."),
+			gettext_noop("Use a value between 0.0 (never log) and 1.0 (always log).")
+		},
+		&log_statement_sample_rate,
+		1.0, 0.0, 1.0,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"log_transaction_sample_rate", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Set the fraction of transactions to log for new transactions."),
 			gettext_noop("Logs all statements from a fraction of transactions. "
@@ -3819,16 +3829,6 @@ static struct config_real ConfigureNamesReal[] =
 		},
 		&log_xact_sample_rate,
 		0.0, 0.0, 1.0,
-		NULL, NULL, NULL
-	},
-
-	{
-		{"log_statement_sample_rate", PGC_SUSET, LOGGING_WHEN,
-			gettext_noop("Fraction of statements exceeding log_min_duration_sample to be logged."),
-			gettext_noop("Use a value between 0.0 (never log) and 1.0 (always log).")
-		},
-		&log_statement_sample_rate,
-		1.0, 0.0, 1.0,
 		NULL, NULL, NULL
 	},
 

@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB Managed quick start
+title: Contribute - page with elements
 headerTitle: Page with elements
 linkTitle: Page with elements
 headcontent: Just about every page element on a single page

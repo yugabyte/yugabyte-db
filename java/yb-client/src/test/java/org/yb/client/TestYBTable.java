@@ -166,6 +166,14 @@ public class TestYBTable extends BaseYBClientTest {
   }
 
   @Test
+  public void testColocationInfo() {
+    String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
+    Schema ascOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.ASC);
+    YBTable table = BaseYBClientTest.createTable(tableName, ascOrderSchema, null);
+    assertFalse(table.isColocated());
+  }
+
+  @Test
   public void testSortOrderDesc() {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     Schema descOrderSchema = getSortOrderSchema(ColumnSchema.SortOrder.DESC);

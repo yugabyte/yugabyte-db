@@ -87,6 +87,7 @@
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service_context.h"
+#include "yb/tserver/stateful_services/pg_auto_analyze_service.h"
 #include "yb/tserver/stateful_services/test_echo_service.h"
 
 #include "yb/util/flags.h"
@@ -197,6 +198,12 @@ TAG_FLAG(xcluster_svc_queue_length, advanced);
 DECLARE_string(cert_node_filename);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 
+DEFINE_RUNTIME_bool(xcluster_external_transactions_ignore_safe_time, false,
+    "When enabled, xcluster external transactions will ignore the xCluster safe time. Enabling "
+    "this on can cause consistency issues.");
+TAG_FLAG(xcluster_external_transactions_ignore_safe_time, advanced);
+TAG_FLAG(xcluster_external_transactions_ignore_safe_time, unsafe);
+
 namespace yb {
 namespace tserver {
 
@@ -240,8 +247,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
-      master_config_index_(0),
-      pg_node_level_mutation_counter_(std::make_shared<PgMutationCounter>()) {
+      master_config_index_(0) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
   if (FLAGS_TEST_enable_db_catalog_version_mode) {
@@ -519,8 +525,8 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
       std::bind(&TabletServer::TransactionPool, this), metric_entity(),
-      &messenger()->scheduler(), &xcluster_safe_time_map_,
-      pg_node_level_mutation_counter_);
+      &messenger()->scheduler(), XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
+      &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
   RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
@@ -535,6 +541,14 @@ Status TabletServer::RegisterServices() {
     RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
         FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
+
+  auto pg_auto_analyze_service =
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity());
+  LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
+            << pg_auto_analyze_service.get();
+  RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
+  RETURN_NOT_OK(RpcAndWebServerBase::RegisterService(
+      FLAGS_TEST_echo_svc_queue_length, std::move(pg_auto_analyze_service)));
 
   return Status::OK();
 }
@@ -912,8 +926,7 @@ const XClusterSafeTimeMap& TabletServer::GetXClusterSafeTimeMap() const {
   return xcluster_safe_time_map_;
 }
 
-const std::shared_ptr<PgMutationCounter>
-    TabletServer::GetPgNodeLevelMutationCounter() {
+PgMutationCounter& TabletServer::GetPgNodeLevelMutationCounter() {
   return pg_node_level_mutation_counter_;
 }
 
@@ -923,7 +936,14 @@ void TabletServer::UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap
 
 Result<bool> TabletServer::XClusterSafeTimeCaughtUpToCommitHt(
     const NamespaceId& namespace_id, HybridTime commit_ht) const {
-  return VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id)) > commit_ht;
+  if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_xcluster_external_transactions_ignore_safe_time))) {
+    return true;
+  }
+
+  auto safe_time = VERIFY_RESULT(xcluster_safe_time_map_.GetSafeTime(namespace_id));
+  SCHECK(safe_time, TryAgain, "XCluster safe time not found for namespace $0", namespace_id);
+
+  return *safe_time > commit_ht;
 }
 
 Result<cdc::XClusterRole> TabletServer::TEST_GetXClusterRole() const {
@@ -1114,5 +1134,10 @@ Status TabletServer::SetCDCServiceEnabled() {
   }
   return Status::OK();
 }
+
+void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
+  xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+}
+
 }  // namespace tserver
 }  // namespace yb

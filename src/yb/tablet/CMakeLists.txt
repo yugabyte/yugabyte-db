@@ -98,7 +98,7 @@ ADD_YB_LIBRARY(tablet_proto
 ADD_YB_LIBRARY(
   tablet_metadata
   SRCS kv_formatter.cc tablet_metadata.cc
-  DEPS tablet_proto)
+  DEPS tablet_proto yb_docdb)
 
 add_dependencies(tablet_metadata gen_src_yb_cdc_cdc_consumer_proto)
 add_dependencies(tablet_metadata gen_src_yb_cdc_cdc_service_proto)

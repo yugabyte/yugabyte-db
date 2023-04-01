@@ -247,9 +247,9 @@ class TransactionState {
 
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 involved_tablets: $3 replicating: $4 "
-                      " request_queue: $5 first_entry_raft_index: $6 }",
-                  id_, last_touch_, TransactionStatus_Name(status_),
-                  involved_tablets_, replicating_, request_queue_, first_entry_raft_index_);
+                      " request_queue: $5 first_entry_raft_index: $6, is_external: $7 }",
+                  id_, last_touch_, TransactionStatus_Name(status_), involved_tablets_,
+                  replicating_, request_queue_, first_entry_raft_index_, is_external_);
   }
 
   // Whether this transaction expired at specified time.
@@ -1033,11 +1033,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
     std::lock_guard<std::mutex> lock(managed_mutex_);
-    for (auto it = waiters->begin(); it != waiters->end();) {
-      if (managed_transactions_.contains(it->first)) {
-        ++it;
-      } else {
-        it = waiters->erase(it);
+    auto& sorted_txn_map = waiters->get<TransactionIdTag>();
+    for (auto it = sorted_txn_map.begin(); it != sorted_txn_map.end();) {
+      auto next_it = sorted_txn_map.upper_bound(it->txn_id());
+      if (managed_transactions_.contains(it->txn_id())) {
+        it = next_it;
+        continue;
+      }
+      for (; it != next_it;) {
+        it = sorted_txn_map.erase(it);
       }
     }
   }

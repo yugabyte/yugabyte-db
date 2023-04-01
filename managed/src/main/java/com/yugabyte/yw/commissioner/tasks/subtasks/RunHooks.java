@@ -47,16 +47,16 @@ public class RunHooks extends NodeTaskBase {
 
   @Override
   public void run() {
-    log.info("Running hook {} on node {}", taskParams().hook.name, taskParams().nodeName);
+    log.info("Running hook {} on node {}", taskParams().hook.getName(), taskParams().nodeName);
 
     // Create the hook script to run
     Hook hook = taskParams().hook;
     File hookFile = new File(taskParams().hookPath);
     try {
-      FileUtils.write(hookFile, hook.hookText, StandardCharsets.UTF_8);
+      FileUtils.write(hookFile, hook.getHookText(), StandardCharsets.UTF_8);
     } catch (IOException e) {
       throw new RuntimeException(
-          "Error creating hook file " + taskParams().hookPath + " for hook " + hook.uuid);
+          "Error creating hook file " + taskParams().hookPath + " for hook " + hook.getUuid());
     }
 
     ShellResponse response =
@@ -72,7 +72,7 @@ public class RunHooks extends NodeTaskBase {
         "/run/custom_hook/" + taskParams().trigger.name(),
         "DUMMY",
         Audit.TargetType.Hook,
-        hook.uuid.toString(),
+        hook.getUuid().toString(),
         Audit.ActionType.RunHook,
         body,
         this.userTaskUUID,

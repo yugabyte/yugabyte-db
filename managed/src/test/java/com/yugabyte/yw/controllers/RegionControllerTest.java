@@ -23,7 +23,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
-import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -63,33 +62,35 @@ public class RegionControllerTest extends FakeDBApplication {
 
   private Result listRegions(UUID providerUUID) {
     String uri =
-        String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
-    return FakeApiHelper.doRequest("GET", uri);
+        String.format("/api/customers/%s/providers/%s/regions", customer.getUuid(), providerUUID);
+    return doRequest("GET", uri);
   }
 
   private Result listAllRegions() {
-    String uri = String.format("/api/customers/%s/regions", customer.uuid);
-    return FakeApiHelper.doRequest("GET", uri);
+    String uri = String.format("/api/customers/%s/regions", customer.getUuid());
+    return doRequest("GET", uri);
   }
 
   private Result createRegion(UUID providerUUID, JsonNode body) {
     String uri =
-        String.format("/api/customers/%s/providers/%s/regions", customer.uuid, providerUUID);
-    return FakeApiHelper.doRequestWithBody("POST", uri, body);
+        String.format("/api/customers/%s/providers/%s/regions", customer.getUuid(), providerUUID);
+    return doRequestWithBody("POST", uri, body);
   }
 
   private Result deleteRegion(UUID providerUUID, UUID regionUUID) {
     String uri =
         String.format(
-            "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
-    return FakeApiHelper.doRequest("DELETE", uri);
+            "/api/customers/%s/providers/%s/regions/%s",
+            customer.getUuid(), providerUUID, regionUUID);
+    return doRequest("DELETE", uri);
   }
 
   private Result editRegion(UUID providerUUID, UUID regionUUID, JsonNode body) {
     String uri =
         String.format(
-            "/api/customers/%s/providers/%s/regions/%s", customer.uuid, providerUUID, regionUUID);
-    return FakeApiHelper.doRequestWithBody("PUT", uri, body);
+            "/api/customers/%s/providers/%s/regions/%s",
+            customer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("PUT", uri, body);
   }
 
   @Test
@@ -98,16 +99,16 @@ public class RegionControllerTest extends FakeDBApplication {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(0, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testListEmptyRegionsWithValidProviderUUID() {
-    Result result = listRegions(provider.uuid);
+    Result result = listRegions(provider.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(0, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -124,12 +125,12 @@ public class RegionControllerTest extends FakeDBApplication {
     JsonNode zonesJson = regionJson.get("zones");
     assertNotNull(providerJson);
     assertEquals(1, zonesJson.size());
-    assertValue(regionJson, "uuid", r.uuid.toString());
-    assertValue(providerJson, "uuid", provider.uuid.toString());
-    assertValue(zonesJson.get(0), "uuid", az.uuid.toString());
-    assertValue(zonesJson.get(0), "code", az.code);
-    assertValue(zonesJson.get(0), "subnet", az.subnet);
-    assertAuditEntry(0, customer.uuid);
+    assertValue(regionJson, "uuid", r.getUuid().toString());
+    assertValue(providerJson, "uuid", provider.getUuid().toString());
+    assertValue(zonesJson.get(0), "uuid", az.getUuid().toString());
+    assertValue(zonesJson.get(0), "code", az.getCode());
+    assertValue(zonesJson.get(0), "subnet", az.getSubnet());
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -139,36 +140,36 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(OK, result.status());
     assertEquals("[]", json.toString());
     assertEquals(0, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testListRegionWithoutZonesAndValidProviderUUID() {
     Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
-    Result result = listRegions(provider.uuid);
+    Result result = listRegions(provider.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
 
     assertEquals(OK, result.status());
     assertEquals("[]", json.toString());
     assertEquals(0, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testListRegionsWithValidProviderUUID() {
     Region r = Region.create(provider, "foo-region", "Foo PlacementRegion", "default-image");
     AvailabilityZone.createOrThrow(r, "PlacementAZ-1.1", "PlacementAZ 1.1", "Subnet - 1.1");
-    Result result = listRegions(provider.uuid);
+    Result result = listRegions(provider.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(1, json.size());
-    assertEquals(json.get(0).path("uuid").asText(), r.uuid.toString());
-    assertEquals(json.get(0).path("code").asText(), r.code);
-    assertEquals(json.get(0).path("name").asText(), r.name);
+    assertEquals(json.get(0).path("uuid").asText(), r.getUuid().toString());
+    assertEquals(json.get(0).path("code").asText(), r.getCode());
+    assertEquals(json.get(0).path("name").asText(), r.getName());
     assertThat(
         json.get(0).path("zones"),
         AllOf.allOf(IsNull.notNullValue(), IsInstanceOf.instanceOf(JsonNode.class)));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -180,11 +181,11 @@ public class RegionControllerTest extends FakeDBApplication {
     AvailabilityZone.createOrThrow(r1, "PlacementAZ-1.3", "PlacementAZ 1.3", "Subnet - 1.3");
     AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.1", "PlacementAZ 2.1", "Subnet - 2.1");
     AvailabilityZone.createOrThrow(r2, "PlacementAZ-2.2", "PlacementAZ 2.2", "Subnet - 2.2");
-    Result result = listRegions(provider.uuid);
+    Result result = listRegions(provider.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertEquals(2, json.size());
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -195,17 +196,18 @@ public class RegionControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> createRegion(randomUUID, regionJson));
     assertEquals(BAD_REQUEST, result.status());
     assertErrorResponse(result, "Invalid Provider UUID: " + randomUUID);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
   public void testCreateRegionsWithoutRequiredParams() {
-    Result result = assertPlatformException(() -> createRegion(provider.uuid, Json.newObject()));
+    Result result =
+        assertPlatformException(() -> createRegion(provider.getUuid(), Json.newObject()));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result),
         CoreMatchers.containsString("\"code\":[\"This field is required\"]"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -213,13 +215,13 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "foo-region");
     regionJson.put("name", "Foo PlacementRegion");
-    Result result = createRegion(provider.uuid, regionJson);
+    Result result = createRegion(provider.getUuid(), regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertThat(json.get("uuid").toString(), Is.is(IsNull.notNullValue()));
     assertValue(json, "code", "foo-region");
     assertValue(json, "name", "Foo PlacementRegion");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -228,13 +230,13 @@ public class RegionControllerTest extends FakeDBApplication {
     regionJson.put("code", "us-west1");
     regionJson.put("name", "Gcp US West 1");
     Provider gcpProvider = ModelFactory.gcpProvider(customer);
-    Result result = createRegion(gcpProvider.uuid, regionJson);
+    Result result = createRegion(gcpProvider.getUuid(), regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
     assertThat(json.get("uuid").toString(), Is.is(IsNull.notNullValue()));
     assertValue(json, "code", "us-west1");
     assertValue(json, "name", "Gcp US West 1");
-    assertAuditEntry(1, customer.uuid);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -251,7 +253,7 @@ public class RegionControllerTest extends FakeDBApplication {
     JsonNode vpcInfo = Json.parse("{\"foo-region\": {\"zones\": {\"zone-1\": \"subnet-1\"}}}");
     // TODO:
     when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
-    Result result = createRegion(provider.uuid, regionJson);
+    Result result = createRegion(provider.getUuid(), regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode details = json.get("details");
     JsonNode cloudInfo = details.get("cloudInfo");
@@ -263,8 +265,8 @@ public class RegionControllerTest extends FakeDBApplication {
     assertValue(awsRegionCloudInfo, "ybImage", "yb image");
     assertNotNull(json.get("zones"));
     Region r = Region.getByCode(provider, "foo-region");
-    assertEquals(1, r.zones.size());
-    assertAuditEntry(1, customer.uuid);
+    assertEquals(1, r.getZones().size());
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test
@@ -281,11 +283,11 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode vpcInfo = Json.newObject();
     vpcInfo.put("error", "Something went wrong!!.");
     when(mockNetworkManager.bootstrap(any(), any(), any())).thenReturn(vpcInfo);
-    Result result = assertPlatformException(() -> createRegion(provider.uuid, regionJson));
+    Result result = assertPlatformException(() -> createRegion(provider.getUuid(), regionJson));
     assertInternalServerError(result, "Region Bootstrap failed.");
     Region r = Region.getByCode(provider, "foo-region");
     assertNull(r);
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -293,7 +295,7 @@ public class RegionControllerTest extends FakeDBApplication {
     ObjectNode regionJson = Json.newObject();
     regionJson.put("code", "datacenter-azure-washington");
     regionJson.put("name", "Gcp US West 1");
-    Result result = assertPlatformException(() -> createRegion(provider.uuid, regionJson));
+    Result result = assertPlatformException(() -> createRegion(provider.getUuid(), regionJson));
     assertEquals(BAD_REQUEST, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "success", "false");
@@ -304,11 +306,11 @@ public class RegionControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteRegionWithInvalidParams() {
     UUID randomUUID = UUID.randomUUID();
-    Result result = assertPlatformException(() -> deleteRegion(provider.uuid, randomUUID));
+    Result result = assertPlatformException(() -> deleteRegion(provider.getUuid(), randomUUID));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(
         contentAsString(result), CoreMatchers.containsString("Invalid Provider/Region UUID"));
-    assertAuditEntry(0, customer.uuid);
+    assertAuditEntry(0, customer.getUuid());
   }
 
   @Test
@@ -320,14 +322,14 @@ public class RegionControllerTest extends FakeDBApplication {
 
     Region actualRegion = getFirstRegion();
     assertTrue(actualRegion.isActive());
-    for (AvailabilityZone az : actualRegion.zones) {
-      assertTrue(az.active);
+    for (AvailabilityZone az : actualRegion.getZones()) {
+      assertTrue(az.getActive());
     }
 
-    Result result = deleteRegion(provider.uuid, r.uuid);
+    Result result = deleteRegion(provider.getUuid(), r.getUuid());
     assertEquals(OK, result.status());
 
-    assertFalse(Region.get(r.uuid).isActive());
+    assertFalse(Region.get(r.getUuid()).isActive());
   }
 
   @Test
@@ -344,16 +346,16 @@ public class RegionControllerTest extends FakeDBApplication {
 
     int i = 0;
     for (NodeDetails nd : nodeDetailsSet) {
-      nd.azUuid = i++ % 2 == 0 ? az1.uuid : az2.uuid;
+      nd.azUuid = i++ % 2 == 0 ? az1.getUuid() : az2.getUuid();
     }
 
     universe.setUniverseDetails(udtp);
     universe.update();
 
-    Result result = assertPlatformException(() -> deleteRegion(provider.uuid, r.uuid));
+    Result result = assertPlatformException(() -> deleteRegion(provider.getUuid(), r.getUuid()));
     assertEquals(FORBIDDEN, result.status());
 
-    assertNotNull(Region.get(r.uuid));
+    assertNotNull(Region.get(r.getUuid()));
   }
 
   @Test
@@ -365,7 +367,7 @@ public class RegionControllerTest extends FakeDBApplication {
     regionJson.put("ybImage", updatedYbImage);
     regionJson.put("securityGroupId", updatedSG);
 
-    Result result = editRegion(provider.uuid, r.uuid, regionJson);
+    Result result = editRegion(provider.getUuid(), r.getUuid(), regionJson);
     JsonNode json = Json.parse(contentAsString(result));
     JsonNode details = json.get("details");
     JsonNode cloudInfo = details.get("cloudInfo");
@@ -380,7 +382,7 @@ public class RegionControllerTest extends FakeDBApplication {
     assertEquals(updatedYbImage, r.getYbImage());
 
     regionJson.put("securityGroupId", (String) null);
-    result = editRegion(provider.uuid, r.uuid, regionJson);
+    result = editRegion(provider.getUuid(), r.getUuid(), regionJson);
     json = Json.parse(contentAsString(result));
     details = json.get("details");
     cloudInfo = details.get("cloudInfo");

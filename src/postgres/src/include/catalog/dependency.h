@@ -130,8 +130,8 @@ typedef enum DependencyType
  * tablespace.)
  *
  * (f) a SHARED_DEPENDENCY_PROFILE entry means that the referenced object is
- * a role that is mentioned in a pg_yb_role_profile row.
- * The referenced object must be a pg_authid entry.
+ * a role that is mentioned in a pg_yb_role_profile row.  The referenced object
+ * must be a pg_authid entry.
  *
  * SHARED_DEPENDENCY_INVALID is a value used as a parameter in internal
  * routines, and is not valid in the catalog itself.
@@ -195,7 +195,7 @@ typedef enum ObjectClass
 	OCLASS_PUBLICATION_REL,		/* pg_publication_rel */
 	OCLASS_SUBSCRIPTION,		/* pg_subscription */
 	OCLASS_TRANSFORM,			/* pg_transform */
-	OCLASS_YBPROFILE,				/* pg_yb_profile */
+	OCLASS_YBPROFILE,			/* pg_yb_profile */
 	OCLASS_YBROLE_PROFILE,		/* pg_yb_role_profile */
 } ObjectClass;
 

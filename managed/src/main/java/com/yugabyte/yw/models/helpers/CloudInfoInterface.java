@@ -6,7 +6,6 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import java.util.Map;
 import java.util.Objects;
 
-import com.google.common.base.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -62,7 +61,7 @@ public interface CloudInfoInterface {
   }
 
   public static <T extends CloudInfoInterface> T get(Provider provider, Boolean maskSensitiveData) {
-    ProviderDetails providerDetails = provider.getProviderDetails();
+    ProviderDetails providerDetails = provider.getDetails();
     if (providerDetails == null) {
       providerDetails = new ProviderDetails();
     }
@@ -81,7 +80,7 @@ public interface CloudInfoInterface {
   }
 
   public static <T extends CloudInfoInterface> T get(Region region, Boolean maskSensitiveData) {
-    RegionDetails regionDetails = region.getRegionDetails();
+    RegionDetails regionDetails = region.getDetails();
     if (regionDetails == null) {
       regionDetails = new RegionDetails();
     }
@@ -248,43 +247,43 @@ public interface CloudInfoInterface {
   }
 
   public static ProviderDetails maskProviderDetails(Provider provider) {
-    if (Objects.isNull(provider.details)) {
+    if (Objects.isNull(provider.getDetails())) {
       return null;
     }
-    JsonNode detailsJson = Json.toJson(provider.details);
+    JsonNode detailsJson = Json.toJson(provider.getDetails());
     ProviderDetails details = Json.fromJson(detailsJson, ProviderDetails.class);
     get(details, true, provider.getCloudCode());
     return details;
   }
 
   public static RegionDetails maskRegionDetails(Region region) {
-    if (Objects.isNull(region.details)) {
+    if (Objects.isNull(region.getDetails())) {
       return null;
     }
-    JsonNode detailsJson = Json.toJson(region.details);
+    JsonNode detailsJson = Json.toJson(region.getDetails());
     if (detailsJson.size() == 0) {
       return null;
     }
     RegionDetails details = Json.fromJson(detailsJson, RegionDetails.class);
-    get(details, true, region.provider.getCloudCode());
+    get(details, true, region.getProvider().getCloudCode());
     return details;
   }
 
   public static AvailabilityZoneDetails maskAvailabilityZoneDetails(AvailabilityZone zone) {
-    if (Objects.isNull(zone.details)) {
+    if (Objects.isNull(zone.getDetails())) {
       return null;
     }
-    JsonNode detailsJson = Json.toJson(zone.details);
+    JsonNode detailsJson = Json.toJson(zone.getDetails());
     if (detailsJson.size() == 0) {
       return null;
     }
     AvailabilityZoneDetails details = Json.fromJson(detailsJson, AvailabilityZoneDetails.class);
-    get(details, true, zone.region.provider.getCloudCode());
+    get(details, true, zone.getRegion().getProvider().getCloudCode());
     return details;
   }
 
   public static void setCloudProviderInfoFromConfig(Provider provider, Map<String, String> config) {
-    ProviderDetails providerDetails = provider.getProviderDetails();
+    ProviderDetails providerDetails = provider.getDetails();
     ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new ProviderDetails.CloudInfo();
@@ -299,7 +298,7 @@ public interface CloudInfoInterface {
     if (cloudType.equals(CloudType.other)) {
       return;
     }
-    RegionDetails regionDetails = region.getRegionDetails();
+    RegionDetails regionDetails = region.getDetails();
     RegionDetails.RegionCloudInfo cloudInfo = regionDetails.getCloudInfo();
     if (cloudInfo == null) {
       cloudInfo = new RegionDetails.RegionCloudInfo();
@@ -486,6 +485,9 @@ public interface CloudInfoInterface {
         if (config.has("use_host_vpc")) {
           gcpCloudInfo.set("use_host_vpc", config.get("use_host_vpc"));
         }
+        if (shouldUseHostCredentials) {
+          gcpCloudInfo.set("useHostCredentials", config.get("use_host_credentials"));
+        }
         gcpCloudInfo.set("YB_FIREWALL_TAGS", config.get("YB_FIREWALL_TAGS"));
         cloudInfo.set("gcp", gcpCloudInfo);
         details.set("cloudInfo", cloudInfo);
@@ -567,24 +569,24 @@ public interface CloudInfoInterface {
 
   public static void mayBeMassageResponse(Provider p) {
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
-    ProviderDetails providerDetails = p.getProviderDetails();
+    ProviderDetails providerDetails = p.getDetails();
     ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
-    CloudType cloudType = CloudType.valueOf(p.code);
-    p.config = populateConfigMap(cloudInfo, cloudType, config);
+    CloudType cloudType = CloudType.valueOf(p.getCode());
+    p.setConfig(populateConfigMap(cloudInfo, cloudType, config));
 
-    if (p.regions == null) {
+    if (p.getRegions() == null) {
       return;
     }
 
-    for (Region region : p.regions) {
-      if (region.zones == null) {
+    for (Region region : p.getRegions()) {
+      if (region.getZones() == null) {
         return;
       }
-      for (AvailabilityZone az : region.zones) {
+      for (AvailabilityZone az : region.getZones()) {
         config = CloudInfoInterface.fetchEnvVars(az);
         AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();
         AvailabilityZoneDetails.AZCloudInfo azCloudInfo = azDetails.getCloudInfo();
-        az.config = populateConfigMap(azCloudInfo, cloudType, config);
+        az.setConfig(populateConfigMap(azCloudInfo, cloudType, config));
       }
     }
   }

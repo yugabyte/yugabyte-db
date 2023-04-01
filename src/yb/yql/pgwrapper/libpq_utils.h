@@ -235,6 +235,7 @@ class PGConnBuilder {
 };
 
 bool HasTransactionError(const Status& status);
+bool IsRetryable(const Status& status);
 
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
 

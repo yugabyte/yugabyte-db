@@ -53,13 +53,17 @@ AlmaLinux 8 is the recommended Linux development platform for YugabyteDB.
 
 ## Install necessary packages
 
-Update packages on your system, install development tools and additional packages:
+Update and install basic development packages as follows:
 
 ```sh
-sudo yum update -y
-sudo yum groupinstall -y 'Development Tools'
-sudo yum -y install epel-release libatomic rsync
+sudo dnf update -y
+sudo dnf groupinstall -y 'Development Tools'
+sudo dnf -y install epel-release libatomic rsync
 ```
+
+### /opt/yb-build
+
+{{% readfile "includes/opt-yb-build.md" %}}
 
 ### Python 3
 
@@ -68,7 +72,7 @@ sudo yum -y install epel-release libatomic rsync
 The following example installs Python 3.9.
 
 ```sh
-sudo yum install -y python39
+sudo dnf install -y python39
 ```
 
 In case there is more than one Python 3 version installed, ensure that `python3` refers to the right one.
@@ -84,16 +88,30 @@ python3 -V
 {{% readfile "includes/cmake.md" %}}
 
 ```sh
-sudo yum install -y cmake3
+sudo dnf install -y cmake3
 ```
 
-### /opt/yb-build
+### Java
 
-{{% readfile "includes/opt-yb-build.md" %}}
+{{% readfile "includes/java.md" %}}
+
+Install the following packages to satisfy the preceding requirements:
+
+```sh
+sudo dnf install -y java-1.8.0-openjdk maven
+```
+
+### yugabyted-ui
+
+{{% readfile "includes/yugabyted-ui.md" %}}
+
+```sh
+sudo dnf install -y npm golang
+```
 
 ### Ninja (optional)
 
-Use [Ninja][ninja] for faster builds.
+{{% readfile "includes/ninja.md" %}}
 
 The latest release can be downloaded:
 
@@ -104,44 +122,22 @@ curl -Ls "$latest_zip_url" | zcat | sudo tee /usr/local/bin/ninja >/dev/null
 sudo chmod +x /usr/local/bin/ninja
 ```
 
-[ninja]: https://ninja-build.org
-
 ### Ccache (optional)
 
-Use [Ccache][ccache] for faster builds.
+{{% readfile "includes/ccache.md" %}}
 
 ```sh
-sudo yum install -y ccache
+sudo dnf install -y ccache
 # Also add the following line to your .bashrc or equivalent.
 export YB_CCACHE_DIR="$HOME/.cache/yb_ccache"
 ```
-
-[ccache]: https://ccache.dev
 
 ### GCC (optional)
 
 To compile with GCC, install the following packages, and adjust the version numbers to match the GCC version you plan to use.
 
 ```sh
-sudo yum install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
-```
-
-### Java
-
-{{% readfile "includes/java.md" %}}
-
-Both requirements can be satisfied by the package manager.
-
-```sh
-sudo yum install -y java-1.8.0-openjdk maven
-```
-
-### yugabyted-ui
-
-{{% readfile "includes/yugabyted-ui.md" %}}
-
-```sh
-sudo yum install -y npm golang
+sudo dnf install -y gcc-toolset-11 gcc-toolset-11-libatomic-devel
 ```
 
 ## Build the code
@@ -150,14 +146,18 @@ sudo yum install -y npm golang
 
 ### Build release package (optional)
 
-[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+Perform the following steps to build a release package:
 
-Run the `yb_release` script to build a release package:
+1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Run the `yb_release` script using the following command:
 
-```output.sh
-$ ./yb_release
-......
-2023-02-14 04:14:16,092 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-b8e42eecde0e45a743d51e244dbd9662a6130cd6-release-clang15-centos-x86_64.tar.gz'
-```
+   ```sh
+   ./yb_release
+   ```
+
+   ```output.sh
+   ......
+   2023-02-14 04:14:16,092 [yb_release.py:299 INFO] Generated a package at '/home/user/code/yugabyte-db/build/yugabyte-2.17.2.0-b8e42eecde0e45a743d51e244dbd9662a6130cd6-release-clang15-centos-x86_64.tar.gz'
+   ```
 
 {{% readfile "includes/ulimit.md" %}}

@@ -133,6 +133,9 @@ template <class Block, class Callback>
 void EnumerateBlocks(
     const boost::container::small_vector_base<Block>& blocks, size_t begin, size_t left,
     const Callback& callback) {
+  if (!left) {
+    return;
+  }
   size_t idx = 0;
   while (begin > blocks[idx].size()) {
     begin -= blocks[idx].size();

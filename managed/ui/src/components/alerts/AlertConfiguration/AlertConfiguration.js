@@ -5,8 +5,7 @@
 // This file will hold all the alert configuration tabs along
 // with their respective components.
 
-import React, { Suspense, useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
+import React, { useEffect, useState } from 'react';
 import { Tab } from 'react-bootstrap';
 import { isDisabled } from '../../../utils/LayoutUtils';
 import { YBTabsPanel } from '../../panels';
@@ -18,7 +17,6 @@ import CreateAlert from './CreateAlert';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { AlertDestinationChannels } from './AlertDestinationChannels';
 import { MaintenanceWindow } from '../MaintenanceWindow';
-const Composer = React.lazy(() => import('../../../redesign/features/alerts/TemplateComposer/Composer'));
 
 export const AlertConfiguration = (props) => {
   const [listView, setListView] = useState(false);
@@ -26,7 +24,6 @@ export const AlertConfiguration = (props) => {
   const [alertUniverseList, setAlertUniverseList] = useState([]);
   const [enablePlatformAlert, setPlatformAlert] = useState(false);
   const [alertDestinationListView, setAlertDestinationListView] = useState(false);
-  const featureFlags = useSelector((state) => state.featureFlags);
 
   const {
     activeTab,
@@ -76,7 +73,7 @@ export const AlertConfiguration = (props) => {
   };
 
   return (
-    <div className="provider-config-container">
+    <div className="provider-alert-config-container">
       <YBTabsPanel
         activeTab={activeTab}
         className="config-tabs"
@@ -172,24 +169,6 @@ export const AlertConfiguration = (props) => {
         >
           <MaintenanceWindow />
         </Tab>
-        {
-          (featureFlags.test.enableCustomEmailTemplates || featureFlags.released.enableCustomEmailTemplates) && (
-            <Tab
-              eventKey="newNotificationChannel"
-              title={
-                <span>
-                  <i className="fa fa-cog tab-logo" aria-hidden="true"></i> New Notification channel
-                </span>
-              }
-              unmountOnExit
-            >
-              <Suspense fallback={<div>Loading...</div>}>
-                <Composer />
-              </Suspense>
-            </Tab>
-          )
-        }
-
       </YBTabsPanel>
     </div>
   );

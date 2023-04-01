@@ -35,7 +35,7 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
           }
         };
     awsProvider = ModelFactory.awsProvider(defaultCustomer);
-    awsProvider.config = awsConfig;
+    awsProvider.setConfigMap(awsConfig);
     awsProvider.save();
 
     Map<String, String> azuConfig =
@@ -48,7 +48,7 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
           }
         };
     azureProvider = ModelFactory.azuProvider(defaultCustomer);
-    azureProvider.config = azuConfig;
+    azureProvider.setConfigMap(azuConfig);
     azureProvider.save();
 
     Map<String, String> gcpConfig =
@@ -64,7 +64,7 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
           }
         };
     gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
-    gcpProvider.config = gcpConfig;
+    gcpProvider.setConfig(gcpConfig);
     gcpProvider.save();
   }
 
@@ -76,23 +76,23 @@ public class V231__ProviderDetailsPersistTest extends FakeDBApplication {
     azureProvider.refresh();
 
     // GCP Provider Check
-    assertNotNull(gcpProvider.details);
-    GCPCloudInfo gcpCloudInfo = gcpProvider.details.cloudInfo.gcp;
+    assertNotNull(gcpProvider.getDetails());
+    GCPCloudInfo gcpCloudInfo = gcpProvider.getDetails().cloudInfo.gcp;
     assertNotNull(gcpCloudInfo);
-    assertEquals("GCP Project ID", gcpCloudInfo.gceProject);
-    assertEquals("GCP Custom network", gcpCloudInfo.destVpcId);
-    assertNotNull(gcpCloudInfo.gceApplicationCredentials);
+    assertEquals("GCP Project ID", gcpCloudInfo.getGceProject());
+    assertEquals("GCP Custom network", gcpCloudInfo.getDestVpcId());
+    assertNotNull(gcpCloudInfo.getGceApplicationCredentials());
 
     // AWS Provider Check
-    assertNotNull(awsProvider.details);
-    AWSCloudInfo awsCloudInfo = awsProvider.details.cloudInfo.aws;
+    assertNotNull(awsProvider.getDetails());
+    AWSCloudInfo awsCloudInfo = awsProvider.getDetails().cloudInfo.aws;
     assertNotNull(awsCloudInfo);
     assertEquals("awsAccessKeyID", awsCloudInfo.awsAccessKeyID);
     assertEquals("awsAccessKeySecret", awsCloudInfo.awsAccessKeySecret);
 
     // Azure Provider Check
-    assertNotNull(azureProvider.details);
-    AzureCloudInfo azureCloudInfo = azureProvider.details.cloudInfo.azu;
+    assertNotNull(azureProvider.getDetails());
+    AzureCloudInfo azureCloudInfo = azureProvider.getDetails().cloudInfo.azu;
     assertNotNull(azureCloudInfo);
     assertEquals("azuClientId", azureCloudInfo.azuClientId);
     assertEquals("azuClientSecret", azureCloudInfo.azuClientSecret);

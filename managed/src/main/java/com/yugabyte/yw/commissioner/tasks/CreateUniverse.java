@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.LoadBalancerConfig;
@@ -116,18 +117,19 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         if (isFirstTry()) {
           if (isYCQLAuthEnabled) {
             taskParams().getPrimaryCluster().userIntent.ycqlPassword =
-                Util.redactString(ycqlPassword);
+                RedactingService.redactString(ycqlPassword);
           }
           if (isYSQLAuthEnabled) {
             taskParams().getPrimaryCluster().userIntent.ysqlPassword =
-                Util.redactString(ysqlPassword);
+                RedactingService.redactString(ysqlPassword);
           }
           log.debug("Storing passwords in memory");
-          passwordStore.put(universe.universeUUID, new AuthPasswords(ycqlPassword, ysqlPassword));
+          passwordStore.put(
+              universe.getUniverseUUID(), new AuthPasswords(ycqlPassword, ysqlPassword));
         } else {
-          log.debug("Reading password for {}", universe.universeUUID);
+          log.debug("Reading password for {}", universe.getUniverseUUID());
           // Read from the in-memory store on retry.
-          AuthPasswords passwords = passwordStore.getIfPresent(universe.universeUUID);
+          AuthPasswords passwords = passwordStore.getIfPresent(universe.getUniverseUUID());
           if (passwords == null) {
             throw new RuntimeException(
                 "Auth passwords are not found. Platform might have restarted"
@@ -138,7 +140,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         }
       }
 
-      createInstanceExistsCheckTasks(universe.universeUUID, universe.getNodes());
+      createInstanceExistsCheckTasks(universe.getUniverseUUID(), universe.getNodes());
 
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
@@ -172,10 +174,10 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start ybc process on all the nodes
-      if (taskParams().enableYbc) {
+      if (taskParams().isEnableYbc()) {
         createStartYbcProcessTasks(
             taskParams().nodeDetailsSet, taskParams().getPrimaryCluster().userIntent.useSystemd);
-        createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -196,8 +198,8 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
       // universe to happen.
       Universe universe = unlockUniverseForUpdate();
       if (universe != null && universe.getUniverseDetails().updateSucceeded) {
-        log.debug("Removing passwords for {}", universe.universeUUID);
-        passwordStore.invalidate(universe.universeUUID);
+        log.debug("Removing passwords for {}", universe.getUniverseUUID());
+        passwordStore.invalidate(universe.getUniverseUUID());
         if (universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")
             && taskParams().overridePrebuiltAmiDBVersion) {
           universe.updateConfig(

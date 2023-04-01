@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 import javax.inject.Singleton;
 import org.slf4j.Logger;
@@ -26,8 +28,9 @@ public class NetworkManager extends DevopsBase {
 
   public JsonNode bootstrap(UUID regionUUID, UUID providerUUID, String customPayload) {
     List<String> commandArgs = new ArrayList<>();
-    commandArgs.add("--custom_payload");
-    commandArgs.add(customPayload);
+
+    Map<String, String> sensitiveData = new HashMap<String, String>();
+    sensitiveData.put("--custom_payload", customPayload);
 
     if (regionUUID != null) {
       return execAndParseShellResponse(
@@ -35,6 +38,7 @@ public class NetworkManager extends DevopsBase {
               .regionUUID(regionUUID)
               .command("bootstrap")
               .commandArgs(commandArgs)
+              .sensitiveData(sensitiveData)
               .build());
     } else {
       return execAndParseShellResponse(
@@ -42,6 +46,7 @@ public class NetworkManager extends DevopsBase {
               .providerUUID(providerUUID)
               .command("bootstrap")
               .commandArgs(commandArgs)
+              .sensitiveData(sensitiveData)
               .build());
     }
   }

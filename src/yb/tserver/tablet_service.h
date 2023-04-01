@@ -145,6 +145,10 @@ class TabletServiceImpl : public TabletServerServiceIf, public ReadTabletProvide
                 TruncateResponsePB* resp,
                 rpc::RpcContext context) override;
 
+  void GetCompatibleSchemaVersion(const GetCompatibleSchemaVersionRequestPB* req,
+                                  GetCompatibleSchemaVersionResponsePB* resp,
+                                  rpc::RpcContext context) override;
+
   void GetTabletStatus(const GetTabletStatusRequestPB* req,
                        GetTabletStatusResponsePB* resp,
                        rpc::RpcContext context) override;
