@@ -32,7 +32,7 @@ extern char *orafce_sys_guid_source;
 
 #if PG_VERSION_NUM >= 150000
 
-shmem_request_hook_type prev_shmem_request_hook = NULL;
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
 
 #endif
 
