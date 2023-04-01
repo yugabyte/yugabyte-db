@@ -87,7 +87,7 @@ export const ConfigureRegionModal = ({
       providerCode === ProviderCode.AZU ? 'Security Group Name (Optional)' : 'Security Group ID',
     ybImage:
       providerCode === ProviderCode.AWS
-        ? 'Custom AMI ID (Optional Override)'
+        ? 'Custom AMI ID'
         : providerCode === ProviderCode.AZU
         ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',
@@ -112,6 +112,10 @@ export const ConfigureRegionModal = ({
     securityGroupId: string().when([], {
       is: () => shouldExposeField.securityGroupId && providerCode === ProviderCode.AWS,
       then: string().required(`${fieldLabel.securityGroupId} is required.`)
+    }),
+    ybImage: string().when([], {
+      is: () => shouldExposeField.ybImage && ybImageType === YBImageType.CUSTOM_AMI,
+      then: string().required(`${fieldLabel.ybImage} is required.`)
     }),
     sharedSubnet: string().when([], {
       is: () => shouldExposeField.sharedSubnet && providerCode === ProviderCode.GCP,
