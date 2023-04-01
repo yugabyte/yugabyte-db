@@ -1,28 +1,34 @@
 ---
-title: Tutorials for automation
-headerTitle: Tutorials
-linkTitle: Tutorials
+title: Guide for ybm CLI automation
+headerTitle: "Guide: Create clusters using ybm CLI"
+linkTitle: "Guide: ybm CLI"
 description: Tutorials for using YugabyteDB Managed automation tools including API, CLI, and Terraform provider.
 headcontent: Working examples for automation tools
 menu:
   preview_yugabyte-cloud:
-    identifier: managed-autoguide
+    identifier: managed-guide-cli
     parent: managed-automation
     weight: 60
 type: docs
 ---
 
-## Create clusters using ybm CLI
-
 The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Managed.
 
-To run these examples, you should have the following:
+This guide assumes you have already done the following:
 
-- Created an [API key](../managed-apikeys/).
+- Created and saved an [API key](../managed-apikeys/).
 - [Installed ybm CLI](../managed-cli/managed-cli-overview/#install-ybm).
 - [Configured ybm CLI](../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
 
-### Create a sandbox cluster
+{{< note title="Note" >}}
+
+You can only create one Sandbox cluster per account.
+
+Before you can create dedicated clusters in YugabyteDB Managed, you need to add a [billing profile](../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../managed-freetrial/).
+
+{{< /note >}}
+
+## Create a sandbox cluster
 
 To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters-free/) cluster, enter the following command:
 
@@ -42,7 +48,9 @@ Name         Tier      Version         State     Health    Regions     Nodes    
 my-sandbox   Sandbox   2.17.1.0-b439   ACTIVE    💚        us-west-2   1         2 / 4GB / 10GB
 ```
 
-### Create an IP allow list
+## Connect to your cluster
+
+### Create and assign an IP allow list
 
 To connect to your cluster from your computer, you need an IP allow list with your computer's IP address. Create one as follows:
 
@@ -58,7 +66,7 @@ my-computer                 170.200.10.100/32
 NetworkAllowList my-computer successfully created
 ```
 
-Assign your IP allow list to your sandbox:
+Assign the IP allow list to your Sandbox:
 
 ```sh
 ybm cluster network allow-list assign \
@@ -80,6 +88,16 @@ ybm network-allow-list list
 Name                     Description              Allow List          Clusters
 my-computer                                       173.206.17.104/32   my-sandbox
 ```
+
+### Download the cluster certificate
+
+To connect to a cluster in YugabyteDB Managed using a shell, you need the cluster certificate. Download the certificate using the following command:
+
+```sh
+ybm cluster cert download --out $HOME/root.crt
+```
+
+### Show cluster settings
 
 To show details about your cluster, use the `describe` command as follows:
 
@@ -116,9 +134,11 @@ Name            Region[zone]            Health    Master    Tserver   ReadReplic
 my-sandbox-n1   us-west-2[us-west-2a]   💚        ✅        ✅        ❌            40MB
 ```
 
-You may now [connect](../../cloud-connect/connect-client-shell/) to the endpoint host address using the ysqlsh or ycqlsh shells and the database credentials you specified when you created the sandbox.
+The host address to use to connect to your cluster is displayed under **Endpoints**.
 
-### Create a single-region dedicated cluster
+To connect to your cluster using the ysqlsh or ycqlsh shells, follow the instructions in [Connect via client shells](../../cloud-connect/connect-client-shell/). Use the cluster endpoint host address, the database credentials you specified when you created the sandbox, and the certificate you downloaded.
+
+## Create a single-region dedicated cluster
 
 The following command creates a single-region dedicated cluster in Tokyo:
 
@@ -136,7 +156,7 @@ ybm cluster create \
   --wait
 ```
 
-### Create a multi-region dedicated cluster
+## Create a VPC and multi-region dedicated cluster
 
 Multi-region clusters must be deployed in a [VPC](../../cloud-basics/cloud-vpcs/). The following example creates a VPC on GCP:
 
@@ -170,7 +190,7 @@ ybm cluster create \
   --cluster-type SYNCHRONOUS \
   --node-config num-cores=2,disk-size-gb=200 \
   --region-info region=us-east1,num-nodes=1,vpc=gcp-vpc \
-  --region-info region=us-west2,num-nodes=1,vpc=gcp-vpc \
+  --region-info region=us-west1,num-nodes=1,vpc=gcp-vpc \
   --region-info region=us-central1,num-nodes=1,vpc=gcp-vpc \
   --cluster-tier Dedicated \
   --fault-tolerance REGION \
