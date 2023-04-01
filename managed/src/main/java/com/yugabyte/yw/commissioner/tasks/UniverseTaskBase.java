@@ -118,6 +118,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -2384,6 +2385,37 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
 
     return restore;
+  }
+
+  protected SubTaskGroup createCreatePitrConfigTask(
+      String keyspaceName, TableType tableType, long retentionPeriodSeconds) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreatePitrConfig");
+    CreatePitrConfigParams createPitrConfigParams = new CreatePitrConfigParams();
+    createPitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
+    createPitrConfigParams.customerUUID = Customer.get(getUniverse().getCustomerId()).getUuid();
+    createPitrConfigParams.name = null;
+    createPitrConfigParams.keyspaceName = keyspaceName;
+    createPitrConfigParams.tableType = tableType;
+    createPitrConfigParams.retentionPeriodInSeconds = retentionPeriodSeconds;
+
+    CreatePitrConfig task = createTask(CreatePitrConfig.class);
+    task.initialize(createPitrConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createDeletePitrConfigTask(UUID pitrConfigUuid) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeletePitrConfig");
+    DeletePitrConfig.Params deletePitrConfigParams = new DeletePitrConfig.Params();
+    deletePitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
+    deletePitrConfigParams.pitrConfigUuid = pitrConfigUuid;
+
+    DeletePitrConfig task = createTask(DeletePitrConfig.class);
+    task.initialize(deletePitrConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
   }
 
   public SubTaskGroup installThirdPartyPackagesTaskK8s(Universe universe) {
