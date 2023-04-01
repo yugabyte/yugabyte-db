@@ -14,10 +14,10 @@ type: docs
 
 A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
 
-A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network (unless you explicity enable public access). Resources that can be included in the network fall into two categories:
+A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network (unless you explicitly enable public access). Resources that can be included in the network fall into two categories:
 
-- peered application VPCs. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using peering connections.
-- privately linked services. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a private service endpoint.
+- peered application VPCs. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/).
+- privately linked services. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
 
 ## Advantages
 
@@ -30,6 +30,8 @@ Deploying your cluster in a VPC has the following advantages:
 ## Pricing
 
 There's no additional charge for using a VPC, peering, or private service endpoints. In most cases, using a VPC network will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
+
+Note that using a private service endpoint with [AWS PrivateLink](https://aws.amazon.com/privatelink/) does incur charges from AWS. See [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/).
 
 ## Limitations
 
