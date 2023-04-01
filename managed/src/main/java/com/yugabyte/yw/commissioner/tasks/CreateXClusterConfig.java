@@ -12,9 +12,11 @@ import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.io.File;
@@ -189,6 +191,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
             String.format(
                 "tablesInfoListNeedBootstrap in namespaceName %s is empty", namespaceName));
       }
+      CommonTypes.TableType tableType = tablesInfoListNeedBootstrap.get(0).getTableType();
       Set<String> tableIdsNeedBootstrap = getTableIds(tablesInfoListNeedBootstrap);
       log.info(
           "Creating subtasks to set up replication using bootstrap for tables {} in "
@@ -210,7 +213,19 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Assign the created backup UUID for the tables in the DB.
       xClusterConfig.updateBackupForTables(tableIdsNeedBootstrap, backup);
 
-      CommonTypes.TableType tableType = tablesInfoListNeedBootstrap.get(0).getTableType();
+      // Before dropping the tables on the target universe, delete the associated PITR configs.
+      Optional<PitrConfig> pitrConfigOptional =
+          PitrConfig.maybeGet(xClusterConfig.getTargetUniverseUUID(), tableType, namespaceName);
+      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
+        if (!pitrConfigOptional.isPresent()) {
+          throw new IllegalStateException(
+              String.format(
+                  "PITR config for keyspace %s.%s not found on universe %s",
+                  tableType, namespaceName, xClusterConfig.getTargetUniverseUUID()));
+        }
+        createDeletePitrConfigTask(pitrConfigOptional.get().getUuid());
+      }
+
       if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
         // If the table type is YCQL, delete the tables from the target universe, because if the
         // tables exist, the restore subtask will fail.
@@ -258,6 +273,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       // Set the restore time for the tables in the DB.
       createSetRestoreTimeTask(tableIdsNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.RestoringBackup);
+
+      // Recreate the PITR config for txn xCluster.
+      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
+        // noinspection OptionalGetWithoutIsPresent: The check has happened in the above code.
+        createCreatePitrConfigTask(
+            namespaceName, tableType, pitrConfigOptional.get().getRetentionPeriod());
+      }
 
       if (isReplicationConfigCreated) {
         // If the xCluster config is already created, add the bootstrapped tables to the created

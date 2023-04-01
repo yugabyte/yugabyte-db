@@ -51,6 +51,8 @@ public enum TaskType {
 
   CreatePitrConfig(com.yugabyte.yw.commissioner.tasks.CreatePitrConfig.class),
 
+  DeletePitrConfig(com.yugabyte.yw.commissioner.tasks.DeletePitrConfig.class),
+
   RestoreSnapshotSchedule(com.yugabyte.yw.commissioner.tasks.RestoreSnapshotSchedule.class),
 
   EditUniverse(com.yugabyte.yw.commissioner.tasks.EditUniverse.class),

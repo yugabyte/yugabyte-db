@@ -37,6 +37,7 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
+import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
@@ -248,6 +249,32 @@ public class XClusterConfigController extends AuthenticatedController {
             targetUniverse,
             null /* currentReplicationGroupName */,
             createFormData.configType);
+
+    // PITR must be configured for the DBs in case of txn.
+    if (createFormData.configType.equals(ConfigType.Txn)) {
+      Set<String> dbNamesWithoutPitr = new HashSet<>();
+      CommonTypes.TableType tableType = requestedTableInfoList.get(0).getTableType();
+      XClusterConfigTaskBase.groupByNamespaceName(requestedTableInfoList)
+          .forEach(
+              (dbName, tableInfoList) -> {
+                // Exclude the system database.
+                if (XClusterConfigTaskBase.TRANSACTION_STATUS_TABLE_NAMESPACE.equals(dbName)) {
+                  return;
+                }
+                if (!PitrConfig.maybeGet(targetUniverse.getUniverseUUID(), tableType, dbName)
+                    .isPresent()) {
+                  dbNamesWithoutPitr.add(dbName);
+                }
+              });
+      if (!dbNamesWithoutPitr.isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "To create a transactional xCluster, you have to configure PITR for the DBs on "
+                    + "the target universe. DBs wihtout PITR configured are %s",
+                dbNamesWithoutPitr));
+      }
+    }
 
     if (createFormData.dryRun) {
       return YBPSuccess.withMessage("The pre-checks are successful");
