@@ -98,7 +98,6 @@ export interface AWSProviderEditFormFieldValues {
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
-  ybImage: string;
   ybImageType: YBImageType;
   version: number;
 }
@@ -135,10 +134,6 @@ const VALIDATION_SCHEMA = object().shape({
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
-  }),
-  ybImage: string().when('ybImageType', {
-    is: YBImageType.CUSTOM_AMI,
-    then: string().required('Custom AMI type is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
@@ -699,7 +694,7 @@ const constructProviderPayload = async (
         [ProviderCode.AWS]: {
           ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
             ? {
-                ybImage: regionFormValues.ybImage ? regionFormValues.ybImage : formValues.ybImage
+                ybImage: regionFormValues.ybImage
               }
             : { arch: formValues.ybImageType }),
           securityGroupId: regionFormValues.securityGroupId,
