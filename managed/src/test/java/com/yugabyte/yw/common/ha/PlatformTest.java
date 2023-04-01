@@ -28,6 +28,7 @@ import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApi;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -87,6 +88,8 @@ public class PlatformTest extends FakeDBApplication {
 
   private PlatformInstanceClientFactory mockPlatformInstanceClientFactory =
       mock(PlatformInstanceClientFactory.class);
+
+  private ConfigHelper mockConfigHelper = mock(ConfigHelper.class);
 
   @Override
   protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
@@ -237,7 +240,9 @@ public class PlatformTest extends FakeDBApplication {
 
   private void setupProxyingApiHelper(FakeApi remoteFakeApi, String clusterKey) {
     when(mockPlatformInstanceClientFactory.getClient(anyString(), anyString()))
-        .thenReturn(new PlatformInstanceClient(mockApiHelper, clusterKey, REMOTE_ACME_ORG));
+        .thenReturn(
+            new PlatformInstanceClient(
+                mockApiHelper, clusterKey, REMOTE_ACME_ORG, mockConfigHelper));
     when(mockApiHelper.multipartRequest(anyString(), anyMap(), anyList()))
         .thenAnswer(
             invocation -> {

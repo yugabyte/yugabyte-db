@@ -37,7 +37,7 @@ public abstract class CloudTaskBase extends AbstractTaskBase {
   public void initialize(ITaskParams params) {
     super.initialize(params);
     provider = Provider.get(taskParams().providerUUID);
-    regionMetadata = configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.code));
+    regionMetadata = configHelper.getRegionMetadata(Common.CloudType.valueOf(provider.getCode()));
   }
 
   public Provider getProvider() {

@@ -59,7 +59,7 @@ public class ModifyBlackList extends UniverseTaskBase {
   public String getName() {
     return super.getName()
         + "("
-        + taskParams().universeUUID
+        + taskParams().getUniverseUUID()
         + ", numAddNodes="
         + (CollectionUtils.isEmpty(taskParams().addNodes) ? 0 : taskParams().addNodes.size())
         + ", numRemoveNodes="
@@ -71,7 +71,7 @@ public class ModifyBlackList extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterHostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;

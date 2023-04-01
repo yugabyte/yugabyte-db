@@ -134,7 +134,7 @@ public class ReleaseController extends AuthenticatedController {
     if (arch == null) {
       LOG.info(
           "ReleaseController: Could not determine region {} architecture. Listing all releases.",
-          region.code);
+          region.getCode());
       return list(customerUUID, includeMetadata);
     }
 

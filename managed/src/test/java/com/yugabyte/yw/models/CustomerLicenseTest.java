@@ -27,7 +27,7 @@ public class CustomerLicenseTest extends FakeDBApplication {
   public void testValidUpload() {
     String licenseType = "test_license_type";
     String license = "/opt/yugaware/licenses/license1.txt";
-    CustomerLicense cLicense = CustomerLicense.create(customer.uuid, license, licenseType);
+    CustomerLicense cLicense = CustomerLicense.create(customer.getUuid(), license, licenseType);
 
     assertNotNull(cLicense);
     JsonNode licenseInfoJson = Json.toJson(cLicense);
@@ -39,7 +39,7 @@ public class CustomerLicenseTest extends FakeDBApplication {
   public void testValidUploadAndRetrieval() {
     String licenseType = "test_license_type";
     String license = "/opt/yugaware/licenses/license1.txt";
-    CustomerLicense cLicense = CustomerLicense.create(customer.uuid, license, licenseType);
+    CustomerLicense cLicense = CustomerLicense.create(customer.getUuid(), license, licenseType);
 
     assertNotNull(cLicense);
     JsonNode licenseInfoJson = Json.toJson(cLicense);

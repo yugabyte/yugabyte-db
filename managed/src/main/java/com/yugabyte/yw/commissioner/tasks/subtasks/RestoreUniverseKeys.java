@@ -9,9 +9,6 @@
  */
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -20,16 +17,10 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
-import java.util.Arrays;
 import java.util.Base64;
-import java.util.List;
-import java.util.UUID;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
-import org.yb.util.Pair;
 
 @Slf4j
 public class RestoreUniverseKeys extends AbstractTaskBase {
@@ -50,22 +41,24 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
 
   // Should we use RPC to get the activeKeyId and then try and see if it matches this key?
   private byte[] getActiveUniverseKey() {
-    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(taskParams().universeUUID);
-    if (activeKey == null || activeKey.uuid.keyRef == null || activeKey.uuid.keyRef.length() == 0) {
+    KmsHistory activeKey = EncryptionAtRestUtil.getActiveKey(taskParams().getUniverseUUID());
+    if (activeKey == null
+        || activeKey.getUuid().keyRef == null
+        || activeKey.getUuid().keyRef.length() == 0) {
       final String errMsg =
           String.format(
               "Skipping universe %s, No active keyRef found.",
-              taskParams().universeUUID.toString());
+              taskParams().getUniverseUUID().toString());
       log.trace(errMsg);
       return null;
     }
 
-    return Base64.getDecoder().decode(activeKey.uuid.keyRef);
+    return Base64.getDecoder().decode(activeKey.getUuid().keyRef);
   }
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
@@ -81,7 +74,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
       RestoreKeyResult restoreResult =
           keyManager.restoreUniverseKeyHistory(
               ybService,
-              taskParams().universeUUID,
+              taskParams().getUniverseUUID(),
               taskParams().kmsConfigUUID,
               taskParams().storageLocation);
 
@@ -93,7 +86,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
           log.info(
               String.format(
                   "Error occurred restoring encryption keys to universe %s",
-                  taskParams().universeUUID));
+                  taskParams().getUniverseUUID()));
         case RESTORE_SUCCEEDED:
           ///////////////
           // Restore state of encryption in universe having backup restored into
@@ -103,7 +96,7 @@ public class RestoreUniverseKeys extends AbstractTaskBase {
             // before restore flow
             keyManager.sendKeyToMasters(
                 ybService,
-                taskParams().universeUUID,
+                taskParams().getUniverseUUID(),
                 universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID,
                 activeKeyRef);
           } else if (client.isEncryptionEnabled().getFirst()) {

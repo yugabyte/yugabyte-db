@@ -190,7 +190,7 @@ class PgCatalogRestorePatch : public RestorePatch {
       const PgCatalogTableData& table, tablet::TableInfo* table_info)
       : RestorePatch(existing_state, restoring_state, doc_batch, table_info), table_(table) {}
 
-  Status Finish() {
+  Status Finish() override {
     if (doc_key_catalog_version_map_.empty()) {
       return Status::OK();
     }
@@ -206,17 +206,38 @@ class PgCatalogRestorePatch : public RestorePatch {
                 << doc_path.ToString() << " to " << it.second;
       RETURN_NOT_OK(DocBatch()->SetPrimitive(
         doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+      IncrementTicker(RestoreTicker::kInserts);
     }
     return Status::OK();
   }
 
  private:
+  Status UpdateCatalogVersionInMap(const Slice& key, const Slice& value) {
+    docdb::SubDocKey decoded_key;
+    RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+
+    auto version_opt = VERIFY_RESULT(GetInt64ColumnValue(
+        decoded_key, value, table_info_, kCurrentVersionColumnName));
+
+    if (version_opt) {
+      const auto& doc_key = decoded_key.doc_key();
+      int64_t version = *version_opt;
+      version++;
+      auto& existing_version = doc_key_catalog_version_map_[doc_key];
+      if (existing_version < version) {
+        existing_version = version;
+        VLOG_WITH_FUNC(3) << "Inserted in map " << doc_key.ToString() << ": " << version;
+      }
+    }
+    return Status::OK();
+  }
+
   Status ProcessCommonEntry(
       const Slice& key, const Slice& existing_value, const Slice& restoring_value) override {
     if (!table_.IsPgYbCatalogMeta()) {
       return RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value);
     }
-    return ProcessCatalogVersionEntry(key, existing_value);
+    return UpdateCatalogVersionInMap(key, existing_value);
   }
 
   Status ProcessExistingOnlyEntry(
@@ -224,55 +245,11 @@ class PgCatalogRestorePatch : public RestorePatch {
     if (!table_.IsPgYbCatalogMeta()) {
       return RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value);
     }
-    return ProcessCatalogVersionEntry(existing_key, existing_value);
+    return UpdateCatalogVersionInMap(existing_key, existing_value);
   }
 
   Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override {
     return false;
-  }
-
-  Status HandleSchemaVersionValue(const docdb::DocKey& doc_key, const Slice& existing_value) {
-    docdb::Value value;
-    RETURN_NOT_OK(value.Decode(existing_value));
-    auto new_version = value.primitive_value().GetInt64() + 1;
-    auto emplace_result = doc_key_catalog_version_map_.emplace(doc_key, new_version);
-    if (!emplace_result.second && emplace_result.first->second < new_version) {
-      emplace_result.first->second = new_version;
-    }
-    return Status::OK();
-  }
-
-  Status ProcessCatalogVersionEntry(const Slice& key, const Slice& full_value) {
-    docdb::SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
-    if (sub_doc_key.subkeys().empty()) {
-      auto value_slice = full_value;
-      RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
-      SCHECK(value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow),
-             Corruption, "Packed row expected: $0", full_value.ToDebugHexString());
-      const docdb::SchemaPacking& packing = VERIFY_RESULT(
-          table_info_->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
-      auto column_id = VERIFY_RESULT(
-          table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
-      auto value = packing.GetValue(column_id, value_slice);
-      if (!value) {
-        return STATUS_FORMAT(
-            Corruption, "$0 missing in $1", kCurrentVersionColumnName,
-            full_value.ToDebugHexString());
-      }
-      return HandleSchemaVersionValue(sub_doc_key.doc_key(), *value);
-    }
-    SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-    const auto& first_subkey = sub_doc_key.subkeys()[0];
-    if (first_subkey.type() == docdb::KeyEntryType::kColumnId) {
-      auto column_id = first_subkey.GetColumnId();
-      const ColumnSchema& column = VERIFY_RESULT(table_info_->schema().column_by_id(
-          column_id));
-      if (column.name() == kCurrentVersionColumnName) {
-        return HandleSchemaVersionValue(sub_doc_key.doc_key(), full_value);
-      }
-    }
-    return Status::OK();
   }
 
   // Should be alive while this object is alive.

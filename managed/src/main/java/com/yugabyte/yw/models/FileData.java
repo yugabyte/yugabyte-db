@@ -49,14 +49,9 @@ public class FileData extends Model {
   private static final String UUID_PATTERN =
       "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 
-  @EmbeddedId public FileDataId file;
+  @EmbeddedId private FileDataId file;
 
   @Constraints.Required private UUID parentUUID;
-
-  public UUID getParentUUID() {
-    return this.parentUUID;
-  }
-
   // The task creation time.
   @CreatedTimestamp private Date timestamp;
 
@@ -190,7 +185,7 @@ public class FileData extends Model {
       Files.write(absoluteFilePath, fileContent);
       Set<PosixFilePermission> permissions =
           PosixFilePermissions.fromString(AccessManager.PEM_PERMISSIONS);
-      if (fileData.file.fileExtension.equals(PUBLIC_KEY_EXTENSION)) {
+      if (fileData.getFile().fileExtension.equals(PUBLIC_KEY_EXTENSION)) {
         permissions = PosixFilePermissions.fromString(AccessManager.PUB_PERMISSIONS);
       }
       Files.setPosixFilePermissions(absoluteFilePath, permissions);

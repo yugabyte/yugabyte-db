@@ -141,7 +141,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
       TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          defaultUniverse.universeUUID,
+          defaultUniverse.getUniverseUUID(),
           taskUUID,
           CustomerTask.TargetType.Universe,
           CustomerTask.TaskType.Backup,
@@ -156,8 +156,8 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
   private TaskInfo submitTask(
       String keyspace, List<UUID> tableUUIDs, boolean transactional, TableType backupType) {
     MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     backupTableParams.setKeyspace(keyspace);
     backupTableParams.backupType = backupType;
     backupTableParams.storageConfigUUID = UUID.randomUUID();
@@ -210,8 +210,8 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     defaultUniverse.updateConfig(config);
     defaultUniverse.save();
     MultiTableBackup.Params backupTableParams = new MultiTableBackup.Params();
-    backupTableParams.universeUUID = defaultUniverse.universeUUID;
-    backupTableParams.customerUUID = defaultCustomer.uuid;
+    backupTableParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    backupTableParams.customerUUID = defaultCustomer.getUuid();
     backupTableParams.setKeyspace("InvalidKeyspace");
     backupTableParams.backupType = TableType.PGSQL_TABLE_TYPE;
     backupTableParams.storageConfigUUID = UUID.randomUUID();
@@ -219,7 +219,7 @@ public class MultiTableBackupTest extends CommissionerBaseTest {
     backupTableParams.transactionalBackup = false;
     TaskInfo taskInfo = submitTask(backupTableParams);
     assertEquals(Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertThat(errMsg, containsString("Invalid Keyspace or no tables to backup"));
     verify(mockTableManager, times(0)).createBackup(any());
   }

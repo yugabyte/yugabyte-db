@@ -77,25 +77,25 @@ public class InstallNodeAgent extends AbstractTaskBase {
       throw new RuntimeException("Unknown OS and Arch output: " + output);
     }
     NodeAgent nodeAgent = new NodeAgent();
-    nodeAgent.ip = node.cloudInfo.private_ip;
-    nodeAgent.name = node.nodeName;
-    nodeAgent.port = taskParams().nodeAgentPort;
-    nodeAgent.customerUuid = taskParams().customerUuid;
-    nodeAgent.osType = OSType.parse(parts[0].trim());
-    nodeAgent.archType = ArchType.parse(parts[1].trim());
-    nodeAgent.version = nodeAgentManager.getSoftwareVersion();
-    nodeAgent.home = taskParams().nodeAgentHome;
+    nodeAgent.setIp(node.cloudInfo.private_ip);
+    nodeAgent.setName(node.nodeName);
+    nodeAgent.setPort(taskParams().nodeAgentPort);
+    nodeAgent.setCustomerUuid(taskParams().customerUuid);
+    nodeAgent.setOsType(OSType.parse(parts[0].trim()));
+    nodeAgent.setArchType(ArchType.parse(parts[1].trim()));
+    nodeAgent.setVersion(nodeAgentManager.getSoftwareVersion());
+    nodeAgent.setHome(taskParams().nodeAgentHome);
     return nodeAgentManager.create(nodeAgent, false);
   }
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(node.cloudInfo.private_ip);
     if (optional.isPresent()) {
       NodeAgent nodeAgent = optional.get();
-      if (nodeAgent.state == State.READY) {
+      if (nodeAgent.getState() == State.READY) {
         return;
       }
       nodeAgentManager.purge(nodeAgent);
@@ -120,7 +120,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
     // Create the child folders as the current SSH user so that the files can be uploaded.
     command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
-    log.info("Creating directories {} for node agent {}", dirs, nodeAgent.uuid);
+    log.info("Creating directories {} for node agent {}", dirs, nodeAgent.getUuid());
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
     installerFiles
         .getCopyFileInfos()
@@ -131,7 +131,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
                   "Uploading {} to {} on node agent {}",
                   f.getSourcePath(),
                   f.getTargetPath(),
-                  nodeAgent.uuid);
+                  nodeAgent.getUuid());
               String filePerm = StringUtils.isBlank(f.getPermission()) ? "755" : f.getPermission();
               nodeUniverseManager
                   .uploadFileToNode(
@@ -153,7 +153,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     sb.append(" && rm -rf ").append(baseTargetDir);
     sb.append(" && /tmp/node-agent-installer.sh -c install");
     sb.append(" --skip_verify_cert --disable_egress");
-    sb.append(" --id ").append(nodeAgent.uuid);
+    sb.append(" --id ").append(nodeAgent.getUuid());
     sb.append(" --cert_dir ").append(installerFiles.getCertDir());
     sb.append(" --node_ip ").append(node.cloudInfo.private_ip);
     sb.append(" --node_port ").append(String.valueOf(taskParams().nodeAgentPort));

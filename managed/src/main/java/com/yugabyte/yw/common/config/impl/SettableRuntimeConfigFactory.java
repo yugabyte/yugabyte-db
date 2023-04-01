@@ -85,37 +85,39 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     RuntimeConfig<Customer> config =
         new RuntimeConfig<>(
             customer,
-            getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")")
+            getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")")
                 .withFallback(globalConfig()));
-    LOG.trace("forCustomer {}: {}", customer.uuid, config);
+    LOG.trace("forCustomer {}: {}", customer.getUuid(), config);
     return config;
   }
 
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Universe> forUniverse(Universe universe) {
-    Customer customer = Customer.get(universe.customerId);
+    Customer customer = Customer.get(universe.getCustomerId());
     RuntimeConfig<Universe> config =
         new RuntimeConfig<>(
             universe,
-            getConfigForScope(universe.universeUUID, "Scoped Config (" + universe + ")")
-                .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
+            getConfigForScope(universe.getUniverseUUID(), "Scoped Config (" + universe + ")")
+                .withFallback(
+                    getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")"))
                 .withFallback(globalConfig()));
-    LOG.trace("forUniverse {}: {}", universe.universeUUID, config);
+    LOG.trace("forUniverse {}: {}", universe.getUniverseUUID(), config);
     return config;
   }
 
   /** @return A RuntimeConfig instance for a given scope */
   @Override
   public RuntimeConfig<Provider> forProvider(Provider provider) {
-    Customer customer = Customer.get(provider.customerUUID);
+    Customer customer = Customer.get(provider.getCustomerUUID());
     RuntimeConfig<Provider> config =
         new RuntimeConfig<>(
             provider,
-            getConfigForScope(provider.uuid, "Scoped Config (" + provider + ")")
-                .withFallback(getConfigForScope(customer.uuid, "Scoped Config (" + customer + ")"))
+            getConfigForScope(provider.getUuid(), "Scoped Config (" + provider + ")")
+                .withFallback(
+                    getConfigForScope(customer.getUuid(), "Scoped Config (" + customer + ")"))
                 .withFallback(globalConfig()));
-    LOG.trace("forProvider {}: {}", provider.uuid, config);
+    LOG.trace("forProvider {}: {}", provider.getUuid(), config);
     return config;
   }
 

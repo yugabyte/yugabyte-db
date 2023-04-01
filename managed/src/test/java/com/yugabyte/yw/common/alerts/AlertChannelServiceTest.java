@@ -136,7 +136,7 @@ public class AlertChannelServiceTest extends FakeDBApplication {
         ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 2");
 
     // Second customer with one channel.
-    UUID newCustomerUUID = ModelFactory.testCustomer().uuid;
+    UUID newCustomerUUID = ModelFactory.testCustomer().getUuid();
     ModelFactory.createSlackChannel(newCustomerUUID, CHANNEL_NAME);
 
     List<AlertChannel> channels = alertChannelService.list(defaultCustomerUuid);

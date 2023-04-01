@@ -106,7 +106,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
             Audit.ActionType.RefreshPricing);
-    return YBPSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
+    return YBPSuccess.withMessage(provider.getCode().toUpperCase() + " Initialized");
   }
 
   @ApiOperation(value = "Update a provider", response = YBPTask.class, nickname = "editProvider")
@@ -160,15 +160,15 @@ public class CloudProviderApiController extends AuthenticatedController {
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request().body().asJson(), Provider.class);
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    reqProvider.customerUUID = customerUUID;
-    CloudType providerCode = CloudType.valueOf(reqProvider.code);
+    reqProvider.setCustomerUUID(customerUUID);
+    CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
     Provider providerEbean;
     if (providerCode.equals(CloudType.kubernetes)) {
       providerEbean = cloudProviderHandler.createKubernetesNew(customer, reqProvider);
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
-              customer, providerCode, reqProvider.name, reqProvider, validate);
+              customer, providerCode, reqProvider.getName(), reqProvider, validate);
     }
 
     if (providerCode.isRequiresBootstrap()) {
@@ -182,7 +182,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             .createAuditEntryWithReqBody(
                 ctx(),
                 Audit.TargetType.CloudProvider,
-                Objects.toString(providerEbean.uuid, null),
+                Objects.toString(providerEbean.getUuid(), null),
                 Audit.ActionType.Create,
                 requestBody,
                 taskUUID);
@@ -191,17 +191,17 @@ public class CloudProviderApiController extends AuthenticatedController {
         providerEbean.delete();
         Throwables.propagate(e);
       }
-      return new YBPTask(taskUUID, providerEbean.uuid).asResult();
+      return new YBPTask(taskUUID, providerEbean.getUuid()).asResult();
     } else {
       auditService()
           .createAuditEntryWithReqBody(
               ctx(),
               Audit.TargetType.CloudProvider,
-              Objects.toString(providerEbean.uuid, null),
+              Objects.toString(providerEbean.getUuid(), null),
               Audit.ActionType.Create,
               requestBody,
               null);
-      return new YBPTask(null, providerEbean.uuid).asResult();
+      return new YBPTask(null, providerEbean.getUuid()).asResult();
     }
   }
 
@@ -225,7 +225,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             ? customer
                 .getUniversesForProvider(providerUUID)
                 .stream()
-                .map(universe -> universe.universeUUID)
+                .map(universe -> universe.getUniverseUUID())
                 .collect(Collectors.toList())
             : params.universeUUIDs;
 
@@ -236,9 +236,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     // contains taskUUID and resourceUUID (universeUUID) for each universe
     List<YBPTask> tasksResponseList = new ArrayList<>();
     tasks.forEach(
-        (universeUUID, taskUUID) -> {
-          tasksResponseList.add(new YBPTask(taskUUID, universeUUID));
-        });
+        (universeUUID, taskUUID) -> tasksResponseList.add(new YBPTask(taskUUID, universeUUID)));
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -271,7 +269,7 @@ public class CloudProviderApiController extends AuthenticatedController {
             ? customer
                 .getUniversesForProvider(providerUUID)
                 .stream()
-                .map(universe -> universe.universeUUID)
+                .map(universe -> universe.getUniverseUUID())
                 .collect(Collectors.toList())
             : params.universeUUIDs;
     Schedule schedule =
@@ -340,11 +338,22 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
-  // v2 API version 1 backward compatiblity support.
-  public JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean forEdit) {
+  // v2 API version 1 backward compatibility support.
+  private JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean forEdit) {
     JsonNode config = requestBody.get("config");
     if (forEdit && config != null) {
       ((ObjectNode) requestBody).remove("config");
+      // Clear the deprecated top level fields that are supported only on create.
+      // Edit is a new API and we wont allow changing these fields at top-level during
+      // the edit operation.
+      ((ObjectNode) requestBody).remove("sshUser");
+      ((ObjectNode) requestBody).remove("sshPort");
+      ((ObjectNode) requestBody).remove("airGapInstall");
+      ((ObjectNode) requestBody).remove("ntpServers");
+      ((ObjectNode) requestBody).remove("setUpChrony");
+      ((ObjectNode) requestBody).remove("showSetUpChrony");
+      ((ObjectNode) requestBody).remove("keyPairName");
+      ((ObjectNode) requestBody).remove("sshPrivateKeyContent");
     }
     String providerCode = requestBody.get("code").asText();
     ObjectMapper mapper = Json.mapper();

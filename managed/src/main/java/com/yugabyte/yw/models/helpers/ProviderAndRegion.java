@@ -13,7 +13,7 @@ public class ProviderAndRegion implements Serializable {
   String regionCode;
 
   public static ProviderAndRegion from(Region region) {
-    return new ProviderAndRegion(region.provider.uuid, region.code);
+    return new ProviderAndRegion(region.getProvider().getUuid(), region.getCode());
   }
 
   public static ProviderAndRegion from(PriceComponent priceComponent) {

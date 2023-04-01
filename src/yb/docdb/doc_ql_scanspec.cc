@@ -47,26 +47,28 @@ bool AreColumnsContinous(ColumnListVector col_idxs) {
 
 }  // namespace
 
-DocQLScanSpec::DocQLScanSpec(const Schema& schema,
-                             const DocKey& doc_key,
-                             const rocksdb::QueryId query_id,
-                             const bool is_forward_scan,
-                             const size_t prefix_length)
-    : QLScanSpec(schema, nullptr, nullptr, is_forward_scan, std::make_shared<DocExprExecutor>()),
-      range_bounds_(nullptr),
+DocQLScanSpec::DocQLScanSpec(
+    const Schema& schema,
+    const DocKey& doc_key,
+    const rocksdb::QueryId query_id,
+    const bool is_forward_scan,
+    const size_t prefix_length)
+    : QLScanSpec(
+          schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length,
+          std::make_shared<DocExprExecutor>()),
       hashed_components_(nullptr),
       options_groups_(0),
       include_static_columns_(false),
-      doc_key_(doc_key.Encode()),
-      query_id_(query_id),
-      prefix_length_(prefix_length) {
-}
+      doc_key_(doc_key.Encode()) {}
 
 DocQLScanSpec::DocQLScanSpec(
     const Schema& schema,
-    const boost::optional<int32_t> hash_code,
-    const boost::optional<int32_t> max_hash_code,
-    std::reference_wrapper<const std::vector<KeyEntryValue>> hashed_components,
+    const boost::optional<int32_t>
+        hash_code,
+    const boost::optional<int32_t>
+        max_hash_code,
+    std::reference_wrapper<const std::vector<KeyEntryValue>>
+        hashed_components,
     const QLConditionPB* condition,
     const QLConditionPB* if_condition,
     const rocksdb::QueryId query_id,
@@ -74,12 +76,10 @@ DocQLScanSpec::DocQLScanSpec(
     const bool include_static_columns,
     const DocKey& start_doc_key,
     const size_t prefix_length)
-    : QLScanSpec(schema,
-                 condition,
-                 if_condition,
-                 is_forward_scan,
-                 std::make_shared<DocExprExecutor>()),
-      range_bounds_(condition ? new QLScanRange(schema, *condition) : nullptr),
+    : QLScanSpec(
+          schema, is_forward_scan, query_id,
+          (condition ? std::make_unique<QLScanRange>(schema, *condition) : nullptr), prefix_length,
+          condition, if_condition, std::make_shared<DocExprExecutor>()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
       hashed_components_(&hashed_components.get()),
@@ -87,42 +87,36 @@ DocQLScanSpec::DocQLScanSpec(
       include_static_columns_(include_static_columns),
       start_doc_key_(start_doc_key.empty() ? KeyBytes() : start_doc_key.Encode()),
       lower_doc_key_(bound_key(true)),
-      upper_doc_key_(bound_key(false)),
-      query_id_(query_id),
-      prefix_length_(prefix_length) {
+      upper_doc_key_(bound_key(false)) {
+  if (!hashed_components_->empty() && schema.num_hash_key_columns()) {
+    options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
+    // should come here if we are not batching hash keys as a part of IN condition
+    options_groups_.BeginNewGroup();
+    options_groups_.AddToLatestGroup(0);
+    options_col_ids_.emplace_back(ColumnId(kYbHashCodeColId));
+    (*options_)[0].push_back(KeyEntryValue::UInt16Hash(hash_code_.value()));
+    DCHECK(hashed_components_->size() == schema.num_hash_key_columns());
 
-    if (range_bounds_) {
-        range_bounds_indexes_ = range_bounds_->GetColIds();
+    for (size_t col_idx = 0; col_idx < schema.num_hash_key_columns(); ++col_idx) {
+      options_groups_.AddToLatestGroup(schema.get_dockey_component_idx(col_idx));
+      options_col_ids_.emplace_back(schema.column_id(col_idx));
+
+      (*options_)[schema.get_dockey_component_idx(col_idx)].push_back(
+          std::move((*hashed_components_)[col_idx]));
     }
+  }
 
-    if (!hashed_components_->empty() && schema.num_hash_key_columns()) {
+  // If the hash key is fixed and we have range columns with IN condition, try to construct the
+  // exact list of range options to scan for.
+  const auto rangebounds = range_bounds();
+  if (!hashed_components_->empty() && schema.num_range_key_columns() > 0 && rangebounds &&
+      rangebounds->has_in_range_options()) {
+    DCHECK(condition);
+    if (!options_) {
       options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
-      // should come here if we are not batching hash keys as a part of IN condition
-      options_groups_.BeginNewGroup();
-      options_groups_.AddToLatestGroup(0);
-      options_col_ids_.emplace_back(ColumnId(kYbHashCodeColId));
-      (*options_)[0].push_back(KeyEntryValue::UInt16Hash(hash_code_.value()));
-      DCHECK(hashed_components_->size() == schema.num_hash_key_columns());
-
-      for (size_t col_idx = 0; col_idx < schema.num_hash_key_columns(); ++col_idx) {
-        options_groups_.AddToLatestGroup(schema.get_dockey_component_idx(col_idx));
-        options_col_ids_.emplace_back(schema.column_id(col_idx));
-
-        (*options_)[schema.get_dockey_component_idx(col_idx)]
-            .push_back(std::move((*hashed_components_)[col_idx]));
-      }
     }
-
-    // If the hash key is fixed and we have range columns with IN condition, try to construct the
-    // exact list of range options to scan for.
-    if (!hashed_components_->empty() && schema.num_range_key_columns() > 0 && range_bounds_ &&
-        range_bounds_->has_in_range_options()) {
-      DCHECK(condition);
-      if (!options_) {
-        options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
-      }
-      InitOptions(*condition);
-    }
+    InitOptions(*condition);
+  }
 }
 
 void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
@@ -299,13 +293,14 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
 std::vector<KeyEntryValue> DocQLScanSpec::range_components(const bool lower_bound,
                                                            std::vector<bool> *inclusivities,
                                                            bool use_strictness) const {
-  return GetRangeKeyScanSpec(schema(),
-                             nullptr /* prefixed_range_components */,
-                             range_bounds_.get(),
-                             inclusivities,
-                             lower_bound,
-                             include_static_columns_,
-                             use_strictness);
+  return GetRangeKeyScanSpec(
+      schema(),
+      nullptr /* prefixed_range_components */,
+      range_bounds(),
+      inclusivities,
+      lower_bound,
+      include_static_columns_,
+      use_strictness);
 }
 namespace {
 
@@ -364,11 +359,11 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
 
   // If we have a start_doc_key, we need to use it as a starting point (lower bound for forward
   // scan, upper bound for reverse scan).
-  if (range_bounds_ != nullptr &&
-        !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
-      return STATUS_FORMAT(
-          Corruption, "Invalid start_doc_key: $0. Range: $1, $2",
-          start_doc_key_, lower_doc_key_, upper_doc_key_);
+  if (range_bounds() != nullptr &&
+      !KeyWithinRange(start_doc_key_, lower_doc_key_, upper_doc_key_)) {
+    return STATUS_FORMAT(
+        Corruption, "Invalid start_doc_key: $0. Range: $1, $2", start_doc_key_, lower_doc_key_,
+        upper_doc_key_);
   }
 
   // Paging state + forward scan.
@@ -407,14 +402,6 @@ std::shared_ptr<rocksdb::ReadFileFilter> DocQLScanSpec::CreateFileFilter() const
                                                     std::move(upper_bound),
                                                     std::move(upper_bound_incl));
   }
-}
-
-Result<KeyBytes> DocQLScanSpec::LowerBound() const {
-  return Bound(true /* lower_bound */);
-}
-
-Result<KeyBytes> DocQLScanSpec::UpperBound() const {
-  return Bound(false /* upper_bound */);
 }
 
 const DocKey& DocQLScanSpec::DefaultStartDocKey() {

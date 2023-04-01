@@ -91,7 +91,6 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Application;
 import play.Environment;
 import play.libs.Json;
 
@@ -141,14 +140,14 @@ public class CloudProviderHandler {
     params.customer = customer;
 
     UUID taskUUID = commissioner.submit(TaskType.CloudProviderDelete, params);
-    Provider provider = Provider.getOrBadRequest(customer.uuid, providerUUID);
+    Provider provider = Provider.getOrBadRequest(customer.getUuid(), providerUUID);
     CustomerTask.create(
         customer,
         providerUUID,
         taskUUID,
         CustomerTask.TargetType.Provider,
         CustomerTask.TaskType.Delete,
-        provider.name);
+        provider.getName());
 
     return taskUUID;
   }
@@ -160,11 +159,16 @@ public class CloudProviderHandler {
       String providerName,
       Provider reqProvider,
       boolean validate) {
-    Provider existentProvider = Provider.get(customer.uuid, providerName, providerCode);
+    Provider existentProvider = Provider.get(customer.getUuid(), providerName, providerCode);
     if (existentProvider != null) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Provider with the name %s already exists", providerName));
     }
+
+    if (providerCode.equals(Common.CloudType.gcp)) {
+      maybeUpdateGCPProject(reqProvider);
+    }
+
     // TODO: Remove this code once the validators are added for all cloud provider.
     CloudAPI cloudAPI = cloudAPIFactory.get(providerCode.toString());
     if (cloudAPI != null && !cloudAPI.isValidCreds(reqProvider, getFirstRegionCode(reqProvider))) {
@@ -176,7 +180,7 @@ public class CloudProviderHandler {
       providerValidator.validate(reqProvider);
     }
     Provider provider =
-        Provider.create(customer.uuid, providerCode, providerName, reqProvider.details);
+        Provider.create(customer.getUuid(), providerCode, providerName, reqProvider.getDetails());
     maybeUpdateVPC(provider);
 
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
@@ -203,7 +207,7 @@ public class CloudProviderHandler {
     taskParams.perRegionMetadata.forEach(
         (region, metadata) -> {
           if (metadata.instanceTemplate != null) {
-            CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+            CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
             cloudAPI.validateInstanceTemplate(provider, metadata.instanceTemplate);
           }
         });
@@ -248,7 +252,7 @@ public class CloudProviderHandler {
     }
 
     Map<String, String> config = formData.config;
-    Provider provider = Provider.create(customer.uuid, providerCode, formData.name, config);
+    Provider provider = Provider.create(customer.getUuid(), providerCode, formData.name, config);
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(provider);
 
     boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, false);
@@ -292,18 +296,18 @@ public class CloudProviderHandler {
   //  We do not need to call all the updateKubeConfig* methods. Instead just save
   //  whole thing after some validation.
   public Provider createKubernetesNew(Customer customer, Provider reqProvider) {
-    Common.CloudType providerCode = CloudType.valueOf(reqProvider.code);
+    Common.CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
     if (!providerCode.equals(kubernetes)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "API for only kubernetes provider creation: " + providerCode);
     }
-    if (reqProvider.regions.isEmpty()) {
+    if (reqProvider.getRegions().isEmpty()) {
       throw new PlatformServiceException(BAD_REQUEST, "Need regions in provider");
     }
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
 
     boolean hasConfigInProvider = providerConfig.containsKey("KUBECONFIG_NAME");
-    for (Region rd : reqProvider.regions) {
+    for (Region rd : reqProvider.getRegions()) {
       boolean hasConfig = hasConfigInProvider;
       Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
       if (regionConfig.containsKey("KUBECONFIG_NAME")) {
@@ -312,10 +316,10 @@ public class CloudProviderHandler {
         }
         hasConfig = true;
       }
-      if (rd.zones.isEmpty()) {
+      if (rd.getZones().isEmpty()) {
         throw new PlatformServiceException(BAD_REQUEST, "No zone provided in region");
       }
-      for (AvailabilityZone zd : rd.zones) {
+      for (AvailabilityZone zd : rd.getZones()) {
         Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(zd);
         if (zoneConfig.containsKey("KUBECONFIG_NAME")) {
           if (hasConfig) {
@@ -330,19 +334,28 @@ public class CloudProviderHandler {
     }
 
     Provider provider =
-        Provider.create(customer.uuid, providerCode, reqProvider.name, reqProvider.details);
+        Provider.create(
+            customer.getUuid(), providerCode, reqProvider.getName(), reqProvider.getDetails());
 
     boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, false);
-    List<Region> regionList = reqProvider.regions;
+    List<Region> regionList = reqProvider.getRegions();
     for (Region rd : regionList) {
       Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
       Region region =
-          Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude, rd.details);
+          Region.create(
+              provider,
+              rd.getCode(),
+              rd.getName(),
+              null,
+              rd.getLatitude(),
+              rd.getLongitude(),
+              rd.getDetails());
       boolean isConfigInRegion = updateKubeConfigForRegion(provider, region, regionConfig, false);
-      for (AvailabilityZone zd : rd.zones) {
+      for (AvailabilityZone zd : rd.getZones()) {
         Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(zd);
         AvailabilityZone az =
-            AvailabilityZone.createOrThrow(region, zd.code, zd.name, null, null, zd.details);
+            AvailabilityZone.createOrThrow(
+                region, zd.getCode(), zd.getName(), null, null, zd.getDetails());
         boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
         if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
           // Use in-cluster ServiceAccount credentials
@@ -381,7 +394,7 @@ public class CloudProviderHandler {
       Map<String, String> config,
       boolean edit) {
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doUpdateKubeConfigForZone(provider, region, zone, config, edit));
+        provider.getUuid(), () -> doUpdateKubeConfigForZone(provider, region, zone, config, edit));
   }
 
   public static String generateRandomString(int length, String prefix, String suffix) {
@@ -419,11 +432,11 @@ public class CloudProviderHandler {
       k8sMetadata = CloudInfoInterface.get(zone);
     }
 
-    String path = provider.uuid.toString();
+    String path = provider.getUuid().toString();
     if (region != null) {
-      path = path + "/" + region.uuid.toString();
+      path = path + "/" + region.getUuid().toString();
       if (zone != null) {
-        path = path + "/" + zone.uuid.toString();
+        path = path + "/" + zone.getUuid().toString();
       }
     }
     boolean hasKubeConfig = config.containsKey("KUBECONFIG_NAME");
@@ -443,7 +456,7 @@ public class CloudProviderHandler {
     if (region == null) {
       if (config.containsKey("KUBECONFIG_PULL_SECRET_NAME")) {
         if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
-          pullSecretFile = accessManager.createPullSecret(provider.uuid, config, edit);
+          pullSecretFile = accessManager.createPullSecret(provider.getUuid(), config, edit);
         }
       }
       if (pullSecretFile != null && k8sMetadata != null) {
@@ -460,7 +473,7 @@ public class CloudProviderHandler {
     JsonNode gcpCredentials = gcpCloudInfo.getGceApplicationCredentials();
     if (gcpCredentials != null) {
       String gcpCredentialsFile =
-          accessManager.createGCPCredentialsFile(provider.uuid, gcpCredentials);
+          accessManager.createGCPCredentialsFile(provider.getUuid(), gcpCredentials);
       if (gcpCredentialsFile != null) {
         gcpCloudInfo.setGceApplicationCredentialsPath(gcpCredentialsFile);
       }
@@ -481,7 +494,7 @@ public class CloudProviderHandler {
           InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
           idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
           InstanceType.upsert(
-              provider.uuid,
+              provider.getUuid(),
               instanceType.get("instanceTypeCode").asText(),
               instanceType.get("numCores").asDouble(),
               instanceType.get("memSizeGB").asDouble(),
@@ -491,17 +504,17 @@ public class CloudProviderHandler {
       InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
       idt.setVolumeDetailsList(1, 100, InstanceType.VolumeType.SSD);
       InstanceType.upsert(
-          provider.uuid,
+          provider.getUuid(),
           KUBERNETES_DEV_INSTANCE_TYPE.get("instanceTypeCode").asText(),
           KUBERNETES_DEV_INSTANCE_TYPE.get("numCores").asDouble(),
           KUBERNETES_DEV_INSTANCE_TYPE.get("memSizeGB").asDouble(),
           idt);
     }
-    if (customer.code.equals("cloud")) {
+    if (customer.getCode().equals("cloud")) {
       InstanceType.InstanceTypeDetails idt = new InstanceType.InstanceTypeDetails();
       idt.setVolumeDetailsList(1, 5, InstanceType.VolumeType.SSD);
       InstanceType.upsert(
-          provider.uuid,
+          provider.getUuid(),
           KUBERNETES_CLOUD_INSTANCE_TYPE.get("instanceTypeCode").asText(),
           KUBERNETES_CLOUD_INSTANCE_TYPE.get("numCores").asDouble(),
           KUBERNETES_CLOUD_INSTANCE_TYPE.get("memSizeGB").asDouble(),
@@ -715,7 +728,7 @@ public class CloudProviderHandler {
   }
 
   public Provider setupNewDockerProvider(Customer customer) {
-    Provider newProvider = Provider.create(customer.uuid, Common.CloudType.docker, "Docker");
+    Provider newProvider = Provider.create(customer.getUuid(), Common.CloudType.docker, "Docker");
     Map<String, Object> regionMetadata = configHelper.getConfig(DockerRegionMetadata);
     regionMetadata.forEach(
         (regionCode, metadata) -> {
@@ -730,13 +743,13 @@ public class CloudProviderHandler {
     Map<String, Object> instanceTypeMetadata = configHelper.getConfig(DockerInstanceTypeMetadata);
     instanceTypeMetadata.forEach(
         (itCode, metadata) ->
-            InstanceType.createWithMetadata(newProvider.uuid, itCode, Json.toJson(metadata)));
+            InstanceType.createWithMetadata(newProvider.getUuid(), itCode, Json.toJson(metadata)));
     return newProvider;
   }
 
   public UUID bootstrap(Customer customer, Provider provider, CloudBootstrap.Params taskParams) {
     // Set the top-level provider info.
-    taskParams.providerUUID = provider.uuid;
+    taskParams.providerUUID = provider.getUuid();
     taskParams.skipKeyPairValidate =
         runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
 
@@ -756,22 +769,29 @@ public class CloudProviderHandler {
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(
         customer,
-        provider.uuid,
+        provider.getUuid(),
         taskUUID,
         CustomerTask.TargetType.Provider,
         CustomerTask.TaskType.Create,
-        provider.name);
+        provider.getName());
     return taskUUID;
   }
 
   private Set<Region> checkIfRegionsToAdd(Provider editProviderReq, Provider provider) {
     Set<Region> regionsToAdd = new HashSet<>();
     if (provider.getCloudCode().canAddRegions()) {
-      if (editProviderReq.regions != null && !editProviderReq.regions.isEmpty()) {
+      if (editProviderReq.getRegions() != null && !editProviderReq.getRegions().isEmpty()) {
         Map<String, Region> newRegions =
-            editProviderReq.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
+            editProviderReq
+                .getRegions()
+                .stream()
+                .collect(Collectors.toMap(r -> r.getCode(), r -> r));
         Set<String> existingRegionCodes =
-            provider.regions.stream().map(region -> region.code).collect(Collectors.toSet());
+            provider
+                .getRegions()
+                .stream()
+                .map(region -> region.getCode())
+                .collect(Collectors.toSet());
         newRegions.keySet().removeAll(existingRegionCodes);
         if (!newRegions.isEmpty()) {
           regionsToAdd = new HashSet<>(newRegions.values());
@@ -783,21 +803,22 @@ public class CloudProviderHandler {
 
   private boolean removeAndUpdateRegions(Provider editProviderReq, Provider provider) {
     Map<String, Region> existingRegions =
-        provider.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
+        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
     boolean result = false;
-    for (Region region : editProviderReq.regions) {
-      Region oldRegion = existingRegions.get(region.code);
+    for (Region region : editProviderReq.getRegions()) {
+      Region oldRegion = existingRegions.get(region.getCode());
       if (oldRegion != null && oldRegion.isUpdateNeeded(region)) {
-        LOG.debug("Editing region {}", region.code);
+        LOG.debug("Editing region {}", region.getCode());
         regionHandler.editRegion(
-            provider.customerUUID,
-            provider.uuid,
-            oldRegion.uuid,
+            provider.getCustomerUUID(),
+            provider.getUuid(),
+            oldRegion.getUuid(),
             RegionEditFormData.fromRegion(region));
         result = true;
       } else if (oldRegion != null && !region.isActive() && oldRegion.isActive()) {
-        LOG.debug("Deleting region {}", region.code);
-        regionHandler.deleteRegion(provider.customerUUID, provider.uuid, region.uuid);
+        LOG.debug("Deleting region {}", region.getCode());
+        regionHandler.deleteRegion(
+            provider.getCustomerUUID(), provider.getUuid(), region.getUuid());
         result = true;
       }
     }
@@ -807,7 +828,7 @@ public class CloudProviderHandler {
   public UUID editProvider(
       Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doEditProvider(customer, provider, editProviderReq, validate));
+        provider.getUuid(), () -> doEditProvider(customer, provider, editProviderReq, validate));
   }
 
   private UUID doEditProvider(
@@ -832,7 +853,7 @@ public class CloudProviderHandler {
 
     if (!providerModified && taskUUID == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "No changes to be made for provider type: " + provider.code);
+          BAD_REQUEST, "No changes to be made for provider type: " + provider.getCode());
     }
     return taskUUID;
   }
@@ -845,21 +866,32 @@ public class CloudProviderHandler {
     boolean updatedProviderDetails = false;
     boolean updatedProviderConfig = false;
     // TODO: Remove this code once the validators are added for all cloud provider.
-    CloudAPI cloudAPI = cloudAPIFactory.get(provider.code);
+    CloudAPI cloudAPI = cloudAPIFactory.get(provider.getCode());
     if (cloudAPI != null
         && !cloudAPI.isValidCreds(editProviderReq, getFirstRegionCode(editProviderReq))) {
       throw new PlatformServiceException(
-          BAD_REQUEST, String.format("Invalid %s Credentials.", provider.code.toUpperCase()));
+          BAD_REQUEST, String.format("Invalid %s Credentials.", provider.getCode().toUpperCase()));
     }
     if (validate) {
       providerValidator.validate(editProviderReq);
     }
-    if (!provider.details.equals(editProviderReq.details)) {
+    if (!provider.getName().equals(editProviderReq.getName())) {
       updatedProviderDetails = true;
-      provider.details = editProviderReq.details;
+      List<Provider> providers =
+          Provider.getAll(customer.getUuid(), editProviderReq.getName(), provider.getCloudCode());
+      if (providers.size() > 0) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format("Provider with name %s already exists.", editProviderReq.getName()));
+      }
+      provider.setName(editProviderReq.getName());
+    }
+    if (!provider.getDetails().equals(editProviderReq.getDetails())) {
+      updatedProviderDetails = true;
+      provider.setDetails(editProviderReq.getDetails());
     }
     if (!existingConfigMap.equals(providerConfig)) {
-      provider.details.cloudInfo = editProviderReq.details.cloudInfo;
+      provider.getDetails().cloudInfo = editProviderReq.getDetails().cloudInfo;
       updatedProviderConfig = maybeUpdateCloudProviderConfig(provider, providerConfig);
     }
     boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, providerConfig);
@@ -877,7 +909,7 @@ public class CloudProviderHandler {
     // Perform validation for necessary fields
     if (provider.getCloudCode() == gcp) {
       // TODO: Remove once we allow vpc creation for added regions
-      if (skipBootstrap && provider.destVpcId == null) {
+      if (skipBootstrap && provider.getDestVpcId() == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Required field dest vpc id for GCP");
       }
     }
@@ -886,19 +918,21 @@ public class CloudProviderHandler {
           // TODO: Remove once we allow vpc creation for added regions
           if (skipBootstrap && region.getVnetName() == null && provider.getCloudCode() == aws) {
             throw new PlatformServiceException(
-                BAD_REQUEST, "Required field vnet name (VPC ID) for region: " + region.code);
+                BAD_REQUEST, "Required field vnet name (VPC ID) for region: " + region.getCode());
           }
-          if (region.zones == null || region.zones.isEmpty()) {
+          if (region.getZones() == null || region.getZones().isEmpty()) {
             throw new PlatformServiceException(
-                BAD_REQUEST, "Zone info needs to be specified for region: " + region.code);
+                BAD_REQUEST, "Zone info needs to be specified for region: " + region.getCode());
           }
-          region.zones.forEach(
-              zone -> {
-                if (zone.subnet == null && provider.getCloudCode() != onprem) {
-                  throw new PlatformServiceException(
-                      BAD_REQUEST, "Required field subnet for zone: " + zone.code);
-                }
-              });
+          region
+              .getZones()
+              .forEach(
+                  zone -> {
+                    if (zone.getSubnet() == null && provider.getCloudCode() != onprem) {
+                      throw new PlatformServiceException(
+                          BAD_REQUEST, "Required field subnet for zone: " + zone.getCode());
+                    }
+                  });
         });
 
     // Validate regions to add. We only support providing custom VPCs for now.
@@ -907,67 +941,75 @@ public class CloudProviderHandler {
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
     // Assuming that at that point we already have at least one AccessKey.
     // And we can use actual one.
-    taskParams.keyPairName = AccessKey.getLatestKey(provider.uuid).getKeyCode();
+    taskParams.keyPairName = AccessKey.getLatestKey(provider.getUuid()).getKeyCode();
     taskParams.skipKeyPairValidate =
         runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
-    taskParams.providerUUID = provider.uuid;
-    taskParams.destVpcId = provider.destVpcId;
-    List<Region> allRegions = new ArrayList<>(provider.regions);
+    taskParams.providerUUID = provider.getUuid();
+    taskParams.destVpcId = provider.getDestVpcId();
+    List<Region> allRegions = new ArrayList<>(provider.getRegions());
     allRegions.addAll(regionsToAdd);
     taskParams.perRegionMetadata =
         allRegions
             .stream()
             .collect(
                 Collectors.toMap(
-                    region -> region.name, CloudBootstrap.Params.PerRegionMetadata::fromRegion));
+                    region -> region.getName(),
+                    CloudBootstrap.Params.PerRegionMetadata::fromRegion));
     taskParams.addedRegionCodes =
-        regionsToAdd.stream().map(r -> r.code).collect(Collectors.toSet());
+        regionsToAdd.stream().map(r -> r.getCode()).collect(Collectors.toSet());
     taskParams.skipBootstrapRegion = skipBootstrap;
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(
         customer,
-        provider.uuid,
+        provider.getUuid(),
         taskUUID,
         CustomerTask.TargetType.Provider,
         CustomerTask.TaskType.Update,
-        provider.name);
+        provider.getName());
     return taskUUID;
   }
 
   private boolean addOrRemoveAZs(Provider editProviderReq, Provider provider) {
     boolean result = false;
     Map<String, Region> currentRegionMap =
-        provider.regions.stream().collect(Collectors.toMap(r -> r.code, r -> r));
+        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
 
-    for (Region region : editProviderReq.regions) {
-      Region currentState = currentRegionMap.get(region.code);
+    for (Region region : editProviderReq.getRegions()) {
+      Region currentState = currentRegionMap.get(region.getCode());
       if (currentState != null) {
         Map<String, AvailabilityZone> currentAZs =
-            currentState.zones.stream().collect(Collectors.toMap(az -> az.code, az -> az));
-        for (AvailabilityZone zone : region.zones) {
-          AvailabilityZone currentAZ = currentAZs.get(zone.code);
+            currentState
+                .getZones()
+                .stream()
+                .collect(Collectors.toMap(az -> az.getCode(), az -> az));
+        for (AvailabilityZone zone : region.getZones()) {
+          AvailabilityZone currentAZ = currentAZs.get(zone.getCode());
           if (currentAZ == null) {
             if (!zone.isActive()) {
-              LOG.warn("Zone {} is added but not active - ignoring", zone.code);
+              LOG.warn("Zone {} is added but not active - ignoring", zone.getCode());
               continue;
             }
             result = true;
-            LOG.debug("Creating zone {} in region {}", zone.code, region.code);
+            LOG.debug("Creating zone {} in region {}", zone.getCode(), region.getCode());
             AvailabilityZone.createOrThrow(
-                region, zone.code, zone.name, zone.subnet, zone.secondarySubnet);
+                region,
+                zone.getCode(),
+                zone.getName(),
+                zone.getSubnet(),
+                zone.getSecondarySubnet());
           } else if (!zone.isActive() && currentAZ.isActive()) {
-            LOG.debug("Deleting zone {} from region {}", zone.code, region.code);
-            availabilityZoneHandler.deleteZone(zone.uuid, region.uuid);
+            LOG.debug("Deleting zone {} from region {}", zone.getCode(), region.getCode());
+            availabilityZoneHandler.deleteZone(zone.getUuid(), region.getUuid());
             result = true;
           } else if (currentAZ.shouldBeUpdated(zone)) {
-            LOG.debug("updating zone {}", zone.code);
+            LOG.debug("updating zone {}", zone.getCode());
             availabilityZoneHandler.editZone(
-                zone.uuid,
-                region.uuid,
+                zone.getUuid(),
+                region.getUuid(),
                 az -> {
                   az.setAvailabilityZoneDetails(zone.getAvailabilityZoneDetails());
-                  az.secondarySubnet = zone.secondarySubnet;
-                  az.subnet = zone.subnet;
+                  az.setSecondarySubnet(zone.getSecondarySubnet());
+                  az.setSubnet(zone.getSubnet());
                 });
             result = true;
           }
@@ -989,23 +1031,27 @@ public class CloudProviderHandler {
     return false;
   }
 
+  private void maybeUpdateGCPProject(Provider provider) {
+    GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+
+    if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
+      /**
+       * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in gcp
+       * credentials user provided. 3. Metadata query to fetch the same.
+       */
+      ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.getGceApplicationCredentials();
+      if (credentialJSON != null && credentialJSON.has("project_id")) {
+        gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
+      }
+    }
+  }
+
   private void maybeUpdateVPC(Provider provider) {
     switch (provider.getCloudCode()) {
       case gcp:
         GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
         if (gcpCloudInfo == null) {
           return;
-        }
-
-        if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
-          /**
-           * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in
-           * gcp credentials user provided. 3. Metadata query to fetch the same.
-           */
-          ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.getGceApplicationCredentials();
-          if (credentialJSON != null && credentialJSON.has("project_id")) {
-            gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
-          }
         }
 
         if (gcpCloudInfo.getUseHostVPC() != null && !gcpCloudInfo.getUseHostVPC()) {
@@ -1028,7 +1074,7 @@ public class CloudProviderHandler {
             gcpCloudInfo.setDestVpcId(network);
           }
           if (StringUtils.isBlank(gcpCloudInfo.getGceProject())) {
-            gcpCloudInfo.setGceProject(currentHostInfo.get("host_project").asText());
+            gcpCloudInfo.setGceProject(currentHostInfo.get("project").asText());
           }
         }
         break;
@@ -1074,7 +1120,7 @@ public class CloudProviderHandler {
 
   private void validateAndUpdateHostedZone(Provider provider, String hostedZoneId) {
     // TODO: do we have a good abstraction to inspect this AND know that it's an error outside?
-    ShellResponse response = dnsManager.listDnsRecord(provider.uuid, hostedZoneId);
+    ShellResponse response = dnsManager.listDnsRecord(provider.getUuid(), hostedZoneId);
     if (response.code != 0) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "Invalid devops API response: " + response.message);
@@ -1103,12 +1149,12 @@ public class CloudProviderHandler {
   }
 
   public void refreshPricing(UUID customerUUID, Provider provider) {
-    if (provider.code.equals("gcp")) {
-      gcpInitializer.initialize(customerUUID, provider.uuid);
-    } else if (provider.code.equals("azu")) {
-      azuInitializer.initialize(customerUUID, provider.uuid);
+    if (provider.getCode().equals("gcp")) {
+      gcpInitializer.initialize(customerUUID, provider.getUuid());
+    } else if (provider.getCode().equals("azu")) {
+      azuInitializer.initialize(customerUUID, provider.getUuid());
     } else {
-      awsInitializer.initialize(customerUUID, provider.uuid);
+      awsInitializer.initialize(customerUUID, provider.getUuid());
     }
   }
 
@@ -1185,8 +1231,8 @@ public class CloudProviderHandler {
   }
 
   private static String getFirstRegionCode(Provider provider) {
-    for (Region r : provider.regions) {
-      return r.code;
+    for (Region r : provider.getRegions()) {
+      return r.getCode();
     }
     return null;
   }

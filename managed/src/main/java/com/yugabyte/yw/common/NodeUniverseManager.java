@@ -293,7 +293,7 @@ public class NodeUniverseManager extends DevopsBase {
     } else if (cloudType != Common.CloudType.unknown) {
       UUID providerUUID = UUID.fromString(cluster.userIntent.provider);
       Provider provider = Provider.getOrBadRequest(providerUUID);
-      ProviderDetails providerDetails = provider.details;
+      ProviderDetails providerDetails = provider.getDetails();
       AccessKey accessKey =
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =

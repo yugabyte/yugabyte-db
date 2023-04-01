@@ -546,7 +546,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       NodeDetails node, boolean updateCustomImageUsage) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
-    updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
+    updateNodeDetailsParams.setUniverseUUID(taskParams().getUniverseUUID());
     updateNodeDetailsParams.azUuid = node.azUuid;
     updateNodeDetailsParams.nodeName = node.nodeName;
     updateNodeDetailsParams.details = node;

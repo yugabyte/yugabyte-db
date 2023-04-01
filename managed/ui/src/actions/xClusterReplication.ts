@@ -4,7 +4,11 @@ import moment from 'moment';
 import { ROOT_URL } from '../config';
 import { XClusterConfig, Metrics } from '../components/xcluster';
 import { getCustomerEndpoint } from './common';
-import { MetricName, XClusterConfigState } from '../components/xcluster/constants';
+import {
+  MetricName,
+  XClusterConfigState,
+  XClusterConfigType
+} from '../components/xcluster/constants';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -30,6 +34,7 @@ export function createXClusterReplication(
   targetUniverseUUID: string,
   sourceUniverseUUID: string,
   name: string,
+  configType: XClusterConfigType,
   tables: string[],
   bootstrapParams?: {
     tables: string[];
@@ -41,6 +46,7 @@ export function createXClusterReplication(
     sourceUniverseUUID,
     targetUniverseUUID,
     name,
+    configType,
     tables,
     ...(bootstrapParams !== undefined && { bootstrapParams })
   });
@@ -58,14 +64,19 @@ export function restartXClusterConfig(
   });
 }
 
-export function isBootstrapRequired(sourceUniverseUUID: string, tableUUIDs: string[]) {
+export function isBootstrapRequired(
+  sourceUniverseUUID: string,
+  tableUUIDs: string[],
+  configType: XClusterConfigType = XClusterConfigType.BASIC
+) {
   const customerId = localStorage.getItem('customerId');
   return Promise.all(
     tableUUIDs.map((tableUUID) => {
       return axios
         .post<{ [tableUUID: string]: boolean }>(
           `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
-          { tables: [tableUUID] }
+          { tables: [tableUUID] },
+          { params: { configType } }
         )
         .then((response) => response.data);
     })

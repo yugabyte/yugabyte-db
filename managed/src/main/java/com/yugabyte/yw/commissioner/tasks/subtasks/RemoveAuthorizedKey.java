@@ -27,7 +27,7 @@ public class RemoveAuthorizedKey extends NodeTaskBase {
   @Override
   public void run() {
     log.info("Running {}", getName());
-    UUID universeUUID = taskParams().universeUUID;
+    UUID universeUUID = taskParams().getUniverseUUID();
     String nodeName = taskParams().nodeName;
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNodeOrBadRequest(nodeName);

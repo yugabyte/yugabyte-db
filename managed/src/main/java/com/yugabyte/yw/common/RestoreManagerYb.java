@@ -50,16 +50,16 @@ public class RestoreManagerYb extends DevopsBase {
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
 
   public ShellResponse runCommand(RestoreBackupParams restoreBackupParams) {
-    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UserIntent userIntent = primaryCluster.userIntent;
-    Provider provider = Provider.get(region.provider.uuid);
+    Provider provider = Provider.get(region.getProvider().getUuid());
 
     String accessKeyCode = userIntent.accessKeyCode;
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
+    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(region.provider);
+    Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(region.getProvider());
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
@@ -80,7 +80,7 @@ public class RestoreManagerYb extends DevopsBase {
         Provider clusterProvider =
             Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
-            AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(clusterProvider.getUuid(), clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
           if (nodeInCluster.cloudInfo.private_ip != null
@@ -153,9 +153,9 @@ public class RestoreManagerYb extends DevopsBase {
       }
     }
 
-    Customer customer = Customer.get(universe.customerId);
+    Customer customer = Customer.get(universe.getCustomerId());
     CustomerConfig customerConfig =
-        CustomerConfig.get(customer.uuid, restoreBackupParams.storageConfigUUID);
+        CustomerConfig.get(customer.getUuid(), restoreBackupParams.storageConfigUUID);
     File backupKeysFile =
         EncryptionAtRestUtil.getUniverseBackupKeysFile(backupStorageInfo.storageLocation);
 
@@ -174,7 +174,7 @@ public class RestoreManagerYb extends DevopsBase {
 
     if (actionType.equals(ActionType.RESTORE)) {
       if (restoreBackupParams.restoreTimeStamp != null) {
-        String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String backupLocation = customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText();
         String restoreTimeStampMicroUnix =
             getValidatedRestoreTimeStampMicroUnix(
                 restoreBackupParams.restoreTimeStamp,
@@ -264,7 +264,7 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
-      commandArgs.add(provider.details.sshPort.toString());
+      commandArgs.add(provider.getDetails().sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
       if (!ipToSshKeyPath.isEmpty()) {
@@ -276,8 +276,8 @@ public class RestoreManagerYb extends DevopsBase {
     commandArgs.add(backupStorageInfo.storageLocation);
     commandArgs.add("--storage_type");
 
-    commandArgs.add(customerConfig.name.toLowerCase());
-    if (customerConfig.name.toLowerCase().equals("nfs")) {
+    commandArgs.add(customerConfig.getName().toLowerCase());
+    if (customerConfig.getName().equalsIgnoreCase("nfs")) {
       commandArgs.add("--nfs_storage_path");
       commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
@@ -286,7 +286,7 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(restoreBackupParams.actionType.name().toLowerCase());
-    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
     boolean verboseLogsEnabled =
         confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (restoreBackupParams.enableVerboseLogs || verboseLogsEnabled) {

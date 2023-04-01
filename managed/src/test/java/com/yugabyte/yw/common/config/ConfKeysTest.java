@@ -44,7 +44,7 @@ public class ConfKeysTest extends FakeDBApplication {
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId());
     defaultProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     Users user = ModelFactory.testUser(defaultCustomer, Users.Role.SuperAdmin);
     authToken = user.createAuthToken();
@@ -52,7 +52,7 @@ public class ConfKeysTest extends FakeDBApplication {
 
   private Result setKey(String path, String newVal, UUID scopeUUID) {
     Http.RequestBuilder request =
-        fakeRequest("PUT", String.format(KEY, defaultCustomer.uuid, scopeUUID, path))
+        fakeRequest("PUT", String.format(KEY, defaultCustomer.getUuid(), scopeUUID, path))
             .header("X-AUTH-TOKEN", authToken)
             .bodyText(newVal);
     return route(request);
@@ -97,9 +97,9 @@ public class ConfKeysTest extends FakeDBApplication {
 
     Map<Class<? extends RuntimeConfigKeysModule>, UUID> scopes = new HashMap<>();
     scopes.put(GlobalConfKeys.class, GLOBAL_SCOPE_UUID);
-    scopes.put(CustomerConfKeys.class, defaultCustomer.uuid);
-    scopes.put(UniverseConfKeys.class, defaultUniverse.universeUUID);
-    scopes.put(ProviderConfKeys.class, defaultProvider.uuid);
+    scopes.put(CustomerConfKeys.class, defaultCustomer.getUuid());
+    scopes.put(UniverseConfKeys.class, defaultUniverse.getUniverseUUID());
+    scopes.put(ProviderConfKeys.class, defaultProvider.getUuid());
 
     Map<ConfDataType<?>, String> validVals = new HashMap<>();
 

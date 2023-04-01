@@ -65,7 +65,7 @@ public class TestUtils {
 
   public static void setFakeHttpContext(Users user, String email) {
     if (user != null) {
-      user.email = email;
+      user.setEmail(email);
     }
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
     Http.Request request = new Http.RequestBuilder().build();

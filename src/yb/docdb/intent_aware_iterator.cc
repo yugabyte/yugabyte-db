@@ -42,6 +42,15 @@
 
 using namespace std::literals;
 
+#ifdef NDEBUG
+constexpr bool kUseFastNextForIteratorDefault = false;
+#else
+constexpr bool kUseFastNextForIteratorDefault = true;
+#endif
+
+DEFINE_RUNTIME_bool(use_fast_next_for_iteration, kUseFastNextForIteratorDefault,
+                    "Whether intent aware iterator should use fast next feature.");
+
 namespace yb {
 namespace docdb {
 
@@ -129,6 +138,7 @@ IntentAwareIterator::IntentAwareIterator(
   // 5) Intents DB iterator is created on an intents DB snapshot containing no intents for k1.
   // 6) Client reads no values for k1.
   iter_ = BoundedRocksDbIterator(doc_db.regular, read_opts, doc_db.key_bounds);
+  iter_.UseFastNext(FLAGS_use_fast_next_for_iteration);
   VTRACE(2, "Created iterator");
 }
 
@@ -344,6 +354,10 @@ Status IntentAwareIterator::NextFullValue(
 
 bool IntentAwareIterator::PreparePrev(const Slice& key) {
   VLOG(4) << __func__ << "(" << SubDocKey::DebugSliceToString(key) << ")";
+
+  // TODO(scanperf) allow fast next after reverse scan.
+  // Fallback to regular Next if reverse scan was used.
+  iter_.UseFastNext(false);
 
   ROCKSDB_SEEK(&iter_, key);
 

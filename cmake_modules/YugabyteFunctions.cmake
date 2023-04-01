@@ -419,8 +419,16 @@ function(add_executable name)
     # differently depending on the OS.
     target_link_libraries(${name} "${TCMALLOC_STATIC_LIB_LD_FLAGS}")
     if("${YB_GOOGLE_TCMALLOC}" STREQUAL "1")
-      target_link_libraries(${name} absl)
+      target_link_libraries("${name}" absl)
+    else()
+      target_link_libraries("${name}" profiler)
     endif()
+    if(IS_CLANG)
+      # Static tcmalloc library depends on libc++ when building with Clang.
+      target_link_libraries("${name}" c++)
+    endif()
+    # Link with libm because tcmalloc requires the log2 function.
+    target_link_libraries("${name}" m)
   endif()
 
   yb_process_pch(${name})
@@ -947,3 +955,53 @@ function(yb_add_lto_target original_exe_name output_exe_name symlink_as_names)
   # We need to build the corresponding non-LTO executable first, such as yb-master or yb-tserver.
   add_dependencies("${output_exe_name}" "${dynamic_exe_name}")
 endfunction()
+
+# -------------------------------------------------------------------------------------------------
+
+macro(yb_setup_odyssey)
+  set(OD_EXTRA_COMPILER_FLAGS
+      -Wno-implicit-fallthrough
+      -Wno-missing-field-initializers
+      -Wno-strict-prototypes
+      -Wno-unused-but-set-variable
+      -Wno-unused-function
+      -Wno-unused-parameter
+      -Wno-unused-variable
+      # This is needed to e.g. have access to pthread_setname_np when including pthread.h.
+      -D_GNU_SOURCE
+     )
+  if(IS_CLANG)
+    list(APPEND OD_EXTRA_COMPILER_FLAGS
+         -Wno-language-extension-token
+         -Wno-shorten-64-to-32
+         -Wno-static-in-inline
+         -Wno-pointer-bool-conversion
+         -Wno-newline-eof
+        )
+  endif()
+  if(IS_GCC)
+    list(APPEND OD_EXTRA_COMPILER_FLAGS
+         -Wno-pedantic
+         -Wno-incompatible-pointer-types
+        )
+  endif()
+
+  set(MACHINARIUM_INCLUDE_DIRS "${YB_SRC_ROOT}/src/odyssey/third_party/machinarium/sources")
+  set(MACHINARIUM_LIBRARIES "machine_library_static")
+
+  set(KIWI_INCLUDE_DIRS "${YB_SRC_ROOT}/src/odyssey/third_party/kiwi")
+  set(KIWI_LIBRARIES "kw_library_static")
+
+  set(POSTGRESQL_INCLUDE_DIR "${YB_BUILD_ROOT}/postgres_build/src/include")
+  set(POSTGRESQL_LIBPGPORT "${PG_PORT_STATIC_LIB}")
+  set(POSTGRESQL_LIBRARY "${PG_COMMON_STATIC_LIB}")
+  set(PQ_LIBRARY "${LIBPQ_SHARED_LIB}")
+  set(od_binary "odyssey")
+  set(OD_EXTRA_LIBRARIES ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY})
+  set(od_extra_dependencies "postgres")
+  set(OD_EXTRA_EXE_LINKER_FLAGS "-L${YB_BUILD_ROOT}/lib")
+
+  add_subdirectory(src/odyssey/third_party/machinarium)
+  add_subdirectory(src/odyssey/third_party/kiwi)
+  add_subdirectory(src/odyssey)
+endmacro()

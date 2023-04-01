@@ -222,15 +222,19 @@ Status PopulateBeforeImage(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const ReadHybridTime& read_time,
     RowMessage* row_message, const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map, const docdb::SubDocKey& decoded_primary_key,
-    const Schema& schema, const SchemaVersion schema_version) {
+    const Schema& schema, const SchemaVersion schema_version, const ColocationId& colocation_id) {
   auto tablet = tablet_peer->shared_tablet();
   auto docdb = tablet->doc_db();
 
   const auto log_prefix = tablet->LogPrefix();
   docdb::DocReadContext doc_read_context(log_prefix, tablet->table_type(), schema, schema_version);
   docdb::DocRowwiseIterator iter(
-      schema, *tablet->GetDocReadContext(), TransactionOperationContext(), docdb,
-      CoarseTimePoint::max() /* deadline */, read_time);
+      schema,
+      colocation_id == kColocationIdNotSet
+          ? *tablet->GetDocReadContext()
+          : *(VERIFY_RESULT(tablet_peer->tablet_metadata()->GetTableInfo("", colocation_id))
+                  ->doc_read_context),
+      TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time);
 
   const docdb::DocKey& doc_key = decoded_primary_key.doc_key();
   docdb::DocQLScanSpec spec(schema, doc_key, rocksdb::kDefaultQueryId);
@@ -409,7 +413,8 @@ Result<SchemaDetails> GetOrPopulateRequiredSchemaDetails(
     auto table_name = tablet->metadata()->table_name(cur_table_id);
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
-        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
+        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
       continue;
     }
 
@@ -460,6 +465,7 @@ Status PopulateCDCSDKIntentRecord(
   Schema schema = Schema();
   SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
   SchemaPackingStorage schema_packing_storage(tablet->table_type());
+  ColocationId colocation_id = kColocationIdNotSet;
 
   if (!colocated) {
     const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
@@ -540,7 +546,8 @@ Status PopulateCDCSDKIntentRecord(
               auto hybrid_time = commit_time - 1;
               auto result = PopulateBeforeImage(
                   tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
-                  enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+                  enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version,
+                  colocation_id);
               if (!result.ok()) {
                 LOG(ERROR) << "Failed to get the Beforeimage for tablet: "
                            << tablet_peer->tablet_id()
@@ -575,7 +582,7 @@ Status PopulateCDCSDKIntentRecord(
       row_message->Clear();
 
       if (colocated) {
-        auto colocation_id = decoded_key.doc_key().colocation_id();
+        colocation_id = decoded_key.doc_key().colocation_id();
         auto table_info = CHECK_RESULT(tablet->metadata()->GetTableInfo("", colocation_id));
 
         const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
@@ -627,7 +634,7 @@ Status PopulateCDCSDKIntentRecord(
           auto hybrid_time = commit_time - 1;
           auto result = PopulateBeforeImage(
               tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
-              composite_atts_map, decoded_key, schema, schema_version);
+              composite_atts_map, decoded_key, schema, schema_version, colocation_id);
           if (!result.ok()) {
             LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
                        << " with read time: " << ReadHybridTime::FromUint64(commit_time)
@@ -721,7 +728,8 @@ Status PopulateCDCSDKIntentRecord(
             auto hybrid_time = commit_time - 1;
             auto result = PopulateBeforeImage(
                 tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message,
-                enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version);
+                enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version,
+                colocation_id);
             if (!result.ok()) {
               LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
                          << " with read time: " << ReadHybridTime::FromUint64(commit_time)
@@ -761,7 +769,7 @@ Status PopulateCDCSDKIntentRecord(
         auto hybrid_time = commit_time - 1;
         auto result = PopulateBeforeImage(
             tablet_peer, ReadHybridTime::FromUint64(hybrid_time), row_message, enum_oid_label_map,
-            composite_atts_map, prev_decoded_key, schema, schema_version);
+            composite_atts_map, prev_decoded_key, schema, schema_version, colocation_id);
         if (!result.ok()) {
           LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
                      << " with read time: " << ReadHybridTime::FromUint64(commit_time)
@@ -815,6 +823,7 @@ Status PopulateCDCSDKWriteRecord(
   bool colocated = tablet_ptr->metadata()->colocated();
   Schema schema = Schema();
   SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
+  auto colocation_id = kColocationIdNotSet;
   if (!colocated) {
     const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
         tablet_peer, msg->hybrid_time(), cached_schema_details, client,
@@ -851,7 +860,7 @@ Status PopulateCDCSDKWriteRecord(
       docdb::SubDocKey decoded_key;
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
       if (colocated) {
-        auto colocation_id = decoded_key.doc_key().colocation_id();
+        colocation_id = decoded_key.doc_key().colocation_id();
         auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo("", colocation_id));
 
         const auto& schema_details = VERIFY_RESULT(GetOrPopulateRequiredSchemaDetails(
@@ -872,7 +881,8 @@ Status PopulateCDCSDKWriteRecord(
                   << " for change record type: " << row_message->op();
           auto result = PopulateBeforeImage(
               tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-              enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+              enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version,
+              colocation_id);
           if (!result.ok()) {
             LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
                        << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
@@ -927,7 +937,8 @@ Status PopulateCDCSDKWriteRecord(
                 << " for change record type: " << row_message->op();
         auto result = PopulateBeforeImage(
             tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-            enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version);
+            enum_oid_label_map, composite_atts_map, decoded_key, schema, schema_version,
+            colocation_id);
         if (!result.ok()) {
           LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
                      << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
@@ -999,7 +1010,8 @@ Status PopulateCDCSDKWriteRecord(
               << " for change record type: " << row_message->op();
       auto result = PopulateBeforeImage(
           tablet_peer, ReadHybridTime::FromUint64(msg->hybrid_time() - 1), row_message,
-          enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version);
+          enum_oid_label_map, composite_atts_map, prev_decoded_key, schema, schema_version,
+          colocation_id);
       if (!result.ok()) {
         LOG(ERROR) << "Failed to get the Beforeimage for tablet: " << tablet_peer->tablet_id()
                    << " with read time: " << ReadHybridTime::FromUint64(msg->hybrid_time())
@@ -1102,7 +1114,8 @@ void FillBeginRecord(
     auto table_name = tablet->metadata()->table_name(table_id);
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
-        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
+        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
       continue;
     }
     CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();
@@ -1130,7 +1143,8 @@ void FillCommitRecord(
     auto table_name = tablet->metadata()->table_name(table_id);
     // Ignore the DDL information of the parent table.
     if (tablet->metadata()->colocated() &&
-        boost::ends_with(table_name, kTablegroupParentTableNameSuffix)) {
+        (boost::ends_with(table_name, kTablegroupParentTableNameSuffix) ||
+         boost::ends_with(table_name, kColocationParentTableNameSuffix))) {
       continue;
     }
     CDCSDKProtoRecordPB* proto_record = resp->add_cdc_sdk_proto_records();

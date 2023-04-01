@@ -41,7 +41,7 @@ public class DeleteClusterFromUniverse extends UniverseTaskBase {
   public String getName() {
     return super.getName()
         + "'("
-        + taskParams().universeUUID
+        + taskParams().getUniverseUUID()
         + " "
         + taskParams().clusterUUID
         + ")'";

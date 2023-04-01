@@ -41,7 +41,7 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
       // to lock out the universe completely in case this task fails.
       lockUniverse(-1 /* expectedUniverseVersion */);
 
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
       // Check whether the target ybc version is present in YB-Anywhere for each node.
       universe
@@ -51,13 +51,13 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
                 Pair<String, String> ybcPackageDetails =
                     ybcManager.getYbcPackageDetailsForNode(universe, node);
                 if (releaseManager.getYbcReleaseByVersion(
-                        taskParams().ybcSoftwareVersion,
+                        taskParams().getYbcSoftwareVersion(),
                         ybcPackageDetails.getFirst(),
                         ybcPackageDetails.getSecond())
                     == null) {
                   throw new RuntimeException(
                       "Target ybc package "
-                          + taskParams().ybcSoftwareVersion
+                          + taskParams().getYbcSoftwareVersion()
                           + " does not exists for node"
                           + node.nodeName);
                 }
@@ -84,7 +84,7 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
           universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
 
       //  Update Universe detail to enable yb-controller.
-      createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+      createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Set the node states to Live.

@@ -94,7 +94,7 @@ public class CustomerTaskTest extends FakeDBApplication {
     taskInfo = new TaskInfo(taskType);
     UUID taskUUID = UUID.randomUUID();
     taskInfo.setTaskUUID(taskUUID);
-    taskInfo.setTaskDetails(Json.newObject());
+    taskInfo.setDetails(Json.newObject());
     taskInfo.setOwner("");
     if (parentUUID != null) {
       taskInfo.setParentUuid(parentUUID);
@@ -115,7 +115,7 @@ public class CustomerTaskTest extends FakeDBApplication {
           th.getFriendlyDescription(),
           is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
       assertThat(th.getTargetUUID(), is(equalTo(targetUUID)));
-      assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.uuid)));
+      assertThat(th.getCustomerUUID(), is(equalTo(defaultCustomer.getUuid())));
     }
   }
 
@@ -132,7 +132,7 @@ public class CustomerTaskTest extends FakeDBApplication {
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       CustomerTask th = createTask(targetType, targetUUID, Create);
-      assertEquals(th.getTarget(), targetType);
+      assertEquals(th.getTargetType(), targetType);
       assertThat(
           th.getFriendlyDescription(),
           is(allOf(notNullValue(), equalTo("Creating " + targetType.toString() + " : Foo"))));
@@ -256,14 +256,14 @@ public class CustomerTaskTest extends FakeDBApplication {
     staleTasks = deleteStaleTasks(defaultCustomer, 5);
     assertEquals(4, staleTasks.size());
     for (int i = 0; i < 4; i++) {
-      assertEquals(CustomerTask.TargetType.Universe, staleTasks.get(i).getTarget());
+      assertEquals(CustomerTask.TargetType.Universe, staleTasks.get(i).getTargetType());
     }
     assertEquals(3, CustomerTask.find.all().size());
     assertEquals(9, TaskInfo.find.all().size());
     staleTasks = deleteStaleTasks(defaultCustomer, 0);
     assertEquals(3, staleTasks.size());
     for (int i = 0; i < 3; i++) {
-      assertEquals(CustomerTask.TargetType.Table, staleTasks.get(i).getTarget());
+      assertEquals(CustomerTask.TargetType.Table, staleTasks.get(i).getTargetType());
     }
     assertTrue(CustomerTask.find.all().isEmpty());
     assertTrue(TaskInfo.find.all().isEmpty());

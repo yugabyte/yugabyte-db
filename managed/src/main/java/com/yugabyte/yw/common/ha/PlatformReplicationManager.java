@@ -182,12 +182,12 @@ public class PlatformReplicationManager {
     }
 
     // Update which instance should be local.
-    previousLocal.get().setIsLocalAndUpdate(false);
+    previousLocal.get().updateIsLocal(false);
     config
         .getInstances()
         .forEach(
             i -> {
-              i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID()));
+              i.updateIsLocal(i.getUuid().equals(newLeader.getUuid()));
               try {
                 // Clear out any old backups.
                 replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
@@ -323,7 +323,7 @@ public class PlatformReplicationManager {
                             instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
                           });
                 } catch (Exception e) {
-                  log.error("Error running sync for HA config {}", config.getUUID(), e);
+                  log.error("Error running sync for HA config {}", config.getUuid(), e);
                 } finally {
                   // Remove locally created backups since they have already been sent to followers.
                   replicationHelper.cleanupCreatedBackups();

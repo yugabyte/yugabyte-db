@@ -117,7 +117,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
             createStartYbcProcessTasks(
                 new HashSet<>(nodes.getRight()),
                 universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
-            createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+            createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
                 .setSubTaskGroupType(getTaskSubGroupType());
           }
 
@@ -128,7 +128,8 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
 
           // Promote Auto flags on compatible versions.
           if (confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlag)
-              && CommonUtils.isAutoFlagSupported(newVersion)) {
+              && CommonUtils.isAutoFlagSupported(newVersion)
+              && !XClusterConfig.isUniverseXClusterParticipant(universe.getUniverseUUID())) {
             createCheckSoftwareVersionTask(allNodes, newVersion)
                 .setSubTaskGroupType(getTaskSubGroupType());
             createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
@@ -164,7 +165,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     UniverseDefinitionTaskParams.UserIntent targetPrimaryUserIntent =
         targetPrimaryCluster.userIntent;
     List<XClusterConfig> xClusterConfigsAsTarget =
-        XClusterConfig.getByTargetUniverseUUID(targetUniverse.universeUUID);
+        XClusterConfig.getByTargetUniverseUUID(targetUniverse.getUniverseUUID());
 
     // If the gflag was set manually before, use its old value.
     File manualSourceRootCertDirPath = targetUniverseDetails.getSourceRootCertDirPath();
@@ -190,7 +191,8 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
     Map<UUID, List<XClusterConfig>> sourceUniverseUuidToXClusterConfigsMap =
         xClusterConfigsAsTarget
             .stream()
-            .collect(Collectors.groupingBy(xClusterConfig -> xClusterConfig.sourceUniverseUUID));
+            .collect(
+                Collectors.groupingBy(xClusterConfig -> xClusterConfig.getSourceUniverseUUID()));
 
     // Put all the universes in the locked list. The unlock operation is a no-op if the universe
     // does not get locked by this task.
@@ -216,7 +218,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                 throw new IllegalStateException(
                     String.format(
                         "sourceCertificate file \"%s\" for universe \"%s\" does not exist",
-                        sourceCertificate, sourceUniverse.universeUUID));
+                        sourceCertificate, sourceUniverse.getUniverseUUID()));
               }
               xClusterConfigs.forEach(
                   xClusterConfig ->

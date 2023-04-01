@@ -84,7 +84,7 @@ public class CreateTable extends AbstractTaskBase {
       throw new IllegalArgumentException("No name specified for table.");
     }
     TableDetails tableDetails = taskParams().tableDetails;
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
     String createTableStatement = tableDetails.getPgSqlCreateTableString(taskParams().ifNotExist);
 
@@ -128,7 +128,7 @@ public class CreateTable extends AbstractTaskBase {
 
   private Session getCassandraSession() {
     if (cassandraCluster == null) {
-      List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().universeUUID);
+      List<InetSocketAddress> addresses = Util.getNodesAsInet(taskParams().getUniverseUUID());
       cassandraCluster = Cluster.builder().addContactPointsWithPorts(addresses).build();
       log.info("Connected to cluster: " + cassandraCluster.getClusterName());
     }
@@ -157,16 +157,16 @@ public class CreateTable extends AbstractTaskBase {
 
   private void createRedisTable() throws Exception {
     // Get the master addresses.
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String masterAddresses = universe.getMasterAddresses();
     log.info(
         "Running {}: universe = {}, masterAddress = {}",
         getName(),
-        taskParams().universeUUID,
+        taskParams().getUniverseUUID(),
         masterAddresses);
     if (masterAddresses == null || masterAddresses.isEmpty()) {
       throw new IllegalStateException(
-          "No master host/ports for a table creation op in " + taskParams().universeUUID);
+          "No master host/ports for a table creation op in " + taskParams().getUniverseUUID());
     }
     String certificate = universe.getCertificateNodetoNode();
 

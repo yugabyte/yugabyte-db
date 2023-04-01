@@ -100,14 +100,25 @@ class DBIter: public Iterator {
     prefix_extractor_ = ioptions.prefix_extractor;
     max_skip_ = max_sequential_skip_in_iterations;
   }
+
   virtual ~DBIter() {
-    RecordTick(statistics_, NO_ITERATORS, -1);
+    if (statistics_) {
+      statistics_->recordTick(NO_ITERATORS, -1);
+      if (num_fast_next_calls_) {
+        statistics_->recordTick(NUMBER_DB_NEXT, num_fast_next_calls_);
+        if (num_fast_next_found_) {
+          statistics_->recordTick(NUMBER_DB_NEXT_FOUND, num_fast_next_found_);
+          statistics_->recordTick(ITER_BYTES_READ, num_fast_next_bytes_);
+        }
+      }
+    }
     if (!arena_mode_) {
       delete iter_;
     } else {
       iter_->~InternalIterator();
     }
   }
+
   virtual void SetIter(InternalIterator* iter) {
     assert(iter_ == nullptr);
     iter_ = iter;
@@ -177,6 +188,7 @@ class DBIter: public Iterator {
     return STATUS(InvalidArgument, "Undentified property.");
   }
 
+  void FastNext();
   void Next() override;
   void Prev() override;
   void Seek(const Slice& target) override;
@@ -191,6 +203,10 @@ class DBIter: public Iterator {
       valid_ = true;
       FindNextUserEntry(/* skipping= */ false);
     }
+  }
+
+  void UseFastNext(bool value) override {
+    fast_next_ = value;
   }
 
  private:
@@ -239,6 +255,10 @@ class DBIter: public Iterator {
   bool iter_pinned_;
   // List of operands for merge operator.
   std::deque<std::string> merge_operands_;
+  bool fast_next_ = false;
+  size_t num_fast_next_found_ = 0;
+  size_t num_fast_next_calls_ = 0;
+  size_t num_fast_next_bytes_ = 0;
 
   // No copying allowed
   DBIter(const DBIter&);
@@ -259,6 +279,10 @@ inline bool DBIter::ParseKey(ParsedInternalKey* ikey) {
 
 void DBIter::Next() {
   assert(valid_);
+
+  if (fast_next_) {
+    return FastNext();
+  }
 
   if (direction_ == kReverse) {
     FindNextUserKey();
@@ -295,6 +319,23 @@ void DBIter::Next() {
               .compare(prefix_start_.GetKey()) != 0) {
     valid_ = false;
   }
+}
+
+void DBIter::FastNext() {
+  assert(valid_);
+
+  ++num_fast_next_calls_;
+  iter_->Next();
+  if (!iter_->Valid()) {
+    valid_ = false;
+    return;
+  }
+
+  auto key = iter_->key();
+  saved_key_.SetKey(ExtractUserKey(key), false);
+
+  ++num_fast_next_found_;
+  num_fast_next_bytes_ += key.size() + iter_->value().size();
 }
 
 // PRE: saved_key_ has the current user key if skipping
@@ -500,6 +541,10 @@ void DBIter::ReverseToBackward() {
 
   FindPrevUserKey();
   direction_ = kReverse;
+
+  // TODO(scanperf) allow fast next after reverse scan.
+  // Fallback to regular Next if reverse scan was used.
+  fast_next_ = false;
 }
 
 void DBIter::PrevInternal() {
@@ -952,6 +997,10 @@ bool ArenaWrappedDBIter::ScanForward(
     Slice upperbound, KeyFilterCallback* key_filter_callback,
     ScanCallback* scan_callback) {
   return db_iter_->ScanForward(upperbound, key_filter_callback, scan_callback);
+}
+
+void ArenaWrappedDBIter::UseFastNext(bool value) {
+  db_iter_->UseFastNext(value);
 }
 
 ArenaWrappedDBIter* NewArenaWrappedDbIterator(

@@ -100,7 +100,7 @@ class HistoryRetentionPolicy {
  public:
   virtual ~HistoryRetentionPolicy() = default;
   virtual HistoryRetentionDirective GetRetentionDirective() = 0;
-  virtual HistoryRetentionDirective StatelessRetentionDirective() = 0;
+  virtual HybridTime ProposedHistoryCutoff() = 0;
 };
 
 using DeleteMarkerRetentionTimeProvider = std::function<HybridTime(
@@ -118,7 +118,7 @@ class ManualHistoryRetentionPolicy : public HistoryRetentionPolicy {
  public:
   HistoryRetentionDirective GetRetentionDirective() override;
 
-  HistoryRetentionDirective StatelessRetentionDirective() override;
+  HybridTime ProposedHistoryCutoff() override;
 
   void SetHistoryCutoff(HybridTime history_cutoff);
 

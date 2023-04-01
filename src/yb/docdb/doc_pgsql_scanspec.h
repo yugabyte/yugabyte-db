@@ -61,60 +61,28 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
                    const size_t prefix_length = 0);
 
   //------------------------------------------------------------------------------------------------
-  // Access funtions.
-  const rocksdb::QueryId QueryId() const {
-    return query_id_;
-  }
-
-  const size_t prefix_length() const {
-    return prefix_length_;
-  }
-
-  //------------------------------------------------------------------------------------------------
   // Filters.
-  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
-
-  // Return the inclusive lower and upper bounds of the scan.
-  Result<KeyBytes> LowerBound() const;
-  Result<KeyBytes> UpperBound() const;
-
+  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const override;
   // Returns the lower/upper range components of the key.
-  std::vector<KeyEntryValue> range_components(const bool lower_bound,
-                                              std::vector<bool> *inclusivities = nullptr,
-                                              bool use_strictness = true) const;
+  std::vector<KeyEntryValue> range_components(
+      const bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr,
+      bool use_strictness = true) const override;
 
-  const QLScanRange* range_bounds() const {
-    return range_bounds_.get();
-  }
+  const std::shared_ptr<std::vector<OptionList>>& options() const override { return options_; }
 
-  const std::shared_ptr<std::vector<OptionList>>& options() const { return options_; }
+  const std::vector<ColumnId>& options_indexes() const override { return options_col_ids_; }
 
-  const std::vector<ColumnId>& options_indexes() const {
-    return options_col_ids_;
-  }
-
-  const std::vector<ColumnId>& range_bounds_indexes() const {
-    return range_bounds_indexes_;
-  }
-
-  const ColGroupHolder& options_groups() const {
-    return options_groups_;
-  }
+  const ColGroupHolder& options_groups() const override { return options_groups_; }
 
  private:
   static const DocKey& DefaultStartDocKey();
 
   // Return inclusive lower/upper range doc key considering the start_doc_key.
-  Result<KeyBytes> Bound(const bool lower_bound) const;
+  Result<KeyBytes> Bound(const bool lower_bound) const override;
 
   // Returns the lower/upper doc key based on the range components.
   KeyBytes bound_key(const Schema& schema, const bool lower_bound) const;
-
-  // The scan range within the hash key when a WHERE condition is specified.
-  const std::unique_ptr<const QLScanRange> range_bounds_;
-
-  // Ids of columns that have range bounds such as c2 < 4 AND c2 >= 1.
-  std::vector<ColumnId> range_bounds_indexes_;
 
   // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
   // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
@@ -126,8 +94,6 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
 
   // Ids of key columns that have filters such as h1 IN (1, 5, 6, 9) or r1 IN (5, 6, 7)
   std::vector<ColumnId> options_col_ids_;
-
-  const rocksdb::QueryId query_id_;
 
   // The hashed_components are owned by the caller of QLScanSpec.
   const std::vector<KeyEntryValue> *hashed_components_;
@@ -155,8 +121,6 @@ class DocPgsqlScanSpec : public PgsqlScanSpec {
   // Lower and upper keys for range condition.
   KeyBytes lower_doc_key_;
   KeyBytes upper_doc_key_;
-
-  size_t prefix_length_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(DocPgsqlScanSpec);
 };

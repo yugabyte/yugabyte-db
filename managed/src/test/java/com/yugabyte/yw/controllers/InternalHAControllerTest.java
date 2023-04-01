@@ -177,7 +177,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    createPlatformInstance(config.getUUID(), true, true);
+    createPlatformInstance(config.getUuid(), true, true);
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String uri = SYNC_ENDPOINT + config.getLastFailover().getTime();
@@ -190,7 +190,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    createPlatformInstance(config.getUUID(), true, false);
+    createPlatformInstance(config.getUuid(), true, false);
     String uri = SYNC_ENDPOINT + new Date().getTime();
     Result syncResult =
         assertPlatformException(
@@ -203,7 +203,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    createPlatformInstance(config.getUUID(), true, false);
+    createPlatformInstance(config.getUuid(), true, false);
     assertNoLocalInstanceErrorOnSync(clusterKey, new ArrayList<>());
   }
 
@@ -223,7 +223,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     String clusterKey = haConfigJson.get("cluster_key").asText();
-    JsonNode localInstanceJson = createPlatformInstance(config.getUUID(), true, false);
+    JsonNode localInstanceJson = createPlatformInstance(config.getUuid(), true, false);
     PlatformInstance localInstance = Json.fromJson(localInstanceJson, PlatformInstance.class);
     PlatformInstance previousLeader =
         PlatformInstance.create(config, "http://ghi.com", true, false);
@@ -256,7 +256,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     String clusterKey = haConfigJson.get("cluster_key").asText();
     PlatformInstance localInstance =
         Json.fromJson(
-            createPlatformInstance(config.getUUID(), true, false), PlatformInstance.class);
+            createPlatformInstance(config.getUuid(), true, false), PlatformInstance.class);
     PlatformInstance leader = PlatformInstance.create(config, "http://ghi.com", true, false);
 
     localInstance.setAddress(localInstance.getAddress() + ":9000");
@@ -307,7 +307,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode localInstance = createPlatformInstance(configUUID, true, false);
     ArrayNode body = Json.newArray();
     PlatformInstance i1 = new PlatformInstance();
-    i1.setUUID(UUID.randomUUID());
+    i1.setUuid(UUID.randomUUID());
     i1.setConfig(config);
     i1.setAddress(leaderAddr);
     i1.setIsLeader(true);
@@ -462,7 +462,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode localInstance = createPlatformInstance(configUUID, true, false);
     ArrayNode body = Json.newArray();
     PlatformInstance i1 = new PlatformInstance();
-    i1.setUUID(UUID.randomUUID());
+    i1.setUuid(UUID.randomUUID());
     i1.setConfig(config);
     i1.setAddress("http://abcdef.com");
     i1.setIsLeader(true);
@@ -478,7 +478,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
   public void testDemoteLocalInstanceSuccess() {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     String clusterKey = haConfigJson.get("cluster_key").asText();
     createPlatformInstance(configUUID, true, true);
     haConfigJson = getHAConfig();
@@ -488,6 +488,8 @@ public class InternalHAControllerTest extends FakeDBApplication {
     JsonNode body = Json.newObject().put("leader_address", "http://1.2.3.4");
     Result demoteResult = doRequestWithHATokenAndBody("PUT", uri, clusterKey, body);
     assertOk(demoteResult);
+    JsonNode response = Json.parse(contentAsString(demoteResult));
+    assertEquals("UNKNOWN", response.get("ybaVersion").asText());
     haConfigJson = getHAConfig();
     config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
     assertFalse(config.isLocalLeader());
@@ -497,7 +499,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
   public void testDemoteLocalInstanceStaleFailover() {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     String clusterKey = haConfigJson.get("cluster_key").asText();
     Date staleFailover = new Date();
     createPlatformInstance(configUUID, true, true);
@@ -517,7 +519,7 @@ public class InternalHAControllerTest extends FakeDBApplication {
   public void testDemoteLocalInstanceSuccessAlreadyFollower() {
     JsonNode haConfigJson = createHAConfig();
     HighAvailabilityConfig config = Json.fromJson(haConfigJson, HighAvailabilityConfig.class);
-    UUID configUUID = config.getUUID();
+    UUID configUUID = config.getUuid();
     String clusterKey = haConfigJson.get("cluster_key").asText();
     createPlatformInstance(configUUID, true, false);
     haConfigJson = getHAConfig();

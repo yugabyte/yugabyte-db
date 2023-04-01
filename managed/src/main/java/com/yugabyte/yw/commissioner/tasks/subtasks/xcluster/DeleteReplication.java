@@ -47,17 +47,18 @@ public class DeleteReplication extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
-    if (xClusterConfig.targetUniverseUUID == null) {
-      xClusterConfig.setReplicationSetupDone(
-          xClusterConfig.getTables(), false /* replicationSetupDone */);
+    if (xClusterConfig.getTargetUniverseUUID() == null) {
+      xClusterConfig.updateReplicationSetupDone(
+          xClusterConfig.getTableIds(), false /* replicationSetupDone */);
       log.info("Skipped {}: the target universe is destroyed", getName());
       return;
     }
 
     // Ignore errors when it is requested by the user or source universe is deleted.
-    boolean ignoreErrors = taskParams().ignoreErrors || xClusterConfig.sourceUniverseUUID == null;
+    boolean ignoreErrors =
+        taskParams().ignoreErrors || xClusterConfig.getSourceUniverseUUID() == null;
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
@@ -79,7 +80,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
           throw new RuntimeException(
               String.format(
                   "Failed to delete replication for XClusterConfig(%s): %s",
-                  xClusterConfig.uuid, resp.errorMessage()));
+                  xClusterConfig.getUuid(), resp.errorMessage()));
         }
       } catch (MasterErrorException e) {
         // If it is not `Universe replication NOT_FOUND` exception, rethrow the exception.
@@ -89,7 +90,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
         log.warn(
             "XCluster config {} does not exist on the target universe, NOT_FOUND exception "
                 + "occurred in deleteUniverseReplication RPC call is ignored: {}",
-            xClusterConfig.uuid,
+            xClusterConfig.getUuid(),
             e.getMessage());
       }
 
@@ -101,11 +102,11 @@ public class DeleteReplication extends XClusterConfigTaskBase {
                   xClusterConfig.getTableIds(true /* includeTxnTableIfExists */), true /* done */))
           .forEach(
               tableConfig -> {
-                tableConfig.status = XClusterTableConfig.Status.Validated;
-                tableConfig.replicationSetupDone = false;
-                tableConfig.streamId = null;
-                tableConfig.bootstrapCreateTime = null;
-                tableConfig.restoreTime = null;
+                tableConfig.setStatus(XClusterTableConfig.Status.Validated);
+                tableConfig.setReplicationSetupDone(false);
+                tableConfig.setStreamId(null);
+                tableConfig.setBootstrapCreateTime(null);
+                tableConfig.setRestoreTime(null);
               });
       xClusterConfig.update();
 

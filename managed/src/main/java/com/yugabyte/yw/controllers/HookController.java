@@ -98,11 +98,11 @@ public class HookController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Hook,
-            hook.uuid.toString(),
+            hook.getUuid().toString(),
             Audit.ActionType.CreateHook,
             Json.toJson(form),
             null);
-    log.info("Created hook {} with UUID {}", hook.name, hook.uuid);
+    log.info("Created hook {} with UUID {}", hook.getName(), hook.getUuid());
     return PlatformResults.withData(hook);
   }
 
@@ -111,7 +111,7 @@ public class HookController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     verifyAuth(customer);
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
-    log.info("Deleting hook {} with UUID {}", hook.name, hookUUID);
+    log.info("Deleting hook {} with UUID {}", hook.getName(), hookUUID);
     hook.delete();
     auditService()
         .createAuditEntryWithReqBody(
@@ -136,15 +136,15 @@ public class HookController extends AuthenticatedController {
     String hookText = getHookTextFromFile(hookFile);
 
     Hook hook = Hook.getOrBadRequest(customerUUID, hookUUID);
-    boolean isNameChanged = !hook.name.equals(form.getName());
+    boolean isNameChanged = !hook.getName().equals(form.getName());
     form.verify(customerUUID, isNameChanged, isSudoEnabled);
 
-    log.info("Updating hook {} with UUID {}", hook.name, hook.uuid);
-    hook.name = form.getName();
-    hook.executionLang = form.getExecutionLang();
-    hook.hookText = hookText;
-    hook.useSudo = form.isUseSudo();
-    hook.runtimeArgs = form.getRuntimeArgs();
+    log.info("Updating hook {} with UUID {}", hook.getName(), hook.getUuid());
+    hook.setName(form.getName());
+    hook.setExecutionLang(form.getExecutionLang());
+    hook.setHookText(hookText);
+    hook.setUseSudo(form.isUseSudo());
+    hook.setRuntimeArgs(form.getRuntimeArgs());
     hook.update();
 
     form.setHookText(hookText);
@@ -152,7 +152,7 @@ public class HookController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Hook,
-            hook.uuid.toString(),
+            hook.getUuid().toString(),
             Audit.ActionType.UpdateHook,
             Json.toJson(form),
             null);
@@ -170,15 +170,15 @@ public class HookController extends AuthenticatedController {
     }
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     RunApiTriggeredHooks.Params taskParams = new RunApiTriggeredHooks.Params();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
     taskParams.isRolling = isRolling.booleanValue();
 
     log.info(
         "Running API Triggered hooks for {} [ {} ] customer {}, cluster {}.",
-        universe.name,
-        universe.universeUUID,
-        customer.uuid,
+        universe.getName(),
+        universe.getUniverseUUID(),
+        customer.getUuid(),
         clusterUUID);
 
     CustomerTask.TargetType target = CustomerTask.TargetType.Universe;
@@ -194,13 +194,13 @@ public class HookController extends AuthenticatedController {
         taskUUID,
         target,
         CustomerTask.TaskType.RunApiTriggeredHooks,
-        universe.name);
+        universe.getName());
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe, // TODO: do we need this to be cluster as well? There is no
             // Audit.TargetType.Cluster
-            universe.universeUUID.toString(),
+            universe.getUniverseUUID().toString(),
             Audit.ActionType.RunApiTriggeredHooks,
             taskUUID);
 
@@ -226,7 +226,7 @@ public class HookController extends AuthenticatedController {
       log.warn(
           "Not performing SuperAdmin authorization for this endpoint, customer={} as platform is in"
               + " cloud mode",
-          customer.uuid);
+          customer.getUuid());
       tokenAuthenticator.adminOrThrow(ctx());
     } else {
       tokenAuthenticator.superAdminOrThrow(ctx());

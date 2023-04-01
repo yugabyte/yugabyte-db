@@ -37,7 +37,7 @@ public class CheckSoftwareVersion extends ServerSubTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = universe.getNodeOrBadRequest(taskParams().nodeName);
     String address = node.cloudInfo.private_ip;
     VersionInfo.VersionInfoPB versionInfo;

@@ -51,7 +51,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   public void setUp() {
     // Setup fake temp log files, universe, customer
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
     List<String> fakeLogsList =
         Arrays.asList(
             "application-log-2022-03-05.gz",

@@ -27,10 +27,7 @@ import org.mockito.MockedStatic;
 
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKeyId;
@@ -71,10 +68,10 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
         .thenReturn(365);
     defaultCustomer = ModelFactory.testCustomer();
     defaultProvider = ModelFactory.awsProvider(defaultCustomer);
-    defaultProvider.details.sshUser = "ssh_user";
-    defaultProvider.details.sshPort = 22;
+    defaultProvider.getDetails().sshUser = "ssh_user";
+    defaultProvider.getDetails().sshPort = 22;
     defaultRegion = Region.create(defaultProvider, "us-west-2", "US West 2", "yb-image");
-    defaultAccessKey = AccessKey.create(defaultProvider.uuid, "default-key", new KeyInfo());
+    defaultAccessKey = AccessKey.create(defaultProvider.getUuid(), "default-key", new KeyInfo());
   }
 
   @Test
@@ -82,19 +79,19 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     Provider onpremProvider = ModelFactory.newProvider(defaultCustomer, CloudType.onprem);
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.skipProvisioning = true;
-    AccessKey accessKey = AccessKey.create(onpremProvider.uuid, "key-code-1", keyInfo);
+    AccessKey accessKey = AccessKey.create(onpremProvider.getUuid(), "key-code-1", keyInfo);
     // provider has manually provisioned nodes
     assertThrows(
         PlatformServiceException.class,
         () ->
             accessKeyRotationUtil.failManuallyProvisioned(
-                onpremProvider.uuid, defaultAccessKey.getKeyCode()));
+                onpremProvider.getUuid(), defaultAccessKey.getKeyCode()));
     // new key has skip provisioining set to true
     assertThrows(
         PlatformServiceException.class,
         () ->
             accessKeyRotationUtil.failManuallyProvisioned(
-                defaultProvider.uuid, accessKey.getKeyCode()));
+                defaultProvider.getUuid(), accessKey.getKeyCode()));
   }
 
   @Test
@@ -103,12 +100,14 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     List<AccessKey> accessKeys = new ArrayList<AccessKey>();
     accessKeys.add(defaultAccessKey);
     MockedStatic<AccessKey> mockAccessKey = mockStatic(AccessKey.class);
-    mockAccessKey.when(() -> AccessKey.getAll(eq(defaultProvider.uuid))).thenReturn(accessKeys);
+    mockAccessKey
+        .when(() -> AccessKey.getAll(eq(defaultProvider.getUuid())))
+        .thenReturn(accessKeys);
     mockAccessKey
         .when(() -> AccessKey.getNewKeyCode(eq(defaultProvider)))
         .thenReturn(defaultAccessKey.getKeyCode());
     mockAccessKey
-        .when(() -> AccessKey.getLatestKey(eq(defaultProvider.uuid)))
+        .when(() -> AccessKey.getLatestKey(eq(defaultProvider.getUuid())))
         .thenReturn(defaultAccessKey);
     // TODO(?): Fix this test - it should have broken after this diff that moved sshUser setup to
     //  provider.details but it keeps working. Definitely not testing anything.
@@ -124,9 +123,9 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
             eq(keyInfo.ntpServers),
             eq(keyInfo.showSetUpChrony)))
         .thenReturn(defaultAccessKey);
-    UUID providerUUID = defaultProvider.uuid;
+    UUID providerUUID = defaultProvider.getUuid();
     AccessKey accessKey =
-        accessKeyRotationUtil.createAccessKeyForProvider(defaultCustomer.uuid, providerUUID);
+        accessKeyRotationUtil.createAccessKeyForProvider(defaultCustomer.getUuid(), providerUUID);
     int numRegions = Region.getByProvider(providerUUID).size();
     assertNotNull(accessKey);
     assertTrue(accessKey.getKeyCode().equals(defaultAccessKey.getKeyCode()));
@@ -150,16 +149,16 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     List<UUID> universeUUIDs = new ArrayList<UUID>();
     Universe uni1 = ModelFactory.createUniverse("uni1");
     Universe uni2 = ModelFactory.createUniverse("uni2");
-    universeUUIDs.add(uni1.universeUUID);
-    universeUUIDs.add(uni2.universeUUID);
-    Universe.delete(uni2.universeUUID);
+    universeUUIDs.add(uni1.getUniverseUUID());
+    universeUUIDs.add(uni2.getUniverseUUID());
+    Universe.delete(uni2.getUniverseUUID());
     Set<UUID> filteredUniverses =
         accessKeyRotationUtil
             .removeDeletedUniverses(universeUUIDs)
             .stream()
             .collect(Collectors.toSet());
-    assertTrue(filteredUniverses.contains(uni1.universeUUID));
-    assertFalse(filteredUniverses.contains(uni2.universeUUID));
+    assertTrue(filteredUniverses.contains(uni1.getUniverseUUID()));
+    assertFalse(filteredUniverses.contains(uni2.getUniverseUUID()));
   }
 
   @Test
@@ -167,16 +166,16 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
     List<UUID> universeUUIDs = new ArrayList<UUID>();
     Universe uni1 = ModelFactory.createUniverse("uni1");
     Universe uni2 = ModelFactory.createUniverse("uni2");
-    universeUUIDs.add(uni1.universeUUID);
-    universeUUIDs.add(uni2.universeUUID);
+    universeUUIDs.add(uni1.getUniverseUUID());
+    universeUUIDs.add(uni2.getUniverseUUID());
     setUniversePaused(true, uni2);
     Set<UUID> filteredUniverses =
         accessKeyRotationUtil
             .removePausedUniverses(universeUUIDs)
             .stream()
             .collect(Collectors.toSet());
-    assertTrue(filteredUniverses.contains(uni1.universeUUID));
-    assertFalse(filteredUniverses.contains(uni2.universeUUID));
+    assertTrue(filteredUniverses.contains(uni1.getUniverseUUID()));
+    assertFalse(filteredUniverses.contains(uni2.getUniverseUUID()));
   }
 
   @Test
@@ -233,13 +232,14 @@ public class AccessKeyRotationUtilTest extends FakeDBApplication {
             universe.setUniverseDetails(universeDetails);
           }
         };
-    Universe.saveDetails(universe.universeUUID, updater);
+    Universe.saveDetails(universe.getUniverseUUID(), updater);
   }
 
   public static void setUniverseAccessKey(String accessKeyCode, Universe universe) {
     UserIntent userIntent = universe.getUniverseDetails().clusters.get(0).userIntent;
     userIntent.accessKeyCode = accessKeyCode;
     Universe.saveDetails(
-        universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
+        universe.getUniverseUUID(),
+        ApiUtils.mockUniverseUpdater(userIntent, false /* setMasters */));
   }
 }

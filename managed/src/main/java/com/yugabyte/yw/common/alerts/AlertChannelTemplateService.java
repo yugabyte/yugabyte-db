@@ -146,7 +146,7 @@ public class AlertChannelTemplateService {
             });
   }
 
-  private AlertChannelTemplatesExt appendDefaults(
+  public AlertChannelTemplatesExt appendDefaults(
       AlertChannelTemplates templates, UUID customerUUID, ChannelType channelType) {
     if (templates == null) {
       templates = new AlertChannelTemplates().setCustomerUUID(customerUUID).setType(channelType);

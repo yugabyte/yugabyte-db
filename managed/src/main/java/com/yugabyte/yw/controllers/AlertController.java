@@ -32,6 +32,8 @@ import com.yugabyte.yw.common.alerts.AlertTemplateSettingsService;
 import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
 import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.TestAlertTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.impl.AlertChannelBase;
+import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
@@ -41,8 +43,11 @@ import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
 import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
 import com.yugabyte.yw.forms.AlertTemplateVariablesList;
+import com.yugabyte.yw.forms.NotificationPreview;
+import com.yugabyte.yw.forms.NotificationPreviewFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
@@ -86,10 +91,12 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -406,10 +413,10 @@ public class AlertController extends AuthenticatedController {
 
   @ApiOperation(value = "Send test alert for alert configuration", response = YBPSuccess.class)
   public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
-    Alert alert = createTestAlert(configuration);
+    Alert alert = createTestAlert(customer, configuration);
     SendNotificationResult result = alertManager.sendNotification(alert);
     if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
       throw new PlatformServiceException(BAD_REQUEST, result.getMessage());
@@ -750,6 +757,41 @@ public class AlertController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
+  @ApiOperation(
+      value = "Prepare alert notification preview",
+      response = AlertTemplateVariablesList.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "NotificationPreviewRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
+          required = true))
+  public Result alertNotificationPreview(UUID customerUUID) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    NotificationPreviewFormData previewFormData =
+        parseJsonAndValidate(NotificationPreviewFormData.class);
+
+    AlertConfiguration alertConfiguration =
+        alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
+
+    AlertChannelTemplates channelTemplates = previewFormData.getAlertChannelTemplates();
+    Alert testAlert = createTestAlert(customer, alertConfiguration);
+    AlertChannel channel = new AlertChannel().setName("Channel name");
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
+    AlertChannelTemplatesExt templatesExt =
+        alertChannelTemplateService.appendDefaults(
+            channelTemplates, customerUUID, channelTemplates.getType());
+    Context context = new Context(channel, templatesExt, variables);
+
+    NotificationPreview preview = new NotificationPreview();
+    if (channelTemplates.getType().isHasTitle()) {
+      preview.setTitle(AlertChannelBase.getNotificationTitle(testAlert, context));
+    }
+    preview.setText(AlertChannelBase.getNotificationText(testAlert, context));
+    return PlatformResults.withData(preview);
+  }
+
   private AlertData convert(Alert alert) {
     return convert(Collections.singletonList(alert)).get(0);
   }
@@ -827,7 +869,7 @@ public class AlertController extends AuthenticatedController {
   }
 
   @VisibleForTesting
-  Alert createTestAlert(AlertConfiguration configuration) {
+  Alert createTestAlert(Customer customer, AlertConfiguration configuration) {
     AlertDefinition definition =
         alertDefinitionService
             .list(
@@ -840,7 +882,7 @@ public class AlertController extends AuthenticatedController {
         definition = new AlertDefinition();
         definition.setLabels(
             MetricLabelsBuilder.create()
-                .appendSource(buildUniverseForTestAlert())
+                .appendSource(getOrCreateUniverseForTestAlert(customer))
                 .getDefinitionLabels());
       } else {
         throw new PlatformServiceException(
@@ -901,10 +943,23 @@ public class AlertController extends AuthenticatedController {
     return "[TEST ALERT!!!] " + message;
   }
 
-  private Universe buildUniverseForTestAlert() {
+  private Universe getOrCreateUniverseForTestAlert(Customer customer) {
+    Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
+    Universe firstUniverse =
+        allUniverses
+            .stream()
+            .filter(universe -> universe.getUniverseDetails().nodePrefix != null)
+            .min(Comparator.comparing(universe -> universe.getCreationDate()))
+            .orElse(null);
+    if (firstUniverse != null) {
+      return firstUniverse;
+    }
     Universe universe = new Universe();
-    universe.name = "some-universe";
-    universe.universeUUID = UUID.randomUUID();
+    universe.setName("some-universe");
+    universe.setUniverseUUID(UUID.randomUUID());
+    UniverseDefinitionTaskParams universeDefinitionTaskParams = new UniverseDefinitionTaskParams();
+    universeDefinitionTaskParams.nodePrefix = "some-universe-node";
+    universe.setUniverseDetails(universeDefinitionTaskParams);
     return universe;
   }
 

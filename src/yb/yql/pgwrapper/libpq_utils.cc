@@ -31,6 +31,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/string_util.h"
 
 using namespace std::literals;
 
@@ -675,11 +676,23 @@ std::string PqEscapeIdentifier(const std::string& input) {
 }
 
 bool HasTransactionError(const Status& status) {
-  const auto& message = status.ToString();
-  return message.find("could not serialize access due to concurrent update") != std::string::npos ||
-         message.find("Transaction aborted:") != std::string::npos ||
-         message.find("expired or aborted by a conflict:") != std::string::npos ||
-         message.find("Unknown transaction, could be recently aborted:") != std::string::npos;
+  static const auto kExpectedErrors = {
+      "could not serialize access due to concurrent update",
+      "Transaction aborted:",
+      "expired or aborted by a conflict:",
+      "Unknown transaction, could be recently aborted:"
+  };
+  return HasSubstring(status.message(), kExpectedErrors);
+}
+
+bool IsRetryable(const Status& status) {
+  static const auto kExpectedErrors = {
+      "Try again",
+      "Catalog Version Mismatch",
+      "Restart read required at",
+      "schema version mismatch for table"
+  };
+  return HasSubstring(status.message(), kExpectedErrors);
 }
 
 PGConnBuilder::PGConnBuilder(const PGConnSettings& settings)

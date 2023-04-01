@@ -251,9 +251,8 @@ public class ProviderEditRestrictionManagerTest extends CommissionerBaseTest {
   public void testListenerIsCalled() {
     ThirdpartySoftwareUpgradeParams params = new ThirdpartySoftwareUpgradeParams();
     Universe universe =
-        ModelFactory.createUniverse(
-            "nn", defaultCustomer.getCustomerId(), defaultProvider.getCloudCode());
-    params.universeUUID = universe.getUniverseUUID();
+        ModelFactory.createUniverse("nn", defaultCustomer.getId(), defaultProvider.getCloudCode());
+    params.setUniverseUUID(universe.getUniverseUUID());
     commissioner.submit(TaskType.ThirdpartySoftwareUpgrade, params);
     Mockito.verify(providerEditRestrictionManager)
         .onTaskCreated(
@@ -284,7 +283,7 @@ public class ProviderEditRestrictionManagerTest extends CommissionerBaseTest {
     TaskInfo taskInfo = new TaskInfo(TaskType.ResizeNode);
     taskInfo.setTaskState(TaskInfo.State.Running);
     taskInfo.setTaskUUID(taskUUID);
-    taskInfo.setTaskDetails(Json.newObject());
+    taskInfo.setDetails(Json.newObject());
     taskInfo.setOwner("Myself");
     taskInfo.save();
     return taskInfo;

@@ -164,18 +164,18 @@ public class NodeAgentClient {
     static ManagedChannel getDefaultChannel(ChannelConfig config) {
       NodeAgent nodeAgent = config.nodeAgent;
       NettyChannelBuilder channelBuilder =
-          NettyChannelBuilder.forAddress(nodeAgent.ip, nodeAgent.port)
+          NettyChannelBuilder.forAddress(nodeAgent.getIp(), nodeAgent.getPort())
               .idleTimeout(config.getIdleTimeout().toMinutes(), TimeUnit.MINUTES);
       if (config.isEnableTls()) {
         try {
           String certPath = config.getCertPath().toString();
-          log.debug("Using cert path {} for node agent {}", certPath, config.nodeAgent.uuid);
+          log.debug("Using cert path {} for node agent {}", certPath, config.nodeAgent.getUuid());
           SslContext sslcontext =
               GrpcSslContexts.forClient()
                   .trustManager(CertificateHelper.getCertsFromFile(certPath))
                   .build();
           channelBuilder = channelBuilder.sslContext(sslcontext);
-          channelBuilder.intercept(new GrpcClientRequestInterceptor(nodeAgent.uuid));
+          channelBuilder.intercept(new GrpcClientRequestInterceptor(nodeAgent.getUuid()));
         } catch (SSLException e) {
           throw new RuntimeException("SSL context creation for gRPC client failed", e);
         }
@@ -202,7 +202,7 @@ public class NodeAgentClient {
     @Override
     public int hashCode() {
       return new HashCodeBuilder(17, 37)
-          .append(nodeAgent.uuid)
+          .append(nodeAgent.getUuid())
           .append(enableTls)
           .append(certPath)
           .append(connectTimeout)
@@ -222,7 +222,7 @@ public class NodeAgentClient {
         return false;
       }
       ChannelConfig other = (ChannelConfig) obj;
-      if (!Objects.equals(nodeAgent.uuid, other.nodeAgent.uuid)) {
+      if (!Objects.equals(nodeAgent.getUuid(), other.nodeAgent.getUuid())) {
         return false;
       }
       if (enableTls != other.enableTls) {
@@ -364,13 +364,13 @@ public class NodeAgentClient {
   public static void addNodeAgentClientParams(
       NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> sensitiveCmdParams) {
     cmdParams.add("--node_agent_ip");
-    cmdParams.add(nodeAgent.ip);
+    cmdParams.add(nodeAgent.getIp());
     cmdParams.add("--node_agent_port");
-    cmdParams.add(String.valueOf(nodeAgent.port));
+    cmdParams.add(String.valueOf(nodeAgent.getPort()));
     cmdParams.add("--node_agent_cert_path");
     cmdParams.add(nodeAgent.getCaCertFilePath().toString());
     cmdParams.add("--node_agent_home");
-    cmdParams.add(nodeAgent.home);
+    cmdParams.add(nodeAgent.getHome());
     if (sensitiveCmdParams == null) {
       cmdParams.add("--node_agent_auth_token");
       cmdParams.add(getNodeAgentJWT(nodeAgent));
@@ -382,7 +382,7 @@ public class NodeAgentClient {
   public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
     if (isClientEnabled(provider)) {
       Optional<NodeAgent> optional = NodeAgent.maybeGetByIp(ip);
-      if (optional.isPresent() && optional.get().state != State.REGISTERING) {
+      if (optional.isPresent() && optional.get().getState() != State.REGISTERING) {
         return optional;
       }
     }
@@ -411,7 +411,7 @@ public class NodeAgentClient {
             .idleTimeout(IDLE_CONNECT_TIMEOUT);
     if (enableTls) {
       Path certPath = nodeAgent.getCaCertFilePath();
-      if (nodeAgent.state == State.UPGRADE || nodeAgent.state == State.UPGRADED) {
+      if (nodeAgent.getState() == State.UPGRADE || nodeAgent.getState() == State.UPGRADED) {
         // Upgrade state is also considered just in case the DB update fails (very rare).
         // Node agent may still be running with old cert.
         Path mergedCertPath = nodeAgent.getMergedCaCertFilePath();
@@ -445,7 +445,9 @@ public class NodeAgentClient {
         return ping(nodeAgent);
       } catch (RuntimeException e) {
         log.warn(
-            "Error in validating connection to node agent {} - {}", nodeAgent.ip, e.getMessage());
+            "Error in validating connection to node agent {} - {}",
+            nodeAgent.getIp(),
+            e.getMessage());
         if (stopwatch.elapsed().compareTo(timeout) > 0) {
           throw e;
         }
@@ -454,7 +456,7 @@ public class NodeAgentClient {
         } catch (InterruptedException ex) {
           throw new RuntimeException(ex);
         }
-        log.info("Retrying connection validation to node agent {}", nodeAgent.ip);
+        log.info("Retrying connection validation to node agent {}", nodeAgent.getIp());
       }
     }
   }
@@ -466,7 +468,7 @@ public class NodeAgentClient {
   public String executeCommand(NodeAgent nodeAgent, List<String> command, String user) {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
-    String id = String.format("%s-%s", nodeAgent.uuid, command.get(0));
+    String id = String.format("%s-%s", nodeAgent.getUuid(), command.get(0));
     ExecuteCommandResponseObserver responseObserver = new ExecuteCommandResponseObserver(id);
     ExecuteCommandRequest.Builder builder =
         ExecuteCommandRequest.newBuilder().addAllCommand(command);
@@ -492,7 +494,7 @@ public class NodeAgentClient {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     try (InputStream inputStream = new BufferedInputStream(new FileInputStream(inputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
-      String id = String.format("%s-%s", nodeAgent.uuid, inputFile);
+      String id = String.format("%s-%s", nodeAgent.getUuid(), inputFile);
       BaseResponseObserver<UploadFileResponse> responseObserver = new BaseResponseObserver<>(id);
       StreamObserver<UploadFileRequest> requestObserver = stub.uploadFile(responseObserver);
       FileInfo fileInfo = FileInfo.newBuilder().setFilename(outputFile).build();
@@ -533,7 +535,7 @@ public class NodeAgentClient {
     ManagedChannel channel = getManagedChannel(nodeAgent, true);
     try (OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(outputFile))) {
       NodeAgentStub stub = NodeAgentGrpc.newStub(channel);
-      String id = String.format("%s-%s", nodeAgent.uuid, outputFile);
+      String id = String.format("%s-%s", nodeAgent.getUuid(), outputFile);
       DownloadFileResponseObserver responseObserver =
           new DownloadFileResponseObserver(id, outputStream);
       DownloadFileRequest.Builder builder = DownloadFileRequest.newBuilder().setFilename(inputFile);

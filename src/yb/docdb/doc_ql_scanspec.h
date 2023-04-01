@@ -27,9 +27,6 @@
 namespace yb {
 namespace docdb {
 
-using Option = KeyEntryValue;               // an option in an IN/EQ clause
-using OptionList = std::vector<Option>;     // all the options in an IN/EQ clause
-
 // DocDB variant of QL scanspec.
 class DocQLScanSpec : public QLScanSpec {
  public:
@@ -58,49 +55,24 @@ class DocQLScanSpec : public QLScanSpec {
                 const DocKey& start_doc_key = DefaultStartDocKey(),
                 const size_t prefix_length = 0);
 
-  // Return the inclusive lower and upper bounds of the scan.
-  Result<KeyBytes> LowerBound() const;
-  Result<KeyBytes> UpperBound() const;
-
   // Create file filter based on range components.
-  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const;
+  std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const override;
 
-  // Gets the query id.
-  const rocksdb::QueryId QueryId() const {
-    return query_id_;
-  }
-
-  const std::shared_ptr<std::vector<OptionList>>& options() const { return options_; }
+  const std::shared_ptr<std::vector<OptionList>>& options() const override { return options_; }
 
   bool include_static_columns() const {
     return include_static_columns_;
   }
 
-  const QLScanRange* range_bounds() const {
-    return range_bounds_.get();
-  }
+  const std::vector<ColumnId>& options_indexes() const override { return options_col_ids_; }
 
-  const std::vector<ColumnId> options_indexes() const {
-    return options_col_ids_;
-  }
-
-  const std::vector<ColumnId> range_bounds_indexes() const {
-    return range_bounds_indexes_;
-  }
-
-  const ColGroupHolder options_groups() const {
-    return options_groups_;
-  }
-
-  const size_t prefix_length() const {
-    return prefix_length_;
-  }
+  const ColGroupHolder& options_groups() const override { return options_groups_; }
 
  private:
   static const DocKey& DefaultStartDocKey();
 
   // Return inclusive lower/upper range doc key considering the start_doc_key.
-  Result<KeyBytes> Bound(const bool lower_bound) const;
+  Result<KeyBytes> Bound(const bool lower_bound) const override;
 
   // Initialize options_ if range columns have one or more options (i.e. using EQ/IN
   // conditions). Otherwise options_ will stay null and we will only use the range_bounds for
@@ -111,15 +83,10 @@ class DocQLScanSpec : public QLScanSpec {
   KeyBytes bound_key(const bool lower_bound) const;
 
   // Returns the lower/upper range components of the key.
-  std::vector<KeyEntryValue> range_components(const bool lower_bound,
-                                              std::vector<bool> *inclusivities = nullptr,
-                                              bool use_strictness = true) const;
-
-  // The scan range within the hash key when a WHERE condition is specified.
-  const std::unique_ptr<const QLScanRange> range_bounds_;
-
-  // Ids of columns that have range bounds such as c2 < 4 AND c2 >= 1.
-  std::vector<ColumnId> range_bounds_indexes_;
+  std::vector<KeyEntryValue> range_components(
+      const bool lower_bound,
+      std::vector<bool>* inclusivities = nullptr,
+      bool use_strictness = true) const override;
 
   // Hash code to scan at (interpreted as lower bound if hashed_components_ are empty)
   // hash values are positive int16_t.
@@ -157,11 +124,6 @@ class DocQLScanSpec : public QLScanSpec {
   // Lower/upper doc keys basing on the range.
   const KeyBytes lower_doc_key_;
   const KeyBytes upper_doc_key_;
-
-  // Query ID of this scan.
-  const rocksdb::QueryId query_id_;
-
-  size_t prefix_length_ = 0;
 
   DISALLOW_COPY_AND_ASSIGN(DocQLScanSpec);
 };
