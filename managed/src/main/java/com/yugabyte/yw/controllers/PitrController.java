@@ -1,11 +1,13 @@
+// Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.controllers;
 
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.DeletePitrConfig;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.BackupUtil.ApiType;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -17,22 +19,21 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.DeleteSnapshotScheduleResponse;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.ListSnapshotSchedulesResponse;
 import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
-import org.yb.CommonTypes.TableType;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import play.libs.Json;
 import play.mvc.Result;
@@ -264,10 +265,8 @@ public class PitrController extends AuthenticatedController {
   public Result deletePitrConfig(UUID customerUUID, UUID universeUUID, UUID pitrConfigUUID) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
-
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
-
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
     if (universe.getUniverseDetails().universePaused) {
@@ -279,35 +278,18 @@ public class PitrController extends AuthenticatedController {
     }
     PitrConfig pitrConfig = PitrConfig.getOrBadRequest(pitrConfigUUID);
 
-    DeleteSnapshotScheduleResponse resp = null;
-    YBClient client = null;
-    String masterHostPorts = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
+    DeletePitrConfig.Params deletePitrConfigParams = new DeletePitrConfig.Params();
+    deletePitrConfigParams.setUniverseUUID(universeUUID);
+    deletePitrConfigParams.pitrConfigUuid = pitrConfig.getUuid();
 
-    try {
-      client = ybClientService.getClient(masterHostPorts, certificate);
-      ListSnapshotSchedulesResponse scheduleListResp = client.listSnapshotSchedules(null);
-      for (SnapshotScheduleInfo scheduleInfo : scheduleListResp.getSnapshotScheduleInfoList()) {
-        if (scheduleInfo.getSnapshotScheduleUUID().equals(pitrConfigUUID)) {
-          resp = client.deleteSnapshotSchedule(pitrConfigUUID);
-        }
-      }
-
-    } catch (Exception e) {
-      log.error("Hit exception : {}", e.getMessage());
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybClientService.closeClient(client, masterHostPorts);
-    }
-
-    if (resp.hasError()) {
-      String errorMsg = "Failed due to error: " + resp.errorMessage();
-      log.error(errorMsg);
-      throw new RuntimeException(errorMsg);
-    }
-
-    pitrConfig.delete();
-
+    UUID taskUUID = commissioner.submit(TaskType.DeletePitrConfig, deletePitrConfigParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.DeletePitrConfig,
+        universe.getName());
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -315,7 +297,7 @@ public class PitrController extends AuthenticatedController {
             universeUUID.toString(),
             Audit.ActionType.DeletePitrConfig,
             Json.toJson(pitrConfigUUID));
-    return YBPSuccess.empty();
+    return new YBPTask(taskUUID).asResult();
   }
 
   private void checkCompatibleYbVersion(String ybVersion) {
