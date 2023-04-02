@@ -209,10 +209,10 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
 
   // HasNext constructs the whole row's SubDocument or vector of values.
-  std::variant<std::monostate, SubDocument, std::vector<PrimitiveValue>> result_;
+  std::variant<std::monostate, SubDocument, std::vector<QLValuePB>> result_;
   // Points to appropriate alternative owned by result_ field.
   SubDocument* row_;
-  std::vector<PrimitiveValue>* values_;
+  std::vector<QLValuePB>* values_;
 
   // The current row's primary key. It is set to lower bound in the beginning.
   Slice row_key_;
@@ -228,7 +228,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // It is initialized to false, to make sure first HasNext constructs a new row.
   bool row_ready_;
 
-  std::vector<KeyEntryValue> projection_subkeys_;
+  ReaderProjection reader_projection_;
 
   // Used for keeping track of errors in HasNext.
   Status has_next_status_;

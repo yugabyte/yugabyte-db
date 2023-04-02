@@ -48,6 +48,15 @@ Result<DocHybridTime> GetTableTombstoneTime(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline, const ReadHybridTime& read_time);
 
+struct ProjectedColumn {
+  KeyEntryValue subkey;
+  QLTypePtr type;
+
+  std::string ToString() const;
+};
+
+using ReaderProjection = std::vector<ProjectedColumn>;
+
 // Returns the whole SubDocument below some node identified by subdocument_key.
 // subdocument_key should not have a timestamp.
 // Before the function is called, if seek_fwd_suffices is true, the iterator is expected to be
@@ -70,7 +79,7 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time = ReadHybridTime::Max(),
-    const std::vector<KeyEntryValue>* projection = nullptr);
+    const ReaderProjection* projection = nullptr);
 
 // This class reads SubDocument instances for a given table. The caller should initialize with
 // UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
@@ -84,7 +93,7 @@ class DocDBTableReader {
  public:
   DocDBTableReader(
       IntentAwareIterator* iter, CoarseTimePoint deadline,
-      const std::vector<KeyEntryValue>* projection,
+      const ReaderProjection* projection,
       TableType table_type,
       std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
 
@@ -105,22 +114,23 @@ class DocDBTableReader {
   // This is always true for YSQL.
   // result shouldn't be nullptr and will be filled with the same number of primitives as number of
   // columns passed to ctor in projection and in the same order.
-  Result<bool> GetFlat(const Slice& root_doc_key, std::vector<PrimitiveValue>* result);
-
+  Result<bool> GetFlat(const Slice& root_doc_key, std::vector<QLValuePB>* result);
 
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
   // at that row.
   Status InitForKey(const Slice& sub_doc_key);
 
+  template <bool is_flat_doc, bool ysql>
   class GetHelperBase;
+
   class GetHelper;
   class FlatGetHelper;
 
   // Owned by caller.
   IntentAwareIterator* iter_;
   DeadlineInfo deadline_info_;
-  const std::vector<KeyEntryValue>* projection_;
+  const ReaderProjection* projection_;
   const TableType table_type_;
   const SchemaPackingStorage& schema_packing_storage_;
 

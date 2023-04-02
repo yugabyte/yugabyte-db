@@ -151,12 +151,18 @@ DocRowwiseIterator::DocRowwiseIterator(
 }
 
 void DocRowwiseIterator::SetupProjectionSubkeys() {
-  projection_subkeys_.reserve(projection_.num_columns() + 1);
-  projection_subkeys_.push_back(KeyEntryValue::kLivenessColumn);
+  reader_projection_.reserve(projection_.num_columns() + 1);
+  reader_projection_.push_back({KeyEntryValue::kLivenessColumn, nullptr});
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
-    projection_subkeys_.push_back(KeyEntryValue::MakeColumnId(projection_.column_id(i)));
+    reader_projection_.push_back({
+      .subkey = KeyEntryValue::MakeColumnId(projection_.column_id(i)),
+      .type = projection_.column(i).type(),
+    });
   }
-  std::sort(projection_subkeys_.begin(), projection_subkeys_.end());
+  std::sort(reader_projection_.begin(), reader_projection_.end(),
+            [](const auto& lhs, const auto& rhs) {
+    return lhs.subkey < rhs.subkey;
+  });
 }
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
@@ -275,8 +281,8 @@ void DocRowwiseIterator::ConfigureForYsql() {
 
 void DocRowwiseIterator::InitResult() {
   if (is_flat_doc_) {
-    result_ = std::vector<PrimitiveValue>();
-    values_ = &std::get<std::vector<PrimitiveValue>>(result_);
+    result_ = std::vector<QLValuePB>();
+    values_ = &std::get<std::vector<QLValuePB>>(result_);
     row_ = nullptr;
   } else {
     result_ = SubDocument();
@@ -435,7 +441,7 @@ Result<bool> DocRowwiseIterator::HasNext() {
 
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), deadline_, &projection_subkeys_, table_type_,
+          db_iter_.get(), deadline_, &reader_projection_, table_type_,
           doc_read_context_.schema_packing_storage);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
@@ -589,9 +595,9 @@ Status DocRowwiseIterator::DoNextRow(
   DVLOG_WITH_FUNC(4) << "table_row: " << AsString(*table_row);
   if (is_flat_doc_) {
     DVLOG_WITH_FUNC(4) << "values: " << AsString(*values_);
-    for (size_t column_reader_idx = 0; column_reader_idx < projection_subkeys_.size();
+    for (size_t column_reader_idx = 0; column_reader_idx < reader_projection_.size();
          ++column_reader_idx) {
-      const auto& column_id = projection_subkeys_[column_reader_idx].GetColumnId();
+      const auto& column_id = reader_projection_[column_reader_idx].subkey.GetColumnId();
       if (column_id.rep() == static_cast<ColumnIdRep>(SystemColumnIds::kLivenessColumn)) {
         // This has been already added by SetQLPrimaryKeyColumnValues, no need to overwrite.
         continue;
@@ -610,14 +616,7 @@ Status DocRowwiseIterator::DoNextRow(
         continue;
       }
       const auto ql_type = projection.column(column_projection_idx).type();
-      QLTableColumn& column = table_row->AllocColumn(column_id);
-
-      const auto& column_value = (*values_)[column_reader_idx];
-      column_value.ToQLValuePB(ql_type, &column.value);
-      column.ttl_seconds = column_value.GetTtl();
-      if (column_value.IsWriteTimeSet()) {
-        column.write_time = column_value.GetWriteTime();
-      }
+      table_row->AllocColumn(column_id, std::move((*values_)[column_reader_idx]));
     }
   } else {
     DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
@@ -644,8 +643,7 @@ Status DocRowwiseIterator::DoNextRow(
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
   if (is_flat_doc_) {
-    const auto& type = (*values_)[0].type();
-    return type != ValueEntryType::kInvalid;
+    return !IsNull((*values_)[0]);
   }
   const SubDocument* subdoc = row_->GetChild(KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
