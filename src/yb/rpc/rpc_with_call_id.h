@@ -49,7 +49,7 @@ class ConnectionContextWithCallId : public ConnectionContextBase,
   bool Idle(std::string* reason_not_idle = nullptr) override;
 
   void CallProcessed(InboundCall* call) override;
-  void QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
+  Status QueueResponse(const ConnectionPtr& conn, InboundCallPtr call) override;
 
   // Calls which have been received on the server and are currently
   // being handled.

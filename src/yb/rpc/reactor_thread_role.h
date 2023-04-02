@@ -12,25 +12,24 @@
 // under the License.
 //
 //
-#include "yb/rpc/rpc_call.h"
 
-#include "yb/util/status.h"
+#pragma once
+
+#include "yb/util/thread_annotations_util.h"
 
 namespace yb {
 namespace rpc {
 
-void RpcCall::Transferred(const Status& status, Connection* conn) {
-  if (state_ != TransferState::PENDING) {
-    LOG(DFATAL) << __PRETTY_FUNCTION__ << " executed more than once on call "
-                << static_cast<void*>(this) << ", current state: "
-                << yb::ToString(state_) << " (expected to be PENDING)" << ", "
-                << " status passed to the latest Transferred call: " << status << ", "
-                << " this RpcCall: " << ToString();
-    return;
-  }
-  state_ = status.ok() ? TransferState::FINISHED : TransferState::ABORTED;
-  NotifyTransferred(status, conn);
-}
+struct ReactorThreadRole {
+  static constexpr ThreadRole kReactor{};
+  static ThreadRole Alias() RETURN_CAPABILITY(kReactor);
+};
+
+using ReactorThreadRoleGuard = CapabilityGuard<ReactorThreadRole>;
+
+#define ON_REACTOR_THREAD REQUIRES(::yb::rpc::ReactorThreadRole::kReactor)
+#define EXCLUDES_REACTOR_THREAD EXCLUDES(::yb::rpc::ReactorThreadRole::kReactor)
+#define GUARDED_BY_REACTOR_THREAD GUARDED_BY(::yb::rpc::ReactorThreadRole::kReactor)
 
 } // namespace rpc
 } // namespace yb

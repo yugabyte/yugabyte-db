@@ -203,7 +203,10 @@ void InboundCall::QueueResponse(bool is_success) {
   LogTrace();
   bool expected = false;
   if (responded_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
-    connection()->context().QueueResponse(connection(), shared_from(this));
+    auto queuing_status =
+        connection()->context().QueueResponse(connection(), shared_from(this));
+    LOG_IF_WITH_PREFIX(DFATAL, !queuing_status.ok())
+        << "Could not queue response to an inbound call: " << queuing_status;
   } else {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
