@@ -34,7 +34,7 @@ To use ybm CLI, you need to do the following:
 In addition, to use AWS PrivateLink, you need the following:
 
 - An AWS user account with an IAM user policy that grants permissions to create, modify, describe, and delete endpoints.
-- The Amazon resource names (ARN) of security principals to which to grant access to the endpoint.
+- The Amazon resource names (ARN) of security [principals](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html) to which to grant access to the endpoint.
 
 ## Create a PSE for AWS PrivateLink using ybm CLI
 
@@ -78,6 +78,10 @@ To create a PSE, do the following:
 
 ### Create the AWS VPC endpoint in AWS
 
+You can create the AWS endpoint using the AWS [VPC console](https://console.aws.amazon.com/vpc/) or from the command line using the [AWS CLI](https://docs.aws.amazon.com/cli/).
+
+#### Create an AWS endpoint using the VPC console
+
 1. Open the Amazon [VPC console](https://console.aws.amazon.com/vpc/).
 
 1. In the navigation pane, choose **Endpoints**.
@@ -98,9 +102,7 @@ To create a PSE, do the following:
 
 The initial status is Pending. After the link is validated, the status is Available. This can take a few minutes.
 
-### Create the AWS VPC endpoint using AWS CLI
-
-Alternatively, you can create the AWS VPC endpoint using the [AWS CLI](https://docs.aws.amazon.com/cli/).
+#### Create an AWS endpoint using AWS CLI
 
 Enter the following command:
 
