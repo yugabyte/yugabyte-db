@@ -61,7 +61,7 @@ struct TemporaryLoadingState {
   private: \
     Status Visit( \
         const key_type& key, \
-        const entry_pb_name& metadata) override REQUIRES(mutex); \
+        const entry_pb_name& metadata) REQUIRES(mutex) override; \
     \
     CatalogManager *catalog_manager_; \
     \

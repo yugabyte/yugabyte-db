@@ -126,9 +126,6 @@ Result<rpc::ProcessCallsResult> RedisConnectionContext::ProcessCalls(
 Status RedisConnectionContext::HandleInboundCall(const rpc::ConnectionPtr& connection,
                                                  size_t commands_in_batch,
                                                  rpc::CallData* data) {
-  auto reactor = connection->reactor();
-  DCHECK(reactor->IsCurrentThread());
-
   auto call = rpc::InboundCall::Create<RedisInboundCall>(connection, data->size(), this);
 
   Status s = call->ParseFrom(call_mem_tracker_, commands_in_batch, data);
@@ -204,13 +201,13 @@ RedisInboundCall::~RedisInboundCall() {
   if (quit_.load(std::memory_order_acquire)) {
     rpc::ConnectionPtr conn = connection();
     rpc::Reactor* reactor = conn->reactor();
-    auto scheduled = reactor->ScheduleReactorTask(
+    auto scheduling_status  = reactor->ScheduleReactorTask(
         MakeFunctorReactorTask(std::bind(&rpc::Reactor::DestroyConnection,
                                          reactor,
                                          conn.get(),
                                          status),
                                conn, SOURCE_LOCATION()));
-    LOG_IF(WARNING, !scheduled) << "Failed to schedule destroy";
+    LOG_IF(DFATAL, !scheduling_status.ok()) << "Failed to schedule destroy";
   }
 }
 
