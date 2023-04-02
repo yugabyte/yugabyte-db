@@ -29,10 +29,12 @@ class LocalYBInboundCall;
 // A short-circuited outbound call.
 class LocalOutboundCall : public OutboundCall {
  public:
-  LocalOutboundCall(const RemoteMethod* remote_method,
+  LocalOutboundCall(const RemoteMethod& remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
-                    AnyMessagePtr response_storage, RpcController* controller,
-                    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback,
+                    AnyMessagePtr response_storage,
+                    RpcController* controller,
+                    std::shared_ptr<RpcMetrics> rpc_metrics,
+                    ResponseCallback callback,
                     ThreadPool* callback_thread_pool);
 
   Status SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;

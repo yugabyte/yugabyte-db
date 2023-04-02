@@ -238,10 +238,8 @@ class Messenger : public ProxyContext {
   //
   // The status argument conveys whether 'func' was run correctly (i.e. after the elapsed time) or
   // not.
-  MUST_USE_RESULT ScheduledTaskId ScheduleOnReactor(
-      StatusFunctor func, MonoDelta when,
-      const SourceLocation& source_location,
-      rpc::Messenger* msgr);
+  Result<ScheduledTaskId> ScheduleOnReactor(
+      StatusFunctor func, MonoDelta when, const SourceLocation& source_location);
 
   std::string name() const {
     return name_;
@@ -300,6 +298,10 @@ class Messenger : public ProxyContext {
   bool TEST_ShouldArtificiallyRejectIncomingCallsFrom(const IpAddress &remote);
 
   Status TEST_GetReactorMetrics(size_t reactor_idx, ReactorMetrics* metrics);
+
+  ScheduledTaskId TEST_next_task_id() const {
+    return next_task_id_.load(std::memory_order_acquire);
+  }
 
  private:
   friend class DelayedTask;

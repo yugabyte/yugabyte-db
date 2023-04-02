@@ -374,7 +374,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VTRACE_TO(2, trace_, "Preparing $0 ops", AsString(ops_info->groups));
 
     {
-      UNIQUE_LOCK(lock, mutex_);
+      UniqueLock lock(mutex_);
       if (!status_.ok()) {
         auto status = status_;
         lock.unlock();
@@ -526,7 +526,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
     {
-      UNIQUE_LOCK(lock, mutex_);
+      UniqueLock lock(mutex_);
       auto status = CheckCouldCommitUnlocked(seal_only);
       if (!status.ok()) {
         lock.unlock();
@@ -574,7 +574,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "Abort";
     TRACE_TO(trace_, __func__);
     {
-      UNIQUE_LOCK(lock, mutex_);
+      UniqueLock lock(mutex_);
       auto state = state_.load(std::memory_order_acquire);
       if (state != TransactionState::kRunning) {
         if (state != TransactionState::kAborted) {
@@ -673,7 +673,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Status PromoteToGlobal(const CoarseTimePoint& deadline) EXCLUDES(mutex_) {
     {
-      UNIQUE_LOCK(lock, mutex_);
+      UniqueLock lock(mutex_);
       RETURN_NOT_OK(StartPromotionToGlobal());
     }
     DoPromoteToGlobal(deadline);
@@ -708,7 +708,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   std::shared_future<Result<TransactionMetadata>> GetMetadata(
       CoarseTimePoint deadline) EXCLUDES(mutex_) {
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     if (metadata_future_.valid()) {
       return metadata_future_;
     }
@@ -718,7 +718,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       auto transaction = transaction_->shared_from_this();
       waiters_.push_back([this, transaction](const Status& status) {
         WARN_NOT_OK(status, "Transaction request failed");
-        UNIQUE_LOCK(lock, mutex_);
+        UniqueLock lock(mutex_);
         if (status.ok()) {
           metadata_promise_.set_value(metadata_);
         } else {
@@ -740,7 +740,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       PrepareChildCallback callback) {
     auto transaction = transaction_->shared_from_this();
     TRACE_TO(trace_, __func__);
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     auto status = CheckRunningUnlocked();
     if (!status.ok()) {
       lock.unlock();
@@ -770,7 +770,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
 
   Result<ChildTransactionResultPB> FinishChild() {
     TRACE_TO(trace_, __func__);
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     RETURN_NOT_OK(CheckRunningUnlocked());
     if (!child_) {
       return STATUS(IllegalState, "Finish child of non child transaction");
@@ -802,7 +802,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           manager_->client(), manager_->clock(), metadata_.transaction_id, Sealed::kFalse,
           CleanupType::kImmediate, cleanup_tablet_ids);
     });
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     if (state_.load(std::memory_order_acquire) == TransactionState::kAborted) {
       cleanup_tablet_ids.reserve(result.tablets().size());
       for (const auto& tablet : result.tablets()) {
@@ -845,7 +845,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   Result<TransactionMetadata> Release() {
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     auto state = state_.load(std::memory_order_acquire);
     if (state != TransactionState::kRunning) {
       return STATUS_FORMAT(IllegalState, "Attempt to release transaction in the wrong state $0: $1",
@@ -1138,7 +1138,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
         << Format("Commit, seal_only: $0, tablets: $1, status: $2",
                   seal_only, tablets_, status);
 
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
 
     if (!status.ok()) {
       VLOG_WITH_PREFIX(4) << "Commit failed: " << status;
@@ -1587,13 +1587,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   // See NotifyWaitersAndRelease.
   void NotifyWaiters(const Status& status, const char* operation,
                      SetReady set_ready = SetReady::kFalse) EXCLUDES(mutex_) {
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     NotifyWaitersAndRelease(&lock, status, operation, set_ready);
   }
 
   // Notify all waiters. The transaction will be aborted if it is running and status is not OK.
-  // `lock` must be UNIQUE_LOCK(.., mutex_), and will be released in this function.
-  // If `set_ready` is true and status is OK, `ready_` must be false, and will be set to true.
+  // `lock` will be released in this function. If `set_ready` is true and status is OK, `ready_`
+  // must be false, and will be set to true.
   void NotifyWaitersAndRelease(UniqueLock<std::shared_mutex>* lock,
                                Status status,
                                const char* operation,
@@ -1785,7 +1785,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       FATAL_INVALID_ENUM_VALUE(TransactionStatus, transaction_status);
     } else {
       auto state = state_.load(std::memory_order_acquire);
-      LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", state: " << state;
+      LOG_WITH_PREFIX(WARNING) << "Send heartbeat failed: " << status << ", txn state: " << state;
 
       if (status.IsAborted() || status.IsExpired()) {
         // IsAborted - Service is shutting down, no reason to retry.
@@ -1832,7 +1832,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     TRACE_TO(trace_, __func__);
     VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionStatusLocationRpcs()";
 
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
 
     if (transaction_status_move_handles_.empty()) {
       auto old_status_tablet = old_status_tablet_;
@@ -1924,7 +1924,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
 
     auto handle = GetTransactionStatusMoveHandle(tablet_id);
     auto rpc = PrepareUpdateTransactionStatusLocationRpc(
@@ -1951,7 +1951,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(1) << "Transaction status update for participant tablet "
                         << tablet_id << ": " << yb::ToString(status);
 
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     auto handle = GetTransactionStatusMoveHandle(tablet_id);
     manager_->rpcs().Unregister(handle);
 
