@@ -152,6 +152,7 @@ class DocHybridTime {
   // And EncodedDocHybridTime merely big struct, it is more effective to return
   // Status and value separately, instead of wrapping it with Result.
   static Status EncodedFromEnd(const Slice& slice, EncodedDocHybridTime* out);
+  static Result<Slice> EncodedFromStart(Slice* slice);
 
   // Decodes doc ht from end of slice, and removes corresponding bytes from provided slice.
   static Result<DocHybridTime> DecodeFromEnd(Slice* encoded_key_with_ht);

@@ -92,6 +92,7 @@ inline void FastEncodeDescendingSignedVarInt(int64_t v, std::string *dest) {
 // Decode a "descending VarInt" encoded by FastEncodeDescendingVarInt.
 Status FastDecodeDescendingSignedVarIntUnsafe(Slice *slice, int64_t *dest);
 Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice);
+size_t FastDecodeDescendingSignedVarIntSize(Slice src);
 
 size_t UnsignedVarIntLength(uint64_t v);
 size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest);

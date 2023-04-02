@@ -275,9 +275,11 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   const TransactionOperationContext txn_op_context_;
   docdb::BoundedRocksDbIterator intent_iter_;
   docdb::BoundedRocksDbIterator iter_;
-  // iter_valid_ is true if and only if iter_ is positioned at key which matches top prefix from
-  // the stack and record time satisfies read_time_ criteria.
-  bool iter_valid_ = false;
+
+  // regular_value_ contains value for the current entry from regular db.
+  // Empty if there is no current value in regular db.
+  Slice regular_value_;
+
   Status status_;
   EncodedDocHybridTime max_seen_ht_{DocHybridTime::kMin};
 
