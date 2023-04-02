@@ -113,6 +113,8 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_backfill_sabotage_frequency);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
 DECLARE_string(compression_type);
+DECLARE_bool(ycql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row);
 
 namespace yb {
 namespace client {
@@ -1351,9 +1353,21 @@ class QLTabletRf1Test : public QLTabletTest {
   }
 };
 
+class QLTabletRf1TestToggleEnablePackedRow :
+    public QLTabletRf1Test, public ::testing::WithParamInterface<bool> {
+ public:
+  void SetFlags() override {
+    QLTabletRf1Test::SetFlags();
+    ASSERT_OK(SET_FLAG(ycql_enable_packed_row, GetParam()));
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, GetParam()));
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(, QLTabletRf1TestToggleEnablePackedRow, ::testing::Bool());
+
 // For this test we don't need actually RF3 setup which also makes test flaky because of
 // https://github.com/yugabyte/yugabyte-db/issues/4663.
-TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
+TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   FLAGS_db_write_buffer_size = 20_KB;
 
   TestWorkload workload(cluster_.get());
@@ -1376,8 +1390,10 @@ TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
 
   // We want some compactions to happen, so largest SST file will become large enough for its
   // approximate middle key to roughly split the whole tablet into two parts that are close in size.
+  // Need to have the largest file to be more than 50% of total size of all SST -- setting to 600KB
+  // is enough to achive this condition (should give ~65% of total size when packed rows are on).
   while (tablet.TEST_db()->GetCurrentVersionDataSstFilesSize() <
-         implicit_cast<size_t>(20 * FLAGS_db_write_buffer_size)) {
+         implicit_cast<size_t>(30 * FLAGS_db_write_buffer_size)) {
     std::this_thread::sleep_for(100ms);
   }
 
