@@ -84,6 +84,8 @@ set(YRPC_SRCS
     poller.cc
     proxy.cc
     reactor.cc
+    reactor_task.cc
+    delayed_task.cc
     refined_stream.cc
     remote_method.cc
     rpc.cc

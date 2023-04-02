@@ -207,7 +207,7 @@ class TransactionParticipant::Impl
 
     decltype(status_resolvers_) status_resolvers;
     {
-      UNIQUE_LOCK(lock, mutex_);
+      UniqueLock lock(mutex_);
       WaitOnConditionVariable(
           &requests_completed_cond_, &lock,
           [this] { return running_requests_.empty(); });

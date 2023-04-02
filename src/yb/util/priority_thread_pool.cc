@@ -255,7 +255,7 @@ class PriorityThreadPoolWorker : public PriorityThreadPoolSuspender {
   }
 
   void Run() {
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
     while (!stopped_) {
       if (!task_) {
         WaitOnConditionVariable(&cond_, &lock);
