@@ -659,7 +659,7 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
   HybridTime result;
   VLOG(3) << "Doing iter->Seek " << *pk_doc_key_;
   iter->Seek(*pk_doc_key_);
-  if (iter->valid()) {
+  if (!iter->IsOutOfRecords()) {
     const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(
@@ -667,7 +667,7 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
     VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
             << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
-    VLOG(3) << "iter->Seek " << *pk_doc_key_ << " turned out to be invalid";
+    VLOG(3) << "iter->Seek " << *pk_doc_key_ << " turned out to be out of records";
   }
   return result;
 }

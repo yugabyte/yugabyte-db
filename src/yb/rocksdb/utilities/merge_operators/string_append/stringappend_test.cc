@@ -139,7 +139,7 @@ TEST_F(StringAppendOperatorTest, IteratorTest) {
   std::string k1("k1");
   std::string k2("k2");
   bool first = true;
-  for (it->Seek(k1); it->Valid(); it->Next()) {
+  for (it->Seek(k1); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3");
@@ -153,7 +153,7 @@ TEST_F(StringAppendOperatorTest, IteratorTest) {
 
   // Snapshot should still be the same. Should ignore a4 and v4.
   first = true;
-  for (it->Seek(k1); it->Valid(); it->Next()) {
+  for (it->Seek(k1); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3");
@@ -167,7 +167,7 @@ TEST_F(StringAppendOperatorTest, IteratorTest) {
   // Should release the snapshot and be aware of the new stuff now
   it.reset(db_->NewIterator(ReadOptions()));
   first = true;
-  for (it->Seek(k1); it->Valid(); it->Next()) {
+  for (it->Seek(k1); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3,v4");
@@ -178,7 +178,7 @@ TEST_F(StringAppendOperatorTest, IteratorTest) {
   }
 
   // start from k2 this time.
-  for (it->Seek(k2); it->Valid(); it->Next()) {
+  for (it->Seek(k2); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "v1,v2,v3,v4");
@@ -193,7 +193,7 @@ TEST_F(StringAppendOperatorTest, IteratorTest) {
   it.reset(db_->NewIterator(ReadOptions()));
   first = true;
   std::string k3("k3");
-  for(it->Seek(k2); it->Valid(); it->Next()) {
+  for(it->Seek(k2); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       ASSERT_EQ(res, "a1,a2,a3,a4");
@@ -202,7 +202,7 @@ TEST_F(StringAppendOperatorTest, IteratorTest) {
       ASSERT_EQ(res, "g1");
     }
   }
-  for(it->Seek(k3); it->Valid(); it->Next()) {
+  for(it->Seek(k3); ASSERT_RESULT(it->CheckedValid()); it->Next()) {
     res = it->value().ToString();
     if (first) {
       // should not be hit

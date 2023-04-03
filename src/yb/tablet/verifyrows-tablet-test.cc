@@ -81,11 +81,13 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     superclass::SetUp();
 
     // Warm up code cache with all the projections we'll be using.
-    ASSERT_OK(tablet()->NewRowIterator(client_schema_));
+    auto iter = ASSERT_RESULT(tablet()->NewRowIterator(client_schema_));
+    ASSERT_OK(iter->HasNext());
     const SchemaPtr schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
-    ASSERT_OK(tablet()->NewRowIterator(valcol_projection_));
+    iter = ASSERT_RESULT(tablet()->NewRowIterator(valcol_projection_));
+    ASSERT_OK(iter->HasNext());
 
     ts_collector_.StartDumperThread();
   }

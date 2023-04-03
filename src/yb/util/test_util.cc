@@ -307,4 +307,38 @@ int CalcNumTablets(size_t num_tablet_servers) {
 #endif
 }
 
+Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to_corrupt) {
+  struct stat sbuf;
+  if (stat(file_path.c_str(), &sbuf) != 0) {
+    const char* msg = strerror(errno);
+    return STATUS_FORMAT(IOError, "$0: $1", msg, file_path);
+  }
+
+  if (offset < 0) {
+    offset = std::max<int64_t>(sbuf.st_size + offset, 0);
+  }
+  offset = std::min<int64_t>(offset, sbuf.st_size);
+  if (yb::std_util::cmp_greater(offset + bytes_to_corrupt, sbuf.st_size)) {
+    bytes_to_corrupt = sbuf.st_size - offset;
+  }
+
+  RWFileOptions opts;
+  opts.mode = Env::CreateMode::OPEN_EXISTING;
+  opts.sync_on_close = true;
+  std::unique_ptr<RWFile> file;
+  RETURN_NOT_OK(Env::Default()->NewRWFile(opts, file_path, &file));
+  std::unique_ptr<uint8_t[]> scratch(new uint8_t[bytes_to_corrupt]);
+  Slice data_read;
+  RETURN_NOT_OK(file->Read(offset, bytes_to_corrupt, &data_read, scratch.get()));
+  SCHECK_EQ(data_read.size(), bytes_to_corrupt, IOError, "Unexpected number of bytes read");
+
+  for (uint8_t* p = data_read.mutable_data(); p < data_read.end(); ++p) {
+    *p ^= 0x55;
+  }
+
+  RETURN_NOT_OK(file->Write(offset, data_read));
+  RETURN_NOT_OK(file->Sync());
+  return file->Close();
+}
+
 } // namespace yb

@@ -343,7 +343,7 @@ Result<bool> DocRowwiseIterator::HasNext() {
 
   bool doc_found = false;
   while (!doc_found) {
-    if (!db_iter_->valid() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
+    if (db_iter_->IsOutOfRecords() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
       Done();
       return false;
     }
@@ -472,7 +472,7 @@ Result<bool> DocRowwiseIterator::HasNext() {
     }
     has_next_status_ = AdvanceIteratorToNextDesiredRow();
     RETURN_NOT_OK(has_next_status_);
-    VLOG(4) << __func__ << ", iter: " << db_iter_->valid();
+    VLOG(4) << __func__ << ", iter: " << !db_iter_->IsOutOfRecords();
   }
   row_ready_ = true;
   return true;

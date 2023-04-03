@@ -129,6 +129,8 @@ void IntentIterator::SeekForward(KeyBytes* key_bytes) {
   // Avoid seeking if intent iterator is already pointing to the target.
   if (intent_iter_.Valid() && intent_iter_.key().compare(*key_bytes) < 0) {
     AppendStrongWriteAndPerformSeek(key_bytes, true /*seek_forward*/);
+  } else {
+    HandleStatus(intent_iter_.status());
   }
 
   SeekToSuitableIntent<Direction::kForward>();
@@ -195,6 +197,7 @@ void IntentIterator::SeekToSuitableIntent() {
         break;
     }
   }
+  HandleStatus(intent_iter_.status());
 
   if (!resolved_intent_key_prefix_.empty()) {
     UpdateResolvedIntentSubDocKeyEncoded();
@@ -334,6 +337,8 @@ void IntentIterator::SeekOutOfSubKey(KeyBytes* key_bytes) {
 
   if (intent_iter_.Valid()) {
     docdb::SeekOutOfSubKey(key_bytes, &intent_iter_);
+  } else {
+    HandleStatus(intent_iter_.status());
   }
   SeekToSuitableIntent<Direction::kForward>();
 }
@@ -384,6 +389,12 @@ std::string IntentIterator::DebugPosToString() {
     return key.status().ToString();
   }
   return SubDocKey::DebugSliceToString(key->key);
+}
+
+void IntentIterator::HandleStatus(const Status& status) {
+  if (!status.ok()) {
+    status_ = status;
+  }
 }
 
 std::string DecodeStrongWriteIntentResult::ToString() const {

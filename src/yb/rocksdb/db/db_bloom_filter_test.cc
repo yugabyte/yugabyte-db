@@ -922,7 +922,7 @@ TEST_F(DBBloomFilterTest, PrefixExtractorBlockFilter) {
   std::vector<std::string> iter_res;
   auto iter = db_->NewIterator(ReadOptions());
   // Seek to a key that was not in Domain
-  for (iter->Seek("zzzzz_AAAA"); iter->Valid(); iter->Next()) {
+  for (iter->Seek("zzzzz_AAAA"); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     iter_res.emplace_back(iter->value().ToString());
   }
 
@@ -1037,22 +1037,19 @@ TEST_P(BloomStatsTestWithParam, BloomStatsTestWithIter) {
 
   // check memtable bloom stats
   iter->Seek(key1);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value1, iter->value().ToString());
   ASSERT_EQ(1, perf_context.bloom_memtable_hit_count);
   ASSERT_EQ(0, perf_context.bloom_memtable_miss_count);
 
   iter->Seek(key3);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value3, iter->value().ToString());
   ASSERT_EQ(2, perf_context.bloom_memtable_hit_count);
   ASSERT_EQ(0, perf_context.bloom_memtable_miss_count);
 
   iter->Seek(key2);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(1, perf_context.bloom_memtable_miss_count);
   ASSERT_EQ(2, perf_context.bloom_memtable_hit_count);
 
@@ -1062,20 +1059,17 @@ TEST_P(BloomStatsTestWithParam, BloomStatsTestWithIter) {
 
   // Check SST bloom stats
   iter->Seek(key1);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value1, iter->value().ToString());
   ASSERT_EQ(1, perf_context.bloom_sst_hit_count);
 
   iter->Seek(key3);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value3, iter->value().ToString());
   ASSERT_EQ(2, perf_context.bloom_sst_hit_count);
 
   iter->Seek(key2);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(1, perf_context.bloom_sst_miss_count);
   ASSERT_EQ(2, perf_context.bloom_sst_hit_count);
 }
@@ -1172,13 +1166,12 @@ TEST_F(DBBloomFilterTest, PrefixScan) {
     count = 0;
     env_->random_read_counter_.Reset();
     iter = db_->NewIterator(ReadOptions());
-    for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
+    for (iter->Seek(prefix); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       if (!iter->key().starts_with(prefix)) {
         break;
       }
       count++;
     }
-    ASSERT_OK(iter->status());
     delete iter;
     ASSERT_EQ(count, 2);
     ASSERT_EQ(env_->random_read_counter_.Read(), 2);

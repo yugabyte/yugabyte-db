@@ -841,7 +841,8 @@ Status Tablet::OpenKeyValueTablet() {
     transaction_participant_->SetIntentRetainOpIdAndTime(
         metadata_->cdc_sdk_min_checkpoint_op_id(),
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
-    transaction_participant_->SetDB(doc_db(), &key_bounds_, &pending_non_abortable_op_counter_);
+    RETURN_NOT_OK(transaction_participant_->SetDB(
+        doc_db(), &key_bounds_, &pending_non_abortable_op_counter_));
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -1300,8 +1301,8 @@ Status Tablet::WriteTransactionalBatch(
     store_metadata = add_result.get();
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
-  auto prepare_batch_data = transaction_participant()->PrepareBatchData(
-      transaction_id, batch_idx, &encoded_replicated_batch_idx_set);
+  auto prepare_batch_data = VERIFY_RESULT(transaction_participant()->PrepareBatchData(
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set));
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
@@ -3460,7 +3461,7 @@ void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
   }
 }
 
-size_t Tablet::TEST_CountRegularDBRecords() {
+Result<size_t> Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
@@ -3470,6 +3471,7 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
     ++result;
   }
+  RETURN_NOT_OK(iter.status());
   return result;
 }
 
@@ -3705,6 +3707,7 @@ Result<int64_t> Tablet::CountIntents() {
     num_intents++;
     intent_iter->Next();
   }
+  RETURN_NOT_OK(intent_iter->status());
   return num_intents;
 }
 
@@ -3728,7 +3731,7 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
     intents->push_back(item);
   }
 
-  return Status::OK();
+  return intent_iter->status();
 }
 
 void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
@@ -4252,7 +4255,7 @@ Status Tablet::GetLockStatus(const TransactionId& txn_id,
       intent_iter->Next();
     }
 
-    return Status::OK();
+    return intent_iter->status();
   }
 
   DCHECK(!txn_id.IsNil());
@@ -4272,6 +4275,7 @@ Status Tablet::GetLockStatus(const TransactionId& txn_id,
     txn_intent_keys.emplace_back(intent_iter->value());
     intent_iter->Next();
   }
+  RETURN_NOT_OK(intent_iter->status());
 
   if (txn_intent_keys.empty()) {
     return Status::OK();
@@ -4280,9 +4284,11 @@ Status Tablet::GetLockStatus(const TransactionId& txn_id,
   std::sort(txn_intent_keys.begin(), txn_intent_keys.end());
 
   intent_iter->SeekToFirst();
+  RETURN_NOT_OK(intent_iter->status());
 
   for (const auto& intent_key : txn_intent_keys) {
     intent_iter->Seek(intent_key);
+    RETURN_NOT_OK(intent_iter->status());
 
     auto key = intent_iter->key();
     DCHECK_EQ(intent_iter->key(), key);
