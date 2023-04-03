@@ -7,9 +7,12 @@ import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static junit.framework.TestCase.assertNull;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -36,6 +39,8 @@ import com.yugabyte.yw.common.FakeApiHelper;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.AvailabilityZoneDetails;
@@ -45,7 +50,10 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.RegionDetails;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
+import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -57,6 +65,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -326,11 +335,11 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     provider.getDetails().getCloudInfo().aws.awsHostedZoneId = "1234";
     mockDnsManagerListSuccess("test");
     Result result = editProvider(Json.toJson(provider), false);
-    verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(provider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
     waitForTask(UUID.fromString(json.get("taskUUID").asText()));
+    verify(mockDnsManager, times(1)).listDnsRecord(any(), any());
     provider = Provider.getOrBadRequest(provider.getUuid());
     assertEquals("1234", provider.getDetails().getCloudInfo().aws.getAwsHostedZoneId());
     assertAuditEntry(1, defaultCustomer.getUuid());
@@ -722,6 +731,74 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
 
     p = Provider.getOrBadRequest(p.getUuid());
     assertEquals(2, p.getImageBundles().size());
+  }
+
+  @Test
+  public void testWaitForFinishingTasksTimeout() throws InterruptedException {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "50");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksTimeoutMs.getKey(), "100");
+    UUID backupTaskUUID = UUID.randomUUID();
+    CreateBackup createBackup = app.injector().instanceOf(CreateBackup.class);
+    BackupRequestParams params = new BackupRequestParams();
+    Universe universe = ModelFactory.createUniverse("univ", defaultCustomer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
+              provider.getUuid().toString();
+        });
+    params.setUniverseUUID(universe.getUniverseUUID());
+    providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
+    TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse);
+    backupTaskInfo.setTaskState(TaskInfo.State.Running);
+    backupTaskInfo.setTaskUUID(backupTaskUUID);
+    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setOwner("Myself");
+    backupTaskInfo.save();
+    ScheduleTask.create(backupTaskUUID, UUID.randomUUID());
+    Collection<UUID> tasksInUse = providerEditRestrictionManager.getTasksInUse(provider.getUuid());
+    assertFalse("Not empty task in use", tasksInUse.isEmpty());
+    provider.setName("new name");
+    UUID taskUUID = doEditProvider(provider, false, false);
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertNotEquals("new name", Provider.getOrBadRequest(provider.getUuid()).getName());
+    assertTrue(taskInfo.getErrorMessage().contains("Reached timeout of 100 ms"));
+  }
+
+  @Test
+  public void testWaitForFinishingTasksSuccess() throws InterruptedException {
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksStepMs.getKey(), "100");
+    RuntimeConfigEntry.upsertGlobal(GlobalConfKeys.waitForProviderTasksTimeoutMs.getKey(), "10000");
+    UUID backupTaskUUID = UUID.randomUUID();
+    CreateBackup createBackup = app.injector().instanceOf(CreateBackup.class);
+    BackupRequestParams params = new BackupRequestParams();
+    Universe universe = ModelFactory.createUniverse("univ", defaultCustomer.getId());
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        univ -> {
+          univ.getUniverseDetails().getPrimaryCluster().userIntent.provider =
+              provider.getUuid().toString();
+        });
+    params.setUniverseUUID(universe.getUniverseUUID());
+    providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
+    TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse);
+    backupTaskInfo.setTaskState(TaskInfo.State.Running);
+    backupTaskInfo.setTaskUUID(backupTaskUUID);
+    backupTaskInfo.setDetails(Json.newObject());
+    backupTaskInfo.setOwner("Myself");
+    backupTaskInfo.save();
+    ScheduleTask.create(backupTaskUUID, UUID.randomUUID());
+    Collection<UUID> tasksInUse = providerEditRestrictionManager.getTasksInUse(provider.getUuid());
+    assertFalse("Not empty task in use", tasksInUse.isEmpty());
+    provider.setName("new name");
+    UUID taskUUID = doEditProvider(provider, false, false);
+    Thread.sleep(200);
+    backupTaskInfo.setTaskState(Success);
+    backupTaskInfo.save();
+    TaskInfo taskInfo = waitForTask(taskUUID);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals("new name", Provider.getOrBadRequest(provider.getUuid()).getName());
   }
 
   private Provider createK8sProvider() {

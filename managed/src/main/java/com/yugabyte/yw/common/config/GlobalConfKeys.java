@@ -617,15 +617,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "How frequently do we check for completed tasks in database",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  // TODO yury
   public static ConfKeyInfo<Boolean> editProviderNewEnabled =
       new ConfKeyInfo<>(
           "yb.edit_provider.new.enabled",
           ScopeType.GLOBAL,
           "Enable New Edit Provider",
-          "TODO",
+          "Enable new edit provider workflow",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<List> tagList =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.tag_filter",
@@ -800,6 +799,24 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Listening port for node agent servers",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> waitForProviderTasksTimeoutMs =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.wait_for_tasks_timeout_ms",
+          ScopeType.GLOBAL,
+          "Provider edit wait timeout in milliseconds",
+          "Timeout, that is used in edit provider task to wait until concurrent"
+              + " provider tasks are completed",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> waitForProviderTasksStepMs =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.wait_for_tasks_step_ms",
+          ScopeType.GLOBAL,
+          "Provider edit wait step in milliseconds",
+          "Time between checks, that is used in edit provider task to wait until"
+              + " concurrent provider tasks are completed ",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> useLegacyPayloadForRegionAndAZs =
       new ConfKeyInfo<>(
           "yb.provider.use_legacy_payload_region_zones",
@@ -843,5 +860,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "DB nodes to sync; if the sync does not happen within this the time specified in "
               + "this config value, the subtask will fail",
           ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static ConfKeyInfo<Boolean> editProviderWaitForTasks =
+      new ConfKeyInfo<>(
+          "yb.edit_provider.new.allow_wait",
+          ScopeType.GLOBAL,
+          "Enable wait for autotasks to finish during provider edit",
+          "Enable wait for autotasks to finish during provider edit",
+          ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }
