@@ -2639,112 +2639,6 @@ Status CatalogManager::AddIndexInfoToTable(const scoped_refptr<TableInfo>& index
   return Status::OK();
 }
 
-// TODO(GH16123): clean up copartitioning code.
-Status CatalogManager::CreateCopartitionedTable(const CreateTableRequestPB& req,
-                                                CreateTableResponsePB* resp,
-                                                rpc::RpcContext* rpc,
-                                                Schema schema,
-                                                scoped_refptr<NamespaceInfo> ns) {
-  scoped_refptr<TableInfo> parent_table_info;
-  Status s;
-  PartitionSchema partition_schema;
-  std::vector<Partition> partitions;
-
-  const NamespaceId& namespace_id = ns->id();
-  const NamespaceName& namespace_name = ns->name();
-
-  LockGuard lock(mutex_);
-  TRACE("Acquired catalog manager lock");
-  parent_table_info = tables_->FindTableOrNull(schema.table_properties().CopartitionTableId());
-  if (parent_table_info == nullptr) {
-    s = STATUS(NotFound, "The object does not exist: copartitioned table with id",
-               schema.table_properties().CopartitionTableId());
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_NOT_FOUND, s);
-  }
-
-  TableInfoPtr this_table_info;
-  // Verify that the table does not exist.
-  this_table_info = FindPtrOrNull(table_names_map_, {namespace_id, req.name()});
-
-  if (this_table_info != nullptr) {
-    s = STATUS_SUBSTITUTE(AlreadyPresent,
-        "Object '$0.$1' already exists",
-        GetNamespaceNameUnlocked(this_table_info), this_table_info->name());
-    LOG(WARNING) << "Found table: " << this_table_info->ToStringWithState()
-                 << ". Failed creating copartitioned table with error: "
-                 << s.ToString() << " Request:\n" << req.DebugString();
-    return SetupError(resp->mutable_error(), MasterErrorPB::OBJECT_ALREADY_PRESENT, s);
-  }
-  // Don't add copartitioned tables to Namespaces that aren't running.
-  if (ns->state() != SysNamespaceEntryPB::RUNNING) {
-    Status s = STATUS_SUBSTITUTE(TryAgain,
-        "Namespace not running (State=$0).  Cannot create $1.$2",
-        ns->state(), ns->name(), req.name() );
-    return SetupError(resp->mutable_error(), NamespaceMasterError(ns->state()), s);
-  }
-
-  // TODO: pass index_info for copartitioned index.
-  RETURN_NOT_OK(CreateTableInMemory(
-      req, schema, partition_schema, namespace_id, namespace_name, partitions,
-      /* colocated */ false, IsSystemObject::kFalse, nullptr, nullptr, resp, &this_table_info));
-
-  TRACE("Inserted new table info into CatalogManager maps");
-
-  // NOTE: the table is already locked for write at this point,
-  // since the CreateTableInfo function leave it in that state.
-  // It will get committed at the end of this function.
-  // Sanity check: the table should be in "preparing" state.
-  CHECK_EQ(SysTablesEntryPB::PREPARING, this_table_info->metadata().dirty().pb.state());
-  TabletInfos tablets = parent_table_info->GetTablets();
-  bool write_tablets = false;
-  for (auto tablet : tablets) {
-    tablet->mutable_metadata()->StartMutation();
-    if (!tablet->mutable_metadata()->mutable_dirty()->pb.hosted_tables_mapped_by_parent_id()) {
-      tablet->mutable_metadata()->mutable_dirty()->pb.add_table_ids(this_table_info->id());
-      write_tablets = true;
-    }
-  }
-
-  if (write_tablets) {
-    // Update Tablets about new table id to sys-tablets.
-    s = sys_catalog_->Upsert(leader_ready_term(), tablets);
-    if (PREDICT_FALSE(!s.ok())) {
-      return AbortTableCreation(this_table_info.get(), tablets, s.CloneAndPrepend(
-          Substitute("An error occurred while inserting to sys-tablets: $0", s.ToString())), resp);
-    }
-    TRACE("Wrote tablets to system table");
-  }
-
-  // Update the on-disk table state to "running".
-  this_table_info->mutable_metadata()->mutable_dirty()->pb.set_parent_table_id(
-      parent_table_info->id());
-  this_table_info->AddTablets(tablets);
-  this_table_info->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
-  s = sys_catalog_->Upsert(leader_ready_term(), this_table_info);
-  if (PREDICT_FALSE(!s.ok())) {
-    return AbortTableCreation(this_table_info.get(), tablets, s.CloneAndPrepend(
-        Substitute("An error occurred while inserting to sys-tablets: $0",
-                   s.ToString())), resp);
-  }
-  TRACE("Wrote table to system table");
-
-  // Commit the in-memory state.
-  this_table_info->mutable_metadata()->CommitMutation();
-
-  for (const auto& tablet : tablets) {
-    tablet->mutable_metadata()->CommitMutation();
-  }
-
-  for (const auto& tablet : tablets) {
-    SendCopartitionTabletRequest(tablet, this_table_info);
-  }
-
-  LOG(INFO) << "Successfully created table " << this_table_info->ToString()
-            << " per request from " << RequestorString(rpc);
-  return Status::OK();
-}
-
-
 template <class Req, class Resp, class Action>
 Status CatalogManager::PerformOnSysCatalogTablet(const Req& req, Resp* resp, const Action& action) {
   auto tablet_peer = sys_catalog_->tablet_peer();
@@ -3757,10 +3651,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   // (from CatalogManager::RecreateTable). Else the column ids must be empty in the client schema.
   if (!schema.has_column_ids()) {
     schema.InitColumnIdsByDefault();
-  }
-
-  if (schema.table_properties().HasCopartitionTableId()) {
-    return CreateCopartitionedTable(req, resp, rpc, schema, ns);
   }
 
   if (colocated) {
@@ -4993,10 +4883,7 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
     Schema schema;
     RETURN_NOT_OK(table->GetSchema(&schema));
-    // Copartitioned tables don't actually create tablets currently (unimplemented), so ignore them.
-    if (!schema.table_properties().HasCopartitionTableId()) {
-      DCHECK(GetYqlPartitionsVtable().CheckTableIsPresent(table->id(), table->NumPartitions()));
-    }
+    DCHECK(GetYqlPartitionsVtable().CheckTableIsPresent(table->id(), table->NumPartitions()));
   }
 
   // If this is a transactional table we are not done until the transaction status table is created.
@@ -6712,8 +6599,6 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
           "wal_retention_secs cannot be altered concurrently with other properties");
       return SetupError(resp->mutable_error(), MasterErrorPB::INVALID_REQUEST, s);
     }
-    // TODO(hector): Handle co-partitioned tables:
-    // https://github.com/YugaByte/yugabyte-db/issues/1905.
     table_pb.set_wal_retention_secs(req->wal_retention_secs());
     has_changes = true;
   }
@@ -10437,13 +10322,6 @@ Status CatalogManager::SendAlterTableRequestInternal(const scoped_refptr<TableIn
     RETURN_NOT_OK(ScheduleTask(call));
   }
   return Status::OK();
-}
-
-void CatalogManager::SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
-                                                  const scoped_refptr<TableInfo>& table) {
-  auto call = std::make_shared<AsyncCopartitionTable>(master_, AsyncTaskPool(), tablet, table);
-  table->AddTask(call);
-  WARN_NOT_OK(ScheduleTask(call), "Failed to send copartition table request");
 }
 
 Status CatalogManager::SendSplitTabletRequest(
