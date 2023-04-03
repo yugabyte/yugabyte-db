@@ -22,6 +22,7 @@ import com.yugabyte.yw.forms.PerfAdvisorSettingsFormData;
 import com.yugabyte.yw.forms.PerfAdvisorSettingsWithDefaults;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import com.yugabyte.yw.models.Users;
+import io.ebean.DB;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.Before;
@@ -182,13 +183,13 @@ public class PerfAdvisorControllerTest extends FakePerfAdvisorDBTest {
     UUID baseUuid = UUID.randomUUID();
     StateChangeAuditInfo info1 =
         createAuditInfo(recommendation, TestUtils.replaceFirstChar(baseUuid, 'a'));
-    StateChangeAuditInfo.db("perf_advisor").save(info1);
+    DB.byName("perf_advisor").save(info1);
     StateChangeAuditInfo info2 =
         createAuditInfo(recommendation, TestUtils.replaceFirstChar(baseUuid, 'b'));
-    StateChangeAuditInfo.db("perf_advisor").save(info2);
+    DB.byName("perf_advisor").save(info2);
     StateChangeAuditInfo info3 =
         createAuditInfo(recommendation, TestUtils.replaceFirstChar(baseUuid, 'c'));
-    StateChangeAuditInfo.db("perf_advisor").save(info3);
+    DB.byName("perf_advisor").save(info3);
 
     StateChangeAuditInfoPagedQuery query = new StateChangeAuditInfoPagedQuery();
     query.setSortBy(StateChangeAuditInfo.SortBy.id);

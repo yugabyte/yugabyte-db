@@ -28,11 +28,11 @@ public class HAAuthenticator extends Action.Simple {
   }
 
   @Override
-  public CompletionStage<Result> call(Http.Context ctx) {
-    return ctx.request()
+  public CompletionStage<Result> call(Http.Request request) {
+    return request
         .header(HA_CLUSTER_KEY_TOKEN_HEADER)
         .filter(this::clusterKeyValid)
-        .map(success -> delegate.call(ctx))
+        .map(success -> delegate.call(request))
         .orElse(
             CompletableFuture.completedFuture(
                 Results.badRequest("Unable to authenticate request")));

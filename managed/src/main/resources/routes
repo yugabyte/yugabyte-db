@@ -2,8 +2,8 @@
 # This file defines all application routes (Higher priority routes first)
 # ~~~~
 
--> /api/ v1.Routes
--> /api/v1/ v1.Routes
+-> /api v1.Routes
+-> /api/v1 v1.Routes
 
 ###################################################################################################
 #
@@ -15,7 +15,7 @@
 GET     /metamaster/universe/:universeUUID            com.yugabyte.yw.controllers.MetaMasterController.get(universeUUID: java.util.UUID)
 
 # To proxy requests to master/tserver UI
-GET     /universes/:uniUUID/proxy/*proxyUrl           com.yugabyte.yw.controllers.SessionController.proxyRequest(uniUUID: java.util.UUID, proxyUrl: String)
+GET     /universes/:uniUUID/proxy/*proxyUrl           com.yugabyte.yw.controllers.SessionController.proxyRequest(uniUUID: java.util.UUID, proxyUrl: String, request: Request)
 
 ###################################################################################################
 # Swagger Json

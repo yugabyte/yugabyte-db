@@ -12271,6 +12271,10 @@
         "description" : "",
         "operationId" : "apiLogin",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CustomerLoginFormData",
           "required" : true,
@@ -12315,6 +12319,10 @@
         "description" : "",
         "operationId" : "setAuditLoggingSettings",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Audit Logging config to be updated",
           "in" : "body",
           "name" : "Audit Logging Config",
@@ -12359,7 +12367,11 @@
       "get" : {
         "description" : "",
         "operationId" : "ListOfCustomers",
-        "parameters" : [ ],
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
@@ -12388,6 +12400,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12436,6 +12452,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Customer data to be updated",
           "in" : "body",
@@ -12556,6 +12576,10 @@
           "name" : "acType",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12614,6 +12638,10 @@
           "name" : "acType",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "SetAlertChannelTemplatesRequest",
@@ -12675,6 +12703,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateAlertChannelRequest",
           "required" : true,
@@ -12713,6 +12745,10 @@
           "name" : "acUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12774,6 +12810,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UpdateAlertChannelRequest",
           "required" : true,
@@ -12807,6 +12847,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateAlertConfigurationRequest",
           "required" : true,
@@ -12839,6 +12883,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "ListAlertConfigurationsRequest",
@@ -12875,6 +12923,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageAlertConfigurationsRequest",
@@ -12914,6 +12966,10 @@
           "name" : "configurationUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -12974,6 +13030,10 @@
           "name" : "configurationUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "UpdateAlertConfigurationRequest",
@@ -13067,6 +13127,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateAlertDestinationRequest",
           "required" : true,
@@ -13105,6 +13169,10 @@
           "name" : "adUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13166,6 +13234,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UpdateAlertDestinationRequest",
           "required" : true,
@@ -13198,6 +13270,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "NotificationPreviewRequest",
@@ -13259,6 +13335,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "EditAlertTemplateSettingsRequest",
           "required" : true,
@@ -13300,6 +13380,10 @@
           "name" : "settingsUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13351,6 +13435,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "EditAlertTemplateVariablesRequest",
           "required" : true,
@@ -13392,6 +13480,10 @@
           "name" : "variableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13418,6 +13510,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "ListTemplatesRequest",
@@ -13484,6 +13580,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "AcknowledgeAlertsRequest",
           "required" : true,
@@ -13549,6 +13649,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CountAlertsRequest",
           "required" : true,
@@ -13582,6 +13686,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageAlertsRequest",
@@ -13653,6 +13761,10 @@
           "name" : "alertUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13679,6 +13791,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13703,6 +13819,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Backup data to be created",
           "in" : "body",
@@ -13738,6 +13858,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Parameters of the backup to be deleted",
           "in" : "body",
           "name" : "deleteBackup",
@@ -13771,6 +13895,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageBackupsRequest",
@@ -13840,6 +13968,10 @@
           "name" : "backupUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Parameters of the backup to be edited",
           "in" : "body",
@@ -13915,6 +14047,10 @@
           "name" : "backupUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -13975,6 +14111,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "certificate params of the backup to be restored",
           "in" : "body",
           "name" : "certificate",
@@ -14009,6 +14149,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "certificate label",
           "in" : "body",
@@ -14082,6 +14226,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14112,6 +14260,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "post certificate info",
           "in" : "body",
@@ -14152,6 +14304,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14184,6 +14340,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14216,6 +14376,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14247,6 +14411,10 @@
           "name" : "cloud",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Credentials to list buckets",
           "in" : "body",
@@ -14309,6 +14477,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Configuration data to be created",
           "in" : "body",
           "name" : "Config",
@@ -14354,6 +14526,10 @@
           "name" : "isDeleteBackups",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14384,6 +14560,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Configuration data to be updated",
           "in" : "body",
@@ -14430,6 +14610,10 @@
           "name" : "isDeleteBackups",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14462,6 +14646,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Configuration data to be updated",
           "in" : "body",
@@ -14525,6 +14713,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Parameters of the backup to be restored",
           "in" : "body",
@@ -14623,6 +14815,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14689,6 +14885,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "KMS config to be edited",
           "in" : "body",
           "name" : "KMS config",
@@ -14728,6 +14928,10 @@
           "name" : "configUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14766,6 +14970,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "KMS config to be created",
           "in" : "body",
           "name" : "KMS config",
@@ -14799,6 +15007,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14831,6 +15043,10 @@
           "name" : "lUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14857,6 +15073,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "CreateMaintenanceWindowRequest",
@@ -14890,6 +15110,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -14919,6 +15143,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PageMaintenanceWindowsRequest",
@@ -14958,6 +15186,10 @@
           "name" : "windowUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15019,6 +15251,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UpdateMaintenanceWindowRequest",
           "required" : true,
@@ -15051,6 +15287,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Metrics to be added",
           "in" : "body",
@@ -15127,6 +15367,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PageStateChangeAuditInfoRequest",
           "required" : true,
@@ -15159,6 +15403,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "DeletePerformanceRecommendationsRequest",
@@ -15193,6 +15441,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "HidePerformanceRecommendationsRequest",
           "required" : true,
@@ -15226,6 +15478,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PagePerformanceRecommendationRequest",
           "required" : true,
@@ -15258,6 +15514,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "ResolvePerformanceRecommendationsRequest",
@@ -15369,6 +15629,10 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CreateProviderRequest",
           "required" : true,
@@ -15407,6 +15671,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15469,6 +15737,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15534,6 +15806,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15572,6 +15848,10 @@
           "name" : "sUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "body",
@@ -15645,6 +15925,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "AccessKeyFormData",
           "required" : true,
@@ -15688,6 +15972,10 @@
           "name" : "keyCode",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -15759,6 +16047,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "access key edit form data",
           "in" : "body",
           "name" : "accesskey",
@@ -15804,6 +16096,10 @@
           "name" : "validate",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "edit provider form data",
           "in" : "body",
@@ -15894,6 +16190,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Instance type data of the instance to be stored",
           "in" : "body",
           "name" : "Instance type",
@@ -15938,6 +16238,10 @@
           "name" : "code",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16010,6 +16314,10 @@
           "name" : "instanceIP",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16045,6 +16353,10 @@
           "name" : "instanceIP",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16112,6 +16424,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16184,6 +16500,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "region form data for new region to be created",
           "in" : "body",
           "name" : "region",
@@ -16229,6 +16549,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16265,6 +16589,10 @@
           "name" : "rUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "region edit form data",
           "in" : "body",
@@ -16351,6 +16679,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Availability zone form data",
           "in" : "body",
           "name" : "azFormData",
@@ -16405,6 +16737,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16447,6 +16783,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Availability zone edit form data",
           "in" : "body",
@@ -16585,6 +16925,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Release data for remote downloading to be created",
           "in" : "body",
           "name" : "Release",
@@ -16616,6 +16960,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16647,6 +16995,10 @@
           "name" : "name",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16676,6 +17028,10 @@
           "name" : "name",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Release data to be updated",
           "in" : "body",
@@ -16711,6 +17067,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Parameters of the backup to be restored",
           "in" : "body",
           "name" : "backup",
@@ -16745,6 +17105,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PageRestoresRequest",
           "required" : true,
@@ -16777,6 +17141,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16815,6 +17183,10 @@
           "name" : "includeInherited",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16852,6 +17224,10 @@
           "name" : "key",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -16887,6 +17263,10 @@
           "name" : "key",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
@@ -16924,6 +17304,10 @@
           "name" : "key",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "New value for config key",
           "in" : "body",
@@ -16988,6 +17372,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "PageScheduleRequest",
           "required" : true,
@@ -17026,6 +17414,10 @@
           "name" : "sUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17087,6 +17479,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "body",
           "required" : true,
@@ -17125,6 +17521,10 @@
           "name" : "sUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17219,6 +17619,10 @@
           "name" : "tUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17350,6 +17754,10 @@
           "name" : "tUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17448,6 +17856,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -17480,6 +17892,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17530,6 +17946,10 @@
           "name" : "isDeleteAssociatedCerts",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17634,6 +18054,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Parameters of the backup to be restored",
           "in" : "body",
           "name" : "backup",
@@ -17721,6 +18145,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -17760,6 +18188,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -17796,6 +18228,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
@@ -17847,6 +18283,10 @@
           "name" : "isForceDelete",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17879,6 +18319,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -17943,6 +18387,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "The database user to create",
           "in" : "body",
@@ -18026,6 +18474,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "post pitr config",
           "in" : "body",
           "name" : "pitrConfig",
@@ -18065,6 +18517,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18128,6 +18584,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18294,6 +18754,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18358,6 +18822,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Table backup data to be created",
           "in" : "body",
@@ -18446,6 +18914,10 @@
           "required" : false,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "XCluster Need Bootstrap Form Data",
           "in" : "body",
           "name" : "xcluster_need_bootstrap_form_data",
@@ -18488,6 +18960,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18520,6 +18996,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18550,6 +19030,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "PerformanceAdvisorSettingsRequest",
@@ -18589,6 +19073,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "perform PITR",
           "in" : "body",
@@ -18670,6 +19158,10 @@
           "name" : "pUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18798,6 +19290,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18830,6 +19326,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "RunQueryFormData",
@@ -18869,6 +19369,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18901,6 +19405,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18933,6 +19441,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -18995,6 +19507,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19096,6 +19612,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "post support bundle info",
           "in" : "body",
           "name" : "supportBundle",
@@ -19141,6 +19661,10 @@
           "name" : "sbUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19294,6 +19818,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Table definition to be created",
           "in" : "body",
           "name" : "Table",
@@ -19339,6 +19867,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19411,6 +19943,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19452,6 +19988,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Bulk data to be imported",
           "in" : "body",
@@ -19498,6 +20038,10 @@
           "name" : "tableUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Backup data to be created",
           "in" : "body",
@@ -19571,6 +20115,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "in" : "body",
           "name" : "CreateTableSpacesRequest",
@@ -19714,6 +20262,10 @@
           "name" : "markActive",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19746,6 +20298,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "The database credentials",
           "in" : "body",
@@ -19786,6 +20342,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -19818,6 +20378,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Certs Rotate Params",
           "in" : "body",
@@ -19859,6 +20423,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "GFlags Upgrade Params",
           "in" : "body",
           "name" : "gflags_upgrade_params",
@@ -19898,6 +20466,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Kubernetes Override Upgrade Params",
           "in" : "body",
@@ -19939,6 +20511,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Upgrade Task Params",
           "in" : "body",
           "name" : "upgrade_task_params",
@@ -19978,6 +20554,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Resize Node Params",
           "in" : "body",
@@ -20019,6 +20599,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Restart Task Params",
           "in" : "body",
           "name" : "restart_task_params",
@@ -20058,6 +20642,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Software Upgrade Params",
           "in" : "body",
@@ -20099,6 +20687,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Systemd Upgrade Params",
           "in" : "body",
           "name" : "systemd_upgrade_params",
@@ -20138,6 +20730,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Thirdparty Software Upgrade Params",
           "in" : "body",
@@ -20179,6 +20775,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "TLS Toggle Params",
           "in" : "body",
           "name" : "tls_toggle_params",
@@ -20219,6 +20819,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "VM Image Upgrade Params",
           "in" : "body",
           "name" : "vmimage_upgrade_params",
@@ -20257,6 +20861,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "default" : {
@@ -20289,6 +20897,10 @@
           "name" : "ybcVersion",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "default" : {
@@ -20321,6 +20933,10 @@
           "name" : "ybcVersion",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "default" : {
@@ -20382,6 +20998,10 @@
           "name" : "uniUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Parameters for YB-Controller throttling",
           "in" : "body",
@@ -20530,6 +21150,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Node action data to be updated",
           "in" : "body",
           "name" : "Node action",
@@ -20628,6 +21252,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Details of the new user",
           "in" : "body",
           "name" : "User",
@@ -20667,6 +21295,10 @@
           "name" : "uUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20732,6 +21364,10 @@
           "name" : "role",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20800,6 +21436,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "User data containing the new password",
           "in" : "body",
           "name" : "Users",
@@ -20840,6 +21480,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "User data in profile to be updated",
           "in" : "body",
           "name" : "Users",
@@ -20874,6 +21518,10 @@
           "required" : true,
           "type" : "string"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "UniverseConfigureTaskParams",
           "required" : true,
@@ -20906,6 +21554,10 @@
           "name" : "cUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "XCluster Replication Create Form Data",
           "in" : "body",
@@ -20947,6 +21599,10 @@
           "name" : "targetUniverseUUID",
           "required" : false,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -20985,6 +21641,10 @@
           "name" : "isForceDelete",
           "required" : false,
           "type" : "boolean"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -21052,6 +21712,10 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "XCluster Replication Restart Form Data",
           "in" : "body",
           "name" : "xcluster_replication_restart_form_data",
@@ -21089,6 +21753,10 @@
           "name" : "xccUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "XCluster Replication Edit Form Data",
           "in" : "body",
@@ -21129,6 +21797,10 @@
           "name" : "xccUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "XCluster Need Bootstrap Form Data",
           "in" : "body",
@@ -21172,6 +21844,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         }, {
           "description" : "Node instance data to be created",
           "in" : "body",
@@ -21250,6 +21926,10 @@
           "name" : "azUUID",
           "required" : true,
           "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
         } ],
         "responses" : {
           "200" : {
@@ -21274,6 +21954,10 @@
         "description" : "",
         "operationId" : "fetchPackage",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Package to be imported",
           "in" : "body",
           "name" : "Package",
@@ -21320,6 +22004,10 @@
         "description" : "",
         "operationId" : "setLoggingSettings",
         "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "description" : "Logging config to be updated",
           "in" : "body",
           "name" : "Logging Config",
@@ -21542,6 +22230,10 @@
           "required" : false,
           "type" : "boolean"
         }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
           "in" : "body",
           "name" : "CustomerRegisterFormData",
           "required" : true,
@@ -21611,7 +22303,11 @@
       "get" : {
         "description" : "",
         "operationId" : "getSessionInfo",
-        "parameters" : [ ],
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
