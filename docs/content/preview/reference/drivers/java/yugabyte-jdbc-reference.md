@@ -2,7 +2,7 @@
 title: YugabyteDB JDBC Smart Driver
 headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
-description: Java JDBC Smart Driver for YSQL
+description: Build java apps with JDBC Smart Driver for YSQL
 headcontent: JDBC Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:

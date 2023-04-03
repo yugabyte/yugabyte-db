@@ -1,5 +1,5 @@
 ---
-title: YugabyteDB C# driver for YCQL
+title: Connect apps using YugabyteDB C# driver for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C# application using YugabyteDB YCQL driver
