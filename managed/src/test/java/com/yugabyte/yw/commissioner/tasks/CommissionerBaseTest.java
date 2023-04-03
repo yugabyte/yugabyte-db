@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellKubernetesManager;
 import com.yugabyte.yw.common.SwamperHelper;
@@ -111,6 +112,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ReleaseManager mockReleaseManager;
   protected GFlagsValidation mockGFlagsValidation;
   protected BackupUtil mockBackupUtil;
+  protected ProviderEditRestrictionManager providerEditRestrictionManager;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -143,6 +145,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     RuntimeConfigFactory configFactory = app.injector().instanceOf(RuntimeConfigFactory.class);
     alertConfigurationService = spy(app.injector().instanceOf(AlertConfigurationService.class));
     taskExecutor = app.injector().instanceOf(TaskExecutor.class);
+    providerEditRestrictionManager =
+        app.injector().instanceOf(ProviderEditRestrictionManager.class);
 
     // Enable custom hooks in tests
     factory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
