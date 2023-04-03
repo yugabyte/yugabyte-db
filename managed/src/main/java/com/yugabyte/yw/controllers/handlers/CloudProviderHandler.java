@@ -302,11 +302,7 @@ public class CloudProviderHandler {
     return provider;
   }
 
-  // TODO(Shashank): For now this code is similar to createKubernetes but we can improve it.
-  //  Note that we already have all the beans (i.e. regions and zones) in reqProvider.
-  //  We do not need to call all the updateKubeConfig* methods. Instead just save
-  //  whole thing after some validation.
-  public Provider createKubernetesNew(Customer customer, Provider reqProvider) {
+  public void validateKubernetesProviderConfig(Provider reqProvider) {
     Common.CloudType providerCode = CloudType.valueOf(reqProvider.code);
     if (!providerCode.equals(kubernetes)) {
       throw new PlatformServiceException(
@@ -343,34 +339,19 @@ public class CloudProviderHandler {
         }
       }
     }
+  }
 
+  // TODO(Shashank): For now this code is similar to createKubernetes but we can improve it.
+  //  Note that we already have all the beans (i.e. regions and zones) in reqProvider.
+  //  We do not need to call all the updateKubeConfig* methods. Instead just save
+  //  whole thing after some validation.
+  public Provider createKubernetesNew(Customer customer, Provider reqProvider) {
+    Common.CloudType providerCode = CloudType.valueOf(reqProvider.code);
+    validateKubernetesProviderConfig(reqProvider);
     Provider provider =
         Provider.create(customer.uuid, providerCode, reqProvider.name, reqProvider.details);
 
-    boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, false);
-    List<Region> regionList = reqProvider.regions;
-    for (Region rd : regionList) {
-      Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
-      Region region =
-          Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude, rd.details);
-      boolean isConfigInRegion = updateKubeConfigForRegion(provider, region, regionConfig, false);
-      for (AvailabilityZone zd : rd.zones) {
-        Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(zd);
-        AvailabilityZone az =
-            AvailabilityZone.createOrThrow(region, zd.code, zd.name, null, null, zd.details);
-        boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, false);
-        if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
-          // Use in-cluster ServiceAccount credentials
-          KubernetesInfo k8sMetadata = CloudInfoInterface.get(az);
-          k8sMetadata.setKubeConfig("");
-        }
-        az.save();
-      }
-      if (isConfigInRegion) {
-        region.save();
-      }
-    }
-    provider.save();
+    bootstrapKubernetesProvider(provider, reqProvider, reqProvider.regions, false);
     try {
       createKubernetesInstanceTypes(customer, provider);
     } catch (PersistenceException ex) {
@@ -811,12 +792,18 @@ public class CloudProviderHandler {
     for (Region region : editProviderReq.regions) {
       Region oldRegion = existingRegions.get(region.code);
       if (oldRegion != null && oldRegion.isUpdateNeeded(region)) {
-        LOG.debug("Editing region {}", region.code);
-        regionHandler.editRegion(
-            provider.customerUUID,
-            provider.uuid,
-            oldRegion.uuid,
-            RegionEditFormData.fromRegion(region));
+        LOG.debug("Updating region {}", region.code);
+        if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+          List<Region> regions = new ArrayList<Region>();
+          regions.add(region);
+          bootstrapKubernetesProvider(provider, editProviderReq, regions, true);
+        } else {
+          regionHandler.editRegion(
+              provider.customerUUID,
+              provider.uuid,
+              oldRegion.uuid,
+              RegionEditFormData.fromRegion(region));
+        }
         result = true;
       } else if (oldRegion != null && !region.isActive() && oldRegion.isActive()) {
         LOG.debug("Deleting region {}", region.code);
@@ -844,12 +831,20 @@ public class CloudProviderHandler {
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     UUID taskUUID = null;
-    if (!regionsToAdd.isEmpty()) {
+    boolean providerModified = false;
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      // Edit the kubernetes provider
+      LOG.debug("Trying to add regions to kubernetes provider");
+      // Updating the flag based on if we have regions to add or not.
+      providerModified = editKubernetesProvider(provider, editProviderReq, regionsToAdd);
+    }
+    if (!regionsToAdd.isEmpty() && !provider.getCloudCode().equals(CloudType.kubernetes)) {
       // TODO: PLAT-7258 allow adding region for auto-creating VPC case
       taskUUID = addRegions(customer, provider, regionsToAdd, true);
     }
-    boolean providerModified =
-        addOrRemoveAZs(editProviderReq, provider)
+    providerModified =
+        providerModified
+            | addOrRemoveAZs(editProviderReq, provider)
             | removeAndUpdateRegions(editProviderReq, provider)
             | updateProviderData(customer, provider, editProviderReq, validate);
 
@@ -896,9 +891,7 @@ public class CloudProviderHandler {
       provider.details.cloudInfo = editProviderReq.details.cloudInfo;
       updatedProviderConfig = maybeUpdateCloudProviderConfig(provider, providerConfig);
     }
-    boolean updatedKubeConfig = maybeUpdateKubeConfig(provider, providerConfig);
-    boolean providerDataUpdated =
-        updatedProviderConfig || updatedKubeConfig || updatedProviderDetails;
+    boolean providerDataUpdated = updatedProviderConfig || updatedProviderDetails;
     if (providerDataUpdated) {
       // Should not increment the version number in case of no change.
       provider.save();
@@ -968,6 +961,72 @@ public class CloudProviderHandler {
     return taskUUID;
   }
 
+  public boolean editKubernetesProvider(
+      Provider provider, Provider editProviderReq, Set<Region> regionsToAdd) {
+    validateKubernetesProviderConfig(editProviderReq);
+    if (regionsToAdd == null || regionsToAdd.size() == 0) {
+      return false;
+    }
+    List<Region> regions = new ArrayList<>(regionsToAdd);
+    bootstrapKubernetesProvider(provider, editProviderReq, regions, true);
+    return true;
+  }
+
+  public Provider bootstrapKubernetesProvider(
+      Provider provider, Provider reqProvider, List<Region> regionList, boolean edit) {
+    if (regionList == null) {
+      regionList = reqProvider.regions;
+    }
+
+    for (Region region : regionList) {
+      bootstrapKubernetesProvider(provider, reqProvider, region, region.zones, edit);
+    }
+    return provider;
+  }
+
+  public Provider bootstrapKubernetesProvider(
+      Provider provider,
+      Provider reqProvider,
+      Region rd,
+      List<AvailabilityZone> azList,
+      boolean edit) {
+    if (azList == null) {
+      azList = rd.zones;
+    }
+
+    Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
+    boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, edit);
+    Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
+    Region region = Region.getByCode(provider, rd.code);
+    if (region == null) {
+      LOG.info("Region {} does not exists. Creating one...", rd.name);
+      region =
+          Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude, rd.details);
+    }
+    boolean isConfigInRegion = updateKubeConfigForRegion(provider, region, regionConfig, edit);
+    for (AvailabilityZone az : azList) {
+      Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
+      try {
+        az = AvailabilityZone.getByCode(provider, az.code);
+      } catch (RuntimeException e) {
+        LOG.info("Availability Zone {} does not exists. Creating one...", az.name);
+        az = AvailabilityZone.createOrThrow(region, az.code, az.name, null, null, az.details);
+      }
+      boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, edit);
+      if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
+        // Use in-cluster ServiceAccount credentials
+        KubernetesInfo k8sMetadata = CloudInfoInterface.get(az);
+        k8sMetadata.setKubeConfig("");
+      }
+      az.save();
+    }
+    if (isConfigInRegion) {
+      region.save();
+    }
+    provider.save();
+    return provider;
+  }
+
   private boolean addOrRemoveAZs(Provider editProviderReq, Provider provider) {
     boolean result = false;
     Map<String, Region> currentRegionMap =
@@ -981,46 +1040,42 @@ public class CloudProviderHandler {
         for (AvailabilityZone zone : region.zones) {
           AvailabilityZone currentAZ = currentAZs.get(zone.code);
           if (currentAZ == null) {
-            if (!zone.isActive()) {
-              LOG.warn("Zone {} is added but not active - ignoring", zone.code);
-              continue;
-            }
             result = true;
             LOG.debug("Creating zone {} in region {}", zone.code, region.code);
-            AvailabilityZone.createOrThrow(
-                region, zone.code, zone.name, zone.subnet, zone.secondarySubnet);
+            if (provider.getCloudCode().equals(kubernetes)) {
+              List<AvailabilityZone> azList = new ArrayList<AvailabilityZone>();
+              azList.add(zone);
+              bootstrapKubernetesProvider(provider, editProviderReq, region, azList, true);
+            } else {
+              AvailabilityZone.createOrThrow(
+                  region, zone.code, zone.name, zone.subnet, zone.secondarySubnet);
+            }
           } else if (!zone.isActive() && currentAZ.isActive()) {
-            LOG.debug("Deleting zone {} from region {}", zone.code, region.code);
-            availabilityZoneHandler.deleteZone(zone.uuid, region.uuid);
+            LOG.debug("Deleting zone {} from region {}", currentAZ.code, currentState.code);
+            availabilityZoneHandler.deleteZone(currentAZ.uuid, currentState.uuid);
             result = true;
-          } else if (currentAZ.shouldBeUpdated(zone)) {
+          } else if (currentAZ.shouldBeUpdated(zone) && currentAZ.isActive()) {
             LOG.debug("updating zone {}", zone.code);
-            availabilityZoneHandler.editZone(
-                zone.uuid,
-                region.uuid,
-                az -> {
-                  az.setAvailabilityZoneDetails(zone.getAvailabilityZoneDetails());
-                  az.secondarySubnet = zone.secondarySubnet;
-                  az.subnet = zone.subnet;
-                });
+            if (provider.getCloudCode().equals(kubernetes)) {
+              List<AvailabilityZone> azList = new ArrayList<AvailabilityZone>();
+              azList.add(zone);
+              bootstrapKubernetesProvider(provider, editProviderReq, region, azList, true);
+            } else {
+              availabilityZoneHandler.editZone(
+                  currentAZ.uuid,
+                  currentState.uuid,
+                  az -> {
+                    az.setAvailabilityZoneDetails(zone.getAvailabilityZoneDetails());
+                    az.secondarySubnet = zone.secondarySubnet;
+                    az.subnet = zone.subnet;
+                  });
+            }
             result = true;
           }
         }
       }
     }
     return result;
-  }
-
-  private boolean maybeUpdateKubeConfig(Provider provider, Map<String, String> providerConfig) {
-    if (provider.getCloudCode() == CloudType.kubernetes) {
-      if (MapUtils.isEmpty(providerConfig)) {
-        // This must be set for kubernetes.
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not parse config");
-      }
-      updateKubeConfig(provider, providerConfig, true);
-      return true;
-    }
-    return false;
   }
 
   private void maybeUpdateGCPProject(Provider provider) {
