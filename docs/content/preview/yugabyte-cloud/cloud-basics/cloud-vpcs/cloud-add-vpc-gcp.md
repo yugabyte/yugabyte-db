@@ -1,14 +1,14 @@
 ---
-title: Create a VPC Network GCP
-headerTitle:
-linkTitle: Create a VPC Network
-description: Create and manage your cloud VPCs.
+title: Peer VPCs in GCP
+headerTitle: Peer VPCs
+linkTitle: Peer VPCs
+description: Peer a VPC in GCP.
 headcontent: Peer your cluster VPC with a VPC in GCP
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-vpc-1-gcp
-    parent: cloud-vpcs
-    weight: 40
+    parent: cloud-add-peering
+    weight: 50
 type: docs
 ---
 
@@ -34,7 +34,7 @@ YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS and GCP.
 
 Using YugabyteDB Managed, you can create a VPC on GCP, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on GCP.
 
-To create a VPC network on GCP, you need to complete the following tasks:
+To peer VPCs in GCP, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |
