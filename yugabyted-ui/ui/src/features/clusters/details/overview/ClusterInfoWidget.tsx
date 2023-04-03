@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, Link, makeStyles, Paper, Typography } from '@material-ui/core';
-import type { ClusterData } from '@app/api/src';
+import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { Link as RouterLink } from 'react-router-dom';
 import { roundDecimal, getFaultTolerance } from '@app/helpers';
 import { STATUS_TYPES, YBStatus } from '@app/components';
@@ -49,10 +49,13 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   const { t } = useTranslation();
   // const context = useContext(ClusterContext);
 
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
+    acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
+
   const clusterSpec = cluster?.spec;
-  const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0; // TODO: This is same as replication factor?
+  const replicationFactor = clusterSpec?.cluster_info?.replication_factor ?? 0;
   const databaseVersion = cluster.info.software_version ?? '';
-  const totalRamUsageMb = clusterSpec.cluster_info.node_info.memory_mb ?? 0; // TODO: Use total memory instead of used memory
   const totalDiskSize = clusterSpec.cluster_info.node_info.disk_size_gb ?? 0;
   const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
 
@@ -64,9 +67,9 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   // };
 
   // Get text for ram usage
-  const getRamUsageText = (ramUsageMb: number) => {
-    ramUsageMb = roundDecimal(ramUsageMb)
-    return t('units.MB', { value: ramUsageMb });
+  const getRamUsageText = (ramUsageGb: number) => {
+    ramUsageGb = roundDecimal(ramUsageGb)
+    return t('units.GB', { value: ramUsageGb });
   }
 
   // Get text for disk usage
@@ -92,7 +95,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
   }
   const encryption = getEncryptionText(encryptionAtRest, encryptionInTransit);
 
-  const authentication = encryptionAtRest || encryptionInTransit ? 
+  const authentication = encryptionAtRest || encryptionInTransit ?
     t('clusters.password') : t('clusters.none');
 
   return (
@@ -114,7 +117,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                   {t('clusterDetail.overview.replicationFactor')}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {numNodes}
+                  {replicationFactor}
                 </Typography>
               </Grid>
               <Grid item xs={4}>
@@ -138,10 +141,10 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
               </Grid>
               <Grid item xs={4}>
                 <Typography variant="subtitle2" className={classes.label}>
-                  {t('clusterDetail.overview.usedMemory')}
+                  {t('clusterDetail.overview.totalMemory')}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                  {getRamUsageText(totalRamUsageMb)}
+                  {getRamUsageText(totalRamUsageGb)}
                 </Typography>
               </Grid>
               <Grid item xs={4}>
@@ -149,7 +152,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                   {t('clusterDetail.overview.totalDiskSize')}
                 </Typography>
                 <Typography variant="body2" className={classes.value}>
-                {getDiskSizeText(totalDiskSize)}
+                  {getDiskSizeText(totalDiskSize)}
                 </Typography>
               </Grid>
             </Grid>
@@ -163,7 +166,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                 </Typography>
                 <Box display="flex">
                   {!encryptionAtRest && !encryptionInTransit &&
-                    <YBStatus type={STATUS_TYPES.WARNING}/>
+                    <YBStatus type={STATUS_TYPES.WARNING} />
                   }
                   <Typography variant="body2" className={classes.value}>
                     {encryption}
@@ -179,7 +182,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                 </Typography>
                 <Box display="flex">
                   {!encryptionAtRest && !encryptionInTransit &&
-                    <YBStatus type={STATUS_TYPES.WARNING}/>
+                    <YBStatus type={STATUS_TYPES.WARNING} />
                   }
                   <Typography variant="body2" className={classes.value}>
                     {authentication}

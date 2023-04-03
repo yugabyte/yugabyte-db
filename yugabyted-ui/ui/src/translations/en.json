@@ -1217,8 +1217,17 @@
         "gflags": {
           "title": "G-Flags",
           "flag": "Flag",
+          "nodeInfoFlags": "NodeInfo Flags",
+          "customFlags": "Custom Flags",
+          "showDrift": "Show G-Flag Drift",
+          "hideDrift": "Hide G-Flag Drift",
           "masterValue": "Master value",
-          "tserverValue": "TServer value"
+          "tserverValue": "TServer value",
+          "driftTitle": "G-Flag Drift",
+          "nodesWithoutDrift": "Nodes without drift",
+          "nodesWithDrift": "Nodes with drift",
+          "masterFlags": "Master flags",
+          "tserverFlags": "Tserver flags"
         },
         "vpcs": {
           "title": "VPCs",

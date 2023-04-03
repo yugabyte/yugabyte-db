@@ -64,12 +64,11 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
   const isZone = clusterSpec?.cluster_info.fault_tolerance === ClusterFaultTolerance.Zone;
   const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
   const totalDiskSize = clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0;
-  const totalRamUsageMb = clusterSpec?.cluster_info.node_info.memory_mb ?? 0;
 
   // Get text for ram usage
-  const getRamUsageText = (ramUsageMb: number) => {
-    ramUsageMb = roundDecimal(ramUsageMb)
-    return t('units.MB', { value: ramUsageMb });
+  const getRamUsageText = (ramUsageGb: number) => {
+    ramUsageGb = roundDecimal(ramUsageGb)
+    return t('units.GB', { value: ramUsageGb });
   }
 
   // Get text for disk usage
@@ -80,6 +79,9 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
 
   // Get nodes
   const { data: nodesResponse } = useGetClusterNodesQuery();
+  const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
+    acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
+
   const regionData = useMemo(() => {
     const set = new Set<string>();
     nodesResponse?.data.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
@@ -93,11 +95,11 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
         nodeCount: nodesResponse?.data.filter(node => 
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
         vCpuPerNode: totalCores,
-        ramPerNode: getRamUsageText(totalRamUsageMb),
+        ramPerNode: getRamUsageText(totalRamUsageGb),
         diskPerNode: getDiskSizeText(totalDiskSize),
       }
     })
-  }, [nodesResponse, totalCores, totalRamUsageMb, totalDiskSize])
+  }, [nodesResponse, totalCores, totalRamUsageGb, totalDiskSize])
 
   const regionColumns = [
     {
@@ -158,7 +160,7 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
 
   return (
     <Paper className={classes.paperContainer}>
-      <Typography variant="h5" className={classes.heading}>
+      <Typography variant="h4" className={classes.heading}>
         {isZone ? t('clusterDetail.settings.regions.zonesTitle') : t('clusterDetail.settings.regions.title')}
       </Typography>
       <YBTable

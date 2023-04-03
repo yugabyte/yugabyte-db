@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
-import { useGetClusterQuery } from '@app/api/src';
+import { useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
 import { roundDecimal, getFaultTolerance } from '@app/helpers';
 import { STATUS_TYPES, YBStatus } from '@app/components';
 import { intlFormat } from 'date-fns';
@@ -57,22 +57,26 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
+  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
+    acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
+
   const { data: clusterData } = useGetClusterQuery();
   const cluster = clusterData?.data;
 
   const clusterSpec = cluster?.spec;
   const clusterName = clusterSpec?.name ?? '';
   const clusterCreationDate = cluster?.info.metadata.created_on;
-  const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0; // TODO: Same value for replication factor?
+  const numNodes = clusterSpec?.cluster_info?.num_nodes ?? 0;
+  const replicationFactor = clusterSpec?.cluster_info?.replication_factor ?? 0;
   const databaseVersion = cluster?.info.software_version ?? '';
-  const totalRamUsageMb = clusterSpec?.cluster_info.node_info.memory_mb ?? 0; // TODO: Use total memory instead of used memory
   const totalDiskSize = clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0;
   const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
 
   // Get text for ram usage
-  const getRamUsageText = (ramUsageMb: number) => {
-    ramUsageMb = roundDecimal(ramUsageMb)
-    return t('units.MB', { value: ramUsageMb });
+  const getRamUsageText = (ramUsageGb: number) => {
+    ramUsageGb = roundDecimal(ramUsageGb)
+    return t('units.GB', { value: ramUsageGb });
   }
 
   // Get text for disk usage
@@ -174,7 +178,7 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
             {t('clusterDetail.overview.replicationFactor')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {numNodes}
+            {replicationFactor}
           </Typography>
         </Grid>
         <Grid item xs={2}>
@@ -195,10 +199,10 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
         </Grid>
         <Grid item xs={2}>
           <Typography variant="subtitle2" className={classes.label}>
-            {t('clusterDetail.overview.usedMemory')}
+            {t('clusterDetail.overview.totalMemory')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {getRamUsageText(totalRamUsageMb)}
+            {getRamUsageText(totalRamUsageGb)}
           </Typography>
         </Grid>
         <Grid item xs={2}>
