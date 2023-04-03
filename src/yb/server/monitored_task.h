@@ -63,7 +63,6 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kBackfillTable)
   (kBackfillTabletChunk)
   (kChangeConfig)
-  (kCopartitionTable)
   (kCreateReplica)
   (kDeleteReplica)
   (kFlushTablets)
