@@ -26,7 +26,7 @@ On this page:
 
 **New Features**
 
-- [YugabyteDB Managed CLI](../../yugabyte-cloud/managed-automation/managed-cli/) (preview release). Use the YugabyteDB Managed command line interface (ybm CLI) to deploy and manage your YugabyteDB Managed database clusters from your terminal or IDE.
+- [YugabyteDB Managed CLI](../../yugabyte-cloud/managed-automation/managed-cli/). Use the YugabyteDB Managed command line interface (ybm CLI) to deploy and manage your YugabyteDB Managed database clusters from your terminal or IDE.
 - Support for AWS PrivateLink (preview release). Connect YugabyteDB Managed clusters on AWS with other AWS resources via private endpoints. Currently only configurable via ybm CLI.
 
 **Enhancements**
