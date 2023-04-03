@@ -22,7 +22,7 @@ This guide assumes you have already done the following:
 - Obtained your [account ID and project ID](../#account-details).
 - Installed [jq](https://stedolan.github.io/jq/).
 
-For convenience, add these values to environment variables, as follows:
+For convenience, add the API key and IDs to environment variables, as follows:
 
 ```sh
 YBM_API_KEY="<api_key>"
@@ -40,9 +40,9 @@ To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters
 
 ### Software track
 
-YugabyteDB Managed has [two database tracks](../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for testing new features, and Stable for production deployments.
+YugabyteDB Managed has [two release tracks](../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for testing new features, and Stable for production deployments.
 
-To get the ID for the Preview track:
+To get the ID for the Preview track and add it to an environment variable, enter the following commands:
 
 ```sh
 YBM_SOFTWARE="Preview"
@@ -214,7 +214,9 @@ This loop stops when the cluster is active.
 
 ### Connect to the database
 
-To connect to the default database `yugabyte` with the admin user you set, get the host address of the cluster from the list of endpoints:
+To be able to connect to the default database `yugabyte` using the admin user you created, you need to obtain the public host address of the cluster from the list of endpoints.
+
+The following commands save the connection parameters you need to connect to a YugabyteDB Managed database to environment variables:
 
 ```sh
 PGDATABASE=yugabyte
