@@ -525,7 +525,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
   std::unique_ptr<WriteRequestPB> write_request;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
-    write_request = write_strategy_->GetNextWriteRequest();
+    write_request = write_strategy_->FetchNextRequest();
   }
   if (!write_request) {
     LOG(WARNING) << "Expected to find a write_request but were unable to";
@@ -953,7 +953,7 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
   std::unique_ptr<WriteRequestPB> write_request;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
-    write_request = write_strategy_->GetNextWriteRequest();
+    write_request = write_strategy_->FetchNextRequest();
   }
 
   if (write_request) {
