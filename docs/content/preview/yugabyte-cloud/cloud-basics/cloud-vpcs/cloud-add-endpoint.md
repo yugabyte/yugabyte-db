@@ -81,7 +81,7 @@ To create a PSE, do the following:
 
 You can create the AWS endpoint using the AWS [VPC console](https://console.aws.amazon.com/vpc/) or from the command line using the [AWS CLI](https://docs.aws.amazon.com/cli/).
 
-#### Create an AWS endpoint using the VPC console
+#### Use the Amazon VPC console
 
 1. Open the Amazon [VPC console](https://console.aws.amazon.com/vpc/).
 
@@ -103,7 +103,7 @@ You can create the AWS endpoint using the AWS [VPC console](https://console.aws.
 
 The initial status is _Pending_. After the link is validated, the status is _Available_. This can take a few minutes.
 
-#### Create an AWS endpoint using AWS CLI
+#### Use AWS CLI
 
 Enter the following command:
 
