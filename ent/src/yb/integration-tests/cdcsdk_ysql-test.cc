@@ -1280,6 +1280,19 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     return Status::OK();
   }
 
+  Status CreateSnapshot(const NamespaceName& ns) {
+    string tool_path = GetToolPath("../bin", "yb-admin");
+    vector<string> argv;
+    argv.push_back(tool_path);
+    argv.push_back("-master_addresses");
+    argv.push_back(AsString(test_cluster_.mini_cluster_->mini_master(0)->bound_rpc_addr()));
+    argv.push_back("create_database_snapshot");
+    argv.push_back(ns);
+    RETURN_NOT_OK(Subprocess::Call(argv));
+
+    return Status::OK();
+  }
+
   Status CompactSystemTable() {
     string tool_path = GetToolPath("../bin", "yb-admin");
     vector<string> argv;
@@ -7403,7 +7416,80 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveWithSnapshot)) {
     SleepFor(MonoDelta::FromSeconds(1));
   }
   ASSERT_EQ(count, 1000);
+}
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestLeadershipChangeAndSnapshotAffectsCheckpoint)) {
+  FLAGS_update_min_cdc_indices_interval_secs = 1;
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+  FLAGS_aborted_intent_cleanup_ms = 1000;
+  FLAGS_enable_load_balancing = false;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 1, &tablets,
+      /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+
+  std::string table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream());
+
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  SleepFor(MonoDelta::FromSeconds(10));
+
+  ASSERT_OK(WriteRowsHelper(0 /* start */, 200 /* end */, &test_cluster_, true));
+
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_aborted_intent_cleanup_ms));
+  ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
+
+  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  uint seen_record_count = 0;
+  seen_record_count += change_resp.cdc_sdk_proto_records_size();
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  seen_record_count += change_resp.cdc_sdk_proto_records_size();
+  ASSERT_GE(seen_record_count, 200);
+
+  auto checkpoint_after_last_record =
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+
+  ASSERT_OK(CreateSnapshot(kNamespaceName));
+
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        auto result = GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
+        if (!result.ok()) {
+          return false;
+        }
+        change_resp = *result;
+        auto checkpoint_after_snapshot =
+            OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+        return (checkpoint_after_snapshot > checkpoint_after_last_record);
+      },
+      MonoDelta::FromSeconds(120),
+      "GetChanges did not see the record for snapshot"));
+
+  auto checkpoint_after_snapshot =
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+  ASSERT_GT(checkpoint_after_snapshot, checkpoint_after_last_record);
+
+  size_t first_leader_index = -1;
+  size_t first_follower_index = -1;
+  GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+
+  change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
+  auto checkpoint_after_leadership_change =
+      OpId(change_resp.cdc_sdk_checkpoint().term(), change_resp.cdc_sdk_checkpoint().index());
+  ASSERT_GT(checkpoint_after_leadership_change, checkpoint_after_snapshot);
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCheckPointWithNoCDCStream)) {

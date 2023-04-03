@@ -880,6 +880,8 @@ Status GetChangesForCDCSDK(
   } else {
     RequestScope request_scope;
     OpId last_seen_op_id = op_id;
+    // Last seen OpId of a non-actionable message.
+    OpId last_seen_default_message_op_id = OpId().Invalid();
 
     // It's possible that a batch of messages in read_ops after fetching from
     // 'ReadReplicatedMessagesForCDC' , will not have any actionable messages. In which case we
@@ -1081,6 +1083,10 @@ Status GetChangesForCDCSDK(
 
           default:
             // Nothing to do for other operation types.
+            last_seen_default_message_op_id = OpId(msg->id().term(), msg->id().index());
+            VLOG_WITH_FUNC(2) << "Found message of Op type: " << msg->op_type()
+                              << ", on tablet: " << tablet_id
+                              << ", with OpId: " << msg->id().ShortDebugString();
             break;
         }
 
@@ -1093,12 +1099,26 @@ Status GetChangesForCDCSDK(
 
       if (!checkpoint_updated && VLOG_IS_ON(1)) {
         VLOG_WITH_FUNC(1)
-            << "The last batch of 'read_ops' had no actionable message. last_see_op_id: "
+            << "The current batch of 'read_ops' had no actionable message. last_see_op_id: "
             << last_seen_op_id << ", last_readable_opid_index: " << *last_readable_opid_index
             << ". Will retry and get another batch";
       }
+
     } while (!checkpoint_updated && last_readable_opid_index &&
              last_seen_op_id.index < *last_readable_opid_index);
+
+    // In case the checkpoint was not updated at-all, we will update the checkpoint using the last
+    // seen non-actionable message.
+    if (!checkpoint_updated && last_seen_default_message_op_id != OpId().Invalid()) {
+      SetCheckpoint(
+          last_seen_default_message_op_id.term, last_seen_default_message_op_id.index, 0, "", 0,
+          &checkpoint, last_streamed_op_id);
+      checkpoint_updated = true;
+      VLOG_WITH_FUNC(2) << "The last batch of 'read_ops' had no actionable message"
+                        << ", on tablet: " << tablet_id
+                        << ". The checkpoint will be updated based on the last message's OpId to: "
+                        << last_seen_default_message_op_id;
+    }
   }
 
   // If the split_op_id is equal to the checkpoint i.e the OpId of the last actionable message, we
