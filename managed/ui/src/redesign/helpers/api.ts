@@ -22,6 +22,7 @@ import {
   YBPTask
 } from './dtos';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
+import { UniverseTableFilters } from '../../actions/xClusterReplication';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -64,7 +65,13 @@ export const hostInfoQueryKey = {
 };
 
 export const universeQueryKey = {
-  ALL: ['universe']
+  ALL: ['universe'],
+  detail: (universeUUID: string | undefined) => [...universeQueryKey.ALL, universeUUID],
+  tables: (universeUUID: string | undefined, filters: UniverseTableFilters) => [
+    ...universeQueryKey.detail(universeUUID),
+    'tables',
+    { filters }
+  ]
 };
 
 export const runtimeConfigQueryKey = {

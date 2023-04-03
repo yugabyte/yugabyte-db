@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { AxiosError } from 'axios';
 
-import { api } from '../../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
@@ -104,8 +104,13 @@ export const AddTableModal = ({
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((response) => response.data)
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
+      excludeColocatedTables: true
+    }),
+    () =>
+      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
+        excludeColocatedTables: true
+      }).then((response) => response.data)
   );
 
   const configTablesMutation = useMutation(

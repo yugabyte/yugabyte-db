@@ -22,10 +22,19 @@ export function fetchUniversesList() {
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
 }
 
-export function fetchTablesInUniverse(universeUUID: string | undefined) {
+export type UniverseTableFilters = {
+  excludeColocatedTables?: boolean;
+  includeParentTableInfo?: boolean;
+};
+export function fetchTablesInUniverse(
+  universeUUID: string | undefined,
+  filters?: { excludeColocatedTables?: boolean; includeParentTableInfo?: boolean }
+) {
   if (universeUUID) {
     const customerId = localStorage.getItem('customerId');
-    return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
+    return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`, {
+      params: filters
+    });
   }
   return Promise.reject('Querying universe tables failed: No universe UUID provided.');
 }

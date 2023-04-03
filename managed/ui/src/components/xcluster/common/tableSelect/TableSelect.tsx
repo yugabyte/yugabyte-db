@@ -15,7 +15,7 @@ import {
   fetchTablesInUniverse,
   fetchXClusterConfig
 } from '../../../../actions/xClusterReplication';
-import { api } from '../../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBCheckBox, YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
@@ -187,13 +187,19 @@ export const TableSelect = (props: TableSelectProps) => {
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(sourceUniverseUUID).then((response) => response.data)
+    universeQueryKey.tables(sourceUniverseUUID, { excludeColocatedTables: true }),
+    () =>
+      fetchTablesInUniverse(sourceUniverseUUID, { excludeColocatedTables: true }).then(
+        (response) => response.data
+      )
   );
 
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', targetUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(targetUniverseUUID).then((response) => response.data)
+    universeQueryKey.tables(targetUniverseUUID, { excludeColocatedTables: true }),
+    () =>
+      fetchTablesInUniverse(targetUniverseUUID, { excludeColocatedTables: true }).then(
+        (response) => response.data
+      )
   );
 
   const sourceUniverseQuery = useQuery<Universe>(['universe', sourceUniverseUUID], () =>
