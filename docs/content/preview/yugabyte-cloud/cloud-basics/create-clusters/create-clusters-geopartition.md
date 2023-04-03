@@ -45,7 +45,7 @@ Partition-by-region clusters include the following features:
 
 ## Prerequisites
 
-- Must be deployed in a VPC. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Create a VPC Network](../../cloud-vpcs/cloud-add-vpc-aws/).
+- Must be deployed in a VPC. Create a VPC for each region where you want to deploy the nodes in the cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [Peer VPCs](../../cloud-vpcs/cloud-add-vpc-aws/).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a partition-by-region cluster
