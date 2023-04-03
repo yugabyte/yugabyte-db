@@ -282,8 +282,9 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
 void MasterTest::TestRegisterDistBroadcastDupPrivate(
     string use_private_ip, bool only_check_used_host_port) {
-  FLAGS_use_private_ip = use_private_ip;
-  FLAGS_master_register_ts_check_desired_host_port = only_check_used_host_port;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = use_private_ip;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_register_ts_check_desired_host_port) =
+      only_check_used_host_port;
   const std::vector<std::string> tsUUIDs = { "ts1-uuid", "ts2-uuid", "ts3-uuid", "ts4-uuid" };
   std::vector<TSToMasterCommonPB> commons(tsUUIDs.size());
 
