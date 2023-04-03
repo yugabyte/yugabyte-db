@@ -120,7 +120,7 @@ public class AccessManagerTest extends FakeDBApplication {
       return Json.toJson(
           accessManager.uploadKeyFile(
               regionUUID,
-              new File("foo"),
+              new File("foo").toPath(),
               keyCode,
               AccessManager.KeyType.PRIVATE,
               "some-user",
@@ -144,7 +144,7 @@ public class AccessManagerTest extends FakeDBApplication {
       return Json.toJson(
           accessManager.uploadKeyFile(
               regionUUID,
-              new File(tmpFile),
+              new File(tmpFile).toPath(),
               keyCode,
               AccessManager.KeyType.PRIVATE,
               "some-user",

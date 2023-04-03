@@ -1,6 +1,5 @@
 package com.yugabyte.yw.controllers.handlers;
 
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -18,17 +17,17 @@ import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Files.TemporaryFile;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Http.MultipartFormData.FilePart;
 import play.mvc.Http.RequestBody;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Singleton
@@ -76,18 +75,18 @@ public class AccessKeyHandler {
       }
 
       // Check if a public/private key was uploaded as part of the request
-      MultipartFormData<File> multiPartBody = requestBody.asMultipartFormData();
+      MultipartFormData<TemporaryFile> multiPartBody = requestBody.asMultipartFormData();
       AccessKey accessKey;
       if (multiPartBody != null) {
-        FilePart<File> filePart = multiPartBody.getFile("keyFile");
-        File uploadedFile = filePart.getFile();
+        FilePart<TemporaryFile> filePart = multiPartBody.getFile("keyFile");
+        TemporaryFile uploadedFile = filePart.getRef();
         if (formData.keyType == null || uploadedFile == null) {
           throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
         }
         accessKey =
             accessManager.uploadKeyFile(
                 region.getUuid(),
-                uploadedFile,
+                uploadedFile.path(),
                 formData.keyCode,
                 formData.keyType,
                 formData.sshUser,
@@ -109,7 +108,7 @@ public class AccessKeyHandler {
         accessKey =
             accessManager.uploadKeyFile(
                 region.getUuid(),
-                tempFile.toFile(),
+                tempFile.toAbsolutePath(),
                 formData.keyCode,
                 formData.keyType,
                 formData.sshUser,

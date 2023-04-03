@@ -25,6 +25,7 @@ import javax.inject.Inject;
 public class CloudAccessKeySetup extends CloudTaskBase {
 
   private final TemplateManager templateManager;
+
   private final AccessManager accessManager;
 
   @Inject

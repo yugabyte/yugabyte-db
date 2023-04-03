@@ -45,7 +45,6 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
-import javax.persistence.Transient;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
@@ -173,7 +172,6 @@ public class CustomerConfig extends Model {
     return setConfigUUID(UUID.randomUUID());
   }
 
-  @Transient
   @JsonIgnore
   public ObjectNode getMaskedData() {
     return CommonUtils.maskConfig(getData());

@@ -1,15 +1,15 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import java.sql.Connection
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.api.libs.json._
 
-class V67__Update_Access_Key_Aws_Hosted_Zone extends JdbcMigration {
+class V67__Update_Access_Key_Aws_Hosted_Zone extends BaseJavaMigration {
 
-  override def migrate(connection: Connection): Unit = {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT uuid, config FROM provider WHERE code = 'aws' AND CONFIG IS NOT NULL"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
 

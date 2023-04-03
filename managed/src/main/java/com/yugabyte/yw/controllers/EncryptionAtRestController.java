@@ -58,6 +58,8 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Api(
@@ -354,7 +356,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         dataType = "Object",
         paramType = "body")
   })
-  public Result createKMSConfig(UUID customerUUID, String keyProvider) {
+  public Result createKMSConfig(UUID customerUUID, String keyProvider, Http.Request request) {
     LOG.info(
         String.format(
             "Creating KMS configuration for customer %s with %s",
@@ -362,7 +364,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     try {
       TaskType taskType = TaskType.CreateKMSConfig;
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      ObjectNode formData = (ObjectNode) request.body().asJson();
       // checks if a already KMS Config exists with the requested name
       checkIfKMSConfigExists(customerUUID, formData);
       // Validating the KMS Provider config details.
@@ -388,7 +390,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(), Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, formData, taskUUID);
+              request, Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -404,7 +406,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         dataType = "Object",
         paramType = "body")
   })
-  public Result editKMSConfig(UUID customerUUID, UUID configUUID) {
+  public Result editKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Editing KMS configuration %s for customer %s",
@@ -421,7 +423,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
     try {
       TaskType taskType = TaskType.EditKMSConfig;
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      ObjectNode formData = (ObjectNode) request.body().asJson();
       // Check for non-editable fields.
       checkEditableFields(formData, config.getKeyProvider(), configUUID);
       // add non-editable fields in formData from existing config.
@@ -449,7 +451,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.KMSConfig,
               configUUID.toString(),
               Audit.ActionType.Edit,
@@ -519,7 +521,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a KMS configuration", response = YBPTask.class)
-  public Result deleteKMSConfig(UUID customerUUID, UUID configUUID) {
+  public Result deleteKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Deleting KMS configuration %s for customer %s",
@@ -546,8 +548,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
       auditService()
-          .createAuditEntryWithReqBody(
-              ctx(),
+          .createAuditEntry(
+              request,
               Audit.TargetType.KMSConfig,
               configUUID.toString(),
               Audit.ActionType.Delete,
@@ -564,7 +566,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
           code = 500,
           message = "If there is an error refreshing the KMS config.",
           response = YBPError.class))
-  public Result refreshKMSConfig(UUID customerUUID, UUID configUUID) {
+  public Result refreshKMSConfig(UUID customerUUID, UUID configUUID, Request request) {
     LOG.info(
         "Refreshing KMS configuration '{}' for customer '{}'.",
         configUUID.toString(),
@@ -573,7 +575,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     keyManager.getServiceInstance(kmsConfig.getKeyProvider().name()).refreshKms(configUUID);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.KMSConfig, configUUID.toString(), Audit.ActionType.Refresh);
+            request, Audit.TargetType.KMSConfig, configUUID.toString(), Audit.ActionType.Refresh);
     return YBPSuccess.withMessage(
         String.format(
             "Successfully refreshed %s KMS config '%s'.",
@@ -584,12 +586,12 @@ public class EncryptionAtRestController extends AuthenticatedController {
       value = "Retrive a universe's KMS key",
       response = Object.class,
       responseContainer = "Map")
-  public Result retrieveKey(UUID customerUUID, UUID universeUUID) {
+  public Result retrieveKey(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Retrieving universe key for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
-    ObjectNode formData = (ObjectNode) request().body().asJson();
+    ObjectNode formData = (ObjectNode) request.body().asJson();
     byte[] keyRef = Base64.getDecoder().decode(formData.get("reference").asText());
     UUID configUUID = UUID.fromString(formData.get("configUUID").asText());
     byte[] recoveredKey = getRecoveredKeyOrBadRequest(universeUUID, configUUID, keyRef);
@@ -599,11 +601,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .put("value", Base64.getEncoder().encodeToString(recoveredKey));
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.RetrieveKmsKey,
-            formData);
+            Audit.ActionType.RetrieveKmsKey);
     return PlatformResults.withRawData(result);
   }
 
@@ -642,15 +643,15 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Remove a universe's key reference history", response = YBPSuccess.class)
-  public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID) {
+  public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Removing key ref for customer %s with universe %s",
             customerUUID.toString(), universeUUID.toString()));
     keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.RemoveKmsKeyReferenceHistory);

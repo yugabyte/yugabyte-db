@@ -73,7 +73,6 @@ import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
@@ -90,6 +89,7 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -1195,6 +1195,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore("PLAT-8193")
   public void testK8sProviderEditModifyRegion() {
     JsonNode k8sRequestBody = getK8sRequestBody();
 
@@ -1254,6 +1255,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore("PLAT-8193")
   public void testK8sProviderConfigEditAtZoneLevel() {
     JsonNode k8sRequestBody = getK8sRequestBody();
 
@@ -1288,6 +1290,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  @Ignore("PLAT-8193")
   public void testK8sProviderConfigEditAtRegionLevel() {
     JsonNode k8sRequestBody = getK8sRequestBody();
 

@@ -87,7 +87,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(Collections.emptyList(), Collections.emptyMap());
     } catch (PlatformServiceException re) {
-      AssertHelper.assertBadRequest(re.buildResult(), "Empty metricsWithSettings data provided.");
+      AssertHelper.assertBadRequest(
+          re.buildResult(fakeRequest), "Empty metricsWithSettings data provided.");
     }
   }
 
@@ -101,7 +102,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
-          re.buildResult(), "Invalid filter params provided, it should be a hash.");
+          re.buildResult(fakeRequest), "Invalid filter params provided, it should be a hash.");
     }
   }
 
@@ -116,7 +117,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
-          re.buildResult(),
+          re.buildResult(fakeRequest),
           "Should be at least " + STEP_SIZE + " seconds between start and end time");
     }
   }
@@ -132,7 +133,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
-      final Result result = re.buildResult();
+      final Result result = re.buildResult(fakeRequest);
       AssertHelper.assertBadRequest(result, "Step should be a valid integer");
     }
   }
@@ -149,7 +150,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       String expectedErr = "Step should not be less than 1 second";
-      AssertHelper.assertBadRequest(re.buildResult(), expectedErr);
+      AssertHelper.assertBadRequest(re.buildResult(fakeRequest), expectedErr);
     }
   }
 

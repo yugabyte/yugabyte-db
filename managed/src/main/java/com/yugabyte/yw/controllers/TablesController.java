@@ -90,6 +90,8 @@ import org.yb.master.MasterTypes.RelationType;
 import play.Environment;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Api(
@@ -159,12 +161,12 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.TableDefinitionTaskParams",
         paramType = "body")
   })
-  public Result create(UUID customerUUID, UUID universeUUID) {
+  public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID and universe UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Form<TableDefinitionTaskParams> formData =
-        formFactory.getFormDataOrBadRequest(TableDefinitionTaskParams.class);
+        formFactory.getFormDataOrBadRequest(request, TableDefinitionTaskParams.class);
     TableDefinitionTaskParams taskParams = formData.get();
     // Submit the task to create the table.
     if (taskParams.tableDetails == null) {
@@ -197,12 +199,7 @@ public class TablesController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Table,
-            null,
-            Audit.ActionType.Create,
-            Json.toJson(formData.rawData()),
-            taskUUID);
+            request, Audit.TargetType.Table, null, Audit.ActionType.Create, taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -211,12 +208,12 @@ public class TablesController extends AuthenticatedController {
       nickname = "alterTable",
       response = Object.class,
       responseContainer = "Map")
-  public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID) {
-    return TODO(request());
+  public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID, Request request) {
+    return TODO(request);
   }
 
   @ApiOperation(value = "Drop a YugabyteDB table", nickname = "dropTable", response = YBPTask.class)
-  public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+  public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID, Http.Request request) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -267,7 +264,7 @@ public class TablesController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Table, tableUUID.toString(), Audit.ActionType.Drop, taskUUID);
+            request, Audit.TargetType.Table, tableUUID.toString(), Audit.ActionType.Drop, taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -594,14 +591,14 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.MultiTableBackupRequestParams",
         paramType = "body")
   })
-  public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID) {
+  public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
     Form<MultiTableBackup.Params> formData =
-        formFactory.getFormDataOrBadRequest(MultiTableBackup.Params.class);
+        formFactory.getFormDataOrBadRequest(request, MultiTableBackup.Params.class);
 
     MultiTableBackup.Params taskParams = formData.get();
     if (taskParams.storageConfigUUID == null) {
@@ -637,11 +634,10 @@ public class TablesController extends AuthenticatedController {
           scheduleUUID);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Universe,
               universeUUID.toString(),
-              Audit.ActionType.CreateMultiTableBackup,
-              Json.toJson(formData.rawData()));
+              Audit.ActionType.CreateMultiTableBackup);
       return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.MultiTableBackup, taskParams);
@@ -657,11 +653,10 @@ public class TablesController extends AuthenticatedController {
           "Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Universe,
               universeUUID.toString(),
               Audit.ActionType.CreateMultiTableBackup,
-              Json.toJson(formData.rawData()),
               taskUUID);
       return new YBPTask(taskUUID).asResult();
     }
@@ -680,13 +675,15 @@ public class TablesController extends AuthenticatedController {
         paramType = "body")
   })
   // Remove this too.
-  public Result createBackup(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+  public Result createBackup(
+      UUID customerUUID, UUID universeUUID, UUID tableUUID, Http.Request request) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
-    Form<BackupTableParams> formData = formFactory.getFormDataOrBadRequest(BackupTableParams.class);
+    Form<BackupTableParams> formData =
+        formFactory.getFormDataOrBadRequest(request, BackupTableParams.class);
     BackupTableParams taskParams = formData.get();
 
     validateTables(
@@ -724,11 +721,10 @@ public class TablesController extends AuthenticatedController {
           scheduleUUID);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Table,
               tableUUID.toString(),
-              Audit.ActionType.CreateSingleTableBackup,
-              Json.toJson(formData.rawData()));
+              Audit.ActionType.CreateSingleTableBackup);
       return PlatformResults.withData(schedule);
     } else {
       UUID taskUUID = commissioner.submit(TaskType.BackupUniverse, taskParams);
@@ -752,11 +748,10 @@ public class TablesController extends AuthenticatedController {
           taskParams.getTableName());
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Table,
               tableUUID.toString(),
               Audit.ActionType.CreateSingleTableBackup,
-              Json.toJson(formData.rawData()),
               taskUUID);
       return new YBPTask(taskUUID).asResult();
     }
@@ -782,7 +777,8 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.BulkImportParams",
         paramType = "body")
   })
-  public Result bulkImport(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
+  public Result bulkImport(
+      UUID customerUUID, UUID universeUUID, UUID tableUUID, Http.Request request) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -802,7 +798,8 @@ public class TablesController extends AuthenticatedController {
         UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
 
     // Get form data and validate it.
-    Form<BulkImportParams> formData = formFactory.getFormDataOrBadRequest(BulkImportParams.class);
+    Form<BulkImportParams> formData =
+        formFactory.getFormDataOrBadRequest(request, BulkImportParams.class);
     BulkImportParams taskParams = formData.get();
     if (taskParams.s3Bucket == null || !taskParams.s3Bucket.startsWith("s3://")) {
       throw new PlatformServiceException(
@@ -833,11 +830,10 @@ public class TablesController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Table,
             tableUUID.toString(),
             Audit.ActionType.BulkImport,
-            Json.toJson(formData.rawData()),
             taskUUID);
     return new YBPTask(taskUUID, tableUUID).asResult();
   }
@@ -1052,14 +1048,15 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.CreateTablespaceParams",
         paramType = "body")
   })
-  public Result createTableSpaces(UUID customerUUID, UUID universeUUID) {
+  public Result createTableSpaces(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID.
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
     // Extract tablespaces list.
-    CreateTablespaceParams tablespacesInfo = parseJsonAndValidate(CreateTablespaceParams.class);
+    CreateTablespaceParams tablespacesInfo =
+        parseJsonAndValidate(request, CreateTablespaceParams.class);
 
     TableSpaceUtil.validateTablespaces(tablespacesInfo, universe);
 
@@ -1087,11 +1084,10 @@ public class TablesController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.CreateTableSpaces,
-            Json.toJson(request().body().asJson()),
             taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }

@@ -683,7 +683,7 @@ public class Util {
 
   public static boolean canConvertJsonNode(JsonNode jsonNode, Class<?> toValueType) {
     try {
-      new ObjectMapper().treeToValue(jsonNode, toValueType);
+      Json.mapper().treeToValue(jsonNode, toValueType);
     } catch (JsonProcessingException e) {
       LOG.info(e.getMessage());
       return false;
@@ -830,11 +830,11 @@ public class Util {
    * @param tarFile the archive we want to sasve to folderPath
    * @param folderPath the directory where we want to extract the archive to
    */
-  public static void extractFilesFromTarGZ(File tarFile, String folderPath) throws IOException {
+  public static void extractFilesFromTarGZ(Path tarFile, String folderPath) throws IOException {
     TarArchiveEntry currentEntry;
     Files.createDirectories(Paths.get(folderPath));
 
-    try (FileInputStream fis = new FileInputStream(tarFile);
+    try (FileInputStream fis = new FileInputStream(tarFile.toFile());
         GZIPInputStream gis = new GZIPInputStream(new BufferedInputStream(fis));
         TarArchiveInputStream tis = new TarArchiveInputStream(gis)) {
       while ((currentEntry = tis.getNextTarEntry()) != null) {

@@ -57,7 +57,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -226,8 +226,8 @@ public class NodeInstanceController extends AuthenticatedController {
       required = true,
       dataType = "com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData",
       paramType = "body")
-  public Result validate(UUID customerUuid, UUID zoneUuid) {
-    NodeInstanceData nodeData = parseJsonAndValidate(NodeInstanceData.class);
+  public Result validate(UUID customerUuid, UUID zoneUuid, Http.Request request) {
+    NodeInstanceData nodeData = parseJsonAndValidate(request, NodeInstanceData.class);
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone az = AvailabilityZone.getOrBadRequest(zoneUuid);
     return PlatformResults.withData(
@@ -254,10 +254,11 @@ public class NodeInstanceController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.NodeInstanceFormData",
         paramType = "body")
   })
-  public Result create(UUID customerUuid, UUID zoneUuid) {
+  public Result create(UUID customerUuid, UUID zoneUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone az = AvailabilityZone.getOrBadRequest(zoneUuid);
-    NodeInstanceFormData nodeInstanceFormData = parseJsonAndValidate(NodeInstanceFormData.class);
+    NodeInstanceFormData nodeInstanceFormData =
+        parseJsonAndValidate(request, NodeInstanceFormData.class);
     List<NodeInstanceData> nodeDataList = nodeInstanceFormData.nodes;
     Optional<ClientType> clientTypeOp = maybeGetJWTClientType();
     List<String> createdNodeUuids = new ArrayList<String>();
@@ -290,11 +291,10 @@ public class NodeInstanceController extends AuthenticatedController {
     if (nodes.size() > 0) {
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.NodeInstance,
               createdNodeUuids.toString(),
-              Audit.ActionType.Create,
-              Json.toJson(nodeInstanceFormData));
+              Audit.ActionType.Create);
       return PlatformResults.withData(nodes);
     }
     throw new PlatformServiceException(
@@ -302,12 +302,13 @@ public class NodeInstanceController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Detached node action", response = YBPTask.class)
-  public Result detachedNodeAction(UUID customerUUID, UUID providerUUID, String instanceIP) {
+  public Result detachedNodeAction(
+      UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
     // Validate customer UUID and universe UUID and AWS provider.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     NodeInstance node = findNodeOrThrow(provider, instanceIP);
-    NodeActionFormData nodeActionFormData = parseJsonAndValidate(NodeActionFormData.class);
+    NodeActionFormData nodeActionFormData = parseJsonAndValidate(request, NodeActionFormData.class);
     NodeActionType nodeAction = nodeActionFormData.getNodeAction();
     if (!nodeAction.isForDetached()) {
       throw new PlatformServiceException(
@@ -337,17 +338,17 @@ public class NodeInstanceController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.NodeInstance,
             Objects.toString(node.getNodeUuid(), null),
             Audit.ActionType.Create,
-            Json.toJson(nodeActionFormData),
             taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(value = "Delete a node instance", response = YBPSuccess.class)
-  public Result deleteInstance(UUID customerUUID, UUID providerUUID, String instanceIP) {
+  public Result deleteInstance(
+      UUID customerUUID, UUID providerUUID, String instanceIP, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(providerUUID);
     NodeInstance nodeToBeFound = findNodeOrThrow(provider, instanceIP);
@@ -355,8 +356,8 @@ public class NodeInstanceController extends AuthenticatedController {
       throw new PlatformServiceException(BAD_REQUEST, "Node is in use");
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.NodeInstance,
             Objects.toString(nodeToBeFound.getNodeUuid(), null),
             Audit.ActionType.Delete);
@@ -373,11 +374,12 @@ public class NodeInstanceController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.NodeActionFormData",
         paramType = "body")
   })
-  public Result nodeAction(UUID customerUUID, UUID universeUUID, String nodeName) {
+  public Result nodeAction(
+      UUID customerUUID, UUID universeUUID, String nodeName, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     universe.getNodeOrBadRequest(nodeName);
-    NodeActionFormData nodeActionFormData = parseJsonAndValidate(NodeActionFormData.class);
+    NodeActionFormData nodeActionFormData = parseJsonAndValidate(request, NodeActionFormData.class);
 
     if (!universe.getUniverseDetails().isUniverseEditable()) {
       String errMsg = "Node actions cannot be performed on universe UUID " + universeUUID;
@@ -401,7 +403,7 @@ public class NodeInstanceController extends AuthenticatedController {
     }
 
     taskParams.nodeName = nodeName;
-    taskParams.creatingUser = CommonUtils.getUserFromContext(ctx());
+    taskParams.creatingUser = CommonUtils.getUserFromContext();
 
     // Check deleting/removing a node will not go below the RF
     // TODO: Always check this for all actions?? For now leaving it as is since it breaks many tests
@@ -458,12 +460,7 @@ public class NodeInstanceController extends AuthenticatedController {
         nodeName);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.NodeInstance,
-            nodeName,
-            Audit.ActionType.Update,
-            Json.toJson(nodeActionFormData),
-            taskUUID);
+            request, Audit.TargetType.NodeInstance, nodeName, Audit.ActionType.Update, taskUUID);
     return new YBPTask(taskUUID).asResult();
   }
 

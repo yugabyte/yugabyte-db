@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
+import io.ebean.Model;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
@@ -34,6 +35,7 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -64,9 +66,9 @@ public class ScheduleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.SchedulePagedApiQuery",
           required = true))
-  public Result pageScheduleList(UUID customerUUID) {
+  public Result pageScheduleList(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    SchedulePagedApiQuery apiQuery = parseJsonAndValidate(SchedulePagedApiQuery.class);
+    SchedulePagedApiQuery apiQuery = parseJsonAndValidate(request, SchedulePagedApiQuery.class);
     ScheduleApiFilter apiFilter = apiQuery.getFilter();
     ScheduleFilter filter = apiFilter.toFilter().toBuilder().customerUUID(customerUUID).build();
     SchedulePagedQuery query = apiQuery.copyWithFilter(filter, SchedulePagedQuery.class);
@@ -86,7 +88,7 @@ public class ScheduleController extends AuthenticatedController {
       value = "Delete a schedule",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteSchedule")
-  public Result delete(UUID customerUUID, UUID scheduleUUID) {
+  public Result delete(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
@@ -94,8 +96,8 @@ public class ScheduleController extends AuthenticatedController {
     schedule.stopSchedule();
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request, Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -109,10 +111,10 @@ public class ScheduleController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.EditBackupScheduleParams",
         paramType = "body")
   })
-  public Result editBackupSchedule(UUID customerUUID, UUID scheduleUUID) {
+  public Result editBackupSchedule(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(customerUUID, scheduleUUID);
-    EditBackupScheduleParams params = parseJsonAndValidate(EditBackupScheduleParams.class);
+    EditBackupScheduleParams params = parseJsonAndValidate(request, EditBackupScheduleParams.class);
     if (params.status.equals(State.Paused)) {
       throw new PlatformServiceException(
           BAD_REQUEST, "State paused is an internal state and cannot be specified by the user");
@@ -125,7 +127,7 @@ public class ScheduleController extends AuthenticatedController {
       } else if (params.frequency != null && params.cronExpression != null) {
         throw new PlatformServiceException(
             BAD_REQUEST, "Both schedule frequency and cron expression cannot be provided");
-      } else if (schedule.getStatus().equals(State.Active) && schedule.getRunningState()) {
+      } else if (schedule.getStatus().equals(State.Active) && schedule.isRunningState()) {
         throw new PlatformServiceException(CONFLICT, "Cannot edit schedule as it is running.");
       } else if (params.frequency != null) {
         if (params.frequencyTimeUnit == null) {
@@ -180,11 +182,7 @@ public class ScheduleController extends AuthenticatedController {
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Schedule,
-            scheduleUUID.toString(),
-            Audit.ActionType.Edit,
-            request().body().asJson());
+            request, Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Edit);
     return PlatformResults.withData(schedule);
   }
 
@@ -192,18 +190,18 @@ public class ScheduleController extends AuthenticatedController {
       value = "Delete a schedule V2",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteScheduleV2")
-  public Result deleteYb(UUID customerUUID, UUID scheduleUUID) {
+  public Result deleteYb(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Schedule schedule = Schedule.getOrBadRequest(scheduleUUID);
-    if (schedule.getStatus().equals(State.Active) && schedule.getRunningState()) {
+    if (schedule.getStatus().equals(State.Active) && schedule.isRunningState()) {
       throw new PlatformServiceException(BAD_REQUEST, "Cannot delete schedule as it is running.");
     }
     schedule.stopSchedule();
-    ScheduleTask.getAllTasks(scheduleUUID).forEach((scheduleTask) -> scheduleTask.delete());
+    ScheduleTask.getAllTasks(scheduleUUID).forEach(Model::delete);
     schedule.delete();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request, Audit.TargetType.Schedule, scheduleUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

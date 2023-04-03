@@ -18,6 +18,7 @@ import com.google.inject.Singleton;
 import play.data.Form;
 import play.data.FormFactory;
 import play.libs.Json;
+import play.mvc.Http.Request;
 
 @Singleton
 public class ValidatingFormFactory {
@@ -36,8 +37,8 @@ public class ValidatingFormFactory {
    * Use AbstractPlatformController.parseJsonAndValidate instead.
    */
   @Deprecated
-  public <T> Form<T> getFormDataOrBadRequest(Class<T> clazz) {
-    Form<T> formData = formFactory.form(clazz).bindFromRequest();
+  public <T> Form<T> getFormDataOrBadRequest(Request request, Class<T> clazz) {
+    Form<T> formData = formFactory.form(clazz).bindFromRequest(request);
     if (formData.hasErrors()) {
       throw new PlatformServiceException(BAD_REQUEST, formData.errorsAsJson());
     }
