@@ -222,13 +222,13 @@ class TransactionStatusManager {
 
   virtual void Abort(const TransactionId& id, TransactionStatusCallback callback) = 0;
 
-  virtual void Cleanup(TransactionIdSet&& set) = 0;
+  virtual Status Cleanup(TransactionIdSet&& set) = 0;
 
   // For each pair fills second with priority of transaction with id equals to first.
-  virtual void FillPriorities(
+  virtual Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) = 0;
 
-  virtual boost::optional<TabletId> FindStatusTablet(const TransactionId& id) = 0;
+  virtual Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) = 0;
 
   // Returns minimal running hybrid time of all running transactions.
   virtual HybridTime MinRunningHybridTime() const = 0;

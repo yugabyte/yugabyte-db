@@ -383,7 +383,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   rocksdb::ReadOptions read_opts;
   auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
   ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
   // Verify correct ttl.
   auto value = iter->value();

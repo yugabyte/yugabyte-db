@@ -104,13 +104,14 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
 
   // Seek the value.
   doc_iter->Seek(key_prefix_.AsSlice());
-  VLOG_WITH_FUNC(4)
-      << SubDocKey::DebugSliceToString(key_prefix_.AsSlice()) << ", valid: " << doc_iter->valid()
-      << ", prev_subdoc_ht: " << prev_subdoc_ht << ", prev_key_prefix_exact: "
-      << prev_key_prefix_exact << ", has_ancestor: " << has_ancestor;
+  VLOG_WITH_FUNC(4) << SubDocKey::DebugSliceToString(key_prefix_.AsSlice())
+                    << ", IsOutOfRecords: " << doc_iter->IsOutOfRecords()
+                    << ", prev_subdoc_ht: " << prev_subdoc_ht
+                    << ", prev_key_prefix_exact: " << prev_key_prefix_exact
+                    << ", has_ancestor: " << has_ancestor;
 
   FetchKeyResult key_data;
-  if (doc_iter->valid()) {
+  if (!doc_iter->IsOutOfRecords()) {
     key_data = VERIFY_RESULT(doc_iter->FetchKey());
     VLOG_WITH_FUNC(4)
             << "Found: " << SubDocKey::DebugSliceToString(key_data.key) << ", good: "
@@ -192,7 +193,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
   if (use_packed_row) {
     RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
 
-    if (!doc_iter->valid()) {
+    if (doc_iter->IsOutOfRecords()) {
       return Status::OK();
     }
   } else {
@@ -700,7 +701,7 @@ Status DocWriteBatch::ReplaceRedisInList(
   SubDocKey found_key;
   FetchKeyResult key_data;
   for (auto current_index = start_index;;) {
-    if (index <= 0 || !iter->valid() ||
+    if (index <= 0 || iter->IsOutOfRecords() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return STATUS_SUBSTITUTE(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
@@ -787,7 +788,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
-  if (!iter->valid()) {
+  if (iter->IsOutOfRecords()) {
     return STATUS(QLError, "Unable to replace items in empty list.");
   }
 
@@ -813,7 +814,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   FetchKeyResult key_data;
   while (true) {
-    if (target_cql_index < 0 || !iter->valid() ||
+    if (target_cql_index < 0 || iter->IsOutOfRecords() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return STATUS_SUBSTITUTE(
           QLError,

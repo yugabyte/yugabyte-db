@@ -44,16 +44,16 @@ TEST_F(DBTestTailingIterator, TailingIteratorSingle) {
 
   std::unique_ptr<Iterator> iter(db_->NewIterator(read_options));
   iter->SeekToFirst();
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   // add a record and check that iter can see it
   ASSERT_OK(db_->Put(WriteOptions(), "mirko", "fodor"));
   iter->SeekToFirst();
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->key().ToString(), "mirko");
 
   iter->Next();
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 }
 
 TEST_F(DBTestTailingIterator, TailingIteratorKeepAdding) {
@@ -73,7 +73,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorKeepAdding) {
     ASSERT_OK(Put(1, key, value));
 
     iter->Seek(key);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
   }
 }
@@ -103,14 +103,14 @@ TEST_F(DBTestTailingIterator, TailingIteratorSeekToNext) {
     snprintf(buf2, sizeof(buf2), "00a0%016d", i * 5 - 2);
     Slice target(buf2, 20);
     iter->Seek(target);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
     if (i == 1) {
       itern->SeekToFirst();
     } else {
       itern->Next();
     }
-    ASSERT_TRUE(itern->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(itern->CheckedValid()));
     ASSERT_EQ(itern->key().compare(key), 0);
   }
   yb::SyncPoint::GetInstance()->ClearAllCallBacks();
@@ -130,7 +130,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorSeekToNext) {
     snprintf(buf2, sizeof(buf2), "00a0%016d", i * 5 - 2);
     Slice target(buf2, 20);
     iter->Seek(target);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
   }
 }
@@ -199,10 +199,10 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
       snprintf(buf4, sizeof(buf4), "00a0%016d", i * 5 / 2);
       Slice target(buf4, 20);
       iterh->Seek(target);
-      ASSERT_TRUE(iter->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
       for (int j = (i + 1) * 5 / 2; j < i * 5; j += 5) {
         iterh->Next();
-        ASSERT_TRUE(iterh->Valid());
+        ASSERT_TRUE(ASSERT_RESULT(iterh->CheckedValid()));
       }
       if (i == 299) {
         file_iters_deleted = false;
@@ -213,7 +213,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
     snprintf(buf2, sizeof(buf2), "00a0%016d", i * 5 - 2);
     Slice target(buf2, 20);
     iter->Seek(target);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
     ASSERT_LE(num_iters, 1);
     if (i == 1) {
@@ -221,7 +221,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
     } else {
       itern->Next();
     }
-    ASSERT_TRUE(itern->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(itern->CheckedValid()));
     ASSERT_EQ(itern->key().compare(key), 0);
     ASSERT_LE(num_iters, 1);
     file_iters_deleted = false;
@@ -264,7 +264,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorTrimSeekToNext) {
     snprintf(buf2, sizeof(buf2), "00a0%016d", i * 5 - 2);
     Slice target(buf2, 20);
     iter->Seek(target);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
   }
 }
@@ -279,7 +279,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorDeletes) {
   // write a single record, read it using the iterator, then delete it
   ASSERT_OK(Put(1, "0test", "test"));
   iter->SeekToFirst();
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->key().ToString(), "0test");
   ASSERT_OK(Delete(1, "0test"));
 
@@ -303,7 +303,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorDeletes) {
 
   // make sure we can read all new records using the existing iterator
   int count = 0;
-  for (; iter->Valid(); iter->Next(), ++count) ;
+  for (; ASSERT_RESULT(iter->CheckedValid()); iter->Next(), ++count) ;
 
   ASSERT_EQ(count, num_records);
 }
@@ -330,14 +330,14 @@ TEST_F(DBTestTailingIterator, TailingIteratorPrefixSeek) {
 
   // Seek(0102) shouldn't find any records since 0202 has a different prefix
   iter->Seek("0102");
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   iter->Seek("0202");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->key().ToString(), "0202");
 
   iter->Next();
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 }
 
 TEST_F(DBTestTailingIterator, TailingIteratorIncomplete) {
@@ -385,7 +385,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorSeekToSame) {
   // Seek to 00001.  We expect to find 00002.
   std::string start_key = "00001";
   iter->Seek(start_key);
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
   std::string found = iter->key().ToString();
   ASSERT_EQ("00002", found);
@@ -393,7 +393,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorSeekToSame) {
   // Now seek to the same key.  The iterator should remain in the same
   // position.
   iter->Seek(found);
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(found, iter->key().ToString());
 }
 
@@ -418,12 +418,12 @@ TEST_F(DBTestTailingIterator, TailingIteratorUpperBound) {
 
   std::unique_ptr<Iterator> it(db_->NewIterator(read_options, handles_[1]));
   it->Seek("12");
-  ASSERT_TRUE(it->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(it->CheckedValid()));
   ASSERT_EQ("12", it->key().ToString());
 
   it->Next();
   // Not valid since "21" is over the upper bound.
-  ASSERT_FALSE(it->Valid());
+  ASSERT_FALSE(ASSERT_RESULT(it->CheckedValid()));
 
   // This keeps track of the number of times NeedToSeekImmutable() was true.
   int immutable_seeks = 0;
@@ -436,7 +436,7 @@ TEST_F(DBTestTailingIterator, TailingIteratorUpperBound) {
   it->Seek("13");
   yb::SyncPoint::GetInstance()->DisableProcessing();
 
-  ASSERT_FALSE(it->Valid());
+  ASSERT_FALSE(ASSERT_RESULT(it->CheckedValid()));
   ASSERT_EQ(0, immutable_seeks);
 }
 
@@ -447,16 +447,16 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorSingle) {
 
   std::unique_ptr<Iterator> iter(db_->NewIterator(read_options));
   iter->SeekToFirst();
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   // add a record and check that iter can see it
   ASSERT_OK(db_->Put(WriteOptions(), "mirko", "fodor"));
   iter->SeekToFirst();
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->key().ToString(), "mirko");
 
   iter->Next();
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 }
 
 TEST_F(DBTestTailingIterator, ManagedTailingIteratorKeepAdding) {
@@ -477,7 +477,7 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorKeepAdding) {
     ASSERT_OK(Put(1, key, value));
 
     iter->Seek(key);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
   }
 }
@@ -507,7 +507,7 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorSeekToNext) {
     snprintf(buf2, sizeof(buf2), "00a0%016d", i * 5 - 2);
     Slice target(buf2, 20);
     iter->Seek(target);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
   }
   for (int i = 2 * num_records; i > 0; --i) {
@@ -525,7 +525,7 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorSeekToNext) {
     snprintf(buf2, sizeof(buf2), "00a0%016d", i * 5 - 2);
     Slice target(buf2, 20);
     iter->Seek(target);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(key), 0);
   }
 }
@@ -541,7 +541,7 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorDeletes) {
   // write a single record, read it using the iterator, then delete it
   ASSERT_OK(Put(1, "0test", "test"));
   iter->SeekToFirst();
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->key().ToString(), "0test");
   ASSERT_OK(Delete(1, "0test"));
 
@@ -565,7 +565,7 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorDeletes) {
 
   // make sure we can read all new records using the existing iterator
   int count = 0;
-  for (; iter->Valid(); iter->Next(), ++count) {
+  for (; ASSERT_RESULT(iter->CheckedValid()); iter->Next(), ++count) {
   }
 
   ASSERT_EQ(count, num_records);
@@ -594,14 +594,14 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorPrefixSeek) {
 
   // Seek(0102) shouldn't find any records since 0202 has a different prefix
   iter->Seek("0102");
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 
   iter->Seek("0202");
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(iter->key().ToString(), "0202");
 
   iter->Next();
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
 }
 
 TEST_F(DBTestTailingIterator, ManagedTailingIteratorIncomplete) {
@@ -651,7 +651,7 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorSeekToSame) {
   // Seek to 00001.  We expect to find 00002.
   std::string start_key = "00001";
   iter->Seek(start_key);
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
   std::string found = iter->key().ToString();
   ASSERT_EQ("00002", found);
@@ -659,7 +659,7 @@ TEST_F(DBTestTailingIterator, ManagedTailingIteratorSeekToSame) {
   // Now seek to the same key.  The iterator should remain in the same
   // position.
   iter->Seek(found);
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(found, iter->key().ToString());
 }
 

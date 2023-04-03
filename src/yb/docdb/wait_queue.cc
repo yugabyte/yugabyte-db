@@ -825,7 +825,8 @@ class WaitQueue::Impl {
         // necessary because of the potential race between handling promotion signal of a blocker
         // txn from the transaction participant and a waiter transaction entering the queue with
         // the blocker's old status tablet.
-        auto blocker_status_tablet = txn_status_manager_->FindStatusTablet(blocker.id);
+        auto blocker_status_tablet =
+            VERIFY_RESULT(txn_status_manager_->FindStatusTablet(blocker.id));
         if (blocker_status_tablet) {
           blocker.status_tablet = *blocker_status_tablet;
         }

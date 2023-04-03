@@ -253,7 +253,7 @@ void CheckBlockContents(
     iter->Seek(higher_key);
     ASSERT_OK(iter->status());
     if (j == keys.size()) {
-      ASSERT_FALSE(iter->Valid());
+      ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
       continue;
     }
     ASSERT_TRUE(iter->Valid());

@@ -88,6 +88,10 @@ void DocDBDebugDump(
     };
     iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback);
   }
+  const auto s = iter->status();
+  if (!s.ok()) {
+    dump_func(s.ToString());
+  }
 }
 
 } // namespace

@@ -35,16 +35,13 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNull;
-
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelect extends BaseCQLTest {
@@ -1303,8 +1300,9 @@ public class TestSelect extends BaseCQLTest {
               "Row[1, 20, 40, 124]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
-      // 9 options, but the first seek should jump over 3 options (with r1 = -10).
-      assertEquals(7, metrics.seekCount);
+      // 9 options, but some seeks should jump over options due to SeekPossiblyUsingNext
+      // optimisation.
+      assertEquals(5, metrics.seekCount);
     }
 
     // Test combining IN and equality conditions.
@@ -1412,7 +1410,9 @@ public class TestSelect extends BaseCQLTest {
       //   10      [60, "31"]    [60, "40"]      Y (Result row 4)
       //   11      [60, "42"]    [60, "50"]      N
       //   12      [59, "18"]    [50, "0"]       N (Bigger than largest target key so we are done)
-      assertEquals(12, metrics.seekCount);
+      // Actual number of seeks could be lower because there is Next instead of Seek optimisation in
+      // DocDB (see SeekPossiblyUsingNext).
+      assertLessThanOrEqualTo(metrics.seekCount, 12);
     }
   }
 
@@ -2579,7 +2579,7 @@ public class TestSelect extends BaseCQLTest {
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
       // 9 options, but the first seek should jump over 3 options (with r1 = -10).
-      assertEquals(7, metrics.seekCount);
+      assertEquals(5, metrics.seekCount);
     }
 
     // Test ORDER BY clause with IN (reverse scan).
@@ -2653,7 +2653,9 @@ public class TestSelect extends BaseCQLTest {
       // 10 [60, "31"] [60, "40"] Y (Result row 4)
       // 11 [60, "42"] [60, "50"] N
       // 12 [59, "18"] [50, "0"] N (Bigger than largest target key so we are done)
-      assertEquals(12, metrics.seekCount);
+      // Actual number of seeks could be lower because there is Next instead of Seek optimisation in
+      // DocDB (see SeekPossiblyUsingNext).
+      assertLessThanOrEqualTo(metrics.seekCount, 12);
     }
   }
 

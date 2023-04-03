@@ -283,7 +283,7 @@ TEST_F(DeleteFileTest, DeleteFileWithIterator) {
   ASSERT_TRUE(status.ok());
   it->SeekToFirst();
   int numKeysIterated = 0;
-  while(it->Valid()) {
+  while(ASSERT_RESULT(it->CheckedValid())) {
     numKeysIterated++;
     it->Next();
   }
@@ -370,8 +370,7 @@ TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
   {
     std::unique_ptr<Iterator> itr(db->NewIterator(ReadOptions(), handles[1]));
     int count = 0;
-    for (itr->SeekToFirst(); itr->Valid(); itr->Next()) {
-      ASSERT_OK(itr->status());
+    for (itr->SeekToFirst(); ASSERT_RESULT(itr->CheckedValid()); itr->Next()) {
       ++count;
     }
     ASSERT_EQ(count, 1000);
@@ -385,8 +384,7 @@ TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
   {
     std::unique_ptr<Iterator> itr(db->NewIterator(ReadOptions(), handles[1]));
     int count = 0;
-    for (itr->SeekToFirst(); itr->Valid(); itr->Next()) {
-      ASSERT_OK(itr->status());
+    for (itr->SeekToFirst(); ASSERT_RESULT(itr->CheckedValid()); itr->Next()) {
       ++count;
     }
     ASSERT_EQ(count, 1000);
@@ -425,7 +423,7 @@ size_t DeleteFileTest::TryDeleteFiles(
         continue;
       }
       if (db_->DeleteFile(file.Name()).ok()) {
-        const auto file_path = file.FullName();
+        const auto file_path = file.BaseFilePath();
 
         std::vector<LiveFileMetaData> current_files;
         dbfull()->GetLiveFilesMetaData(&current_files);

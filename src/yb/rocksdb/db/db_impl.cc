@@ -6144,7 +6144,7 @@ Status DBImpl::CheckConsistency() {
 
   std::string corruption_messages;
   for (const auto& md : metadata) {
-    std::string base_file_path = md.FullName();
+    std::string base_file_path = md.BaseFilePath();
     uint64_t base_fsize = 0;
     Status s = env_->GetFileSize(base_file_path, &base_fsize);
     if (!s.ok() &&
