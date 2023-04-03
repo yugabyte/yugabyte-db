@@ -18,7 +18,7 @@ import { adaptTableUUID, parseFloatIfDefined } from '../ReplicationUtils';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
 import { YBButton, YBModal } from '../../common/forms/fields';
-import { api } from '../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../redesign/helpers/api';
 import { getPrimaryCluster, isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
 import { assertUnreachableCase, handleServerError } from '../../../utils/errorHandlingUtils';
 import {
@@ -173,8 +173,14 @@ export const CreateConfigModal = ({
     }
   );
 
-  const tablesQuery = useQuery<YBTable[]>(['universe', sourceUniverseUUID, 'tables'], () =>
-    fetchTablesInUniverse(sourceUniverseUUID).then((response) => response.data)
+  const tablesQuery = useQuery<YBTable[]>(
+    universeQueryKey.tables(sourceUniverseUUID, {
+      excludeColocatedTables: true
+    }),
+    () =>
+      fetchTablesInUniverse(sourceUniverseUUID, { excludeColocatedTables: true }).then(
+        (response) => response.data
+      )
   );
 
   const universeQuery = useQuery<Universe>(['universe', sourceUniverseUUID], () =>
