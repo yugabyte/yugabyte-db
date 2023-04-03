@@ -17,6 +17,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -27,7 +28,10 @@ import com.yugabyte.yw.forms.TriggerHealthCheckResult;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.extended.DetailsExt;
+import com.yugabyte.yw.models.extended.NodeDataExt;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -43,6 +47,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
@@ -216,7 +221,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
-    return PlatformResults.withData(detailsList);
+    return PlatformResults.withData(convertDetails(detailsList));
   }
 
   @ApiOperation(
@@ -278,5 +283,35 @@ public class UniverseInfoController extends AuthenticatedController {
           return ok(is).as("application/x-compressed");
         },
         ec.current());
+  }
+
+  private List<DetailsExt> convertDetails(List<Details> details) {
+    boolean backwardCompatibleDate =
+        confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
+    return convertDetails(details, backwardCompatibleDate);
+  }
+
+  private List<DetailsExt> convertDetails(List<Details> details, boolean backwardCompatibleDate) {
+    return details
+        .stream()
+        .map(
+            d ->
+                new DetailsExt()
+                    .setDetails(d)
+                    .setTimestamp(backwardCompatibleDate ? d.getTimestampIso() : null)
+                    .setData(convertNodeData(d.getData(), backwardCompatibleDate)))
+        .collect(Collectors.toList());
+  }
+
+  private List<NodeDataExt> convertNodeData(
+      List<NodeData> nodeDataList, boolean backwardCompatibleDate) {
+    return nodeDataList
+        .stream()
+        .map(
+            data ->
+                new NodeDataExt()
+                    .setNodeData(data)
+                    .setTimestamp(backwardCompatibleDate ? data.getTimestampIso() : null))
+        .collect(Collectors.toList());
   }
 }
