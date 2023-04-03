@@ -1,9 +1,9 @@
 ---
 title: Guide for ybm CLI automation
-headerTitle: "Guide: Create clusters using ybm CLI"
-linkTitle: "Guide: ybm CLI"
+headerTitle: "Tutorial: Create clusters using ybm CLI"
+linkTitle: "Tutorial: ybm CLI"
 description: Tutorial for using YugabyteDB Managed ybm CLI to create clusters.
-headcontent: Working examples for automation tools
+headcontent: Example workflows for automation tools
 menu:
   preview_yugabyte-cloud:
     identifier: managed-guide-cli

@@ -1,9 +1,9 @@
 ---
 title: Guide for ybm API automation
-headerTitle: "Guide: Create clusters using REST API"
-linkTitle: "Guide: REST API"
+headerTitle: "Tutorial: Create a cluster using the REST API"
+linkTitle: "Tutorial: REST API"
 description: Tutorial for using YugabyteDB Managed REST API to create clusters.
-headcontent: Working examples for automation tools
+headcontent: Example workflows for automation tools
 menu:
   preview_yugabyte-cloud:
     identifier: managed-guide-api
