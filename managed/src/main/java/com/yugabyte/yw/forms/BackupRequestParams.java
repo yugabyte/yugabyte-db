@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -129,6 +130,11 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @ApiModelProperty(hidden = true)
   public final Map<String, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
+
+  // This param precedes in value even if YBC is installed and enabled on the universe.
+  // If null, proceeds with usual behaviour.
+  @ApiModelProperty(value = "Overrides whether you want to use YBC based or script based backup.")
+  public BackupCategory backupCategory = null;
 
   @ToString
   public static class ParallelBackupState {
