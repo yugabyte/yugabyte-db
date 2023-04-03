@@ -20,6 +20,7 @@ This guide assumes you have already done the following:
 
 - Created and saved an [API key](../managed-apikeys/).
 - Obtained your [account ID and project ID](../#account-details).
+- Installed [jq](https://stedolan.github.io/jq/).
 
 For convenience, add these values to environment variables, as follows:
 
@@ -35,11 +36,11 @@ Note that you can only create one Sandbox cluster per account.
 
 ## Create a sandbox cluster
 
-To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters-free/) cluster, you'll first set up environment variables for the YugabyteDB Managed database version to use, and an IP allow list.
+To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters-free/) cluster, you'll first set up environment variables for the version of YugabyteDB to use, and an IP allow list.
 
 ### Software track
 
-YugabyteDB Managed has [two software tracks](../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview to test new features, with odd release numbers, and Stable, for production.
+YugabyteDB Managed has [two database tracks](../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for testing new features, and Stable for production deployments.
 
 To get the ID for the Preview track:
 
