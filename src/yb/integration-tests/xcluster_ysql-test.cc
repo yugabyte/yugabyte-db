@@ -671,26 +671,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
   }
 };
 
-struct XClusterYsqlTestParams {
-  explicit XClusterYsqlTestParams(int batch_size_) : batch_size(batch_size_) {}
-
-  int batch_size;
-};
-
-class XClusterYsqlTestToggleBatching : public XClusterYsqlTest,
-                                       public testing::WithParamInterface<XClusterYsqlTestParams> {
- public:
-  void SetUp() override {
-    FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
-    XClusterYsqlTest::SetUp();
-  }
-};
-
-INSTANTIATE_TEST_CASE_P(XClusterYsqlTestParams, XClusterYsqlTestToggleBatching,
-                        ::testing::Values(XClusterYsqlTestParams(0 /* batch_size */),
-                                          XClusterYsqlTestParams(1 /* batch_size */)));
-
-TEST_P(XClusterYsqlTestToggleBatching, GenerateSeries) {
+TEST_F(XClusterYsqlTest, GenerateSeries) {
   auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -1341,7 +1322,7 @@ TEST_F(XClusterYSqlTestStressTest, ApplyTranasctionThrottling) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(XClusterYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
+TEST_F(XClusterYsqlTest, GenerateSeriesMultipleTransactions) {
   // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
@@ -1363,7 +1344,7 @@ TEST_P(XClusterYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(XClusterYsqlTestToggleBatching, ChangeRole) {
+TEST_F(XClusterYsqlTest, ChangeRole) {
   // 1. Test that an existing universe without replication of txn status table cannot become a
   // STANDBY.
   FLAGS_enable_replicate_transaction_status_table = false;
