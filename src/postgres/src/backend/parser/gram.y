@@ -2774,7 +2774,7 @@ opt_reloptions:		WITH reloptions					{ $$ = $2; }
 			 |		/* EMPTY */						{ $$ = NIL; }
 		;
 
-/* TODO: add copartitioned and interleaved to reloption_list.
+/* TODO: add interleaved to reloption_list.
    Eventually deprecate using colocated */
 reloption_list:
 			reloption_elem
@@ -4767,7 +4767,7 @@ opt_procedural:
  *		QUERY:
  *             CREATE TABLEGROUP tablegroup
  *
- *		TODO: Later extend this to include COPARTITIONED and INTERLEAVED
+ *		TODO: Later extend this to include INTERLEAVED
  *
  *****************************************************************************/
 

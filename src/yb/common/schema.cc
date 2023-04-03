@@ -158,8 +158,6 @@ bool ColumnSchema::TEST_Equals(const ColumnSchema& lhs, const ColumnSchema& rhs)
 // TableProperties
 // ------------------------------------------------------------------------------------------------
 
-const TableId kNoCopartitionTableId = "";
-
 void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   if (HasDefaultTimeToLive()) {
     pb->set_default_time_to_live(default_time_to_live_);
@@ -167,9 +165,6 @@ void TableProperties::ToTablePropertiesPB(TablePropertiesPB *pb) const {
   pb->set_contain_counters(contain_counters_);
   pb->set_is_transactional(is_transactional_);
   pb->set_consistency_level(consistency_level_);
-  if (HasCopartitionTableId()) {
-    pb->set_copartition_table_id(copartition_table_id_);
-  }
   pb->set_use_mangled_column_name(use_mangled_column_name_);
   if (HasNumTablets()) {
     pb->set_num_tablets(num_tablets_);
@@ -192,9 +187,6 @@ TableProperties TableProperties::FromTablePropertiesPB(const TablePropertiesPB& 
   }
   if (pb.has_consistency_level()) {
     table_properties.SetConsistencyLevel(pb.consistency_level());
-  }
-  if (pb.has_copartition_table_id()) {
-    table_properties.SetCopartitionTableId(pb.copartition_table_id());
   }
   if (pb.has_use_mangled_column_name()) {
     table_properties.SetUseMangledColumnName(pb.use_mangled_column_name());
@@ -223,9 +215,6 @@ void TableProperties::AlterFromTablePropertiesPB(const TablePropertiesPB& pb) {
   if (pb.has_consistency_level()) {
     SetConsistencyLevel(pb.consistency_level());
   }
-  if (pb.has_copartition_table_id()) {
-    SetCopartitionTableId(pb.copartition_table_id());
-  }
   if (pb.has_use_mangled_column_name()) {
     SetUseMangledColumnName(pb.use_mangled_column_name());
   }
@@ -246,7 +235,6 @@ void TableProperties::Reset() {
   contain_counters_ = false;
   is_transactional_ = false;
   consistency_level_ = YBConsistencyLevel::STRONG;
-  copartition_table_id_ = kNoCopartitionTableId;
   use_mangled_column_name_ = false;
   num_tablets_ = 0;
   is_ysql_catalog_table_ = false;
@@ -263,9 +251,6 @@ string TableProperties::ToString() const {
   }
   result += Format("contain_counters: $0 is_transactional: $1 ",
                    contain_counters_, is_transactional_);
-  if (HasCopartitionTableId()) {
-    result += Format("copartition_table_id: $0 ", copartition_table_id_);
-  }
   return result + Format(
       "consistency_level: $0 is_ysql_catalog_table: $1 partitioning_version: $2 }",
       consistency_level_,

@@ -1532,14 +1532,6 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   context.RespondSuccess();
 }
 
-// TODO(sagnik): Modify this to actually create a copartitioned table
-void TabletServiceAdminImpl::CopartitionTable(const CopartitionTableRequestPB* req,
-                                              CopartitionTableResponsePB* resp,
-                                              rpc::RpcContext context) {
-  context.RespondSuccess();
-  LOG(INFO) << "tserver doesn't support co-partitioning yet";
-}
-
 void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
                                           FlushTabletsResponsePB* resp,
                                           rpc::RpcContext context) {

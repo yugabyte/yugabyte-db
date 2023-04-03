@@ -311,7 +311,6 @@ class ColumnSchema {
 };
 
 class ContiguousRow;
-extern const TableId kNoCopartitionTableId;
 
 inline constexpr uint32_t kCurrentPartitioningVersion = 1;
 
@@ -351,12 +350,6 @@ class TableProperties {
     }
 
     if (consistency_level_ != other.consistency_level_) {
-      return false;
-    }
-
-    if ((copartition_table_id_ == kNoCopartitionTableId ||
-         other.copartition_table_id_ == kNoCopartitionTableId) &&
-        copartition_table_id_ != other.copartition_table_id_) {
       return false;
     }
 
@@ -403,18 +396,6 @@ class TableProperties {
 
   void SetConsistencyLevel(YBConsistencyLevel consistency_level) {
     consistency_level_ = consistency_level;
-  }
-
-  TableId CopartitionTableId() const {
-    return copartition_table_id_;
-  }
-
-  bool HasCopartitionTableId() const {
-    return copartition_table_id_ != kNoCopartitionTableId;
-  }
-
-  void SetCopartitionTableId(const TableId& copartition_table_id) {
-    copartition_table_id_ = copartition_table_id;
   }
 
   void SetUseMangledColumnName(bool value) {
@@ -481,7 +462,6 @@ class TableProperties {
   bool is_transactional_;
   bool retain_delete_markers_;
   YBConsistencyLevel consistency_level_;
-  TableId copartition_table_id_;
   bool use_mangled_column_name_;
   int num_tablets_;
   bool is_ysql_catalog_table_;
@@ -675,10 +655,6 @@ class Schema {
 
   void SetDefaultTimeToLive(const uint64_t& ttl_msec) {
     table_properties_.SetDefaultTimeToLive(ttl_msec);
-  }
-
-  void SetCopartitionTableId(const TableId& copartition_table_id) {
-    table_properties_.SetCopartitionTableId(copartition_table_id);
   }
 
   void SetTransactional(bool is_transactional) {
