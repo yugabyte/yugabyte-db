@@ -48,7 +48,6 @@ DECLARE_int32(TEST_xcluster_simulated_lag_ms);
 DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(transaction_table_num_tablets);
-DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
 
 namespace yb {
