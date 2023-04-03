@@ -89,7 +89,7 @@ public class Common {
     }
 
     public boolean canAddRegions() {
-      return this == aws || this == gcp;
+      return true;
     }
 
     public boolean isHostedZoneEnabled() {

@@ -60,6 +60,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -405,35 +406,12 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateKubernetesMultiRegionProvider() {
-    ObjectMapper mapper = new ObjectMapper();
+    JsonNode k8sProviderBody = getK8sProviderCreateBody();
 
-    String providerName = "Kubernetes-Provider";
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("code", "kubernetes");
-    bodyJson.put("name", providerName);
-    ObjectNode configJson = Json.newObject();
-    configJson.put("KUBECONFIG_NAME", "test");
-    configJson.put("KUBECONFIG_CONTENT", "test");
-    bodyJson.set("config", configJson);
-
-    ArrayNode regions = mapper.createArrayNode();
-    ObjectNode regionJson = Json.newObject();
-    regionJson.put("code", "US-West");
-    regionJson.put("name", "US West");
-    ArrayNode azs = mapper.createArrayNode();
-    ObjectNode azJson = Json.newObject();
-    azJson.put("code", "us-west1-a");
-    azJson.put("name", "us-west1-a");
-    azs.add(azJson);
-    regionJson.putArray("zoneList").addAll(azs);
-    regions.add(regionJson);
-
-    bodyJson.putArray("regionList").addAll(regions);
-
-    Result result = createKubernetesProvider(bodyJson);
+    Result result = createKubernetesProvider(k8sProviderBody);
     JsonNode json = Json.parse(contentAsString(result));
     assertOk(result);
-    assertValue(json, "name", providerName);
+    assertValue(json, "name", "Kubernetes-Provider");
     Provider provider =
         Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
@@ -748,51 +726,47 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditProviderKubernetes() {
-    Map<String, String> config = new HashMap<>();
-    config.put("KUBECONFIG_PROVIDER", "gke");
-    config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
-    config.put("STORAGE_CLASS", "");
-    config.put("KUBECONFIG", "test.conf");
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
+    JsonNode k8sProviderBody = getK8sProviderCreateBody();
 
-    Result providerRes = getProvider(p.getUuid());
-    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
-    Provider provider = Json.fromJson(bodyJson, Provider.class);
+    Result result = createKubernetesProvider(k8sProviderBody);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", "Kubernetes-Provider");
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
     provider.getDetails().cloudInfo.kubernetes.kubernetesStorageClass = "slow";
 
-    Result result = editProvider(Json.toJson(provider), p.getUuid());
+    result = editProvider(Json.toJson(provider), provider.getUuid());
     assertOk(result);
-    JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
-    p.refresh();
-    config = CloudInfoInterface.fetchEnvVars(p);
+    json = Json.parse(contentAsString(result));
+    assertEquals(provider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
+    provider.refresh();
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     assertEquals("slow", config.get("STORAGE_CLASS"));
-    assertAuditEntry(1, customer.getUuid());
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
   public void testEditProviderKubernetesConfigEdit() {
-    Map<String, String> config = new HashMap<>();
-    config.put("KUBECONFIG_PROVIDER", "gke");
-    config.put("KUBECONFIG_SERVICE_ACCOUNT", "yugabyte-helm");
-    config.put("STORAGE_CLASS", "");
-    config.put("KUBECONFIG", "test.conf");
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.kubernetes, config);
+    JsonNode k8sProviderBody = getK8sProviderCreateBody();
 
-    Result providerRes = getProvider(p.getUuid());
-    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
-    Provider provider = Json.fromJson(bodyJson, Provider.class);
+    Result result = createKubernetesProvider(k8sProviderBody);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertOk(result);
+    assertValue(json, "name", "Kubernetes-Provider");
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
     provider.getDetails().cloudInfo.kubernetes.kubeConfigName = "test2.conf";
     provider.getDetails().cloudInfo.kubernetes.kubeConfigContent = "test5678";
 
-    Result result = editProvider(Json.toJson(provider), p.getUuid());
+    result = editProvider(Json.toJson(provider), provider.getUuid());
     assertOk(result);
-    assertAuditEntry(1, customer.getUuid());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertEquals(p.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
-    p.refresh();
-    config = CloudInfoInterface.fetchEnvVars(p);
-    assertTrue(config.get("KUBECONFIG").contains("test2.conf"));
+    assertAuditEntry(2, customer.getUuid());
+    json = Json.parse(contentAsString(result));
+    assertEquals(provider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
+    provider.refresh();
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
+    assertTrue(config.get("KUBECONFIG_NAME").contains("test2.conf"));
     Path path = Paths.get(config.get("KUBECONFIG"));
     try {
       List<String> contents = Files.readAllLines(path);
@@ -1134,5 +1108,34 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     shellResponse.message = "{\"wrong_key\": \"" + mockFailureMessage + "\"}";
     shellResponse.code = successCode;
     when(mockDnsManager.listDnsRecord(any(), any())).thenReturn(shellResponse);
+  }
+
+  private JsonNode getK8sProviderCreateBody() {
+    ObjectMapper mapper = new ObjectMapper();
+
+    String providerName = "Kubernetes-Provider";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "kubernetes");
+    bodyJson.put("name", providerName);
+    ObjectNode configJson = Json.newObject();
+    configJson.put("KUBECONFIG_NAME", "test");
+    configJson.put("KUBECONFIG_CONTENT", "test");
+    bodyJson.set("config", configJson);
+
+    ArrayNode regions = mapper.createArrayNode();
+    ObjectNode regionJson = Json.newObject();
+    regionJson.put("code", "US-West");
+    regionJson.put("name", "US West");
+    ArrayNode azs = mapper.createArrayNode();
+    ObjectNode azJson = Json.newObject();
+    azJson.put("code", "us-west1-a");
+    azJson.put("name", "us-west1-a");
+    azs.add(azJson);
+    regionJson.putArray("zoneList").addAll(azs);
+    regions.add(regionJson);
+
+    bodyJson.putArray("regionList").addAll(regions);
+
+    return bodyJson;
   }
 }

@@ -43,6 +43,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -374,6 +375,14 @@ public class Region extends Model {
 
   public static Region getByCode(Provider provider, String code) {
     return find.query().where().eq("provider_UUID", provider.getUuid()).eq("code", code).findOne();
+  }
+
+  public static Optional<Region> maybeGetByCode(Provider provider, String code) {
+    return find.query()
+        .where()
+        .eq("provider_UUID", provider.getUuid())
+        .eq("code", code)
+        .findOneOrEmpty();
   }
 
   public static List<Region> getByProvider(UUID providerUUID) {
