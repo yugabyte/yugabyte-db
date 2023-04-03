@@ -78,7 +78,6 @@ import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -991,14 +990,8 @@ public class UniverseCRUDHandler {
   }
 
   public List<UniverseResp> list(Customer customer) {
-    List<UniverseResp> universes = new ArrayList<>();
-    // TODO: Restrict the list api json payload, possibly to only include UUID, Name etc
-    for (Universe universe : customer.getUniverses()) {
-      UniverseResp universePayload =
-          UniverseResp.create(universe, null, runtimeConfigFactory.globalRuntimeConf());
-      universes.add(universePayload);
-    }
-    return universes;
+    return UniverseResp.create(
+        customer, customer.getUniverses(), runtimeConfigFactory.globalRuntimeConf());
   }
 
   public List<UniverseResp> findByName(Customer customer, String name) {
