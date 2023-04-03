@@ -23,7 +23,7 @@ import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
-import { api } from '../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../redesign/helpers/api';
 import { XClusterModalName, XClusterTableStatus } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
@@ -53,8 +53,13 @@ export function ReplicationTables({ xClusterConfig }: props) {
   };
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((respone) => respone.data)
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
+      excludeColocatedTables: true
+    }),
+    () =>
+      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
+        excludeColocatedTables: true
+      }).then((respone) => respone.data)
   );
 
   const sourceUniverseQuery = useQuery(['universe', xClusterConfig.sourceUniverseUUID], () =>
