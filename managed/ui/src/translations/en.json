@@ -17,7 +17,9 @@
       "saving": "Saving",
       "select": "Select",
       "active": "Active",
-      "none": "None"
+      "none": "None",
+      "edit": "Edit",
+      "remove": "Remove"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -392,7 +394,8 @@
         "helpText": "All Alert Policies that generate email alerts will use this notification template.",
         "insertVariableButton": "Insert Variable",
         "previewTemplateButton": "Preview Notification Template",
-        "templateSavedSuccess": "Template saved successfully"
+        "templateSavedSuccess": "Template saved successfully",
+        "emailTemplate": "Email Template"
       },
       "customVariablesPlugin": {
         "sysOrCusVariable": "{{variable_type}} VAR",
@@ -403,6 +406,18 @@
         "info":"Choose the Alert Template to preview with the Email Notification Template.",
         "selectPlaceholder": "Select an alert configuration"
       }
+    },
+    "alertPolicyDetails": {
+      "variableTitle": "Custom variables used by the notification channels",
+      "emptyVariableList": {
+        "title": "No custom variables",
+        "subText": "Custom variables are key-value pairs created in the <bold>Notification Channels / Customize Notification Templates</bold> page. You can use them to define custom values to show in alert notifications. "
+      },
+      "variablesList": {
+        "helpText": "Choose the values to display in the actual alert notifications."
+      },
+      "variableName": "Variable Name:",
+      "variableValUpdateSuccess": "variable updated sucessfulyy for policy \"{{policy_name}}\""
     }
   }
 }
