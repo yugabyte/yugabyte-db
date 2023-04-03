@@ -2718,6 +2718,90 @@
       "required" : [ "customCertPathParams", "customHCPKICertInfo", "customServerCertInfo", "universeDetailSubsets" ],
       "type" : "object"
     },
+    "CertificateInfoExt" : {
+      "description" : "SSL certificate used by the universe",
+      "properties" : {
+        "certType" : {
+          "description" : "Type of the certificate",
+          "enum" : [ "SelfSigned", "CustomCertHostPath", "CustomServerCert", "HashicorpVault", "K8SCertManager" ],
+          "example" : "SelfSigned",
+          "type" : "string"
+        },
+        "certificate" : {
+          "description" : "Certificate path",
+          "example" : "/opt/yugaware/certs/.../ca.root.cert",
+          "type" : "string"
+        },
+        "checksum" : {
+          "description" : "The certificate file's checksum",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "customCertPathParams" : {
+          "$ref" : "#/definitions/CustomCertInfo"
+        },
+        "customHCPKICertInfo" : {
+          "$ref" : "#/definitions/HashicorpVaultConfigParams"
+        },
+        "customServerCertInfo" : {
+          "$ref" : "#/definitions/CustomServerCertInfo"
+        },
+        "customerUUID" : {
+          "description" : "Customer UUID of the backup which it belongs to",
+          "format" : "uuid",
+          "type" : "string"
+        },
+        "expiryDateIso" : {
+          "description" : "The certificate's expiry date",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "inUse" : {
+          "description" : "Indicates whether the certificate is in use. This value is `true` if the universe contains a reference to the certificate.",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "label" : {
+          "description" : "Certificate label",
+          "example" : "yb-admin-example",
+          "type" : "string"
+        },
+        "privateKey" : {
+          "description" : "Private key path",
+          "example" : "/opt/yugaware/.../example.key.pem",
+          "type" : "string"
+        },
+        "startDateIso" : {
+          "description" : "The certificate's creation date",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "type" : "string"
+        },
+        "universeDetailSubsets" : {
+          "items" : {
+            "$ref" : "#/definitions/UniverseDetailSubset"
+          },
+          "type" : "array"
+        },
+        "universeDetails" : {
+          "description" : "Associated universe details for the certificate",
+          "items" : {
+            "$ref" : "#/definitions/UniverseDetailSubset"
+          },
+          "readOnly" : true,
+          "type" : "array"
+        },
+        "uuid" : {
+          "description" : "Certificate UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "customCertPathParams", "customHCPKICertInfo", "customServerCertInfo", "universeDetailSubsets" ],
+      "type" : "object"
+    },
     "CertificateParams" : {
       "properties" : {
         "certContent" : {
@@ -13795,7 +13879,7 @@
             "description" : "successful operation",
             "schema" : {
               "items" : {
-                "$ref" : "#/definitions/CertificateInfo"
+                "$ref" : "#/definitions/CertificateInfoExt"
               },
               "type" : "array"
             }
@@ -14069,7 +14153,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/CertificateInfo"
+              "$ref" : "#/definitions/CertificateInfoExt"
             }
           }
         },

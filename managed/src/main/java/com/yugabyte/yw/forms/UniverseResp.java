@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +53,7 @@ public class UniverseResp {
   }
 
   public static List<UniverseResp> create(
-      Customer customer, List<Universe> universeList, Config config) {
+      Customer customer, Collection<Universe> universeList, Config config) {
     List<UniverseDefinitionTaskParams> universeDefinitionTaskParams =
         universeList.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
     UniverseResourceDetails.Context context =
@@ -73,7 +74,7 @@ public class UniverseResp {
         .collect(Collectors.toList());
   }
 
-  private static void fillRegions(List<Universe> universes) {
+  private static void fillRegions(Collection<Universe> universes) {
     fillClusterRegions(
         universes
             .stream()
