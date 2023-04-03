@@ -6,30 +6,34 @@ import com.google.api.client.util.Strings;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.ClientCertParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
-import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.extended.CertificateInfoExt;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -43,9 +47,9 @@ public class CertificateController extends AuthenticatedController {
 
   public static final Logger LOG = LoggerFactory.getLogger(CertificateController.class);
 
-  @Inject private RuntimeConfigFactory runtimeConfigFactory;
-
   @Inject private Config appConfig;
+
+  @Inject private RuntimeConfGetter runtimeConfGetter;
 
   @ApiOperation(value = "Restore a certificate from backup", response = UUID.class)
   @ApiImplicitParams(
@@ -114,7 +118,7 @@ public class CertificateController extends AuthenticatedController {
                 EncryptionInTransitUtil.createHashicorpCAConfig(
                     customerUUID,
                     label,
-                    runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+                    runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
                     hcVaultParams);
             auditService()
                 .createAuditEntryWithReqBody(
@@ -151,7 +155,7 @@ public class CertificateController extends AuthenticatedController {
         CertificateHelper.uploadRootCA(
             label,
             customerUUID,
-            runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+            runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
             certContent,
             keyContent,
             certType,
@@ -184,8 +188,7 @@ public class CertificateController extends AuthenticatedController {
     String certLabel = jsonData.asText();
     LOG.info("CertificateController: creating self signed certificate with label {}", certLabel);
     UUID certUUID =
-        CertificateHelper.createRootCA(
-            runtimeConfigFactory.staticApplicationConf(), certLabel, customerUUID);
+        CertificateHelper.createRootCA(runtimeConfGetter.getStaticConf(), certLabel, customerUUID);
 
     if (certUUID == null) {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Root certificate creation failed");
@@ -219,7 +222,7 @@ public class CertificateController extends AuthenticatedController {
 
     CertificateDetails result =
         CertificateHelper.createClientCertificate(
-            runtimeConfigFactory.staticApplicationConf(),
+            runtimeConfGetter.getStaticConf(),
             rootCA,
             null,
             formData.get().username,
@@ -247,7 +250,7 @@ public class CertificateController extends AuthenticatedController {
 
       if (info.getCertType() == CertConfigType.HashicorpVault) {
         EncryptionInTransitUtil.fetchLatestCAForHashicorpPKI(
-            info, runtimeConfigFactory.staticApplicationConf());
+            info, runtimeConfGetter.getStaticConf());
       }
 
       String certContents = CertificateHelper.getCertPEMFileContents(rootCA);
@@ -268,7 +271,7 @@ public class CertificateController extends AuthenticatedController {
 
   @ApiOperation(
       value = "List a customer's certificates",
-      response = CertificateInfo.class,
+      response = CertificateInfoExt.class,
       responseContainer = "List",
       nickname = "getListOfCertificate")
   @ApiResponses(
@@ -278,7 +281,7 @@ public class CertificateController extends AuthenticatedController {
           response = YBPError.class))
   public Result list(UUID customerUUID) {
     List<CertificateInfo> certs = CertificateInfo.getAll(customerUUID);
-    return PlatformResults.withData(certs);
+    return PlatformResults.withData(convert(certs));
   }
 
   @ApiOperation(
@@ -342,7 +345,7 @@ public class CertificateController extends AuthenticatedController {
       EncryptionInTransitUtil.editEITHashicorpConfig(
           info.getUuid(),
           customerUUID,
-          runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path"),
+          runtimeConfGetter.getStaticConf().getString("yb.storage.path"),
           formParams);
     }
     auditService()
@@ -352,7 +355,7 @@ public class CertificateController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Update an empty certificate", response = CertificateInfo.class)
+  @ApiOperation(value = "Update an empty certificate", response = CertificateInfoExt.class)
   public Result updateEmptyCustomCert(UUID customerUUID, UUID rootCA) {
     Form<CertificateParams> formData = formFactory.getFormDataOrBadRequest(CertificateParams.class);
     Customer.getOrBadRequest(customerUUID);
@@ -365,6 +368,27 @@ public class CertificateController extends AuthenticatedController {
             Audit.TargetType.Certificate,
             Objects.toString(certificate.getUuid(), null),
             Audit.ActionType.UpdateEmptyCustomerCertificate);
-    return PlatformResults.withData(certificate);
+    return PlatformResults.withData(convert(certificate));
+  }
+
+  private CertificateInfoExt convert(CertificateInfo certificateInfo) {
+    if (certificateInfo == null) {
+      return null;
+    }
+    return convert(Collections.singletonList(certificateInfo)).get(0);
+  }
+
+  private List<CertificateInfoExt> convert(List<CertificateInfo> certificateInfo) {
+    boolean backwardCompatibleDate =
+        runtimeConfGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
+    return certificateInfo
+        .stream()
+        .map(
+            info ->
+                new CertificateInfoExt()
+                    .setCertificateInfo(info)
+                    .setStartDate(backwardCompatibleDate ? info.getStartDate() : null)
+                    .setExpiryDate(backwardCompatibleDate ? info.getExpiryDate() : null))
+        .collect(Collectors.toList());
   }
 }

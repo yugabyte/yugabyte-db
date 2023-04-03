@@ -21,8 +21,11 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -64,18 +67,20 @@ public class RegionController extends AuthenticatedController {
       responseContainer = "List")
   // todo: include provider field in response
   public Result listAllRegions(UUID customerUUID) {
-    List<Provider> providerList = Provider.getAll(customerUUID);
+    Map<UUID, Provider> providers =
+        Provider.getAll(customerUUID)
+            .stream()
+            .collect(Collectors.toMap(Provider::getUuid, Function.identity()));
+    providers.values().forEach(CloudInfoInterface::mayBeMassageResponse);
     ArrayNode resultArray = Json.newArray();
-    for (Provider provider : providerList) {
-      CloudInfoInterface.mayBeMassageResponse(provider);
-      List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.getUuid(), 1);
-      for (Region region : regionList) {
-        ObjectNode regionNode = (ObjectNode) Json.toJson(region);
-        ObjectNode providerForRegion = (ObjectNode) Json.toJson(provider);
-        providerForRegion.remove("regions"); // to Avoid recursion
-        regionNode.set("provider", providerForRegion);
-        resultArray.add(regionNode);
-      }
+    List<Region> regionList = Region.fetchValidRegions(customerUUID, providers.keySet(), 1);
+    for (Region region : regionList) {
+      ObjectNode regionNode = (ObjectNode) Json.toJson(region);
+      Provider enhancedProvider = providers.get(region.getProvider().getUuid());
+      ObjectNode providerForRegion = (ObjectNode) Json.toJson(enhancedProvider);
+      providerForRegion.remove("regions"); // to Avoid recursion
+      regionNode.set("provider", providerForRegion);
+      resultArray.add(regionNode);
     }
     return ok(resultArray);
   }
