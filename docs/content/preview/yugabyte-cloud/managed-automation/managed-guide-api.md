@@ -1,7 +1,7 @@
 ---
 title: Guide for ybm API automation
 headerTitle: "Guide: Create clusters using REST API"
-linkTitle: "Guide: ybm API"
+linkTitle: "Guide: REST API"
 description: Tutorial for using YugabyteDB Managed REST API to create clusters.
 headcontent: Working examples for automation tools
 menu:
@@ -35,9 +35,11 @@ Note that you can only create one Sandbox cluster per account.
 
 ## Create a sandbox cluster
 
+To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters-free/) cluster, you'll first set up environment variables for the YugabyteDB Managed database version to use, and an IP allow list.
+
 ### Software track
 
-There are two software tracks, Preview to test new features, with odd release numbers, and Stable, for production.
+YugabyteDB Managed has [two software tracks](../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview to test new features, with odd release numbers, and Stable, for production.
 
 To get the ID for the Preview track:
 
@@ -57,7 +59,7 @@ echo ; set | grep ^YBM_ | cut -c1-80
 
 ### IP allow list
 
-To access the cluster from the public internet you need to add your public IP to the IP Allow List. The following creates an allow list with the address obtained from <http://ifconfig.me>, and puts the ID of the allow list into an environment variable:
+To access the cluster from your computer, you need to add your public IP to an IP allow list. The following creates an allow list with the address obtained from <http://ifconfig.me>, and puts the ID of the allow list into an environment variable:
 
 ```sh
 YBM_ALLOW_LIST="home"
@@ -87,9 +89,20 @@ echo ; set | grep ^YBM_ | cut -c1-80
 
 ### Deploy
 
-Now, you have all the necessary as environment variables.
+Now you have all the information you need to deploy a cluster as environment variables:
 
-The following defines a name for the cluster and a password for the admin user. Then it calls the cluster creation API with one node in Ireland AWS region eu-west-1. The `num_cores`, `memory_mb` and `disk_size_gb` settings are those of the free tier on AWS:
+```output.sh
+YBM_ACCOUNT_ID=a1fcd466-f30a-4074-b042-[...]
+YBM_ALLOW_LIST=home
+YBM_ALLOW_LIST_ID=0cf48f5f-4dfe-4d71-a506-d6415fed6f8a
+YBM_API_KEY=eyJhbGc[...]
+YBM_CLUSTER_ID=ca209cb4-3714-4968-8800-[...]
+YBM_PROJECT_ID=cd15fb18-3117-47d2-b705-[...]
+YBM_SOFTWARE=Preview
+YBM_SOFTWARE_TRACK_ID=250ef2a0-0555-4e3a-9418-00e6bdfe1cb0
+```
+
+The following defines a name for the cluster and a password for the admin user. Then it calls the cluster creation API with one node in Ireland AWS region eu-west-1; the `num_cores`, `memory_mb`, and `disk_size_gb` settings are those of the free tier on AWS:
 
 ```sh
 YBM_CLUSTER="my-free-yugabytedb"
@@ -161,7 +174,7 @@ curl -s --request POST \
 
 ### List the clusters
 
-Enter the following to check the state from the list of clusters:
+Enter the following to check the status from the list of clusters:
 
 ```sh
 curl -s --request GET \
@@ -171,7 +184,11 @@ curl -s --request GET \
   | jq -r '.data[] | .info.id +" "+ .spec.name +": "+ .info.state'
 ```
 
-To obtain the ID of the cluster currently being deployed:
+```output
+ca209cb4-3714-4968-8800-4db1b551744a my-free-yugabytedb: BOOTSTRAPPING
+```
+
+Set an environment variable for the ID of the cluster currently being deployed:
 
 ```sh
 YBM_CLUSTER_ID=$(
@@ -185,18 +202,18 @@ curl -s --request GET \
 echo ; set | grep ^YBM_ | cut -c1-80
 ```
 
-I can wait in an automated way:
+To use this information to check on progress, enter the following:
 
 ```sh
 until curl -s --request GET   --url https://cloud.yugabyte.com/api/public/v1/accounts/$YBM_ACCOUNT_ID/projects/$YBM_PROJECT_ID/clusters/$YBM_CLUSTER_ID   --header "Authorization: Bearer $YBM_API_KEY" |
  grep '"state":"ACTIVE"' ; do sleep 1 ; done
 ```
 
-This loop stops when the cluster is active
+This loop stops when the cluster is active.
 
 ### Connect to the database
 
-To connect to the default database yugabyte with the admin user you set, get the host address of the cluster from the list of endpoints:
+To connect to the default database `yugabyte` with the admin user you set, get the host address of the cluster from the list of endpoints:
 
 ```sh
 PGDATABASE=yugabyte
@@ -217,7 +234,7 @@ echo ; set | grep ^PG
 export PGDATABASE PGUSER PGHOST PGPORT PGPASSWORD PGSSLMODE
 ```
 
-You can now use any PostgreSQL tool or application to connect to the database.
+You can now use any PostgreSQL tool or application to [connect to the database](../../cloud-connect/connect-client-shell/).
 
 ### Terminate
 
@@ -229,9 +246,9 @@ curl -s --request POST \
   --header "Authorization: Bearer $YBM_API_KEY" --data ''
 ```
 
-(The Sandbox is free, and can't be paused.)
+(Note that the Sandbox is free, and can't be paused.)
 
-If you don't need it anymore, you can terminate the service:
+If you don't need a cluster anymore, you can terminate the service:
 
 ```sh
 curl -s --request DELETE \
