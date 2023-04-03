@@ -1762,6 +1762,11 @@
           "description" : "Alter load balancer state",
           "type" : "boolean"
         },
+        "backupCategory" : {
+          "description" : "Overrides whether you want to use YBC based or script based backup.",
+          "enum" : [ "YB_BACKUP_SCRIPT", "YB_CONTROLLER" ],
+          "type" : "string"
+        },
         "backupType" : {
           "description" : "Backup type",
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
