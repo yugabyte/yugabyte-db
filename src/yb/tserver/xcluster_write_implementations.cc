@@ -37,12 +37,12 @@
 
 #include "yb/common/hybrid_time.h"
 
-DEFINE_RUNTIME_int32(cdc_max_apply_batch_num_records, 0,
-    "Max CDC write request batch num records. If set to 0, there is no max num records, which"
-    " means batches will be limited only by size.");
+// Below batch related configs are deprecated because splitting a single producer side
+// batch into multiple consumer side batches can cause overwrite of intents and lead to rocksdb
+// corruption.
+DEPRECATE_FLAG(int32, cdc_max_apply_batch_num_records, "4_2023");
 
-DEFINE_RUNTIME_uint32(cdc_max_apply_batch_size_bytes, 0,
-    "Max CDC write request batch size in kb. If 0, default to no max batch size.");
+DEPRECATE_FLAG(uint32, cdc_max_apply_batch_size_bytes, "4_2023");
 
 DEFINE_test_flag(
     bool, xcluster_write_hybrid_time, false,
@@ -93,9 +93,8 @@ Status UpdatePackedRow(const Slice& key,
 Status CombineExternalIntents(
     const tablet::TransactionStatePB& transaction_state,
     const google::protobuf::RepeatedPtrField<cdc::KeyValuePairPB>& pairs,
-    google::protobuf::RepeatedPtrField<docdb::KeyValuePairPB>* out,
+    docdb::KeyValuePairPB* out,
     const cdc::XClusterSchemaVersionMap& schema_versions_map) {
-
   class Provider : public docdb::ExternalIntentsProvider {
    public:
     Provider(
@@ -156,14 +155,15 @@ Status CombineExternalIntents(
   SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
   auto status_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
-  Provider provider(status_tablet, &pairs, schema_versions_map, out->Add());
+  Provider provider(status_tablet, &pairs, schema_versions_map, out);
   docdb::CombineExternalIntents(txn_id, &provider);
   return provider.GetOutcome();
 }
 
-Status AddRecord(const ProcessRecordInfo& process_record_info,
-                 const cdc::CDCRecordPB& record,
-                 docdb::KeyValueWriteBatchPB* write_batch) {
+Status AddRecord(
+    const ProcessRecordInfo& process_record_info,
+    const cdc::CDCRecordPB& record,
+    docdb::KeyValueWriteBatchPB* write_batch) {
   if (record.operation() == cdc::CDCRecordPB::APPLY) {
     if (process_record_info.enable_replicate_transaction_status_table) {
       // If we are replicating the transaction status table, we don't need to process individual
@@ -179,10 +179,11 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
 
   if (!process_record_info.enable_replicate_transaction_status_table &&
       record.has_transaction_state()) {
+    auto* write_pair = write_batch->mutable_write_pairs()->Add();
     return CombineExternalIntents(
         record.transaction_state(),
         record.changes(),
-        write_batch->mutable_write_pairs(),
+        write_pair,
         process_record_info.schema_versions_map);
   }
 
@@ -194,8 +195,8 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
     Slice key(kv_pair.key());
     Slice value(kv_pair.value().binary_value());
     ValueBuffer updated_value;
-    RETURN_NOT_OK(UpdatePackedRow(
-        key, value, process_record_info.schema_versions_map, &updated_value));
+    RETURN_NOT_OK(
+        UpdatePackedRow(key, value, process_record_info.schema_versions_map, &updated_value));
 
     const Slice& updated_value_slice = updated_value.AsSlice();
     write_pair->set_value(updated_value_slice.cdata(), updated_value_slice.size());
@@ -214,63 +215,51 @@ Status AddRecord(const ProcessRecordInfo& process_record_info,
       metadata.set_isolation(IsolationLevel::SNAPSHOT_ISOLATION);
       *write_pair->mutable_transaction() = metadata;
       write_batch->set_enable_replicate_transaction_status_table(
-        true /* enable_replicate_transaction_status_table */);
+          true /* enable_replicate_transaction_status_table */);
     }
   }
 
   return Status::OK();
 }
 
-// The BatchedWriteImplementation strategy batches together multiple records per WriteRequestPB.
-// Max number of records in a request is cdc_max_apply_batch_num_records, and max size of a request
-// is cdc_max_apply_batch_size_kb. Batches are not sent by opid order, since a GetChangesResponse
-// can contain interleaved records to multiple tablets. Rather, we send batches to each tablet
-// in order for that tablet, before moving on to the next tablet.
-class BatchedWriteImplementation : public XClusterWriteInterface {
-  ~BatchedWriteImplementation() = default;
+// XClusterWriteImplementation creates a WriteRequest for each tablet records present within a
+// single producer batch.
+class XClusterWriteImplementation : public XClusterWriteInterface {
+  ~XClusterWriteImplementation() = default;
 
   Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) override {
     const auto& tablet_id = process_record_info.tablet_id;
+    docdb::KeyValueWriteBatchPB* write_batch = nullptr;
     // Finally, handle records to be applied to both regular and intents db.
     auto it = records_.find(tablet_id);
     if (it == records_.end()) {
-      it = records_.emplace(tablet_id, std::deque<std::unique_ptr<WriteRequestPB>>()).first;
+      // Create a write request for tablet.
+      auto write_request = std::make_unique<WriteRequestPB>();
+      write_request->set_tablet_id(tablet_id);
+      write_request->set_external_hybrid_time(record.time());
+      write_batch = write_request->mutable_write_batch();
+
+      records_.emplace(tablet_id, std::move(write_request));
+    } else {
+      write_batch = it->second->mutable_write_batch();
     }
 
-    auto& queue = it->second;
-
-    auto max_batch_records = FLAGS_cdc_max_apply_batch_num_records != 0 ?
-        FLAGS_cdc_max_apply_batch_num_records : std::numeric_limits<uint32_t>::max();
-    auto max_batch_size = GetAtomicFlag(&FLAGS_cdc_max_apply_batch_size_bytes);
-
-    if (queue.empty() ||
-        implicit_cast<size_t>(queue.back()->write_batch().write_pairs_size()) >=
-            max_batch_records ||
-        (max_batch_size > 0 && queue.back()->ByteSizeLong() >= max_batch_size)) {
-      // Create a new batch.
-      auto req = std::make_unique<WriteRequestPB>();
-      req->set_tablet_id(tablet_id);
-      req->set_external_hybrid_time(record.time());
-      queue.push_back(std::move(req));
-    }
-    auto* write_request = queue.back().get();
-
-    return AddRecord(process_record_info, record, write_request->mutable_write_batch());
+    return AddRecord(process_record_info, record, write_batch);
   }
 
   Status ProcessCreateRecord(
       const std::string& status_tablet, const cdc::CDCRecordPB& record) override {
-    SCHECK_EQ(record.operation(), cdc::CDCRecordPB::TRANSACTION_CREATED, IllegalState,
-              Format("Invalid operation type $0", record.operation()));
-    transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
-        .transaction_id = VERIFY_RESULT(
-            FullyDecodeTransactionId(record.transaction_state().transaction_id())),
+    SCHECK_EQ(
+        record.operation(), cdc::CDCRecordPB::TRANSACTION_CREATED, IllegalState,
+        Format("Invalid operation type $0", record.operation()));
+    transaction_metadatas_.push_back(client::ExternalTransactionMetadata{
+        .transaction_id =
+            VERIFY_RESULT(FullyDecodeTransactionId(record.transaction_state().transaction_id())),
         .status_tablet = status_tablet,
         .operation_type = client::ExternalTransactionMetadata::OperationType::CREATE,
         .hybrid_time = record.time(),
-        .involved_tablet_ids = {}
-    });
+        .involved_tablet_ids = {}});
     return Status::OK();
   }
 
@@ -278,29 +267,25 @@ class BatchedWriteImplementation : public XClusterWriteInterface {
       const std::string& status_tablet,
       const std::vector<std::string>& involved_target_tablet_ids,
       const cdc::CDCRecordPB& record) override {
-    SCHECK_EQ(record.operation(), cdc::CDCRecordPB::TRANSACTION_COMMITTED, IllegalState,
-              Format("Invalid operation type $0", record.operation()));
-    transaction_metadatas_.push_back(client::ExternalTransactionMetadata {
-        .transaction_id = VERIFY_RESULT(
-            FullyDecodeTransactionId(record.transaction_state().transaction_id())),
+    SCHECK_EQ(
+        record.operation(), cdc::CDCRecordPB::TRANSACTION_COMMITTED, IllegalState,
+        Format("Invalid operation type $0", record.operation()));
+    transaction_metadatas_.push_back(client::ExternalTransactionMetadata{
+        .transaction_id =
+            VERIFY_RESULT(FullyDecodeTransactionId(record.transaction_state().transaction_id())),
         .status_tablet = status_tablet,
         .operation_type = client::ExternalTransactionMetadata::OperationType::COMMIT,
         .hybrid_time = record.time(),
-        .involved_tablet_ids = involved_target_tablet_ids
-    });
+        .involved_tablet_ids = involved_target_tablet_ids});
     return Status::OK();
   }
 
-  std::unique_ptr<WriteRequestPB> GetNextWriteRequest() override {
+  std::unique_ptr<WriteRequestPB> FetchNextRequest() override {
     if (records_.empty()) {
       return nullptr;
     }
-    auto& queue = records_.begin()->second;
-    auto next_req = std::move(queue.front());
-    queue.pop_front();
-    if (queue.empty()) {
-      records_.erase(next_req->tablet_id());
-    }
+    auto next_req = std::move(records_.begin()->second);
+    records_.erase(next_req->tablet_id());
     return next_req;
   }
 
@@ -311,12 +296,12 @@ class BatchedWriteImplementation : public XClusterWriteInterface {
  private:
   // Contains key value pairs to apply to regular and intents db. The key of this map is the
   // tablet to send to.
-  std::map<TabletId, std::deque<std::unique_ptr<WriteRequestPB>>> records_;
+  std::unordered_map<TabletId, std::unique_ptr<WriteRequestPB>> records_;
   std::vector<client::ExternalTransactionMetadata> transaction_metadatas_;
 };
 
 void ResetWriteInterface(std::unique_ptr<XClusterWriteInterface>* write_strategy) {
-  write_strategy->reset(new BatchedWriteImplementation());
+  write_strategy->reset(new XClusterWriteImplementation());
 }
 
 } // namespace tserver
