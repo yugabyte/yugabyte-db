@@ -54,7 +54,7 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[900]
   },
   tableContainer: {
-    border: `1px solid ${theme.palette.ybacolors.ybGrayHover}`,
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     overflow: 'auto',
     maxHeight: '500px'
   },
@@ -295,11 +295,11 @@ const CustomVariableHoverMenu: FC<CustomVariableHoverMenuProps> = ({
         className={clsx(commonStyles.menuStyles, commonStyles.menuNoBorder)}
         anchorOrigin={{
           vertical: 'bottom',
-          horizontal: 'center'
+          horizontal: 'left',
         }}
         transformOrigin={{
           vertical: 'top',
-          horizontal: 'center'
+          horizontal: 'left',
         }}
       >
         {variable.possibleValues.map((v) => (

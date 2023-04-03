@@ -14,7 +14,7 @@ import { makeStyles } from '@material-ui/core';
  */
 export const useCommonStyles = makeStyles((theme) => ({
   defaultBorder: {
-    border: `1px solid ${theme.palette.ybacolors.ybGrayHover}`
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
   },
   helpText: {
     fontFamily: 'Inter',
@@ -70,5 +70,11 @@ export const useCommonStyles = makeStyles((theme) => ({
   subjectEditor: {
     height: '50px',
     padding: `0 ${theme.spacing(2)}px`
+  },
+  noPadding: {
+    padding: '0 !important'
+  },
+  noOverflow: {
+    overflow: 'hidden'
   }
 }));

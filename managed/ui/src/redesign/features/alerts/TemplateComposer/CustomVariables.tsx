@@ -39,11 +39,11 @@ type CustomVariablesEditorProps = {};
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    padding: theme.spacing(3.2)
+    padding: theme.spacing(2.5)
   },
   variableCards: {
     borderRadius: theme.spacing(1),
-    border: `1px solid ${theme.palette.ybacolors.ybGrayHover}`,
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     background: theme.palette.common.white,
     padding: theme.spacing(2),
     width: '360px',
@@ -92,11 +92,18 @@ const useStyles = makeStyles((theme) => ({
     width: '100%'
   },
   moreOptionsButton: {
-    width: '30px !important',
+    width: '34px !important',
     height: '30px',
     border: '1px solid #C8C8C8',
-    borderRadius: theme.spacing(1),
-    color: '#3E66FB'
+    borderRadius: theme.spacing(1)
+  },
+  createCustomVariableBut: {
+    height: '30px',
+    "&>span.MuiButton-label": {
+      fontWeight: 500,
+      fontSize: '12px',
+      color: theme.palette.ybacolors.ybDarkGray
+    }
   }
 }));
 
@@ -144,6 +151,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
       variant="secondary"
       startIcon={<Add />}
       onClick={() => setShowCreateCustomVariableModal(true)}
+      className={classes.createCustomVariableBut}
     >
       {t('alertCustomTemplates.customVariables.createNewVariableButton')}
     </YBButton>
@@ -164,7 +172,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
   const customVariableCard = (variable: CustomVariable, index: number) => (
     <Grid item key={index} className={clsx(commonStyles.defaultBorder, classes.customVariableCard)}>
       <Grid item>
-        <Typography variant="subtitle1">
+        <Typography variant="body2">
           {t('alertCustomTemplates.customVariables.variableText')}: {variable.name}
         </Typography>
       </Grid>
@@ -181,13 +189,13 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
                 setShowCreateCustomVariableModal(true);
               }
             },
-            {
-              icon: <Info />,
-              text: t(
-                'alertCustomTemplates.customVariables.customVariableContextMenu.variableDetails'
-              ),
-              callback: () => {}
-            },
+            // {
+            //   icon: <Info />,
+            //   text: t(
+            //     'alertCustomTemplates.customVariables.customVariableContextMenu.variableDetails'
+            //   ),
+            //   callback: () => { }
+            // },
             {
               icon: <Delete />,
               text: t(
@@ -309,7 +317,7 @@ const MoreOptionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions }) => {
         className={classes.menuStyles}
         anchorOrigin={{
           vertical: 'bottom',
-          horizontal: 'left'
+          horizontal: 'right'
         }}
         transformOrigin={{
           vertical: 'top',
