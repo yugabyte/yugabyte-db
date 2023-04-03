@@ -30,7 +30,7 @@ type: docs
 
 Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues. 
 
-If you experience difficulties while troubleshooting, contact [Yugabyte Support](https://support.yugabyte.com).
+If you experience difficulties while troubleshooting, contact {{% support-platform %}}.
 
 For more information, see the following:
 
