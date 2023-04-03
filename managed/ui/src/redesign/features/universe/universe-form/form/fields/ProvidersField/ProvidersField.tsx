@@ -23,10 +23,21 @@ export const ProvidersField = ({
   disabled,
   filterByProvider
 }: ProvidersFieldProps): ReactElement => {
-  const { control, setValue } = useFormContext<UniverseFormData>();
+  const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const classes = useFormFieldStyles();
   const { t } = useTranslation();
-  const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList);
+  const { data, isLoading } = useQuery(QUERY_KEY.getProvidersList, api.getProvidersList, {
+    onSuccess: (providers) => {
+      // Pre-select provider by default
+      if (_.isEmpty(getValues(PROVIDER_FIELD)) && providers.length >= 1) {
+        setValue(
+          PROVIDER_FIELD,
+          { code: providers[0]?.code, uuid: providers[0]?.uuid },
+          { shouldValidate: true }
+        );
+      }
+    }
+  });
 
   let providersList: Provider[] = [];
   if (!isLoading && data) {
