@@ -1,9 +1,7 @@
-import React, { FC, useEffect, useMemo, useRef, useState } from 'react';
+import React, { FC, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, makeStyles, MenuItem, Paper, Typography } from '@material-ui/core';
-import { YBButton, YBSelect, YBTable } from '@app/components';
-import { useGetClusterNodesQuery } from '@app/api/src';
-import axios from 'axios';
+import { Box, makeStyles, Paper, Typography } from '@material-ui/core';
+import { YBTable } from '@app/components';
 
 const useStyles = makeStyles((theme) => ({
   paperContainer: {

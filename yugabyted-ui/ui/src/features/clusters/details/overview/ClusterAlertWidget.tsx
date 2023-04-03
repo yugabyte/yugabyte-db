@@ -1,11 +1,11 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Box, Grid, Link, makeStyles, Typography } from '@material-ui/core';
+import { Box, Grid, /* Link, */ makeStyles, Typography } from '@material-ui/core';
 import { ChevronRight } from '@material-ui/icons';
 import clsx from 'clsx';
 import { formatDistance } from 'date-fns';
 import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
-import { Link as RouterLink } from 'react-router-dom';
+/* import { Link as RouterLink } from 'react-router-dom'; */
 
 const useStyles = makeStyles((theme) => ({
   divider: {
@@ -65,7 +65,7 @@ const useStyles = makeStyles((theme) => ({
 interface ClusterAlertWidgetProps {
 }
 
-const date = new Date();
+// const date = new Date();
 
 // Sample alert for now
 const alerts: any[] = [

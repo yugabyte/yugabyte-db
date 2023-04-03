@@ -1,7 +1,7 @@
 import React, { FC, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, MenuItem, Paper, Typography } from '@material-ui/core';
-import { YBButton, YBSelect, YBTable } from '@app/components';
+import { YBSelect, YBTable } from '@app/components';
 import { useGetClusterNodesQuery } from '@app/api/src';
 import axios from 'axios';
 
@@ -43,7 +43,7 @@ interface GFlagsOverviewProps {
   toggleDrift?: () => void,
 }
 
-export const GFlagsOverview: FC<GFlagsOverviewProps> = ({ showDrift, toggleDrift }) => {
+export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDrift } */) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -201,9 +201,9 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = ({ showDrift, toggleDrift
             );
           })}
         </YBSelect>
-        <YBButton onClick={toggleDrift}>
+        {/* <YBButton onClick={toggleDrift}>
           {!showDrift ? t('clusterDetail.settings.gflags.showDrift') : t('clusterDetail.settings.gflags.hideDrift')}
-        </YBButton>
+        </YBButton> */}
       </Box>
 
       <Typography variant="h5" className={classes.subHeading}>

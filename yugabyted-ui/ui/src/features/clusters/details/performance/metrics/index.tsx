@@ -23,11 +23,9 @@ import { useChartConfig } from '@app/features/clusters/details/overview/ChartCon
 // import { PerformanceClusterInfo } from './PerformanceClusterInfo';
 // import type { ClusterResponse } from '@app/api/src/models/ClusterResponse';
 
-// // Icons
+// Icons
 // import EditIcon from '@app/assets/edit.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
-import { VCpuUsageChartV } from './VCpuUsageChartV';
-import { VCpuUsageResponsiveSankey } from '../../overview/VCpuUsageResponsiveSankey';
 import { VCpuUsagePanel } from './VCpuUsagePanel';
 
 const useStyles = makeStyles((theme) => ({
