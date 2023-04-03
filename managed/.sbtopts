@@ -3,3 +3,4 @@
 -J-Xmx2g
 -J-XX:MaxMetaspaceSize=700m
 -J-XX:MetaspaceSize=200m
+-Dlogback.configurationFile=logback-sbt.xml

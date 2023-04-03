@@ -136,7 +136,7 @@ public class AccessManager extends DevopsBase {
 
   public AccessKey uploadKeyFile(
       UUID regionUUID,
-      File uploadedFile,
+      Path uploadedFile,
       String keyCode,
       KeyType keyType,
       String sshUser,
@@ -165,7 +165,7 @@ public class AccessManager extends DevopsBase {
   // This method would upload the provided key file to the provider key file path.
   public AccessKey uploadKeyFile(
       UUID regionUUID,
-      File uploadedFile,
+      Path uploadedFile,
       String keyCode,
       KeyType keyType,
       String sshUser,
@@ -187,18 +187,17 @@ public class AccessManager extends DevopsBase {
       // This means the key must have been created before, so nothing to do.
       return accessKey;
     }
-    Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(keyFilePath, keyCode + keyType.getExtension());
-    if (!Files.exists(source)) {
+    if (!Files.exists(uploadedFile)) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Key file " + source.getFileName() + " not found.");
+          INTERNAL_SERVER_ERROR, "Key file " + uploadedFile.getFileName() + " not found.");
     }
     if (Files.exists(destination)) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "File " + destination.getFileName() + " already exists.");
     }
 
-    Files.move(source, destination);
+    Files.move(uploadedFile, destination);
     Set<PosixFilePermission> permissions = PosixFilePermissions.fromString(PEM_PERMISSIONS);
     if (keyType == AccessManager.KeyType.PUBLIC) {
       permissions = PosixFilePermissions.fromString(PUB_PERMISSIONS);
@@ -265,7 +264,7 @@ public class AccessManager extends DevopsBase {
       key =
           uploadKeyFile(
               regionUUID,
-              tempFile.toFile(),
+              tempFile.toAbsolutePath(),
               keyCode,
               keyType,
               sshUser,

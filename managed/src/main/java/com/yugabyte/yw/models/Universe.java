@@ -434,9 +434,6 @@ public class Universe extends Model {
   public static void delete(UUID universeUUID) {
     // First get the universe.
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    // Make sure this universe has been locked.
-    // TODO: fixme. Useless check. java asserts are turned off by default in production code!!!
-    assert !universe.universeDetails.updateInProgress;
     // Delete the universe.
     LOG.info("Deleting universe " + universe.getName() + ":" + universeUUID);
     universe.delete();

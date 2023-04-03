@@ -1,14 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import java.sql.Connection
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.api.libs.json._
 
-class V49__Update_Universe_Details_Json extends JdbcMigration {
-  override def migrate(connection: Connection): Unit = {
+class V49__Update_Universe_Details_Json extends BaseJavaMigration {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT universe_uuid, universe_details_json " +
       "FROM universe"
 

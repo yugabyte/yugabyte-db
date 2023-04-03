@@ -22,6 +22,7 @@ import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.OK;
 import static play.mvc.Http.Status.UNAUTHORIZED;
 import static play.test.Helpers.contentAsString;
+import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.common.metrics.MetricService;
@@ -151,7 +152,8 @@ public class AssertHelper {
 
   /** If using @Transactional you will have to use assertPlatformExceptionInTransaction */
   public static Result assertPlatformException(ThrowingRunnable runnable) {
-    return assertThrows(PlatformServiceException.class, runnable).buildResult();
+    return assertThrows(PlatformServiceException.class, runnable)
+        .buildResult(fakeRequest().build());
   }
 
   public static Metric assertMetricValue(

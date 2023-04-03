@@ -36,6 +36,7 @@ import org.yb.client.SnapshotScheduleInfo;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -67,7 +68,11 @@ public class PitrController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.CreatePitrConfigParams",
           required = true))
   public Result createPitrConfig(
-      UUID customerUUID, UUID universeUUID, String tableType, String keyspaceName) {
+      UUID customerUUID,
+      UUID universeUUID,
+      String tableType,
+      String keyspaceName,
+      Http.Request request) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -83,7 +88,7 @@ public class PitrController extends AuthenticatedController {
 
     checkCompatibleYbVersion(
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-    CreatePitrConfigParams taskParams = parseJsonAndValidate(CreatePitrConfigParams.class);
+    CreatePitrConfigParams taskParams = parseJsonAndValidate(request, CreatePitrConfigParams.class);
 
     if (taskParams.retentionPeriodInSeconds <= 0L) {
       throw new PlatformServiceException(
@@ -116,7 +121,7 @@ public class PitrController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.CreatePitrConfig,
@@ -196,7 +201,7 @@ public class PitrController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RestoreSnapshotScheduleParams",
           required = true))
-  public Result restore(UUID customerUUID, UUID universeUUID) {
+  public Result restore(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
 
@@ -211,7 +216,7 @@ public class PitrController extends AuthenticatedController {
     }
 
     RestoreSnapshotScheduleParams taskParams =
-        parseJsonAndValidate(RestoreSnapshotScheduleParams.class);
+        parseJsonAndValidate(request, RestoreSnapshotScheduleParams.class);
     if (taskParams.restoreTimeInMillis <= 0L
         || taskParams.restoreTimeInMillis > System.currentTimeMillis()) {
       throw new PlatformServiceException(BAD_REQUEST, "Time to restore specified is incorrect");
@@ -249,7 +254,7 @@ public class PitrController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.RestoreSnapshotSchedule,
@@ -262,7 +267,8 @@ public class PitrController extends AuthenticatedController {
       value = "Delete pitr config on a universe",
       nickname = "deletePitrConfig",
       response = YBPSuccess.class)
-  public Result deletePitrConfig(UUID customerUUID, UUID universeUUID, UUID pitrConfigUUID) {
+  public Result deletePitrConfig(
+      UUID customerUUID, UUID universeUUID, UUID pitrConfigUUID, Http.Request request) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -292,7 +298,7 @@ public class PitrController extends AuthenticatedController {
         universe.getName());
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.DeletePitrConfig,

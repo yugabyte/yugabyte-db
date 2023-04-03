@@ -18,7 +18,6 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
-import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -65,7 +64,6 @@ import org.apache.commons.collections4.Predicate;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
 
 @ApiModel(
     description =
@@ -873,15 +871,9 @@ public class Backup extends Model {
   }
 
   public static BackupPagedApiResponse createResponse(BackupPagedResponse response) {
-
-    CustomerConfigService customerConfigService =
-        StaticInjectorHolder.injector().instanceOf(CustomerConfigService.class);
     List<Backup> backups = response.getEntities();
     List<BackupResp> backupList =
-        backups
-            .parallelStream()
-            .map(b -> BackupUtil.toBackupResp(b, customerConfigService))
-            .collect(Collectors.toList());
+        backups.stream().map(BackupUtil::toBackupResp).collect(Collectors.toList());
     return response.setData(backupList, new BackupPagedApiResponse());
   }
 

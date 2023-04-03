@@ -252,8 +252,7 @@ public class BackupUtil {
     return backupSize;
   }
 
-  public static BackupResp toBackupResp(
-      Backup backup, CustomerConfigService customerConfigService) {
+  public static BackupResp toBackupResp(Backup backup) {
 
     Boolean isStorageConfigPresent = checkIfStorageConfigExists(backup);
     Boolean isUniversePresent = checkIfUniverseExists(backup);

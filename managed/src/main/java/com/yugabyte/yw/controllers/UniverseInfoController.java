@@ -51,6 +51,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -186,7 +187,7 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Reset slow queries for a universe",
       nickname = "resetSlowQueries",
       response = Object.class)
-  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID) {
+  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID, Http.Request request) {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -195,8 +196,8 @@ public class UniverseInfoController extends AuthenticatedController {
           BAD_REQUEST, "Can't reset slow queries for a paused universe");
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.ResetSlowQueries);
@@ -279,8 +280,9 @@ public class UniverseInfoController extends AuthenticatedController {
           File file =
               universeInfoHandler.downloadNodeLogs(customer, universe, node, targetFile).toFile();
           InputStream is = FileUtils.getInputStreamOrFail(file, true /* deleteOnClose */);
-          response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());
-          return ok(is).as("application/x-compressed");
+          return ok(is)
+              .as("application/x-compressed")
+              .withHeader("Content-Disposition", "attachment; filename=" + file.getName());
         },
         ec.current());
   }

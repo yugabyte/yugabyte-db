@@ -1,17 +1,16 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
 import java.sql.Connection
 import java.util.UUID
-
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.yugabyte.yw.common.kms.util.{AwsEARServiceUtil, EncryptionAtRestUtil, KeyProvider}
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 import play.api.libs.json._
 
-class V37__Universe_Details_EncryptionAtRestConfig_Update extends JdbcMigration {
+class V37__Universe_Details_EncryptionAtRestConfig_Update extends BaseJavaMigration {
     /**
      * Utility method to recursively apply a modification function to a json value and all its
      * elements. Modification function is applied top-down (i.e. applied to parents before children).
@@ -141,7 +140,8 @@ class V37__Universe_Details_EncryptionAtRestConfig_Update extends JdbcMigration 
       }
     }
 
-    override def migrate(connection: Connection): Unit = {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
       val encryptedSelectStmt = "SELECT name, universe_uuid, customer_id, universe_details_json " +
         "FROM universe WHERE universe_uuid IN (SELECT DISTINCT target_uuid FROM kms_history " +
         "WHERE type = 'UNIVERSE_KEY')"

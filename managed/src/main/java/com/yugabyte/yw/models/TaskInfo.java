@@ -20,7 +20,6 @@ import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
@@ -227,7 +226,7 @@ public class TaskInfo extends Model {
 
   // Returns  partial object
   public List<TaskInfo> getSubTasks() {
-    Query<TaskInfo> subTaskQuery =
+    ExpressionList<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
             .select(GET_SUBTASKS_FG)

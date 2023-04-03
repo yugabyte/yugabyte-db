@@ -10,6 +10,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.Authorization;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -26,11 +27,14 @@ public class YbcController extends AuthenticatedController {
    * @param universeUUID
    * @return Result with disable ybc operation with task id
    */
-  public Result disable(UUID customerUUID, UUID universeUUID) {
+  public Result disable(UUID customerUUID, UUID universeUUID, Http.Request request) {
     UUID taskUUID = ybcHandler.disable(customerUUID, universeUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Universe, universeUUID.toString(), Audit.ActionType.DisableYbc);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.DisableYbc);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -42,11 +46,15 @@ public class YbcController extends AuthenticatedController {
    * @param ybcVersion
    * @return Result with upgrade ybc operation with task id
    */
-  public Result upgrade(UUID customerUUID, UUID universeUUID, String ybcVersion) {
+  public Result upgrade(
+      UUID customerUUID, UUID universeUUID, String ybcVersion, Http.Request request) {
     UUID taskUUID = ybcHandler.upgrade(customerUUID, universeUUID, ybcVersion);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Universe, universeUUID.toString(), Audit.ActionType.UpgradeYbc);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.UpgradeYbc);
     return new YBPTask(taskUUID).asResult();
   }
 
@@ -58,11 +66,15 @@ public class YbcController extends AuthenticatedController {
    * @param ybcVersion
    * @return Result with install ybc operation with task id
    */
-  public Result install(UUID customerUUID, UUID universeUUID, String ybcVersion) {
+  public Result install(
+      UUID customerUUID, UUID universeUUID, String ybcVersion, Http.Request request) {
     UUID taskUUID = ybcHandler.install(customerUUID, universeUUID, ybcVersion);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Universe, universeUUID.toString(), Audit.ActionType.InstallYbc);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.InstallYbc);
     return new YBPTask(taskUUID).asResult();
   }
 }
