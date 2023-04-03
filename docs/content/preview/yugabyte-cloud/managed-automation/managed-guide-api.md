@@ -14,6 +14,8 @@ type: docs
 
 The following tutorial shows how you can use the REST API to create clusters in YugabyteDB Managed.
 
+For documentation and Postman collection, refer to [YugabyteDB Managed REST API](https://api-docs.yugabyte.com/docs/managed-apis/9u5yqnccbe8lk-yugabyte-db-managed-rest-api).
+
 ## Prerequisites
 
 This guide assumes you have already done the following:
@@ -173,9 +175,11 @@ curl -s --request POST \
 }'
 ```
 
+The cluster takes five to ten minutes to deploy.
+
 ### List the clusters
 
-Enter the following to check the status from the list of clusters:
+Enter the following to check the progress from the list of clusters:
 
 ```sh
 curl -s --request GET \
@@ -203,14 +207,15 @@ curl -s --request GET \
 echo ; set | grep ^YBM_ | cut -c1-80
 ```
 
-To use this information to check on progress, enter the following:
+You can use the cluster ID to monitor the progress of your cluster deployment. Enter the following:
 
 ```sh
-until curl -s --request GET   --url https://cloud.yugabyte.com/api/public/v1/accounts/$YBM_ACCOUNT_ID/projects/$YBM_PROJECT_ID/clusters/$YBM_CLUSTER_ID   --header "Authorization: Bearer $YBM_API_KEY" |
+until curl -s --request GET \
+  --url https://cloud.yugabyte.com/api/public/v1/accounts/$YBM_ACCOUNT_ID/projects/$YBM_PROJECT_ID/clusters/$YBM_CLUSTER_ID   --header "Authorization: Bearer $YBM_API_KEY" | \
  grep '"state":"ACTIVE"' ; do sleep 1 ; done
 ```
 
-This loop stops when the cluster is active.
+This loop stops when the cluster is ready.
 
 ### Connect to the database
 

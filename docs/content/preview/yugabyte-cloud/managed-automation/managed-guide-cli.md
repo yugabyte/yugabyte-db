@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following tutorial shows how you can use ybm CLI to create clusters in YugabyteDB Managed.
+The following tutorial shows how you can use [ybm CLI](../managed-cli/) to create clusters in YugabyteDB Managed.
 
 ## Prerequisites
 
@@ -149,7 +149,7 @@ The following command creates a single-region dedicated cluster in Tokyo:
 ```sh
 ybm cluster create \
   --credentials username=admin,password=password \
-  --cloud-type AWS \
+  --cloud-provider AWS \
   --cluster-type SYNCHRONOUS \
   --node-config num-cores=4,disk-size-gb=200 \
   --region-info region=ap-northeast-1,num-nodes=3 \
@@ -173,7 +173,7 @@ Multi-region clusters must be deployed in a [VPC](../../cloud-basics/cloud-vpcs/
 ```sh
 ybm vpc create \
   --name gcp-vpc \
-  --cloud GCP \
+  --cloud-provider GCP \
   --global-cidr 10.0.0.0/18 \
   --wait
 ```
@@ -196,7 +196,7 @@ The following command creates a [replicate-across-regions](../../cloud-basics/cr
 ybm cluster create \
   --cluster-name my-multi-region \
   --credentials username=admin,password=password \
-  --cloud-type GCP \
+  --cloud-provider GCP \
   --cluster-type SYNCHRONOUS \
   --node-config num-cores=2,disk-size-gb=200 \
   --region-info region=us-east1,num-nodes=1,vpc=gcp-vpc \
