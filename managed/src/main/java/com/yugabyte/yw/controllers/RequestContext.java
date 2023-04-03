@@ -11,8 +11,11 @@ package com.yugabyte.yw.controllers;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import lombok.extern.slf4j.Slf4j;
 import play.libs.typedmap.TypedKey;
 
+@Slf4j
 public class RequestContext {
   private static final ThreadLocal<Map<TypedKey<?>, Object>> context = new ThreadLocal<>();;
 
@@ -20,16 +23,24 @@ public class RequestContext {
     Map<TypedKey<?>, Object> current = context.get();
     if (current == null) {
       context.set(new HashMap<>());
+      log.trace(
+          "[" + Thread.currentThread().getName() + "]" + " Created new context for key " + key);
     }
     context.get().put(key, value);
+    log.trace(
+        "[" + Thread.currentThread().getName() + "]" + " Set key " + key + " to value " + value);
   }
 
   public static <T> void putIfAbsent(TypedKey<T> key, T value) {
     Map<TypedKey<?>, Object> current = context.get();
     if (current == null) {
       context.set(new HashMap<>());
+      log.trace(
+          "[" + Thread.currentThread().getName() + "]" + " Created new context for key " + key);
     }
     context.get().putIfAbsent(key, value);
+    log.trace(
+        "[" + Thread.currentThread().getName() + "]" + " Set key " + key + " to value " + value);
   }
 
   @SuppressWarnings("unchecked")
@@ -62,7 +73,15 @@ public class RequestContext {
     return value;
   }
 
-  public static void clean() {
-    context.remove();
+  public static void clean(Set<TypedKey<?>> keys) {
+    Map<TypedKey<?>, Object> current = context.get();
+    if (current == null) {
+      return;
+    }
+    keys.forEach(
+        key -> {
+          current.remove(key);
+          log.trace("[" + Thread.currentThread().getName() + "]" + " Removed key " + key);
+        });
   }
 }

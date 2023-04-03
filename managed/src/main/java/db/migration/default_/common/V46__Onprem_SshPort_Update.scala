@@ -1,14 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import java.sql.Connection
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.api.libs.json._
 
-class V46__AccessKey_SshPort_Update extends JdbcMigration {
-  override def migrate(connection: Connection): Unit = {
+class V46__AccessKey_SshPort_Update extends BaseJavaMigration {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     var selectStmt = "SELECT ak.key_code, ak.key_info FROM access_key ak JOIN provider p " +
         "ON p.uuid = ak.provider_uuid AND p.code = 'onprem'"
     var resultSet = connection.createStatement().executeQuery(selectStmt)

@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.filters.AlertConfigurationFilter;
 import com.yugabyte.yw.models.filters.AlertDefinitionFilter;
 import com.yugabyte.yw.models.filters.AlertTemplateSettingsFilter;
 import com.yugabyte.yw.models.helpers.EntityOperation;
+import io.ebean.DB;
 import io.ebean.annotation.Transactional;
 import java.util.Collections;
 import java.util.List;
@@ -96,10 +97,10 @@ public class AlertTemplateSettingsService {
         toCreateAndUpdate.getOrDefault(UPDATE, Collections.emptyList());
 
     if (!CollectionUtils.isEmpty(toCreate)) {
-      AlertTemplateSettings.db().saveAll(toCreate);
+      DB.getDefault().saveAll(toCreate);
     }
     if (!CollectionUtils.isEmpty(toUpdate)) {
-      AlertTemplateSettings.db().updateAll(toUpdate);
+      DB.getDefault().updateAll(toUpdate);
     }
 
     writeDefinitions(customerUUID, settings);

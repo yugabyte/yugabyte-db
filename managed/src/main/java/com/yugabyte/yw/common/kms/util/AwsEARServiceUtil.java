@@ -55,7 +55,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Application;
+import play.Environment;
 
 public class AwsEARServiceUtil {
   private static final String CMK_POLICY = "default_cmk_policy.json";
@@ -191,8 +191,8 @@ public class AwsEARServiceUtil {
     ObjectNode policy = null;
     try {
       ObjectMapper mapper = new ObjectMapper();
-      Application application = StaticInjectorHolder.injector().instanceOf(Application.class);
-      policy = (ObjectNode) mapper.readTree(application.environment().resourceAsStream(CMK_POLICY));
+      Environment environment = StaticInjectorHolder.injector().instanceOf(Environment.class);
+      policy = (ObjectNode) mapper.readTree(environment.resourceAsStream(CMK_POLICY));
     } catch (Exception e) {
       String errMsg = "Error occurred retrieving default cmk policy base";
       LOG.error(errMsg, e);

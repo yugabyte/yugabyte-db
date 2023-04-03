@@ -315,8 +315,8 @@ public class NodeAgentManager {
         .setSubject(ClientType.NODE_AGENT.name())
         .setIssuedAt(Date.from(Instant.now()))
         .setExpiration(Date.from(Instant.now().plusSeconds(NODE_AGENT_JWT_EXPIRY_SECS)))
-        .claim(JWTVerifier.CLIENT_ID_CLAIM, nodeAgentUuid.toString())
-        .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
+        .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
+        .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
         .signWith(SignatureAlgorithm.RS256, privateKey)
         .compact();
   }

@@ -1,14 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
-package db.migration.default.common
+package db.migration.default_.common
 
-import java.sql.Connection
+import org.flywaydb.core.api.migration.{BaseJavaMigration, Context}
 
-import org.flywaydb.core.api.migration.jdbc.JdbcMigration
 import play.api.libs.json._
 
-class V43__Customer_Config_BackupLocation_Update extends JdbcMigration {
-  override def migrate(connection: Connection): Unit = {
+class V43__Customer_Config_BackupLocation_Update extends BaseJavaMigration {
+  override def migrate(context: Context): Unit = {
+    val connection = context.getConnection
     val selectStmt = "SELECT config_uuid, data FROM customer_config WHERE type = 'STORAGE'"
     val resultSet = connection.createStatement().executeQuery(selectStmt)
 
