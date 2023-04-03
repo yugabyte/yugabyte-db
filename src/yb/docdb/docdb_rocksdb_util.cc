@@ -283,6 +283,10 @@ SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) 
     iter->Next();
     ++result.next;
   }
+  if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
+    VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
+    return result;
+  }
 
   VTRACE(3, "Forced to do an actual Seek after $0 Next(s)", FLAGS_max_nexts_to_avoid_seek);
   iter->Seek(seek_key);
@@ -291,8 +295,8 @@ SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) 
 }
 
 void PerformRocksDBSeek(
-    rocksdb::Iterator *iter,
-    const rocksdb::Slice &seek_key,
+    rocksdb::Iterator* iter,
+    const rocksdb::Slice& seek_key,
     const char* file_name,
     int line) {
   SeekStats stats;
@@ -317,9 +321,15 @@ void PerformRocksDBSeek(
       file_name, line,
       BestEffortDocDBKeyToStr(seek_key),
       FormatSliceAsStr(seek_key),
-      iter->Valid() ? BestEffortDocDBKeyToStr(KeyBytes(iter->key())) : "N/A",
-      iter->Valid() ? FormatSliceAsStr(iter->key()) : "N/A",
-      iter->Valid() ? FormatSliceAsStr(iter->value()) : "N/A",
+      iter->Valid()         ? BestEffortDocDBKeyToStr(KeyBytes(iter->key()))
+      : iter->status().ok() ? "N/A"
+                            : iter->status().ToString(),
+      iter->Valid()         ? FormatSliceAsStr(iter->key())
+      : iter->status().ok() ? "N/A"
+                            : iter->status().ToString(),
+      iter->Valid()         ? FormatSliceAsStr(iter->value())
+      : iter->status().ok() ? "N/A"
+                            : iter->status().ToString(),
       stats.next,
       stats.seek);
 }

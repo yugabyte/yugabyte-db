@@ -197,7 +197,7 @@ Result<std::optional<SubDocument>> TEST_GetSubDocument(
   iter->SeekToLastDocKey();
 
   iter->Seek(sub_doc_key);
-  if (!iter->valid()) {
+  if (iter->IsOutOfRecords()) {
     return std::nullopt;
   }
   auto fetched = VERIFY_RESULT(iter->FetchKey());
@@ -352,7 +352,7 @@ class DocDBTableReader::GetHelperBase {
   // Iterator should already point to the first such entry.
   // Changes nearly all internal state fields.
   Status Scan(CheckExistOnly check_exist_only) {
-    while (reader_.iter_->valid()) {
+    while (!reader_.iter_->IsOutOfRecords()) {
       if (reader_.deadline_info_.CheckAndSetDeadlinePassed()) {
         return STATUS(Expired, "Deadline for query passed");
       }
@@ -366,7 +366,7 @@ class DocDBTableReader::GetHelperBase {
     }
     DVLOG_WITH_PREFIX_AND_FUNC(4)
         << "(" << check_exist_only << "), found: " << last_found_ << ", column index: "
-        << column_index_ << ", finished: " << !reader_.iter_->valid() << ", "
+        << column_index_ << ", finished: " << reader_.iter_->IsOutOfRecords() << ", "
         << GetResultAsString();
     return Status::OK();
   }

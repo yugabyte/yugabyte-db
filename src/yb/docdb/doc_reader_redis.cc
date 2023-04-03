@@ -96,7 +96,7 @@ Status BuildSubDocument(
     int64* num_values_observed) {
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
-  while (iter->valid()) {
+  while (!iter->IsOutOfRecords()) {
     if (data.deadline_info && data.deadline_info->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }
@@ -297,7 +297,7 @@ Status FindLastWriteTime(
   Slice value;
   EncodedDocHybridTime pre_doc_ht(*max_overwrite_time);
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &pre_doc_ht, &value));
-  if (!iter->valid()) {
+  if (iter->IsOutOfRecords()) {
     return Status::OK();
   }
 
@@ -336,7 +336,7 @@ Status FindLastWriteTime(
     // There could be a case where the TTL row exists, but the value has been
     // compacted away. Then, it is treated as a Tombstone written at the time
     // of the TTL row.
-    if (!iter->valid() && !new_exp.ttl.IsNegative()) {
+    if (iter->IsOutOfRecords() && !new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     } else {
       RETURN_NOT_OK(Value::DecodePrimitiveValueType(value));

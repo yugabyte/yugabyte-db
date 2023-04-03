@@ -2002,7 +2002,7 @@ TEST_P(DBCompactionTestWithParam, ConvertCompactionStyle) {
   // compaction style
   std::string keys_in_db;
   Iterator* iter = dbfull()->NewIterator(ReadOptions(), handles_[1]);
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     keys_in_db.append(iter->key().ToString());
     keys_in_db.push_back(',');
   }
@@ -2864,7 +2864,7 @@ TEST_F_EX(DBCompactionTest, AbortManualCompactionOnShutdown, RocksDBTest) {
         const auto last_file_path =
             db_info.flushed_file_collector->GetFlushedFileInfos().back().file_path;
         for (const auto& file_meta : db->GetLiveFilesMetaData()) {
-          if (file_meta.FullName() == last_file_path) {
+          if (file_meta.BaseFilePath() == last_file_path) {
             last_sst_size = file_meta.total_size;
             break;
           }

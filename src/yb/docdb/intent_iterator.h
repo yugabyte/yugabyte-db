@@ -123,6 +123,8 @@ class IntentIterator {
 
   inline void AppendStrongWriteAndPerformSeek(KeyBytes* key_bytes, bool seek_forward = false);
 
+  void HandleStatus(const Status& status);
+
  private:
   const ReadHybridTime read_time_;
 

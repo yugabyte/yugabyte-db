@@ -107,7 +107,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // contain the DocHybridTime but is returned separately and optionally.
   Result<FetchKeyResult> FetchKey() override;
 
-  bool valid() override;
+  bool IsOutOfRecords() override;
   Slice value() override;
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;
@@ -268,6 +268,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
       const Slice& key, const Slice& suffix, bool use_suffix_for_prefix = true);
 
   bool NextRegular(Direction direction);
+
+  void HandleStatus(const Status& status);
 
   const ReadHybridTime read_time_;
   const EncodedReadHybridTime encoded_read_time_;
