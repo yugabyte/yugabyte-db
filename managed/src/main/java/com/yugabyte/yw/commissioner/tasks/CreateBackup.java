@@ -30,6 +30,7 @@ import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -86,7 +87,9 @@ public class CreateBackup extends UniverseTaskBase {
     BACKUP_ATTEMPT_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
     boolean isUniverseLocked = false;
     boolean ybcBackup =
-        universe.isYbcEnabled() && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
+        !BackupCategory.YB_BACKUP_SCRIPT.equals(params().backupCategory)
+            && universe.isYbcEnabled()
+            && !params().backupType.equals(TableType.REDIS_TABLE_TYPE);
     try {
       checkUniverseVersion();
 
@@ -105,7 +108,8 @@ public class CreateBackup extends UniverseTaskBase {
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
 
-        if (universe.isYbcEnabled()
+        if (ybcBackup
+            && universe.isYbcEnabled()
             && !universe
                 .getUniverseDetails()
                 .getYbcSoftwareVersion()
