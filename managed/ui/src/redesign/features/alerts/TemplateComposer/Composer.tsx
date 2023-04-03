@@ -9,7 +9,7 @@
 
 import React, { FC, useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { Grid, makeStyles, Popover } from '@material-ui/core';
+import { Divider, Grid, makeStyles, MenuItem, Popover, Select, Typography } from '@material-ui/core';
 import { Descendant, Transforms } from 'slate';
 import { useMutation, useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -28,13 +28,15 @@ import { AddAlertVariablesPopup } from './AlertVariablesPopup';
 import {
   ALERT_VARIABLE_START_TAG,
   clearEditor,
+  isEditorDirty,
   IYBEditor
 } from '../../../components/YBEditor/plugins';
 import AlertVariablesPreviewModal from './AlertVariablesPreviewModal';
 import { HTMLDeSerializer, HTMLSerializer } from '../../../components/YBEditor/serializers';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { useCommonStyles } from './CommonStyles';
-import { Add } from '@material-ui/icons';
+import { Add, ArrowBack, Info } from '@material-ui/icons';
+import { HistoryEditor } from 'slate-history';
 
 type ComposerProps = {
   onHide: () => void;
@@ -42,7 +44,8 @@ type ComposerProps = {
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    height: '600px'
+    height: '600px',
+    background: '#F6F6F6'
   },
   content: {
     marginTop: theme.spacing(2.5)
@@ -60,20 +63,64 @@ const useStyles = makeStyles((theme) => ({
     marginLeft: theme.spacing(1.9)
   },
   insertVariableButton: {
-    border: '1px solid #E5E5E9',
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     borderRadius: theme.spacing(0.9),
     height: '30px',
     float: 'right',
-    fontWeight: 500,
-    fontSize: '13px',
-    color: '#67666C'
+    "& .MuiButton-label": {
+      fontWeight: 500,
+      fontSize: '13px',
+      color: '#67666C'
+    }
   },
   startTag: {
     width: '22px',
     height: '22px',
-    border: `1px solid ${theme.palette.ybacolors.ybGrayHover}`,
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     borderRadius: theme.spacing(0.5),
     marginLeft: theme.spacing(1)
+  },
+  composerSelect: {
+    border: 'none',
+    boxShadow: 'none !important',
+    "& .MuiInput-input": {
+      fontWeight: 700,
+      fontSize: '17px'
+    },
+    "& .MuiSelect-icon": {
+      width: '25px',
+      height: '25px',
+      color: theme.palette.grey[900]
+    }
+  },
+  composerDivider: {
+    marginTop: theme.spacing(1.5)
+  },
+  backArrow: {
+    color: theme.palette.orange[500],
+    width: '20px',
+    height: '20px',
+    marginRight: theme.spacing(2),
+    cursor: 'pointer'
+  },
+  subjectArea: {
+    marginTop: theme.spacing(3)
+  },
+  composerArea: {
+    background: theme.palette.common.white,
+    padding: `${theme.spacing(3)}px ${theme.spacing(3.5)}px !important`
+  },
+  editorArea: {
+    marginTop: theme.spacing(0.8)
+  },
+  helpText: {
+    marginTop: theme.spacing(1.75),
+    '& svg': {
+      width: '14px',
+      height: '14px',
+      color: theme.palette.orange[500],
+      marginRight: theme.spacing(1.2)
+    }
   }
 }));
 
@@ -137,21 +184,31 @@ const Composer: FC<ComposerProps> = ({ onHide }) => {
 
     const emailTemplate = find(channelTemplates?.data, { type: 'Email' });
 
+    if (!emailTemplate?.textTemplate || !emailTemplate?.titleTemplate) return;
+
     if (emailTemplate && bodyEditorRef.current && subjectEditorRef.current) {
       try {
         const bodyVal = new HTMLDeSerializer(
           bodyEditorRef.current,
           emailTemplate.textTemplate
         ).deserialize();
-        clearEditor(bodyEditorRef.current);
-        Transforms.insertNodes(bodyEditorRef.current, bodyVal);
+
+        // Don't aleter the history while loading the template
+        HistoryEditor.withoutSaving(bodyEditorRef.current, () => {
+          clearEditor(bodyEditorRef.current as IYBEditor);
+          Transforms.insertNodes(bodyEditorRef.current as IYBEditor, bodyVal);
+        })
+
 
         const subjectVal = new HTMLDeSerializer(
           subjectEditorRef.current,
           emailTemplate.titleTemplate
         ).deserialize();
-        clearEditor(subjectEditorRef.current);
-        Transforms.insertNodes(subjectEditorRef.current, subjectVal);
+        HistoryEditor.withoutSaving(subjectEditorRef.current, () => {
+          clearEditor(subjectEditorRef.current as IYBEditor);
+          Transforms.insertNodes(subjectEditorRef.current as IYBEditor, subjectVal);
+        })
+
       } catch (e) {
         console.log(e);
       }
@@ -164,15 +221,29 @@ const Composer: FC<ComposerProps> = ({ onHide }) => {
 
   return (
     <Grid container spacing={2} className={classes.root}>
-      <Grid item xs={9} sm={9} lg={9} md={9}>
+      <Grid item xs={9} sm={9} lg={9} md={9} className={classes.composerArea}>
+        <Grid item xs={12} sm={12} lg={12} md={12}>
+          <Grid item container alignItems='center'>
+            <ArrowBack className={classes.backArrow} onClick={onHide} />
+            <Select
+              id="composer-select"
+              label="composer-selector"
+              className={classes.composerSelect}
+              value="emailTemplate"
+            >
+              <MenuItem value={"emailTemplate"} selected>{t('alertCustomTemplates.composer.emailTemplate')}</MenuItem>
+            </Select>
+          </Grid>
+          <Divider className={classes.composerDivider} />
+        </Grid>
         <Grid>
-          <Grid item alignItems="center" container>
+          <Grid item alignItems="center" container className={classes.subjectArea}>
             {t('alertCustomTemplates.composer.subject')}
             <Grid
               container
               item
               alignItems="center"
-              className={clsx(commonStyles.editorBorder, commonStyles.subjectEditor)}
+              className={clsx(commonStyles.editorBorder, commonStyles.subjectEditor, classes.editorArea)}
             >
               <Grid item style={{ width: '80%' }}>
                 <YBEditor
@@ -197,7 +268,7 @@ const Composer: FC<ComposerProps> = ({ onHide }) => {
           </Grid>
           <Grid item className={classes.content}>
             {t('alertCustomTemplates.composer.content')}
-            <Grid item className={commonStyles.editorBorder}>
+            <Grid item className={clsx(commonStyles.editorBorder, classes.editorArea)}>
               <YBEditor
                 showToolbar={true}
                 setVal={setBody}
@@ -221,7 +292,18 @@ const Composer: FC<ComposerProps> = ({ onHide }) => {
               />
             </Grid>
           </Grid>
+          <Grid item container alignItems='center' className={classes.helpText}>
+            <Info />
+            <Typography variant="body2">
+              {t('alertCustomTemplates.composer.helpText')}
+            </Typography>
+          </Grid>
         </Grid>
+      </Grid>
+      <Grid item xs={3} sm={3} lg={3} md={3} container justifyContent="center" className={commonStyles.noPadding}>
+        <CustomVariablesEditor />
+      </Grid>
+      <Grid item xs={9} sm={9} lg={9} md={9} className={commonStyles.noPadding}>
         <Grid
           container
           className={classes.actions}
@@ -248,6 +330,7 @@ const Composer: FC<ComposerProps> = ({ onHide }) => {
             <YBButton
               variant="primary"
               type="submit"
+              disabled={!isEditorDirty(subjectEditorRef.current) && !isEditorDirty(bodyEditorRef.current)}
               autoFocus
               className={classes.submitButton}
               onClick={() => {
@@ -266,9 +349,6 @@ const Composer: FC<ComposerProps> = ({ onHide }) => {
             </YBButton>
           </div>
         </Grid>
-      </Grid>
-      <Grid item xs={3} sm={3} lg={3} md={3} container justifyContent="center">
-        <CustomVariablesEditor />
       </Grid>
       <AlertVariablesPreviewModal
         bodyValue={body}

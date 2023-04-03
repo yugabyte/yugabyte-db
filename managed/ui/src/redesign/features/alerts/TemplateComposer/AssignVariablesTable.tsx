@@ -24,7 +24,7 @@ export const YBTableRow = withStyles(() => ({
       background: '#fff',
       left: 0,
       zIndex: 1,
-      minWidth: '350px'
+      width: '350px'
     },
     '& th': {
       background: '#f9f8f8 !important'
@@ -48,6 +48,6 @@ export const YBTableCell = withStyles((theme) => ({
     padding: theme.spacing(1.5),
     minWidth: '200px',
     height: theme.spacing(7),
-    borderRight: `1px solid ${theme.palette.ybacolors.ybGrayHover}`
+    borderRight: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
   }
 }))(TableCell);
