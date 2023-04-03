@@ -47,7 +47,7 @@ Using YugabyteDB Managed, you can create single- and multi-region clusters that 
         <div class="title">VPC networks</div>
       </div>
       <div class="body">
-        VPC networking in YugabyteDB Managed.
+        Connect clusters privately to other resources on the same cloud provider.
       </div>
     </a>
   </div>

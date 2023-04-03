@@ -32,7 +32,7 @@ Single-region dedicated clusters include the following features:
 
 ## Prerequisites
 
-- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC networking](../../cloud-vpcs/).
+- If you want to use dedicated VPCs for network isolation and security, create the VPC before you create your cluster. YugabyteDB Managed supports AWC and GCP for peering. Refer to [VPC network](../../cloud-vpcs/).
 - Create a billing profile and add a payment method before you can create a Dedicated cluster. Refer to [Manage your billing profile and payment method](../../../cloud-admin/cloud-billing-profile/).
 
 ## Create a single-region cluster
