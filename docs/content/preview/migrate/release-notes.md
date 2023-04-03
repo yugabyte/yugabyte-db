@@ -19,6 +19,12 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * When using the `import data file` command with the `--data-dir` option, you can provide an AWS S3 bucket as a path to the data directory.
 
+* Added support for rotation of log files in a new logs directory found in `export-dir/logs`.
+
+### Known issues
+
+* [16658](https://github.com/yugabyte/yugabyte-db/issues/16658) The `import data file` command may not recognise the data directory being provided, causing the  step to fail for dockerized yb-voyager.
+
 ## v1.1 - March 7, 2023
 
 ### Key enhancements
