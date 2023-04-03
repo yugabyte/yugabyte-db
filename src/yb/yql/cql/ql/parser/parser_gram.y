@@ -658,7 +658,7 @@ using namespace yb::ql;
                           RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLES ROLLBACK ROLLUP
                           ROW ROWS RULE
 
-                          SAVEPOINT SCHEMA SCHEME SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE
+                          SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE
                           SEQUENCES SERIALIZABLE SERVER SESSION SESSION_USER SET SETS SETOF
 
                           SHARE SHOW SIMILAR SIMPLE SKIP SMALLINT SNAPSHOT SOME SQL_P STABLE
@@ -1648,10 +1648,6 @@ table_property:
   }
   | COMPACT STORAGE {
     $$ = MAKE_NODE(@1, PTTablePropertyListNode);
-  }
-  | PARTITION SCHEME OF qualified_name {
-    PTTableProperty::SharedPtr pt_table_property = MAKE_NODE(@4, PTTableProperty, $4);
-    $$ = MAKE_NODE(@1, PTTablePropertyListNode, pt_table_property);
   }
 ;
 
@@ -5220,7 +5216,6 @@ unreserved_keyword:
   | ROWS { $$ = $1; }
   | RULE { $$ = $1; }
   | SAVEPOINT { $$ = $1; }
-  | SCHEME { $$ = $1; }
   | SCROLL { $$ = $1; }
   | SEARCH { $$ = $1; }
   | SECOND_P { $$ = $1; }

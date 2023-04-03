@@ -1467,13 +1467,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
 
-  // Helper for creating copartitioned table.
-  Status CreateCopartitionedTable(const CreateTableRequestPB& req,
-                                  CreateTableResponsePB* resp,
-                                  rpc::RpcContext* rpc,
-                                  Schema schema,
-                                  scoped_refptr<NamespaceInfo> ns);
-
   // Check that local host is present in master addresses for normal master process start.
   // On error, it could imply that master_addresses is incorrectly set for shell master startup
   // or that this master host info was missed in the master addresses and it should be
@@ -1651,11 +1644,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status SendAlterTableRequestInternal(const scoped_refptr<TableInfo>& table,
                                        const TransactionId& txn_id);
-
-  // Start the background task to send the CopartitionTable() RPC to the leader for this
-  // tablet.
-  void SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
-                                    const scoped_refptr<TableInfo>& table);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
