@@ -689,6 +689,12 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
 
       stmt1.execute(String.format(createViewSqlPat, "SELECT 10 AS a"));
 
+      // Wait for the new catalog version to propagate. Otherwise the
+      // next SELECT queries will not see the newly created system view
+      // 'test_view_to_change' because YSQL allows negative caching
+      // for system tables or system views.
+      waitForTServerHeartbeat();
+
       assertQuery(stmt1, selectFromViewSql, new Row(10));
       assertQuery(stmt2, selectFromViewSql, new Row(10));
       assertQuery(stmt3, selectFromViewSql, new Row(10));

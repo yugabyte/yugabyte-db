@@ -25,7 +25,7 @@ import { YBPanelItem } from '../../panels';
 import { FlexContainer, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isValidObject, isNonEmptyObject } from '../../../utils/ObjectUtils';
-import { isDedicatedNodePlacement } from '../../../utils/UniverseUtils';
+import { isDedicatedNodePlacement, isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { MetricsComparisonModal } from '../MetricsComparisonModal/MetricsComparisonModal';
 import { NodeSelector } from '../MetricsComparisonModal/NodeSelector';
 import { RegionSelector } from '../MetricsComparisonModal/RegionSelector';
@@ -65,7 +65,7 @@ const outlierTypes = [
 
 const metricMeasureTypes = [
   { value: MetricMeasure.OVERALL, label: 'Overall' },
-  { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes' },
+  { value: MetricMeasure.OUTLIER, label: 'Outlier Nodes', k8label: 'Outlier Pods' },
   { value: MetricMeasure.OUTLIER_TABLES, label: 'Outlier Tables' }
 ];
 
@@ -644,6 +644,7 @@ class GraphPanelHeader extends Component {
       this.state.nodeName !== MetricConsts.TOP &&
       `/universes/${this.state.currentSelectedUniverse.universeUUID}/queries?nodeName=${this.state.nodeName}`;
     const isDedicatedNodes = isDedicatedNodePlacement(this.state.currentSelectedUniverse);
+    const isK8Universe = isKubernetesUniverse(this.state.currentSelectedUniverse);
 
     return (
       <div className="graph-panel-header">
@@ -816,6 +817,7 @@ class GraphPanelHeader extends Component {
                         selectedMetricMeasureValue={this.state.metricMeasure}
                         onMetricMeasureChanged={this.onMetricMeasureChanged}
                         isSingleNodeSelected={this.state.isSingleNodeSelected}
+                        isK8Universe={isK8Universe}
                       />
                     )}
                 </FlexGrow>
@@ -847,6 +849,7 @@ class GraphPanelHeader extends Component {
                         setNumNodeValue={this.setNumNodeValue}
                         defaultOutlierNumNodes={this.state.outlierNumNodes}
                         splitType={splitType}
+                        isK8Universe={isK8Universe}
                       />
                     )}
                 </FlexGrow>

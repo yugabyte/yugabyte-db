@@ -2014,6 +2014,7 @@ typedef enum YbPFetchTable
 	YB_PFETCH_TABLE_PG_POLICY,
 	YB_PFETCH_TABLE_PG_PROC,
 	YB_PFETCH_TABLE_PG_REWRITE,
+	YB_PFETCH_TABLE_PG_TABLESPACE,
 	YB_PFETCH_TABLE_PG_TRIGGER,
 	YB_PFETCH_TABLE_PG_TYPE,
 	YB_PFETCH_TABLE_YB_PG_PROFILIE,
@@ -2113,6 +2114,9 @@ YbGetPrefetchableTableInfoImpl(YbPFetchTable table)
 	case YB_PFETCH_TABLE_PG_REWRITE:
 		return (YbPFetchTableInfo)
 			{ RewriteRelationId, RULERELNAME, YB_INVALID_CACHE_ID };
+	case YB_PFETCH_TABLE_PG_TABLESPACE:
+		return (YbPFetchTableInfo)
+			{ TableSpaceRelationId, TABLESPACEOID, YB_INVALID_CACHE_ID };
 	case YB_PFETCH_TABLE_PG_TRIGGER:
 		return (YbPFetchTableInfo)
 			{ TriggerRelationId, YB_INVALID_CACHE_ID, YB_INVALID_CACHE_ID };
@@ -2343,7 +2347,8 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext* ctx)
 		static const YbPFetchTable tables[] = {
 			YB_PFETCH_TABLE_PG_AMOP,
 			YB_PFETCH_TABLE_PG_AMPROC,
-			YB_PFETCH_TABLE_PG_CAST
+			YB_PFETCH_TABLE_PG_CAST,
+			YB_PFETCH_TABLE_PG_TABLESPACE
 		};
 		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}
@@ -2365,6 +2370,7 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext* ctx)
 			YB_PFETCH_TABLE_PG_INHERITS,
 			YB_PFETCH_TABLE_PG_POLICY,
 			YB_PFETCH_TABLE_PG_PROC,
+			YB_PFETCH_TABLE_PG_TABLESPACE,
 			YB_PFETCH_TABLE_PG_TRIGGER
 		};
 		YbRegisterTables(prefetcher, tables, lengthof(tables));

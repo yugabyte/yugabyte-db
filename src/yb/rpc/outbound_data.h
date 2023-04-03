@@ -25,6 +25,9 @@
 #include <boost/container/small_vector.hpp>
 #include <boost/mpl/and.hpp>
 
+#include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/reactor_thread_role.h"
+
 #include "yb/util/format.h"
 #include "yb/util/memory/memory_usage.h"
 #include "yb/util/ref_cnt_buffer.h"
@@ -51,7 +54,7 @@ class OutboundData : public std::enable_shared_from_this<OutboundData> {
   virtual void Transferred(const Status& status, Connection* conn) = 0;
 
   // Serializes the data to be sent out via the RPC framework.
-  virtual void Serialize(ByteBlocks* output) = 0;
+  virtual void Serialize(ByteBlocks* output) ON_REACTOR_THREAD = 0;
 
   virtual std::string ToString() const = 0;
 

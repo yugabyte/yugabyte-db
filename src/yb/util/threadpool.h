@@ -303,7 +303,7 @@ class ThreadPool {
   // Initialize the thread pool by starting the minimum number of threads.
   Status Init();
 
-  // Dispatcher responsible for dequeueing and executing the tasks
+  // Dispatcher responsible for dequeuing and executing the tasks
   void DispatchThread(bool permanent);
 
   // Create new thread. Required that lock_ is held.

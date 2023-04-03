@@ -178,7 +178,7 @@ void Proxy::AsyncLocalCall(
     RpcController* controller, ResponseCallback callback,
     const bool force_run_callback_on_reactor) {
   controller->call_ = std::make_shared<LocalOutboundCall>(
-      method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
+      *method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
       std::move(callback),
       GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
   if (!PrepareCall(req, controller)) {
@@ -208,7 +208,7 @@ void Proxy::AsyncRemoteCall(
     AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
     ResponseCallback callback, const bool force_run_callback_on_reactor) {
   controller->call_ = std::make_shared<OutboundCall>(
-      method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
+      *method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
       context_->rpc_metrics(), std::move(callback),
       GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
   if (!PrepareCall(req, controller)) {

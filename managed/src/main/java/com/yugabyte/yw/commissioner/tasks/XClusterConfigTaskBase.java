@@ -810,19 +810,19 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     // The minimum YBDB version that supports multiple tables with IsBootstrapRequired is
     // 2.15.3.0-b64.
     return Util.compareYbVersions(
-            "2.15.3.0-b64",
+            "2.15.3.0-b63",
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
             true /* suppressFormatError */)
-        <= 0;
+        < 0;
   }
 
   public static boolean supportsTxnXCluster(Universe universe) {
-    // The minimum YBDB version that supports transactional xCluster is 2.17.3.0-b1.
+    // The minimum YBDB version that supports transactional xCluster is 2.17.3.0-b2.
     return Util.compareYbVersions(
             "2.17.3.0-b1",
             universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
             true /* suppressFormatError */)
-        <= 0;
+        < 0;
   }
 
   /**

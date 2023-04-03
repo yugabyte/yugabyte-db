@@ -2,17 +2,22 @@ import { FormikActions, FormikErrors, FormikProps } from 'formik';
 import React, { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
+import { AxiosError } from 'axios';
 
-import { api } from '../../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
+import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
 import { PARALLEL_THREADS_RANGE } from '../../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../../common/forms';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
-import { BOOTSTRAP_MIN_FREE_DISK_SPACE_GB, XClusterConfigAction } from '../../constants';
+import {
+  BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
+  XClusterConfigAction,
+  XClusterConfigType
+} from '../../constants';
 import { adaptTableUUID, parseFloatIfDefined } from '../../ReplicationUtils';
 import {
   editXClusterConfigTables,
@@ -99,8 +104,13 @@ export const AddTableModal = ({
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((response) => response.data)
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
+      excludeColocatedTables: true
+    }),
+    () =>
+      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
+        excludeColocatedTables: true
+      }).then((response) => response.data)
   );
 
   const configTablesMutation = useMutation(
@@ -131,7 +141,7 @@ export const AddTableModal = ({
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
-                  <span>Replication restart failed.</span>
+                  <span>{`Add table to xCluster config failed: ${xClusterConfig.name}`}</span>
                   <a
                     href={`/tasks/${response.data.taskUUID}`}
                     rel="noopener noreferrer"
@@ -151,14 +161,8 @@ export const AddTableModal = ({
           }
         );
       },
-      onError: (error: any) => {
-        toast.error(
-          <span className={styles.alertMsg}>
-            <i className="fa fa-exclamation-circle" />
-            <span>{error.message}</span>
-          </span>
-        );
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' })
     }
   );
 
@@ -298,6 +302,7 @@ export const AddTableModal = ({
           ysqlTableUUIDToKeyspace,
           isTableSelectionValidated,
           configTableType,
+          xClusterConfig.type,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -375,6 +380,7 @@ const validateForm = async (
   ysqlTableUUIDToKeyspace: Map<string, string>,
   isTableSelectionValidated: boolean,
   configTableType: XClusterTableType,
+  xClusterConfigType: XClusterConfigType,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarning: (formWarnings: AddTableFormWarnings) => void
 ) => {
@@ -400,6 +406,7 @@ const validateForm = async (
       try {
         bootstrapTableUUIDs = await getBootstrapTableUUIDs(
           configTableType,
+          xClusterConfigType,
           values.tableUUIDs,
           sourceUniverse.universeUUID,
           ysqlKeyspaceToTableUUIDs,
@@ -466,6 +473,7 @@ const validateForm = async (
  */
 const getBootstrapTableUUIDs = async (
   configTableType: XClusterTableType,
+  xClusterConfigType: XClusterConfigType,
   selectedTableUUIDs: string[],
   sourceUniverseUUID: string,
   ysqlKeyspaceToTableUUIDs: Map<string, Set<string>>,
@@ -476,7 +484,8 @@ const getBootstrapTableUUIDs = async (
   try {
     bootstrapTests = await isBootstrapRequired(
       sourceUniverseUUID,
-      selectedTableUUIDs.map(adaptTableUUID)
+      selectedTableUUIDs.map(adaptTableUUID),
+      xClusterConfigType
     );
   } catch (error: any) {
     toast.error(

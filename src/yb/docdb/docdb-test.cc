@@ -433,7 +433,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContext& txn_op_context, const ReadHybridTime& read_time,
-      const vector<KeyEntryValue>* projection = nullptr) {
+      const ReaderProjection* projection = nullptr) {
   auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
     subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
     CoarseTimePoint::max() /* deadline */, read_time, projection));
@@ -664,9 +664,9 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
-  const vector<KeyEntryValue> projection = {
-    KeyEntryValue("p1"),
-    KeyEntryValue("p2")
+  const ReaderProjection projection = {
+      { KeyEntryValue("p1"), nullptr },
+      { KeyEntryValue("p2"), nullptr }
   };
 
   GetSubDocQl(

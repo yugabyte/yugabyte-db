@@ -14,6 +14,7 @@
 #pragma once
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/socket.h"
@@ -100,7 +101,7 @@ class Stream {
   // Returns handle to block associated with this data. This handle could be used to cancel
   // transfer of this block using Cancelled.
   // For instance when unsent call times out.
-  virtual Result<size_t> Send(OutboundDataPtr data) = 0;
+  virtual Result<size_t> Send(OutboundDataPtr data) ON_REACTOR_THREAD = 0;
 
   virtual Status TryWrite() = 0;
   virtual void ParseReceived() = 0;

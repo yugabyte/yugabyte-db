@@ -31,7 +31,7 @@ Create a single address allow list:
 ybm network-allow-list create \
     --name=my-computer \
     --description="my IP address" \
-    --ip_addr=$(curl ifconfig.me)
+    --ip-addr=$(curl ifconfig.me)
 ```
 
 ## Commands
@@ -44,7 +44,7 @@ Create an allow list.
 | :--- | :--- |
 | --name | Required. Name for the IP allow list. |
 | --description | Description of the IP allow list.<br>If the description includes spaces, enclose the description in quotes ("). |
-| --ip_addr | IP addresses to add to the allow list. |
+| --ip-addr | IP addresses to add to the allow list. |
 
 ### delete
 

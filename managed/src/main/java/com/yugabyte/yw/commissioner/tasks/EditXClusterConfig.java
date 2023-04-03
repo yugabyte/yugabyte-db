@@ -61,7 +61,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                   createTransferXClusterCertsCopyTasks(
                       xClusterConfig,
                       targetUniverse.getNodes(),
-                      XClusterConfig.getReplicationGroupName(
+                      xClusterConfig.getNewReplicationGroupName(
                           xClusterConfig.getSourceUniverseUUID(), editFormData.name),
                       cert,
                       targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));

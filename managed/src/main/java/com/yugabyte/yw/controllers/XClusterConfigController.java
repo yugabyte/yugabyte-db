@@ -30,6 +30,7 @@ import com.yugabyte.yw.forms.XClusterConfigEditFormData;
 import com.yugabyte.yw.forms.XClusterConfigGetResp;
 import com.yugabyte.yw.forms.XClusterConfigNeedBootstrapFormData;
 import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
+import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Audit;
@@ -741,18 +742,30 @@ public class XClusterConfigController extends AuthenticatedController {
       value = "Sync xcluster config",
       response = YBPTask.class)
   public Result sync(UUID customerUUID, UUID targetUniverseUUID) {
-    log.info("Received sync XClusterConfig request for universe({})", targetUniverseUUID);
-
     // Parse and validate request
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe targetUniverse = Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
+    XClusterConfigTaskParams params;
+    Universe targetUniverse;
+    if (targetUniverseUUID != null) {
+      log.info("Received sync XClusterConfig request for universe({})", targetUniverseUUID);
+      targetUniverse = Universe.getValidUniverseOrBadRequest(targetUniverseUUID, customer);
+      params = new XClusterConfigTaskParams(targetUniverseUUID);
+    } else {
+      JsonNode requestBody = request().body().asJson();
+      XClusterConfigSyncFormData formData =
+          formFactory.getFormDataOrBadRequest(requestBody, XClusterConfigSyncFormData.class);
+      log.info(
+          "Received sync XClusterConfig request for universe({}) replicationGroupName({})",
+          formData.targetUniverseUUID,
+          formData.replicationGroupName);
+      targetUniverse = Universe.getValidUniverseOrBadRequest(formData.targetUniverseUUID, customer);
+      params = new XClusterConfigTaskParams(formData);
+    }
 
-    // Submit task to sync xCluster config
-    XClusterConfigTaskParams params = new XClusterConfigTaskParams(targetUniverseUUID);
     UUID taskUUID = commissioner.submit(TaskType.SyncXClusterConfig, params);
     CustomerTask.create(
         customer,
-        targetUniverseUUID,
+        targetUniverse.getUniverseUUID(),
         taskUUID,
         TargetType.XClusterConfig,
         CustomerTask.TaskType.Sync,
@@ -765,7 +778,7 @@ public class XClusterConfigController extends AuthenticatedController {
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.Universe,
-            targetUniverseUUID.toString(),
+            targetUniverse.getUniverseUUID().toString(),
             Audit.ActionType.SyncXClusterConfig,
             taskUUID);
     return new YBPTask(taskUUID).asResult();

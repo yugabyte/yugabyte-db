@@ -132,10 +132,11 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
     <YBModal
       open={visible}
       title={t('alertCustomTemplates.alertVariablesPreviewModal.modalTitle')}
-      dialogContentProps={{ className: classes.noPadding }}
+      dialogContentProps={{ className: clsx(classes.noPadding, commonStyles.noOverflow) }}
       onClose={() => onHide()}
       overrideWidth="740px"
       overrideHeight="540px"
+      size="lg"
     >
       <Box className={classes.defaultPadding}>
         <Typography variant="body2">
@@ -185,7 +186,7 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
         <Typography variant="body1">{t('alertCustomTemplates.composer.content')}</Typography>
         <Box className={clsx(commonStyles.editorBorder, classes.bodyEditor)}>
           <YBEditor
-            editorProps={{ readOnly: true, style: { height: '150px' } }}
+            editorProps={{ readOnly: true, style: { height: '180px' } }}
             loadPlugins={{ alertVariablesPlugin: true }}
             initialValue={bodyValue}
             ref={bodyEditorRef}

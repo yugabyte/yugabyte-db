@@ -1703,13 +1703,23 @@ run_java_test() {
   process_tree_supervisor_append_log_to_on_error=$test_log_path
   stop_process_tree_supervisor
 
-  if ! "$process_supervisor_success"; then
-    log "Process tree supervisor script reported an error, marking the test as failed in" \
-        "$junit_xml_path"
-    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
-      --result-xml "$junit_xml_path" \
-      --mark-as-failed true \
-      --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."
+  if [[ ${process_supervisor_success} == "false" ]]; then
+    if grep -Eq 'CentOS Linux release 7[.]' /etc/centos-release &&
+       ! python3 -c 'import psutil' &>/dev/null
+    then
+      log "Process tree supervisor script reported an error, but this is CentOS 7 and " \
+          "the psutil module is not available in the VM image that we are using. Ignoring " \
+          "the process supervisor for now. We will revert this temporary workaround after the " \
+          "CentOS 7 image is updated. JUnit XML path: $junit_xml_path"
+      process_supervisor_success=true
+    else
+      log "Process tree supervisor script reported an error, marking the test as failed in" \
+          "$junit_xml_path"
+      "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
+        --result-xml "$junit_xml_path" \
+        --mark-as-failed true \
+        --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."
+    fi
   fi
 
   if is_jenkins ||
@@ -1752,7 +1762,8 @@ run_java_test() {
   fi
 
   declare -i java_test_exit_code=$mvn_exit_code
-  if [[ $java_test_exit_code -eq 0 ]] && ! "$process_supervisor_success"; then
+  if [[ $java_test_exit_code -eq 0 &&
+        ${process_supervisor_success} == "false" ]]; then
     java_test_exit_code=1
   fi
 

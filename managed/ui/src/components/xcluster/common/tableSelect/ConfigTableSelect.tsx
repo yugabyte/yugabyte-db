@@ -10,7 +10,7 @@ import { useQuery } from 'react-query';
 import clsx from 'clsx';
 
 import { fetchTablesInUniverse } from '../../../../actions/xClusterReplication';
-import { api } from '../../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
@@ -67,8 +67,13 @@ export const ConfigTableSelect = ({
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((response) => response.data)
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
+      excludeColocatedTables: true
+    }),
+    () =>
+      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
+        excludeColocatedTables: true
+      }).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(
     ['universe', xClusterConfig.sourceUniverseUUID],
@@ -181,7 +186,9 @@ export const ConfigTableSelect = ({
   );
 
   const tablesForSelection = tablesInConfig.filter(
-    (xClusterTable) => xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION
+    (xClusterTable) =>
+      xClusterTable.relationType !== YBTableRelationType.INDEX_TABLE_RELATION &&
+      xClusterTable.tableType !== TableType.TRANSACTION_STATUS_TABLE_TYPE
   );
   const rowItems = getRowItemsFromTables(tablesForSelection);
   const sourceUniverse = sourceUniverseQuery.data;

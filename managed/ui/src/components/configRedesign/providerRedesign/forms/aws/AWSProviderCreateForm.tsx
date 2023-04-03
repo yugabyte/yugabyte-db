@@ -58,7 +58,7 @@ import { YBButton as YBRedesignedButton } from '../../../../../redesign/componen
 import { isAxiosError, isYBPBeanValidationError } from '../../../../../utils/errorHandlingUtils';
 import { getInvalidFields, useValidationStyles } from './utils';
 
-import { YBPBeanValidationError, YBPError } from '../../../../../redesign/helpers/dtos';
+import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
 
 interface AWSProviderCreateFormProps {
@@ -83,7 +83,6 @@ export interface AWSProviderCreateFormFieldValues {
   sshPrivateKeyContent: File;
   sshUser: string;
   vpcSetupType: VPCSetupType;
-  ybImage: string;
   ybImageType: YBImageType;
 }
 
@@ -136,10 +135,6 @@ const VALIDATION_SCHEMA = object().shape({
   hostedZoneId: string().when('enableHostedZone', {
     is: true,
     then: string().required('Route 53 zone id is required.')
-  }),
-  ybImage: string().when('ybImageType', {
-    is: YBImageType.CUSTOM_AMI,
-    then: string().required('Custom AMI type is required.')
   }),
   ntpServers: array().when('ntpSetupType', {
     is: NTPSetupType.SPECIFIED,
@@ -196,11 +191,11 @@ export const AWSProviderCreateForm = ({
   }
 
   const handleFormSubmitServerError = (
-    error: Error | AxiosError<YBPBeanValidationError | YBPError>
+    error: Error | AxiosError<YBPStructuredError | YBPError>
   ) => {
     if (
       featureFlags.test.enableAWSProviderValidation &&
-      isAxiosError<YBPBeanValidationError | YBPError>(error) &&
+      isAxiosError<YBPStructuredError | YBPError>(error) &&
       isYBPBeanValidationError(error) &&
       error.response?.data.error
     ) {
@@ -408,19 +403,6 @@ export const AWSProviderCreateForm = ({
                   orientation={RadioGroupOrientation.HORIZONTAL}
                 />
               </FormField>
-              {ybImageType === YBImageType.CUSTOM_AMI && (
-                <FormField>
-                  <FieldLabel infoContent="This AMI will be used for all regions. A per-region override is available in the 'Add region' modal.">
-                    Custom Default AMI
-                  </FieldLabel>
-                  <YBInputField
-                    control={formMethods.control}
-                    name="ybImage"
-                    disabled={isFormDisabled}
-                    fullWidth
-                  />
-                </FormField>
-              )}
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -632,7 +614,7 @@ const constructProviderPayload = async (
         [ProviderCode.AWS]: {
           ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
             ? {
-                ybImage: regionFormValues.ybImage ? regionFormValues.ybImage : formValues.ybImage
+                ybImage: regionFormValues.ybImage
               }
             : { arch: formValues.ybImageType }),
           securityGroupId: regionFormValues.securityGroupId,

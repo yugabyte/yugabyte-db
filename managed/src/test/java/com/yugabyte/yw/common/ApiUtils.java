@@ -115,8 +115,11 @@ public class ApiUtils {
       final String nodePrefix,
       final boolean setMasters,
       final boolean updateInProgress) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(ClusterType.PRIMARY, userIntent);
     AvailableNodeTracker mockNodeTracker =
-        new AvailableNodeTracker(userIntent, Collections.emptyList()) {
+        new AvailableNodeTracker(
+            cluster.uuid, Collections.singletonList(cluster), Collections.emptyList()) {
           @Override
           public void acquire(UUID zoneId, UniverseTaskBase.ServerType serverType) {
             super.acquire(zoneId, serverType);

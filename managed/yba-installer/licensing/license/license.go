@@ -11,6 +11,7 @@ import (
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/licensing/pubkey"
+	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 )
 
 // ErrorInvalidLicenseFormat for incorrectly formatted license files
@@ -84,9 +85,10 @@ func (l *License) ParseRaw() error {
 func (l License) WriteToLocation(newLocation string) error {
 	if _, err := os.Stat(newLocation); !errors.Is(err, fs.ErrNotExist) {
 		if err == nil {
-			err = fmt.Errorf("cannot write license to %s - already exists", newLocation)
+			log.Debug("Found existing license... overwritting it")
+		} else {
+			return err
 		}
-		return err
 	}
 
 	dstFile, err := os.Create(newLocation)

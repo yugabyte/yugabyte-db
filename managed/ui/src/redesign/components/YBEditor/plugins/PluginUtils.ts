@@ -8,7 +8,8 @@
  */
 
 import ReactDOM from 'react-dom';
-import { Editor, Transforms, Element as SlateElement, Range } from 'slate';
+import { head } from 'lodash';
+import { Editor, Transforms, Element as SlateElement, Range, Element } from 'slate';
 import { ReactEditor } from 'slate-react';
 import { CustomElement, IYBEditor, Paragraph, TextDecorators } from './custom-types';
 import {
@@ -143,4 +144,22 @@ export const clearEditor = (editor: IYBEditor) => {
   Transforms.removeNodes(editor, {
     at: [0]
   });
+};
+
+/**
+ * returns if any edit operations is made on the editor
+ */
+export const isEditorDirty = (editor: IYBEditor | null): boolean => {
+  if (!editor) return false;
+  return editor.history.undos.length !== 0;
+};
+
+/**
+ * check if the given element is empty
+ */
+export const isEmptyElement = (element: Element): boolean => {
+  if ('text' in element) return element.text === '';
+  if (element.children.length > 1) return false;
+
+  return isEmptyElement(head(element.children) as any);
 };
