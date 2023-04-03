@@ -16,6 +16,7 @@ A virtual private cloud (VPC) is a virtual network where you can deploy clusters
 
 - To learn about VPCs in YugabyteDB Managed, refer to [VPC overview](../cloud-vpc-intro/).
 - To learn how to peer VPCs, refer to [Peer VPCs](../cloud-add-vpc-aws/).
+- To learn how to configure a private service endpoint (AWS only), refer to [Private service endpoints](../cloud-add-endpoint/).
 
 **VPCs** on the **VPC Network** tab of the **Network Access** page displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peering connections, number of clusters deployed in the VPC, and status.
 

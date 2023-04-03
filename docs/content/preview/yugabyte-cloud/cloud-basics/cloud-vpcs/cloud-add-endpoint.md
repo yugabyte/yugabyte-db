@@ -101,7 +101,7 @@ You can create the AWS endpoint using the AWS [VPC console](https://console.aws.
 
 1. Choose **Create endpoint**.
 
-The initial status is Pending. After the link is validated, the status is Available. This can take a few minutes.
+The initial status is _Pending_. After the link is validated, the status is _Available_. This can take a few minutes.
 
 #### Create an AWS endpoint using AWS CLI
 

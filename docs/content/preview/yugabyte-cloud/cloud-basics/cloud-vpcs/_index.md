@@ -34,7 +34,7 @@ VPCs, peering connections, and private service endpoints are managed on the **VP
 
 {{< note title="Note" >}}
 
-To connect a cluster to an application VPC using either a peering connection or private service endpoint, you need to deploy the cluster in a dedicated VPC. You need to set up the dedicated VPC _before_ deploying your cluster.
+To connect a cluster to an application VPC using either a peering connection or a private service endpoint, you need to deploy the cluster in a dedicated VPC. You need to set up the dedicated VPC _before_ deploying your cluster.
 
 VPC networking is not supported in Sandbox clusters.
 
@@ -49,7 +49,7 @@ VPC networking is not supported in Sandbox clusters.
         <div class="title">Overview</div>
       </div>
       <div class="body">
-        How to choose the region for and size a VPC.
+        How to choose the region and size for a VPC.
       </div>
     </a>
   </div>
@@ -77,37 +77,31 @@ VPC networking is not supported in Sandbox clusters.
         <div class="title">Peering Connections</div>
       </div>
       <div class="body">
-        Manage peering connections to application VPCs.
+        Manage your account peering connections.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cloud-add-peering/">
+    <a class="section-link icon-offset" href="./cloud-add-vpc-aws/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
+        <div class="title">Peer VPCs</div>
+      </div>
+      <div class="body">
+        Connect your VPC to application VPCs on AWS and GCP using peering.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="./cloud-add-endpoint/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/create_cluster.png" aria-hidden="true" />
         <div class="title">Private service endpoints</div>
       </div>
       <div class="body">
         Manage private service endpoints.
-      </div>
-    </a>
-  </div>
-
-</div>
-
-### Peering VPCs
-
-<div class="row">
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="./cloud-add-vpc-aws/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">Create a peering network</div>
-      </div>
-      <div class="body">
-        Peer VPCs on AWS and GCP.
       </div>
     </a>
   </div>
