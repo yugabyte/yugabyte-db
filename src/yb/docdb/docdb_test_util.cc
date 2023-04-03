@@ -100,16 +100,18 @@ class NonTransactionalStatusProvider: public TransactionStatusManager {
     Fail();
   }
 
-  void Cleanup(TransactionIdSet&& set) override {
+  Status Cleanup(TransactionIdSet&& set) override {
     Fail();
+    return STATUS(NotSupported, "Cleanup not implemented");
   }
 
-  void FillPriorities(
+  Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
     Fail();
+    return STATUS(NotSupported, "FillPriorities not implemented");
   }
 
-  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
+  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
     return boost::none;
   }
 
@@ -333,12 +335,12 @@ vector<SubDocKey> GenRandomSubDocKeys(RandomNumberGenerator* rng, UseHash use_ha
 }
 // ------------------------------------------------------------------------------------------------
 
-void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
+Status LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   kvs.clear();
   rocksdb::ReadOptions read_options;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_options));
   iter->SeekToFirst();
-  while (iter->Valid()) {
+  while (VERIFY_RESULT(iter->CheckedValid())) {
     kvs.emplace_back(iter->key().ToBuffer(), iter->value().ToBuffer());
     iter->Next();
   }
@@ -346,23 +348,27 @@ void LogicalRocksDBDebugSnapshot::Capture(rocksdb::DB* rocksdb) {
   // in RestoreTo.
   docdb_debug_dump_str = DocDBDebugDumpToStr(
       rocksdb, SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+  return Status::OK();
 }
 
-void LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
+Status LogicalRocksDBDebugSnapshot::RestoreTo(rocksdb::DB *rocksdb) const {
   rocksdb::ReadOptions read_options;
   rocksdb::WriteOptions write_options;
   auto iter = unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_options));
   iter->SeekToFirst();
-  while (iter->Valid()) {
-    ASSERT_OK(rocksdb->Delete(write_options, iter->key()));
+  while (VERIFY_RESULT(iter->CheckedValid())) {
+    RETURN_NOT_OK(rocksdb->Delete(write_options, iter->key()));
     iter->Next();
   }
   for (const auto& kv : kvs) {
-    ASSERT_OK(rocksdb->Put(write_options, kv.first, kv.second));
+    RETURN_NOT_OK(rocksdb->Put(write_options, kv.first, kv.second));
   }
-  ASSERT_OK(FullyCompactDB(rocksdb));
-  ASSERT_EQ(docdb_debug_dump_str,
-            DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage(TableType::YQL_TABLE_TYPE)));
+  RETURN_NOT_OK(FullyCompactDB(rocksdb));
+  SCHECK_EQ(
+      docdb_debug_dump_str,
+      DocDBDebugDumpToStr(rocksdb, SchemaPackingStorage(TableType::YQL_TABLE_TYPE)),
+      InternalError, "DocDB dump mismatch");
+  return Status::OK();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -457,7 +463,7 @@ void DocDBLoadGenerator::PerformOperation(bool compact_history) {
     const auto set_primitive_status = dwb.SetPrimitive(doc_path, value);
     if (!set_primitive_status.ok()) {
       DocDBDebugDump(rocksdb(), std::cerr, SchemaPackingStorage(TableType::YQL_TABLE_TYPE),
-                     StorageDbType::kRegular);
+          StorageDbType::kRegular);
       LOG(INFO) << "doc_path=" << doc_path.ToString();
     }
     ASSERT_OK(set_primitive_status);

@@ -177,5 +177,9 @@ extern template class KeyValueTableTest<ExternalMiniCluster>;
 
 Status CheckOp(YBqlOp* op);
 
+// Select rows count without intermediate conversion of rows to string vector as CountTableRows
+// does.
+Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table);
+
 }  // namespace client
 }  // namespace yb

@@ -85,7 +85,7 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   void AddToSet(const TransactionId& transaction_id, TransactionIdSet* set);
 
  private:
-  void CleanupTransactions();
+  Status CleanupTransactions();
 
   std::string LogPrefix() const;
 
@@ -116,17 +116,17 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   } \
 }
 
-void DocDBIntentsCompactionFilter::CleanupTransactions() {
+Status DocDBIntentsCompactionFilter::CleanupTransactions() {
   VLOG_WITH_PREFIX(3) << "DocDB intents compaction filter is being deleted";
   if (transactions_to_cleanup_.empty()) {
-    return;
+    return Status::OK();
   }
   TransactionStatusManager* manager = tablet_->transaction_participant();
   if (rejected_transactions_ > 0) {
     LOG_WITH_PREFIX(WARNING) << "Number of aborted transactions not cleaned up " <<
                                 "on account of reaching size limits:" << rejected_transactions_;
   }
-  manager->Cleanup(std::move(transactions_to_cleanup_));
+  return manager->Cleanup(std::move(transactions_to_cleanup_));
 }
 
 DocDBIntentsCompactionFilter::~DocDBIntentsCompactionFilter() {
@@ -228,7 +228,10 @@ void DocDBIntentsCompactionFilter::CompactionFinished() {
     LOG_WITH_PREFIX(WARNING) << Format(
         "Found $0 total errors during intents compaction filter.", num_errors_);
   }
-  CleanupTransactions();
+  const auto s = CleanupTransactions();
+  if (!s.ok()) {
+    YB_LOG_EVERY_N_SECS(DFATAL, 60) << "Error cleaning up transactions: " << AsString(s);
+  }
 }
 
 void DocDBIntentsCompactionFilter::AddToSet(const TransactionId& transaction_id,
