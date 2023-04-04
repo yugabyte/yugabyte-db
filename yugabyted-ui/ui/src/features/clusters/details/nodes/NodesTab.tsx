@@ -152,14 +152,14 @@ export const NodesTab: FC = () => {
     });
   };
   // Get nodes
-  const { data: nodesResponse, isLoading: fetchingNodes, refetch: refetchNodes } =
+  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } =
     useGetClusterNodesQuery();
 
   // We get load balancer separately for now since we rely on yb-admin which is slow
   const {
     data: isLoadBalancerIdleResponse,
-    isLoading: fetchingIsLoadBalancerIdle,
-    refetch: refetchIsLoadBalancerIdle
+    isFetching: fetchingIsLoadBalancerIdle,
+    refetch: refetchIsLoadBalancerIdle,
   } = useGetIsLoadBalancerIdleQuery();
 
   // These define which checkboxes are checked by default in the Edit Columns modal
@@ -297,7 +297,7 @@ export const NodesTab: FC = () => {
       <>
         <Box mt={3} mb={2.5}>
           <LinearProgress />
-          <div className={classes.loadingCount} />
+          {/* <div className={classes.loadingCount} /> */}
         </Box>
         <div className={classes.loadingBox} />
       </>

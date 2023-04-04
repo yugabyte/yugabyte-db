@@ -81,6 +81,7 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
   const { data: nodesResponse } = useGetClusterNodesQuery();
   const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
     acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
+  const ramPerNode = totalRamUsageGb / (nodesResponse?.data.length ?? 1)
 
   const regionData = useMemo(() => {
     const set = new Set<string>();
@@ -95,7 +96,7 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
         nodeCount: nodesResponse?.data.filter(node => 
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
         vCpuPerNode: totalCores,
-        ramPerNode: getRamUsageText(totalRamUsageGb),
+        ramPerNode: getRamUsageText(ramPerNode),
         diskPerNode: getDiskSizeText(totalDiskSize),
       }
     })

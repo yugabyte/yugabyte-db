@@ -105,6 +105,8 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
         }
       }), [data]);
 
+  const tableList = React.useMemo<ClusterTable[]>(() => data.filter(d => d.keyspace === selectedDB), [selectedDB, data])
+
   if (isFetching) {
     return (
       <Box textAlign="center" mt={2.5}>
@@ -164,7 +166,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
               growDirection={'right'}
               className={classes.dropdown}
             >
-              {data.map(item => (
+              {tableList.map(item => (
                 <MenuItem
                   key={`keyspaces-${item.name.replace(' ', '-')}`}
                   selected={item.name === selectedTable}
@@ -183,7 +185,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
         :
         (selectedDB ? 
           <TableList
-            tableList={data}
+            tableList={tableList}
             onSelect={setSelectedTable}
             onRefetch={refetchData}
           />

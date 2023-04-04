@@ -1,5 +1,5 @@
 import React, { FC, useEffect, useMemo } from 'react';
-import { makeStyles, Box, Typography, MenuItem } from '@material-ui/core';
+import { makeStyles, Box, Typography, MenuItem, LinearProgress } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBButton, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
 import { useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
@@ -63,16 +63,17 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
   const [node, setNode] = React.useState<string>('');
   const [tabletID, setTabletID] = React.useState<string>('');
 
-  const { data: tablets } = useGetClusterTabletsQuery();
+  const { data: tablets, isFetching: isFetchingTablets } = useGetClusterTabletsQuery();
   const tableID = useMemo(() => tablets ? Object.values(tablets.data)
     .find(tablet => tablet.table_name === selectedTable)?.table_uuid as string : undefined, [selectedTable, tablets])
 
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery();
   const nodeNames = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
 
-  const { data: healthCheckData } = useGetClusterHealthCheckQuery();
+  const { data: healthCheckData, isFetching: isFetchingHealth } = useGetClusterHealthCheckQuery();
   
   const [tabletList, setTabletList] = React.useState<any[]>([]);
+  const [isLoading, setIsLoading] = React.useState<boolean>(false);
 
   useEffect(() => {
     if (!nodesResponse || !tableID || !healthCheckData) {
@@ -118,6 +119,8 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
           return undefined;
         }
       }
+
+      setIsLoading(true);
       
       const tabletList: any[] = [];
       for (let i = 0; i < nodeHosts.length; i++) {
@@ -131,6 +134,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
       }
 
       setTabletList(tabletList);
+      setIsLoading(false);
     }
 
     populateTablets();
@@ -194,6 +198,14 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
       }
     },
   ];
+
+  if (isFetchingNodes || isFetchingHealth || isFetchingTablets || isLoading) {
+    return (
+      <Box textAlign="center" mt={2.5}>
+        <LinearProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>

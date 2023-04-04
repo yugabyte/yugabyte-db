@@ -71,12 +71,12 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
   const { t } = useTranslation();
 
   // Get nodes
-  const { data: nodesResponse, isLoading: fetchingNodes } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isFetching: fetchingNodes } = useGetClusterNodesQuery();
 
   // We get load balancer separately for now since we rely on yb-admin which is slow
   const {
     data: isLoadBalancerIdleResponse,
-    isLoading: fetchingIsLoadBalancerIdle,
+    isFetching: fetchingIsLoadBalancerIdle,
   } = useGetIsLoadBalancerIdleQuery();
 
   const nodesData = nodesResponse?.data;
