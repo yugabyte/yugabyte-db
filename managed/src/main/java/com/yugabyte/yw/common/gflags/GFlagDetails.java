@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc
+
 package com.yugabyte.yw.common.gflags;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -28,4 +30,10 @@ public class GFlagDetails {
 
   @JsonProperty(value = "tags")
   public String tags;
+
+  @JsonProperty(value = "initial")
+  public String initial;
+
+  @JsonProperty(value = "target")
+  public String target;
 }
