@@ -18,7 +18,7 @@ import {
 import { KMSField } from './components/KMSField';
 import { RotationHistory } from './components/RotationHistory';
 import { api, QUERY_KEY } from '../../../../utils/api';
-import { EncryptionAtRestConfig, Universe } from '../../universe-form/utils/dto';
+import { EncryptionAtRestConfig, Universe, KmsConfig } from '../../universe-form/utils/dto';
 import { YBLoading } from '../../../../../components/common/indicators';
 
 //EAR Component
@@ -39,8 +39,6 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
   const {
     universeDetails: { encryptionAtRestConfig }
   } = universeDetails;
-  const { encryptionAtRestEnabled, kmsConfigUUID } = encryptionAtRestConfig;
-  const activeKMSConfig = encryptionAtRestEnabled ? kmsConfigUUID : '';
   const universeId = universeDetails.universeUUID;
 
   //fetch kms configs
@@ -54,11 +52,17 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
     isLoading: isKMSHistoryLoading
   } = useQuery(QUERY_KEY.getKMSHistory, () => api.getKMSHistory(universeId));
 
+  //kms info
+  const { encryptionAtRestEnabled, kmsConfigUUID } = encryptionAtRestConfig;
+  const activeKMSConfig = kmsConfigs.find(
+    (config: KmsConfig) => config.metadata.configUUID === kmsConfigUUID
+  );
+
   //init form
   const formMethods = useForm<EncryptionAtRestFormValues>({
     defaultValues: {
       encryptionAtRestEnabled,
-      kmsConfigUUID: activeKMSConfig,
+      kmsConfigUUID: kmsConfigUUID ?? '',
       rotateUniverseKey: false
     },
     mode: 'onChange',
@@ -70,7 +74,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
   const earToggleEnabled = watch(EAR_FIELD_NAME);
   const currentKmsConfigUUID = watch(KMS_FIELD_NAME);
   const rotateUniverseKey = watch(UNIVERSE_KEY_FIELD_NAME); //Universe key is rotated
-  const rotateMasterKey = currentKmsConfigUUID !== kmsConfigUUID; //Master Key is rotated
+  const rotateMasterKey = encryptionAtRestEnabled && currentKmsConfigUUID !== kmsConfigUUID; //Master Key is rotated
   const rotationInfo = getLastRotationDetails(kmsHistory ?? [], kmsConfigs);
 
   //methods
@@ -145,7 +149,6 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
           flexDirection="column"
           data-testid="EncryptionAtRest-Modal"
         >
-          {/* Enabling EAR for the first time */}
           <Box
             display="flex"
             flexDirection="column"
@@ -167,8 +170,15 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
                 />
               </Box>
             </Box>
+            {!encryptionAtRestEnabled && !earToggleEnabled && kmsHistory.length > 1 && (
+              <RotationHistory
+                rotationInfo={rotationInfo.lastActiveKey}
+                lastActiveKMS={rotationInfo?.lastActiveKey?.configName}
+              />
+            )}
 
-            {!encryptionAtRestEnabled && earToggleEnabled && (
+            {/* Enabling EAR for the first time */}
+            {kmsHistory.length <= 1 && earToggleEnabled && (
               <Box mt={2}>
                 <KMSField
                   disabled={rotateUniverseKey}
@@ -176,16 +186,13 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
                 />
               </Box>
             )}
-            {!encryptionAtRestEnabled && kmsHistory.length > 0 && (
-              <RotationHistory rotationInfo={rotationInfo.lastActiveKey} />
-            )}
           </Box>
           {/* Enabling EAR for the first time */}
 
           {/* ------------------------------------------------------------------------------- */}
 
           {/* Rotating universe or master key */}
-          {encryptionAtRestEnabled && earToggleEnabled && (
+          {kmsHistory.length > 1 && earToggleEnabled && (
             <Box mt={4} display="flex" flexDirection="column" className={classes.container}>
               <Box className={classes.subContainer}>
                 <Box>
@@ -204,11 +211,14 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
                       <KMSField
                         disabled={rotateUniverseKey}
                         label={t('universeActions.encryptionAtRest.rotateKMSConfig')}
-                        activeKMS={activeKMSConfig}
+                        activeKMS={encryptionAtRestEnabled ? kmsConfigUUID : ''}
                       />
                     </div>
                   </YBTooltip>
-                  <RotationHistory rotationInfo={rotationInfo.masterKey} />
+                  <RotationHistory
+                    rotationInfo={rotationInfo.masterKey}
+                    lastActiveKMS={!encryptionAtRestEnabled ? activeKMSConfig?.metadata?.name : ''}
+                  />
                 </Box>
               </Box>
 
@@ -235,12 +245,12 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
                         inputProps={{
                           'data-testid': 'RotateUniverseKey-Checkbox'
                         }}
-                        disabled={rotateMasterKey}
+                        disabled={rotateMasterKey || !encryptionAtRestEnabled}
                       />
                     </div>
                   </YBTooltip>
                 </Box>
-                <RotationHistory rotationInfo={rotationInfo.universeKey} name={false} />
+                <RotationHistory rotationInfo={rotationInfo.universeKey} />
               </Box>
             </Box>
           )}
