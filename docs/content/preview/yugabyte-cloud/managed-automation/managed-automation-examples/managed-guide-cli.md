@@ -7,7 +7,7 @@ headcontent: Example workflows for automation tools
 menu:
   preview_yugabyte-cloud:
     identifier: managed-guide-cli
-    parent: managed-automation
+    parent: managed-automation-examples
     weight: 60
 type: docs
 ---
@@ -212,4 +212,61 @@ ybm cluster create \
 The cluster my-multi-region has been created
 Name              Tier        Version        State     Health    Regions          Nodes     Total Res.(Vcpu/Mem/Disk)
 my-multi-region   Dedicated   2.14.7.0-b51   ACTIVE    💚        us-central1,+2   3         6 / 24GB / 600GB
+```
+
+## Pause, resume, and terminate
+
+To list your clusters, enter the following command:
+
+```sh
+ybm cluster list
+```
+
+```output
+Name               Tier        Version         State     Health    Regions                      Nodes     Total Res.(Vcpu/Mem/Disk)
+my-multi-region    Dedicated   2.14.7.0-b51    ACTIVE    💚        us-central1,+2               3         6 / 24GB / 600GB
+my-sandbox         Sandbox     2.17.1.0-b439   ACTIVE    💚        us-west-2                    1         2 / 4GB / 10GB
+my-single-region   Dedicated   2.17.2.0-b216   ACTIVE    💚        ap-northeast-1               3         12 / 48GB / 600GB
+```
+
+You can pause a cluster when you don't need it:
+
+```sh
+ybm cluster pause \
+  --cluster-name my-single-region \
+  --wait
+```
+
+```output
+The cluster my-single-region has been paused
+Name               Tier        Version         State     Health    Regions          Nodes     Total Res.(Vcpu/Mem/Disk)
+my-single-region   Dedicated   2.17.2.0-b216   PAUSED    ❓        ap-northeast-1   3         12 / 48GB / 600GB
+```
+
+(Note that the Sandbox is free, and can't be paused.)
+
+To resume a cluster:
+
+```sh
+ybm cluster resume \
+  --cluster-name my-single-region \
+  --wait
+```
+
+```output
+The cluster my-single-region has been resumed
+Name               Tier        Version         State     Health    Regions          Nodes     Total Res.(Vcpu/Mem/Disk)
+my-single-region   Dedicated   2.17.2.0-b216   ACTIVE    💚        ap-northeast-1   3         12 / 48GB / 600GB
+```
+
+If you don't need a cluster anymore, you can terminate it:
+
+```sh
+ybm cluster delete \
+  --cluster-name my-multi-region \
+  --wait
+```
+
+```output
+The cluster my-multi-region has been deleted
 ```

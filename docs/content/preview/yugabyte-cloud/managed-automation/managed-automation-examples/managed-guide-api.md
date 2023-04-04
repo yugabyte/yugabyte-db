@@ -7,7 +7,7 @@ headcontent: Example workflows for automation tools
 menu:
   preview_yugabyte-cloud:
     identifier: managed-guide-api
-    parent: managed-automation
+    parent: managed-automation-examples
     weight: 60
 type: docs
 ---
