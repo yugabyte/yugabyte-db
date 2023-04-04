@@ -12,23 +12,23 @@ menu:
 type: docs
 ---
 
-The following tutorial shows how you can use [ybm CLI](../managed-cli/) to create clusters in YugabyteDB Managed.
+The following tutorial shows how you can use [ybm CLI](../../managed-cli/) to create clusters in YugabyteDB Managed.
 
 ## Prerequisites
 
 This guide assumes you have already done the following:
 
-- Created and saved an [API key](../managed-apikeys/).
-- [Installed ybm CLI](../managed-cli/managed-cli-overview/#install-ybm).
-- [Configured ybm CLI](../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
+- Created and saved an [API key](../../managed-apikeys/).
+- [Installed ybm CLI](../../managed-cli/managed-cli-overview/#install-ybm).
+- [Configured ybm CLI](../../managed-cli/managed-cli-overview/#configure-ybm) with your API key.
 
-To create VPCs and dedicated clusters, you also need to add a [billing profile](../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../managed-freetrial/).
+To create VPCs and dedicated clusters, you also need to add a [billing profile](../../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../../managed-freetrial/).
 
 Note that you can only create one Sandbox cluster per account.
 
 ## Create a sandbox cluster
 
-To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters-free/) cluster, enter the following command:
+To create your free [sandbox](../../../cloud-basics/create-clusters/create-clusters-free/) cluster, enter the following command:
 
 ```sh
 ybm cluster create \
@@ -48,7 +48,7 @@ my-sandbox   Sandbox   2.17.1.0-b439   ACTIVE    💚        us-west-2   1      
 
 ## Connect to your cluster
 
-To [connect to your database](../../cloud-connect/) from your desktop or an application, you need the following:
+To [connect to your database](../../../cloud-connect/) from your desktop or an application, you need the following:
 
 - your device added to the cluster IP allow list
 - the cluster TLS certificate
@@ -56,7 +56,7 @@ To [connect to your database](../../cloud-connect/) from your desktop or an appl
 
 ### Create and assign an IP allow list
 
-To connect to your cluster from your computer, you need an [IP allow list](../../cloud-secure-clusters/add-connections/) with your computer's IP address. Create one as follows:
+To connect to your cluster from your computer, you need an [IP allow list](../../../cloud-secure-clusters/add-connections/) with your computer's IP address. Create one as follows:
 
 ```sh
 ybm network-allow-list create \
@@ -95,7 +95,7 @@ my-computer                                       173.206.17.104/32   my-sandbox
 
 ### Download the cluster certificate
 
-To connect to a cluster in YugabyteDB Managed using a shell, you need the [cluster certificate](../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
+To connect to a cluster in YugabyteDB Managed using a shell, you need the [cluster certificate](../../../cloud-secure-clusters/cloud-authentication/). Download the certificate using the following command:
 
 ```sh
 ybm cluster cert download --out $HOME/root.crt
@@ -140,7 +140,7 @@ my-sandbox-n1   us-west-2[us-west-2a]   💚        ✅        ✅        ❌   
 
 The host address to use to connect to your cluster is displayed under **Endpoints**.
 
-To connect to your cluster using the ysqlsh or ycqlsh shells, follow the instructions in [Connect via client shells](../../cloud-connect/connect-client-shell/). Use the cluster endpoint host address, the database credentials you specified when you created the sandbox, and the certificate you downloaded.
+To connect to your cluster using the ysqlsh or ycqlsh shells, follow the instructions in [Connect via client shells](../../../cloud-connect/connect-client-shell/). Use the cluster endpoint host address, the database credentials you specified when you created the sandbox, and the certificate you downloaded.
 
 ## Create a single-region dedicated cluster
 
@@ -168,7 +168,7 @@ my-single-region   Dedicated   2.17.2.0-b216  ACTIVE    💚        ap-northeast
 
 ## Create a VPC and multi-region dedicated cluster
 
-Multi-region clusters must be deployed in a [VPC](../../cloud-basics/cloud-vpcs/). The following example creates a VPC on GCP:
+Multi-region clusters must be deployed in a [VPC](../../../cloud-basics/cloud-vpcs/). The following example creates a VPC on GCP:
 
 ```sh
 ybm vpc create \
@@ -190,7 +190,7 @@ To list the available regions in GCP:
 ybm region list --cloud-provider GCP
 ```
 
-The following command creates a [replicate-across-regions](../../cloud-basics/create-clusters/create-clusters-multisync/) cluster in the VPC you created:
+The following command creates a [replicate-across-regions](../../../cloud-basics/create-clusters/create-clusters-multisync/) cluster in the VPC you created:
 
 ```sh
 ybm cluster create \

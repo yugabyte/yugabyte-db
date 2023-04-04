@@ -20,8 +20,8 @@ For documentation and Postman collection, refer to [YugabyteDB Managed REST API]
 
 This guide assumes you have already done the following:
 
-- Created and saved an [API key](../managed-apikeys/).
-- Obtained your [account ID and project ID](../#account-details).
+- Created and saved an [API key](../../managed-apikeys/).
+- Obtained your [account ID and project ID](../../#account-details).
 - Installed [jq](https://stedolan.github.io/jq/).
 
 For convenience, add the API key and IDs to environment variables, as follows:
@@ -32,17 +32,17 @@ YBM_ACCOUNT_ID="<account_ID>"
 YBM_PROJECT_ID="<project_ID>"
 ```
 
-To create VPCs and dedicated clusters, you also need to add a [billing profile](../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../managed-freetrial/).
+To create VPCs and dedicated clusters, you also need to add a [billing profile](../../../cloud-admin/cloud-billing-profile/) and payment method, or you can [request a free trial](../../../managed-freetrial/).
 
 Note that you can only create one Sandbox cluster per account.
 
 ## Create a sandbox cluster
 
-To create your free [sandbox](../../cloud-basics/create-clusters/create-clusters-free/) cluster, you'll first set up environment variables for the version of YugabyteDB to use, and an IP allow list.
+To create your free [sandbox](../../../cloud-basics/create-clusters/create-clusters-free/) cluster, you'll first set up environment variables for the version of YugabyteDB to use, and an IP allow list.
 
-### Software track
+### Determine the database version
 
-YugabyteDB Managed has [two release tracks](../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for testing new features, and Stable for production deployments.
+YugabyteDB Managed has [two release tracks](../../../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on), Preview for testing new features, and Stable for production deployments.
 
 To get the ID for the Preview track and add it to an environment variable, enter the following commands:
 
@@ -60,7 +60,7 @@ curl -s --request GET \
 echo ; set | grep ^YBM_ | cut -c1-80
 ```
 
-### IP allow list
+### Create an IP allow list
 
 To access the cluster from your computer, you need to add your public IP to an IP allow list. The following creates an allow list with the address obtained from <http://ifconfig.me>, and puts the ID of the allow list into an environment variable:
 
@@ -90,7 +90,7 @@ curl -s --request GET \
 echo ; set | grep ^YBM_ | cut -c1-80
 ```
 
-### Deploy
+### Deploy the cluster
 
 Now you have all the information you need to deploy a cluster as environment variables:
 
@@ -177,7 +177,7 @@ curl -s --request POST \
 
 The cluster takes five to ten minutes to deploy.
 
-### List the clusters
+## List your clusters
 
 Enter the following to check the progress from the list of clusters:
 
@@ -217,7 +217,7 @@ until curl -s --request GET \
 
 This loop stops when the cluster is ready.
 
-### Connect to the database
+## Connect to the database
 
 To be able to connect to the default database `yugabyte` using the admin user you created, you need to obtain the public host address of the cluster from the list of endpoints.
 
@@ -242,9 +242,9 @@ echo ; set | grep ^PG
 export PGDATABASE PGUSER PGHOST PGPORT PGPASSWORD PGSSLMODE
 ```
 
-You can now use any PostgreSQL tool or application to [connect to the database](../../cloud-connect/connect-client-shell/).
+You can now use any PostgreSQL tool or application to [connect to the database](../../../cloud-connect/connect-client-shell/).
 
-### Terminate
+## Terminate the cluster
 
 You can pause a cluster when you don't need it:
 
