@@ -79,7 +79,7 @@ const VALIDATION_SCHEMA = object().shape({
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
 
-const FORM_NAME = 'OnPremProviderForm';
+const FORM_NAME = 'OnPremProviderCreateForm';
 
 export const OnPremProviderCreateForm = ({
   onBack,
@@ -182,14 +182,17 @@ export const OnPremProviderCreateForm = ({
             <FieldGroup
               heading="Regions"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <RegionList

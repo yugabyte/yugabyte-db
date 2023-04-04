@@ -116,6 +116,8 @@ const VALIDATION_SCHEMA = object().shape({
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
 
+const FORM_NAME = 'AZUProviderEditForm';
+
 export const AZUProviderEditForm = ({
   editProvider,
   isProviderInUse,
@@ -194,7 +196,7 @@ export const AZUProviderEditForm = ({
       <FormProvider {...formMethods}>
         <FormContainer name="azuProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
           {currentProviderVersion < providerConfig.version && (
-            <VersionWarningBanner onReset={onFormReset} />
+            <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
           <Typography variant="h3">Manage Azure Provider Configuration</Typography>
           <FormField providerNameField={true}>
@@ -266,14 +268,17 @@ export const AZUProviderEditForm = ({
             <FieldGroup
               heading="Regions"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <RegionList
@@ -401,14 +406,14 @@ export const AZUProviderEditForm = ({
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled}
-              data-testid="AZUProviderCreateForm-SubmitButton"
+              data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
               onClick={onFormReset}
               disabled={isFormDisabled}
-              data-testid="AZUProviderCreateForm-BackButton"
+              data-testid={`${FORM_NAME}-ClearButton`}
             />
           </Box>
         </FormContainer>
