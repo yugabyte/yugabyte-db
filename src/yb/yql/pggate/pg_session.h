@@ -441,7 +441,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::stack<nostd::shared_ptr<opentelemetry::trace::Span>> spans_;
   std::stack<nostd::unique_ptr<opentelemetry::context::Token>> tokens_;
 
-  std::string trace_file_name_base_ = "/home/centos/yugabyte-data/node-1/disk-1/yb-data/tserver/logs/";
+  std::string trace_file_name_base_ = FLAGS_log_dir;
   std::string trace_file_name_;
   std::shared_ptr<std::ofstream> trace_file_handle_ = nullptr;
 };

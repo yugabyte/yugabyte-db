@@ -477,27 +477,31 @@ Status PgSession::StopTraceForQuery() {
 }
 
 Status PgSession::StartQueryEvent(const char* event_name) {
-  auto span = this->query_tracer_->StartSpan(
-      event_name,
-      {
-        {opentelemetry::trace::SemanticConventions::kCodeFunction, __FILE_NAME__}, {
-          opentelemetry::trace::SemanticConventions::kCodeLineno, __LINE__
+  if(this->query_tracer_) {
+    auto span = this->query_tracer_->StartSpan(
+        event_name,
+        {
+          {opentelemetry::trace::SemanticConventions::kCodeFunction, __FILE_NAME__}, {
+            opentelemetry::trace::SemanticConventions::kCodeLineno, __LINE__
+          }
         }
-      }
-    );
-  this->spans_.push(span);
-  this->tokens_.push(
-      opentelemetry::context::RuntimeContext::Attach(
-          opentelemetry::context::RuntimeContext::GetCurrent().SetValue(opentelemetry::trace::kSpanKey, span)));
+      );
+    this->spans_.push(span);
+    this->tokens_.push(
+        opentelemetry::context::RuntimeContext::Attach(
+            opentelemetry::context::RuntimeContext::GetCurrent().SetValue(opentelemetry::trace::kSpanKey, span)));
+  }
   return Status::OK();
 }
 
 Status PgSession::StopQueryEvent(const char* event_name) {
-  nostd::shared_ptr<opentelemetry::trace::Span> span = this->spans_.top();
-  span->SetStatus(opentelemetry::trace::StatusCode::kOk);
-  span->End();
-  this->tokens_.pop();
-  this->spans_.pop();
+  if(this->query_tracer_) {
+    nostd::shared_ptr<opentelemetry::trace::Span> span = this->spans_.top();
+    span->SetStatus(opentelemetry::trace::StatusCode::kOk);
+    span->End();
+    this->tokens_.pop();
+    this->spans_.pop();
+  }
   return Status::OK();
 }
 
@@ -940,6 +944,7 @@ void PgSession::CleanupTracer() {
     trace_file_handle_.reset();
     trace_file_handle_ = nullptr;
   }
+  this->query_tracer_ = nullptr;
 }
 
 template<class Generator>

@@ -271,12 +271,17 @@ InitProcGlobal(void)
 		/* Initialize lockGroupMembers list. */
 		dlist_init(&procs[i].lockGroupMembers);
 
+		/* Initialize traceableQueries array */
+		procs[i].numQueries = 0;
+		procs[i].traceableQueries = (int64 *) ShmemAlloc(MAX_TRACEABLE_QUERIES * sizeof(int64));
+
 		/*
 		 * Initialize the atomic variables, otherwise, it won't be safe to
 		 * access them for backends that aren't currently in use.
 		 */
 		pg_atomic_init_u32(&(procs[i].procArrayGroupNext), INVALID_PGPROCNO);
 		pg_atomic_init_u32(&(procs[i].clogGroupNext), INVALID_PGPROCNO);
+		pg_atomic_init_u32(&(procs[i].is_yb_tracing_enabled), 0);
 	}
 
 	/*

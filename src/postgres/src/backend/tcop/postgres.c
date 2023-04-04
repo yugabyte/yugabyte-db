@@ -108,6 +108,8 @@ int			max_stack_depth = 100;
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
 
+yb_trace	trace_vars;
+
 /* ----------------
  *		private variables
  * ----------------
@@ -212,6 +214,7 @@ static void log_disconnections(int code, Datum arg);
 static void enable_statement_timeout(void);
 static void disable_statement_timeout(void);
 
+static void ResetYbTraceVars(void);
 
 /* ----------------------------------------------------------------
  *		routines to obtain user input
@@ -715,6 +718,8 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
+	trace_vars.query_id = (int64)query->queryId; /* type cast uint64 to int64 */
+
 	return querytree_list;
 }
 
@@ -1092,16 +1097,48 @@ exec_simple_query(const char *query_string)
 		 */
 		oldcontext = MemoryContextSwitchTo(MessageContext);
 
-		YBCStartQueryEvent("analyz_and_rewrite");
+		if (IsYugaByteEnabled() && pg_atomic_read_u32(&MyProc->is_yb_tracing_enabled))
+		{
+			YBCStartTraceForQuery(MyProc->pid, query_string);
+			trace_vars.is_tracing_enabled = true;
+		}
+
+		if( IsYugaByteEnabled()) /* Remove this? if tracing is enabled for query and not session, we cannot trace it*/
+			YBCStartQueryEvent("analyze_and_rewrite");
 		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
 												NULL, 0, NULL);
+		if( IsYugaByteEnabled())
+			YBCStopQueryEvent("analyze_and_rewrite");
 
-		YBCStopQueryEvent("analyz_and_rewrite");
+		if (IsYugaByteEnabled() && !trace_vars.is_tracing_enabled)
+		{
+			int traceable_index;
+			bool found = false;
+			volatile PGPROC *proc = MyProc;
+			LWLockAcquire((LWLock *)&proc->backendLock, LW_SHARED);
+			for (traceable_index = 0; traceable_index < proc->numQueries; traceable_index++)
+			{
+				if (proc->traceableQueries[traceable_index] == trace_vars.query_id)
+				{
+					found = true;
+					break;
+				}
+			}
+			LWLockRelease((LWLock *)&proc->backendLock);
 
-		YBCStartQueryEvent("plan");
+			if (found)
+			{
+				YBCStartTraceForQuery(MyProc->pid, query_string);
+				trace_vars.is_tracing_enabled = true;
+			}
+		}
+
+		if(IsYugaByteEnabled())
+			YBCStartQueryEvent("plan");
 		plantree_list = pg_plan_queries(querytree_list,
 										CURSOR_OPT_PARALLEL_OK, NULL);
-		YBCStopQueryEvent("plan");
+		if(IsYugaByteEnabled())
+			YBCStopQueryEvent("plan");
 		/* Done with the snapshot used for parsing/planning */
 		if (snapshot_set)
 			PopActiveSnapshot();
@@ -1168,7 +1205,8 @@ exec_simple_query(const char *query_string)
 		 */
 		MemoryContextSwitchTo(oldcontext);
 
-		YBCStartQueryEvent("execute");
+		if(IsYugaByteEnabled())
+			YBCStartQueryEvent("execute");
 		/*
 		 * Run the portal to completion, and then drop it (and the receiver).
 		 */
@@ -1180,7 +1218,9 @@ exec_simple_query(const char *query_string)
 						 receiver,
 						 completionTag);
 
-		YBCStopQueryEvent("execute");
+		if(IsYugaByteEnabled())
+			YBCStopQueryEvent("execute");
+
 		receiver->rDestroy(receiver);
 
 		PortalDrop(portal, false);
@@ -4648,14 +4688,12 @@ yb_exec_simple_query_impl(const void* query_string)
 static void
 yb_exec_simple_query(const char* query_string, MemoryContext exec_context)
 {
-	YBCStartTraceForQuery(MyProc->pid, query_string);
 	YBQueryRestartData restart_data  = {
 		.portal_name  = NULL,
 		.query_string = query_string,
 		.command_tag  = yb_parse_command_tag(query_string)
 	};
 	yb_exec_query_wrapper(exec_context, &restart_data, &yb_exec_simple_query_impl, query_string);
-	YBCStopTraceForQuery();
 }
 
 typedef struct YBExecuteMessageFunctorContext
@@ -5092,6 +5130,9 @@ PostgresMain(int argc, char *argv[],
 
 	if (!ignore_till_sync)
 		send_ready_for_query = true;	/* initially, or after error */
+
+	/* Initialize tracing variables */
+	ResetYbTraceVars();
 
 	/*
 	 * Non-error queries loop here.
@@ -5700,6 +5741,11 @@ PostgresMain(int argc, char *argv[],
 						 errmsg("invalid frontend message type %d",
 								firstchar)));
 		}
+		if (IsYugaByteEnabled() && trace_vars.is_tracing_enabled)
+		{
+			YBCStopTraceForQuery();
+			ResetYbTraceVars();
+		}
 	}							/* end of input-reading loop */
 }
 
@@ -5992,4 +6038,11 @@ const char* RedactPasswordIfExists(const char* queryStr) {
 	}
 
 	return queryStr;
+}
+
+static void
+ResetYbTraceVars(void)
+{
+	trace_vars.is_tracing_enabled = false;
+	trace_vars.query_id = -1;
 }

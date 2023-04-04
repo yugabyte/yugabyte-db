@@ -76,6 +76,9 @@ struct XidCache
  */
 #define INVALID_PGPROCNO		PG_INT32_MAX
 
+/* This is the maximum number of queries that can be traced from each backend */
+#define MAX_TRACEABLE_QUERIES	10
+
 /*
  * Each backend has a PGPROC struct in shared memory.  There is also a list of
  * currently-unused PGPROC structs that will be reallocated to new backends.
@@ -108,6 +111,8 @@ struct PGPROC
 								 * else InvalidLocalTransactionId */
 	int			pid;			/* Backend's process ID; 0 if prepared xact */
 	int			pgprocno;
+
+	pg_atomic_uint32 is_yb_tracing_enabled;
 
 	/* These fields are zero while a backend is still starting up: */
 	BackendId	backendId;		/* This backend's backend ID (if assigned) */
@@ -211,6 +216,10 @@ struct PGPROC
 	 * pg_buffercache extension locks all buffer partitions simultaneously.
 	 */
 	bool 		ybAnyLockAcquired;
+
+	/* List of queryids to be traced */
+	int 		numQueries; /* store this in is_yb_tracing_enabled? as 31 bits are wasted */
+	int64* 		traceableQueries;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
