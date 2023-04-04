@@ -906,6 +906,7 @@ class UniverseDetail extends Component {
             onClose={() => {
               closeModal();
               this.props.getUniverseInfo(currentUniverse.data.universeUUID);
+              this.props.fetchCustomerTasks();
             }}
             universeDetails={currentUniverse.data}
           />
