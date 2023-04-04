@@ -440,7 +440,7 @@ func (pg Postgres) createYugawareDatabase() {
 		out = shell.Run(cmd, args...)
 	}
 	if !out.Succeeded() {
-		if strings.Contains(out.Error.Error(), "already exists") {
+		if strings.Contains(out.StderrString(), "already exists") {
 			// db already existing is fine because this may be a resumed failed install
 			return
 		}
