@@ -624,6 +624,16 @@ Status Messenger::QueueEventOnAllReactors(
   return Status::OK();
 }
 
+Status Messenger::QueueEventOnFilteredConnections(
+    ServerEventListPtr server_event, const SourceLocation& source_location,
+    ConnectionFilter connection_filter) {
+  shared_lock<rw_spinlock> guard(lock_.get_lock());
+  for (const auto& reactor : reactors_) {
+    reactor->QueueEventOnFilteredConnections(server_event, source_location, connection_filter);
+  }
+  return Status::OK();
+}
+
 void Messenger::RemoveScheduledTask(ScheduledTaskId id) {
   CHECK_GT(id, 0);
   std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);

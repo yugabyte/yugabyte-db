@@ -301,6 +301,21 @@ void Reactor::QueueEventOnAllConnections(
   }, source_location);
 }
 
+void Reactor::QueueEventOnFilteredConnections(
+    ServerEventListPtr server_event, const SourceLocation& source_location,
+    ConnectionFilter connection_filter) {
+  ScheduleReactorFunctor(
+      [server_event = std::move(server_event),
+       connection_filter = std::move(connection_filter)](Reactor* reactor) {
+        for (const ConnectionPtr& conn : reactor->server_conns_) {
+          if (connection_filter(conn)) {
+            conn->QueueOutboundData(server_event);
+          }
+        }
+      },
+      source_location);
+}
+
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
   return RunOnReactorThread([&req, resp](Reactor* reactor) -> Status {
