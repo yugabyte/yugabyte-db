@@ -39,8 +39,8 @@ class CreateKubernetesConfiguration extends Component {
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
       (providerType) => providerType.code === type
     );
-    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : {};
-
+    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : "{}"  ;
+    fileConfigArray.push(providerKubeConfig);
     // Loop thru regions and check for config files
     vals.regionList.forEach((region, rIndex) => {
       region.zoneList.forEach((zone, zIndex) => {
@@ -73,7 +73,7 @@ class CreateKubernetesConfiguration extends Component {
             KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
             // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-            KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined,
+            KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined  ,
             KUBE_POD_ADDRESS_TEMPLATE: zone.zonePodAddressTemplate || undefined
           };
 
@@ -99,7 +99,8 @@ class CreateKubernetesConfiguration extends Component {
             : providerTypeMetadata
             ? providerTypeMetadata.code
             : 'gke',
-          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
+          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry,
+
         };
 
         if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
@@ -108,10 +109,15 @@ class CreateKubernetesConfiguration extends Component {
 
         configIndexRecord.forEach(([regionIdx, zoneIdx], i) => {
           const currentZone = regionsLocInfo[regionIdx].zoneList[zoneIdx];
-          currentZone.config.KUBECONFIG_CONTENT = configs[1 + i];
+          currentZone.config.KUBECONFIG_CONTENT = configs[2 + i];
         });
         // TODO: fetch the service account name from the kubeconfig.
-
+        if (isDefinedNotNull(vals.kubeConfig)) {
+          Object.assign(providerConfig, {
+            KUBECONFIG_NAME: vals.kubeConfig.name,
+            KUBECONFIG_CONTENT: configs[1]
+          });
+        }
         if (isDefinedNotNull(pullSecretFile)) {
           const pullSecretYaml = JsYaml.load(configs[0]);
           Object.assign(providerConfig, {
