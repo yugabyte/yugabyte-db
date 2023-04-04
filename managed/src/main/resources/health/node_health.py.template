@@ -1154,7 +1154,7 @@ class NodeChecker():
         errors = []
         if not ('Connected to local cluster at {}:{}'
                 .format(self.node, self.ycql_port) in output or
-                "AuthenticationFailed('Remote end requires authentication.'" in output):
+                "AuthenticationFailed('Remote end requires authentication'" in output):
             errors = [output]
 
         has_errors = len(errors) > 0
