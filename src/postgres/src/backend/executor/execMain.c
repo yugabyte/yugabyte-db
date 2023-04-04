@@ -2011,8 +2011,12 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 										 ExecGetUpdatedCols(resultRelInfo, estate));
 			}
 
-			if (mtstate && !mtstate->yb_fetch_target_tuple &&
-			    !bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel), modifiedCols))
+			bool att_in_modified_cols = bms_is_member(
+				att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
+				modifiedCols);
+			bms_free(modifiedCols);
+
+			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
 			{
 				/*
 				 * Without a target tuple, we only know the values of the
@@ -2212,7 +2216,7 @@ ExecWithCheckOptions(WCOKind kind, ResultRelInfo *resultRelInfo,
 														 MakeTupleTableSlot(tupdesc));
 						modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
 												 ExecGetUpdatedCols(rootrel, estate));
-						rel = rootrel->ri_RelationDesc;	 
+						rel = rootrel->ri_RelationDesc;
 					}
 					else
 						modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),

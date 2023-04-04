@@ -138,7 +138,8 @@ extern bool YBCExecuteDelete(Relation rel,
 							 List *returning_columns,
 							 bool target_tuple_fetched,
 							 bool is_single_row_txn,
-							 bool changingPart);
+							 bool changingPart,
+							 EState *estate);
 /*
  * Delete a tuple (identified by index columns and base table ybctid) from an
  * index's backing YugaByte index table.
@@ -188,7 +189,8 @@ extern bool YBCExecuteUpdateLoginAttempts(Oid roleid,
  */
 extern Oid YBCExecuteUpdateReplace(Relation rel,
 								   TupleTableSlot *slot,
-								   HeapTuple tuple);
+								   HeapTuple tuple,
+								   EState *estate);
 
 //------------------------------------------------------------------------------
 // System tables modify-table API.
