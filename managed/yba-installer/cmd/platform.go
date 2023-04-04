@@ -112,7 +112,7 @@ func (plat Platform) Install() error {
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
 	} else {
-		// Allow yugabyte user to fully manage this installation (GetSoftwareRoot() to be safe)
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetBaseInstall(), userName, userName, true)
 	}
@@ -459,9 +459,9 @@ func (plat Platform) Upgrade() error {
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
 	} else {
-		// Allow yugabyte user to fully manage this installation (GetSoftwareRoot() to be safe)
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		common.Chown(common.GetSoftwareRoot(), userName, userName, true)
+		common.Chown(common.GetBaseInstall(), userName, userName, true)
 	}
 	err := plat.Start()
 	return err
