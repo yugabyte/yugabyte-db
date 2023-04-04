@@ -87,6 +87,8 @@ const VALIDATION_SCHEMA = object().shape({
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
 
+const FORM_NAME = 'OnPremProviderEditForm';
+
 export const OnPremProviderEditForm = ({
   editProvider,
   isProviderInUse,
@@ -170,7 +172,7 @@ export const OnPremProviderEditForm = ({
       <FormProvider {...formMethods}>
         <FormContainer name="OnPremProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
           {currentProviderVersion < providerConfig.version && (
-            <VersionWarningBanner onReset={onFormReset} />
+            <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
           <Typography variant="h3">Manage OnPrem Provider Configuration</Typography>
           <FormField providerNameField={true}>
@@ -186,14 +188,17 @@ export const OnPremProviderEditForm = ({
             <FieldGroup
               heading="Regions"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <RegionList
@@ -353,12 +358,14 @@ export const OnPremProviderEditForm = ({
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled}
+              data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
               onClick={onFormReset}
               disabled={isFormDisabled}
+              data-testid={`${FORM_NAME}-ClearButton`}
             />
           </Box>
         </FormContainer>

@@ -140,6 +140,8 @@ const VALIDATION_SCHEMA = object().shape({
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
 
+const FORM_NAME = 'GCPProviderEditForm';
+
 export const GCPProviderEditForm = ({
   editProvider,
   isProviderInUse,
@@ -268,7 +270,7 @@ export const GCPProviderEditForm = ({
       <FormProvider {...formMethods}>
         <FormContainer name="gcpProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
           {currentProviderVersion < providerConfig.version && (
-            <VersionWarningBanner onReset={onFormReset} />
+            <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
           <Typography variant="h3">Manage GCP Provider Configuration</Typography>
           <FormField providerNameField={true}>
@@ -377,14 +379,17 @@ export const GCPProviderEditForm = ({
             <FieldGroup
               heading="Regions"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <RegionList
@@ -507,10 +512,7 @@ export const GCPProviderEditForm = ({
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
-                <NTPConfigField
-                  isDisabled={formMethods.formState.isSubmitting}
-                  providerCode={ProviderCode.GCP}
-                />
+                <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.GCP} />
               </FormField>
             </FieldGroup>
             {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
@@ -525,14 +527,14 @@ export const GCPProviderEditForm = ({
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled}
-              data-testid="GCPProviderEditForm-SubmitButton"
+              data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
               onClick={onFormReset}
               disabled={isFormDisabled}
-              data-testid="GCPProviderEditForm-BackButton"
+              data-testid={`${FORM_NAME}-ClearButton`}
             />
           </Box>
         </FormContainer>

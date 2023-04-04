@@ -9,7 +9,7 @@ import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Box } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
 
 import { api, providerQueryKey, universeQueryKey } from '../../../redesign/helpers/api';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
@@ -19,7 +19,8 @@ import {
   ProviderCode,
   KubernetesProviderType,
   KUBERNETES_PROVIDERS_MAP,
-  PROVIDER_ROUTE_PREFIX
+  PROVIDER_ROUTE_PREFIX,
+  KubernetesProviderTypeLabel
 } from './constants';
 import { EmptyListPlaceholder } from './EmptyListPlaceholder';
 import { ProviderDashboardView } from './InfraProvider';
@@ -29,6 +30,7 @@ import ellipsisIcon from '../../common/media/more.svg';
 import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
 import { getLinkedUniverses, usePillStyles } from './utils';
+import { YBButton } from '../../../redesign/components';
 
 import { YBProvider, YBRegion } from './types';
 
@@ -151,41 +153,63 @@ export const ProviderList = (props: ProviderListProps) => {
       const linkedUniverses = getLinkedUniverses(provider.uuid, universeList);
       return { ...provider, linkedUniverses: linkedUniverses };
     });
-  return filteredProviderList.length === 0 ? (
-    <EmptyListPlaceholder
-      actionButtonText={`Create ${ProviderLabel[providerCode]} Config`}
-      descriptionText={`No ${ProviderLabel[providerCode]} config to show`}
-      onActionButtonClick={handleCreateProviderAction}
-      dataTestIdPrefix="ProviderEmptyList"
-    />
-  ) : (
+  return (
     <>
-      <div className={styles.bootstrapTableContainer}>
-        <BootstrapTable tableContainerClass={styles.bootstrapTable} data={filteredProviderList}>
-          <TableHeaderColumn
-            dataField="name"
-            isKey={true}
-            dataSort={true}
-            dataFormat={formatProviderName}
+      <Box display="flex" marginBottom="35px">
+        <Typography variant="h4">{`${
+          providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
+            ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
+            : ProviderLabel[providerCode]
+        } Configs`}</Typography>
+        {filteredProviderList.length > 0 && (
+          <YBButton
+            style={{ marginLeft: 'auto', width: '200px' }}
+            variant="primary"
+            onClick={() => setCurrentView(ProviderDashboardView.CREATE)}
+            data-testid="ProviderListView-CreateConfigButton"
           >
-            Configuration Name
-          </TableHeaderColumn>
-          <TableHeaderColumn dataField="regions" dataFormat={formatRegions}>
-            Regions
-          </TableHeaderColumn>
-          <TableHeaderColumn dataFormat={formatUsage}>Usage</TableHeaderColumn>
-          <TableHeaderColumn
-            columnClassName={styles.providerActionsColumn}
-            dataFormat={formatProviderActions}
-            width="50"
+            <i className="fa fa-plus" />
+            Create Config
+          </YBButton>
+        )}
+      </Box>
+      {filteredProviderList.length === 0 ? (
+        <EmptyListPlaceholder
+          actionButtonText={`Create ${ProviderLabel[providerCode]} Config`}
+          descriptionText={`No ${ProviderLabel[providerCode]} config to show`}
+          onActionButtonClick={handleCreateProviderAction}
+          dataTestIdPrefix="ProviderEmptyList"
+        />
+      ) : (
+        <>
+          <div className={styles.bootstrapTableContainer}>
+            <BootstrapTable tableContainerClass={styles.bootstrapTable} data={filteredProviderList}>
+              <TableHeaderColumn
+                dataField="name"
+                isKey={true}
+                dataSort={true}
+                dataFormat={formatProviderName}
+              >
+                Configuration Name
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="regions" dataFormat={formatRegions}>
+                Regions
+              </TableHeaderColumn>
+              <TableHeaderColumn dataFormat={formatUsage}>Usage</TableHeaderColumn>
+              <TableHeaderColumn
+                columnClassName={styles.providerActionsColumn}
+                dataFormat={formatProviderActions}
+                width="50"
+              />
+            </BootstrapTable>
+          </div>
+          <DeleteProviderConfigModal
+            open={isDeleteProviderModalOpen}
+            onClose={hideDeleteProviderModal}
+            providerConfig={deleteProviderConfigSelection}
           />
-        </BootstrapTable>
-      </div>
-      <DeleteProviderConfigModal
-        open={isDeleteProviderModalOpen}
-        onClose={hideDeleteProviderModal}
-        providerConfig={deleteProviderConfigSelection}
-      />
+        </>
+      )}
     </>
   );
 };
