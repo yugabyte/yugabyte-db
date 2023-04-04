@@ -202,7 +202,8 @@ export const InstanceTypeField = ({
                 )}
               </Box>
             </Box>
-            {provider?.code == CloudType.aws && canUseSpotInstance(providerRuntimeConfigs) && (
+            {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) 
+            && canUseSpotInstance(providerRuntimeConfigs) && (
               <Box display="flex" width="100%" mt={2}>
                 <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
                   {t('universeForm.instanceConfig.useSpotInstance')}
