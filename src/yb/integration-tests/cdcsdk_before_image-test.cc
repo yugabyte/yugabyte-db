@@ -1073,6 +1073,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageO
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 1, 2, 0, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {1, 3, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {1, 3}, {1, 4}};
@@ -1086,7 +1087,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSingleShardUpdateBeforeImageO
     CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
-  CheckCount(expected_count, count);
+  if (FLAGS_ysql_enable_packed_row) {
+    // For packed row if all the columns of a row is updated, it come as INSERT record.
+    CheckCount(expected_count_with_packed_row, count);
+  } else {
+    CheckCount(expected_count, count);
+  }
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOnColocatedTable)) {
@@ -1120,6 +1126,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOn
 
   // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
   const uint32_t expected_count[] = {1, 2, 4, 0, 0, 0};
+  const uint32_t expected_count_with_packed_row[] = {1, 6, 0, 0, 0, 0};
   uint32_t count[] = {0, 0, 0, 0, 0, 0};
 
   ExpectedRecord expected_records[] = {{0, 0}, {1, 2}, {0, 0},   {1, 88}, {1, 888}, {0, 0},
@@ -1135,7 +1142,12 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOn
     CheckRecord(record, expected_records[i], count, true, expected_before_image_records[i]);
   }
   LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
-  CheckCount(expected_count, count);
+  if (FLAGS_ysql_enable_packed_row) {
+    // For packed row if all the columns of a row is updated, it come as INSERT record.
+    CheckCount(expected_count_with_packed_row, count);
+  } else {
+    CheckCount(expected_count, count);
+  }
 }
 
 }  // namespace cdc
