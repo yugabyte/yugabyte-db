@@ -2601,7 +2601,7 @@ void PgLibPqTest::AddTSToLoadBalanceSingleInstance(
   // Ensure each tserver has exactly one colocation/tablegroup tablet replica.
   ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
   for (const auto& entry : ts_loads) {
-    ASSERT_NOTNULL(cluster_->tablet_server_by_uuid(entry.first));
+    ASSERT_ONLY_NOTNULL(cluster_->tablet_server_by_uuid(entry.first));
     ASSERT_EQ(entry.second, 1);
     LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
   }

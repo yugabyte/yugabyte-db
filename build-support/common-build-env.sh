@@ -180,6 +180,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang
   clang14
   clang15
+  clang16
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 

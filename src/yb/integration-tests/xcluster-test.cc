@@ -1428,7 +1428,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
       }
     }
   }
-  ASSERT_NOTNULL(cdc_ts);
+  ASSERT_ONLY_NOTNULL(cdc_ts);
 
   // Find the CDCTabletMetric associated with the above pair.
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
