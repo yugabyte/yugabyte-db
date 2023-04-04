@@ -31,7 +31,7 @@ $ openssl rand -out /path/to/universe_key [ 32 | 40 | 48 ]
 In this example, assume a 3 node RF=3 cluster with `MASTER_ADDRESSES=ip1:7100,ip2:7100,ip3:7100`. Choose any string <key_id> for this key and use yb-admin to copy the key to each of the masters.
 
 ```sh
-$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters \
+$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_key_to_all_masters \
            <key_id> /path/to/universe_key
 ```
 
@@ -88,7 +88,7 @@ Make sure to use a different key path to avoid overwriting the previous key file
 As with enabling, tell the master nodes about the new key.
 
 ```sh
-$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_keys_to_all_masters
+$ yb-admin -master_addresses $MASTER_ADDRESSES add_universe_key_to_all_masters
 <key_id_2> /path/to/universe_key_2
 ```
 
