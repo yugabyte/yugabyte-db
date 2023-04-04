@@ -20,11 +20,11 @@ rightNav:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="managed-guide-cli">
       <div class="head">
-        <img class="icon" src="/images/section_icons/develop/api-icon.png" aria-hidden="true" />
-        <div class="title">Create clusters using ybm CLI</div>
+        <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
+        <div class="title">ybm CLI: Create clusters</div>
       </div>
       <div class="body">
-        Use ybm CLI to create clusters.
+        Create clusters from the command line.
       </div>
     </a>
   </div>
@@ -32,11 +32,11 @@ rightNav:
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="managed-guide-api">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
-        <div class="title">Create clusters using REST API</div>
+        <img class="icon" src="/images/section_icons/index/api.png" aria-hidden="true" />
+        <div class="title">REST API: Create a cluster</div>
       </div>
       <div class="body">
-        Use the REST API to create a Sandbox cluster.
+        Create a Sandbox cluster via the REST API.
       </div>
     </a>
   </div>
