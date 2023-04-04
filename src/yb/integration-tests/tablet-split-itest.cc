@@ -3116,7 +3116,7 @@ TEST_P(TabletSplitSingleServerITestWithPartition, TestSplitEncodedKeyAfterBreakI
   ASSERT_EQ(peers.size(), 2);
   for (const auto& peer : peers) {
     const auto key_bounds = peer->tablet()->doc_db().key_bounds;
-    ASSERT_NOTNULL(key_bounds);
+    ASSERT_ONLY_NOTNULL(key_bounds);
     ASSERT_TRUE(key_bounds->IsInitialized());
 
     const auto partition_end = peer->tablet_metadata()->partition()->partition_key_end();
