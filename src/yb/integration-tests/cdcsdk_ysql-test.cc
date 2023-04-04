@@ -370,6 +370,29 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardMultiColUpdateWithAuto
   CheckCount(expected_count, count);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSafeTimePersistedFromGetChangesRequest)) {
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT, ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1, 2, &test_cluster_));
+
+  int64 safe_hybrid_time = 12345678;
+  GetChangesResponsePB change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, nullptr, 0, safe_hybrid_time));
+
+  auto record_count = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_count, 2);
+
+  auto received_safe_time = ASSERT_RESULT(
+      GetSafeHybridTimeFromCdcStateTable(stream_id, tablets[0].tablet_id(), test_client()));
+  ASSERT_EQ(safe_hybrid_time, received_safe_time);
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleStreams)) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
