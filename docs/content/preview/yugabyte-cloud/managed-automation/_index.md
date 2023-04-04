@@ -43,7 +43,7 @@ For some REST API commands, you may need one or more of the following account de
 
 These identifiers can also be found in the URL when you access a cluster using the YugabyteDB Managed user interface.
 
-<div class="row">
+<!--div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="managed-apikeys/">
@@ -57,7 +57,7 @@ These identifiers can also be found in the URL when you access a cluster using t
     </a>
   </div>
 
-</div>
+</div> -->
 
 ### Automation
 
