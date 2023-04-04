@@ -14,7 +14,7 @@ type: docs
 
 ## Storage layer IOPS
 
-[DocDB](../../../architecture/docdb/performance/) uses a modified version of RocksDB (an LSM-based key-value store that consists of multiple logical levels, and data in each level are sorted by key) as the storage layer. This storage layer performs `seek`, `next`, and `prev` operations.
+[DocDB](../../../../architecture/docdb/performance/) uses a modified version of RocksDB (an LSM-based key-value store that consists of multiple logical levels, and data in each level are sorted by key) as the storage layer. This storage layer performs `seek`, `next`, and `prev` operations.
 
 The following table describes key throughput and latency metrics for the storage (RocksDB) layer.
 
