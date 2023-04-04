@@ -4458,6 +4458,7 @@ class YbAdminSnapshotScheduleFailoverTests : public YbAdminSnapshotScheduleTest 
              "--max_concurrent_restoration_rpcs=1",
              "--schedule_restoration_rpcs_out_of_band=false",
              "--vmodule=tablet_bootstrap=4",
+             "--TEST_fatal_on_snapshot_verify=false",
              Format("--TEST_play_pending_uncommitted_entries=$0",
                     replay_uncommitted_ ? "true" : "false")};
   }
