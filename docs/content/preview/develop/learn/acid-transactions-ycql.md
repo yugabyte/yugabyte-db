@@ -40,7 +40,7 @@ A transaction is a sequence of operations performed as a single logical unit of 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
 
 {{<note title="Note">}}
-Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it supports three levels of isolation in the [YSQL](../../../explore/transactions/isolation-levels) API: *Snapshot*, *Serializable*, and *Read Committed*
+Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it supports three levels of isolation in the [YSQL](../../../explore/transactions/isolation-levels) API: *Snapshot*, *Serializable*, and *Read Committed*.
 {{</note>}}
 
 ## Transactions property
