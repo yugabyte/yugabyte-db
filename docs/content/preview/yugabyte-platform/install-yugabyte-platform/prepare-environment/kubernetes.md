@@ -59,7 +59,7 @@ type: docs
 
 </ul>
 
-Preparing the environment involves a number of steps. Before you start, consult [Prerequisites for Kubernetes-based installations](../../prerequisites/#kubernetes-based-installations-1).
+Preparing the environment involves a number of steps. Before you start, consult [Prerequisites for Kubernetes-based installations](../../prerequisites/kubernetes).
 
 ## Install kube-state-metrics
 
