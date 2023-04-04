@@ -1361,7 +1361,7 @@ yb-admin \
 
 For details on using encryption at rest, see [Encryption at rest](../../secure/encryption-at-rest).
 
-#### add_universe_keys_to_all_masters
+#### add_universe_key_to_all_masters
 
 Sets the contents of `key_path` in-memory on each YB-Master node.
 
@@ -1370,7 +1370,7 @@ Sets the contents of `key_path` in-memory on each YB-Master node.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    add_universe_keys_to_all_masters <key_id> <key_path>
+    add_universe_key_to_all_masters <key_id> <key_path>
 ```
 
 * *key_id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of `key_path` as a byte[].
