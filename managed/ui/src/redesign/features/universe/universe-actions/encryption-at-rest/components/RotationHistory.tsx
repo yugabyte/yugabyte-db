@@ -7,10 +7,10 @@ import { ybFormatDate } from '../../../../../helpers/DateUtils';
 //EAR Component
 interface RotationHistoryProps {
   rotationInfo: KMSHistory | null;
-  name?: boolean;
+  lastActiveKMS?: string;
 }
 
-export const RotationHistory: FC<RotationHistoryProps> = ({ rotationInfo, name = true }) => {
+export const RotationHistory: FC<RotationHistoryProps> = ({ rotationInfo, lastActiveKMS }) => {
   const classes = useMKRStyles();
   const { t } = useTranslation();
 
@@ -22,11 +22,11 @@ export const RotationHistory: FC<RotationHistoryProps> = ({ rotationInfo, name =
           {rotationInfo?.timestamp ? ybFormatDate(rotationInfo.timestamp) : t('common.none')}
         </Typography>
       </Box>
-      {name && (
+      {lastActiveKMS && (
         <Box mt={1}>
           <Typography variant="body2" className={classes.rotationInfoText}>
             {t('universeActions.encryptionAtRest.lastActiveKMSLabel')}
-            {rotationInfo?.configName ?? t('common.none')}
+            {lastActiveKMS ?? t('common.none')}
           </Typography>
         </Box>
       )}
