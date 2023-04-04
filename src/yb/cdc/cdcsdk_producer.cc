@@ -1496,9 +1496,7 @@ Status GetChangesForCDCSDK(
          RowMessage_Op_COMMIT)
             // Commit time won't be populated in the COMMIT record, in which case we will consider
             // the commit_time of the previous to last record.
-            ? HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 2)
-                                     .row_message()
-                                     .record_time())
+            ? HybridTime(commit_timestamp)
             : HybridTime::FromPB(resp->cdc_sdk_proto_records(resp->cdc_sdk_proto_records_size() - 1)
                                      .row_message()
                                      .record_time());
