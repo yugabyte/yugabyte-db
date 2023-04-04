@@ -45,7 +45,7 @@ Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it
 
 ## Transactions property
 
-The table should be created with the `transactions` property enabled. The statement should look something as follows.
+To enable distributed transactions on tables in YCQL, create tables with the `transactions` property enabled, as follows:
 
 ```sql
 CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : true };
