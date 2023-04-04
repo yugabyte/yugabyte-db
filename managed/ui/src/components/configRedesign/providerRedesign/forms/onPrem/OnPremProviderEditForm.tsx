@@ -441,8 +441,12 @@ const constructProviderPayload = async (
           ybHomeDir: formValues.ybHomeDir
         }
       },
+      installNodeExporter: formValues.installNodeExporter,
+      nodeExporterPort: formValues.nodeExporterPort,
+      nodeExporterUser: formValues.nodeExporterUser,
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+      skipProvisioning: formValues.skipProvisioning,
       sshPort: formValues.sshPort,
       sshUser: formValues.sshUser
     },
