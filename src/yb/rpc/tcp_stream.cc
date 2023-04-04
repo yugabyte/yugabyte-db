@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <deque>
+
 #include "yb/rpc/tcp_stream.h"
 
 #include "yb/rpc/outbound_data.h"

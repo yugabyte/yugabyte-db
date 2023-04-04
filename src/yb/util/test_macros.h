@@ -322,6 +322,16 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   }) \
   /**/
 
+// Similar to ASSERT_NOTNULL but does not return anything.
+#define ASSERT_ONLY_NOTNULL(expr) \
+  do { \
+    auto&& result = (expr); \
+    if (result == nullptr) { \
+      FAIL() << "Unexpected nullptr"; \
+    } \
+  } while (false)
+  /**/
+
 #define ASSERT_QUERY_FAIL(query_exec, expected_failure_substr) \
   do { \
     auto&& status = (query_exec); \

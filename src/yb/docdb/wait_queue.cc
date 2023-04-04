@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <list>
 #include <memory>
 #include <queue>
 #include <sstream>
