@@ -7,6 +7,7 @@ import { YBButton } from '../../../../../redesign/components';
 
 interface VersionWarningBannerProps {
   onReset: () => void;
+  dataTestIdPrefix?: string;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -28,7 +29,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const VersionWarningBanner = ({ onReset }: VersionWarningBannerProps) => {
+export const VersionWarningBanner = ({ onReset, dataTestIdPrefix }: VersionWarningBannerProps) => {
   const classes = useStyles();
 
   return (
@@ -45,7 +46,7 @@ export const VersionWarningBanner = ({ onReset }: VersionWarningBannerProps) => 
           onClick={onReset}
           startIcon={<SyncProblem fontSize="large" />}
           type="button"
-          data-testid="AWSProviderCreateForm-ResetForm"
+          data-testid={`${dataTestIdPrefix ?? 'ProviderForm'}-ResetFormButton`}
         >
           Reset form
         </YBButton>
