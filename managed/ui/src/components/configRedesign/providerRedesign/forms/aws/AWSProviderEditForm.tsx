@@ -149,6 +149,8 @@ const VALIDATION_SCHEMA = object().shape({
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
 
+const FORM_NAME = 'AWSProviderEditForm';
+
 export const AWSProviderEditForm = ({
   editProvider,
   isProviderInUse,
@@ -303,7 +305,7 @@ export const AWSProviderEditForm = ({
           onSubmit={formMethods.handleSubmit(onFormValidateAndSubmit)}
         >
           {currentProviderVersion < providerConfig.version && (
-            <VersionWarningBanner onReset={onFormReset} />
+            <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
           <Typography variant="h3">Manage AWS Provider Configuration</Typography>
           <FormField providerNameField={true}>
@@ -406,14 +408,17 @@ export const AWSProviderEditForm = ({
               heading="Regions"
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <FormField>
@@ -563,7 +568,7 @@ export const AWSProviderEditForm = ({
                 <YBRedesignedButton
                   variant="secondary"
                   onClick={skipValidationAndSubmit}
-                  data-testid="AWSProviderCreateForm-SkipValidationButton"
+                  data-testid={`${FORM_NAME}-SkipValidationButton`}
                 >
                   Ignore and save provider configuration anyway
                 </YBRedesignedButton>
@@ -590,14 +595,14 @@ export const AWSProviderEditForm = ({
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled}
-              data-testid="AWSProviderEditForm-SubmitButton"
+              data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
               onClick={onFormReset}
               disabled={isFormDisabled}
-              data-testid="AWSProviderEditForm-BackButton"
+              data-testid={`${FORM_NAME}-ClearButton`}
             />
           </Box>
         </FormContainer>

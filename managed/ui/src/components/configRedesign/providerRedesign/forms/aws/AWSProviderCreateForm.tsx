@@ -123,11 +123,6 @@ const VALIDATION_SCHEMA = object().shape({
     is: AWSProviderCredentialType.ACCESS_KEY,
     then: string().required('Secret access key id is required.')
   }),
-  // Specified ssh keys
-  sshKeypairName: string().when('sshKeypairManagement', {
-    is: KeyPairManagement.SELF_MANAGED,
-    then: string().required('SSH keypair name is required.')
-  }),
   sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
     is: KeyPairManagement.SELF_MANAGED,
     then: mixed().required('SSH private key is required.')
@@ -148,6 +143,8 @@ const VALIDATION_SCHEMA = object().shape({
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
+
+const FORM_NAME = 'AWSProviderCreateForm';
 
 export const AWSProviderCreateForm = ({
   onBack,
@@ -308,7 +305,7 @@ export const AWSProviderCreateForm = ({
   const enableHostedZone = formMethods.watch('enableHostedZone', defaultValues.enableHostedZone);
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType', defaultValues.ybImageType);
-  const isFormDisabled = formMethods.formState.isSubmitting;
+  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -384,14 +381,17 @@ export const AWSProviderCreateForm = ({
               heading="Regions"
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <FormField>
@@ -490,7 +490,11 @@ export const AWSProviderCreateForm = ({
                 <FieldLabel infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance.">
                   DB Nodes have public internet access?
                 </FieldLabel>
-                <YBToggleField name="dbNodePublicInternetAccess" control={formMethods.control} />
+                <YBToggleField
+                  name="dbNodePublicInternetAccess"
+                  control={formMethods.control}
+                  disabled={isFormDisabled}
+                />
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
@@ -517,7 +521,7 @@ export const AWSProviderCreateForm = ({
                 <YBRedesignedButton
                   variant="secondary"
                   onClick={skipValidationAndSubmit}
-                  data-testid="AWSProviderCreateForm-SkipValidationButton"
+                  data-testid={`${FORM_NAME}-SkipValidationButton`}
                 >
                   Ignore and save provider configuration anyway
                 </YBRedesignedButton>
@@ -544,14 +548,14 @@ export const AWSProviderCreateForm = ({
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled}
-              data-testid="AWSProviderCreateForm-SubmitButton"
+              data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
               onClick={onBack}
               disabled={isFormDisabled}
-              data-testid="AWSProviderCreateForm-BackButton"
+              data-testid={`${FORM_NAME}-BackButton`}
             />
           </Box>
         </FormContainer>

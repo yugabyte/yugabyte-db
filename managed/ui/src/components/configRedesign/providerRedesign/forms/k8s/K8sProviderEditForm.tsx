@@ -172,14 +172,16 @@ export const K8sProviderEditForm = ({ providerConfig }: K8sProviderEditFormProps
             <FieldGroup
               heading="Regions"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={formMethods.formState.isSubmitting}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={formMethods.formState.isSubmitting}
+                  />
+                ) : null
               }
             >
               <RegionList
