@@ -3,6 +3,7 @@ import { Box, FormHelperText, Typography } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
+import { toast } from 'react-toastify';
 
 import {
   DEFAULT_NODE_EXPORTER_PORT,
@@ -115,40 +116,16 @@ export const OnPremProviderCreateForm = ({
       });
       return;
     }
-
-    const providerPayload: YBProviderMutation = {
-      code: ProviderCode.ON_PREM,
-      name: formValues.providerName,
-      allAccessKeys: [
-        {
-          keyInfo: {
-            ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-            ...(formValues.sshPrivateKeyContent && {
-              sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-            })
-          }
-        }
-      ],
-      details: {
-        airGapInstall: !formValues.dbNodePublicInternetAccess,
-        cloudInfo: {
-          [ProviderCode.ON_PREM]: {
-            ybHomeDir: formValues.ybHomeDir
-          }
-        },
-        ntpServers: formValues.ntpServers,
-        setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-        sshPort: formValues.sshPort,
-        sshUser: formValues.sshUser
-      },
-      regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
-        code: regionFormValues.code,
-        name: regionFormValues.code,
-        zones: regionFormValues.zones.map((zone) => ({ code: zone.code, name: zone.code }))
-      }))
-    };
-
-    await createInfraProvider(providerPayload);
+    try {
+      const providerPayload = await constructProviderPayload(formValues);
+      try {
+        await createInfraProvider(providerPayload);
+      } catch (_) {
+        // Handled with `mutateOptions.onError`
+      }
+    } catch (error) {
+      toast.error(error);
+    }
   };
 
   const showAddRegionFormModal = () => {
@@ -375,4 +352,53 @@ export const OnPremProviderCreateForm = ({
       )}
     </Box>
   );
+};
+
+const constructProviderPayload = async (
+  formValues: OnPremProviderCreateFormFieldValues
+): Promise<YBProviderMutation> => {
+  let sshPrivateKeyContent = '';
+  try {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContent
+      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+      : '';
+  } catch (error) {
+    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  }
+
+  return {
+    code: ProviderCode.ON_PREM,
+    name: formValues.providerName,
+    allAccessKeys: [
+      {
+        keyInfo: {
+          ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+          ...(formValues.sshPrivateKeyContent && {
+            sshPrivateKeyContent: sshPrivateKeyContent
+          })
+        }
+      }
+    ],
+    details: {
+      airGapInstall: !formValues.dbNodePublicInternetAccess,
+      cloudInfo: {
+        [ProviderCode.ON_PREM]: {
+          ybHomeDir: formValues.ybHomeDir
+        }
+      },
+      installNodeExporter: formValues.installNodeExporter,
+      nodeExporterPort: formValues.nodeExporterPort,
+      nodeExporterUser: formValues.nodeExporterUser,
+      ntpServers: formValues.ntpServers,
+      setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+      skipProvisioning: formValues.skipProvisioning,
+      sshPort: formValues.sshPort,
+      sshUser: formValues.sshUser
+    },
+    regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
+      code: regionFormValues.code,
+      name: regionFormValues.code,
+      zones: regionFormValues.zones.map((zone) => ({ code: zone.code, name: zone.code }))
+    }))
+  };
 };
