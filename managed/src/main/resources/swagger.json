@@ -12134,7 +12134,7 @@
         },
         "status" : {
           "description" : "Status",
-          "enum" : [ "Validated", "Running", "Updating", "Warning", "Error", "Bootstrapping", "Failed" ],
+          "enum" : [ "Validated", "Running", "Updating", "Warning", "Error", "Bootstrapping", "Failed", "UnableToFetch" ],
           "type" : "string"
         },
         "streamId" : {
