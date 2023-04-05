@@ -1654,6 +1654,14 @@ Result<std::vector<std::string>> ExternalMiniCluster::GetTabletIds(ExternalTable
   return result;
 }
 
+Result<size_t> ExternalMiniCluster::GetSegmentCounts(ExternalTabletServer* ts) {
+  auto tablets = VERIFY_RESULT(GetTablets(ts));
+  size_t result = 0;
+  for (const auto& tablet : tablets) {
+    result += tablet.num_log_segments();
+  }
+  return result;
+}
 Status ExternalMiniCluster::WaitForTabletsRunning(ExternalTabletServer* ts,
                                                   const MonoDelta& timeout) {
   TabletServerServiceProxy proxy(proxy_cache_.get(), ts->bound_rpc_addr());
