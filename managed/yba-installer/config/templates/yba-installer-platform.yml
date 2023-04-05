@@ -105,6 +105,8 @@ services:
         url = ""
         url = "{{ yamlPath "platform.ywUrl" }}"
 
+        docker.release = "{{ .PlatformPackages }}"
+
         node_agent {
           releases.path = "{{ .DataDir }}/node-agent/releases"
         }
