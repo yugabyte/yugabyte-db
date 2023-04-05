@@ -79,7 +79,7 @@ An instance in cloud computing is a server resource provided by third-party clou
 
 Cloud providers offer a variety of instance types across the regions where they have data centers. By default, where possible, YugabyteDB Managed uses the following instance type families for dedicated clusters:
 
-- AWS - m5
+- AWS - m6i
 - GCP - n2-standard
 
 In cases where the default is unavailable in a region, YugabyteDB Managed will fall back to a suitable replacement instance type for all nodes in the cluster.
