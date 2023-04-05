@@ -1,450 +1,173 @@
-[PLAT-8044] Fix an issue where ybc container is not brought up during universe shrink operation
-[PLAT-8006] Fix issue in fetching platform logs on clicking any of the task from the tasks tab
-[PLAT-8041] yba installer upgrade not finding installed version
-[PLAT-7987] Older Task Details displays the current task in execution
-[PLAT-7686] Add support for editing unused OnPrem providers
-[PLAT-7863] [PLAT-7959] Add validations in the code for YBC packages, WaitForYbcServer task should complete ping status faster
-[PLAT-8007] Set ysql_hba_conf_csv with default "local all yugabyte trust" when ysql auth enabled
-[PLAT-8068] Allow editing of provider name
-[PLAT-7684] [PLAT-7635][PLAT-7683] Add support for editing unused AZU, GCP and AWS providers
-[PLAT-7842] [PLAT-7845] Update required k8s provider fields
-[PLAT-8024] prometheus service not enabled via systemd
-[PLAT-7695] Create user with -U to ensure group is created
-[PLAT-6725] Don't allow users to reconfigure certain settings
-[PLAT-8048] Avoid GCP cred validation as part of service account creation
-[PLAT-8022] Stop auto flags promotion on xcluster universes during software upgrade.
-[PLAT-8017] Update npm build script
-[PLAT-8040] Fixing yba-installer startup sync
-[PLAT-7938] Modify the check software version task
-[PLAT-7856] Improve NTP Server error messages
-[PLAT-7837] Add invalid character validaiton for zone code
-[PLAT-7841][PLAT-7831][PLAT-7846] Improve configure region modal cross field validation logic
-[PLAT-3634] Making logging controller authenticated.
 [16461] [YSQL] Allow hash batching to apply to an unbounded number of permutations
 [16552] [YSQL] Prevent prefix_length_ from taking non-key columns into account
 [16541][yugabyted] Show EAR in status if enabled even when --secure flag is false.
 [16401][yugabyted] `configure data_placement` not working with constraint value with uppercases.
 [16257] [YSQL] Correct SELECT DISTINCT prefix_length calculation to operate on column indexes
-[16545] Build: build/package on mac11
-Update on-premises.md (#16523)
+[16545] Build build/package on mac11
 [15670] [YSQL] Create Auto Analyze stateful service for YSQL
-[16455] [YSQL] Fix flaky test: testYBTablespaceLeaderPreference
-Update ddl_create_table.md (#16539)
-[PLAT-7313][PLAT-7632] PITR improvements and fixes
-[PLAT-7957][PLAT-7917]UI revamp issues
-
-[PLAT-7939][Platform][Backup]Take out the Beta tag for Incremental backups in 2.18
-[PLAT-7702] Preventing volume expansion if there are stale PVCs in namespace
-[PLAT-7923] Ensure Overall Metrics graphs are loaded initially till we move to Outlier Nodes
-[PLAT-7982] Fixing dns name for svc in cert-manager tls cert
 [16457] [YSQL] Fix segmentation fault after rollback of subtransaction with deferred
-[PLAT-7972] Node agent installation failure on ubuntu 18 due to HOME not being reset for the target user
-[PLAT-7952] Fix showing null value for chart path if it does not exist
-[16501,#14166,#16520] [DocDB] fix corruption bug in test fixture PgMiniLargeClockSkewTest
-[PLAT-7588] allow running commands that are expected to fail
-[PLAT-4366][PLAT-6784][PLAT-6900][PLAT-7742][PLAT-7605][PLAT-7787][PLAT-7809] Handling BufferUnderflowException issues, Fix backup issues after k8s universe upgrade
-[PLAT-7083] Health checks for YBC on k8s universes
-[PLAT-7820] Adjusting ybc to read cert-manager TLS node certs
+[16501] [14166] [16520] [DocDB] fix corruption bug in test fixture PgMiniLargeClockSkewTest
 [DB-5855] xCluster Configuration - Data Type Missing in the Type.Java List
-[PLAT-7944] Add error source for provider validators
-[16409] [DocDB] fix flaky test RaftConsensusITest.TestLaggingFollowerRestart
-[PLAT-7870] Add python 2 support in ansible pex
-[PLAT-7136] Add systemd configuration support to manual provisioning script
-[15674] YSQL/[DocDB] Support per-statement tracing through docdb
+[15674] [YSQL] [DocDB] Support per-statement tracing through docdb
 [16138] [DocDB] Tablet splitting should be blocked on system_postgres.sequences_data
 [16460] [YSQL] Improve error messages for transaction conflicts
 [15642] [YSQL] Cache sequence values on the T server
-[16507] DST: PITR + Packed - Fix sys catalog restoration logic
-[PLAT-5435][PLAT-7874] Revamped how yba-ctl validates commands
-[PLAT-7440] API example for waiting on task
-Revert PLAT-7159
+[16507] DST PITR + Packed - Fix sys catalog restoration logic
 [16024] [xCluster] Add yb_admin command to dump XClusterConfig content
-[PLAT-7744][xCluster] Update listTables to allow tables in dbs with colocation to be excluded
 [16499] [DocDB] Merge sync points code into yb/util
 [16448] [DocDB] Fix Extra prefix logging in MiniMaster Start
 [15014] [14333] [YSQL] Introduce per-table mutation counters on each node
 [16169][yugabyted] adding support for yb-admin command passthrough.
 [16092] [YSQL] Integrate HyperLogLog extension tests with Yugabyte
 [16486] [YSQL] Fix asan PgCatalogPerfTest.ResponseCacheWithTooOldSnapshot
-[PLAT-7909] Fix incorrect comparison bug
-[PLAT-7906] enablePrefillKubeConfig - Marking feature as released for prefill k8s config
 [16474] [DocDB] Change PgClientService session_expiration_queue_ to min heap
-[PLAT-7323] Airgapped cloud provider hardening
-[PLAT-7838][PLAT-7834] Update advanced config section for OnPrem Provider
-[PLAT-7764] Add ping checks before Backup/Restore task on YB-Controller
-[PLAT-7912][PLAT-7921]- Fix universe overview tab shows same CPU and Disk usage for master and T-server
 [CLOUDGA-12309] Populate providerCode in regions/az even when config is null
-[PLAT-7916] Add GKE/GCP region metadata to k8s_regions.
-[PLAT-7929] Fix incorrect environment injection
-[PLAT-5368][UI] Implement Custom Notification Email Template
-[PLAT-7935]Add ansible comment for cron jobs added via YBC upgrade
 [CLOUDGA-12305] Missing getters for provider fields
 [16448] [DocDB] Set yb process name prefix for MiniCluster tests
-[PLAT-5386] Update yba-installer to use prometheus 2.42.0
-[PLAT-7327] ybcloud to report aws client errors
-[14861, #15966] [DocDB] Packed + B/R + Colocation should restore all the schema packings of snapshot
-[PLAT-7918] Removed outdated priority_regex param from yba-installer prom config to make it use params from swamper target files
-syncFileData UT failure fix
-[PLAT-7361] CustomerTaskController.retryTask API changes
-[PLAT-7329] Add react-dropzone 3.13.4 to maintain support for our old cypress tests
-[PLAT-7808] Add cron entry for YB-Controller
-[DB-5721] YCQLSH: Updating yugabyte-db-thirdparty release version
+[14861] [15966] [DocDB] Packed + B/R + Colocation should restore all the schema packings of snapshot
+[DB-5721] [YCQLSH] Updating yugabyte-db-thirdparty release version
 [16473] [CDCSDK] Fixing bug in tests added for colocated table snapshot
 [16453] [CDCSDK] Increase timeout for FlushTables in TestRecordCountsAfterMultipleTabletSplits
-[PLAT-7879][PLAT-7880] Persist AccessKey Management State/VPC Type information
 Refresh AWS pricing information
-[PLAT-7742] Fix backup and restore on auth-enabled k8s universes
-[PLAT-6893] Remove nginx from k8s
-[PLAT-7877] Remove k8s region level config overrides
-[PLAT-7893]: Update YBC version to 1.0.0-b18
-[PLAT-7894] Fixing dev-itest for YBA installer
 [12417] [YSQL] Fix invalid assertion in per-database catalog version mode
-[PLAT-7764]: Retain master instance type and device info in case of edit universe
-[PLAT-7649]: Ensure nodes have correct primary cluster count
-[PLAT-7380] Change default core pattern set by platform on db VMs
-[PLAT-7801][PLAT-7859]: Add validation for valid ssh port value and vpc association with sg
-[PLAT-7507] Remove deprecated route toggle_tls
 [13568] [YSQL] Import 'Add pg_backend_memory_contexts system view'
-Moving redirects from Hugo aliases to Netlify (#16463)
 [14063] [DocDB] Support packed row in sst_dump
 [16424] [CDCSDK] Add table_id to GetCheckpointRequestPB
-[14772] [YSQL] Re-enable and fix flaky TestPgTransparentRestarts tests
-[PLAT-7895] XDG_RUNTIME_DIR env is not set in ubuntu when node-agent is used
-[PLAT-7674] Make sure all properties from different application.conf files are present in reference.conf
-[PLAT-7159]: Migrate from ehcache to caffeine and upgrade to sbt play plugin 2.7
-[PLAT-7853] Drop fields related to unselected options for create AWS provider
-charts	18fa752278b4f7859fdd40ec376cb7515552e461	[PLAT-7682] Bump up prometheus/postgres version
 [15085] [YSQL] Add allocated_mem_bytes and rss_mem_bytes to pg_stat_activity
 Remove nanoid
 [16448] [DocDB] Update thirdparty to pull in glog 0.4.0-yb-5
-[PLAT-7682] Bump up prometheus/postgres version
-[PLAT-7766][PLAT-7828] UI revamp fixes
-[PLAT-7722][Platform][UI]LDAP credentials are not getting saved in UI
-[PLAT-7851]Bump up YBC version to 1.0.0-b17
-[PLAT-7791] Remove the peer cert validation when working with http standby instance
-[PLAT-7797] Read foreign key entities in provider from the reqBody during bootstrap
-[PLAT-7800] Add client side filter for configured regions when presenting region dropdown during provider mutation
-[PLAT-7448] Add support for creating new GCP VPC
-[PLAT-7790] Add AZs for more Azure regions that support it
-[PLAT-7812] Add validation for instance type creation
-[PLAT-7815] Modify firewall to accept connections on oracle linux when node-agent is installed
-[PLAT-7689] Wrong regex argument to split method in kubernetes hostname FQDN
 [14935] [DocDB] Ensure tserver handling of WAIT_BLOCK requests is forward-compatible
-[PLAT-7784] Fix NPE in PlacementInfoUtil when instanceType is null
-Suppress version picker on Quick start (#16435)
-Make diagrams clickable (#16437)
-[PLAT-5888] [PLAT-5889] Adding Re-encryption modules for all KMS providers universe key
-[PLAT-7641] Handle list database names error response
-[PLAT-7474] UI to opt for spot instances while creating a universe
 [15761] [YSQL] Renew request cache entry in case of `Snapshot too old` error
-[PLAT-7754] Lazy load provider/region object from region/az
-[PLAT-7759] Update westus3 base image to almalinux
-[PLAT-7726] Fix for Create thread pool in AbstractTaskBase lazily
 [14105] [xCluster] Use deterministic mapping for txn id -> status tablet
 [16189] [YSQL] Possible inconsistent catalog version mechanisms used during YSQL upgrade
-[PLAT-7758] Read inherited configs when checking for provider_redesign feature flag
-[PLAT-7359] Fix skip validation submission for AWS create provider
-[PLAT-7730] Use flex-start instead of start
+Make diagrams clickable (#16437)
 [15206] [DocDB] fix table tombstone not found when using bloom filter
-[PLAT-7414]: Legends are not displaying proper on moving back to Metrics page
-[PLAT-5126][PLAT-5125][PLAT-7264]: Integrate Perf Advisor API and handle error scenarios
-[PLAT-7712]: Remove wizard flow for create and edit universe
 [15794] [DocDB] Refactor AreLeadersOnPreferredOnly to Account for Geo Partitioned Tables
 [16388] [YSQL] ysql_dump should preserve colocation ids of colocated partial indexes
-[PLAT-7752][Platform][UI] - UI revamp fixes
-[PLAT-7756]: Add validations to match subnet and az code
-[PLAT-7675] Use enable_nestloop off to improve slow queries performance
-[PLAT-6848] Remove user check from log_cleanup.sh
 [16412] [DocDB] fixed linker flags to detect undefined symbols during build rather than in runtime
 [16405] [CDCSDK] Only get schema while processing intents if needed
 Changing Null Check for pullsecretfile
-[PLAT-7464] Option to change backup expiry
 Fix Proxy Suffix for Listing Master/TServer UI Links
-[PLAT-7465] Runtime config for enabling spot instance support
-[PLAT-7705][New Restore UI] Search Bar is not working correctly on the universe restore history tab
-[PLAT-7411][PLAT-7725] - fix : enable/disable volume controls/User cannot change placements
-[PLAT-7726][PLAT-6869] Create thread pool in AbstractTaskBase lazily
 [15990] [DocDB] Fix mac builds by guarding tcmalloc include.
-[PLAT-7395] added extra kernel parameter for pre-provisioning nodes. (#16414)
-[16400, #5042] [DocDB]Remove ent folder
-[16345] docdb : Disable WAL reuse at bootstrap
-[PLAT-5712] Account for disks for paused universe
+[16400] [5042] [DocDB] Remove ent folder
+[16345] docdb  Disable WAL reuse at bootstrap
 [16246] [DocDB] removed duplicate tablet iterator initialization
 [7836] [YSQL] Batching IN queries on Hash Keys
-[PLAT-7822] Override custom SSH port to run remote commands with the default port for initial node-agent setup in NodeUniverseManager
 [16230] [DocDB] Added Persistence for the Last Full Compaction Request Time
-[15993] [YSQL] Fix flaky test PgLibPqTest.ConcurrentInsertAndDeleteOnTablesWithForeignKey
-[PLAT-7245]: Add a check to ensure that all DB nodes is on a newer version before promoting new auto flags
-[PLAT-7617][PLAT-7616] Add runtime config for enabling attach/detach feature. Enable locking after detaching
 [13578] [DocDB] Push commit/abort signals from transaction participant to wait queue
-[16312] [YSQL] Fix flaky test TestPgRegressMisc#testPgRegressMiscSerial
 [16052] [YSQL] Adds bookkeeping ops after table truncation.
 [16374] [DocDB] Un-deprecate enable_pg_savepoint gflag
 [15983] [CDCSDK] Add few ctests for CDCSDK
-[PLAT-7411][PLAT-7753][PLAT-7763] - fix : Enable/disable volume controls, AZ Placements issue, issue with cancel button in universe form.
-[PLAT-7757] Fix default of http_enabled
-[16430] [YSQL] flaky test: PgsqlTestMigrationFromEarliestSysCatalogSnapshot
 [12417] [YSQL] Make PITR code aware of per-database catalog version mode
-[PLAT-5571][PLAT-7237] Allow for removing of universe metadata after detaching universe.
-[PLAT-7740] Fix resume, pause and VM upgrade tasks on universe for node-agent
 [16290] [DocDB] add gflag ysql_enable_pack_full_row_update (default false)
-[PLAT-7734] Disable delete provider action when provider in use
 [15987] Use tablespace leader preference as a cost component in query planner
-[PLAT-5796] [YBA Enablement] Cloud Provider Config - Onprem(sudo, non-sudo)
 [13585][16286] [DocDB] Support transaction promotion for geo-partitioned workloads in use of WaitQueue and DeadlockDetector
-[PLAT-7731] resize node now works with new cgroup changes
 [16159] [DocDB] Fix destruction of idle Messenger
-[PLAT-6563] Service Account Name no longer required to create k8s provider
 [15051] [DocDB] Enable packed row for YCQL in debug builds
-[PLAT-5269] Use server_broadcast_address if provided for t-server/master IPs
 [16208][yugabyted] Printing appropriate message while configuring a cluster.
-[PLAT-6559] Apply universe tab stylings to provider tabs
 [15245] [YSQL] Preserve table grants, policies, dependent views, statistics objects after ALTER TABLE ADD/DROP pkey
 [16399] [DocDB] Fixes last_change_metadata_op_id_ not getting updated in AddTable()
-Revert "[PLAT-7269] Added a retry for ModifyMasterClusterConfig on config version mismatch"
-[PLAT-6220] Component functions now return errors
 [13981] [CDCSDK] Added support for colocated snapshot
-[PLAT-7123] Added restart logging
-charts	8e75410d489b537d4b256cf5d7c264e5bf561399	[PLAT-7473][yba] OCP certified helm chart - Added check for RH PG image
-[PLAT-7644]: Fix the font size / margin of the top bar in YBA homescreen
 [15910] Retry other TS in org.yb.cql.TestIndex#testPreparedStatement
-[PLAT-7653][PLAT-7637]: Dropdown texts extends beyond the text box and enable to edit non-public runtime config keys
 [15990] [DocDB] Update /pprof/heap to work with new tcmalloc.
 [16332] [DocDB] Move test certs out of ent folder (#16398)
-[PLAT-5298][UI]Proper Warning/Messages for restore EAR Enabled
-[PLAT-7730] File upload UI improvments
-[PLAT-7475] [PLAT-7466] Create universe with spot instance on aws
-Revert "[16363] [CDCSDK] Fix bug in GetChangesRequest causing term to be set as index value"
-[16363] [CDCSDK] Fix bug in GetChangesRequest causing term to be set as index value
-[PLAT-7479]Add a warning dialog when deleting KMS config
-[PLAT-7318][PLAT-5893][UI][MKR]Implement UI for Master Key Rotation
 API modifications to allow consumption by Terraform
 [16331] [DocDB] Move CatalogManager and Master from ent to src
-[PLAT-6598] Add support for choosing arch type in AWS providers
-[PLAT-7269] Added a retry for ModifyMasterClusterConfig on config version mismatch
-[PLAT-7696] Add --force or --rebuild to build_ansible_pex.sh to prevent accidental deletion of pexEnv
-[PLAT-7724] Fix label for k8s storage classes field
-Merge pull request #160 from yugabyte/revert-157-CLOUDGA-11999
-Revert "[CLOUDGA-11999] : Fix nginx proxy location in charts"
-[PLAT-7524] Improved text output for yba-ctl
-[PLAT-7692]: Change default AWS instance type to c5.4xlarge
-[PLAT-7691]: Change fontweight of MaterialUI YBlabel component
-[PLAT-7656]: AVOID crash when user comes back from edit universe back to UNREACHABLE nodes
-[PLAT-7052][Platform][Dedicated Nodes] Add read replica failing for universe with Dedicated Nodes
-Combined Change for for [PLAT-7770] and Service Account being non default in UI
-[PLAT-7243]: Add autoFlags check and promote new autoFlags while K8s software upgrade
-[PLAT-7423] Make all inter-container communication go through docker gateway + fix YBA scraping
-[PLAT-7359] Add UI support for AWS 'quick validation'
-[PLAT-7665] Expand volumes before other edits on universe
-[PLAT-7365] Add scheduled backups, backups, storage configs to attach/detach
-[PLAT-7186] Fixing PitrControllerTest.testListPitrConfigs flaky UT
-[PLAT-7699]: Add region code while creating sts and route53 client
-[PLAT-7711] Poll delete provider task for completion
-charts	c9f896c4fed464b024abceba88c4294f9961edea	[PLAT-7075] Chart changes needed to deploy ybc container on the pods
-[13718] [DocDB] Revert YQLRowwiseIteratorIf::Iterate() API change
-[PLAT-7061] Copy YBC package, gflags to the PV during universe creation.
 [14350] [DocDB] Fix false deadlock issue(s) when txn rollsback to savepoint
-[PLAT-7701] Fix typo in the condition for YBA host AWS classification
-[PLAT-7048][PLAT-7066] Fixing YBA installer issues with backup/restore
-[PLAT-5443] Enabling python 3.10 and 3.11 support for ybcloud
-[PLAT-7244]: Add autoFlags check and promote new autoFlags while software upgrade via VMImageUpgrade
-[PLAT-7151] Cgroup support for alma9 and cgroup v2
 add me (mdbridge) as a Yugabyte contributor; fix entry for dr0pdb (#16352)
 [16303] [DocDB] Initialize current_scan_target_ with the correct prefix
 [15193] [DocDB] Fix heap-use-after-free failure in wait queue shutdown
-[PLAT-7559] Build ansible only pex env
-[PLAT-6842] Remove table selection step for xCluster restart if xCluster creation failed
 [16108] [DocDB] Start transaction promotion immediately even if not ready yet
-[PLAT-7690] Remove deprecated field firstTry from universe details json
 [15740] [CDCSDK] Failed to decode Before image record with packed row enabled and multiple table alter
-[PLAT-6559] Add create on prem provider form
-[13307] DST: Replay all types of change metadata operation during local tablet bootstrap
+[13307] [DST] Replay all types of change metadata operation during local tablet bootstrap
 [16330] [DocDB] Move master services and integration-tests out of ent folder
 [16253] [YSQL] Support expression pushdown for ybgin index scans
-[PLAT-7599] Add limit on the number of concurrent package uploads for node-agent on upgrade
 [16248] [DocDB] Avoid decoding all key columns for PGSQL read query
 [13944] [CDCSDK] DDL support for colocation table
 [16306] [xCluster] Disable adding of new transaction tablets for xCluster enabled clusters
 [16333] [DocDB] Fix insert with timestamp over expired packed row
-[16337] [YSQL] Revert "Fix source of yb_hashClauseInfos in batched nested loop join plan creation" which misuses joinclauses
 [12417] [YSQL] Use prefetched catalog version of MyDatabaseId
 [16092] [YSQL] Import HyperLogLog extension (postgresql-hll)
-[PLAT-6859] Fix health check timestamp + universe creation from s3 release.
-[PLAT-7636] Fix dependency of regex_filters.py in ybops to limit transitive python dependency
-[PLAT-6273]: Disable running swamper target sync if cloud mode is enabled
-[PLAT-2187] Platform API should not permit the creation of Universes with invalid placement_uuid
-[PLAT-5310]: Add search functionality for universe tables lists
-[PLAT-7650]Restore task failing with V2 API
 Adding missing values to UI for prefill kubeconfig
-[PLAT-7354][PLAT-7242][PLAT-7246]: Promote Auto Flags during software upgrade
 [15760] Change module name from YugaByte to Yugabyte
-[PLAT-7642] Increment perf-advisor package version with latest changes
 [16314] [DocDB] Fix system catalog version for packed row
 [16315] [DocDB] Fix server crash when expression evaluation fails in conjunction with packed row
-[16301] [xCluster] Remove test param values from XClusterYsqlTest
-[PLAT-7639] Choosing correct release from mixed metadata
-[16124] docdb : Add mem_tracker for RunningTransaction objects in TransactionParticipant
+[16124] [DocDB] Add mem_tracker for RunningTransaction objects in TransactionParticipant
 [16163] [DocDB] Change IsDeleteTableInProgress treatment of alive Index
-[PLAT-5250] Run DB backups in parallel for YBC based backups
-[PLAT-7652] Modify the GCP project preferences
 [14519] [YSQL] Prevent 'Restart read required' error in case of sys catalog cache refresh
 [13535] [xCluster] Add ability to pause and resume replication from the source cluster
-[PLAT-6609][PLAT-7618][PLAT-7633] - fix : Error handling, alignment issues , code cleanup and RR does not inherit tags from primary
-[PLAT-7291][UI] Date deserialisation into go-client can work only with RFC3339
-[16034, #15933] [YSQL] Avoid picking hybrid timestamps in YSQL backends
-[PLAT-7488] Update swagger-strict.json
-Adding missing fields to return json from suggested_k8s response.
-[PLAT-7038][UI] Manage Variables by Alert Policy
-[PLAT-7586] Enable Licensing on yba-installer builds
+[16034] [15933] [YSQL] Avoid picking hybrid timestamps in YSQL backends
 [DEVOPS-2617] Add required chcekbox to GitHub issues templates.
-[PLAT-7655] Node agent download fails due to wrong release path on yba installed by yba-installer
-[PLAT-5370][UI] Add Custom Variable Support for Email Notification Template
-fix : Removed empty spaces
-[13718] [DocDB] DocRowwiseIterator tests - validate Iterate and HasNext/DoNextRow APIs for all tests
+Adding missing fields to return json from suggested_k8s response.
 [15767] [DocDB] Fix some yb_build issues seen with --no-tcmalloc flag
 [16284] [DocDB] Correctly handle TTL for liveness column for packed row
-[PLAT-7420] Copy node-agent package to the right location when yba-installer is run
-[PLAT-6503] Make changes in node-agent to log correlation ID
 [16265] [xCluster] Rename TwoDC tests to XCluster
 [16258] [YSQL] Extract sidecar only in case operation has it
 [14887] [YSQL] Colocation Migration Path (Support Restoring from Legacy Colocated DB Backup to Colocation DB)
 [16147] [CDCSDK] Correctly set cdc_sdk_min_checkpoint_op_id to -1.-1 in upgrade scenarios
-[PLAT-7019]: UI: support core count, mem properties for k8s univs on create and edit page
-[16134] [DocDB] Refactor MiniTabletServer::Start() and MiniTabletServer::WaitStarted()
-[PLAT-6657] Add az to existing region
-Change Algolia API Key (#16293)
+[16134] [DocDB] Refactor MiniTabletServerStart() and MiniTabletServerWaitStarted()
 [16174] [CDCSDK] Add explicit_cdc_sdk_checkpoint to GetChangesRequestPB
-[PLAT-7488] Delete and create new instanceType when colliding with soft deleted entries
 Show image in popup on click (#16297)
 [15445] [DocDB] Enable support for Valid() and key() iterator apis with ScanForward
-[PLAT-7316] Disable xCluster actions for universes in paused or pending state
-[PLAT-7402] Revert "Temporary revert of react-dropzone upgrade"
-[PLAT-7539] Updated help text for postgres max mem
-[16126] docdb : Expose aborted transactions to prometheus
+[16126] docdb  Expose aborted transactions to prometheus
 Fix for shellcheck failures caused due to D22071
 [14233] Pass placement info in HandleAddIfWrongPlacement
 UI Fix to detect registry value from the API response
-Update _index.md (#16274)
-[PLAT-7390] WebHook alert channel authentication
-[PLAT-7561] Retry read write check in case of failure
-[PLAT-7534][PLAT-7525] Make changes in ansible.py to run ansible locally on DB nodes
 [15561] [CDCSDK] Persist snapshot key during snapshot GetChanges calls
 [16266] [DocDB] Move ent yb-admin into src
-[PLAT-7303] OCP backup failure due to permission issue when copying over xxhash binary
-[PLAT-5028] Fix swagger
-[PLAT-7600][UI revamp] Alignment/Padding issue in the input fields.
-Revert "Revert "[PLAT-5734] Support EAR enabled/TLS universes for attach/detach""
-[14209] YSQL : Create system view for yb_terminated_queries
-[PLAT-6864] Adding missing properties to suggested kubernetes handler
-[PLAT-7162] Allow setting up replication between two universes with different KMS configs
+[14209] [YSQL] Create system view for yb_terminated_queries
 [15211] [DocDB] Improve tablet_split command output from yb-admin utility
-[PLAT-7478] - Fixing by adding configmap read permissions to yugabyte-helm-operations role
-[CLOUDGA-11999] : Fix nginx proxy location in charts
+[CLOUDGA-11999] Fix nginx proxy location in charts
 Easy Deployment of K8s cluster, changes to rbac rules.
 [13163] [CDCSDK] Making CDC checkpoint logs on tablet peer periodic
 [16254] [DocDB] Pack control flags for YCQL columns of fixed size
 [16265] Rename cdc and twodc to xcluster
 [13580] [DocDB] Improve fairness in wait queues
-[PLAT-6626] Add Region to existing provider
 [16102] [DocDB] Fix index backfill mem leak
-[11910] Docdb : Ensure that deadline passed in to PauseWritePermits is passed down accordingly.
+[11910] [DocDB] Ensure that deadline passed in to PauseWritePermits is passed down accordingly.
 [16251] [DocDB] Remove enterprise tserver
 [CLOUD-11878] Allow editing of used provider for YBM
-[PLAT-7396] Update on-prem manual provisioning pre-flight checks to ensure that the vm.max_map_count is 256k before adding the node to on-prem provider
-
 [15819] StatefulService framework to run services on tserver
 [16006] [DocDB] execute callbacks for local RPC calls the same way as for remote calls
-[PLAT-7545] Enable feature flag for new UI
 [16029] [YSQL] Change yb-admin list_tables table type output of colocated parent tables from catalog to parent_table
 [15871] [YSQL] Adjust ScanChoices to not unnecessarily read unfiltered suffix columns
 [16245][yugabyted] Fixing `yugabyted configure data_placement` for nodes started with DNS name as `--advertise_address`
 [11032][yugabyted] Stay connected to ysqlsh/ycqlsh shell on pressing `Ctrl+C` while running `yugabyted connect` command
-[PLAT-5891] Modify the backup_keys.json to store metadata for cloud KMS key
 [15830] [DocDB] Split NonRespondingMaster into two tests
 [16252] [xCluster] Break up AlterUniverseReplication function
-[PLAT-7492] Made the yba-ctl install dir yba-ctl
-[PLAT-7549][yugaware] Increase wait_for_server_timeout for GKE MCS
-[PLAT-513] Specify user to provide VPC name while selecting for GCP provider
-[PLAT-7557][PLAT-7556][PLAT-7535] Do not install node-agent if it is already installed and reachable
-[PLAT-7558] [Canary - 2.17.2.2180]: Create and edit task are failing at the first attempt due to Output: builtins.TypeError: remote_exec_command()
-[PLAT-7499][PLAT-7500][PITR] Add selectors for UI automation
-[PLAT-7416][PLAT-7541] remove internal unsupported API docs.
-[PLAT-7418][PLAT-7508] Add /api-login method
-[16238] [xCluster] Dont compute batch size in BatchedWriteImplementation::ProcessRecord if no limit is set
-[PLAT-7428][PLAT-5885][PLAT-5887] [MKR] KMS creation improvement and fixes
+[16238] [xCluster] Dont compute batch size in BatchedWriteImplementationProcessRecord if no limit is set
 [16182][yuagbyted] openssl_proxy.sh script not working in Ubuntu.
-[PLAT-7497]UI- The target universe text and the name of the target universe overlap in the restore task page
-[PLAT-7539] Allow different cgroup settings for read replicas
-[PLAT-7482][UI revamp] Change of RF field in the read replica form
-[PLAT-7538] YCQL backup fails when Snapshot details contain custom types
 [15937] [DocDB] Don't initiate packing with tombstoned column
 [16158] [DocDB] Fix inserting incomplete packed row in YCQL
-[PLAT-5028] Support separate gflags for read-replicas
 [16105] [YSQL] Fix source of yb_hashClauseInfos in batched nested loop join plan creation
 [14895] Fix PgLibPqTest.SerializableColoring and TestPgIndex.testConcurrentInsert
-Revert "[PLAT-5734] Support EAR enabled/TLS universes for attach/detach"
-[15994] [YSQL] Fix flaky TestPgConnection.testConnectionKillsAndRestarts
-[PLAT-7546] Move rearrange_snapshot_dir warning logs to verbose mode
-[PLAT-7004] Adding backend support for provider architecture
 [15985] [CDCSDK] Remove redundant function IsCdcSdkEnabled in CatalogManager
 [16115] [YSQL] Colocated Partitioned Table should maintain its colocation id for backup && restore
 [16220] [DocDB] Move cdc and xcluster out of ent
-[PLAT-7523] Handle system specific systemd units in SLES
-[PLAT-7410]: Fix deeplink of CPU and Disk Usage to appropriate metrics section
-[16199] [DocDB] Bring CatalogManager::CreateTable under the linter length limit.
+[16199] [DocDB] Bring CatalogManagerCreateTable under the linter length limit.
 [16204] [YSQL] Fix expected error messages not printed bug
 [16120] [CDCSDK] Add test for schema evolution with multiple streams
-[PLAT-5734] Support EAR enabled universes for attach/detach
-[13718] [DocDB] Add support for offset based key columns decoding
-[15883] [DocDB] Check permission status of YCQL indices in `CatalogManager::IsDeleteTableDone`
+[15883] [DocDB] Check permission status of YCQL indices in `CatalogManagerIsDeleteTableDone`
 [16147] [CDCSDK] Checkpoint set to 0.0 from raft superblock in upgrade scenarios
-[PLAT-6599] Adding ARM https release by default.
 [15974] [CDCSDK] Separate tablet split and before image tests
-[PLAT-7196] Update options in universe_configure are broken for k8s
 [DB-4393][15210] YBClient fails to connect if the tserver advertises multiple hosts/ports
-[PLAT-7512] Node agent installation failure due to change in install type option from -t to -c
-[PLAT-4054] Run sass-migrator to convert stylesheets to use Sass module system
-[PLAT-7399] Remove chevron icon on abort task button
 [13748] [YSQL] Multiple request boundaries
-[PLAT-7455] Add runtime config at the provider level for enabling node-agent
 [16179] [xCluster] Abort active txn during Bootstrap
-[PLAT-7394] Increased vm.max_map_count to 262144
 Add support for Suse in YBA
+[15735] [DocDB] Add Raft Config info to consensus information in YB-Tserver UI
 [12417] [YSQL] Enhance GetTserverCatalogVersionInfo
 [16048] [YSQL] Fix regression in performance of queries returning large columns
 Set up chrony correctly during AMI build process
-[PLAT-6487] Errors importing a single release should not cause all release imports to fail
 [15444] [YSQL] Expose lock information to postgres
-[PLAT-7231] - feat : Inherit user tags value from primary cluster to read replica
-[PLAT-7505] Expose node-agent logging properties like debug level in config file
 [15183] [DocDB] fix gcc builds
 [16173] [DocDB] Cluster creation is failing on Mac
-[PLAT-3884] Add support for TLS-enabled universes
-[15735] [DocDB] Add Raft Config info to consensus information in YB-Tserver UI
-[PLAT-5380] Set gFlag to use hostname for onprem TLS enabled universes using DNS
-[PLAT-5386] Non-root upgrades now supported
-Added us-gov-east-1 region in aws metadata
 [16180] [DocDB] Cleanup ent/server
 [15183] [DocDB] move list of table ids from colocated tablet's sys catalog entry to a field on each child table's sys catalog entry pointing to its parent
 [14239] [YSQL] Handle duplicate YSQL CREATE TABLEs on master using tables_
-[PLAT-7159] YBA security vulnerability fixes
 Fix swaggerGen
-[PLAT-7456] Fix DB node restart alert
-[PLAT-6991] YBADeprecate cloud provider fields
-[PLAT-7143] Autogen md file from runtime flags
-Enable data validation and scope strictness
-[PLAT-6759] add Indonesia region to AWS
-[PLAT-7457][PLAT-7435] Node agent pre-flight check fails for non-root YW K8s Installs
-[PLAT-7381] [yba-installer] Remove IP from organization field
-[PLAT-7445] Issues with fields alignment for new UI
 [16128] [xCluster] Adding DR test for xCluster
 [12884] [15938] [YSQL] Fix TSAN issues caused by quickdie()
-[14815] [YSQL] Thread leak in Postgres process, created by yb::pggate::PgApiImpl::Interrupter::Start()
+[14815] [YSQL] Thread leak in Postgres process, created by ybpggatePgApiImplInterrupterStart()
 [16135] [YCQL] Use Metadata Cache in IsYBTableAltered
-[15846] [DocDB] fix flaky test: SnapshotTest.SnapshotRemoteBootstrap
-[PLAT-7460] Metrics graph are not available in Universe overview page
 [16140] [DocDB] Bump RBS session default timeout
-[Platform] Use the previous name for x86_64 checksum
 [16160] [yugabyted] Stopping the processes properly in MacOS.
-[PLAT-6841] Restart xcluster API changes xclusterconfig status to running if at least on table in replication
-[PLAT-5268] [yugabyte] Fix YCQL for MCS enabled deployments
