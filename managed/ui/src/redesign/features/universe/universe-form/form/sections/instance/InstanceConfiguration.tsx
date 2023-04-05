@@ -83,7 +83,7 @@ export const InstanceConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
           </>
         ) : (
           <>
-            <InstanceTypeField isDedicatedMasterField={isDedicatedMasterField} />
+            <InstanceTypeField isEditMode={!isCreateMode} isDedicatedMasterField={isDedicatedMasterField} />
             <VolumeInfoField
               isEditMode={!isCreateMode}
               isPrimary={isPrimary}
