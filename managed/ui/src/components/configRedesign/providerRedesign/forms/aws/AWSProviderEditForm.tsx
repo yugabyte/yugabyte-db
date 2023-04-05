@@ -115,8 +115,9 @@ const VALIDATION_SCHEMA = object().shape({
       editAccessKey && providerCredentialType === AWSProviderCredentialType.ACCESS_KEY,
     then: string().required('Access key id is required.')
   }),
-  secretAccessKey: string().when('providerCredentialType', {
-    is: AWSProviderCredentialType.ACCESS_KEY,
+  secretAccessKey: string().when(['editAccessKey', 'providerCredentialType'], {
+    is: (editAccessKey, providerCredentialType) =>
+      editAccessKey && providerCredentialType === AWSProviderCredentialType.ACCESS_KEY,
     then: string().required('Secret access key id is required.')
   }),
   sshKeypairManagement: mixed().when('editSSHKeypair', {
