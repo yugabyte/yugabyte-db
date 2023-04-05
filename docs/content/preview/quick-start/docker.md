@@ -56,7 +56,7 @@ The local cluster setup on a single host is intended for development and learnin
 
 ## Install YugabyteDB
 
-Installing YugabyteDB involves completing [prerequisites](#prerequisites) and them performing the actual [installation](#install).
+Installing YugabyteDB involves completing [prerequisites](#prerequisites) and then performing the actual [installation](#install).
 
 Note that the Docker option to run local clusters is recommended only for advanced Docker users. This is due to the fact that running stateful applications such as YugabyteDB in Docker is more complex and error-prone than running stateless applications.
 
