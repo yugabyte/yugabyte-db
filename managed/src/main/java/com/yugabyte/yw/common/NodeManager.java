@@ -30,6 +30,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleDestroyServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer.Params;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeInstanceType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteRootVolumes;
@@ -356,6 +357,7 @@ public class NodeManager extends DevopsBase {
     }
 
     if (params instanceof AnsibleSetupServer.Params) {
+      Params setupServerParams = (Params) params;
       if (providerDetails.airGapInstall) {
         subCommand.add("--air_gap");
       }
@@ -363,7 +365,7 @@ public class NodeManager extends DevopsBase {
       if (providerDetails.installNodeExporter) {
         subCommand.add("--install_node_exporter");
         subCommand.add("--node_exporter_port");
-        subCommand.add(Integer.toString(providerDetails.nodeExporterPort));
+        subCommand.add(Integer.toString(setupServerParams.communicationPorts.nodeExporterPort));
         subCommand.add("--node_exporter_user");
         subCommand.add(providerDetails.nodeExporterUser);
       }
