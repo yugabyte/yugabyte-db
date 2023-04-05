@@ -3,6 +3,17 @@ import { useTranslation } from 'react-i18next';
 import { Layer, Rectangle, Sankey, Tooltip } from 'recharts';
 import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { AXIOS_INSTANCE } from '@app/api/src';
+import { Link, makeStyles } from '@material-ui/core';
+import { Link as RouterLink } from 'react-router-dom';
+
+const useStyles = makeStyles((theme) => ({
+  link: {
+    '&:link, &:focus, &:active, &:visited, &:hover': {
+      textDecoration: 'none',
+      color: theme.palette.text.primary,
+    }
+  },
+}));
 
 interface VCpuUsageSankey {
   cluster: ClusterData,
@@ -103,7 +114,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 
     // Update data values as per the calculation performed
     data["links"][data["links"].length - 1].value = Math.round(cpuAcc / cpuUsage * cpuAvailable);
-    data["nodes"][0].name = t('clusterDetail.overview.usageCores', { usage: cpuUsage });
+    data["nodes"][0].name = t('clusterDetail.overview.usedCores', { usage: cpuUsage });
     data["nodes"][1].name = t('clusterDetail.overview.availableCores', { available: cpuAvailable });
   
     return data;
@@ -134,6 +145,8 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 
 
 function CpuSankeyNode(props: any) {
+  const classes = useStyles();
+
   const { x, y, width, height, index, payload } = props;
   const isLeftNode = index <= 1;
 
@@ -155,17 +168,19 @@ function CpuSankeyNode(props: any) {
         fillOpacity={isLeftNode ? 0.6 : 0.5} />
       {!isLeftNode ? 
         // Right node
-        <text
-          textAnchor={'start'}
-          x={x + width + 15}
-          y={y + height / 2 + width / 2 + 3}
-          fontSize="12"
-          stroke="#888"
-          strokeOpacity="0.5"
-        >
-          <tspan dx={payload.value < 10 ? 6 : 0}>{payload.value}%</tspan>
-          <tspan dx={16}>{payload.name}</tspan>
-        </text>
+        <Link className={classes.link} component={RouterLink} to={`/performance/metrics?nodeName=${payload.name}`}>
+          <text
+            textAnchor={'start'}
+            x={x + width + 15}
+            y={y + height / 2 + width / 2 + 3}
+            fontSize="12"
+            stroke="#888"
+            strokeOpacity="0.5"
+          >
+            <tspan dx={payload.value < 10 ? 6 : 0}>{payload.value}%</tspan>
+            <tspan dx={16}>{payload.name}</tspan>
+          </text>
+        </Link>
         :
         // Left node
         <text
@@ -176,7 +191,7 @@ function CpuSankeyNode(props: any) {
           fontWeight={500}
         >
           <tspan fill="#97A5B0">{cpuTextPrefix}</tspan>
-          <tspan dx={index === 0 ? (cpuValue < 10 ? 64 : 54) : (cpuValue < 10 ? 40 : 32)} 
+          <tspan dx={index === 0 ? (cpuValue < 10 ? 74 : 64) : (cpuValue < 10 ? 40 : 32)} 
             fill="#000" fontWeight={700} fontSize="15">{cpuValue} </tspan>
           <tspan fill="#444" fillOpacity={1}>{cpuTextSuffix}</tspan>
         </text>
@@ -206,26 +221,29 @@ class CpuSankeyLink extends Component<any, any> {
             <stop offset="80%" stopColor={"#8047F5"} stopOpacity={"0.18"} />
           </linearGradient>
         </defs>
-        <path
-          d={`
-            M${sourceX},${sourceY + linkWidth / 2}
-            C${sourceControlX},${sourceY + linkWidth / 2}
-              ${targetControlX},${targetY + linkWidth / 2}
-              ${targetX},${targetY + linkWidth / 2}
-            L${targetX},${targetY - linkWidth / 2}
-            C${targetControlX},${targetY - linkWidth / 2}
-              ${sourceControlX},${sourceY - linkWidth / 2}
-              ${sourceX},${sourceY - linkWidth / 2}
-            Z
-          `}
-          fill={fill}
-          onMouseEnter={() => {
-            this.setState({ fill: 'rgba(0, 136, 254, 0.5)' });
-          }}
-          onMouseLeave={() => {
-            this.setState({ fill: `url(#${gradientID})` });
-          }}
-        />
+        
+        <Link component={RouterLink} to={`/performance/metrics?nodeName=${payload.target.name}`}>
+          <path
+            d={`
+              M${sourceX},${sourceY + linkWidth / 2}
+              C${sourceControlX},${sourceY + linkWidth / 2}
+                ${targetControlX},${targetY + linkWidth / 2}
+                ${targetX},${targetY + linkWidth / 2}
+              L${targetX},${targetY - linkWidth / 2}
+              C${targetControlX},${targetY - linkWidth / 2}
+                ${sourceControlX},${sourceY - linkWidth / 2}
+                ${sourceX},${sourceY - linkWidth / 2}
+              Z
+            `}
+            fill={fill}
+            onMouseEnter={() => {
+              this.setState({ fill: 'rgba(0, 136, 254, 0.5)' });
+            }}
+            onMouseLeave={() => {
+              this.setState({ fill: `url(#${gradientID})` });
+            }}
+          />
+        </Link>
       </Layer>
     );
   }

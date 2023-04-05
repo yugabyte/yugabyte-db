@@ -91,7 +91,7 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
       return {
         region: {
           name: `${region} (${zone})`,
-          code: Object.entries(regionCountryCodes).find(([key]) => zone.startsWith(key) || key.startsWith(region))?.[1] ?? 'xx',
+          code: Object.entries(regionCountryCodes).find(([key]) => zone.startsWith(key) || key.startsWith(region))?.[1],
         },
         nodeCount: nodesResponse?.data.filter(node => 
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,

@@ -118,6 +118,14 @@ export const Metrics: FC = () => {
   };
 
   useEffect(() => {
+    handleChangeFilterOrChangeDisplayChart(
+      relativeInterval,
+      queryParams.nodeName,
+      displayedCharts ?? []
+    );
+  }, [queryParams.nodeName])
+
+  useEffect(() => {
     doRefresh((prev) => prev + 1);
   }, [savedCharts]);
 

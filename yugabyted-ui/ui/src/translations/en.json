@@ -729,7 +729,7 @@
         "used": "Used",
         "usage": "Usage",
         "cores": "cores",
-        "usageCores": "Usage {{usage}} cores",
+        "usedCores": "Used {{usage}} cores",
         "availableCores": "Available {{available}} cores",
         "available": "Available",
         "usedDiskText": "{{usedDiskSizeGb}} GB used",
