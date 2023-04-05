@@ -77,6 +77,10 @@ On this page:
 
 - [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.0](../../releases/release-notes/v2.16/#v2.16.0.1) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
+**Infrastructure**
+
+- Instance type for new Dedicated clusters on AWS updated to [m6i](https://aws.amazon.com/ec2/instance-types/m6i/).
+
 ### January 13, 2023
 
 **Database**
