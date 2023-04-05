@@ -12,6 +12,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
@@ -73,6 +75,7 @@ public class ReleaseManager {
   private final Commissioner commissioner;
   private final AWSUtil awsUtil;
   private final GCPUtil gcpUtil;
+  private final RuntimeConfGetter confGetter;
 
   @Inject
   public ReleaseManager(
@@ -81,13 +84,15 @@ public class ReleaseManager {
       GFlagsValidation gFlagsValidation,
       Commissioner commissioner,
       AWSUtil awsUtil,
-      GCPUtil gcpUtil) {
+      GCPUtil gcpUtil,
+      RuntimeConfGetter confGetter) {
     this.configHelper = configHelper;
     this.appConfig = appConfig;
     this.gFlagsValidation = gFlagsValidation;
     this.commissioner = commissioner;
     this.awsUtil = awsUtil;
     this.gcpUtil = gcpUtil;
+    this.confGetter = confGetter;
   }
 
   public enum ReleaseState {
@@ -605,14 +610,18 @@ public class ReleaseManager {
     String ybReleasesPath = appConfig.getString("yb.releases.path");
     String ybReleasePath = appConfig.getString("yb.docker.release");
     String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
+    log.debug("yb releases: " + ybReleasesPath);
+    log.debug("yb release: " + ybReleasePath);
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
       Map<String, Object> currentReleases = getReleaseMetadata();
 
       // Local copy pattern to account for the presence of characters prior to the file name itself.
       // (ensures that all local releases get imported prior to version checking).
-      Pattern ybPackagePatternCopy = Pattern.compile("[^.]+" + YB_PACKAGE_REGEX);
+      Pattern ybPackagePatternCopy =
+          Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex));
 
-      Pattern ybHelmChartPatternCopy = Pattern.compile("[^.]+yugabyte-(.*)-helm.tar.gz");
+      Pattern ybHelmChartPatternCopy =
+          Pattern.compile(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex));
 
       copyFiles(ybReleasePath, ybReleasesPath, ybPackagePatternCopy, currentReleases.keySet());
       copyFiles(ybHelmChartPath, ybReleasesPath, ybHelmChartPatternCopy, currentReleases.keySet());
@@ -964,6 +973,7 @@ public class ReleaseManager {
     try {
       Files.walk(Paths.get(sourceDir))
           .map(String::valueOf)
+          .map(path -> path.substring(sourceDir.length()))
           .map(fileRegex::matcher)
           .filter(Matcher::matches)
           .forEach(
@@ -973,7 +983,7 @@ public class ReleaseManager {
                   log.debug("Skipping re-copy of release files for {}", version);
                   return;
                 }
-                File releaseFile = new File(match.group());
+                File releaseFile = new File(sourceDir + match.group());
                 File destinationFolder = new File(destinationDir, version);
                 File destinationFile = new File(destinationFolder, releaseFile.getName());
                 if (!destinationFolder.exists()) {

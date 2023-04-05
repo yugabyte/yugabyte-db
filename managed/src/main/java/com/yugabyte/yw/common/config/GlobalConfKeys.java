@@ -562,4 +562,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "installation",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> ybdbReleasePathRegex =
+      new ConfKeyInfo<>(
+          "yb.regex.release_pattern.ybdb",
+          ScopeType.GLOBAL,
+          "Regex for match Yugabyte DB release .tar.gz files",
+          "Regex pattern used to find Yugabyte DB release .tar.gz files",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> ybdbHelmReleasePathRegex =
+      new ConfKeyInfo<>(
+          "yb.regex.release_pattern.helm",
+          ScopeType.GLOBAL,
+          "Regex for match Yugabyte DB release helm .tar.gz files",
+          "Regex pattern used to find Yugabyte DB helm .tar.gz files",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
