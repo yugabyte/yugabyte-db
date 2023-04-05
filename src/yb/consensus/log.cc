@@ -963,10 +963,29 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
     reuse_unclosed_segment_threshold = max_segment_size_;
   }
   if (file_size > reuse_unclosed_segment_threshold) {
-    LOG(INFO) << "Fail to reuse " << recover_segment->path() << " as active_segment due to "
-              << "its actual file size is greater than reuse_unclosed_segment_threshold";
+    LOG(INFO) << "Cannot reuse last WAL segment " << recover_segment->path()
+              << " as active_segment due to its actual file size " << file_size
+              << " is greater than reuse threshold " << reuse_unclosed_segment_threshold;
     RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
     return false;
+  }
+  next_segment_path_ = recover_segment->path();
+  auto opts = GetNewSegmentWritableFileOptions();
+  opts.mode = Env::OPEN_EXISTING;
+  opts.initial_offset = file_size;
+  // There are two reasons of why we want to set the initial offset:
+  // 1. Overwrite corrupted entry, because last entry in the segment is possible to be corrupted
+  //    under the case that server crashed in the middle of writing entry.
+  // 2. Before server crash, file might get preallocated to certain size.
+  //    This set intial offset option ensure we start with offset at last valid entry,
+  //    instead of at the end of preallocated block.
+  auto status = env_util::OpenFileForWrite(opts, get_env(), next_segment_path_,
+                                           &next_segment_file_);
+  if (!status.ok()) {
+      LOG(INFO) << "Cannot reuse last WAL segment " << next_segment_path_
+                << " as active_segment due to file could not be reopened: " << status.ToString();
+      RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
+      return false;
   }
 
   uint64_t real_size = recover_segment->file_size();
@@ -989,18 +1008,6 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
     min_replicate_index_.store(footer_builder_.min_replicate_index(),
                                std::memory_order_release);
   }
-  next_segment_path_ = recover_segment->path();
-  auto opts = GetNewSegmentWritableFileOptions();
-  opts.mode = Env::OPEN_EXISTING;
-  opts.initial_offset = file_size;
-  // There are two reasons of why we want to set the initial offset:
-  // 1. Overwrite corrupted entry, because last entry in the segment is possible to be corrupted
-  //    under the case that server crashed in the middle of writing entry.
-  // 2. Before server crash, file might get preallocated to certain size.
-  //    This set intial offset option ensure we start with offset at last valid entry,
-  //    instead of at the end of preallocated block.
-  RETURN_NOT_OK(env_util::OpenFileForWrite(opts, get_env(), next_segment_path_,
-                                           &next_segment_file_));
   std::unique_ptr<WritableLogSegment> new_segment(
       new WritableLogSegment(next_segment_path_, next_segment_file_));
 
@@ -1012,7 +1019,6 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
     std::lock_guard<std::mutex> lock(active_segment_mutex_);
     active_segment_ = std::move(new_segment);
   }
-
   LOG(INFO) << "Successfully restored footer_builder_ and log_index_ for segment: "
             << recover_segment->path() << ". Reopen the file for write with starting offset: "
             << file_size;
