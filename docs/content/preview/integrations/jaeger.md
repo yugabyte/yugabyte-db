@@ -68,7 +68,7 @@ To use Jaeger, ensure that you have the following:
     system_auth  jaeger_v1_test  system_schema  system
     ```
 
-1. From the jaeger project home directory, add the `jaeger-ui` submodule as follows:
+1. From the Jaeger project home directory, add the `jaeger-ui` submodule as follows:
 
     ```sh
     git submodule update --init --recursive
