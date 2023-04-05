@@ -58,10 +58,12 @@ const renderOption = (option: Record<string, string>) => {
 };
 
 interface InstanceTypeFieldProps {
+  isEditMode?: boolean;
   isDedicatedMasterField?: boolean;
 }
 
 export const InstanceTypeField = ({
+  isEditMode,
   isDedicatedMasterField
 }: InstanceTypeFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
@@ -216,7 +218,7 @@ export const InstanceTypeField = ({
                       : classes.instanceConfigTextBox
                   }
                 >
-                  <YBToggleField name={SPOT_INSTANCE_FIELD} control={control} />
+                  <YBToggleField disabled={isEditMode} name={SPOT_INSTANCE_FIELD} control={control} />
                 </Box>
               </Box>
             )}
