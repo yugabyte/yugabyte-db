@@ -25,6 +25,8 @@ import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -276,6 +278,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false);
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -307,6 +313,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, true, true, false, "linux");
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -339,6 +349,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, true, true, false, "el8");
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -371,6 +385,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, true, false, false);
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -409,6 +427,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(dockerVersionsWithoutEe, false, true, false, true, false);
     List<String> multipleVersionRelease = ImmutableList.of("0.0.0.4-b4");
     createDummyReleases(multipleVersionRelease, false, false, false, true, true);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
@@ -474,6 +496,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(dockerVersions, false, true);
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -506,6 +532,10 @@ public class ReleaseManagerTest extends FakeDBApplication {
     createDummyReleases(versions, false, false, false, true, true, "almalinux8");
     when(mockGFlagsValidation.getMissingGFlagFileList(any()))
         .thenReturn(GFlagsValidation.GFLAG_FILENAME_LIST);
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
+    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
+        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
     releaseManager.importLocalReleases();
     verify(mockGFlagsValidation, times(1))
         .fetchGFlagFilesFromTarGZipInputStream(any(), any(), any(), any());
@@ -572,7 +602,7 @@ public class ReleaseManagerTest extends FakeDBApplication {
         .thenReturn(false);
     ReleaseManager.ReleaseMetadata metadata =
         ReleaseManager.ReleaseMetadata.fromLegacy(
-            "0.0.0.1-b1", "/path/to/yugabyte-0.0.0.1-b1.tar.gz");
+            "0.0.0.1-b1", "/path/to/yyugabyte-0.0.0.1-b1.tar.gz");
     releaseManager.addReleaseWithMetadata("0.0.0.1-b1", metadata);
     ArgumentCaptor<ConfigHelper.ConfigType> configType;
     ArgumentCaptor<HashMap> releaseMap;
