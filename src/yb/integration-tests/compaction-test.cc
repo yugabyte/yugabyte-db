@@ -178,7 +178,9 @@ class CompactionTest : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_level0_file_num_compaction_trigger) = 3;
     // Patch tablet options inside tablet manager, will be applied to newly created tablets.
     for (int i = 0 ; i < NumTabletServers(); i++) {
+      ANNOTATE_IGNORE_WRITES_BEGIN();
       cluster_->GetTabletManager(i)->TEST_tablet_options()->listeners.push_back(rocksdb_listener_);
+      ANNOTATE_IGNORE_WRITES_END();
     }
 
     client_ = ASSERT_RESULT(cluster_->CreateClient());
