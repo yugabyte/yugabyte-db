@@ -227,6 +227,12 @@ public class Region extends Model {
     return null;
   }
 
+  @JsonIgnore
+  @Deprecated
+  public String getYbImageDeprecated() {
+    return this.ybImage;
+  }
+
   public String getYbImage() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     if (envVars.containsKey("ybImage")) {
