@@ -460,7 +460,7 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
   // For example, the creation of shared system relation need to be propagated
   // to invalidate its negative cache entry in other Postgres backends.
   pg_global_heartbeat_wait_ =
-    db_name == "template1" && boost::icontains(migration_content.c_str(), "pg_global");
+    db_name == "template1" && boost::icontains(migration_content.ToString(), "pg_global");
   if (pg_global_heartbeat_wait_) {
     LOG(INFO) << "Found pg_global in migration file " << next_migration_filename
               << " when applying to " << db_name;
