@@ -26,7 +26,7 @@ Additionally, it uses Jaeger [All-in-one](https://www.jaegertracing.io/docs/1.43
 
 {{< note title = "Note">}}
 
-Following steps are for testing purpose only, for production deployment refer to [Jaeger documentation](https://www.jaegertracing.io/docs/1.18/).
+The following example is for testing purposes only. For production deployment, refer to the [Jaeger documentation](https://www.jaegertracing.io/docs/1.18/).
 
 {{< /note >}}
 
