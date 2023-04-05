@@ -26,15 +26,15 @@ List AWS regions:
 
 ```sh
 ybm region list \
-  --cloud-provider=AWS
+  --cloud-provider AWS
 ```
 
 List AWS instance types in us-west-2:
 
 ```sh
 ybm region instance list \
-  --cloud-provider=AWS \
-  --region=us-west-2
+  --cloud-provider AWS \
+  --region us-west-2
 ```
 
 ## Commands
