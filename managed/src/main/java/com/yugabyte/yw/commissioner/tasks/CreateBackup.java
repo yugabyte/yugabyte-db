@@ -17,7 +17,6 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_FAILURE_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_SUCCESS_COUNTER;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
-import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -186,13 +185,12 @@ public class CreateBackup extends UniverseTaskBase {
         throw ce;
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
-          // Clear previous subtasks if any.
-          getRunnableTask().reset();
           // If the task failed, we don't want the loadbalancer to be
           // disabled, so we enable it again in case of errors.
-          createLoadBalancerStateChangeTask(true)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
+          setTaskQueueAndRun(
+              () ->
+                  createLoadBalancerStateChangeTask(true)
+                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
         }
         throw t;
       }
