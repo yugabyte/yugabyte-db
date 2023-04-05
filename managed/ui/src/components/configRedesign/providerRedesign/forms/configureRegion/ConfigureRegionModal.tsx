@@ -5,7 +5,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -19,7 +19,10 @@ import {
 import { ProviderCode, VPCSetupType, YBImageType } from '../../constants';
 import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
-import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
+import {
+  ReactSelectOption,
+  YBReactSelectField
+} from '../../components/YBReactSelect/YBReactSelectField';
 import { getRegionlabel, getRegionOptions, getZoneOptions } from './utils';
 import { generateLowerCaseAlphanumericId } from '../utils';
 
@@ -137,11 +140,7 @@ export const ConfigureRegionModal = ({
   });
   const selectedRegion = formMethods.watch('regionData');
   const { setValue } = formMethods;
-  const selectedRegionCode = selectedRegion?.value?.code;
-  useEffect(() => {
-    setValue('zones', []);
-  }, [selectedRegionCode, setValue]);
-
+  const selectedRegionCode = selectedRegion?.value?.code ?? regionSelection?.code;
   const classes = useStyles();
 
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
@@ -185,6 +184,12 @@ export const ConfigureRegionModal = ({
     onClose();
   };
 
+  const onRegionChange = (data: ReactSelectOption) => {
+    if (data.value.code !== selectedRegionCode) {
+      setValue('zones', []);
+    }
+  };
+
   return (
     <FormProvider {...formMethods}>
       <YBModal
@@ -205,6 +210,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="regionData"
               options={regionOptions}
+              onChange={onRegionChange}
             />
           </div>
         )}
