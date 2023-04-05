@@ -1587,9 +1587,9 @@ TEST_P(YbAdminSnapshotScheduleTestWithYsqlParam, PgsqlDropDefault) {
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlDropDefaultWithPackedRow),
           YbAdminSnapshotScheduleTestWithYsqlAndPackedRow) {
   ASSERT_OK(PrepareCommon());
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   TestPgsqlDropDefault();
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
 
   auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
   ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN v2 TEXT DEFAULT 'v2_default'"));
@@ -1624,7 +1624,7 @@ TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(PgsqlAddColumnCom
 
   ASSERT_OK(conn.Execute("ALTER TABLE test_table DROP COLUMN v2"));
 
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   ASSERT_OK(RestoreSnapshotSchedule(schedule_id, time));
   auto res = ASSERT_RESULT(conn.FetchAllAsString("SELECT * FROM test_table ORDER BY key"));
   ASSERT_EQ(res, "1, one, NULL; 2, two, dva");
@@ -3897,7 +3897,7 @@ TEST_F(YbAdminRestoreAfterSplitTest, TestRestoreUncompactedChildTabletAndSplit) 
       client::kTableName.table_name(), "1"));
   ASSERT_EQ(499, ASSERT_RESULT(GetRowCount(&conn)));
   // Force a compaction and wait for the child tablets to be fully compacted.
-  ASSERT_OK(CompactTablets(cluster_.get()));
+  ASSERT_OK(CompactTablets(cluster_.get(), 300s * kTimeMultiplier));
   for (const auto& tablet : tablets) {
     const auto leader_idx = ASSERT_RESULT(cluster_->GetTabletLeaderIndex(tablet.tablet_id()));
     ASSERT_OK(test_admin_client_->WaitForTabletFullyCompacted(leader_idx, tablet.tablet_id()));
