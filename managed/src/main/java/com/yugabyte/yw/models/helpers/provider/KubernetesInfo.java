@@ -49,6 +49,10 @@ public class KubernetesInfo implements CloudInfoInterface {
   @ApiModelProperty
   private String kubeConfigContent;
 
+  /**
+   * Valid values include a file path (file can be empty) and an empty string (for using in-cluster
+   * credentials).
+   */
   @JsonAlias("KUBECONFIG")
   @ApiModelProperty
   private String kubeConfig;

@@ -12,6 +12,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
+import io.fabric8.kubernetes.api.model.Namespace;
+import io.fabric8.kubernetes.api.model.NamespaceList;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
@@ -144,6 +146,13 @@ public class ShellKubernetesManager extends KubernetesManager {
             "release=" + helmReleaseName);
     ShellResponse response = execCommand(config, commandList).processErrors();
     return deserialize(response.message, ServiceList.class).getItems();
+  }
+
+  @Override
+  public List<Namespace> getNamespaces(Map<String, String> config) {
+    List<String> commandList = ImmutableList.of("kubectl", "get", "namespaces", "-o", "json");
+    ShellResponse response = execCommand(config, commandList).processErrors();
+    return deserialize(response.message, NamespaceList.class).getItems();
   }
 
   @Override
