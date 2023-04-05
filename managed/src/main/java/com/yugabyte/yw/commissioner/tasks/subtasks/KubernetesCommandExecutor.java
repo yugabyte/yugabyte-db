@@ -570,19 +570,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     saveUniverseDetails(updater);
   }
 
-  // TODO: Remove this method as it is no longer needed. It does not
-  // generate correct pod name with new naming style. The method which
-  // was using this has stopped doing so as of
-  // ea110f66098d2684863578cd2b730ec677e2de4e
-  private String nodeNameToPodName(String nodeName, boolean isMaster) {
-    Matcher matcher = nodeNamePattern.matcher(nodeName);
-    if (!matcher.matches()) {
-      throw new RuntimeException("Invalid nodeName : " + nodeName);
-    }
-    int nodeIdx = Integer.parseInt(matcher.group(1));
-    return String.format("%s-%d", isMaster ? "yb-master" : "yb-tserver", nodeIdx - 1);
-  }
-
   private String getPullSecret() {
     // Since the pull secret will always be the same across clusters,
     // it is always at the provider level.
@@ -682,7 +669,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           placementRegion = region.code;
           if (region.azList.size() != 0) {
             PlacementInfo.PlacementAZ zone = region.azList.get(0);
-            // TODO: wtf, why do we have AZ name but not code at this level??
             placementZone = AvailabilityZone.get(zone.uuid).getCode();
             numNodes = zone.numNodesInAZ;
             replicationFactorZone = zone.replicationFactor;
@@ -885,14 +871,16 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                   certInfo, runtimeConfigFactory.staticApplicationConf());
           // Generate node cert from cert provider and set nodeCert param
           // As we are using same node cert for all nodes, set wildcard commonName
-          String dnsWildCard1 = String.format("*.*.%s", taskParams().namespace);
-          String dnsWildCard2 = dnsWildCard1 + ".svc.cluster.local";
-          Map<String, Integer> subjectAltNames = new HashMap<>();
-          subjectAltNames.put(dnsWildCard1, GeneralName.dNSName);
-          subjectAltNames.put(dnsWildCard2, GeneralName.dNSName);
+          boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
+          String kubeDomain = azConfig.getOrDefault("KUBE_DOMAIN", "cluster.local");
+          List<String> dnsNames = getDnsNamesForSAN(newNamingStyle, kubeDomain);
+          Map<String, Integer> subjectAltNames = new HashMap<>(dnsNames.size());
+          for (String dnsName : dnsNames) {
+            subjectAltNames.put(dnsName, GeneralName.dNSName);
+          }
           CertificateDetails nodeCertDetails =
               certProvider.createCertificate(
-                  null, dnsWildCard2, null, null, null, null, subjectAltNames);
+                  null, dnsNames.get(0), null, null, null, null, subjectAltNames);
           Map<String, Object> nodeCert = new HashMap<>();
           nodeCert.put(
               "cert", Base64.getEncoder().encodeToString(nodeCertDetails.getCrt().getBytes()));
@@ -1221,5 +1209,31 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         }
       }
     }
+  }
+
+  private List<String> getDnsNamesForSAN(boolean newNamingStyle, String kubeDomain) {
+    List<String> dnsNames = new ArrayList<>(4);
+    if (newNamingStyle) {
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-tservers.%s", taskParams().helmReleaseName, taskParams().namespace));
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-tservers.%s.svc.%s",
+              taskParams().helmReleaseName, taskParams().namespace, kubeDomain));
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-masters.%s", taskParams().helmReleaseName, taskParams().namespace));
+      dnsNames.add(
+          String.format(
+              "*.%s-yb-masters.%s.svc.%s",
+              taskParams().helmReleaseName, taskParams().namespace, kubeDomain));
+    } else {
+      dnsNames.add(String.format("*.yb-tservers.%s", taskParams().namespace));
+      dnsNames.add(String.format("*.yb-tservers.%s.svc.%s", taskParams().namespace, kubeDomain));
+      dnsNames.add(String.format("*.yb-masters.%s", taskParams().namespace));
+      dnsNames.add(String.format("*.yb-masters.%s.svc.%s", taskParams().namespace, kubeDomain));
+    }
+    return dnsNames;
   }
 }
