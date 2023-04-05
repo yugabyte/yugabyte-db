@@ -2,8 +2,10 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
@@ -13,6 +15,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
+import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -119,6 +122,13 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       Map<String, List<String>> mainTableIndexTablesMap,
       @Nullable MasterDdlOuterClass.ListTablesResponsePB.TableInfo txnTableInfo) {
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
+
+    // Create namespaces for universe's clusters if both universes are k8s universes and MCS is
+    // enabled.
+    if (KubernetesUtil.isMCSEnabled(sourceUniverse)
+        && KubernetesUtil.isMCSEnabled(targetUniverse)) {
+      createReplicateNamespacesTask();
+    }
 
     // Support mismatched TLS root certificates.
     Optional<File> sourceCertificate =

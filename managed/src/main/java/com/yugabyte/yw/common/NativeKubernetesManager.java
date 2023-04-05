@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeSpec;
@@ -134,6 +135,13 @@ public class NativeKubernetesManager extends KubernetesManager {
           .withLabel("release", helmReleaseName)
           .list()
           .getItems();
+    }
+  }
+
+  @Override
+  public List<Namespace> getNamespaces(Map<String, String> config) {
+    try (KubernetesClient client = getClient(config)) {
+      return client.namespaces().list().getItems();
     }
   }
 

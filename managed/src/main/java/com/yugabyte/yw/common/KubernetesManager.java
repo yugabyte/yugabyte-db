@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.models.Universe;
 import io.fabric8.kubernetes.api.model.LoadBalancerIngress;
+import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -510,6 +511,17 @@ public abstract class KubernetesManager {
 
   public abstract List<Service> getServices(
       Map<String, String> config, String universePrefix, String namespace);
+
+  public abstract List<Namespace> getNamespaces(Map<String, String> config);
+
+  public boolean namespaceExists(Map<String, String> config, String namespace) {
+    Set<String> namespaceNames =
+        getNamespaces(config)
+            .stream()
+            .map(n -> n.getMetadata().getName())
+            .collect(Collectors.toSet());
+    return namespaceNames.contains(namespace);
+  }
 
   public abstract PodStatus getPodStatus(
       Map<String, String> config, String namespace, String podName);
