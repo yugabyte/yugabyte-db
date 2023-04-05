@@ -1076,6 +1076,36 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertBadRequest(result, "Provider with name aws-2 already exists.");
   }
 
+  @Test
+  public void testOnPremProviderManualProvisioning() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "onprem");
+    bodyJson.put("name", "onprem,-Provider");
+
+    ObjectNode details = Json.newObject();
+    details.put("skipProvisioning", true);
+    details.put("sshUser", "ec2-user");
+    bodyJson.set("details", details);
+
+    ArrayNode accessKeys = Json.newArray();
+    ObjectNode accessKey = Json.newObject();
+    ObjectNode keyInfo = Json.newObject();
+    keyInfo.put("keyPairName", "testKeyPairName");
+    keyInfo.put("sshPrivateKeyContent", "keyContent");
+    accessKey.put("keyInfo", keyInfo);
+    accessKeys.add(accessKey);
+    bodyJson.put("allAccessKeys", accessKeys);
+
+    Result result = createProvider(bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+
+    Provider provider =
+        Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
+
+    assertEquals(true, provider.getDetails().skipProvisioning);
+  }
+
   private void prepareBootstrap(
       ObjectNode bodyJson, Provider provider, boolean expectCallToGetRegions) {
     UUID fakeTaskUUID = UUID.randomUUID();
