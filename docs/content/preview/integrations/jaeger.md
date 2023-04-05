@@ -100,7 +100,7 @@ To use Jaeger, ensure that you have the following:
 
 To verify the integration, navigate to the [HotROD landing page](http://localhost:8080) and click a few options on the page to verify if you get a response about a driver arriving in a few minutes. This triggers a few traces which are in turn stored in the YCQL backend storage. You can view the traces in the Jaeger UI at <http://localhost:16686>.
 
-1. You can also verify the integration from your ycqlsh shell using the following commands:
+You can also verify the integration from your ycqlsh shell using the following commands:
 
     ```sql
     use jaeger_v1_test;
