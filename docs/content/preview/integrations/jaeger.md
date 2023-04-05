@@ -40,6 +40,8 @@ To use Jaeger, ensure that you have the following:
 
 ## Build the application
 
+To build the application, do the following:
+
 1. Jaeger natively supports two databases, Cassandra and Elasticsearch. So you need to set an environment variable `SPAN_STORAGE_TYPE` to specify your choice of database. For this example, set it to cassandra as follows:
 
     ```sh
@@ -83,6 +85,8 @@ To use Jaeger, ensure that you have the following:
     Wait for the logs to settle, then navigate to <http://localhost:16686> to access the Jaeger UI, where you can view the traces created by the application. This indicates that the Jaeger UI, collector, query, and agent are running.
 
 ## Run the application
+
+To run the application, do the following:
 
 1. From a new terminal, set the `SPAN_STORAGE_TYPE` environment variable again as follows:
 
