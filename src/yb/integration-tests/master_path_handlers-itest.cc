@@ -171,7 +171,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   for (const auto& replica : orphan_tablet.replicas()) {
     const auto uuid = replica.ts_info().permanent_uuid();
     auto* tserver = cluster_->find_tablet_server(uuid);
-    ASSERT_NOTNULL(tserver);
+    ASSERT_ONLY_NOTNULL(tserver);
     if (replica.role() == PeerRole::LEADER) {
       leader = tserver;
     } else {
@@ -180,7 +180,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
     // Shutdown all tservers.
     tserver->Shutdown();
   }
-  ASSERT_NOTNULL(leader);
+  ASSERT_ONLY_NOTNULL(leader);
 
   // Restart the server which was previously the leader of the now orphaned tablet.
   ASSERT_OK(leader->Start(tserver::WaitTabletsBootstrapped::kFalse));

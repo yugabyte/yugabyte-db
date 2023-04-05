@@ -113,10 +113,10 @@ public class ImportController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
-  public Result importUniverse(UUID customerUUID) {
+  public Result importUniverse(UUID customerUUID, Http.Request request) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =
-        formFactory.getFormDataOrBadRequest(ImportUniverseFormData.class);
+        formFactory.getFormDataOrBadRequest(request, ImportUniverseFormData.class);
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
@@ -138,7 +138,7 @@ public class ImportController extends AuthenticatedController {
       res = finishUniverseImport(importForm, customer, results);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Universe,
               Objects.toString(results.universeUUID, null),
               Audit.ActionType.Import,
@@ -165,11 +165,10 @@ public class ImportController extends AuthenticatedController {
       }
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Universe,
               Objects.toString(results.universeUUID, null),
-              Audit.ActionType.Import,
-              Json.toJson(formData.rawData()));
+              Audit.ActionType.Import);
       return res;
     }
   }

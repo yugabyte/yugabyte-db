@@ -4,9 +4,9 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
-import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.AvailabilityZoneData;
 import com.yugabyte.yw.forms.AvailabilityZoneEditData;
+import com.yugabyte.yw.forms.AvailabilityZoneFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
@@ -25,7 +25,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -72,10 +72,11 @@ public class AvailabilityZoneController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AvailabilityZoneFormData",
           required = true))
-  public Result create(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+  public Result create(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Region region = Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     Form<AvailabilityZoneFormData> formData =
-        formFactory.getFormDataOrBadRequest(AvailabilityZoneFormData.class);
+        formFactory.getFormDataOrBadRequest(request, AvailabilityZoneFormData.class);
 
     List<AvailabilityZoneData> azDataList = formData.get().availabilityZones;
     List<String> createdAvailabilityZonesUUID = new ArrayList<>();
@@ -87,11 +88,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AvailabilityZone,
             createdAvailabilityZonesUUID.toString(),
-            Audit.ActionType.Create,
-            Json.toJson(formData.rawData()));
+            Audit.ActionType.Create);
     return PlatformResults.withData(availabilityZones);
   }
 
@@ -111,10 +111,11 @@ public class AvailabilityZoneController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AvailabilityZoneEditData",
           required = true))
-  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID) {
+  public Result edit(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID zoneUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZoneEditData azData =
-        formFactory.getFormDataOrBadRequest(AvailabilityZoneEditData.class).get();
+        formFactory.getFormDataOrBadRequest(request, AvailabilityZoneEditData.class).get();
 
     AvailabilityZone az =
         availabilityZoneHandler.editZone(
@@ -127,11 +128,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AvailabilityZone,
             az.getUuid().toString(),
-            Audit.ActionType.Edit,
-            Json.toJson(azData));
+            Audit.ActionType.Edit);
     return PlatformResults.withData(az);
   }
 
@@ -147,12 +147,13 @@ public class AvailabilityZoneController extends AuthenticatedController {
       value = "Delete an availability zone",
       response = YBPSuccess.class,
       nickname = "deleteAZ")
-  public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID) {
+  public Result delete(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, UUID azUUID, Http.Request request) {
     Region.getOrBadRequest(customerUUID, providerUUID, regionUUID);
     AvailabilityZone az = availabilityZoneHandler.deleteZone(azUUID, regionUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.AvailabilityZone,
             az.getUuid().toString(),
             Audit.ActionType.Delete);

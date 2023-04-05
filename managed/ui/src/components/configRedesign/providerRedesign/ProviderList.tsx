@@ -116,7 +116,7 @@ export const ProviderList = (props: ProviderListProps) => {
         <Dropdown.Menu>
           <MenuItem
             eventKey="1"
-            onClick={() => handleDeleteProviderConfig(row)}
+            onSelect={() => handleDeleteProviderConfig(row)}
             data-testid="DeleteConfiguration-button"
             disabled={row.linkedUniverses.length > 0}
           >

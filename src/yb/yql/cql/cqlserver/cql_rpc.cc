@@ -105,9 +105,6 @@ Result<rpc::ProcessCallsResult> CQLConnectionContext::ProcessCalls(
 
 Status CQLConnectionContext::HandleCall(
     const rpc::ConnectionPtr& connection, rpc::CallData* call_data) {
-  auto reactor = connection->reactor();
-  DCHECK(reactor->IsCurrentThread());
-
   auto call = rpc::InboundCall::Create<CQLInboundCall>(connection, this, ql_session_);
 
   Status s = call->ParseFrom(call_tracker_, call_data);
@@ -123,7 +120,7 @@ Status CQLConnectionContext::HandleCall(
         // We did not store call yet, so should not notify that it was processed.
         call->ResetCallProcessedListener();
         call->RespondFailure(rpc::ErrorStatusPB::ERROR_SERVER_TOO_BUSY, Status::OK());
-      } // Otherwise silently drop the call without queueing it. Clients will get a timeout.
+      } // Otherwise silently drop the call without queuing it. Clients will get a timeout.
       return Status::OK();
     }
   }
@@ -133,7 +130,7 @@ Status CQLConnectionContext::HandleCall(
     return s;
   }
 
-  reactor->messenger()->Handle(call, rpc::Queue::kTrue);
+  connection->reactor()->messenger().Handle(call, rpc::Queue::kTrue);
 
   return Status::OK();
 }

@@ -373,7 +373,6 @@ public class AlertConfiguration extends Model {
     return uuid == null;
   }
 
-  @Transient
   @JsonIgnore
   public Set<UUID> getMaintenanceWindowUuidsSet() {
     if (maintenanceWindowUuids == null) {
@@ -402,7 +401,6 @@ public class AlertConfiguration extends Model {
     return this;
   }
 
-  @Transient
   @JsonIgnore
   @EqualsAndHashCode.Include
   /*

@@ -16,17 +16,17 @@ import com.yugabyte.yw.models.migrations.V230_5.TmpCustomer;
 import com.yugabyte.yw.models.migrations.V230_5.TmpProvider;
 import com.yugabyte.yw.models.migrations.V230_5.TmpProviderDetails;
 import io.ebean.Ebean;
-import java.sql.Connection;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.flywaydb.core.api.migration.jdbc.BaseJdbcMigration;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
 @Slf4j
-public class V230_5__AccessKeyCleanup extends BaseJdbcMigration {
+public class V230_5__AccessKeyCleanup extends BaseJavaMigration {
 
   @Override
-  public void migrate(Connection connection) {
+  public void migrate(Context context) {
     Ebean.execute(V230_5__AccessKeyCleanup::migrateAllAccessKeys);
   }
 

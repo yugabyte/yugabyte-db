@@ -112,7 +112,7 @@ func (plat Platform) Install() error {
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
 	} else {
-		// Allow yugabyte user to fully manage this installation (GetSoftwareRoot() to be safe)
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetBaseInstall(), userName, userName, true)
 	}
@@ -447,7 +447,10 @@ func (plat Platform) Upgrade() error {
 	plat.deleteNodeAgentPackages()
 	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
-
+	pemErr := createPemFormatKeyAndCert()
+	if pemErr != nil {
+		return pemErr
+	}
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
 	common.Create(common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log")
@@ -456,9 +459,9 @@ func (plat Platform) Upgrade() error {
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
 	} else {
-		// Allow yugabyte user to fully manage this installation (GetSoftwareRoot() to be safe)
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
-		common.Chown(common.GetSoftwareRoot(), userName, userName, true)
+		common.Chown(common.GetBaseInstall(), userName, userName, true)
 	}
 	err := plat.Start()
 	return err

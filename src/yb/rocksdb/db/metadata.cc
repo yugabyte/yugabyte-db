@@ -67,8 +67,12 @@ std::string SstFileMetaData::Name() const {
   return MakeTableFileName(/* path= */ "", name_id);
 }
 
-std::string SstFileMetaData::FullName() const {
+std::string SstFileMetaData::BaseFilePath() const {
   return MakeTableFileName(db_path, name_id);
+}
+
+std::string SstFileMetaData::DataFilePath() const {
+  return MakeTableDataFilePath(db_path, name_id);
 }
 
 std::string LiveFileMetaData::ToString() const {

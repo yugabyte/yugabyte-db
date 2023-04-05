@@ -67,7 +67,7 @@ const header = (
               {!isReadOnly && (
                 <DropdownButton
                   className="alert-config-actions btn btn-orange"
-                  title="Create Alert Config"
+                  title="Create Alert Policy"
                   id="bg-nested-dropdown"
                   bsStyle="danger"
                   pullRight

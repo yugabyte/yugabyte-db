@@ -237,11 +237,20 @@ class PackedRowData {
     }
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
+    std::optional<ValueControlFields> control_fields_copy;
+    if (control_fields.intent_doc_ht.is_valid()) {
+      control_fields_copy = control_fields;
+      control_fields_copy->intent_doc_ht = DocHybridTime::kInvalid;
+    }
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
-      auto control_fields_copy = control_fields;
-      control_fields_copy.timestamp = VERIFY_RESULT(lazy_ht->Get()).GetPhysicalValueMicros();
+      if (!control_fields_copy) {
+        control_fields_copy = control_fields;
+      }
+      control_fields_copy->timestamp = VERIFY_RESULT(lazy_ht->Get()).GetPhysicalValueMicros();
+    }
+    if (control_fields_copy) {
       control_fields_buffer_.clear();
-      control_fields_copy.AppendEncoded(&control_fields_buffer_);
+      control_fields_copy->AppendEncoded(&control_fields_buffer_);
       return packer_->AddValue(
           column_id, control_fields_buffer_.AsSlice(),
           value.WithoutPrefix(encoded_control_fields_size), tail_size);

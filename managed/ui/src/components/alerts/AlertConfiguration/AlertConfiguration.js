@@ -73,7 +73,7 @@ export const AlertConfiguration = (props) => {
   };
 
   return (
-    <div className="provider-alert-config-container">
+    <div className="provider-config-container">
       <YBTabsPanel
         activeTab={activeTab}
         className="config-tabs"

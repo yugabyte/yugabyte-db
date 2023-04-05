@@ -27,9 +27,6 @@ import sys
 import unittest
 import pipes
 import time
-import shutil
-import random
-import string
 
 from datetime import datetime
 from enum import Enum

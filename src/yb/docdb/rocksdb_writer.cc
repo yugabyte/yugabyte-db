@@ -433,6 +433,7 @@ Status IntentsWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
     reverse_index_iter_.Next();
   }
+  RETURN_NOT_OK(reverse_index_iter_.status());
 
   context_.Complete(handler);
 

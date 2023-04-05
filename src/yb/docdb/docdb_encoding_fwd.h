@@ -31,6 +31,7 @@ class KeyBytes;
 class KeyEntryValue;
 class PrimitiveValue;
 class DocKey;
+class DocKeyDecoder;
 class DocPath;
 class SubDocKey;
 

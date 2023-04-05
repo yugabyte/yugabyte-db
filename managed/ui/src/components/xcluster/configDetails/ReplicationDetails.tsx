@@ -45,7 +45,7 @@ import { XClusterConfigStatusLabel } from '../XClusterConfigStatusLabel';
 import { DeleteConfigModal } from './DeleteConfigModal';
 import { RestartConfigModal } from '../restartConfig/RestartConfigModal';
 import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descriptors';
-import { api } from '../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
 
 import { Metrics, XClusterConfig } from '../XClusterTypes';
@@ -83,11 +83,13 @@ export function ReplicationDetails({
   );
 
   const sourceUniverseTableQuery = useQuery<YBTable[]>(
-    ['universe', xClusterConfigQuery.data?.sourceUniverseUUID, 'tables'],
+    universeQueryKey.tables(xClusterConfigQuery.data?.sourceUniverseUUID, {
+      excludeColocatedTables: true
+    }),
     () =>
-      fetchTablesInUniverse(xClusterConfigQuery.data?.sourceUniverseUUID).then(
-        (respone) => respone.data
-      ),
+      fetchTablesInUniverse(xClusterConfigQuery.data?.sourceUniverseUUID, {
+        excludeColocatedTables: true
+      }).then((respone) => respone.data),
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 

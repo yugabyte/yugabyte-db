@@ -43,6 +43,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -226,6 +227,12 @@ public class Region extends Model {
     return null;
   }
 
+  @JsonIgnore
+  @Deprecated
+  public String getYbImageDeprecated() {
+    return this.ybImage;
+  }
+
   public String getYbImage() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
     if (envVars.containsKey("ybImage")) {
@@ -376,6 +383,14 @@ public class Region extends Model {
     return find.query().where().eq("provider_UUID", provider.getUuid()).eq("code", code).findOne();
   }
 
+  public static Optional<Region> maybeGetByCode(Provider provider, String code) {
+    return find.query()
+        .where()
+        .eq("provider_UUID", provider.getUuid())
+        .eq("code", code)
+        .findOneOrEmpty();
+  }
+
   public static List<Region> getByProvider(UUID providerUUID) {
     return find.query().where().eq("provider_UUID", providerUUID).findList();
   }
@@ -436,12 +451,25 @@ public class Region extends Model {
    */
   public static List<Region> fetchValidRegions(
       UUID customerUUID, UUID providerUUID, int minZoneCount) {
+    return fetchValidRegions(customerUUID, Collections.singletonList(providerUUID), minZoneCount);
+  }
+
+  /**
+   * Fetch Regions with the minimum zone count and having a valid yb server image.
+   *
+   * @return List of PlacementRegion
+   */
+  public static List<Region> fetchValidRegions(
+      UUID customerUUID, Collection<UUID> providerUUIDs, int minZoneCount) {
+    if (CollectionUtils.isEmpty(providerUUIDs)) {
+      return Collections.emptyList();
+    }
     String regionQuery =
         " select r.uuid, r.code, r.name, r.provider_uuid"
             + "   from region r join provider p on p.uuid = r.provider_uuid "
             + "   left outer join availability_zone zone "
             + " on zone.region_uuid = r.uuid and zone.active = true "
-            + "  where p.uuid = :p_UUID and p.customer_uuid = :c_UUID and r.active = true"
+            + "  where p.uuid in (:p_UUIDs) and p.customer_uuid = :c_UUID and r.active = true"
             + "  group by r.uuid "
             + " having count(zone.uuid) >= "
             + minZoneCount;
@@ -450,7 +478,7 @@ public class Region extends Model {
         RawSqlBuilder.parse(regionQuery).columnMapping("r.provider_uuid", "provider.uuid").create();
     Query<Region> query = Ebean.find(Region.class);
     query.setRawSql(rawSql);
-    query.setParameter("p_UUID", providerUUID);
+    query.setParameter("p_UUIDs", providerUUIDs);
     query.setParameter("c_UUID", customerUUID);
     return query.findList();
   }

@@ -138,10 +138,13 @@ class AdminCliTest : public AdminCliTestBase {
 
   Result<size_t> NumTables(const string& table_name) const;
   void ImportTableAs(const string& snapshot_file, const string& keyspace, const string& table_name);
+  void ImportSelectiveTables(const string& snapshot_file, const string& keyspace,
+      const YBTable *th1, const YBTable *th2);
   void CheckImportedTable(
       const YBTable* src_table, const YBTableName& yb_table_name, bool same_ids = false);
   void CheckAndDeleteImportedTable(
-      const string& keyspace, const string& table_name, bool same_ids = false);
+      const string& keyspace, const string& table_name, bool same_ids = false,
+      const YBTable* src_table = nullptr);
   void CheckImportedTableWithIndex(
       const string& keyspace, const string& table_name, const string& index_name,
       bool same_ids = false);
@@ -207,12 +210,16 @@ void AdminCliTest::CheckImportedTable(
 }
 
 void AdminCliTest::CheckAndDeleteImportedTable(
-    const string& keyspace, const string& table_name, bool same_ids) {
+    const string& keyspace, const string& table_name, bool same_ids, const YBTable* src_table) {
   // Wait for the new snapshot completion.
   ASSERT_RESULT(WaitForAllSnapshots());
 
   const YBTableName yb_table_name(YQL_DATABASE_CQL, keyspace, table_name);
-  CheckImportedTable(table_.get(), yb_table_name, same_ids);
+  if (src_table == nullptr) {
+    CheckImportedTable(table_.get(), yb_table_name, same_ids);
+  } else {
+    CheckImportedTable(src_table, yb_table_name, same_ids);
+  }
   ASSERT_EQ(1, ASSERT_RESULT(NumTables(table_name)));
   ASSERT_OK(client_->DeleteTable(yb_table_name, /* wait */ true));
   ASSERT_EQ(0, ASSERT_RESULT(NumTables(table_name)));
@@ -222,6 +229,14 @@ void AdminCliTest::ImportTableAs(
     const string& snapshot_file, const string& keyspace, const string& table_name) {
   ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file, keyspace, table_name));
   CheckAndDeleteImportedTable(keyspace, table_name);
+}
+
+void AdminCliTest::ImportSelectiveTables(const string& snapshot_file, const string& keyspace,
+      const YBTable *th1, const YBTable *th2) {
+  ASSERT_OK(RunAdminToolCommand("import_snapshot_selective", snapshot_file, keyspace,
+        th1->name().table_name(), th2->name().table_name()));
+  CheckAndDeleteImportedTable(keyspace, th1->name().table_name(), false, th1);
+  CheckAndDeleteImportedTable(keyspace, th2->name().table_name(), false, th2);
 }
 
 void AdminCliTest::DoTestImportSnapshot(const string& format) {
@@ -274,6 +289,55 @@ TEST_F(AdminCliTest, TestImportSnapshotInOldFormat1) {
 
 TEST_F(AdminCliTest, TestImportSnapshotInOldFormatNoNamespaceName) {
   DoTestImportSnapshot("-1");
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(AdminCliTest, TestImportSnapshotSelective) {
+  const YBTableName t1(YQL_DATABASE_CQL, "my_keyspace", "selective_test_table_1");
+  client::TableHandle t1h;
+  client::kv_table_test::CreateTable(Transactional::kTrue, NumTablets(), client_.get(), &t1h, t1);
+
+  YBTableName t2(YQL_DATABASE_CQL, "my_keyspace", "selective_test_table_2");
+  client::TableHandle t2h;
+  client::kv_table_test::CreateTable(Transactional::kFalse, NumTablets(), client_.get(), &t2h, t2);
+
+  YBTableName t3(YQL_DATABASE_CQL, "my_keyspace", "selective_test_table_3");
+  client::TableHandle t3h;
+  client::kv_table_test::CreateTable(Transactional::kFalse, NumTablets(), client_.get(), &t3h, t3);
+
+  const string& keyspace = t1h.name().namespace_name();
+
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, t1h.name().table_name(),
+        keyspace, t2h.name().table_name(), keyspace, t3h.name().table_name()));
+  const auto snapshot_id = ASSERT_RESULT(GetCompletedSnapshot());
+
+  string tmp_dir;
+  ASSERT_OK(Env::Default()->GetTestDirectory(&tmp_dir));
+  const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
+
+  ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
+
+  // Import snapshot into the existing tables.
+  ASSERT_OK(RunAdminToolCommand("import_snapshot_selective", snapshot_file));
+  CheckAndDeleteImportedTable(keyspace, t1h.name().table_name(), /* same_ids */ true, t1h.get());
+  CheckAndDeleteImportedTable(keyspace, t2h.name().table_name(), /* same_ids */ true, t2h.get());
+  CheckAndDeleteImportedTable(keyspace, t3h.name().table_name(), /* same_ids */ true, t3h.get());
+
+  // Import snapshot into original tables from the snapshot.
+  // (The tables was deleted by the calls above.)
+  ASSERT_OK(RunAdminToolCommand("import_snapshot_selective", snapshot_file));
+  CheckAndDeleteImportedTable(keyspace, t1h.name().table_name(), false, t1h.get());
+  CheckAndDeleteImportedTable(keyspace, t2h.name().table_name(), false, t2h.get());
+  CheckAndDeleteImportedTable(keyspace, t3h.name().table_name(), false, t3h.get());
+
+  // Import snapshot into non existing namespace.
+  ImportSelectiveTables(snapshot_file, keyspace + "_new", t1h.get(), t2h.get());
+  YBTableName t3new(YQL_DATABASE_CQL, keyspace + "_new", t3h.name().table_name());
+  shared_ptr<YBTable> t3h_new;
+  ASSERT_NOK(client_->OpenTable(t3new, &t3h_new));
+  // Import snapshot into already existing namespace and tables.
+  ImportSelectiveTables(snapshot_file, keyspace, t1h.get(), t2h.get());
+  ASSERT_NOK(client_->OpenTable(t3, &t3h_new));
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 

@@ -34,8 +34,8 @@ import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Controller;
 import play.mvc.Http;
+import play.mvc.Http.Request;
 
 @Singleton
 public class UniverseYbDbAdminHandler {
@@ -55,9 +55,9 @@ public class UniverseYbDbAdminHandler {
 
   public UniverseYbDbAdminHandler() {}
 
-  private static boolean isCorrectOrigin() {
+  private static boolean isCorrectOrigin(Request request) {
     boolean correctOrigin = false;
-    Optional<String> origin = Controller.request().header(Http.HeaderNames.ORIGIN);
+    Optional<String> origin = request.header(Http.HeaderNames.ORIGIN);
     if (origin.isPresent()) {
       try {
         URI uri = new URI(origin.get());
@@ -119,7 +119,7 @@ public class UniverseYbDbAdminHandler {
   }
 
   public JsonNode validateRequestAndExecuteQuery(
-      Universe universe, RunQueryFormData runQueryFormData) {
+      Universe universe, RunQueryFormData runQueryFormData, Request request) {
     String mode = appConfig.getString("yb.mode");
     if (!mode.equals("OSS")) {
       throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
@@ -127,7 +127,7 @@ public class UniverseYbDbAdminHandler {
 
     String securityLevel =
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
-    if (!isCorrectOrigin() || securityLevel == null || !securityLevel.equals("insecure")) {
+    if (!isCorrectOrigin(request) || securityLevel == null || !securityLevel.equals("insecure")) {
       throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
 

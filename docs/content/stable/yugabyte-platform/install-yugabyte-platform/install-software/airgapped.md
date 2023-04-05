@@ -102,7 +102,6 @@ sudo docker ps
 
 You should see an output similar to the following:
 
-
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 
 The next step is to install YugabyteDB Anywhere.

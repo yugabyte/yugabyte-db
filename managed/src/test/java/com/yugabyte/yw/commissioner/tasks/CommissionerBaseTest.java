@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.AccessManager;

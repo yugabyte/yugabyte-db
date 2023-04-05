@@ -464,6 +464,16 @@ public class AsyncYBClient implements AutoCloseable {
                             needSchemaInfo, null);
   }
 
+  public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
+                                                       String tabletId, long term,
+                                                       long index, byte[] key,
+                                                       int write_id, long time,
+                                                       boolean needSchemaInfo,
+                                                       CdcSdkCheckpoint explicitCheckpoint) {
+    return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
+      needSchemaInfo, null, -1);
+  }
+
   /**
    * Get changes for a given tablet and stream.
    * @param table the table to get changes for.
@@ -482,10 +492,11 @@ public class AsyncYBClient implements AutoCloseable {
                                                        long index, byte[] key,
                                                        int write_id, long time,
                                                        boolean needSchemaInfo,
-                                                       CdcSdkCheckpoint explicitCheckpoint) {
+                                                       CdcSdkCheckpoint explicitCheckpoint,
+                                                       long safeHybridTime) {
     checkIsClosed();
-    GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term,
-      index, key, write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId());
+    GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term, index, key,
+        write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId(), safeHybridTime);
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override

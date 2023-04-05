@@ -98,6 +98,27 @@ platform:
    # the platform
    restartSeconds: 10
 
+   # Http(s) Proxy settings
+   #
+   # http_proxy:            Specify the setting for HTTP_PROXY
+   # java_http_proxy_port:  Specify -Dhttp.proxyPort
+   # java_http_proxy_host:  Specify -Dhttp.proxyHost
+   # https_proxy:           Specify the setting for HTTPS_PROXY
+   # java_https_proxy_port: Specify -Dhttps.proxyPort
+   # java_https_proxy_host: Specify -Dhttps.proxyHost
+   # no_proxy:              Specify the setting for NO_PROXY
+   # java_non_proxy:        Specify  -Dhttps.nonProxyHosts.
+   proxy:
+      enable: false
+      http_proxy: ""
+      java_http_proxy_port: 80
+      java_http_proxy_host: ""
+      https_proxy: ""
+      java_https_proxy_port: 443
+      java_https_proxy_host: ""
+      no_proxy: ""
+      java_non_proxy: ""
+
    # This section is for and additional data entries that you can
    # add to platform.conf if you desire. Please enter the text
    # exactly in the correct format starting from the lines below the
@@ -133,6 +154,8 @@ postgres:
       password: ""
       host: ""
       port: 5432
+      pg_dump_path: ""
+      pg_restore_path: ""
 
 
 # Config parameters for Prometheus

@@ -327,7 +327,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     mainUniverse = Universe.getOrBadRequest(mainUniverse.getUniverseUUID());
 
     // Extract tarball and validate required files exist.
-    Util.extractFilesFromTarGZ(tarFile, tarFileBase);
+    Util.extractFilesFromTarGZ(tarFile.toPath(), tarFileBase);
     File specFolder = new File(tarFileBase);
     File universeJsonFile = new File(tarFileBase + "/universe-spec.json");
     File accessKeyFolder = new File(tarFileBase + "/keys");

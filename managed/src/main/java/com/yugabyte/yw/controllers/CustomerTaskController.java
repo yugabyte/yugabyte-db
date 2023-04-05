@@ -32,7 +32,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
-import io.ebean.Query;
+import io.ebean.ExpressionList;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -52,6 +52,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -70,7 +71,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
   private List<SubTaskFormData> fetchFailedSubTasks(UUID parentUUID) {
     TaskInfo parentTask = TaskInfo.getOrBadRequest(parentUUID);
-    Query<TaskInfo> subTaskQuery =
+    ExpressionList<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
             .where()
@@ -146,7 +147,7 @@ public class CustomerTaskController extends AuthenticatedController {
   }
 
   private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
-    Query<CustomerTask> customerTaskQuery =
+    ExpressionList<CustomerTask> customerTaskQuery =
         CustomerTask.find
             .query()
             .where()
@@ -252,7 +253,7 @@ public class CustomerTaskController extends AuthenticatedController {
       value = "Retry a Universe or Provider task",
       notes = "Retry a Universe or Provider task.",
       response = PlatformResults.YBPTask.class)
-  public Result retryTask(UUID customerUUID, UUID taskUUID) {
+  public Result retryTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
@@ -443,7 +444,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CustomerTask,
             taskUUID.toString(),
             Audit.ActionType.Retry,
@@ -457,15 +458,15 @@ public class CustomerTaskController extends AuthenticatedController {
       value = "Abort a task",
       notes = "Aborts a running task",
       response = YBPSuccess.class)
-  public Result abortTask(UUID customerUUID, UUID taskUUID) {
+  public Result abortTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     boolean isSuccess = commissioner.abortTask(taskUUID);
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not running.");
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Abort);
+        .createAuditEntry(
+            request, Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Abort);
     return YBPSuccess.withMessage("Task is being aborted.");
   }
 
@@ -475,15 +476,15 @@ public class CustomerTaskController extends AuthenticatedController {
       notes = "Resumes a paused task",
       response = YBPSuccess.class)
   // Hidden API for internal consumption.
-  public Result resumeTask(UUID customerUUID, UUID taskUUID) {
+  public Result resumeTask(UUID customerUUID, UUID taskUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     boolean isSuccess = commissioner.resumeTask(taskUUID);
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not paused.");
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Resume);
+        .createAuditEntry(
+            request, Audit.TargetType.CustomerTask, taskUUID.toString(), Audit.ActionType.Resume);
     return YBPSuccess.withMessage("Task is resumed.");
   }
 }

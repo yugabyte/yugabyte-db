@@ -35,6 +35,7 @@ import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -62,10 +63,11 @@ public class MaintenanceController extends AuthenticatedController {
       response = MaintenanceWindow.class,
       responseContainer = "List",
       nickname = "listOfMaintenanceWindows")
-  public Result list(UUID customerUUID) {
+  public Result list(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    MaintenanceWindowApiFilter apiFilter = parseJsonAndValidate(MaintenanceWindowApiFilter.class);
+    MaintenanceWindowApiFilter apiFilter =
+        parseJsonAndValidate(request, MaintenanceWindowApiFilter.class);
     MaintenanceWindowFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
     List<MaintenanceWindow> windows = maintenanceService.list(filter);
@@ -81,11 +83,11 @@ public class MaintenanceController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.MaintenanceWindowPagedApiQuery",
           required = true))
-  public Result page(UUID customerUUID) {
+  public Result page(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     MaintenanceWindowPagedApiQuery apiQuery =
-        parseJsonAndValidate(MaintenanceWindowPagedApiQuery.class);
+        parseJsonAndValidate(request, MaintenanceWindowPagedApiQuery.class);
     MaintenanceWindowApiFilter apiFilter = apiQuery.getFilter();
     MaintenanceWindowFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
@@ -104,10 +106,10 @@ public class MaintenanceController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.MaintenanceWindow",
           required = true))
-  public Result create(UUID customerUUID) {
+  public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    MaintenanceWindow window = parseJson(MaintenanceWindow.class);
+    MaintenanceWindow window = parseJson(request, MaintenanceWindow.class);
 
     if (window.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create window with uuid set");
@@ -117,11 +119,10 @@ public class MaintenanceController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.MaintenanceWindow,
             Objects.toString(window.getUuid(), null),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            Audit.ActionType.Create);
     return PlatformResults.withData(window);
   }
 
@@ -132,11 +133,11 @@ public class MaintenanceController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.MaintenanceWindow",
           required = true))
-  public Result update(UUID customerUUID, UUID windowUUID) {
+  public Result update(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     maintenanceService.getOrBadRequest(windowUUID);
 
-    MaintenanceWindow window = parseJson(MaintenanceWindow.class);
+    MaintenanceWindow window = parseJson(request, MaintenanceWindow.class);
 
     if (window.getUuid() == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't update window with missing uuid");
@@ -151,16 +152,15 @@ public class MaintenanceController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.MaintenanceWindow,
             windowUUID.toString(),
-            Audit.ActionType.Update,
-            request().body().asJson());
+            Audit.ActionType.Update);
     return PlatformResults.withData(window);
   }
 
   @ApiOperation(value = "Delete maintenance window", response = YBPSuccess.class)
-  public Result delete(UUID customerUUID, UUID windowUUID) {
+  public Result delete(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     maintenanceService.getOrBadRequest(windowUUID);
@@ -168,8 +168,8 @@ public class MaintenanceController extends AuthenticatedController {
     maintenanceService.delete(windowUUID);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.MaintenanceWindow,
             windowUUID.toString(),
             Audit.ActionType.Delete);

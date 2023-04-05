@@ -50,6 +50,8 @@
 #include "yb/rpc/acceptor.h"
 #include "yb/rpc/constants.h"
 #include "yb/rpc/reactor.h"
+#include "yb/rpc/reactor_thread_role.h"
+#include "yb/rpc/delayed_task.h"
 #include "yb/rpc/rpc_header.pb.h"
 #include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/rpc_service.h"
@@ -208,7 +210,7 @@ void Messenger::Shutdown() {
   }
 
   for (auto* reactor : reactors) {
-    reactor->Shutdown();
+    reactor->StartShutdown();
   }
 
   scheduler_.Shutdown();
@@ -261,9 +263,8 @@ Status Messenger::StartAcceptor() {
   std::lock_guard<percpu_rwlock> guard(lock_);
   if (acceptor_) {
     return acceptor_->Start();
-  } else {
-    return STATUS(IllegalState, "Trying to start acceptor w/o active addresses");
   }
+  return STATUS(IllegalState, "Trying to start acceptor w/o active addresses");
 }
 
 void Messenger::BreakConnectivityWith(const IpAddress& address) {
@@ -298,8 +299,9 @@ void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool 
     if (inserted_from || inserted_to) {
       latch.emplace(reactors_.size());
       for (const auto& reactor : reactors_) {
-        auto scheduled = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
+        auto scheduling_status = reactor->ScheduleReactorTask(MakeFunctorReactorTask(
             [&latch, address, incoming, outgoing](Reactor* reactor) {
+              ReactorThreadRoleGuard guard;
               if (incoming) {
                 reactor->DropIncomingWithRemoteAddress(address);
               }
@@ -309,8 +311,9 @@ void Messenger::BreakConnectivity(const IpAddress& address, bool incoming, bool 
               latch->CountDown();
             },
             SOURCE_LOCATION()));
-        if (!scheduled) {
-          LOG(INFO) << "Failed to schedule drop connection with: " << address.to_string();
+        if (!scheduling_status.ok()) {
+          LOG(DFATAL) << "Failed to schedule drop connection with: "
+                      << address.to_string() << ": " << scheduling_status;
           latch->CountDown();
         }
       }
@@ -450,11 +453,11 @@ class NotifyDisconnectedReactorTask : public ReactorTask {
   void Run(Reactor* reactor) override  {
     call_->Transferred(STATUS_FORMAT(
         NetworkError, "TEST: Connectivity is broken with $0",
-        call_->conn_id().remote().address()), nullptr);
+        call_->conn_id().remote().address()), /* conn= */ nullptr);
   }
  private:
   void DoAbort(const Status &abort_status) override {
-    call_->Transferred(abort_status, nullptr);
+    call_->Transferred(abort_status, /* conn= */ nullptr);
   }
 
   OutboundCallPtr call_;
@@ -466,10 +469,11 @@ void Messenger::QueueOutboundCall(OutboundCallPtr call) {
 
   if (TEST_ShouldArtificiallyRejectOutgoingCallsTo(remote.address())) {
     VLOG(1) << "TEST: Rejected connection to " << remote;
-    auto scheduled = reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
-        call, SOURCE_LOCATION()));
-    if (!scheduled) {
-      call->Transferred(STATUS(Aborted, "Reactor is closing"), nullptr /* conn */);
+    auto scheduling_status =
+        reactor->ScheduleReactorTask(std::make_shared<NotifyDisconnectedReactorTask>(
+            call, SOURCE_LOCATION()));
+    if (!scheduling_status.ok()) {
+      call->Transferred(scheduling_status, nullptr /* conn */);
     }
     return;
   }
@@ -630,10 +634,39 @@ Status Messenger::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
 Status Messenger::QueueEventOnAllReactors(
     ServerEventListPtr server_event, const SourceLocation& source_location) {
   shared_lock<rw_spinlock> guard(lock_.get_lock());
+  Status overall_status;
   for (const auto& reactor : reactors_) {
-    reactor->QueueEventOnAllConnections(server_event, source_location);
+    auto queuing_status = reactor->QueueEventOnAllConnections(server_event, source_location);
+    if (!queuing_status.ok()) {
+      LOG(DFATAL) << "Failed to queue a server event on all connections of a reactor: "
+                  << queuing_status;
+      if (overall_status.ok()) {
+        // Use the first error status.
+        overall_status = std::move(queuing_status);
+      }
+    }
   }
-  return Status::OK();
+  return overall_status;
+}
+
+Status Messenger::QueueEventOnFilteredConnections(
+    ServerEventListPtr server_event, const SourceLocation& source_location,
+    ConnectionFilter connection_filter) {
+  shared_lock<rw_spinlock> guard(lock_.get_lock());
+  Status overall_status;
+  for (const auto& reactor : reactors_) {
+    auto queuing_status =
+        reactor->QueueEventOnFilteredConnections(server_event, source_location, connection_filter);
+    if (!queuing_status.ok()) {
+      LOG(DFATAL) << "Failed to queue a server event on filtered connections of a reactor: "
+                  << queuing_status;
+      if (overall_status.ok()) {
+        // Use the first error status.
+        overall_status = std::move(queuing_status);
+      }
+    }
+  }
+  return overall_status;
 }
 
 void Messenger::RemoveScheduledTask(ScheduledTaskId id) {
@@ -660,35 +693,34 @@ void Messenger::AbortOnReactor(ScheduledTaskId task_id) {
   }
 }
 
-ScheduledTaskId Messenger::ScheduleOnReactor(
-    StatusFunctor func, MonoDelta when, const SourceLocation& source_location, Messenger* msgr) {
+Result<ScheduledTaskId> Messenger::ScheduleOnReactor(
+    StatusFunctor func, MonoDelta when, const SourceLocation& source_location) {
   DCHECK(!reactors_.empty());
 
   // If we're already running on a reactor thread, reuse it.
-  Reactor* chosen = nullptr;
+  Reactor* chosen_reactor = nullptr;
   for (const auto& r : reactors_) {
     if (r->IsCurrentThread()) {
-      chosen = r.get();
+      chosen_reactor = r.get();
       break;
     }
   }
-  if (chosen == nullptr) {
+  if (chosen_reactor == nullptr) {
     // Not running on a reactor thread, pick one at random.
-    chosen = reactors_[rand() % reactors_.size()].get();
+    chosen_reactor = reactors_[rand() % reactors_.size()].get();
   }
 
-  ScheduledTaskId task_id = 0;
-  if (msgr != nullptr) {
-    task_id = next_task_id_.fetch_add(1);
-  }
+  auto task_id = next_task_id_.fetch_add(1);
   auto task = std::make_shared<DelayedTask>(
-      std::move(func), when, task_id, source_location, msgr);
-  if (msgr != nullptr) {
+      std::move(func), when, task_id, source_location, this);
+  {
     std::lock_guard<std::mutex> guard(mutex_scheduled_tasks_);
     scheduled_tasks_.emplace(task_id, task);
   }
 
-  if (chosen->ScheduleReactorTask(task)) {
+  auto scheduling_status = chosen_reactor->ScheduleReactorTask(task);
+
+  if (scheduling_status.ok()) {
     return task_id;
   }
 
@@ -697,7 +729,7 @@ ScheduledTaskId Messenger::ScheduleOnReactor(
     scheduled_tasks_.erase(task_id);
   }
 
-  return kInvalidTaskId;
+  return scheduling_status;
 }
 
 scoped_refptr<MetricEntity> Messenger::metric_entity() const {

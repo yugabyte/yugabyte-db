@@ -9,7 +9,7 @@
 
 import React from 'react';
 
-import { Text } from 'slate';
+import { Element as SlateElement, Text, Node as SlateNode } from 'slate';
 import { jsx } from 'slate-hyperscript';
 import { CustomElement, CustomText, DOMElement, TextDecorators } from './custom-types';
 import { IYBSlatePlugin, SlateRenderElementProps, SlateRenderLeafProps } from './IPlugin';
@@ -131,7 +131,7 @@ const serialize = (node: CustomElement | CustomText, children: string) => {
 const deSerialize = (
   el: DOMElement,
   markAttributes = {},
-  children: Element[] | Node[]
+  children: SlateElement[] | Node[]
 ): CustomElement | CustomText | undefined => {
   switch (el.nodeName) {
     case 'P':

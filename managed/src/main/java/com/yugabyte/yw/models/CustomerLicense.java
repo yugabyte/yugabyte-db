@@ -17,6 +17,7 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import lombok.Getter;
+import lombok.Setter;
 import play.data.validation.Constraints;
 
 @Entity
@@ -24,27 +25,29 @@ import play.data.validation.Constraints;
     description =
         "Customer Licenses. This helps customer to "
             + "upload licenses for the thirdparrty softwares if required.")
+@Getter
+@Setter
 public class CustomerLicense extends Model {
 
   @ApiModelProperty(value = "License UUID", accessMode = AccessMode.READ_ONLY)
   @Id
-  public UUID licenseUUID;
+  private UUID licenseUUID;
 
   @ApiModelProperty(
       value = "Customer UUID that owns this license",
       accessMode = AccessMode.READ_WRITE)
   @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "License File Path", required = true)
-  public String license;
+  private String license;
 
   @Constraints.Required
   @Column(nullable = false)
   @ApiModelProperty(value = "Type of the license", required = true)
-  public String licenseType;
+  private String licenseType;
 
   @Column(nullable = false)
   @ApiModelProperty(
@@ -54,18 +57,18 @@ public class CustomerLicense extends Model {
       example = "2022-12-12T13:07:18Z")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Getter
-  public Date creationDate;
+  private Date creationDate;
 
   public void setCreationDate() {
-    this.creationDate = new Date();
+    this.setCreationDate(new Date());
   }
 
   public static CustomerLicense create(UUID customerUUID, String license, String licenseType) {
     CustomerLicense cLicense = new CustomerLicense();
-    cLicense.licenseUUID = UUID.randomUUID();
-    cLicense.customerUUID = customerUUID;
-    cLicense.licenseType = licenseType;
-    cLicense.license = license;
+    cLicense.setLicenseUUID(UUID.randomUUID());
+    cLicense.setCustomerUUID(customerUUID);
+    cLicense.setLicenseType(licenseType);
+    cLicense.setLicense(license);
     cLicense.setCreationDate();
     cLicense.save();
     return cLicense;

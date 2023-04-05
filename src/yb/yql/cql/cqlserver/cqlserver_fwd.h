@@ -13,6 +13,9 @@
 
 #pragma once
 
+#include <list>
+#include <memory>
+
 namespace yb {
 namespace cqlserver {
 

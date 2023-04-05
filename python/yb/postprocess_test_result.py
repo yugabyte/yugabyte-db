@@ -21,7 +21,6 @@ import subprocess
 import sys
 import os
 import logging
-import yugabyte_pycommon  # type: ignore
 import argparse
 import xml.etree.ElementTree as ET
 import json
@@ -30,7 +29,8 @@ import glob
 
 from typing import Any, Dict, AnyStr
 
-from yb.common_util import init_logging
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from yb.common_util import init_logging  # noqa
 
 
 # Example test failure (from C++)

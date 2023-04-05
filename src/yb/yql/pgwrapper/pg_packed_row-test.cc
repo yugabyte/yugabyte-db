@@ -26,6 +26,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/range.h"
 #include "yb/util/string_util.h"
@@ -698,6 +699,36 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Transaction)) {
   ASSERT_OK(cluster_->CompactTablets());
 }
 
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CleanupIntentDocHt)) {
+  // Set retention interval to 0, to repack all recently flushed entries.
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2)"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t SET value = 3 WHERE key = 1"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(WaitFor([this] {
+    return CountIntents(cluster_.get()) == 0;
+  }, 10s, "Intents cleanup"));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  for (const auto& peer : peers) {
+    if (!peer->tablet()->TEST_db()) {
+      continue;
+    }
+    auto dump = peer->tablet()->TEST_DocDBDumpStr(tablet::IncludeIntents::kTrue);
+    LOG(INFO) << "Dump: " << dump;
+    ASSERT_EQ(dump.find("intent doc ht"), std::string::npos);
+  }
+}
+
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
   // Set retention interval to 0, to repack all recently flushed entries.
   FLAGS_timestamp_history_retention_interval_sec = 0;
@@ -788,7 +819,7 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
       continue;
     }
     for (const auto& file : tablet->TEST_db()->GetLiveFilesMetaData()) {
-      fname = file.FullName();
+      fname = file.BaseFilePath();
       metapath = ASSERT_RESULT(tablet->metadata()->FilePath());
       LOG(INFO) << "File: " << fname << ", metapath: " << metapath;
     }

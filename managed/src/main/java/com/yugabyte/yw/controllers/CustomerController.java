@@ -65,6 +65,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -102,11 +103,11 @@ public class CustomerController extends AuthenticatedController {
       response = Customer.class,
       responseContainer = "List",
       nickname = "ListOfCustomers")
-  public Result list() {
+  public Result list(Http.Request request) {
     // There is no way to hide the query param from swagger if it is passed
     // as a parameter to the method. So, it is manually retrieved.
     boolean includeUniverseUuids =
-        Boolean.parseBoolean(request().getQueryString("includeUniverseUuids"));
+        Boolean.parseBoolean(request.getQueryString("includeUniverseUuids"));
     List<Customer> customers = Customer.getAll();
     if (includeUniverseUuids) {
       Map<Long, Set<UUID>> allUniverseUuids = Universe.getAllCustomerUniverseUUIDs();
@@ -167,12 +168,13 @@ public class CustomerController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.AlertingFormData",
         paramType = "body")
   })
-  public Result update(UUID customerUUID) {
+  public Result update(UUID customerUUID, Http.Request request) {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    JsonNode request = request().body().asJson();
-    Form<AlertingFormData> formData = formFactory.getFormDataOrBadRequest(AlertingFormData.class);
+    JsonNode requestBody = request.body().asJson();
+    Form<AlertingFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, AlertingFormData.class);
     AlertingFormData alertingFormData = formData.get();
 
     if (alertingFormData.name != null) {
@@ -180,7 +182,7 @@ public class CustomerController extends AuthenticatedController {
       customer.save();
     }
 
-    if (request.has("alertingData") || request.has("smtpData")) {
+    if (requestBody.has("alertingData") || requestBody.has("smtpData")) {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
       if (alertingFormData.alertingData != null) {
@@ -249,7 +251,7 @@ public class CustomerController extends AuthenticatedController {
         smtpConfig.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.smtpData));
         customerConfigService.edit(smtpConfig);
       } // In case we want to reset the smtpData
-      else if (request.has("smtpData") && alertingFormData.smtpData == null) {
+      else if (requestBody.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {
           smtpConfig.delete();
         }
@@ -257,7 +259,6 @@ public class CustomerController extends AuthenticatedController {
     }
 
     // Features would be a nested json, so we should fetch it differently.
-    JsonNode requestBody = request().body().asJson();
     if (requestBody.has("features")) {
       customer.upsertFeatures(requestBody.get("features"));
     }
@@ -265,11 +266,7 @@ public class CustomerController extends AuthenticatedController {
     CustomerConfig.upsertCallhomeConfig(customerUUID, alertingFormData.callhomeLevel);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Customer,
-            customerUUID.toString(),
-            Audit.ActionType.Update,
-            Json.toJson(formData));
+            request, Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Update);
     return ok(Json.toJson(customer));
   }
 
@@ -277,7 +274,7 @@ public class CustomerController extends AuthenticatedController {
       value = "Delete a customer",
       response = YBPSuccess.class,
       nickname = "deleteCustomer")
-  public Result delete(UUID customerUUID) {
+  public Result delete(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     List<Users> users = Users.getAll(customerUUID);
@@ -293,8 +290,8 @@ public class CustomerController extends AuthenticatedController {
     metricService.markSourceRemoved(customerUUID, null);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request, Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -311,10 +308,10 @@ public class CustomerController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.FeatureUpdateFormData",
         paramType = "body")
   })
-  public Result upsertFeatures(UUID customerUUID) {
+  public Result upsertFeatures(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    JsonNode requestBody = request().body().asJson();
+    JsonNode requestBody = request.body().asJson();
     ObjectMapper mapper = new ObjectMapper();
     FeatureUpdateFormData formData;
     try {
@@ -327,11 +324,10 @@ public class CustomerController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Customer,
             customerUUID.toString(),
-            Audit.ActionType.UpsertCustomerFeatures,
-            requestBody);
+            Audit.ActionType.UpsertCustomerFeatures);
     return ok(customer.getFeatures());
   }
 
@@ -352,10 +348,11 @@ public class CustomerController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.MetricQueryParams",
         paramType = "body")
   })
-  public Result metrics(UUID customerUUID) {
+  public Result metrics(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    Form<MetricQueryParams> formData = formFactory.getFormDataOrBadRequest(MetricQueryParams.class);
+    Form<MetricQueryParams> formData =
+        formFactory.getFormDataOrBadRequest(request, MetricQueryParams.class);
     MetricQueryParams metricQueryParams = formData.get();
 
     if (CollectionUtils.isEmpty(metricQueryParams.getMetrics())

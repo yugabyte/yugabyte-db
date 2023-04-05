@@ -80,8 +80,8 @@ const T& RandomElementOf(const std::vector<T>& v, RandomNumberGenerator* rng) {
 class LogicalRocksDBDebugSnapshot {
  public:
   LogicalRocksDBDebugSnapshot() {}
-  void Capture(rocksdb::DB* rocksdb);
-  void RestoreTo(rocksdb::DB *rocksdb) const;
+  Status Capture(rocksdb::DB* rocksdb);
+  Status RestoreTo(rocksdb::DB *rocksdb) const;
  private:
   std::vector<std::pair<std::string, std::string>> kvs;
   std::string docdb_debug_dump_str;

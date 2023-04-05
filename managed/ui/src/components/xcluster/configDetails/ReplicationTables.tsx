@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useDispatch, useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import { Dropdown, MenuItem } from 'react-bootstrap';
+import { AxiosError } from 'axios';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
 import {
@@ -22,10 +23,11 @@ import DeleteReplicactionTableModal from './DeleteReplicactionTableModal';
 import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
-import { api } from '../../../redesign/helpers/api';
+import { api, universeQueryKey } from '../../../redesign/helpers/api';
 import { XClusterModalName, XClusterTableStatus } from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
 
 import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterTable } from '../XClusterTypes';
@@ -51,8 +53,13 @@ export function ReplicationTables({ xClusterConfig }: props) {
   };
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', xClusterConfig.sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID).then((respone) => respone.data)
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
+      excludeColocatedTables: true
+    }),
+    () =>
+      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
+        excludeColocatedTables: true
+      }).then((respone) => respone.data)
   );
 
   const sourceUniverseQuery = useQuery(['universe', xClusterConfig.sourceUniverseUUID], () =>
@@ -74,7 +81,7 @@ export function ReplicationTables({ xClusterConfig }: props) {
             toast.error(
               <span className="alertMsg">
                 <i className="fa fa-exclamation-circle" />
-                <span>Task Failed.</span>
+                <span>{`Remove table from xCluster config failed: ${xClusterConfig.name}`}</span>
                 <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
                   View Details
                 </a>
@@ -83,8 +90,8 @@ export function ReplicationTables({ xClusterConfig }: props) {
           }
         });
       },
-      onError: (err: any) => {
-        toast.error(err.response.data.error);
+      onError: (error: Error | AxiosError) => {
+        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' });
       }
     }
   );

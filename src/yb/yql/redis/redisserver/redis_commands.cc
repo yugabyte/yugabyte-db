@@ -490,7 +490,7 @@ void HandleSubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
         redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
   }
 
-  VLOG(3) << "In response to [p]Subscribe queueing " << data.arg_size() - 1
+  VLOG(3) << "In response to [p]Subscribe queuing " << data.arg_size() - 1
           << " messages : " << encoded_response;
   response.set_encoded_response(encoded_response);
   data.Respond(&response);
@@ -531,7 +531,7 @@ void HandleUnsubscribeLikeCommand(LocalCommandData data, AsPattern as_pattern) {
         redisserver::EncodeAsInteger(subs[idx]).ToBuffer()});
   }
 
-  VLOG(3) << "In response to [p]Unsubscribe queueing " << channels.size()
+  VLOG(3) << "In response to [p]Unsubscribe queuing " << channels.size()
           << " messages : " << encoded_response;
   response.set_encoded_response(encoded_response);
   data.Respond(&response);

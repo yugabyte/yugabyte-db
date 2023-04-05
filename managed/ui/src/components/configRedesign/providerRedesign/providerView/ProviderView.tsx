@@ -77,7 +77,7 @@ export const ProviderView = ({ providerUUID }: ProviderViewProps) => {
         >
           <MenuItem
             eventKey="1"
-            onClick={showDeleteProviderModal}
+            onSelect={showDeleteProviderModal}
             disabled={linkedUniverses.length > 0}
           >
             <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>

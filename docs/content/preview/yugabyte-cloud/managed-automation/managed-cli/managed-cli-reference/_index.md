@@ -2,7 +2,7 @@
 title: ybm CLI command reference
 headerTitle: Reference
 linkTitle: Reference
-description: Use YugabyteDB Managed CLI to access YugabyteDB clusters.
+description: YugabyteDB Managed CLI resource and command reference.
 headcontent: ybm syntax and commands
 menu:
   preview_yugabyte-cloud:
@@ -59,7 +59,7 @@ You can manage the following resources using ybm:
 | :--- | :--- |
 | [backup](managed-cli-backup/) | create, delete, list, restore |
 | [cluster](managed-cli-cluster/) | create, delete, list, describe, update, pause, resume, cert download |
-| [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign, endpoint list |
+| [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign, endpoint list,</br>endpoint describe, endpoint create, endpoint update, endpoint delete |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |
 | [network-allow-list](managed-cli-network-allow-list/) | create, delete, list |
 | [vpc](managed-cli-vpc/) | create, delete, list |
@@ -105,7 +105,7 @@ The following flags can be passed in with any command. These flags can also be a
 : Specify the desired output format. `table` (default), `json`, or `pretty`.
 
 --wait
-: For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to wait until the operation is completed. `true` or `false` (default). For example:
+: For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to display progress in the shell. `true` or `false` (default). For example:
 
 ```sh
 ybm cluster delete \

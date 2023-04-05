@@ -39,7 +39,6 @@ import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.contextComponents;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -277,7 +276,7 @@ public class TablesControllerTest extends FakeDBApplication {
                 () ->
                     tablesController.listTables(
                         customer.getUuid(), u1.getUniverseUUID(), false, false)) // modify mock
-            .buildResult();
+            .buildResult(fakeRequest);
     assertEquals(503, r.status());
     assertEquals(
         "Expected error. Masters are not currently queryable.",
@@ -300,7 +299,7 @@ public class TablesControllerTest extends FakeDBApplication {
                 () ->
                     tablesController.listTables(
                         customer.getUuid(), u2.getUniverseUUID(), false, false)) // modify mock
-            .buildResult();
+            .buildResult(fakeRequest);
     assertEquals(500, r.status());
     assertEquals(
         "Could not find the master leader", Json.parse(contentAsString(r)).get("error").asText());
@@ -760,7 +759,9 @@ public class TablesControllerTest extends FakeDBApplication {
     UUID uuid = UUID.randomUUID();
     Result r =
         assertPlatformException(
-            () -> mockTablesController.createBackup(customer.getUuid(), u.getUniverseUUID(), uuid));
+            () ->
+                mockTablesController.createBackup(
+                    customer.getUuid(), u.getUniverseUUID(), uuid, fakeRequest));
 
     assertBadRequest(r, "bad request");
   }
@@ -937,8 +938,6 @@ public class TablesControllerTest extends FakeDBApplication {
   public void testDeleteTableWithValidParams() throws Exception {
     Http.Request request =
         new Http.RequestBuilder().method("DELETE").path("/api/customer/test/universe/test").build();
-    Http.Context context = new Http.Context(request, contextComponents());
-    Http.Context.current.set(context);
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
     tablesController.commissioner = mockCommissioner;
     UUID fakeTaskUUID = UUID.randomUUID();
@@ -959,7 +958,7 @@ public class TablesControllerTest extends FakeDBApplication {
     universe = Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater());
 
     Result result =
-        tablesController.drop(customer.getUuid(), universe.getUniverseUUID(), tableUUID);
+        tablesController.drop(customer.getUuid(), universe.getUniverseUUID(), tableUUID, request);
     assertEquals(OK, result.status());
     assertAuditEntry(1, customer.getUuid());
   }
@@ -975,7 +974,9 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Result result =
         assertPlatformException(
-            () -> tablesController.drop(customer.getUuid(), u.getUniverseUUID(), badTableUUID));
+            () ->
+                tablesController.drop(
+                    customer.getUuid(), u.getUniverseUUID(), badTableUUID, fakeRequest));
     assertEquals(BAD_REQUEST, result.status());
     assertThat(contentAsString(result), containsString(errorString));
     assertAuditEntry(0, customer.getUuid());

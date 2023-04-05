@@ -370,6 +370,29 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(SingleShardMultiColUpdateWithAuto
   CheckCount(expected_count, count);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSafeTimePersistedFromGetChangesRequest)) {
+  FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
+
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT, ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  ASSERT_OK(WriteRows(1, 2, &test_cluster_));
+
+  int64 safe_hybrid_time = 12345678;
+  GetChangesResponsePB change_resp =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, nullptr, 0, safe_hybrid_time));
+
+  auto record_count = change_resp.cdc_sdk_proto_records_size();
+  ASSERT_EQ(record_count, 2);
+
+  auto received_safe_time = ASSERT_RESULT(
+      GetSafeHybridTimeFromCdcStateTable(stream_id, tablets[0].tablet_id(), test_client()));
+  ASSERT_EQ(safe_hybrid_time, received_safe_time);
+}
+
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaEvolutionWithMultipleStreams)) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
@@ -2126,13 +2149,15 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestIntentCountPersistencyBootstr
     }
 
     int64 num_intents;
-    PollForIntentCount(0, i, IntentCountCompareOption::GreaterThan, &num_intents);
-    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
     if (last_seen_num_intents == -1) {
+      PollForIntentCount(0, i, IntentCountCompareOption::GreaterThan, &num_intents);
       last_seen_num_intents = num_intents;
     } else {
+      PollForIntentCount(
+          last_seen_num_intents, i, IntentCountCompareOption::GreaterThanOrEqualTo, &num_intents);
       ASSERT_EQ(last_seen_num_intents, num_intents);
     }
+    LOG(INFO) << "Num of intents: " << num_intents << ", on tserver index" << i;
   }
 }
 
@@ -4898,11 +4923,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddMultipleTableToNamespaceWi
 
   CheckTabletsInCDCStateTable(expected_tablet_ids, test_client());
 
-  std::unordered_set<TableId> stream_table_ids_set;
-  for (const auto& stream_id : ASSERT_RESULT(GetCDCStreamTableIds(stream_id))) {
-    stream_table_ids_set.insert(stream_id);
-  }
-  ASSERT_EQ(stream_table_ids_set, expected_table_ids);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        std::unordered_set<TableId> stream_table_ids_set;
+        for (const auto& stream_id : VERIFY_RESULT(GetCDCStreamTableIds(stream_id))) {
+          stream_table_ids_set.insert(stream_id);
+        }
+
+        return stream_table_ids_set == expected_table_ids;
+      },
+      MonoDelta::FromSeconds(60),
+      "Tables associated to the stream are not the same as expected"));
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveOnEmptyNamespace)) {
@@ -5996,21 +6027,26 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveWithSnapshot)) {
   // the stream expiry time.
   FLAGS_cdc_state_checkpoint_update_interval_ms = 0;
   FLAGS_cdc_snapshot_batch_size = 10;
-  FLAGS_cdc_intent_retention_ms = 5000;
+  FLAGS_cdc_intent_retention_ms = 20000;  // 20 seconds
   ASSERT_OK(SetUpWithParams(1, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
   CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Invalid()));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(set_resp.has_error());
 
+  // Inserting 1000 rows, so that there will be 100 snapshot batches each with
+  // 'FLAGS_cdc_snapshot_batch_size'(10) rows.
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
 
   GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
   int count = 0;
   GetChangesResponsePB change_resp_updated;
+  // There will be atleast 100 calls to 'GetChanges', and we wait 1 second between each iteration.
+  // If the active time wasn't updated during the process, 'GetChanges' would fail before we get all
+  // data.
   while (true) {
     change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
     uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
@@ -6029,6 +6065,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestStreamActiveWithSnapshot)) {
     }
     SleepFor(MonoDelta::FromSeconds(1));
   }
+  // We assert we got all the data after 100 iterations , which means the stream was active even
+  // after ~100 seconds.
   ASSERT_EQ(count, 1000);
 }
 

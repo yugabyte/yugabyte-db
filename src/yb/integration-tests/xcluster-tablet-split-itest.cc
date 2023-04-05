@@ -107,9 +107,9 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     consumer_session->SetTimeout(timeout);
     size_t num_rows = 0;
     Status s = WaitFor([&]() -> Result<bool> {
-      auto num_rows_result = SelectRowsCount(consumer_session, *consumer_table);
+      auto num_rows_result = CountRows(consumer_session, *consumer_table);
       if (!num_rows_result.ok()) {
-        LOG(WARNING) << "Encountered error during SelectRowsCount " << num_rows_result;
+        LOG(WARNING) << "Encountered error during CountRows " << num_rows_result;
         return false;
       }
       num_rows = num_rows_result.get();
@@ -674,7 +674,7 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   // Verify that both sides have the same number of rows.
   client::YBSessionPtr producer_session = client_->NewSession();
   producer_session->SetTimeout(60s);
-  size_t num_rows = ASSERT_RESULT(SelectRowsCount(producer_session, table_));
+  size_t num_rows = ASSERT_RESULT(CountRows(producer_session, table_));
 
   ASSERT_OK(CheckForNumRowsOnConsumer(num_rows));
 }

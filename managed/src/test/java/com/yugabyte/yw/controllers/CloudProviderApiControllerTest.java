@@ -24,6 +24,7 @@ import static junit.framework.TestCase.assertNull;
 import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -81,12 +82,14 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -1053,6 +1056,278 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.getUuid());
   }
 
+  @Test
+  public void testK8sProviderEditDetails() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    p.getDetails().getCloudInfo().getKubernetes().setKubernetesProvider("GKE");
+
+    result = editProvider(Json.toJson(p), p.getUuid());
+    assertOk(result);
+    p.refresh();
+    assertEquals(p.getDetails().getCloudInfo().getKubernetes().getKubernetesProvider(), "GKE");
+  }
+
+  @Test
+  public void testK8sProviderEditAddZone() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Result providerRes = getProvider(ybpTask.resourceUUID);
+    ObjectNode providerJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    JsonNode region = providerJson.get("regions").get(0);
+    ArrayNode zones = (ArrayNode) region.get("zones");
+
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "Zone 2");
+    zone.put("code", "zone-2");
+    zones.add(zone);
+    ((ObjectNode) region).set("zones", zones);
+    ArrayNode regionsNode = Json.newArray();
+    regionsNode.add(region);
+    providerJson.set("regions", regionsNode);
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+
+    result = editProvider(providerJson, ybpTask.resourceUUID);
+    assertOk(result);
+    p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    assertEquals(2, p.getRegions().get(0).getZones().size());
+    assertEquals("zone-2", p.getRegions().get(0).getZones().get(1).getCode());
+  }
+
+  @Test
+  public void testK8sProviderEditModifyZone() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+    AvailabilityZone az = p.getRegions().get(0).getZones().get(0);
+    az.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("Storage class");
+
+    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
+    assertOk(result);
+    p = Provider.getOrBadRequest(p.getUuid());
+
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+    assertEquals(
+        "Storage class",
+        p.getRegions()
+            .get(0)
+            .getZones()
+            .get(0)
+            .getDetails()
+            .getCloudInfo()
+            .getKubernetes()
+            .getKubernetesStorageClass());
+  }
+
+  @Test
+  public void testK8sProviderDeleteZone() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    assertEquals(1, p.getRegions().get(0).getZones().size());
+    AvailabilityZone az = p.getRegions().get(0).getZones().get(0);
+    az.setActive(false);
+
+    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
+    assertOk(result);
+    List<AvailabilityZone> azs = AvailabilityZone.getAZsForRegion(p.getRegions().get(0).getUuid());
+
+    assertEquals(0, azs.size());
+  }
+
+  @Test
+  public void testK8sProviderAddRegion() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Result providerRes = getProvider(ybpTask.resourceUUID);
+    ObjectNode providerJson = (ObjectNode) Json.parse(contentAsString(providerRes));
+    ArrayNode regions = (ArrayNode) providerJson.get("regions");
+
+    ObjectNode region = Json.newObject();
+    region.put("name", "Region 2");
+    region.put("code", "region-2");
+
+    ArrayNode zones = Json.newArray();
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "Zone 2");
+    zone.put("code", "zone-2");
+    zones.add(zone);
+    region.set("zones", zones);
+
+    regions.add(region);
+    providerJson.set("regions", regions);
+
+    result = editProvider(providerJson, ybpTask.resourceUUID);
+    assertOk(result);
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+
+    assertEquals(2, p.getRegions().size());
+    assertEquals("region-2", p.getRegions().get(1).getCode());
+    assertEquals("zone-2", p.getRegions().get(1).getZones().get(0).getCode());
+  }
+
+  @Test
+  @Ignore("PLAT-8193")
+  public void testK8sProviderEditModifyRegion() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    Region region = p.getRegions().get(0);
+    region.setDetails(new RegionDetails());
+    region.getDetails().setCloudInfo(new RegionDetails.RegionCloudInfo());
+    region.getDetails().getCloudInfo().setKubernetes(new KubernetesRegionInfo());
+    region
+        .getDetails()
+        .getCloudInfo()
+        .getKubernetes()
+        .setKubernetesStorageClass("Updating storage class");
+
+    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
+    assertOk(result);
+
+    p.refresh();
+    assertEquals(1, p.getRegions().size());
+    assertEquals(
+        "Updating storage class",
+        p.getRegions()
+            .get(0)
+            .getDetails()
+            .getCloudInfo()
+            .getKubernetes()
+            .getKubernetesStorageClass());
+  }
+
+  @Test
+  public void testK8sProviderConfigAtMultipleLevels() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    p.getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-1");
+    p.getRegions()
+        .get(0)
+        .getZones()
+        .get(0)
+        .getDetails()
+        .getCloudInfo()
+        .getKubernetes()
+        .setKubeConfigName("Test-2");
+
+    result = assertPlatformException(() -> editProvider(Json.toJson(p), ybpTask.resourceUUID));
+    assertBadRequest(result, "Kubeconfig can't be at two levels");
+  }
+
+  @Test
+  @Ignore("PLAT-8193")
+  public void testK8sProviderConfigEditAtZoneLevel() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    p.getRegions()
+        .get(0)
+        .getZones()
+        .get(0)
+        .getDetails()
+        .getCloudInfo()
+        .getKubernetes()
+        .setKubeConfigName("Test-2");
+
+    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
+    assertOk(result);
+    p.refresh();
+    assertEquals(
+        "Test-2",
+        p.getRegions()
+            .get(0)
+            .getZones()
+            .get(0)
+            .getDetails()
+            .getCloudInfo()
+            .getKubernetes()
+            .getKubeConfigName());
+  }
+
+  @Test
+  @Ignore("PLAT-8193")
+  public void testK8sProviderConfigEditAtRegionLevel() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-2");
+
+    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
+    assertOk(result);
+    p.refresh();
+    assertEquals(
+        "Test-2",
+        p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes().getKubeConfigName());
+  }
+
+  @Test
+  public void testK8sProviderConfigEditAtProviderLevel() {
+    JsonNode k8sRequestBody = getK8sRequestBody();
+
+    Result result = createProvider(k8sRequestBody);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    assertNotNull(ybpTask.resourceUUID);
+
+    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    p.getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-2");
+
+    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
+    assertOk(result);
+    p.refresh();
+    assertEquals("Test-2", p.getDetails().getCloudInfo().getKubernetes().getKubeConfigName());
+  }
+
   private void assertBadRequestValidationResult(Result result, String errorCause, String errrMsg) {
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals("providerValidation", json.get("error").get("errorSource").get(0).asText());
@@ -1077,5 +1352,37 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     subnet.setCidrBlock(cidrBlock);
     subnet.setAvailabilityZone(availabilityZone);
     return subnet;
+  }
+
+  private JsonNode getK8sRequestBody() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "kubernetes");
+    bodyJson.put("name", "test-k8s-provider");
+    ObjectNode cloudInfo = Json.newObject();
+    ObjectNode k8sConfig = Json.newObject();
+    k8sConfig.put("kubernetesProvider", "GKE");
+    k8sConfig.put("kubernetesPullSecret", "Kubeconfig pull secret");
+    cloudInfo.set("kubernetes", k8sConfig);
+    ObjectNode details = Json.newObject();
+    details.set("cloudInfo", cloudInfo);
+    bodyJson.set("details", details);
+
+    ArrayNode regions = Json.newArray();
+    ObjectNode region = Json.newObject();
+    region.put("name", "Region-1");
+    region.put("code", "region-1");
+
+    ArrayNode zones = Json.newArray();
+    ObjectNode zone = Json.newObject();
+    zone.put("name", "Zone 1");
+    zone.put("code", "zone-1");
+    zone.set("details", details);
+    zones.add(zone);
+    region.set("zones", zones);
+
+    regions.add(region);
+    bodyJson.set("regions", regions);
+
+    return bodyJson;
   }
 }

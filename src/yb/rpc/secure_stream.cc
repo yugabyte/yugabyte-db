@@ -25,6 +25,7 @@
 
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/errno.h"
@@ -522,7 +523,7 @@ Result<SSLPtr> SecureContext::Impl::Create(
 }
 
 Status SecureContext::Impl::AddCertificateAuthorityFile(const std::string& file) {
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
   return AddCertificateAuthorityFileUnlocked(file);
 }
 
@@ -584,7 +585,7 @@ Status SecureContext::Impl::UseCertificateKeyPair(X509Ptr&& certificate, EVP_PKE
 
 Status SecureContext::Impl::UseCertificates(
     const std::string& ca_cert_file, const Slice& certificate_data, const Slice& pkey_data) {
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
 
   RETURN_NOT_OK(AddCertificateAuthorityFileUnlocked(ca_cert_file));
   RETURN_NOT_OK(UseCertificateKeyPair(certificate_data, pkey_data));
@@ -593,7 +594,7 @@ Status SecureContext::Impl::UseCertificates(
 }
 
 std::string SecureContext::Impl::GetCertificateDetails() {
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
 
   std::stringstream result;
   if(certificate_) {
@@ -618,7 +619,7 @@ Status SecureContext::Impl::TEST_GenerateKeys(int bits, const std::string& commo
     key = VERIFY_RESULT(GeneratePrivateKey(bits));
   }
 
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
   RETURN_NOT_OK(AddCertificateAuthority(ca_cert.get()));
   RETURN_NOT_OK(UseCertificateKeyPair(std::move(cert), std::move(key)));
 
@@ -662,11 +663,11 @@ class SecureRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  Status Handshake() override;
+  Status Handshake() ON_REACTOR_THREAD override;
   Status Init();
 
-  Status Send(OutboundDataPtr data) override;
-  Status ProcessHeader() override;
+  Status Send(OutboundDataPtr data) ON_REACTOR_THREAD override;
+  Status ProcessHeader() ON_REACTOR_THREAD override;
   Result<ReadBufferFull> Read(StreamReadBuffer* out) override;
 
   std::string ToString() const override {
@@ -682,10 +683,10 @@ class SecureRefiner : public StreamRefiner {
   bool MatchEndpoint(X509* cert, GENERAL_NAMES* gens);
   bool MatchUid(X509* cert, GENERAL_NAMES* gens);
   bool MatchUidEntry(const Slice& value, const char* name);
-  Result<bool> WriteEncrypted(OutboundDataPtr data);
+  Result<bool> WriteEncrypted(OutboundDataPtr data) ON_REACTOR_THREAD;
   void DecryptReceived();
 
-  Status Established(RefinedStreamState state) {
+  Status Established(RefinedStreamState state) ON_REACTOR_THREAD {
     VLOG_WITH_PREFIX(4) << "Established with state: " << state << ", used cipher: "
                         << SSL_get_cipher_name(ssl_.get());
 
