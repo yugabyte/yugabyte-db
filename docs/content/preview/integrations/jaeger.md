@@ -22,7 +22,7 @@ Jaeger can be used with various storage backends. YugabyteDB's YCQL API can also
 
 The Jaeger example on this page uses the [HotROD](https://www.jaegertracing.io/docs/1.43/getting-started/#sample-app-hotrod) sample application to illustrate the use of YCQL as a storage backend.
 
-Additionally, it uses Jaeger [All-in-one](https://www.jaegertracing.io/docs/1.43/deployment/#all-in-one), which is a special distribution that combines three Jaeger components: agent, collector, and query service/UI, in a single binary or container image.
+Additionally, it uses Jaeger [All-in-one](https://www.jaegertracing.io/docs/1.43/deployment/#all-in-one), which is a special distribution that combines three Jaeger components, agent, collector, and query service/UI, in a single binary or container image.
 
 {{< note title = "Note">}}
 
