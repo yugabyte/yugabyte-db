@@ -62,8 +62,8 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
   }
 
   private static void migrateRegionDetails(Region region) {
-    if (region.getYbImage() != null) {
-      region.setYbImage(region.getYbImage());
+    if (region.getYbImageDeprecated() != null) {
+      region.setYbImage(region.getYbImageDeprecated());
     }
     if (region.getDetails() != null) {
       if (region.getDetails().sg_id != null) {
