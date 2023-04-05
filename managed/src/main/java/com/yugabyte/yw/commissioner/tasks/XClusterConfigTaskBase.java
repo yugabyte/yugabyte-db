@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.BootstrapProducer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.CheckBootstrapRequired;
+import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
@@ -622,6 +623,18 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     SetRestoreTime task = createTask(SetRestoreTime.class);
     task.initialize(setRestoreTimeParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createReplicateNamespacesTask() {
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("ReplicateNamespaces");
+    XClusterConfigTaskParams replicateNamespacesParams = new XClusterConfigTaskParams();
+    replicateNamespacesParams.xClusterConfig = getXClusterConfigFromTaskParams();
+
+    ReplicateNamespaces task = createTask(ReplicateNamespaces.class);
+    task.initialize(replicateNamespacesParams);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
