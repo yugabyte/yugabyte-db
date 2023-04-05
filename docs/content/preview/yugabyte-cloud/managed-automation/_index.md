@@ -99,16 +99,4 @@ These identifiers can also be found in the URL when you access a cluster using t
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="managed-automation-examples/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
-        <div class="title">Example workflows</div>
-      </div>
-      <div class="body">
-        Working examples for automation tools.
-      </div>
-    </a>
-  </div>
-
 </div>

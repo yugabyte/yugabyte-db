@@ -10,9 +10,6 @@ menu:
     parent: managed-cli
     weight: 100
 type: indexpage
-showRightNav: true
-rightNav:
-  hideH4: true
 ---
 
 <div class="row">
