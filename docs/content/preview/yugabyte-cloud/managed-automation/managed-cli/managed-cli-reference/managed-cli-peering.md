@@ -29,12 +29,12 @@ Create a peering connection on GCP:
 
 ```sh
 ybm vpc peering create \
-    --name=demo-peer \
-    --yb-vpc-name=demo-vpc \
-    --cloud-provider=GCP \
-    --app-vpc-project-id=project \
-    --app-vpc-name=application-vpc-name \
-    --app-vpc-cidr=10.0.0.0/18
+  --name demo-peer \
+  --yb-vpc-name demo-vpc \
+  --cloud-provider GCP \
+  --app-vpc-project-id project \
+  --app-vpc-name application-vpc-name \
+  --app-vpc-cidr 10.0.0.0/18
 ```
 
 ## Commands

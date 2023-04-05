@@ -146,7 +146,7 @@ Database upgrades of high-availability (multi-node) clusters are done on a rolli
 
 ### What version of YugabyteDB does my cluster run on?
 
-Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/release-notes/preview-release/) series.
+Sandbox clusters are provisioned with a **preview** release, from the YugabyteDB [preview release](../../releases/versioning/#preview-releases) series.
 
 By default, new Dedicated clusters are provisioned with a **stable** release, from a YugabyteDB [stable release](../../releases/versioning/#stable-releases) series. You can choose the preview track when you create the cluster.
 
