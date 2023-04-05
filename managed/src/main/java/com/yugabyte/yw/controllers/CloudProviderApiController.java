@@ -236,9 +236,7 @@ public class CloudProviderApiController extends AuthenticatedController {
     // contains taskUUID and resourceUUID (universeUUID) for each universe
     List<YBPTask> tasksResponseList = new ArrayList<>();
     tasks.forEach(
-        (universeUUID, taskUUID) -> {
-          tasksResponseList.add(new YBPTask(taskUUID, universeUUID));
-        });
+        (universeUUID, taskUUID) -> tasksResponseList.add(new YBPTask(taskUUID, universeUUID)));
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
@@ -340,11 +338,22 @@ public class CloudProviderApiController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
-  // v2 API version 1 backward compatiblity support.
-  public JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean forEdit) {
+  // v2 API version 1 backward compatibility support.
+  private JsonNode mayBeMassageRequest(JsonNode requestBody, Boolean forEdit) {
     JsonNode config = requestBody.get("config");
     if (forEdit && config != null) {
       ((ObjectNode) requestBody).remove("config");
+      // Clear the deprecated top level fields that are supported only on create.
+      // Edit is a new API and we wont allow changing these fields at top-level during
+      // the edit operation.
+      ((ObjectNode) requestBody).remove("sshUser");
+      ((ObjectNode) requestBody).remove("sshPort");
+      ((ObjectNode) requestBody).remove("airGapInstall");
+      ((ObjectNode) requestBody).remove("ntpServers");
+      ((ObjectNode) requestBody).remove("setUpChrony");
+      ((ObjectNode) requestBody).remove("showSetUpChrony");
+      ((ObjectNode) requestBody).remove("keyPairName");
+      ((ObjectNode) requestBody).remove("sshPrivateKeyContent");
     }
     String providerCode = requestBody.get("code").asText();
     ObjectMapper mapper = Json.mapper();
