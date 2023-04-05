@@ -160,6 +160,9 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
     "Delay in milliseconds between stages of online index build. Set high to give online "
     "transactions more time to complete.");
 
+DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
+    "Batch size of nested loop joins.");
+
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
     "Controls the consistency level of xCluster replicated databases. Valid values are "
     "\"database\" and \"tablet\".");
