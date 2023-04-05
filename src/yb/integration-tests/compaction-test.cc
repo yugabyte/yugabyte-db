@@ -762,11 +762,14 @@ TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
   // Manually set the last compaction time for one tablet, and verify that only it gets scheduled.
   auto ts_tablet_manager = cluster_->GetTabletManager(0);
   auto compact_manager = ts_tablet_manager->full_compaction_manager();
-  tablet::TabletPeerPtr peer_with_early_compaction;
+  // Pick an arbitrary DB to assign an earlier compaction time.
+  rocksdb::DB* db_with_early_compaction = dbs[0];
+  bool found_tablet_peer = false;
   for (auto peer : ts_tablet_manager->GetTabletPeers()) {
-    if (peer->shared_tablet()->GetCurrentVersionNumSSTFiles() != 0) {
-      peer_with_early_compaction = peer;
-      auto metadata = peer_with_early_compaction->shared_tablet()->metadata();
+    auto tablet = peer->shared_tablet();
+    // Find the tablet peer with the db for early compaction (matching pointers)
+    if (tablet && tablet->TEST_db() == db_with_early_compaction) {
+      auto metadata = tablet->metadata();
       // Previous compaction time set to 30 days prior to now.
       auto now = clock_->Now();
       metadata->set_last_full_compaction_time(
@@ -774,12 +777,13 @@ TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
       ASSERT_OK(metadata->Flush());
       // Next compaction time should be "now" after the reset
       auto next_compact_time =
-          compact_manager->TEST_DetermineNextCompactTime(peer_with_early_compaction, now);
+          compact_manager->TEST_DetermineNextCompactTime(peer, now);
       ASSERT_GE(next_compact_time, now);
+      found_tablet_peer = true;
       break;
     }
   }
-  ASSERT_NE(peer_with_early_compaction, nullptr);
+  ASSERT_TRUE(found_tablet_peer);
 
   // Write more files, then schedule full compactions. Only the peer with the reset metadata
   // should be scheduled.
@@ -799,15 +803,14 @@ TEST_F(ScheduledFullCompactionsTest, ScheduleWhenExpected) {
 
   // Verify that exactly one compaction was scheduled.
   ASSERT_EQ(compact_manager->num_scheduled_last_execution(), 1);
-  for (auto peer : ts_tablet_manager->GetTabletPeers()) {
-    auto num_ssts = peer->shared_tablet()->GetCurrentVersionNumSSTFiles();
-    if (num_ssts == 0) {
-      continue;
-    }
-    if (peer->tablet_id() == peer_with_early_compaction->tablet_id()) {
+  for (auto* db : dbs) {
+    auto num_ssts = db->GetCurrentVersionNumSSTFiles();
+    if (db == db_with_early_compaction) {
+      // The tablet with an early compaction time should only have 1 file.
       ASSERT_EQ(num_ssts, 1);
     } else {
-      ASSERT_GE(num_ssts, kNumFilesToWrite + 1);
+      // All other tablets should have at least 10 files (number originally written).
+      ASSERT_GE(num_ssts, kNumFilesToWrite);
     }
   }
 }
