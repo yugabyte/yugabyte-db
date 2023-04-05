@@ -99,13 +99,12 @@ public class RestoreBackup extends UniverseTaskBase {
       throw t;
     } finally {
       if (taskParams().alterLoadBalancer) {
-        // Clear previous tasks if any.
-        getRunnableTask().reset();
         // If the task failed, we don't want the loadbalancer to be
         // disabled, so we enable it again in case of errors.
-        createLoadBalancerStateChangeTask(true)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-        getRunnableTask().runSubTasks();
+        setTaskQueueAndRun(
+            () ->
+                createLoadBalancerStateChangeTask(true)
+                    .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
       }
     }
     log.info("Finished {} task.", getName());

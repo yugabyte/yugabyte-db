@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -28,6 +26,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -141,11 +140,9 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       }
       preTaskActions();
       List<NodeDetails> nodeList = Collections.singletonList(currentNode);
-      isBlacklistLeaders = isBlacklistLeaders && isLeaderBlacklistValidRF(currentNode.nodeName);
-      if (isBlacklistLeaders && currentNode.isTserver) {
-        List<NodeDetails> tServerNodes = universe.getTServers();
-        createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+      if (currentNode.isTserver) {
+        clearLeaderBlacklistIfAvailable(SubTaskGroupType.StoppingNodeProcesses);
       }
 
       // Update Node State to Stopping
@@ -158,32 +155,14 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       if (instanceExists) {
 
         if (currentNode.isTserver) {
-          // Set leader blacklist and poll.
-          if (isBlacklistLeaders) {
-            createModifyBlackListTask(nodeList, true /* isAdd */, true /* isLeaderBlacklist */)
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-            createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          }
-
-          // Remove node from load balancer.
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          createManageLoadBalancerTasks(
-              createLoadBalancerMap(
-                  universeDetails,
-                  ImmutableList.of(universeDetails.getClusterByUuid(currentNode.placementUuid)),
-                  ImmutableSet.of(currentNode),
-                  null));
-
-          // Stop the tserver.
-          createTServerTaskForNode(currentNode, "stop")
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
+          stopProcessesOnNode(
+              currentNode,
+              EnumSet.of(ServerType.TSERVER),
+              true,
+              false,
+              SubTaskGroupType.StoppingNodeProcesses);
           // Remove leader blacklist.
-          if (isBlacklistLeaders) {
-            createModifyBlackListTask(nodeList, false /* isAdd */, true /* isLeaderBlacklist */)
-                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          }
+          removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.StoppingNodeProcesses);
         }
 
         // Stop Yb-controller on this node.

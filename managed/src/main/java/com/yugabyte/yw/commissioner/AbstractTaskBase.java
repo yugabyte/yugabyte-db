@@ -228,6 +228,17 @@ public abstract class AbstractTaskBase implements ITask {
     return getTaskExecutor().getRunnableTask(userTaskUUID);
   }
 
+  /**
+   * Clears current task queue and runs tasks added by lambda.
+   *
+   * @param setTaskQueueRunnable
+   */
+  protected void setTaskQueueAndRun(Runnable setTaskQueueRunnable) {
+    getRunnableTask().reset();
+    setTaskQueueRunnable.run();
+    getRunnableTask().runSubTasks();
+  }
+
   protected SubTaskGroup createSubTaskGroup(String name) {
     return createSubTaskGroup(name, SubTaskGroupType.Invalid);
   }

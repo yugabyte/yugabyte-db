@@ -7,10 +7,11 @@ import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.api.client.util.Objects;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Streams;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -166,11 +167,15 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import javax.annotation.Nullable;
@@ -227,15 +232,49 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     EITHER
   }
 
-  // Set of locked universes in this task.
-  private final Set<UUID> lockedUniversesUuid = new HashSet<>();
-
   @Inject
   protected UniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
   }
 
-  private Universe universe = null;
+  private AtomicReference<ExecutionContext> executionContext = new AtomicReference<>();
+
+  public class ExecutionContext {
+    private Universe universe;
+    private final boolean blacklistLeaders;
+    private final int leaderBacklistWaitTimeMs;
+    private boolean loadBalancerOff = false;
+    private final Set<UUID> lockedUniversesUuid = ConcurrentHashMap.newKeySet();
+
+    ExecutionContext() {
+      universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      blacklistLeaders =
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaders);
+
+      leaderBacklistWaitTimeMs =
+          confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
+    }
+
+    public boolean isLoadBalancerOff() {
+      return loadBalancerOff;
+    }
+
+    public boolean isBlacklistLeaders() {
+      return blacklistLeaders;
+    }
+
+    public void lockUniverse(UUID universeUUID) {
+      lockedUniversesUuid.add(universeUUID);
+    }
+
+    public boolean isLocked(UUID universeUUID) {
+      return lockedUniversesUuid.contains(universeUUID);
+    }
+
+    public void unlockUniverse(UUID universeUUID) {
+      lockedUniversesUuid.remove(universeUUID);
+    }
+  }
 
   // The task params.
   @Override
@@ -247,19 +286,23 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return getUniverse(false);
   }
 
+  protected ExecutionContext getOrCreateExecutionContext() {
+    if (executionContext.get() == null) {
+      executionContext.compareAndSet(null, new ExecutionContext());
+    }
+    return executionContext.get();
+  }
+
   protected Universe getUniverse(boolean fetchFromDB) {
     if (fetchFromDB) {
       return Universe.getOrBadRequest(taskParams().getUniverseUUID());
     } else {
-      if (universe == null) {
-        universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-      }
-      return universe;
+      return getOrCreateExecutionContext().universe;
     }
   }
 
-  protected boolean isLeaderBlacklistValidRF(String nodeName) {
-    Cluster curCluster = Universe.getCluster(getUniverse(), nodeName);
+  protected boolean isLeaderBlacklistValidRF(NodeDetails nodeDetails) {
+    Cluster curCluster = getUniverse().getCluster(nodeDetails.placementUuid);
     if (curCluster == null) {
       return false;
     }
@@ -321,7 +364,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       if (!isForceUpdate
           && !universeDetails.updateSucceeded
           && taskParams().getPreviousTaskUUID() != null
-          && !Objects.equal(taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)) {
+          && !Objects.equals(
+              taskParams().getPreviousTaskUUID(), universeDetails.updatingTaskUUID)) {
         // else throw error.
         String msg = "Only the last task " + taskParams().getPreviousTaskUUID() + " can be retried";
         log.error(msg);
@@ -378,7 +422,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
     Universe universe = saveUniverseDetails(universeUuid, updater, checkExist);
-    lockedUniversesUuid.add(universeUuid);
+    getOrCreateExecutionContext().lockUniverse(universeUuid);
     log.trace("Locked universe {} at version {}.", universeUuid, expectedUniverseVersion);
     // Return the universe object that we have already updated.
     return universe;
@@ -623,7 +667,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public Universe unlockUniverseForUpdate(
       UUID universeUUID, String error, boolean updateTaskDetails) {
-    if (!lockedUniversesUuid.contains(universeUUID)) {
+    ExecutionContext executionContext = getOrCreateExecutionContext();
+    if (!executionContext.isLocked(universeUUID)) {
       log.warn("Unlock universe({}) called when it was not locked.", universeUUID);
       return null;
     }
@@ -653,10 +698,10 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     // Update the progress flag to false irrespective of the version increment failure.
     // Universe version in master does not need to be updated as this does not change
     // the Universe state. It simply sets updateInProgress flag to false.
-    universe = Universe.saveDetails(universeUUID, updater, false);
-    lockedUniversesUuid.remove(universeUUID);
+    executionContext.universe = Universe.saveDetails(universeUUID, updater, false);
+    executionContext.unlockUniverse(universeUUID);
     log.trace("Unlocked universe {} for updates.", universeUUID);
-    return universe;
+    return executionContext.universe;
   }
 
   public Universe unlockUniverseForUpdate(UUID universeUUID, String error) {
@@ -2810,19 +2855,131 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   }
 
   /**
-   * Creates a task to remove a node from blacklist on server.
+   * Creates tasks to gracefully stop processes on node.
    *
-   * @param nodes The nodes that have to be removed from the blacklist.
-   * @param isAdd true if the node are added to server blacklist, else removed.
-   * @param isLeaderBlacklist true if we are leader blacklisting the node
-   * @return the created task group.
+   * @param node node to stop processes.
+   * @param processes set of processes to stop.
+   * @param finalState indicates that process will be stopped for unknown amount of time.
+   * @param removeMasterFromQuorum true if this stop is a for long time.
+   * @param subTaskGroupType subtask group type.
    */
-  public SubTaskGroup createModifyBlackListTask(
-      Collection<NodeDetails> nodes, boolean isAdd, boolean isLeaderBlacklist) {
-    if (isAdd) {
-      return createModifyBlackListTask(nodes, null, isLeaderBlacklist);
+  protected void stopProcessesOnNode(
+      NodeDetails node,
+      Set<ServerType> processes,
+      boolean finalState,
+      boolean removeMasterFromQuorum,
+      SubTaskGroupType subTaskGroupType) {
+    if (processes.contains(ServerType.TSERVER)) {
+      addLeaderBlackListIfAvailable(Collections.singletonList(node), subTaskGroupType);
+
+      if (finalState) {
+        // Remove node from load balancer.
+        UniverseDefinitionTaskParams universeDetails = getUniverse().getUniverseDetails();
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universeDetails,
+                ImmutableList.of(universeDetails.getClusterByUuid(node.placementUuid)),
+                ImmutableSet.of(node),
+                null));
+      }
     }
-    return createModifyBlackListTask(null, nodes, isLeaderBlacklist);
+    for (ServerType processType : processes) {
+      createServerControlTask(node, processType, "stop").setSubTaskGroupType(subTaskGroupType);
+      if (processType == ServerType.MASTER && removeMasterFromQuorum) {
+        createWaitForMasterLeaderTask().setSubTaskGroupType(subTaskGroupType);
+        createChangeConfigTask(node, false /* isAdd */, subTaskGroupType);
+      }
+    }
+  }
+
+  /**
+   * Creates tasks to gracefully start processes on node
+   *
+   * @param node node to start processes.
+   * @param processTypes set of processes to start.
+   * @param subGroupType subtask group type.
+   * @param addMasterToQuorum true if started for the first time (or after long stop).
+   * @param wasStopped true if process was stopped before.
+   * @param sleepTimeFunction if not null - function to calculate time to wait for process.
+   */
+  protected void startProcessesOnNode(
+      NodeDetails node,
+      Set<ServerType> processTypes,
+      SubTaskGroupType subGroupType,
+      boolean addMasterToQuorum,
+      boolean wasStopped,
+      @Nullable Function<ServerType, Integer> sleepTimeFunction) {
+    for (ServerType processType : processTypes) {
+      createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
+      createWaitForServersTasks(Collections.singletonList(node), processType)
+          .setSubTaskGroupType(subGroupType);
+      if (processType == ServerType.MASTER && addMasterToQuorum) {
+        // Add stopped master to the quorum.
+        createChangeConfigTask(node, true /* isAdd */, subGroupType);
+      }
+      if (sleepTimeFunction != null) {
+        createWaitForServerReady(node, processType, sleepTimeFunction.apply(processType))
+            .setSubTaskGroupType(subGroupType);
+      }
+      if (wasStopped && processType == ServerType.TSERVER) {
+        removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
+      }
+    }
+  }
+
+  /**
+   * Creates a task to add nodes to leader blacklist on server if available and wait for completion.
+   *
+   * @param nodes Nodes that have to be added to the blacklist.
+   * @param subTaskGroupType Sub task group type for tasks.
+   * @return true if tasks were created.
+   */
+  public boolean addLeaderBlackListIfAvailable(
+      Collection<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    if (modifyLeaderBlacklistIfAvailable(nodes, true, subTaskGroupType)) {
+      createWaitForLeaderBlacklistCompletionTask(
+              getOrCreateExecutionContext().leaderBacklistWaitTimeMs)
+          .setSubTaskGroupType(subTaskGroupType);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Creates a task to remove nodes from leader blacklist on server if available.
+   *
+   * @param nodes Nodes that have to be removed from blacklist.
+   * @param subTaskGroupType Sub task group type for tasks.
+   * @return true if tasks were created.
+   */
+  public boolean removeFromLeaderBlackListIfAvailable(
+      Collection<NodeDetails> nodes, SubTaskGroupType subTaskGroupType) {
+    return modifyLeaderBlacklistIfAvailable(nodes, false, subTaskGroupType);
+  }
+
+  private boolean modifyLeaderBlacklistIfAvailable(
+      Collection<NodeDetails> nodes, boolean isAdd, SubTaskGroupType subTaskGroupType) {
+    if (isBlacklistLeaders()) {
+      Collection<NodeDetails> availableToBlacklist =
+          nodes.stream().filter(this::isLeaderBlacklistValidRF).collect(Collectors.toSet());
+      if (availableToBlacklist.size() > 0) {
+        createModifyBlackListTask(
+                isAdd ? availableToBlacklist : null /* addNodes */,
+                isAdd ? null : availableToBlacklist /* removeNodes */,
+                true)
+            .setSubTaskGroupType(subTaskGroupType);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  protected void clearLeaderBlacklistIfAvailable(SubTaskGroupType subTaskGroupType) {
+    removeFromLeaderBlackListIfAvailable(getUniverse().getTServers(), subTaskGroupType);
+  }
+
+  protected boolean isBlacklistLeaders() {
+    return getOrCreateExecutionContext().isBlacklistLeaders();
   }
 
   /**

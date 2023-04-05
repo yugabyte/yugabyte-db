@@ -20,6 +20,7 @@ import com.yugabyte.yw.common.NodeActionType;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -364,6 +365,18 @@ public class NodeDetails {
         || state == NodeState.Stopping
         || state == NodeState.UpdateCert
         || state == NodeState.ToggleTls);
+  }
+
+  @JsonIgnore
+  public Set<UniverseTaskBase.ServerType> getAllProcesses() {
+    Set<UniverseTaskBase.ServerType> result = new LinkedHashSet<>();
+    if (isMaster) {
+      result.add(UniverseTaskBase.ServerType.MASTER);
+    }
+    if (isTserver) {
+      result.add(UniverseTaskBase.ServerType.TSERVER);
+    }
+    return result;
   }
 
   @JsonIgnore
