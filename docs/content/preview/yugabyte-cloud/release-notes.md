@@ -102,7 +102,7 @@ On this page:
 
 **New Features**
 
-- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
 
 ### November 28, 2022
 
@@ -172,7 +172,7 @@ On this page:
 **New Features**
 
 - Performance Optimizer for scanning clusters for optimizations (preview release). Provides recommendations on index and schema improvements, and detects connection, query, and CPU skew to identify potentially hot nodes.
-- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
 - API key management for creating and managing bearer tokens for use with the YugabyteDB Managed REST API.
 
 ### June 22, 2022
