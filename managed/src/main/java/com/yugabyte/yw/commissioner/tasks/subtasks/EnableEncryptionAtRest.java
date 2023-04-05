@@ -100,6 +100,11 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
                 .collect(Collectors.toList());
         for (HostAndPort hp : masterAddrs) {
           client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, universeKeyVal), hp);
+          log.info(
+              "Sent universe key to universe '{}' and DB node '{}' with key ID: '{}'.",
+              universe.getUniverseUUID(),
+              hp,
+              encodedKeyRef);
         }
         for (HostAndPort hp : masterAddrs) {
           if (!client.waitForMasterHasUniverseKeyInMemory(
