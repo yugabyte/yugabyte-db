@@ -1,14 +1,14 @@
 ---
-title: ybm CLI
+title: ybm CLI examples
 headerTitle: Example workflows
 linkTitle: Example workflows
-description: YugabyteDB Managed automation tools examples.
-headcontent: Working examples for automation tools
+description: YugabyteDB Managed ybm CLI examples.
+headcontent: Working examples for ybm CLI
 menu:
   preview_yugabyte-cloud:
-    identifier: managed-automation-examples
-    parent: managed-automation
-    weight: 50
+    identifier: managed-cli-examples
+    parent: managed-cli
+    weight: 100
 type: indexpage
 showRightNav: true
 rightNav:
@@ -18,17 +18,17 @@ rightNav:
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="managed-guide-cli">
+    <a class="section-link icon-offset" href="managed-cli-example-create/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/enterprise/console.png" aria-hidden="true" />
-        <div class="title">ybm CLI: Create clusters</div>
+        <div class="title">Create clusters</div>
       </div>
       <div class="body">
         Create clusters from the command line.
       </div>
     </a>
   </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="managed-guide-api">
       <div class="head">
@@ -40,5 +40,5 @@ rightNav:
       </div>
     </a>
   </div>
-
+-->
 </div>
