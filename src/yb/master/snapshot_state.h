@@ -106,7 +106,7 @@ class SnapshotState : public StateWithTablets {
   void DeleteAborted(const Status& status);
 
  private:
-  bool IsTerminalFailure(const Status& status) override;
+  std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
