@@ -95,6 +95,7 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.setUpChrony = provider.details.setUpChrony;
       taskParams.ntpServers = provider.details.ntpServers;
       taskParams.showSetUpChrony = provider.details.showSetUpChrony;
+      taskParams.skipProvisioning = provider.details.skipProvisioning;
       taskParams.perRegionMetadata =
           regions
               .stream()
@@ -255,6 +256,9 @@ public class CloudBootstrap extends CloudTaskBase {
 
     // Whether or not task is a pure region add.
     public Set<String> addedRegionCodes = null;
+
+    // used for onprem nodes for the cases when manual provision is set.
+    public boolean skipProvisioning = false;
   }
 
   @Override
@@ -339,6 +343,7 @@ public class CloudBootstrap extends CloudTaskBase {
     params.setUpChrony = taskParams().setUpChrony;
     params.ntpServers = taskParams().ntpServers;
     params.showSetUpChrony = taskParams().showSetUpChrony;
+    params.skipProvisioning = taskParams().skipProvisioning;
     CloudAccessKeySetup task = createTask(CloudAccessKeySetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
