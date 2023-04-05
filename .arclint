@@ -65,7 +65,8 @@
         "(java/yb-cdc/pom.xml)",
         "(java/yb-cdc/README.md)",
         "(^docs/.*[.]md$)",
-        "(^[.]fossa[.]yml$)"
+        "(^[.]fossa[.]yml$)",
+        "(^managed/.*[.]conf)"
       ]
     },
     "pycodestyle": {
