@@ -80,7 +80,7 @@ To use Jaeger, ensure that you have the following:
     make run-all-in-one
     ```
 
-    Wait for the logs to settle and navigate to <http://localhost:16686> to access the Jaeger UI which is used to go through the traces created by the application. This means that the Jaeger UI, collector, query, and agent are running.
+    Wait for the logs to settle, then navigate to <http://localhost:16686> to access the Jaeger UI, where you can view the traces created by the application. This indicates that the Jaeger UI, collector, query, and agent are running.
 
 ## Run the application
 
