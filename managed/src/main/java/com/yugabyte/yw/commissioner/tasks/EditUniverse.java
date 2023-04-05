@@ -15,7 +15,10 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -24,15 +27,15 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -40,7 +43,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -66,12 +72,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       }
 
       Map<UUID, Map<String, String>> tagsToUpdate = new HashMap<>();
+      AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       Universe universe =
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
+                dedicatedNodesChanged.set(
+                    taskParams().getPrimaryCluster().userIntent.dedicatedNodes
+                        != u.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
                 // The universe parameter in this callback has local changes which may be needed by
                 // the methods inside e.g updateInProgress field.
                 for (Cluster cluster : taskParams().clusters) {
@@ -151,6 +161,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
       for (Cluster cluster : taskParams().clusters) {
+        if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
+          updateGFlagsForTservers(cluster, universe);
+        }
         editCluster(
             universe,
             cluster,
@@ -355,7 +368,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (!newTservers.isEmpty()) {
       // Blacklist all the new tservers before starting so that they do not join.
       // Idempotent as same set of servers are blacklisted.
-      createModifyBlackListTask(newTservers, null /* To remove */, false /* isLeaderBlacklist */)
+      createModifyBlackListTask(
+              newTservers /* addNodes */, null /* removeNodes */, false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start tservers on all nodes.
@@ -375,7 +389,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (!newTservers.isEmpty() || !tserversToBeRemoved.isEmpty()) {
       // Swap the blacklisted tservers.
       // Idempotent as same set of servers are either blacklisted or removed.
-      createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
+      createModifyBlackListTask(
+              tserversToBeRemoved /* addNodes */,
+              newTservers /* removeNodes */,
+              false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
     // Update placement info on master leader.
@@ -507,8 +524,53 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     if (!tserversToBeRemoved.isEmpty()) {
       // Clear blacklisted tservers.
-      createModifyBlackListTask(null, tserversToBeRemoved, false /* isLeaderBlacklist */)
+      createModifyBlackListTask(
+              null /* addNodes */,
+              tserversToBeRemoved /* removeNodes */,
+              false /* isLeaderBlacklist */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+  }
+
+  private void updateGFlagsForTservers(Cluster cluster, Universe universe) {
+    List<NodeDetails> tservers =
+        getNodesInCluster(cluster.uuid, taskParams().nodeDetailsSet)
+            .stream()
+            .filter(t -> t.isTserver)
+            .filter(t -> t.state == NodeState.Live)
+            .collect(Collectors.toList());
+    UpgradeTaskBase.sortTServersInRestartOrder(universe, tservers);
+    removeFromLeaderBlackListIfAvailable(tservers, SubTaskGroupType.UpdatingGFlags);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServers");
+    for (NodeDetails nodeDetails : tservers) {
+      stopProcessesOnNode(
+          nodeDetails,
+          EnumSet.of(ServerType.TSERVER),
+          false,
+          false,
+          SubTaskGroupType.UpdatingGFlags);
+
+      AnsibleConfigureServers.Params params =
+          getAnsibleConfigureServerParams(
+              cluster.userIntent,
+              nodeDetails,
+              ServerType.TSERVER,
+              UpgradeTaskParams.UpgradeTaskType.GFlags,
+              UpgradeTaskParams.UpgradeTaskSubType.None);
+      params.gflags = cluster.userIntent.tserverGFlags;
+      AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
+      task.initialize(params);
+      task.setUserTaskUUID(userTaskUUID);
+      subTaskGroup.addSubTask(task);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+
+      startProcessesOnNode(
+          nodeDetails,
+          EnumSet.of(ServerType.TSERVER),
+          SubTaskGroupType.UpdatingGFlags,
+          false,
+          true,
+          (x) -> UniverseTaskParams.DEFAULT_SLEEP_AFTER_RESTART_MS);
     }
   }
 

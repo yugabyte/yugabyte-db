@@ -147,13 +147,12 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      // Clear previous subtasks if any.
-      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be disabled,
       // so we enable it again in case of errors.
-      createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
-
-      getRunnableTask().runSubTasks();
+      setTaskQueueAndRun(
+          () ->
+              createLoadBalancerStateChangeTask(true /*enable*/)
+                  .setSubTaskGroupType(getTaskSubGroupType()));
 
       throw t;
     } finally {
