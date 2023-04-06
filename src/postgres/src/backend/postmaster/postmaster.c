@@ -3455,7 +3455,10 @@ CleanupBackend(int pid,
 {
 	dlist_mutable_iter iter;
 
-	LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
+	if (YBIsEnabledInPostgresEnvVar())
+		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
+	else
+		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
 
 	/*
 	 * If a backend dies in an ugly way then we must signal all other backends
