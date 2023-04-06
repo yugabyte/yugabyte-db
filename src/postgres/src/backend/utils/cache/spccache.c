@@ -35,6 +35,7 @@
 #include "utils/hsearch.h"
 #include "utils/inval.h"
 #include "utils/jsonfuncs.h"
+#include "utils/memutils.h"
 #include "utils/spccache.h"
 #include "utils/syscache.h"
 
@@ -209,6 +210,22 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 		return UNKNOWN_DISTANCE;
 	}
 
+	const char *current_cloud = YBGetCurrentCloud();
+	const char *current_region = YBGetCurrentRegion();
+	const char *current_zone = YBGetCurrentZone();
+
+	if (current_cloud == NULL || current_region == NULL || current_zone == NULL)
+	{
+		/* no placement info specified, so nothing to do */
+		return UNKNOWN_DISTANCE;
+	}
+
+	MemoryContext tablespaceDistanceContext = AllocSetContextCreate(GetCurrentMemoryContext(),
+														   "tablespace distance calculation",
+														   ALLOCSET_SMALL_SIZES);
+
+	MemoryContext oldContext = MemoryContextSwitchTo(tablespaceDistanceContext);
+
 	/*
 	 * The tablespace options json is stored as a payload after the header
 	 * information in memory address pointed to by spc->opts.yb_opts. In other
@@ -226,16 +243,6 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 	static char *regionKey = "region";
 	static char *zoneKey = "zone";
 	static char *leaderPrefKey = "leader_preference";
-
-	const char *current_cloud = YBGetCurrentCloud();
-	const char *current_region = YBGetCurrentRegion();
-	const char *current_zone = YBGetCurrentZone();
-
-	if (current_cloud == NULL || current_region == NULL || current_zone == NULL)
-	{
-		/* no placement info specified, so nothing to do */
-		return UNKNOWN_DISTANCE;
-	}
 
 	GeolocationDistance farthest = ZONE_LOCAL;
 	bool leader_pref_exists = false;
@@ -302,6 +309,9 @@ GeolocationDistance get_tablespace_distance(Oid spcid)
 			farthest = current_dist > farthest ? current_dist : farthest;
 		}
 	}
+	MemoryContextSwitchTo(oldContext);
+	MemoryContextDelete(tablespaceDistanceContext);
+
 	return farthest;
 }
 
