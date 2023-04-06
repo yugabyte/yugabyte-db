@@ -42,7 +42,7 @@ If access to the Docker repositories for your Linux distribution is not availabl
 
 {{< note title="Docker on Amazon Linux" >}}
 
-If you want to setup Docker on Amazon Linux OS, perform the following:
+If you want to set up Docker on Amazon Linux OS, perform the following:
 
 1. Install Docker using the following commands:
 
