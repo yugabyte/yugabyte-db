@@ -65,6 +65,7 @@ public class BackupTableYbc extends YbcTaskBase {
       this.nodeRetriever = nodeRetriever;
     }
     // Node-ip to use as co-ordinator for the backup.
+    @JsonIgnore public Backup previousBackup = null;
     public String nodeIp = null;
     public String taskID = null;
     @JsonIgnore public YbcBackupNodeRetriever nodeRetriever;
@@ -78,17 +79,20 @@ public class BackupTableYbc extends YbcTaskBase {
   @Override
   public void run() {
     try {
-      // Check if it is an incremental backup
-      if (!taskParams().baseBackupUUID.equals(taskParams().backupUuid)) {
-        previousBackup =
-            Backup.getLastSuccessfulBackupInChain(
-                taskParams().customerUuid, taskParams().baseBackupUUID);
+      // Check if previous backup usable
+      if (taskParams().previousBackup != null) {
         previousBackupKeyspaces =
-            ybcBackupUtil.getBackupKeyspaceToParamsMap(previousBackup.getBackupInfo().backupList);
+            ybcBackupUtil.getBackupKeyspaceToParamsMap(
+                taskParams().previousBackup.getBackupInfo().backupList);
       }
 
       baseLogMessage =
           ybcBackupUtil.getBaseLogMessage(taskParams().backupUuid, taskParams().getKeyspace());
+
+      // Wait on node-ip
+      if (StringUtils.isBlank(taskParams().nodeIp)) {
+        taskParams().nodeIp = taskParams().nodeRetriever.getNodeIpForBackup();
+      }
 
       TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
       boolean isResumable = false;
@@ -98,10 +102,6 @@ public class BackupTableYbc extends YbcTaskBase {
       BackupRequestParams backupRequestParams =
           Json.fromJson(taskInfo.getDetails(), BackupRequestParams.class);
 
-      // Wait on node-ip
-      if (StringUtils.isBlank(taskParams().nodeIp)) {
-        taskParams().nodeIp = taskParams().nodeRetriever.getNodeIpForBackup();
-      }
       // Ping operation is attempted again, but it's OK, since a small check only.
       ybcClient = ybcManager.getYbcClient(taskParams().getUniverseUUID(), taskParams().nodeIp);
 
