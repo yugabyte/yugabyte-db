@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -266,21 +267,84 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     DeviceInfo newDeviceInfo = getter.apply(newUserIntent);
     DeviceInfo currentDeviceInfo = getter.apply(currentUserIntent);
 
-    if (newDeviceInfo != null && newDeviceInfo.volumeSize != null) {
-      Integer currDiskSize = currentDeviceInfo.volumeSize;
-      if (verifyVolumeSize && currDiskSize > newDeviceInfo.volumeSize) {
+    // Disk will not be resized if the universe has no currently defined device info.
+    if (currentDeviceInfo != null && newDeviceInfo != null) {
+      DeviceInfo currentDeviceInfoCloned = currentDeviceInfo.clone();
+      if (newDeviceInfo.volumeSize != null) {
+        if (verifyVolumeSize && currentDeviceInfo.volumeSize > newDeviceInfo.volumeSize) {
+          errorConsumer.accept(
+              "Disk size cannot be decreased. It was "
+                  + currentDeviceInfo.volumeSize
+                  + " got "
+                  + newDeviceInfo.volumeSize);
+          return true;
+        }
+        currentDeviceInfoCloned.volumeSize = newDeviceInfo.volumeSize;
+      }
+      if (!Objects.equals(newDeviceInfo.diskIops, currentDeviceInfo.diskIops)) {
+        if (newDeviceInfo.diskIops == null) {
+          newDeviceInfo.diskIops = currentDeviceInfo.diskIops;
+        }
+        if (currentUserIntent.providerType != Common.CloudType.aws) {
+          errorConsumer.accept("Disk IOPS provisioning is only supported for AWS");
+          return true;
+        }
+        if (!currentDeviceInfo.storageType.isIopsProvisioning()) {
+          errorConsumer.accept(
+              "Disk IOPS provisioning is not allowed for storage type: "
+                  + currentDeviceInfo.storageType);
+          return true;
+        }
+        Pair<Integer, Integer> iopsRange = currentDeviceInfo.storageType.getIopsRange();
+        if (newDeviceInfo.diskIops < iopsRange.getFirst()
+            || newDeviceInfo.diskIops > iopsRange.getSecond()) {
+          errorConsumer.accept(
+              String.format(
+                  "Disk IOPS value: %d is not in the acceptable range: %d - %d "
+                      + "for storage type: %s",
+                  newDeviceInfo.diskIops,
+                  iopsRange.getFirst(),
+                  iopsRange.getSecond(),
+                  currentDeviceInfo.storageType));
+          return true;
+        }
+        currentDeviceInfoCloned.diskIops = newDeviceInfo.diskIops;
+      }
+      if (!Objects.equals(newDeviceInfo.throughput, currentDeviceInfo.throughput)) {
+        if (newDeviceInfo.throughput == null) {
+          newDeviceInfo.throughput = currentDeviceInfo.throughput;
+        }
+        if (currentUserIntent.providerType != Common.CloudType.aws) {
+          errorConsumer.accept("Disk Throughput provisioning is only supported for AWS");
+          return true;
+        }
+        if (!currentDeviceInfo.storageType.isThroughputProvisioning()) {
+          errorConsumer.accept(
+              "Disk Throughput provisioning is not allowed for storage type: "
+                  + currentDeviceInfo.storageType);
+          return true;
+        }
+        Pair<Integer, Integer> throughputRange = currentDeviceInfo.storageType.getThroughputRange();
+        if (newDeviceInfo.throughput < throughputRange.getFirst()
+            || newDeviceInfo.throughput > throughputRange.getSecond()) {
+          errorConsumer.accept(
+              String.format(
+                  "Disk Throughput (MiB/s) value: %d is not in the acceptable range: %d - %d"
+                      + " for storage type: %s",
+                  newDeviceInfo.throughput,
+                  throughputRange.getFirst(),
+                  throughputRange.getSecond(),
+                  currentDeviceInfo.storageType));
+          return true;
+        }
+        currentDeviceInfoCloned.throughput = newDeviceInfo.throughput;
+      }
+
+      if (!newDeviceInfo.equals(currentDeviceInfoCloned)) {
         errorConsumer.accept(
-            "Disk size cannot be decreased. It was "
-                + currDiskSize
-                + " got "
-                + newDeviceInfo.volumeSize);
+            "Smart resize only supports modifying volumeSize, diskIops, throughput");
       }
-      DeviceInfo newDeviceInfoCloned = newDeviceInfo.clone();
-      newDeviceInfoCloned.volumeSize = currDiskSize;
-      if (!newDeviceInfoCloned.equals(currentDeviceInfo)) {
-        errorConsumer.accept("Only volume size should be changed to do smart resize");
-      }
-      return !Objects.equals(currDiskSize, newDeviceInfo.volumeSize);
+      return !currentDeviceInfo.equals(currentDeviceInfoCloned);
     }
     return false;
   }
