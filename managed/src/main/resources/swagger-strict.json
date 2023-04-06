@@ -1796,13 +1796,6 @@
           "description" : "Cron expression for a recurring backup",
           "type" : "string"
         },
-        "currentIdx" : {
-          "format" : "int32",
-          "type" : "integer"
-        },
-        "currentYbcTaskId" : {
-          "type" : "string"
-        },
         "customerUUID" : {
           "description" : "Customer UUID",
           "format" : "uuid",
@@ -1965,6 +1958,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "tableByTableBackup" : {
+          "description" : "Take table by table backups",
+          "type" : "boolean"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -1999,7 +1996,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "creatingUser", "currentIdx", "currentYbcTaskId", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
+      "required" : [ "backupUUID", "creatingUser", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "storageConfigUUID", "universeUUID" ],
       "type" : "object"
     },
     "BackupResp" : {
@@ -2351,6 +2348,10 @@
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
+        },
+        "tableByTableBackup" : {
+          "description" : "Table by table backup",
+          "type" : "boolean"
         },
         "tableName" : {
           "description" : "Table name",
@@ -3312,6 +3313,9 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "tableByTableBackup" : {
+          "type" : "boolean"
+        },
         "taskUUID" : {
           "format" : "uuid",
           "type" : "string"
@@ -3327,7 +3331,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupUUID", "baseBackupUUID", "kmsConfigUUID", "responseList", "sse", "state", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes" ],
+      "required" : [ "backupUUID", "baseBackupUUID", "kmsConfigUUID", "responseList", "sse", "state", "storageConfigUUID", "tableByTableBackup", "taskUUID", "totalBackupSizeInBytes" ],
       "type" : "object"
     },
     "CommunicationPorts" : {
@@ -5002,15 +5006,13 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         },
         "tablesList" : {
           "items" : {
             "type" : "string"
           },
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         }
       },
       "required" : [ "allTables", "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
@@ -5924,6 +5926,10 @@
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
+        },
+        "tableByTableBackup" : {
+          "description" : "Table by table backup",
+          "type" : "boolean"
         },
         "tableName" : {
           "description" : "Table name",

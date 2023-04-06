@@ -20,6 +20,7 @@ public class CommonBackupInfo {
   UUID kmsConfigUUID;
   UUID taskUUID;
   Boolean sse;
+  Boolean tableByTableBackup;
 
   @ApiModelProperty(value = "Backup create time.", example = "2022-12-12T13:07:18Z")
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")

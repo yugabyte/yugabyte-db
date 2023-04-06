@@ -492,7 +492,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     RestoreBackupParams.BackupStorageInfo backupStorageInfo =
         new RestoreBackupParams.BackupStorageInfo();
     backupStorageInfo.backupType = backupRequestParams.backupType;
-    List<BackupTableParams> backupList = backup.getBackupInfo().backupList;
+    List<BackupTableParams> backupList = backup.getBackupParamsCollection();
     if (backupList == null) {
       throw new RuntimeException("backup.getBackupInfo().backupList must not be null");
     }
