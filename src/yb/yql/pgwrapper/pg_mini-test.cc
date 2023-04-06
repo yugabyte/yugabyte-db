@@ -53,6 +53,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -2112,9 +2113,23 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithPackedRow), PgMiniBigPrefetchTest) {
+  constexpr int kNumColumns = 10;
+
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_enable_packed_row_for_colocated_table = true;
-  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
+
+  std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY";
+  std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
+  for (auto column : Range(kNumColumns)) {
+    create_cmd += Format(", c$0 INT", column);
+    insert_cmd += ", trunc(random()*100000000)";
+  }
+  create_cmd += ")";
+  insert_cmd += ")";
+  const std::string select_cmd = "SELECT * FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, kScanReads,
+      /* compact= */ false, /* aggregate = */ false);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPrefetchTest) {

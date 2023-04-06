@@ -466,13 +466,12 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
 
   // It is a duplicate value if the index key exists already and the index value (corresponding to
   // the indexed table's primary key) is not the same.
-  if (!VERIFY_RESULT(iterator.HasNext())) {
+  QLTableRow table_row;
+  if (!VERIFY_RESULT(iterator.FetchNext(&table_row))) {
     VLOG(2) << "No collision found while checking at " << yb::ToString(read_time);
     return false;
   }
 
-  QLTableRow table_row;
-  RETURN_NOT_OK(iterator.NextRow(&table_row));
   for (const auto& column_value : request_.column_values()) {
     // Get the column.
     if (!column_value.has_column_id()) {
@@ -979,9 +978,7 @@ Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
                                 data.deadline,
                                 data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (VERIFY_RESULT(iterator.HasNext())) {
-      RETURN_NOT_OK(iterator.NextRow(table_row));
-    } else {
+    if (!VERIFY_RESULT(iterator.FetchNext(table_row))) {
       table_row->Clear();
     }
     data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
@@ -1181,7 +1178,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
       deadline, read_time, is_explicit_request_read_time));
   bool scan_time_exceeded = false;
   CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
-  while (VERIFY_RESULT(table_iter_->HasNext())) {
+  while (VERIFY_RESULT(table_iter_->FetchNext(nullptr))) {
     scanned_rows++;
     if (numrows < targrows) {
       // Select first targrows of the table. If first partition(s) have less than that, next
@@ -1210,8 +1207,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
         rowstoskip -= 1;
       }
     }
-    // Taking tuple ID does not advance the table iterator. Move it now.
-    table_iter_->SkipRow();
+
     // Check if we are running out of time
     scan_time_exceeded = CoarseMonoClock::now() >= stop_scan;
     if (scan_time_exceeded) {
@@ -1332,6 +1328,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       is_explicit_request_read_time, end_referenced_key_column_index));
 
   ColumnId ybbasectid_id;
+  std::optional<QLTableRow> index_row;
   if (request_.has_index_request()) {
     // The presence of index_request indicates index scan over colocated table.
     // We need to set up expression executor and projection, similarly to main table, but
@@ -1364,6 +1361,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     const auto idx = index_schema->find_column("ybidxbasectid");
     SCHECK_NE(idx, Schema::kColumnNotFound, Corruption, "ybidxbasectid not found in index schema");
     ybbasectid_id = index_schema->column_id(idx);
+    index_row.emplace();
   } else {
     // Loop over the main table iterator
     iter = table_iter_.get();
@@ -1381,17 +1379,16 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   // Fetching data.
   size_t match_count = 0;
   QLTableRow row;
-  while (fetched_rows < row_count_limit && VERIFY_RESULT(iter->HasNext()) &&
-         !scan_time_exceeded) {
-    row.Clear();
+  while (fetched_rows < row_count_limit && !scan_time_exceeded) {
     bool is_match = true;
 
     if (request_.has_index_request()) {
-      // Index scan over colocated table case, get next index row
-      RETURN_NOT_OK(iter->NextRow(&row));
+      if (!VERIFY_RESULT(iter->FetchNext(&*index_row))) {
+        break;
+      }
 
       // Check index conditions
-      RETURN_NOT_OK(index_expr_exec.Exec(row, nullptr, &is_match));
+      RETURN_NOT_OK(index_expr_exec.Exec(*index_row, nullptr, &is_match));
 
       if (!is_match) {
         // If no match continue with next tuple from the iterator.
@@ -1400,30 +1397,27 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       }
 
       // Index matches the condition, get the ybctid of the target row.
-      const auto& tuple_id = row.GetValue(ybbasectid_id);
+      const auto& tuple_id = index_row->GetValue(ybbasectid_id);
       SCHECK_NE(tuple_id, boost::none, Corruption, "ybbasectid not found in index row");
+
       // Seek the target row using main table iterator
       // unless index is corrupted, seek is expected to be successful
-      if (!VERIFY_RESULT(table_iter_->SeekTuple(tuple_id->binary_value()))) {
+      table_iter_->SeekTuple(tuple_id->binary_value());
+      if (!VERIFY_RESULT(table_iter_->FetchTuple(tuple_id->binary_value(), &row))) {
         if (FLAGS_TEST_ysql_suppress_ybctid_corruption_details) {
           return STATUS(Corruption, "ybctid not found in indexed table");
         } else {
-          DocKey doc_key;
-          RETURN_NOT_OK(doc_key.DecodeFrom(tuple_id->binary_value()));
           return STATUS_FORMAT(
               Corruption,
               "ybctid $0 not found in indexed table. index table id is $1",
-              doc_key,
+              DocKey::DebugSliceToString(tuple_id->binary_value()),
               request_.index_request().table_id());
         }
       }
-      // Remove table row currently held by the variable.
-      row.Clear();
-      // Fetch main table row
-      RETURN_NOT_OK(table_iter_->NextRow(&row));
     } else {
-      // Fetch main table row
-      RETURN_NOT_OK(iter->NextRow(&row));
+      if (!VERIFY_RESULT(iter->FetchNext(&row))) {
+        break;
+      }
     }
 
     // Match the row with the where condition before adding to the row block.
@@ -1521,10 +1515,10 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
     }
     // Get the row.
     auto &tuple_id = batch_argument.ybctid().value();
-    iter_valid = VERIFY_RESULT(table_iter_->SeekTuple(tuple_id.binary_value()));
+    row.Clear();
+    table_iter_->SeekTuple(tuple_id.binary_value());
+    iter_valid = VERIFY_RESULT(table_iter_->FetchTuple(tuple_id.binary_value(), &row));
     if (iter_valid) {
-      row.Clear();
-      RETURN_NOT_OK(table_iter_->NextRow(projection, &row));
       bool is_match = true;
       RETURN_NOT_OK(expr_exec.Exec(row, nullptr, &is_match));
       if (is_match) {
