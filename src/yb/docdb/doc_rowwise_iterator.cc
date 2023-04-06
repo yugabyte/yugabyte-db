@@ -1424,7 +1424,7 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
   return Status::OK();
 }
 
-Result<bool> DocRowwiseIterator::HasNext() const {
+Result<bool> DocRowwiseIterator::HasNext() {
   VLOG(4) << __PRETTY_FUNCTION__;
 
   // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
@@ -1646,7 +1646,7 @@ bool DocRowwiseIterator::LivenessColumnExists() const {
   return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
 }
 
-Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) const {
+Status DocRowwiseIterator::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
   if (db_iter_ == nullptr) {
     return STATUS(Corruption, "Iterator not initialized.");
   }

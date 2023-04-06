@@ -82,7 +82,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // This must always be called before NextRow. The implementation actually finds the
   // first row to scan, and NextRow expects the RocksDB iterator to already be properly
   // positioned.
-  Result<bool> HasNext() const override;
+  Result<bool> HasNext() override;
 
   std::string ToString() const override;
 
@@ -116,7 +116,7 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   Result<bool> SeekTuple(const Slice& tuple_id) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) const override;
+  Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
 
   void set_debug_dump(bool value) {
     debug_dump_ = value;
@@ -202,40 +202,38 @@ class DocRowwiseIterator : public YQLRowwiseIteratorIf {
   // RocksDB does not get destroyed while the iterator is still in use.
   ScopedRWOperation pending_op_;
 
-  // The mutable fields that follow are modified by HasNext, a const method.
-
   // Indicates whether we've already finished iterating.
-  mutable bool done_;
+  bool done_;
 
   // HasNext constructs the whole row's SubDocument.
-  mutable SubDocument row_;
+  SubDocument row_;
 
   // The current row's primary key. It is set to lower bound in the beginning.
-  mutable Slice row_key_;
+  Slice row_key_;
 
   // The current row's hash part of primary key.
-  mutable Slice row_hash_key_;
+  Slice row_hash_key_;
 
   // The current row's iterator key.
-  mutable KeyBytes iter_key_;
+  KeyBytes iter_key_;
 
   // When HasNext constructs a row, row_ready_ is set to true.
   // When NextRow consumes the row, this variable is set to false.
   // It is initialized to false, to make sure first HasNext constructs a new row.
-  mutable bool row_ready_;
+  bool row_ready_;
 
-  mutable std::vector<KeyEntryValue> projection_subkeys_;
+  std::vector<KeyEntryValue> projection_subkeys_;
 
   // Used for keeping track of errors in HasNext.
-  mutable Status has_next_status_;
+  Status has_next_status_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
   boost::optional<KeyBytes> tuple_key_;
 
-  mutable std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
+  std::unique_ptr<DocDBTableReader> doc_reader_ = nullptr;
 
   TableType table_type_;
-  mutable bool ignore_ttl_ = false;
+  bool ignore_ttl_ = false;
 
   bool debug_dump_ = false;
 };
