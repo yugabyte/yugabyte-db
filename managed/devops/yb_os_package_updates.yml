@@ -1,0 +1,42 @@
+- name: "Package installation/update tasks"
+  hosts: "{{ yb_ansible_host }}"
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: "Update OS Packages to latest"
+      yum:
+        update_cache: true
+        name: '*'
+        state: latest
+      tags: yb-prebuilt-ami
+      retries: 3
+      delay: 10
+
+    - name: "Install extra packages for YBM"
+      yum:
+        name: "{{ packages }}"
+      vars:
+        common_packages:
+          # Debugging tools required by SRE
+          - lsof
+          - tcpdump
+        centos_packages:
+          - libcgroup
+          - libcgroup-tools
+        packages: "{{ common_packages + centos_packages if ansible_os_family == 'RedHat'
+                      and ansible_distribution_major_version != '9' else common_packages }}"
+      tags: yb-prebuilt-ami
+      retries: 3
+      delay: 10
+
+    # Build and output a list of all installed packages, for audit purposes.
+    - name: yum_list
+      yum:
+        list=installed
+      register: yum_packages
+      tags: yb-prebuilt-ami
+
+    - name: "list installed packages"
+      debug:
+        var: yum_packages
+      tags: yb-prebuilt-ami
