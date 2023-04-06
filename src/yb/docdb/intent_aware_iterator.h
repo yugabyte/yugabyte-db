@@ -60,7 +60,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
       const rocksdb::ReadOptions& read_opts,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const TransactionOperationContext& txn_op_context);
+      const TransactionOperationContext& txn_op_context,
+      rocksdb::Statistics* intentsdb_statistics = nullptr);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;

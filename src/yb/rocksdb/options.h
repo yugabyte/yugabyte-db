@@ -1523,6 +1523,9 @@ struct ReadOptions {
 
   std::shared_ptr<ReadFileFilter> file_filter;
 
+  // Statistics object to use instead of the DB statistics object (default).
+  Statistics* statistics = nullptr;
+
   static const ReadOptions kDefault;
 
   ReadOptions();

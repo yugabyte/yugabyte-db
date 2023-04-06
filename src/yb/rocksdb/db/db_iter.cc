@@ -91,7 +91,7 @@ class DBIter: public Iterator {
          InternalIterator* iter, SequenceNumber s, bool arena_mode,
          uint64_t max_sequential_skip_in_iterations, uint64_t version_number,
          const Slice* iterate_upper_bound = nullptr,
-         bool prefix_same_as_start = false)
+         bool prefix_same_as_start = false, Statistics* statistics = nullptr)
       : arena_mode_(arena_mode),
         env_(env),
         logger_(ioptions.info_log),
@@ -105,7 +105,7 @@ class DBIter: public Iterator {
         status_check_required_(false),
 #endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
         current_entry_is_merged_(false),
-        statistics_(ioptions.statistics),
+        statistics_(statistics ? statistics : ioptions.statistics),
         version_number_(version_number),
         iterate_upper_bound_(iterate_upper_bound),
         prefix_same_as_start_(prefix_same_as_start),
@@ -1009,11 +1009,12 @@ Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
                         uint64_t max_sequential_skip_in_iterations,
                         uint64_t version_number,
                         const Slice* iterate_upper_bound,
-                        bool prefix_same_as_start, bool pin_data) {
+                        bool prefix_same_as_start, bool pin_data,
+                        Statistics* statistics) {
   DBIter* db_iter =
       new DBIter(env, ioptions, user_key_comparator, internal_iter, sequence,
                  false, max_sequential_skip_in_iterations, version_number,
-                 iterate_upper_bound, prefix_same_as_start);
+                 iterate_upper_bound, prefix_same_as_start, statistics);
   if (pin_data) {
     CHECK_OK(db_iter->PinData());
   }
@@ -1071,14 +1072,14 @@ ArenaWrappedDBIter* NewArenaWrappedDbIterator(
     const Comparator* user_key_comparator, const SequenceNumber& sequence,
     uint64_t max_sequential_skip_in_iterations, uint64_t version_number,
     const Slice* iterate_upper_bound, bool prefix_same_as_start,
-    bool pin_data) {
+    bool pin_data, Statistics* statistics) {
   ArenaWrappedDBIter* iter = new ArenaWrappedDBIter();
   Arena* arena = iter->GetArena();
   auto mem = arena->AllocateAligned(sizeof(DBIter));
   DBIter* db_iter =
       new (mem) DBIter(env, ioptions, user_key_comparator, nullptr, sequence,
                        true, max_sequential_skip_in_iterations, version_number,
-                       iterate_upper_bound, prefix_same_as_start);
+                       iterate_upper_bound, prefix_same_as_start, statistics);
 
   iter->SetDBIter(db_iter);
   if (pin_data) {
