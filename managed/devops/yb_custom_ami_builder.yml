@@ -5,6 +5,11 @@
   vars:
     yb_ansible_host: "default"
 
+- name: "Install OS updates and desired packages"
+  import_playbook: yb_os_package_updates.yml
+  vars:
+    yb_ansible_host: "default"
+
 - name: "Use custom ssh port"
   import_playbook: use_custom_ssh_port.yml
   vars:
