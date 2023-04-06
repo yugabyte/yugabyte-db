@@ -91,14 +91,13 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id,
         "oid", entry_oid, std::move(col_names), &projection));
 
   // If no rows found, the entry does not exist.
-  if (!VERIFY_RESULT(iter->HasNext())) {
+  QLTableRow row;
+  if (!VERIFY_RESULT(iter->FetchNext(&row))) {
     return false;
   }
 
   // The entry exists. Expect only one row.
-  QLTableRow row;
-  RETURN_NOT_OK(iter->NextRow(&row));
-  CHECK(!VERIFY_RESULT(iter->HasNext()));
+  SCHECK(!VERIFY_RESULT(iter->FetchNext(nullptr)), Corruption, "Too many rows found");
   if (is_matview) {
     const auto relfilenode_col_id = VERIFY_RESULT(projection.ColumnIdByName("relfilenode")).rep();
     const auto& relfilenode = row.GetValue(relfilenode_col_id);
@@ -265,7 +264,6 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
                                                           {"oid", "relname"},
                                                           &projection));
 
-  QLTableRow row;
   auto l = table->LockForRead();
   if (!l->has_ysql_ddl_txn_verifier_state()) {
     // The table no longer has transaction verifier state on it, it was probably cleaned up
@@ -275,7 +273,8 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   }
   // Table not found in pg_class. This can only happen in two cases: Table creation failed,
   // or a table deletion went through successfully.
-  if (!VERIFY_RESULT(iter->HasNext())) {
+  QLTableRow row;
+  if (!VERIFY_RESULT(iter->FetchNext(&row))) {
     if (l->is_being_deleted_by_ysql_ddl_txn()) {
       return true;
     }
@@ -298,7 +297,6 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   // Table was being altered. Check whether its current DocDB schema matches
   // that of PG catalog.
   CHECK(l->ysql_ddl_txn_verifier_state().contains_alter_table_op());
-  RETURN_NOT_OK(iter->NextRow(&row));
   const auto relname_col_id = VERIFY_RESULT(projection.ColumnIdByName("relname")).rep();
   const auto& relname_col = row.GetValue(relname_col_id);
   const string& table_name = relname_col->string_value();
@@ -402,10 +400,8 @@ YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
   const auto attnum_col_id = VERIFY_RESULT(projection.ColumnIdByName("attnum")).rep();
 
   vector<PgColumnFields> pg_cols;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
-
+  QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attname_col = row.GetValue(attname_col_id);
     const auto& atttypid_col = row.GetValue(atttypid_col_id);
     const auto& attnum_col = row.GetValue(attnum_col_id);

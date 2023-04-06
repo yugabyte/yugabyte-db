@@ -130,13 +130,9 @@ void DocRowwiseIterator::ConfigureForYsql() {
 
 void DocRowwiseIterator::InitResult() {
   if (is_flat_doc_) {
-    result_ = std::vector<QLValuePB>();
-    values_ = &std::get<std::vector<QLValuePB>>(result_);
-    row_ = nullptr;
+    row_ = std::nullopt;
   } else {
-    result_ = SubDocument();
-    row_ = &std::get<SubDocument>(result_);
-    values_ = nullptr;
+    row_.emplace();
   }
 }
 
@@ -156,7 +152,7 @@ inline void DocRowwiseIterator::PrevDocKey(const Slice& key) {
 
 Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
   if (scan_choices_) {
-    if (!IsNextStaticColumn()
+    if (!IsFetchedRowStatic()
         && !scan_choices_->CurrentTargetMatchesKey(row_key_)) {
       return scan_choices_->SeekToCurrentTarget(db_iter_.get());
     }
@@ -171,25 +167,24 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
   return Status::OK();
 }
 
-Result<bool> DocRowwiseIterator::HasNext() {
-  VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", row_ready_: "
-          << row_ready_ << ", done_: " << done_;
+Result<bool> DocRowwiseIterator::DoFetchNext(
+    QLTableRow* table_row,
+    const Schema* projection,
+    QLTableRow* static_row,
+    const Schema* static_projection) {
+  VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", done_: "
+          << done_;
 
   // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
   // 1. If a previous call failed we returned the same status.
   // 2. If a row is already available (row_ready_), return true directly.
   // 3. If we finished all target rows for the scan (done_), return false directly.
   RETURN_NOT_OK(has_next_status_);
-  if (row_ready_) {
-    // If row is ready, then HasNext returns true.
-    return true;
-  }
   if (done_) {
     return false;
   }
 
-  bool doc_found = false;
-  while (!doc_found) {
+  for (;;) {
     if (db_iter_->IsOutOfRecords() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
       Done();
       return false;
@@ -239,7 +234,7 @@ Result<bool> DocRowwiseIterator::HasNext() {
     Slice doc_key = row_key_;
     VLOG(4) << " sub_doc_key part of iter_key_ is " << DocKey::DebugSliceToString(doc_key);
 
-    bool is_static_column = IsNextStaticColumn();
+    bool is_static_column = IsFetchedRowStatic();
     if (scan_choices_ && !is_static_column) {
       if (!scan_choices_->CurrentTargetMatchesKey(row_key_)) {
         // We must have seeked past the target key we are looking for (no result) so we can safely
@@ -287,12 +282,12 @@ Result<bool> DocRowwiseIterator::HasNext() {
     }
 
     auto doc_found_res =
-        is_flat_doc_ ? doc_reader_->GetFlat(doc_key, values_) : doc_reader_->Get(doc_key, row_);
+        is_flat_doc_ ? doc_reader_->GetFlat(doc_key, table_row) : doc_reader_->Get(doc_key, &*row_);
     if (!doc_found_res.ok()) {
       has_next_status_ = doc_found_res.status();
       return has_next_status_;
     }
-    doc_found = *doc_found_res;
+    const auto doc_found = *doc_found_res;
     // Use the write_time of the entire row.
     // May lose some precision by not examining write time of every column.
     IncrementKeyFoundStats(!doc_found, key_data.write_time);
@@ -304,8 +299,22 @@ Result<bool> DocRowwiseIterator::HasNext() {
     has_next_status_ = AdvanceIteratorToNextDesiredRow();
     RETURN_NOT_OK(has_next_status_);
     VLOG(4) << __func__ << ", iter: " << !db_iter_->IsOutOfRecords();
+
+    if (doc_found) {
+      if (table_row) {
+        if (!static_row) {
+          has_next_status_ = FillRow(table_row, projection);
+        } else if (IsFetchedRowStatic()) {
+          has_next_status_ = FillRow(static_row, static_projection);
+        } else {
+          table_row->Clear();
+          has_next_status_ = FillRow(table_row, projection);
+        }
+        RETURN_NOT_OK(has_next_status_);
+      }
+      break;
+    }
   }
-  row_ready_ = true;
   return true;
 }
 
@@ -321,78 +330,41 @@ HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
   return db_iter_->TEST_MaxSeenHt();
 }
 
-Status DocRowwiseIterator::DoNextRow(
-    boost::optional<const Schema&> projection_opt, QLTableRow* table_row) {
+Status DocRowwiseIterator::FillRow(
+    QLTableRow* table_row, const Schema* projection_opt) {
   VLOG(4) << __PRETTY_FUNCTION__;
-
-  if (PREDICT_FALSE(done_)) {
-    return STATUS(NotFound, "end of iter");
-  }
-
-  // Ensure row is ready to be read. HasNext() must be called before reading the first row, or
-  // again after the previous row has been read or skipped.
-  if (!row_ready_) {
-    return STATUS(InternalError, "next row has not be prepared for reading");
-  }
 
   // Copy required key columns to table_row.
   RETURN_NOT_OK(CopyKeyColumnsToQLTableRow(table_row));
 
-  const auto& projection = projection_opt.get_value_or(schema());
-
-  DVLOG_WITH_FUNC(4) << "table_row: " << AsString(*table_row);
   if (is_flat_doc_) {
-    DVLOG_WITH_FUNC(4) << "values: " << AsString(*values_);
-    for (size_t column_reader_idx = 0; column_reader_idx < reader_projection_.size();
-         ++column_reader_idx) {
-      const auto& column_id = reader_projection_[column_reader_idx].subkey.GetColumnId();
-      if (column_id.rep() == static_cast<ColumnIdRep>(SystemColumnIds::kLivenessColumn)) {
-        // This has been already added by SetQLPrimaryKeyColumnValues, no need to overwrite.
-        continue;
-      }
-      const auto column_projection_idx = projection.find_column_by_id(column_id);
-      DVLOG_WITH_FUNC(4) << "column_reader_idx: " << column_reader_idx
-                         << " column_id: " << column_id << " column: "
-                         << (column_projection_idx == Schema::kColumnNotFound
-                                 ? "not found"
-                                 : AsString(projection.column(column_projection_idx)));
-      if (column_projection_idx == Schema::kColumnNotFound) {
-        // TODO: potentially could be optimized to not iterate over columns in reader that
-        // we don't need here, but this is only possible in YCQL as of 2022-12-27.
-        // And for YCQL we don't use IsFlatDoc::kTrue mode, because for YCQL we can have nested
-        // SubDocuments.
-        continue;
-      }
-      const auto ql_type = projection.column(column_projection_idx).type();
-      table_row->AllocColumn(column_id, std::move((*values_)[column_reader_idx]));
-    }
-  } else {
-    DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
-    for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
-      const auto& column_id = projection.column_id(i);
-      const auto ql_type = projection.column(i).type();
-      const SubDocument* column_value = row_->GetChild(KeyEntryValue::MakeColumnId(column_id));
-      if (column_value != nullptr) {
-        QLTableColumn& column = table_row->AllocColumn(column_id);
-        column_value->ToQLValuePB(ql_type, &column.value);
-        column.ttl_seconds = column_value->GetTtl();
-        if (column_value->IsWriteTimeSet()) {
-          column.write_time = column_value->GetWriteTime();
-        }
+    return Status::OK();
+  }
+
+  const auto& projection = projection_opt ? *projection_opt : schema();
+
+  DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
+  for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
+    const auto& column_id = projection.column_id(i);
+    const auto ql_type = projection.column(i).type();
+    const SubDocument* column_value = row_->GetChild(KeyEntryValue::MakeColumnId(column_id));
+    if (column_value != nullptr) {
+      QLTableColumn& column = table_row->AllocColumn(column_id);
+      column_value->ToQLValuePB(ql_type, &column.value);
+      column.ttl_seconds = column_value->GetTtl();
+      if (column_value->IsWriteTimeSet()) {
+        column.write_time = column_value->GetWriteTime();
       }
     }
   }
 
   VLOG_WITH_FUNC(4) << "Returning row: " << table_row->ToString();
 
-  row_ready_ = false;
   return Status::OK();
 }
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
-  if (is_flat_doc_) {
-    return !IsNull((*values_)[0]);
-  }
+  CHECK(!is_flat_doc_) << "Flat doc mode not supported yet";
   const SubDocument* subdoc = row_->GetChild(KeyEntryValue::kLivenessColumn);
   return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
 }

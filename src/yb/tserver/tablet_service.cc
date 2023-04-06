@@ -2407,8 +2407,7 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) 
   QLTableRow value_map;
   ScanResultChecksummer collector;
 
-  while (VERIFY_RESULT((**iter).HasNext())) {
-    RETURN_NOT_OK((**iter).NextRow(&value_map));
+  while (VERIFY_RESULT((**iter).FetchNext(&value_map))) {
     collector.HandleRow(*schema, value_map);
   }
 
