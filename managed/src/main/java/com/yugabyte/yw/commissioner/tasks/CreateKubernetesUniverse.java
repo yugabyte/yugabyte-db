@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -50,15 +51,15 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       // Verify the task params.
       verifyParams(UniverseOpType.CREATE);
 
-      if (taskParams().getPrimaryCluster().userIntent.enableYCQL
-          && taskParams().getPrimaryCluster().userIntent.enableYCQLAuth) {
-        ycqlPassword = taskParams().getPrimaryCluster().userIntent.ycqlPassword;
-        taskParams().getPrimaryCluster().userIntent.ycqlPassword = Util.redactString(ycqlPassword);
+      Cluster primaryCluster = taskParams().getPrimaryCluster();
+
+      if (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth) {
+        ycqlPassword = primaryCluster.userIntent.ycqlPassword;
+        primaryCluster.userIntent.ycqlPassword = RedactingService.redactString(ycqlPassword);
       }
-      if (taskParams().getPrimaryCluster().userIntent.enableYSQL
-          && taskParams().getPrimaryCluster().userIntent.enableYSQLAuth) {
-        ysqlPassword = taskParams().getPrimaryCluster().userIntent.ysqlPassword;
-        taskParams().getPrimaryCluster().userIntent.ysqlPassword = Util.redactString(ysqlPassword);
+      if (primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth) {
+        ysqlPassword = primaryCluster.userIntent.ysqlPassword;
+        primaryCluster.userIntent.ysqlPassword = RedactingService.redactString(ysqlPassword);
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -122,8 +123,6 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
         createTableTask(TableType.REDIS_TABLE_TYPE, YBClient.REDIS_DEFAULT_TABLE_NAME, null)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
-
-      Cluster primaryCluster = taskParams().getPrimaryCluster();
 
       // Change admin password for Admin user, as specified.
       if ((primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth)

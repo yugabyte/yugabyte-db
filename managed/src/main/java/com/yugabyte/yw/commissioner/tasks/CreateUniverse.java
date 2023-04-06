@@ -24,6 +24,7 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -135,11 +136,11 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
         if (isFirstTryForTask(taskParams())) {
           if (isYCQLAuthEnabled) {
             taskParams().getPrimaryCluster().userIntent.ycqlPassword =
-                Util.redactString(ycqlPassword);
+                RedactingService.redactString(ycqlPassword);
           }
           if (isYSQLAuthEnabled) {
             taskParams().getPrimaryCluster().userIntent.ysqlPassword =
-                Util.redactString(ysqlPassword);
+                RedactingService.redactString(ysqlPassword);
           }
           log.debug("Storing passwords in memory");
           passwordStore.put(universe.universeUUID, new AuthPasswords(ycqlPassword, ysqlPassword));

@@ -215,9 +215,8 @@ public class CloudBootstrap extends CloudTaskBase {
   public SubTaskGroup createCloudSetupTask() {
     SubTaskGroup subTaskGroup =
         getTaskExecutor().createSubTaskGroup("Create Cloud setup task", executor);
-    CloudSetup.Params params = new CloudSetup.Params();
-    params.providerUUID = taskParams().providerUUID;
-    params.customPayload = Json.stringify(Json.toJson(taskParams()));
+    CloudBootstrap.Params params =
+        Json.fromJson(Json.toJson(taskParams()), CloudBootstrap.Params.class);
     CloudSetup task = createTask(CloudSetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

@@ -15,10 +15,12 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.password.RedactingService;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -101,7 +103,14 @@ public class ShellProcessHandler {
             redactedCommand.add(key);
             command.add(key);
             command.add(value);
-            redactedCommand.add(Util.redactString(value));
+
+            try {
+              JsonNode valueJson = Json.mapper().readTree(value);
+              redactedCommand.add(RedactingService.filterSecretFields(valueJson).toString());
+
+            } catch (IOException e) {
+              redactedCommand.add(RedactingService.redactString(value));
+            }
           });
     }
 
