@@ -2014,7 +2014,6 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 			bool att_in_modified_cols = bms_is_member(
 				att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
 				modifiedCols);
-			bms_free(modifiedCols);
 
 			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
 			{
@@ -2023,6 +2022,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				 * modified columns. But in this case it is safe to skip the
 				 * unmodified columns anyway.
 				 */
+				bms_free(modifiedCols);
 				continue;
 			}
 
@@ -2073,6 +2073,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 						 val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
 						 errtablecol(orig_rel, attrChk)));
 			}
+			bms_free(modifiedCols);
 		}
 	}
 
