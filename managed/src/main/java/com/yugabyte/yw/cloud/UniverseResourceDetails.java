@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
@@ -147,7 +148,7 @@ public class UniverseResourceDetails {
       if (Math.abs(instancePrice.getPriceDetails().pricePerHour - 0) < EPSILON) {
         setPricingKnown(false);
       }
-      if (!nodeDetails.isNodeRunning()) {
+      if (!context.isNodeCounted(nodeDetails)) {
         continue;
       }
 
@@ -286,6 +287,7 @@ public class UniverseResourceDetails {
     Map<ProviderAndRegion, Region> regionsMap;
     Map<InstanceTypeKey, InstanceType> instanceTypeMap;
     Map<PriceComponentKey, PriceComponent> priceComponentMap;
+    boolean isCreateOrEdit;
 
     public Context(Config config, Universe universe) {
       this(
@@ -299,8 +301,25 @@ public class UniverseResourceDetails {
     }
 
     public Context(
+        Config config,
+        Customer customer,
+        UniverseDefinitionTaskParams universeParams,
+        boolean isCreateOrEdit) {
+      this(config, customer, Collections.singletonList(universeParams), isCreateOrEdit);
+    }
+
+    public Context(
         Config config, Customer customer, Collection<UniverseDefinitionTaskParams> universeParams) {
+      this(config, customer, universeParams, false);
+    }
+
+    public Context(
+        Config config,
+        Customer customer,
+        Collection<UniverseDefinitionTaskParams> universeParams,
+        boolean isCreateOrEdit) {
       this.config = config;
+      this.isCreateOrEdit = isCreateOrEdit;
       providerMap =
           Provider.getAll(customer.getUuid())
               .stream()
@@ -314,7 +333,7 @@ public class UniverseResourceDetails {
                   ud ->
                       ud.nodeDetailsSet
                           .stream()
-                          .filter(NodeDetails::isActive)
+                          .filter(this::isNodeCounted)
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.instance_type != null)
                           .map(
@@ -338,7 +357,7 @@ public class UniverseResourceDetails {
                   ud ->
                       ud.nodeDetailsSet
                           .stream()
-                          .filter(NodeDetails::isNodeRunning)
+                          .filter(this::isNodeCounted)
                           .filter(nodeDetails -> nodeDetails.cloudInfo != null)
                           .filter(nodeDetails -> nodeDetails.cloudInfo.region != null)
                           .map(
@@ -388,6 +407,17 @@ public class UniverseResourceDetails {
         UUID providerUuid, String regionCode, String componentCode) {
       return priceComponentMap.get(
           PriceComponentKey.create(providerUuid, regionCode, componentCode));
+    }
+
+    public boolean isNodeCounted(NodeDetails nodeDetails) {
+      if (isCreateOrEdit) {
+        // In case we calculate cost for 'to be' universe during create or edit - count nodes,
+        // which will be added and avoid counting ones, which are going to be removed.
+        return (nodeDetails.isNodeRunning() || nodeDetails.state == NodeState.ToBeAdded)
+            && nodeDetails.state != NodeState.ToBeRemoved;
+      } else {
+        return nodeDetails.isNodeRunning();
+      }
     }
   }
 }

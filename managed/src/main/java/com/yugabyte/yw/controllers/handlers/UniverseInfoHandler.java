@@ -86,7 +86,7 @@ public class UniverseInfoHandler {
               .collect(Collectors.toSet());
     }
     UniverseResourceDetails.Context context =
-        new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParams);
+        new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParams, true);
     return UniverseResourceDetails.create(nodesInCluster, taskParams, context);
   }
 
