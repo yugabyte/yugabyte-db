@@ -292,7 +292,16 @@ public class YbcBackupUtil {
   }
 
   public String getYbcTaskID(UUID uuid, String backupType, String keyspace) {
-    return String.format("%s_%s_%s", uuid.toString(), backupType, keyspace);
+    return getYbcTaskID(uuid, backupType, keyspace, null);
+  }
+
+  public String getYbcTaskID(UUID uuid, String backupType, String keyspace, UUID paramsIdentifier) {
+    if (paramsIdentifier != null) {
+      return String.format(
+          "%s_%s_%s_%s", uuid.toString(), backupType, keyspace, paramsIdentifier.toString());
+    } else {
+      return String.format("%s_%s_%s", uuid.toString(), backupType, keyspace);
+    }
   }
 
   /**
@@ -322,7 +331,8 @@ public class YbcBackupUtil {
         getYbcTaskID(
             backupTableParams.backupUuid,
             backupTableParams.backupType.name(),
-            backupTableParams.getKeyspace());
+            backupTableParams.getKeyspace(),
+            backupTableParams.backupParamsIdentifier);
 
     NamespaceType namespaceType = getNamespaceType(backupTableParams.backupType);
     String specificCloudDir =
@@ -330,7 +340,7 @@ public class YbcBackupUtil {
 
     // For previous backup location( default + regional)
     Map<String, String> keyspacePreviousLocationsMap =
-        backupUtil.getKeyspaceLocationMap(previousTableParams);
+        backupUtil.getLocationMap(previousTableParams);
     CloudStoreConfig cloudStoreConfig =
         createBackupConfig(config, specificCloudDir, keyspacePreviousLocationsMap);
     BackupServiceTaskExtendedArgs extendedArgs = getExtendedArgsForBackup(backupTableParams);
@@ -672,6 +682,15 @@ public class YbcBackupUtil {
   }
 
   public String getBaseLogMessage(UUID backupUUID, String keyspace) {
+    return getBaseLogMessage(backupUUID, keyspace, null);
+  }
+
+  public String getBaseLogMessage(UUID backupUUID, String keyspace, UUID paramsIdentifier) {
+    if (paramsIdentifier != null) {
+      return String.format(
+          "Backup %s - Keyspace %s - ParamsIdentifier %s :",
+          backupUUID.toString(), keyspace, paramsIdentifier.toString());
+    }
     return String.format("Backup %s - Keyspace %s :", backupUUID.toString(), keyspace);
   }
 

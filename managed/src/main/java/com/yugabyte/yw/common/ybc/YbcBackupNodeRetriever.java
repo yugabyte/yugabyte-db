@@ -33,7 +33,7 @@ public class YbcBackupNodeRetriever {
     this.ybcManager = StaticInjectorHolder.injector().instanceOf(YbcManager.class);
   }
 
-  public void initializeNodePoolForBackups(Map<String, ParallelBackupState> backupDBStates) {
+  public void initializeNodePoolForBackups(Map<UUID, ParallelBackupState> backupDBStates) {
     Set<String> nodeIPsAlreadyAssigned =
         backupDBStates.entrySet().stream()
             .filter(
