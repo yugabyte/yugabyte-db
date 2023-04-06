@@ -18,6 +18,7 @@
 #include "yb/docdb/doc_expr.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -163,8 +164,9 @@ class PgsqlReadOperation : public DocExprExecutor {
                          bool is_explicit_request_read_time,
                          const DocReadContext& doc_read_context,
                          const DocReadContext* index_doc_read_context,
-                         WriteBuffer *result_buffer,
-                         HybridTime *restart_read_ht);
+                         WriteBuffer* result_buffer,
+                         HybridTime* restart_read_ht,
+                         const DocDBStatistics* statistics = nullptr);
 
   Status GetTupleId(QLValuePB *result) const override;
 
@@ -177,27 +179,30 @@ class PgsqlReadOperation : public DocExprExecutor {
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
-                               const DocReadContext *index_doc_read_context,
-                               WriteBuffer *result_buffer,
-                               HybridTime *restart_read_ht,
-                               bool *has_paging_state);
+                               const DocReadContext* index_doc_read_context,
+                               WriteBuffer* result_buffer,
+                               HybridTime* restart_read_ht,
+                               bool* has_paging_state,
+                               const DocDBStatistics* statistics);
 
   // Execute a READ operator for a given batch of ybctids.
   Result<size_t> ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
                                     const DocReadContext& doc_read_context,
-                                    WriteBuffer *result_buffer,
-                                    HybridTime *restart_read_ht);
+                                    WriteBuffer* result_buffer,
+                                    HybridTime* restart_read_ht,
+                                    const DocDBStatistics* statistics);
 
   Result<size_t> ExecuteSample(const YQLStorageIf& ql_storage,
                                CoarseTimePoint deadline,
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
-                               WriteBuffer *result_buffer,
-                               HybridTime *restart_read_ht,
-                               bool *has_paging_state);
+                               WriteBuffer* result_buffer,
+                               HybridTime* restart_read_ht,
+                               bool* has_paging_state,
+                               const DocDBStatistics* statistics);
 
   Status PopulateResultSet(const QLTableRow& table_row,
                            WriteBuffer *result_buffer);

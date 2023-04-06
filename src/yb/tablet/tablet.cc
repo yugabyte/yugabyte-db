@@ -68,6 +68,7 @@
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
@@ -221,6 +222,10 @@ DEFINE_UNKNOWN_bool(tablet_enable_ttl_file_filter, false,
 
 DEFINE_UNKNOWN_bool(enable_schema_packing_gc, true, "Whether schema packing GC is enabled.");
 
+DEFINE_RUNTIME_bool(batch_tablet_metrics_update, true,
+                    "Batch update of rocksdb metrics to once per request rather than updating "
+                    "immediately.");
+
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
@@ -310,6 +315,8 @@ const std::hash<std::string> hash_for_data_root_dir;
 ////////////////////////////////////////////////////////////
 
 namespace {
+
+thread_local docdb::DocDBStatistics scoped_docdb_statistics;
 
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
@@ -1634,10 +1641,19 @@ Status Tablet::HandlePgsqlReadRequest(
           transaction_metadata,
           table_info->schema().table_properties().is_ysql_catalog_table(),
           &subtransaction_metadata);
+
+  scoped_docdb_statistics.SetHistogramContext(regulardb_statistics_, intentsdb_statistics_);
+  auto* statistics =
+      GetAtomicFlag(&FLAGS_batch_tablet_metrics_update) ? &scoped_docdb_statistics : nullptr;
+
   RETURN_NOT_OK(txn_op_ctx);
   auto status = ProcessPgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
-      pgsql_read_request, table_info, *txn_op_ctx, result);
+      pgsql_read_request, table_info, *txn_op_ctx, statistics, result);
+
+  if (statistics) {
+    statistics->MergeAndClear(regulardb_statistics_.get(), intentsdb_statistics_.get());
+  }
 
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
