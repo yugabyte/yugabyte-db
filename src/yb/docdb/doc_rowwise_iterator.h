@@ -28,6 +28,7 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/subdocument.h"
@@ -54,7 +55,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     const DocDBStatistics* statistics = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
@@ -63,7 +65,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     const DocDBStatistics* statistics = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -72,7 +75,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     const DocDBStatistics* statistics = nullptr);
 
   ~DocRowwiseIterator() override;
 
@@ -121,6 +125,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   std::optional<SubDocument> row_;
 
   std::unique_ptr<DocDBTableReader> doc_reader_;
+
+  const DocDBStatistics* statistics_;
 };
 
 }  // namespace docdb

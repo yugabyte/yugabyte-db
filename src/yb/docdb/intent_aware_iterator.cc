@@ -107,7 +107,8 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const TransactionOperationContext& txn_op_context)
+    const TransactionOperationContext& txn_op_context,
+    rocksdb::Statistics* intentsdb_statistics)
     : read_time_(read_time),
       encoded_read_time_(read_time),
       txn_op_context_(txn_op_context),
@@ -124,7 +125,8 @@ IntentAwareIterator::IntentAwareIterator(
                                                   boost::none,
                                                   rocksdb::kDefaultQueryId,
                                                   nullptr /* file_filter */,
-                                                  &intent_upperbound_);
+                                                  &intent_upperbound_,
+                                                  intentsdb_statistics);
     } else {
       VLOG(4) << "No transactions running";
     }
