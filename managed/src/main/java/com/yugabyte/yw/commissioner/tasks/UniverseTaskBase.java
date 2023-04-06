@@ -2414,6 +2414,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     YbcBackupNodeRetriever nodeRetriever =
         new YbcBackupNodeRetriever(backupParams.universeUUID, parallelDBBackups);
     nodeRetriever.initializeNodePoolForBackups(backupStates);
+    Backup previousBackup =
+        (!backupParams.baseBackupUUID.equals(backupParams.backupUuid))
+            ? Backup.getLastSuccessfulBackupInChain(
+                backupParams.customerUuid, backupParams.baseBackupUUID)
+            : null;
     backupParams
         .backupList
         .stream()
@@ -2422,6 +2427,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             bTP -> {
               BackupTableYbc task = createTask(BackupTableYbc.class);
               BackupTableYbc.Params backupYbcParams = new BackupTableYbc.Params(bTP, nodeRetriever);
+              backupYbcParams.previousBackup = previousBackup;
               backupYbcParams.nodeIp = backupStates.get(bTP.getKeyspace()).nodeIp;
               backupYbcParams.taskID = backupStates.get(bTP.getKeyspace()).currentYbcTaskId;
               task.initialize(backupYbcParams);
