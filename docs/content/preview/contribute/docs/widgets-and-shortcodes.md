@@ -18,21 +18,21 @@ There are a number of display widgets and shortcodes available. All the shortcod
 
 To remove unnecessary headings from ToC.
 
-```
+```md
 # For Heading 2
-{{< header Level="2" >}}Consistency{{< /header >}}
+{{</* header Level="2" */>}}Consistency{{</* /header */>}}
 
 # For Heading 3
-{{< header Level="3" >}}Consistency{{< /header >}}
+{{</* header Level="3" */>}}Consistency{{</* /header */>}}
 
 # For Heading 4
-{{< header Level="4" >}}Consistency{{< /header >}}
+{{</* header Level="4" */>}}Consistency{{</* /header */>}}
 
 # For Heading 5
-{{< header Level="5" >}}Consistency{{< /header >}}
+{{</* header Level="5" */>}}Consistency{{</* /header */>}}
 
 # For Heading 6
-{{< header Level="6" >}}Consistency{{< /header >}}
+{{</* header Level="6" */>}}Consistency{{</* /header */>}}
 ```
 
 ## Admonition boxes
