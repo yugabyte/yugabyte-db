@@ -27,7 +27,6 @@ import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
 
-import { YBTag } from '../../common/YBTag';
 import { YBConfirmModal } from '../../modals';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
@@ -283,11 +282,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               {currentUniverseUUID && backupDetails.isStorageConfigPresent && (
                 <Col lg={6} className="no-padding">
                   <YBButton
-                    btnText={
-                      <>
-                        Add Incremental Backup<YBTag>Beta</YBTag>
-                      </>
-                    }
+                    btnText="Add Incremental Backup"
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
                     disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
