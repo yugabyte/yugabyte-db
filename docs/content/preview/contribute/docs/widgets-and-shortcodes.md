@@ -14,6 +14,27 @@ type: docs
 
 There are a number of display widgets and shortcodes available. All the shortcodes mentioned on this page are defined in [/docs/layouts/shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/shortcodes/).
 
+## Heading (Skipping ToC)
+
+To remove unnecessary headings from ToC.
+
+```md
+# For Heading 2
+{{</* header Level="2" */>}}Consistency{{</* /header */>}}
+
+# For Heading 3
+{{</* header Level="3" */>}}Consistency{{</* /header */>}}
+
+# For Heading 4
+{{</* header Level="4" */>}}Consistency{{</* /header */>}}
+
+# For Heading 5
+{{</* header Level="5" */>}}Consistency{{</* /header */>}}
+
+# For Heading 6
+{{</* header Level="6" */>}}Consistency{{</* /header */>}}
+```
+
 ## Admonition boxes
 
 Use the note, tip, and warning shortcodes to create admonition boxes.

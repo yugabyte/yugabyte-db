@@ -1,10 +1,6 @@
-{{ $sz := 3 }}
-{{if (.Get "size") }}
-    {{ $psz := (int .Params.size)}}
-    {{if (and (ge $psz 1) (le $psz 6)) }}
-        {{ $sz = $psz}}
-    {{end}}
-{{end}}
-<h{{$sz}} id="{{ .Params.title | .Page.RenderString | anchorize}}">
-    {{.Params.title | .Page.RenderString}}
-</h{{$sz}}>
+{{ $headingAnchor := urlize .Inner }}
+{{- if .Params.id -}}
+  {{ $headingAnchor = .Params.id }}
+{{- end -}}
+
+<h{{ .Params.Level }} id="{{ $headingAnchor | safeURL }}">{{- .Inner | safeHTML -}}</h{{ .Params.Level }}>
