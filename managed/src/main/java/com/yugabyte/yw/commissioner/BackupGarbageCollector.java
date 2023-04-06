@@ -6,7 +6,6 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 
 import com.amazonaws.SDKGlobalConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackupYb;
@@ -289,11 +288,7 @@ public class BackupGarbageCollector {
               break;
             case NFS:
               if (isUniversePresent(backup)) {
-                BackupTableParams backupParams = backup.getBackupInfo();
-                List<BackupTableParams> backupList =
-                    backupParams.backupList == null
-                        ? ImmutableList.of(backupParams)
-                        : backupParams.backupList;
+                List<BackupTableParams> backupList = backup.getBackupParamsCollection();
                 boolean success;
                 if (backup.getCategory().equals(BackupCategory.YB_CONTROLLER)) {
                   success = ybcManager.deleteNfsDirectory(backup);
