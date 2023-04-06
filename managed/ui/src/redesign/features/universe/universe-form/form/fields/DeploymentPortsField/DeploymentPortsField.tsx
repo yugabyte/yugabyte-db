@@ -1,9 +1,16 @@
 import React, { FC } from 'react';
+import _ from 'lodash';
+import { useEffectOnce } from 'react-use';
 import { useTranslation } from 'react-i18next';
 import { Controller, useWatch, useFormContext } from 'react-hook-form';
 import { Box, Grid } from '@material-ui/core';
 import { YBInput, YBToggleField, YBLabel } from '../../../../../../components';
-import { CloudType, DEFAULT_COMMUNICATION_PORTS, UniverseFormData } from '../../../utils/dto';
+import {
+  CloudType,
+  DEFAULT_COMMUNICATION_PORTS,
+  UniverseFormData,
+  CommunicationPorts
+} from '../../../utils/dto';
 import {
   COMMUNICATION_PORTS_FIELD,
   YCQL_FIELD,
@@ -16,12 +23,13 @@ import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface DeploymentPortsFieldids {
   disabled: boolean;
+  isEditMode?: boolean;
 }
 
 const MAX_PORT = 65535;
 
-export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled }) => {
-  const { control } = useFormContext<UniverseFormData>();
+export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled, isEditMode }) => {
+  const { control, getValues, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const classes = useFormFieldStyles();
 
@@ -46,6 +54,20 @@ export const DeploymentPortsField: FC<DeploymentPortsFieldids> = ({ disabled }) 
     { id: 'ysqlServerRpcPort', visible: ysqlEnabled },
     { id: 'nodeExporterPort', visible: provider?.code !== CloudType.onprem }
   ].filter((ports) => ports.visible);
+
+  const isPortsCustomized = (communicationPorts: CommunicationPorts) => {
+    return portsConfig.reduce(
+      (acc, current) =>
+        acc || DEFAULT_COMMUNICATION_PORTS[current.id] !== communicationPorts[current.id],
+      false
+    );
+  };
+
+  useEffectOnce(() => {
+    if (isEditMode && isPortsCustomized(getValues(COMMUNICATION_PORTS_FIELD))) {
+      setValue(CUSTOMIZE_PORT_FIELD, true);
+    }
+  });
 
   return (
     <Controller
