@@ -19,6 +19,7 @@
 #include "yb/common/transaction.pb.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/util/result.h"
@@ -124,6 +125,7 @@ class AbstractTablet {
                                  const PgsqlReadRequestPB& pgsql_read_request,
                                  const std::shared_ptr<TableInfo>& table_info,
                                  const TransactionOperationContext& txn_op_context,
+                                 const docdb::DocDBStatistics* statistics,
                                  PgsqlReadRequestResult* result);
 
   virtual bool IsTransactionalRequest(bool is_ysql_request) const = 0;

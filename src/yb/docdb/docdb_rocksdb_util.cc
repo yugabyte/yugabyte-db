@@ -342,7 +342,8 @@ rocksdb::ReadOptions PrepareReadOptions(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
-    const Slice* iterate_upper_bound) {
+    const Slice* iterate_upper_bound,
+    rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
   if (FLAGS_use_docdb_aware_bloom_filter &&
@@ -353,6 +354,7 @@ rocksdb::ReadOptions PrepareReadOptions(
   }
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
+  read_opts.statistics = statistics;
   return read_opts;
 }
 
@@ -365,9 +367,10 @@ BoundedRocksDbIterator CreateRocksDBIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
-    const Slice* iterate_upper_bound) {
+    const Slice* iterate_upper_bound,
+    rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
+      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound, statistics);
   return BoundedRocksDbIterator(rocksdb, read_opts, docdb_key_bounds);
 }
 
@@ -380,12 +383,15 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
-    const Slice* iterate_upper_bound) {
+    const Slice* iterate_upper_bound,
+    const DocDBStatistics* statistics) {
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
+      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
+      statistics ? statistics->RegularDBStatistics() : nullptr);
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, deadline, read_time, txn_op_context);
+      doc_db, read_opts, deadline, read_time, txn_op_context,
+      statistics ? statistics->IntentsDBStatistics() : nullptr);
 }
 
 namespace {

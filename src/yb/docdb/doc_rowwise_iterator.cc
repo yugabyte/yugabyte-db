@@ -24,6 +24,7 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/expiration.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/scan_choices.h"
@@ -55,11 +56,12 @@ DocRowwiseIterator::DocRowwiseIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter,
-    boost::optional<size_t>
-        end_referenced_key_column_index)
+    boost::optional<size_t> end_referenced_key_column_index,
+    const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index) {}
+          pending_op_counter, end_referenced_key_column_index),
+      statistics_(statistics) {}
 
 DocRowwiseIterator::DocRowwiseIterator(
     std::unique_ptr<Schema> projection,
@@ -70,11 +72,12 @@ DocRowwiseIterator::DocRowwiseIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter,
-    boost::optional<size_t>
-        end_referenced_key_column_index)
+    boost::optional<size_t> end_referenced_key_column_index,
+    const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           std::move(projection), doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index) {}
+          pending_op_counter, end_referenced_key_column_index),
+      statistics_(statistics) {}
 
 DocRowwiseIterator::DocRowwiseIterator(
     std::unique_ptr<Schema> projection,
@@ -85,11 +88,12 @@ DocRowwiseIterator::DocRowwiseIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter,
-    boost::optional<size_t>
-        end_referenced_key_column_index)
+    boost::optional<size_t> end_referenced_key_column_index,
+    const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           std::move(projection), doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index) {}
+          pending_op_counter, end_referenced_key_column_index),
+      statistics_(statistics) {}
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
 
@@ -113,7 +117,9 @@ void DocRowwiseIterator::InitIterator(
       txn_op_context_,
       deadline_,
       read_time_,
-      file_filter);
+      file_filter,
+      nullptr /* iterate_upper_bound */,
+      statistics_);
   InitResult();
 
   if (is_forward_scan_ && has_bound_key_) {
