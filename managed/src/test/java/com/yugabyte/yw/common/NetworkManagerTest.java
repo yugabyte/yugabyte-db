@@ -62,7 +62,7 @@ public class NetworkManagerTest extends FakeDBApplication {
       response.code = 0;
       response.message = "{\"foo\": \"bar\"}";
     }
-    when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+    when(shellProcessHandler.run(anyList(), anyMap(), anyString(), anyMap())).thenReturn(response);
     return networkManager.bootstrap(regionUUID, providerUUID, customPayload);
   }
 
@@ -114,10 +114,8 @@ public class NetworkManagerTest extends FakeDBApplication {
   public void testBootstrapCommandWithProvider() {
     JsonNode json = runBootstrap(null, defaultRegion.provider.uuid, "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
-    assertEquals(
-        String.join(" ", command.getValue()),
-        "bin/ybcloud.sh aws network bootstrap --custom_payload {}");
+        .run(command.capture(), cloudCredentials.capture(), anyString(), anyMap());
+    assertEquals(String.join(" ", command.getValue()), "bin/ybcloud.sh aws network bootstrap");
     assertValue(json, "foo", "bar");
   }
 
@@ -127,10 +125,8 @@ public class NetworkManagerTest extends FakeDBApplication {
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "US West1", "yb-image");
     JsonNode json = runBootstrap(null, gcpRegion.provider.uuid, "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
-    assertEquals(
-        String.join(" ", command.getValue()),
-        "bin/ybcloud.sh gcp network bootstrap --custom_payload {}");
+        .run(command.capture(), cloudCredentials.capture(), anyString(), anyMap());
+    assertEquals(String.join(" ", command.getValue()), "bin/ybcloud.sh gcp network bootstrap");
     assertValue(json, "foo", "bar");
   }
 
@@ -141,10 +137,8 @@ public class NetworkManagerTest extends FakeDBApplication {
     String payload = "{\"region\": \"gcptest\"}";
     JsonNode json = runBootstrap(null, gcpRegion.provider.uuid, payload, false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
-    assertEquals(
-        String.join(" ", command.getValue()),
-        "bin/ybcloud.sh gcp network bootstrap --custom_payload " + payload);
+        .run(command.capture(), cloudCredentials.capture(), anyString(), anyMap());
+    assertEquals(String.join(" ", command.getValue()), "bin/ybcloud.sh gcp network bootstrap");
     assertValue(json, "foo", "bar");
   }
 
@@ -152,10 +146,10 @@ public class NetworkManagerTest extends FakeDBApplication {
   public void testBootstrapCommandWithRegion() {
     JsonNode json = runBootstrap(defaultRegion.uuid, null, "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), cloudCredentials.capture(), anyString(), anyMap());
     assertEquals(
         String.join(" ", command.getValue()),
-        "bin/ybcloud.sh aws --region us-west-2 network bootstrap --custom_payload {}");
+        "bin/ybcloud.sh aws --region us-west-2 network bootstrap");
     assertValue(json, "foo", "bar");
   }
 
@@ -164,10 +158,10 @@ public class NetworkManagerTest extends FakeDBApplication {
     // If both are provided, we first check for region and use --region if available.
     JsonNode json = runBootstrap(defaultRegion.uuid, defaultRegion.provider.uuid, "{}", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), cloudCredentials.capture(), anyString(), anyMap());
     assertEquals(
         String.join(" ", command.getValue()),
-        "bin/ybcloud.sh aws --region us-west-2 network bootstrap --custom_payload {}");
+        "bin/ybcloud.sh aws --region us-west-2 network bootstrap");
     assertValue(json, "foo", "bar");
   }
 }

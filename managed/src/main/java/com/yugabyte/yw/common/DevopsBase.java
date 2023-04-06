@@ -58,10 +58,46 @@ public abstract class DevopsBase {
     return parseShellResponse(response, command);
   }
 
+  protected JsonNode execAndParseCommandCloud(
+      UUID providerUUID,
+      String command,
+      List<String> commandArgs,
+      Map<String, String> sensitiveData) {
+    ShellResponse response =
+        execCommand(
+            null,
+            providerUUID,
+            null,
+            command,
+            commandArgs,
+            Collections.emptyList(),
+            null,
+            sensitiveData);
+    return parseShellResponse(response, command);
+  }
+
   protected JsonNode execAndParseCommandRegion(
       UUID regionUUID, String command, List<String> commandArgs) {
     ShellResponse response =
         execCommand(regionUUID, null, null, command, commandArgs, Collections.emptyList());
+    return parseShellResponse(response, command);
+  }
+
+  protected JsonNode execAndParseCommandRegion(
+      UUID regionUUID,
+      String command,
+      List<String> commandArgs,
+      Map<String, String> sensitiveData) {
+    ShellResponse response =
+        execCommand(
+            regionUUID,
+            null,
+            null,
+            command,
+            commandArgs,
+            Collections.emptyList(),
+            null,
+            sensitiveData);
     return parseShellResponse(response, command);
   }
 
