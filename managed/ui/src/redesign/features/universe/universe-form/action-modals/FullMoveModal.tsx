@@ -58,9 +58,8 @@ export const FullMoveModal: FC<FMModalProps> = ({
         <Box className={classes.configConfirmationBox}>
           <b>{userIntent?.instanceType}</b>&nbsp;type
           <br />
-          <b>{userIntent?.deviceInfo?.numVolumes}Gb</b>{' '}
+          <b>{userIntent?.deviceInfo?.numVolumes}</b>{' '}
           {pluralize('volume', userIntent?.deviceInfo?.numVolumes)} of &nbsp;
-          {t('universeForm.perInstance')}
           <b>{userIntent?.deviceInfo?.volumeSize}Gb</b> {t('universeForm.perInstance')}
         </Box>
         <Box className={classes.configConfirmationBox}>
