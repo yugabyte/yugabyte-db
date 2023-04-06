@@ -76,11 +76,6 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
 
   ~DocRowwiseIterator() override;
 
-  // This must always be called before NextRow. The implementation actually finds the
-  // first row to scan, and NextRow expects the RocksDB iterator to already be properly
-  // positioned.
-  Result<bool> HasNext() override;
-
   std::string ToString() const override;
 
   // Check if liveness column exists. Should be called only after HasNext() has been called to
@@ -98,10 +93,15 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) override;
 
+  Result<bool> DoFetchNext(
+      QLTableRow* table_row,
+      const Schema* projection,
+      QLTableRow* static_row,
+      const Schema* static_projection) override;
+
   void Seek(const Slice& key) override;
   void PrevDocKey(const Slice& key) override;
 
- private:
   void ConfigureForYsql();
   void InitResult();
 
@@ -111,17 +111,14 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   Status AdvanceIteratorToNextDesiredRow() const;
 
   // Read next row into a value map using the specified projection.
-  Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
+  Status FillRow(QLTableRow* table_row, const Schema* projection);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
 
   IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
 
-  // HasNext constructs the whole row's SubDocument or vector of values.
-  std::variant<std::monostate, SubDocument, std::vector<QLValuePB>> result_;
   // Points to appropriate alternative owned by result_ field.
-  SubDocument* row_;
-  std::vector<QLValuePB>* values_;
+  std::optional<SubDocument> row_;
 
   std::unique_ptr<DocDBTableReader> doc_reader_;
 };

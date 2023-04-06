@@ -38,10 +38,13 @@ class YQLRowwiseIteratorIf {
   // Pure virtual API methods.
   //------------------------------------------------------------------------------------------------
   // Checks whether next row exists.
-  virtual Result<bool> HasNext() = 0;
-
-  // Skip the current row.
-  virtual void SkipRow() = 0;
+  Result<bool> FetchNext(
+      QLTableRow* table_row,
+      const Schema* projection = nullptr,
+      QLTableRow* static_row = nullptr,
+      const Schema* static_projection = nullptr) {
+    return DoFetchNext(table_row, projection, static_row, static_projection);
+  }
 
   // If restart is required returns restart hybrid time, based on iterated records.
   // Otherwise returns invalid hybrid time.
@@ -62,7 +65,7 @@ class YQLRowwiseIteratorIf {
 
   // Apache Cassandra Only: CQL supports static columns while all other intefaces do not.
   // Is the next row column to read a static column?
-  virtual bool IsNextStaticColumn() const {
+  virtual bool IsFetchedRowStatic() const {
     return false;
   }
 
@@ -73,24 +76,17 @@ class YQLRowwiseIteratorIf {
   virtual Result<Slice> GetTupleId() const;
 
   // Seeks to the given tuple by its id. See DocRowwiseIterator for details.
-  virtual Result<bool> SeekTuple(const Slice& tuple_id);
+  virtual void SeekTuple(const Slice& tuple_id);
 
-  //------------------------------------------------------------------------------------------------
-  // Common API methods.
-  //------------------------------------------------------------------------------------------------
-  // Read next row using the specified projection.
-  // REQUIRES: projection should be a subset of schema().
-  Status NextRow(const Schema& projection, QLTableRow* row) {
-    return DoNextRow(projection, row);
-  }
+  virtual Result<bool> FetchTuple(const Slice& tuple_id, QLTableRow* row);
 
-  // Read next row using whole schema() as a projection.
-  Status NextRow(QLTableRow* row) {
-    return DoNextRow(boost::none, row);
-  }
+ protected:
+  virtual Result<bool> DoFetchNext(
+      QLTableRow* table_row,
+      const Schema* projection,
+      QLTableRow* static_row,
+      const Schema* static_projection) = 0;
 
- private:
-  virtual Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) = 0;
 };
 
 }  // namespace docdb

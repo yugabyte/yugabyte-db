@@ -143,7 +143,7 @@ TEST_F(TestTabletSchema, TestRowIteratorWithAlterSchema) {
       SleepFor(MonoDelta::FromMilliseconds(100));
     }
     // 3. Previous schema context should be preserved even after schema change.
-    iter->IsNextStaticColumn();
+    iter->IsFetchedRowStatic();
   });
   SchemaBuilder builder2(*tablet()->metadata()->schema());
   ASSERT_OK(builder2.RenameColumn("c1", "c1_renamed"));

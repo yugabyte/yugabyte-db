@@ -160,9 +160,7 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
 
   QLTableRow row;
   QLValue value;
-  while (ASSERT_RESULT((**iter).HasNext())) {
-    ASSERT_OK_FAST((**iter).NextRow(&row));
-
+  while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "Fetched row: " << row.ToString();
     }
