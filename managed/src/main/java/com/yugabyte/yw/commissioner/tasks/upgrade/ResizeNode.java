@@ -103,13 +103,13 @@ public class ResizeNode extends UpgradeTaskBase {
             UniverseDefinitionTaskParams.UserIntent currentIntent =
                 universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
 
-            List<NodeDetails> justDeviceResizeNodes = new ArrayList<>();
+            List<NodeDetails> justModifyDeviceNodes = new ArrayList<>();
             LinkedHashSet<NodeDetails> instanceChangingNodes = new LinkedHashSet<>();
             for (NodeDetails node : clusterNodes) {
               if (isInstanceChanging(node, userIntent)) {
                 instanceChangingNodes.add(node);
-              } else if (isDeviceResizing(node, userIntent, currentIntent)) {
-                justDeviceResizeNodes.add(node);
+              } else if (isModifyingDevice(node, userIntent, currentIntent)) {
+                justModifyDeviceNodes.add(node);
               }
             }
             // The nodes that are being resized will be restarted, so the gflags can be
@@ -138,31 +138,39 @@ public class ResizeNode extends UpgradeTaskBase {
                         })
                     .build(),
                 taskParams().isYbcInstalled());
-            // Only disk resizing, could be done without restarts.
+            // Only disk modification, could be done without restarts.
             createNonRestartUpgradeTaskFlow(
                 (nodes, processTypes) ->
                     createUpdateDiskSizeTasks(nodes)
                         .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk),
-                justDeviceResizeNodes,
+                justModifyDeviceNodes,
                 ServerType.EITHER,
                 DEFAULT_CONTEXT);
 
-            Integer newDiskSize = null;
+            Integer newDiskSize = null, newDiskIops = null, newDiskThroughput = null;
             if (userIntent.deviceInfo != null) {
               newDiskSize = userIntent.deviceInfo.volumeSize;
+              newDiskIops = userIntent.deviceInfo.diskIops;
+              newDiskThroughput = userIntent.deviceInfo.throughput;
             }
-            Integer newMasterDiskSize = null;
+            Integer newMasterDiskSize = null,
+                newMasterDiskIops = null,
+                newMasterDiskThroughput = null;
             if (userIntent.masterDeviceInfo != null) {
               newMasterDiskSize = userIntent.masterDeviceInfo.volumeSize;
+              newMasterDiskIops = userIntent.masterDeviceInfo.diskIops;
+              newMasterDiskThroughput = userIntent.masterDeviceInfo.throughput;
             }
-            String newInstanceType = userIntent.instanceType;
-            String newMasterInstanceType = userIntent.masterInstanceType;
             // Persist changes in the universe.
             createPersistResizeNodeTask(
-                    newInstanceType,
+                    userIntent.instanceType,
                     newDiskSize,
-                    newMasterInstanceType,
+                    newDiskIops,
+                    newDiskThroughput,
+                    userIntent.masterInstanceType,
                     newMasterDiskSize,
+                    newMasterDiskIops,
+                    newMasterDiskThroughput,
                     Collections.singletonList(cluster.uuid))
                 .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ChangeInstanceType);
           }
@@ -207,7 +215,7 @@ public class ResizeNode extends UpgradeTaskBase {
     return !currentInstanceType.equals(newIntent.getInstanceTypeForNode(node));
   }
 
-  private boolean isDeviceResizing(
+  private boolean isModifyingDevice(
       NodeDetails node,
       UniverseDefinitionTaskParams.UserIntent newIntent,
       UniverseDefinitionTaskParams.UserIntent currentIntent) {
@@ -216,7 +224,25 @@ public class ResizeNode extends UpgradeTaskBase {
     }
     DeviceInfo currentDeviceInfo = currentIntent.getDeviceInfoForNode(node);
     DeviceInfo newDeviceInfo = newIntent.getDeviceInfoForNode(node);
-    return !currentDeviceInfo.volumeSize.equals(newDeviceInfo.volumeSize);
+    return isModifyingDevice(currentDeviceInfo, newDeviceInfo);
+  }
+
+  private boolean isModifyingDevice(DeviceInfo currentDeviceInfo, DeviceInfo newDeviceInfo) {
+    // Disk will not be modified if the cluster has no currently defined device info.
+    if (currentDeviceInfo == null) {
+      log.warn("Cannot modify disk since the cluster has no defined device info");
+      return false;
+    }
+    boolean modifySize =
+        newDeviceInfo.volumeSize != null
+            && !newDeviceInfo.volumeSize.equals(currentDeviceInfo.volumeSize);
+    boolean modifyIops =
+        newDeviceInfo.diskIops != null
+            && !newDeviceInfo.diskIops.equals(currentDeviceInfo.diskIops);
+    boolean modifyThroughput =
+        newDeviceInfo.throughput != null
+            && !newDeviceInfo.throughput.equals(currentDeviceInfo.throughput);
+    return modifySize || modifyIops || modifyThroughput;
   }
 
   private void createPreResizeNodeTasks(
@@ -267,7 +293,6 @@ public class ResizeNode extends UpgradeTaskBase {
       DeviceInfo newDeviceInfo,
       String currentInstanceType,
       DeviceInfo currentDeviceInfo) {
-    Integer currDiskSize = currentDeviceInfo.volumeSize;
     // Todo: Add preflight checks here
 
     // Change instance type
@@ -286,21 +311,19 @@ public class ResizeNode extends UpgradeTaskBase {
       }
     }
 
-    // Change disk size.
+    // Modify disk.
+    log.info("Existing device info: {}", currentDeviceInfo);
     if (newDeviceInfo != null) {
-      Integer newDiskSize = newDeviceInfo.volumeSize;
-      // Check if the storage needs to be resized.
-      if (taskParams().isForceResizeNode() || !currDiskSize.equals(newDiskSize)) {
-        log.info("Resizing disk from {} to {}", currDiskSize, newDiskSize);
-
+      // Check if the storage needs to be modified.
+      if (taskParams().isForceResizeNode() || isModifyingDevice(currentDeviceInfo, newDeviceInfo)) {
         // Resize the nodes' disks.
+        log.info("New device info: {}", newDeviceInfo);
         createUpdateDiskSizeTasks(nodes, taskParams().isForceResizeNode())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ResizingDisk);
       } else {
         log.info(
-            "Skipping resizing disk as both old and new sizes are {}, "
-                + "and forceResizeNode flag is false",
-            currDiskSize);
+            "No storage device properties were changed and forceResizeNode flag is false."
+                + " Skipping disk modification.");
       }
     }
   }

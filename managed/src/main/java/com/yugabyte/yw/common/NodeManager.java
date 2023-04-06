@@ -405,6 +405,10 @@ public class NodeManager extends DevopsBase {
   }
 
   private List<String> getDeviceArgs(NodeTaskParams params) {
+    return getDeviceArgs(params, false /* includeIopsAndThroughput */);
+  }
+
+  private List<String> getDeviceArgs(NodeTaskParams params, boolean includeIopsAndThroughput) {
     List<String> args = new ArrayList<>();
     if (params.deviceInfo.numVolumes != null && !params.getProvider().getCode().equals("onprem")) {
       args.add("--num_volumes");
@@ -416,6 +420,19 @@ public class NodeManager extends DevopsBase {
     if (params.deviceInfo.volumeSize != null) {
       args.add("--volume_size");
       args.add(Integer.toString(params.deviceInfo.volumeSize));
+    }
+    if (includeIopsAndThroughput && params.deviceInfo.storageType != null) {
+      if (params.deviceInfo.diskIops != null
+          && params.deviceInfo.storageType.isIopsProvisioning()) {
+        args.add("--disk_iops");
+        args.add(Integer.toString(params.deviceInfo.diskIops));
+      }
+
+      if (params.deviceInfo.throughput != null
+          && params.deviceInfo.storageType.isThroughputProvisioning()) {
+        args.add("--disk_throughput");
+        args.add(Integer.toString(params.deviceInfo.throughput));
+      }
     }
     return args;
   }
@@ -1561,21 +1578,11 @@ public class NodeManager extends DevopsBase {
 
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
-            commandArgs.addAll(getDeviceArgs(nodeTaskParam));
+            commandArgs.addAll(getDeviceArgs(nodeTaskParam, true /* includeIopsAndThroughput */));
             DeviceInfo deviceInfo = nodeTaskParam.deviceInfo;
             if (deviceInfo.storageType != null) {
               commandArgs.add("--volume_type");
               commandArgs.add(deviceInfo.storageType.toString().toLowerCase());
-              if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
-                commandArgs.add("--disk_iops");
-                commandArgs.add(Integer.toString(deviceInfo.diskIops));
-              }
-              if (deviceInfo.storageType.isThroughputProvisioning()
-                  && deviceInfo.throughput != null) {
-
-                commandArgs.add("--disk_throughput");
-                commandArgs.add(Integer.toString(deviceInfo.throughput));
-              }
             }
           }
           if (type == NodeCommandType.Create) {
@@ -1846,7 +1853,7 @@ public class NodeManager extends DevopsBase {
           commandArgs.add("--instance_type");
           commandArgs.add(taskParam.instanceType);
           if (taskParam.deviceInfo != null) {
-            commandArgs.addAll(getDeviceArgs(taskParam));
+            commandArgs.addAll(getDeviceArgs(taskParam, true /* includeIopsAndThroughput */));
           }
           if (taskParam.force) {
             commandArgs.add("--force");

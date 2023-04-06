@@ -910,23 +910,32 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   /** Create a task to persist changes by ResizeNode task */
   public SubTaskGroup createPersistResizeNodeTask(String instanceType, Integer volumeSize) {
-    return createPersistResizeNodeTask(instanceType, volumeSize, null, null, null);
+    return createPersistResizeNodeTask(
+        instanceType, volumeSize, null, null, null, null, null, null, null);
   }
 
   /** Create a task to persist changes by ResizeNode task for specific clusters */
   public SubTaskGroup createPersistResizeNodeTask(
       String instanceType,
       Integer volumeSize,
+      Integer volumeIops,
+      Integer volumeThroughput,
       String masterInstanceType,
       Integer masterVolumeSize,
+      Integer masterVolumeIops,
+      Integer masterVolumeThroughput,
       List<UUID> clusterIds) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("PersistResizeNode");
     PersistResizeNode.Params params = new PersistResizeNode.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.instanceType = instanceType;
     params.volumeSize = volumeSize;
+    params.volumeIops = volumeIops;
+    params.volumeThroughput = volumeThroughput;
     params.masterInstanceType = masterInstanceType;
     params.masterVolumeSize = masterVolumeSize;
+    params.masterVolumeIops = masterVolumeIops;
+    params.masterVolumeThroughput = masterVolumeThroughput;
     params.clusters = clusterIds;
     PersistResizeNode task = createTask(PersistResizeNode.class);
     task.initialize(params);
