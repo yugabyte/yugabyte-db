@@ -165,7 +165,6 @@ void DocRowwiseIteratorBase::Init(TableType table_type, const Slice& sub_doc_key
   }
   row_hash_key_ = row_key_;
   Seek(row_key_);
-  row_ready_ = false;
   has_bound_key_ = false;
 }
 
@@ -187,8 +186,6 @@ Status DocRowwiseIteratorBase::DoInit(const T& doc_spec) {
       VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(lower_doc_key, upper_doc_key));
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
                                        : BloomFilterMode::DONT_USE_BLOOM_FILTER;
-
-  row_ready_ = false;
 
   if (is_forward_scan_) {
     has_bound_key_ = !upper_doc_key.empty();
@@ -260,9 +257,7 @@ void DocRowwiseIteratorBase::Done() {
   }
 }
 
-void DocRowwiseIteratorBase::SkipRow() { row_ready_ = false; }
-
-bool DocRowwiseIteratorBase::IsNextStaticColumn() const {
+bool DocRowwiseIteratorBase::IsFetchedRowStatic() const {
   return doc_read_context_.schema.has_statics() && row_hash_key_.end() + 1 == row_key_.end();
 }
 
@@ -272,7 +267,7 @@ Status DocRowwiseIteratorBase::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
   }
 
   // There are no more rows to fetch, so no next SubDocKey to read.
-  if (!VERIFY_RESULT(HasNext())) {
+  if (!VERIFY_RESULT(FetchNext(nullptr))) {
     DVLOG(3) << "No Next SubDocKey";
     return Status::OK();
   }
@@ -295,7 +290,7 @@ Result<Slice> DocRowwiseIteratorBase::GetTupleId() const {
   return tuple_id;
 }
 
-Result<bool> DocRowwiseIteratorBase::SeekTuple(const Slice& tuple_id) {
+void DocRowwiseIteratorBase::SeekTuple(const Slice& tuple_id) {
   // If cotable id / colocation id is present in the table schema, then
   // we need to prepend it in the tuple key to seek.
   if (doc_read_context_.schema.has_cotable_id() || doc_read_context_.schema.has_colocation_id()) {
@@ -323,9 +318,10 @@ Result<bool> DocRowwiseIteratorBase::SeekTuple(const Slice& tuple_id) {
   }
 
   iter_key_.Clear();
-  row_ready_ = false;
+}
 
-  return VERIFY_RESULT(HasNext()) && VERIFY_RESULT(GetTupleId()) == tuple_id;
+Result<bool> DocRowwiseIteratorBase::FetchTuple(const Slice& tuple_id, QLTableRow* row) {
+  return VERIFY_RESULT(FetchNext(row)) && VERIFY_RESULT(GetTupleId()) == tuple_id;
 }
 
 Status DocRowwiseIteratorBase::InitIterKey(const Slice& key) {

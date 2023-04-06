@@ -243,15 +243,10 @@ Status PopulateBeforeImage(
   QLTableRow row;
   QLValue ql_value;
   // If CDC is failed to get the before image row, skip adding before image columns.
-  auto result = iter.HasNext();
-  if (result.ok() && *result) {
-    RETURN_NOT_OK(iter.NextRow(&row));
-  } else {
-    return result.ok()
-               ? STATUS_FORMAT(
-                     InternalError,
-                     "Failed to get the beforeimage for tablet_id: $0", tablet_peer->tablet_id())
-               : result.status();
+  auto result = VERIFY_RESULT(iter.FetchNext(&row));
+  if (!result) {
+    return STATUS_FORMAT(
+        InternalError, "Failed to get the beforeimage for tablet_id: $0", tablet_peer->tablet_id());
   }
 
   std::vector<ColumnSchema> columns(schema.columns());
@@ -1423,8 +1418,7 @@ Status GetChangesForCDCSDK(
       QLTableRow row;
       auto iter = VERIFY_RESULT(tablet_ptr->CreateCDCSnapshotIterator(
           (*schema_details.schema).CopyWithoutColumnIds(), time, nextKey, colocated_table_id));
-      while (VERIFY_RESULT(iter->HasNext()) && fetched < limit) {
-        RETURN_NOT_OK(iter->NextRow(&row));
+      while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
             resp, &row, *schema_details.schema, table_name, time, enum_oid_label_map,
             composite_atts_map));

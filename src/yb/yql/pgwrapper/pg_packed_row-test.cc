@@ -367,7 +367,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
         int idx = 0;
         for (const auto& p : columns) {
           auto is_null = PQgetisnull(res.get(), row, ++idx);
-          ASSERT_EQ(is_null, key < p.second);
+          ASSERT_EQ(is_null, key < p.second) << ", key: " << key << ", p.second: " << p.second;
           if (is_null) {
             continue;
           }
