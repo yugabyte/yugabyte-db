@@ -227,8 +227,8 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         )} */}
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/cluster/tabOverview`}
-          isActive={(_, location) => /^\/cluster/.test(location.pathname)}
+          to={`/`}
+          isActive={(_, location) => /^\/$/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
           data-testid="SidebarLinkCluster"

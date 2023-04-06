@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { Switch, Route, Redirect } from 'react-router-dom';
+import { Switch, Route } from 'react-router-dom';
 import { Container, makeStyles } from '@material-ui/core';
 import { Header } from '@app/features/Header';
 import { Footer } from '@app/features/Footer';
@@ -87,18 +87,17 @@ export const MainLayout: FC = () => {
           <Announcement />
           */}
           <Switch>
-              <Route path={'/cluster'} component={ClusterRouting} />
               <Route path={'/databases'} component={DatabasesRouting} />
               <Route path={'/performance'} component={PerformanceRouting} />
               <Route path={'/alerts'} component={GettingStarted} />
               <Route path={'/debug'} component={GettingStarted} />
-              <Route exact path={'/'} render={() => {
-                  return (
-                    <Redirect to="/cluster/tabOverview" />
-                  )
-              }
-
-              } />
+              <Route path={'/'} component={ClusterRouting} />
+              {/* <Route exact path={'/'} render={() => {
+                    return (
+                      <Redirect to="/cluster/tabOverview" />
+                    )
+                }
+              } /> */}
             {/* <Route path={'/a/:accountId/p/:projectId/network/:tab?'} render={verifyPathParamsMemo(Network)} />
             <Route path={'/a/:accountId/profile'} render={verifyPathParamsMemo(Profile)} />
             <Route path={'/a/:accountId/p/:projectId/analytics'} render={verifyPathParamsMemo(AnalyticsRouting)} />

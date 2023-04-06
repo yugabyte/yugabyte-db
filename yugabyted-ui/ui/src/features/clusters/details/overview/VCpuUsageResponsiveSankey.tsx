@@ -21,7 +21,7 @@ export const VCpuUsageResponsiveSankey: FC<VCpuUsageResponsiveSankeyProps> = ({ 
 
   return (
     <div className={classes.container}>
-      <ResponsiveContainer width="99%" height="100%" debounce={2} minWidth={380}>
+      <ResponsiveContainer width="99%" height="100%" debounce={2} minWidth={420}>
         <VCpuUsageSankey cluster={cluster} />
       </ResponsiveContainer>
     </div>

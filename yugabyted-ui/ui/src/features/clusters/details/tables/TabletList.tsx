@@ -63,14 +63,14 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTable, onRefetch }) 
   const [node, setNode] = React.useState<string>('');
   const [tabletID, setTabletID] = React.useState<string>('');
 
-  const { data: tablets, isFetching: isFetchingTablets } = useGetClusterTabletsQuery();
+  const { data: tablets, isFetching: isFetchingTablets } = useGetClusterTabletsQuery({ query: { refetchOnMount: 'always' }});
   const tableID = useMemo(() => tablets ? Object.values(tablets.data)
     .find(tablet => tablet.table_name === selectedTable)?.table_uuid as string : undefined, [selectedTable, tablets])
 
-  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({ query: { refetchOnMount: 'always' }});
   const nodeNames = useMemo(() => nodesResponse?.data.map(node => node.name), [nodesResponse])
 
-  const { data: healthCheckData, isFetching: isFetchingHealth } = useGetClusterHealthCheckQuery();
+  const { data: healthCheckData, isFetching: isFetchingHealth } = useGetClusterHealthCheckQuery({ query: { refetchOnMount: 'always' }});
   
   const [tabletList, setTabletList] = React.useState<any[]>([]);
   const [isLoading, setIsLoading] = React.useState<boolean>(false);

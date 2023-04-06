@@ -98,7 +98,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
 
   return (
     <Box flex={1}>
-      <Link className={classes.link} component={RouterLink} to="tabNodes">
+      <Link className={classes.link} component={RouterLink} to="?tab=tabNodes">
         <Box display="flex" alignItems="center">
           <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.nodes')}</Typography>
           <ChevronRight className={classes.arrow} />
@@ -112,7 +112,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
               {t('clusterDetail.nodes.total')}
             </Typography>
           </div>
-          <Link className={classes.link} component={RouterLink} to="tabNodes?filter=running">
+          <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=running">
             <div className={clsx(classes.section, classes.sectionBorder)}>
               <Box display="flex" gridGap={7}>
                 <Typography variant="h4" className={classes.value}>
@@ -125,7 +125,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
               </Typography>
             </div>
           </Link>
-          <Link className={classes.link} component={RouterLink} to="tabNodes?filter=down">
+          <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=down">
             <div className={classes.section}>
               <Box display="flex" gridGap={7}>
                 <Typography variant="h4" className={classes.value}>
@@ -138,7 +138,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
               </Typography>
             </div>
           </Link>
-          <Link className={classes.link} component={RouterLink} to="tabNodes?filter=bootstrapping">
+          <Link className={classes.link} component={RouterLink} to="?tab=tabNodes&filter=bootstrapping">
             <div className={clsx(classes.section, classes.sectionBorder)}>
               <Box display="flex" gridGap={7}>
                 <Typography variant="h4" className={classes.value}>

@@ -1,18 +1,22 @@
-import React, { ComponentType, FC } from 'react';
+import React, { ComponentType, FC, useEffect } from 'react';
 import { Box, makeStyles, Tab, Tabs } from '@material-ui/core';
 import { OverviewTab } from '@app/features/clusters/details/overview/OverviewTab';
 import { NodesTab } from '../nodes/NodesTab';
-import { generatePath, Link, Route, Switch, useRouteMatch } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ActivityTab } from '../activities/ActivityTab';
 import { SettingsTab } from '../settings/SettingsTab';
-import { QueryParamProvider } from 'use-query-params';
+import { StringParam, useQueryParams, withDefault } from 'use-query-params';
+import { YBButton } from '@app/components';
+import RefreshIcon from '@app/assets/refresh.svg';
+import { useGetClusterQuery, useGetClusterNodesQuery, useGetClusterHealthCheckQuery, 
+  useGetIsLoadBalancerIdleQuery } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   tabSectionContainer: {
     display: 'flex',
     alignItems: 'center',
     width: '100%',
+    justifyContent: 'space-between',
     boxShadow: `inset 0px -1px 0px 0px ${theme.palette.grey[200]}`
   },
 }));
@@ -47,41 +51,66 @@ const tabList: ITabListItem[] = [
 ];
 
 export const OverviewDetails: FC = () => {
-  const { path, params } = useRouteMatch<App.RouteParams>();
   const classes = useStyles();
   const { t } = useTranslation();
+
+  const [queryParams, setQueryParams] = useQueryParams({
+    tab: withDefault(StringParam, tabList[0].name),
+    filter: StringParam,
+  });
+  const [currentTab, setCurrentTab] = React.useState<string>(queryParams.tab);
+
+  useEffect(() => {
+    setCurrentTab(queryParams.tab)
+  }, [queryParams.tab])
+
+  const handleChange = (_: React.ChangeEvent<{}>, newValue: string) => {
+    setCurrentTab(newValue);
+    setQueryParams({ tab: newValue, filter: newValue === 'tabNodes' ? queryParams.filter : undefined });
+  };
+
+  const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false }});
+  const { refetch: refetchCluster } = useGetClusterQuery({ query: { enabled: false }});
+  const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false }});
+  const { refetch: refetchLoadBalancer } = useGetIsLoadBalancerIdleQuery({ query: { enabled: false }});
+
+  const refetch = () => {
+    refetchNodes();
+    refetchCluster();
+    refetchHealth();
+    refetchLoadBalancer();
+  }
+
+  const TabComponent = tabList.find(tab => tab.name === currentTab)?.component;
 
   return (
     <Box>
       <div className={classes.tabSectionContainer}>
-        <Tabs value={params.tab} indicatorColor="primary" textColor="primary" data-testid="ClusterTabList">
+        <Tabs indicatorColor="primary" textColor="primary" data-testid="ClusterTabList"
+          value={currentTab} onChange={handleChange}>
           {tabList.map((tab) => (
             <Tab
               key={tab.name}
               value={tab.name}
               disabled={tab.name === 'tabActivity'}
               label={t(`clusterDetail.${tab.name}`)}
-              component={Link}
-              to={generatePath(path, {
-                accountId: params.accountId,
-                projectId: params.projectId,
-                clusterId: params.clusterId,
-                tab: tab.name
-              })}
               data-testid={tab.testId}
             />
           ))}
         </Tabs>
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={refetch}>
+          {t('clusterDetail.performance.actions.refresh')}
+        </YBButton>
       </div>
 
       <Box mt={2}>
-        <QueryParamProvider ReactRouterRoute={Route}>
-          <Switch>
-            {tabList.filter(tab => tab.name !== 'tabActivity').map((tab) => (
-              <Route key={tab.name} path={`${path}/${tab.name}/:subTab?`} component={tab.component} />
+          {TabComponent && <TabComponent />}
+          {/* <Switch>
+            {tabList.filter(tab => tab.name !== 'tabActivity').map((tab, index) => (
+              <Route key={tab.name} path={index === 0 ? '/' : `/cluster/${tab.name}/:subTab?`}
+                component={tab.component} />
             ))}
-          </Switch>
-        </QueryParamProvider>
+          </Switch> */}
       </Box>
     </Box>
   );

@@ -1,7 +1,8 @@
 import React, { FC, useMemo } from 'react';
 import { makeStyles, Box, LinearProgress, Breadcrumbs, Link, Typography, MenuItem } from '@material-ui/core';
 import { AlertVariant, YBDropdown } from '@app/components';
-import { ApiError, useGetClusterTablesQuery, GetClusterTablesApiEnum, ClusterTable } from '@app/api/src';
+import { ApiError, useGetClusterTablesQuery, GetClusterTablesApiEnum, ClusterTable, 
+  useGetClusterHealthCheckQuery, useGetClusterNodesQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import { useToast } from '@app/helpers';
 import { DatabaseList } from './DatabaseList';
 import TriangleDownIcon from '@app/assets/caret-down.svg';
@@ -70,12 +71,20 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
       }
     );
 
+  const { refetch: refetchTablets } = useGetClusterTabletsQuery({ query: { enabled: false }});
+  const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false }});
+  const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false }});
+
   const refetchData = () => {
     if (dbApi === GetClusterTablesApiEnum.Ycql) {
       refetchYcql()
     } else {
       refetchYsql()
     }
+
+    refetchTablets();
+    refetchNodes();
+    refetchHealth();
   };
 
   const ysqlTableData = useMemo(() => clusterTablesResponseYsql?.data ?? [], [clusterTablesResponseYsql?.data]);

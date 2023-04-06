@@ -146,7 +146,7 @@ export const Header: FC = () => {
         <VersionBadge/> */}
         <Box className={classes.iconContainer}>
           <Badge badgeContent={deadNodes.length > 0 ?
-            <Link component={RouterLink} to="/cluster/tabNodes?filter=down">
+            <Link component={RouterLink} to="?tab=tabNodes&filter=down">
               <AlertGreenIcon />
             </Link> : undefined}>
             <HeartCheckIcon />

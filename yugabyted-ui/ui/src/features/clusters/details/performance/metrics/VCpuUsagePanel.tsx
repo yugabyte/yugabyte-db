@@ -2,11 +2,13 @@ import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Paper, Typography } from '@material-ui/core';
 import { VCpuUsageSankey } from '../../overview/VCpuUsageSankey';
-import type { ClusterData } from '@app/api/src';
+import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
+import { YBButton } from '@app/components';
+import RefreshIcon from '@app/assets/refresh.svg';
 
 const useStyles = makeStyles((theme) => ({
   container: {
-    padding: theme.spacing(2),
+    padding: theme.spacing(1.5, 2, 2, 2),
     marginBottom: theme.spacing(2.5),
   },
   chartContainer: {
@@ -25,9 +27,16 @@ export const VCpuUsagePanel: FC<VCpuUsagePanelProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
+  const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false }});
+
   return (
     <Paper className={classes.container}>
-      <Typography variant="h5">{t('clusterDetail.performance.metrics.vCpuUsage')}</Typography>
+      <Box display="flex" alignItems="center" justifyContent="space-between">
+        <Typography variant="h5">{t('clusterDetail.performance.metrics.vCpuUsage')}</Typography>
+        <YBButton variant="ghost" startIcon={<RefreshIcon />} onClick={() => refetchNodes()}>
+          {t('clusterDetail.performance.actions.refresh')}
+        </YBButton>
+      </Box>
       <Box className={classes.chartContainer}>
         <VCpuUsageSankey cluster={cluster}
           width={650}
@@ -36,7 +45,7 @@ export const VCpuUsagePanel: FC<VCpuUsagePanelProps> = ({ cluster }) => {
             margin: {
               top: 6,
               left: 168,
-              right: 180,
+              right: 225,
               bottom: 0,
             },
           }} />

@@ -100,7 +100,7 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
 
   return (
     <Paper className={classes.clusterInfo}>
-      <Link className={classes.link} component={RouterLink} to="tabSettings">
+      <Link className={classes.link} component={RouterLink} to="?tab=tabSettings">
         <Box display="flex">
           <Box flexGrow={3}>
             <Grid container spacing={4}>

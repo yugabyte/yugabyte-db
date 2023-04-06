@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Layer, Rectangle, Sankey, Tooltip } from 'recharts';
 import { ClusterData, useGetClusterNodesQuery } from '@app/api/src';
 import { AXIOS_INSTANCE } from '@app/api/src';
-import { Link, makeStyles } from '@material-ui/core';
+import { Box, LinearProgress, Link, makeStyles } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
+import { getInterval, RelativeInterval } from '@app/helpers';
+import { getUnixTime } from 'date-fns';
 
 const useStyles = makeStyles((theme) => ({
   link: {
@@ -43,7 +45,7 @@ const data = {
 
 export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, showTooltip, height, width }) => {
   const { t } = useTranslation();
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isFetching } = useGetClusterNodesQuery();
 
   const totalCores = cluster.spec?.cluster_info?.node_info.num_cores ?? 0;
 
@@ -56,10 +58,20 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     const populateCpu = async () => {
       const getNodeCpu = async (nodeName: string) => {
         try {
+          const interval = getInterval(RelativeInterval.LastHour);
           // Get the system and user cpu usage of the node from the metrics endpoint
-          const cpu = await AXIOS_INSTANCE.get('/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=' + nodeName)
+          const cpu = await AXIOS_INSTANCE.get(`/metrics?metrics=CPU_USAGE_SYSTEM%2CCPU_USAGE_USER&node_name=${nodeName}` + 
+            `&start_time=${getUnixTime(interval.start)}&end_time=${getUnixTime(interval.end)}`)
             // Add the system and user cpu usage to get the total cpu usage
-            .then(({ data }) => (Number(data.data[0].values[1]) || 0) + (Number(data.data[1].values[1]) || 0))
+            .then(({ data }) => {
+              const cpuUsageSystemArr = data.data[0].values as any[];
+              const cpuUsageSystem = Number((cpuUsageSystemArr.reverse().find(val => val[1] !== undefined) ?? [])[1]) || 0;
+
+              const cpuUsageUserArr = data.data[1].values as any[];
+              const cpuUsageUser = Number((cpuUsageUserArr.reverse().find(val => val[1] !== undefined) ?? [])[1]) || 0;
+
+              return (cpuUsageSystem + cpuUsageUser);
+            })
             .catch(err => { console.error(err); return 0; })
           return cpu;
         } catch (err) {
@@ -67,7 +79,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
           return 0;
         }
       }
-      
+
       const cpuUsage: number[] = [];
       for (let i = 0; i < nodesResponse.data.length; i++) {
         const node = nodesResponse.data[i].name;
@@ -90,7 +102,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         // Available node
         { "name": "Available" },
         // Nodes
-        ...(nodesResponse?.data.map(({ name }) => ({ name })) ?? []),
+        ...(nodesResponse?.data.map(({ name, cloud_info: { zone } }) => ({ name, zone })) ?? []),
         // Dummy node for available cores
         { "name": "" }, 
       ],
@@ -120,6 +132,14 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
     return data;
   }, [nodeCpuUsage, nodesResponse])
 
+  if (nodeCpuUsage.length === 0 || isFetching) {
+    return (
+      <Box textAlign="center" pt={9} pb={9} width="100%">
+        <LinearProgress />
+      </Box>
+    );
+  }
+
   return (
     <Sankey
       height={height}
@@ -129,7 +149,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
       margin={{
         top: 15,
         left: 168,
-        right: 180,
+        right: 225,
         bottom: -10,
       }}
       node={<CpuSankeyNode />}
@@ -178,7 +198,7 @@ function CpuSankeyNode(props: any) {
             strokeOpacity="0.5"
           >
             <tspan dx={payload.value < 10 ? 6 : 0}>{payload.value}%</tspan>
-            <tspan dx={16}>{payload.name}</tspan>
+            <tspan dx={16}>{payload.name} {payload.zone && `(${payload.zone})`}</tspan>
           </text>
         </Link>
         :
