@@ -76,7 +76,7 @@ public class AlertChannelEmail extends AlertChannelBase {
           title,
           String.join(", ", recipients),
           smtpData,
-          Collections.singletonMap("text/plain; charset=\"us-ascii\"", text));
+          Collections.singletonMap("text/html; charset=\"us-ascii\"", text));
     } catch (MessagingException e) {
       throw new PlatformNotificationException(
           String.format("Error sending email for alert %s: %s", alert.getName(), e.getMessage()),
