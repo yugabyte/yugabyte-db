@@ -2076,6 +2076,72 @@ TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplicationWithPacked) {
   TestColocatedDatabaseReplication();
 }
 
+TEST_F(XClusterYsqlTest, TestColocatedTablesReplicationWithLargeTableCount) {
+    constexpr int kNTabletsPerColocatedTable = 1;
+    std::vector<uint32_t> tables_vector;
+    for (int i = 0; i < 30; i++) {
+        tables_vector.push_back(kNTabletsPerColocatedTable);
+    }
+
+    // Create colocated tables on each cluster
+    auto colocated_tables =
+        ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3, 1, true /* colocated */));
+    const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+    // colocated_tables contains both producer and consumer universe tables (alternately).
+    // Pick out just the producer tables from the list.
+    std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> colocated_producer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> colocated_consumer_tables;
+    producer_tables.reserve(colocated_tables.size() / 2 + 1);
+    consumer_tables.reserve(colocated_tables.size() / 2 + 1);
+    for (size_t i = 0; i < colocated_tables.size(); ++i) {
+      if (i % 2 == 0) {
+        producer_tables.push_back(colocated_tables[i]);
+      } else {
+        consumer_tables.push_back(colocated_tables[i]);
+      }
+    }
+
+    auto producer_table = producer_tables[0];
+    auto consumer_table = consumer_tables[0];
+    WriteWorkload(0, 50, &producer_cluster_, producer_table->name());
+
+    // 2. Setup replication for only the colocated tables.
+    // Get the producer colocated parent table id.
+    auto colocated_parent_table_id = ASSERT_RESULT(GetColocatedDatabaseParentTableId());
+
+    rpc::RpcController rpc;
+    master::SetupUniverseReplicationRequestPB setup_universe_req;
+    master::SetupUniverseReplicationResponsePB setup_universe_resp;
+    setup_universe_req.set_producer_id(kUniverseId);
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+    // Only need to add the colocated parent table id.
+    setup_universe_req.mutable_producer_table_ids()->Reserve(1);
+    setup_universe_req.add_producer_table_ids(colocated_parent_table_id);
+    auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_leader_mini_master->bound_rpc_addr());
+
+    rpc.Reset();
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp,
+                                                     &rpc));
+    ASSERT_FALSE(setup_universe_resp.has_error());
+
+    // 3. Verify everything is setup correctly.
+    master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+    ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kNTabletsPerColocatedTable));
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+}
+
+
 TEST_F(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
