@@ -1,8 +1,28 @@
+- name: "Show OS version information"
+  hosts: "{{ yb_ansible_host }}"
+  gather_facts: yes
+  become: false
+  tasks:
+    - name: OS Information
+      debug:
+        msg: >
+          "OS Family / Distribution / Major Version: {{ ansible_os_family
+          }} / {{ ansible_distribution }} / {{ ansible_distribution_major_version }}"
+      tags: yb-prebuilt-ami
+
 - name: "Package installation/update tasks"
   hosts: "{{ yb_ansible_host }}"
   become: yes
   become_method: sudo
   tasks:
+    - name: "Install latest GPG key for AlmaLinux 9"
+      ansible.builtin.rpm_key:
+        state: present
+        key: https://repo.almalinux.org/almalinux/RPM-GPG-KEY-AlmaLinux-9
+        fingerprint: "BF18 AC28 7617 8908 D6E7  1267 D36C B86C B86B 3716"
+      when: ansible_distribution == 'AlmaLinux' and ansible_distribution_major_version == '9'
+      tags: yb-prebuilt-ami
+
     - name: "Update OS Packages to latest"
       yum:
         update_cache: true
