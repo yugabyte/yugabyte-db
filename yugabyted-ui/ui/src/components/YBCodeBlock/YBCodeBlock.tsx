@@ -8,42 +8,51 @@ import { useToast } from '@app/helpers';
 import { useTranslation } from 'react-i18next';
 
 export interface CodeBlockProps {
-  analyticsEventOnCopy?: string;
   showCopyButton?: boolean;
   multiBlock?: boolean;
+  blockClassName?: string;
   codeClassName?: string;
   preClassName?: string;
+  lineClassName?: string;
+  showLineNumbers?: boolean;
   text: string | string[] | React.ReactElement | React.ReactElement[];
 }
 
 const useStyles = makeStyles((theme) => ({
   block: {
-    background: theme.palette.info[400],
+    display: 'flex',
     borderRadius: theme.shape.borderRadius,
-    padding: theme.spacing(1, 1, 1, 1.5),
-    color: theme.palette.grey[800],
+    background: theme.palette.info[400],
     margin: theme.spacing(0, 0, 1, 0),
     border: `1px solid ${theme.palette.grey[300]}`,
     position: 'relative',
+  },
+  lineNo: {
+    color: theme.palette.grey[600],
+    background: theme.palette.grey[200],
+    padding: theme.spacing(1),
+    lineHeight: 2.7,
+    height: '100%',
+  },
+  code: {
+    display: 'block',
+    flex: '1',
+    padding: theme.spacing(1),
+    fontFamily: 'Menlo-Regular, Courier, monospace',
+    fontSize: 13,
+    lineHeight: '17px',
+    color: theme.palette.grey[800],
+    borderRadius: theme.spacing(0.5),
+    height: '100%',
     overflowX: 'hidden',
-
     '&:hover': {
       overflowX: 'auto'
     }
   },
-
-  code: {
-    display: 'block',
-    position: 'relative',
-    fontFamily: 'Menlo-Regular, Courier, monospace',
-    fontSize: 13,
-    lineHeight: '17px',
-    borderRadius: theme.spacing(0.5)
-  },
   copyButton: {
     position: 'absolute',
-    right: 0,
-    top: 0,
+    right: 10,
+    top: 10,
     backgroundColor: theme.palette.info[200],
     '& .MuiButton-label': {
       textTransform: 'uppercase',
@@ -71,7 +80,7 @@ const useStyles = makeStyles((theme) => ({
     whiteSpace: 'pre-wrap',
     margin: 0,
     lineHeight: 2.7,
-    paddingRight: theme.spacing(8)
+    // paddingRight: theme.spacing(8)
   }
 }));
 
@@ -79,8 +88,11 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
   showCopyButton,  
   multiBlock,
   text,
+  blockClassName,
   codeClassName,
-  preClassName
+  preClassName,
+  lineClassName,
+  showLineNumbers,
 }) => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -99,7 +111,12 @@ export const YBCodeBlock: FC<CodeBlockProps> = ({
 
   return (
     <>
-      <Box className={classes.block}>
+      <Box className={clsx(classes.block, blockClassName)}>
+        {showLineNumbers &&
+          <Box className={clsx(classes.lineNo, lineClassName)}>
+            {typeof text === "string" && text.split('\n').map((_, index) => <>{index + 1}<br /></>)}
+          </Box>
+        }
         {multiBlock && Array.isArray(text) ? (
           text.map((val: string | React.ReactElement, index: number) => (
             <code className={clsx(classes.code, classes.hoverBlock)} key={`code-block-line-${String(index + 1)}`}>

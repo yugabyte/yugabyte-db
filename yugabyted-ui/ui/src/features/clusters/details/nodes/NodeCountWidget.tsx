@@ -32,6 +32,9 @@ const useStyles = makeStyles((theme) => ({
   },
   valueIcon: {
     marginRight: theme.spacing(2)
+  },
+  warning: {
+    color: theme.palette.warning[500]
   }
 }));
 
