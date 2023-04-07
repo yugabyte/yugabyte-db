@@ -401,8 +401,10 @@ void XClusterPoller::DoHandleApplyChanges(XClusterOutputClientResponse response)
     is_polling_ = false;
     validated_schema_version_ = response.wait_for_version - 1;
   } else {
-    // Once all changes have been successfully applied we can update the safe time
-    UpdateSafeTime(resp_->safe_hybrid_time());
+    if (resp_->has_safe_hybrid_time()) {
+      // Once all changes have been successfully applied we can update the safe time.
+      UpdateSafeTime(resp_->safe_hybrid_time());
+    }
 
     Poll();
   }

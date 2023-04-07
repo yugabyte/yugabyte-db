@@ -125,6 +125,7 @@ DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_uint32(external_transaction_retention_window_secs);
+DECLARE_bool(xcluster_consistent_wal);
 
 namespace yb {
 
@@ -773,7 +774,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     });
   }
 
-  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
+  virtual Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
       int num_masters = 3) {
     FLAGS_enable_replicate_transaction_status_table = true;
     auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
@@ -803,9 +804,14 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
   }
 
   Status WaitForIntentsCleanedUpOnConsumer() {
-    return WaitFor([&]() {
-      return CountIntents(consumer_cluster()) == 0;
-    }, MonoDelta::FromSeconds(30), "Intents cleaned up");
+    if (FLAGS_xcluster_consistent_wal) {
+      // There is nothing to cleanup in this mode.
+      return Status::OK();
+    }
+
+    return WaitFor(
+        [&]() { return CountIntents(consumer_cluster()) == 0; }, MonoDelta::FromSeconds(30),
+        "Intents cleaned up");
   }
 };
 
@@ -813,6 +819,28 @@ constexpr uint32_t kTransactionSize = 50;
 constexpr uint32_t kNumTransactions = 100;
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+class XClusterYSqlTestConsistentWAL : public XClusterYSqlTestConsistentTransactionsTest {
+ public:
+  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
+      int num_masters = 3) override {
+    FLAGS_xcluster_consistent_wal = true;
+    auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
+    auto producer_table = tables[0];
+    auto consumer_table = tables[1];
+    return std::make_pair(producer_table, consumer_table);
+  }
+};
+
+TEST_F(XClusterYSqlTestConsistentWAL, ConsistentTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
