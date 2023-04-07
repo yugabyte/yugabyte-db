@@ -310,6 +310,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   bool skip_future_records_needed_ = false;
   bool skip_future_intents_needed_ = false;
+  bool reset_intent_upperbound_during_skip_ = false;
   SeekIntentIterNeeded seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
