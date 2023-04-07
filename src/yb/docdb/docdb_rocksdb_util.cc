@@ -271,10 +271,26 @@ void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
   key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
 }
 
-SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
+namespace  {
+
+inline bool IsIterAfterOrAtKey(rocksdb::Iterator* iter, const Slice& key) {
+  if (PREDICT_FALSE(!iter->Valid())) {
+    if (PREDICT_FALSE(!iter->status().ok())) {
+      VLOG(3) << "Iterator " << iter << " error: " << iter->status();
+      // Caller should check Valid() after doing Seek*() and then check status() since
+      // Valid() == false.
+      // TODO(#16730): Add sanity check for RocksDB iterator Valid() to be checked after it is set.
+    }
+    return true;
+  }
+  return iter->key().compare(key) >= 0;
+}
+
+inline SeekStats SeekPossiblyUsingNext(
+    rocksdb::Iterator* iter, const Slice& seek_key, int max_nexts) {
   SeekStats result;
-  for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
-    if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
+  for (int nexts = max_nexts; nexts-- > 0;) {
+    if (IsIterAfterOrAtKey(iter, seek_key)) {
       VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
       return result;
     }
@@ -283,7 +299,7 @@ SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) 
     iter->Next();
     ++result.next;
   }
-  if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
+  if (IsIterAfterOrAtKey(iter, seek_key)) {
     VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
     return result;
   }
@@ -292,6 +308,12 @@ SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) 
   iter->Seek(seek_key);
   ++result.seek;
   return result;
+}
+
+} // namespace
+
+SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
+  return SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek);
 }
 
 void PerformRocksDBSeek(
@@ -303,11 +325,26 @@ void PerformRocksDBSeek(
   if (seek_key.size() == 0) {
     iter->SeekToFirst();
     ++stats.seek;
-  } else if (!iter->Valid() || iter->key().compare(seek_key) > 0) {
+  } else if (PREDICT_FALSE(!iter->Valid())) {
+    if (!iter->status().ok()) {
+      VLOG(3) << "Iterator " << iter << " error: " << iter->status();
+      // Caller should check Valid() after doing PerformRocksDBSeek() and then check status()
+      // since Valid() == false.
+      // TODO(#16730): Add sanity check for RocksDB iterator Valid() to be checked after it is set.
+      return;
+    }
     iter->Seek(seek_key);
     ++stats.seek;
   } else {
-    stats = SeekPossiblyUsingNext(iter, seek_key);
+    const auto cmp = iter->key().compare(seek_key);
+    if (cmp > 0) {
+      iter->Seek(seek_key);
+      ++stats.seek;
+    } else if (cmp < 0) {
+      iter->Next();
+      stats = SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek - 1);
+      ++stats.next;
+    }
   }
   VLOG(4) << Substitute(
       "PerformRocksDBSeek at $0:$1:\n"
@@ -1015,7 +1052,7 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
 }
 
 void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
-  if (!iter->Valid() || iter->key().compare(slice) >= 0) {
+  if (IsIterAfterOrAtKey(iter, slice)) {
     return;
   }
 
