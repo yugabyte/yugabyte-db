@@ -51,7 +51,7 @@ Prefer markdown-style `[link text](link-target)` links over HTML tags. Markdown'
 **Badcode highlight** Make wrong coding practices stand out than regular code. Add attribute `{.badcode}` to the code block.
 
 ```sql{.badcode}
-ycqsh> CREATE KEYSPACE banking;
+ysqlsh> CREATE TABLE $$__banking__$$;
 ```
 
 #### YSQL and YCQL code blocks
