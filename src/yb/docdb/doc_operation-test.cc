@@ -844,9 +844,11 @@ class DocOperationScanTest : public DocOperationTest {
             ResetCurrentTransactionId();
           }
         }
+        auto row_values = { row_data.k, row_data.r, row_data.v };
+        LOG(INFO) << "Writing row: " << AsString(row_values) << ", ht: " << ht;
         WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
                    doc_read_context().schema,
-                   { row_data.k, row_data.r, row_data.v },
+                   row_values,
                    1000,
                    ht,
                    txn_op_context ? *txn_op_context : kNonTransactionalOperationContext);
@@ -939,7 +941,7 @@ class DocOperationScanTest : public DocOperationTest {
             ASSERT_EQ(fetched_row, it->data);
             it++;
           }
-          ASSERT_EQ(expected_rows.end(), it);
+          ASSERT_EQ(expected_rows.end(), it) << "Missing row: " << AsString(*it);
 
           after_scan_callback(keys_in_range);
         }

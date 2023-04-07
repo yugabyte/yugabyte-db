@@ -915,6 +915,7 @@ void IntentAwareIterator::PopPrefix() {
   prefix_stack_.pop_back();
   skip_future_records_needed_ = true;
   skip_future_intents_needed_ = true;
+  reset_intent_upperbound_during_skip_ = true;
   VLOG(4) << "PopPrefix: "
           << (prefix_stack_.empty() ? std::string()
               : SubDocKey::DebugSliceToString(prefix_stack_.back()));
@@ -1045,6 +1046,12 @@ void IntentAwareIterator::SkipFutureIntents() {
   if (!intent_iter_.Initialized() || !status_.ok()) {
     return;
   }
+  if (reset_intent_upperbound_during_skip_) {
+    status_ = SetIntentUpperbound();
+    if (!status_.ok()) {
+      return;
+    }
+  }
   auto prefix = CurrentPrefix();
   if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
     auto compare_result = resolved_intent_key_prefix_.AsSlice().compare_prefix(prefix);
@@ -1068,6 +1075,7 @@ void IntentAwareIterator::SkipFutureIntents() {
 }
 
 Status IntentAwareIterator::SetIntentUpperbound() {
+  reset_intent_upperbound_during_skip_ = false;
   if (iter_.Valid()) {
     intent_upperbound_keybytes_.Clear();
     // Strip ValueType::kHybridTime + DocHybridTime at the end of SubDocKey in iter_ and append
