@@ -4,7 +4,6 @@ package task
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,6 +19,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"github.com/creack/pty"
 	"github.com/olekukonko/tablewriter"
 	funk "github.com/thoas/go-funk"
 )
@@ -28,6 +28,24 @@ const (
 	// MaxBufferCapacity is the max number of bytes allowed in the buffer
 	// before truncating the first bytes.
 	MaxBufferCapacity = 1000000
+)
+
+const (
+	mountPointsVolume    = "mount_points_volume"
+	mountPointsWritable  = "mount_points_writable"
+	masterHTTPPort       = "master_http_port"
+	masterRPCPort        = "master_rpc_port"
+	tserverHTTPPort      = "tserver_http_port"
+	tserverRPCPort       = "tserver_rpc_port"
+	ybControllerHTTPPort = "yb_controller_http_port"
+	ybControllerRPCPort  = "yb_controller_rpc_port"
+	redisServerHTTPPort  = "redis_server_http_port"
+	redisServerRPCPort   = "redis_server_rpc_port"
+	yqlServerHTTPPort    = "yql_server_http_port"
+	yqlServerRPCPort     = "yql_server_rpc_port"
+	ysqlServerHTTPPort   = "ysql_server_http_port"
+	ysqlServerRPCPort    = "ysql_server_rpc_port"
+	sshPort              = "ssh_port"
 )
 
 var (
@@ -128,37 +146,49 @@ func (s *ShellTask) command(ctx context.Context, name string, arg ...string) (*e
 	return cmd, nil
 }
 
-func (s *ShellTask) userEnv(ctx context.Context, homeDir string) []string {
-	var out bytes.Buffer
+func (s *ShellTask) userEnv(ctx context.Context) []string {
 	env := []string{}
-	// Interactive login and run command.
-	cmd, err := s.command(ctx, "bash", "-ilc", "env 2>/dev/null")
-	cmd.Stdout = &out
-	err = cmd.Run()
+	// Interactive shell to source ~/.bashrc.
+	cmd, err := s.command(ctx, "bash")
+	env = append(env, os.Environ()...)
+	// Create a pseudo tty (non stdin) to act like SSH login.
+	// Otherwise, the child process is stopped because it is a background process.
+	ptty, err := pty.Start(cmd)
 	if err != nil {
 		util.FileLogger().Warnf(
-			ctx, "Failed to get env variables for %s. Error: %s", homeDir, err.Error())
+			ctx, "Failed to run command to get env variables. Error: %s", err.Error())
 		return env
 	}
-	env = append(env, os.Environ()...)
-	scanner := bufio.NewScanner(bytes.NewReader(out.Bytes()))
+	defer ptty.Close()
+	ptty.Write([]byte("env 2>/dev/null\n"))
+	ptty.Write([]byte("exit 0\n"))
+	// End of transmission.
+	ptty.Write([]byte{4})
+	scanner := bufio.NewScanner(ptty)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if envRegex.MatchString(line) {
 			env = append(env, line)
 		}
 	}
+	err = cmd.Wait()
+	if err != nil {
+		util.FileLogger().Warnf(
+			ctx, "Failed to get env variables. Error: %s", err.Error())
+		return env
+	}
 	return env
 }
 
 // Command returns a command with the environment set.
 func (s *ShellTask) Command(ctx context.Context, name string, arg ...string) (*exec.Cmd, error) {
+	env := s.userEnv(ctx)
 	cmd, err := s.command(ctx, name, arg...)
 	if err != nil {
 		util.FileLogger().Warnf(ctx, "Failed to create command %s. Error: %s", name, err.Error())
 		return nil, err
 	}
-	cmd.Env = append(cmd.Env, s.userEnv(ctx, cmd.Dir)...)
+	cmd.Env = append(cmd.Env, env...)
 	return cmd, nil
 }
 
@@ -224,101 +254,115 @@ func (s *ShellTask) String() string {
 	return s.cmd
 }
 
-type PreflightCheckHandler struct {
-	provider     *model.Provider
-	instanceType *model.NodeInstanceType
-	accessKey    *model.AccessKey
-	result       *map[string]model.PreflightCheckVal
+// Result returns the result.
+func (s *ShellTask) Result() any {
+	return nil
 }
 
-func NewPreflightCheckHandler(
+// CreatePreflightCheckParam returns PreflightCheckParam from the given parameters.
+func CreatePreflightCheckParam(
 	provider *model.Provider,
 	instanceType *model.NodeInstanceType,
-	accessKey *model.AccessKey,
-) *PreflightCheckHandler {
-	return &PreflightCheckHandler{
-		provider:     provider,
-		instanceType: instanceType,
-		accessKey:    accessKey,
+	accessKey *model.AccessKey) *model.PreflightCheckParam {
+	param := &model.PreflightCheckParam{}
+	param.AirGapInstall = provider.AirGapInstall
+	param.SkipProvisioning = accessKey.KeyInfo.SkipProvisioning
+	param.InstallNodeExporter = accessKey.KeyInfo.InstallNodeExporter
+	param.YbHomeDir = util.NodeHomeDirectory
+	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
+		param.YbHomeDir = homeDir
 	}
+	param.SshPort = provider.SshPort
+	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
+		param.MountPaths = make([]string, len(data))
+		for i, volumeDetail := range data {
+			param.MountPaths[i] = volumeDetail.MountPath
+		}
+	}
+	param.AirGapInstall = param.AirGapInstall || accessKey.KeyInfo.AirGapInstall
+	return param
+}
+
+type PreflightCheckHandler struct {
+	shellTask *ShellTask
+	param     *model.PreflightCheckParam
+	result    *[]model.NodeConfig
+}
+
+func NewPreflightCheckHandler(param *model.PreflightCheckParam) *PreflightCheckHandler {
+	handler := &PreflightCheckHandler{
+		param: param,
+	}
+	handler.shellTask = NewShellTask(
+		"runPreflightCheckScript",
+		util.DefaultShell,
+		handler.getOptions(util.PreflightCheckPath()),
+	)
+	return handler
+}
+
+// Handler implements the AsyncTask method.
+func (handler *PreflightCheckHandler) Handler() util.Handler {
+	return handler.Handle
+}
+
+// CurrentTaskStatus implements the AsyncTask method.
+func (handler *PreflightCheckHandler) CurrentTaskStatus() *TaskStatus {
+	taskStatus := handler.shellTask.CurrentTaskStatus()
+	taskStatus.Info = util.NewBuffer(1)
+	return taskStatus
+}
+
+// String implements the AsyncTask method.
+func (handler *PreflightCheckHandler) String() string {
+	return handler.shellTask.String()
 }
 
 func (handler *PreflightCheckHandler) Handle(ctx context.Context) (any, error) {
 	util.FileLogger().Debug(ctx, "Starting Preflight checks handler.")
-	var err error
-	preflightScriptPath := util.PreflightCheckPath()
-	shellCmdTask := NewShellTask(
-		"runPreflightCheckScript",
-		util.DefaultShell,
-		handler.getOptions(preflightScriptPath),
-	)
-	output, err := shellCmdTask.Process(ctx)
+	output, err := handler.shellTask.Process(ctx)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Pre-flight checks processing failed - %s", err.Error())
 		return nil, err
 	}
 	data := output.Info.String()
 	util.FileLogger().Debugf(ctx, "Preflight check output data: %s", data)
-	handler.result = &map[string]model.PreflightCheckVal{}
-	err = json.Unmarshal([]byte(data), handler.result)
+	outputMap := map[string]model.PreflightCheckVal{}
+	err = json.Unmarshal([]byte(data), &outputMap)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Pre-flight checks unmarshaling error - %s", err.Error())
 		return nil, err
 	}
+	handler.result = getNodeConfig(outputMap)
 	return handler.result, nil
 }
 
-func (handler *PreflightCheckHandler) Result() *map[string]model.PreflightCheckVal {
+func (handler *PreflightCheckHandler) Result() *[]model.NodeConfig {
 	return handler.result
 }
 
 // Returns options for the preflight checks.
 func (handler *PreflightCheckHandler) getOptions(preflightScriptPath string) []string {
-	provider := handler.provider
-	instanceType := handler.instanceType
-	accessKey := handler.accessKey
-	options := make([]string, 3)
-	options[0] = preflightScriptPath
-	options[1] = "-t"
-
-	if accessKey.KeyInfo.SkipProvisioning {
-		options[2] = "configure"
+	options := []string{preflightScriptPath, "-t"}
+	if handler.param.SkipProvisioning {
+		options = append(options, "configure")
 	} else {
-		options[2] = "provision"
+		options = append(options, "provision")
 	}
-
-	if provider.AirGapInstall {
-		options = append(options, "--airgap")
+	options = append(options, "--yb_home_dir", "'"+handler.param.YbHomeDir+"'")
+	if handler.param.SshPort != 0 {
+		options = append(options, "--ssh_port", fmt.Sprint(handler.param.SshPort))
 	}
-
-	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
-		options = append(options, "--yb_home_dir", "'"+homeDir+"'")
-	} else {
-		options = append(options, "--yb_home_dir", util.NodeHomeDirectory)
-	}
-
-	if data := provider.SshPort; data != 0 {
-		options = append(options, "--ssh_port", fmt.Sprint(data))
-	}
-
-	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
+	if handler.param.MountPaths != nil && len(handler.param.MountPaths) > 0 {
 		options = append(options, "--mount_points")
-		mp := ""
-		for i, volumeDetail := range data {
-			mp += volumeDetail.MountPath
-			if i < len(data)-1 {
-				mp += ","
-			}
-		}
-		options = append(options, mp)
+		options = append(options, strings.Join(handler.param.MountPaths, ","))
 	}
-	if accessKey.KeyInfo.InstallNodeExporter {
+	if handler.param.InstallNodeExporter {
 		options = append(options, "--install_node_exporter")
 	}
-	if accessKey.KeyInfo.AirGapInstall {
+	if handler.param.AirGapInstall {
 		options = append(options, "--airgap")
 	}
-
 	return options
 }
 
@@ -390,4 +434,64 @@ func OutputPreflightCheck(responses map[string]model.NodeInstanceValidationRespo
 	}
 	table.Render()
 	return allValid
+}
+
+func getNodeConfig(data map[string]model.PreflightCheckVal) *[]model.NodeConfig {
+	mountPointsWritableMap := make(map[string]string)
+	mountPointsVolumeMap := make(map[string]string)
+	result := make([]model.NodeConfig, 0)
+	for k, v := range data {
+		kSplit := strings.Split(k, ":")
+		switch kSplit[0] {
+		case mountPointsWritable:
+			mountPointsWritableMap[kSplit[1]] = v.Value
+		case mountPointsVolume:
+			mountPointsVolumeMap[kSplit[1]] = v.Value
+		case masterHTTPPort, masterRPCPort, tserverHTTPPort, tserverRPCPort,
+			ybControllerHTTPPort, ybControllerRPCPort, redisServerHTTPPort,
+			redisServerRPCPort, yqlServerHTTPPort, yqlServerRPCPort,
+			ysqlServerHTTPPort, ysqlServerRPCPort, sshPort:
+			portMap := make(map[string]string)
+			portMap[kSplit[1]] = v.Value
+			result = appendMap(kSplit[0], portMap, result)
+		default:
+			// Try Getting Python Version.
+			vSplit := strings.Split(v.Value, " ")
+			if len(vSplit) > 0 && strings.EqualFold(vSplit[0], "Python") {
+				result = append(
+					result,
+					model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: vSplit[1]},
+				)
+			} else {
+				result = append(result, model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: v.Value})
+			}
+		}
+	}
+
+	// Marshal the existence of mount points in the request.
+	result = appendMap(mountPointsWritable, mountPointsWritableMap, result)
+
+	// Marshal the mount points volume in the request.
+	result = appendMap(mountPointsVolume, mountPointsVolumeMap, result)
+
+	return &result
+}
+
+// Marshal helper function for maps.
+func appendMap(key string, valMap map[string]string, result []model.NodeConfig) []model.NodeConfig {
+	if len(valMap) > 0 {
+		valJSON, err := json.Marshal(valMap)
+		if err != nil {
+			panic("Error while marshaling map")
+		}
+		return append(
+			result,
+			model.NodeConfig{
+				Type:  strings.ToUpper(key),
+				Value: string(valJSON),
+			},
+		)
+	}
+
+	return result
 }

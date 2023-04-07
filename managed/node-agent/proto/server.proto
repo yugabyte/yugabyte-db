@@ -39,10 +39,17 @@ message ExecuteCommandResponse {
     }
 }
 
-message SubmitTaskRequest {
+message CommandInput {
     repeated string command = 1;
-    string user = 2;
-    string taskId = 3;
+}
+
+message SubmitTaskRequest {
+    string user = 1;
+    string taskId = 2;
+    oneof data {
+        CommandInput commandInput = 3;
+        PreflightCheckInput preflightCheckInput = 4;
+    }
 }
 
 message SubmitTaskResponse {
@@ -54,11 +61,12 @@ message DescribeTaskRequest {
 }
 
 message DescribeTaskResponse {
+    string state = 1;
     oneof data {
-        string output = 1;
-        Error error = 2;
+        string output = 2;
+        Error error = 3;
+        PreflightCheckOutput preflightCheckOutput = 4;
     }
-    string state = 3;
 }
 
 message AbortTaskRequest {
@@ -111,4 +119,22 @@ message UpdateRequest {
 
 message UpdateResponse {
     string home = 1;
+}
+
+message PreflightCheckInput {
+    string ybHomeDir = 1;
+    bool skipProvisioning = 2;
+    bool airGapInstall = 3;
+    bool installNodeExporter = 4;
+    uint32 sshPort = 5;
+    repeated string mountPaths = 6;
+}
+
+message PreflightCheckOutput {
+    repeated NodeConfig nodeConfigs = 1;
+}
+
+message NodeConfig {
+    string type = 1;
+    string value = 2;
 }
