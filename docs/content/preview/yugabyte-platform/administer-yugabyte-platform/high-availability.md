@@ -79,7 +79,7 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Click **Create**.
 
-1. Switch to the active instance, and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443. If the HTTPS protocol is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of other instances.
+1. Switch to the active instance, and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443. If the HTTPS protocol is enabled, you can use the **Manage Peer Certificates** dialog to set up a root CA certificate of all the instances. Make sure that on the active instance we have added root CA certs for the **active as well as all the standby**. 
 
 1. Click **Continue** on the **Add Standby Instance** dialog.
 
