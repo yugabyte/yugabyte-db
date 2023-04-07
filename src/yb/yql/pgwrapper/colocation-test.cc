@@ -10,9 +10,11 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/test_macros.h"
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/common/pgsql_error.h"
+#include "yb/util/thread.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -21,6 +23,7 @@ namespace pgwrapper {
 
 class ColocatedDBTest : public LibPqTestBase {
  protected:
+  int GetNumMasters() const override { return 3; }
   Result<PGConn> CreateColocatedDB(std::string db_name) {
     PGConn conn = VERIFY_RESULT(ConnectToDB("yugabyte"));
     RETURN_NOT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", db_name));
@@ -33,6 +36,38 @@ TEST_F(ColocatedDBTest, TestMasterToTServerRetryAddTableToTablet) {
 
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_duplicate_addtabletotablet_request", "true"));
   ASSERT_OK(conn.Execute("CREATE TABLE test_tbl1 (key INT PRIMARY KEY, value TEXT)"));
+}
+
+TEST_F(ColocatedDBTest, MasterFailoverRetryAddTableToTablet) {
+  const std::string db_name = "test_db";
+  auto conn = ASSERT_RESULT(CreateColocatedDB(db_name));
+
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->GetLeaderMaster(), "TEST_stuck_add_tablet_to_table_task_enabled", "true"));
+
+  Status s;
+  std::thread insertion_thread([&] {
+    s = conn.Execute("CREATE TABLE test_tbl1 (key INT PRIMARY KEY, value INT)");
+  });
+
+  // Wait for table to reach PREPARING state.
+  auto conn2 = ASSERT_RESULT(ConnectToDB(db_name));
+  ASSERT_NOK(WaitFor(
+      [&]() {
+        auto s = conn2.FetchFormat("SELECT * FROM test_tbl1");
+        return s.ok();
+      },
+      MonoDelta::FromSeconds(10),
+      "Wait for table to get created"));
+
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->GetLeaderMaster(), "TEST_stuck_add_tablet_to_table_task_enabled", "false"));
+
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+
+  insertion_thread.join();
+  ASSERT_OK(s);
+  ASSERT_OK(conn.Execute("INSERT INTO test_tbl1 values (1, 1)"));
 }
 
 class ColocationConcurrencyTest : public ColocatedDBTest {

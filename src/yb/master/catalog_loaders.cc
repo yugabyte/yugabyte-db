@@ -34,6 +34,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/constants.h"
+#include "yb/master/async_rpc_tasks.h"
 #include "yb/master/master_util.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 #include "yb/master/ysql_transaction_ddl.h"
@@ -283,6 +284,15 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
               "Cannot add a table $0 (ColocationId: $1) to a colocation group for tablet $2: "
               "place is taken by a table $3",
               table_id, colocation_id, tablet_id, emplace_result.first->second);
+        }
+
+        if (table->IsPreparing()) {
+          DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
+          auto call = std::make_shared<AsyncAddTableToTablet>(
+              catalog_manager_->master_, catalog_manager_->AsyncTaskPool(), tablet, table);
+          table->AddTask(call);
+          WARN_NOT_OK(
+              catalog_manager_->ScheduleTask(call), "Failed to send AddTableToTablet request");
         }
       }
     }
