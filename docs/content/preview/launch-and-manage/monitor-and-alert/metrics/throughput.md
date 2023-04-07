@@ -20,53 +20,16 @@ All handler latency metrics include additional attributes. Refer to [Latency met
 
 The following are key metrics for evaluating YSQL query processing.
 
-##### handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to parse and execute INSERT statement.
-
-##### handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to parse and execute SELECT statement.
-
-##### handler_latency_yb_ysqlserver_SQLProcessor_UpdateStmt
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to parse and execute UPDATE statement.
-
-##### handler_latency_yb_ysqlserver_SQLProcessor_BeginStmt
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to parse and execute transaction BEGIN statement.
-
-##### handler_latency_yb_ysqlserver_SQLProcessor_CommitStmt
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to parse and execute transaction COMMIT statement.
-
-##### handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to parse and execute transaction ROLLBACK statement.
-
-##### handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to parse and execute all other statements apart from the preceding ones listed in this table. This includes statements like PREPARE, RELEASE SAVEPOINT, and so on.
-
-##### handler_latency_yb_ysqlserver_SQLProcessor_Transactions
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to execute any of the statements in this table.
+| Metric | Unit | Type | Description |
+| :--- | :--- | :--- | :--- |
+| handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt | microseconds | counter | The time in microseconds to parse and execute INSERT statement.
+| handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt | microseconds | counter | The time in microseconds to parse and execute SELECT statement.
+| handler_latency_yb_ysqlserver_SQLProcessor_UpdateStmt | microseconds | counter | The time in microseconds to parse and execute UPDATE statement.
+| handler_latency_yb_ysqlserver_SQLProcessor_BeginStmt | microseconds | counter | The time in microseconds to parse and execute transaction BEGIN statement.
+| handler_latency_yb_ysqlserver_SQLProcessor_CommitStmt | microseconds | counter | The time in microseconds to parse and execute transaction COMMIT statement.
+| handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt | microseconds | counter | The time in microseconds to parse and execute transaction ROLLBACK statement.
+| handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts | microseconds | counter | The time in microseconds to parse and execute all other statements apart from the preceding ones listed in this table. This includes statements like PREPARE, RELEASE SAVEPOINT, and so on.
+| handler_latency_yb_ysqlserver_SQLProcessor_Transactions | microseconds | counter | The time in microseconds to execute any of the statements in this table.
 
 The YSQL throughput can be viewed as an aggregate across the whole cluster, per table, and per node by applying the appropriate aggregations.
 
@@ -89,17 +52,10 @@ All handler latency metrics include additional attributes. Refer to [Latency met
 
 The following are key metrics for evaluating database IOPS.
 
-##### handler_latency_yb_tserver_TabletServerService_Read
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to perform WRITE operations at a tablet level.
-
-##### handler_latency_yb_tserver_TabletServerService_Write
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to perform READ operations at a tablet level.
+| Metric | Unit | Type | Description |
+| :--- | :--- | :--- | :--- |
+| handler_latency_yb_tserver_TabletServerService_Read | microseconds | counter | The time in microseconds to perform WRITE operations at a tablet level.
+| handler_latency_yb_tserver_TabletServerService_Write | microseconds | counter | The time in microseconds to perform READ operations at a tablet level.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |

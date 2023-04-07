@@ -20,23 +20,11 @@ All handler latency metrics include additional attributes. Refer to [Latency met
 
 The following are key metrics for monitoring RAFT processing.
 
-##### handler_latency_yb_consensus_ConsensusService_UpdateConsensus
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to replicate a batch of log entries from the leader to the follower. This metric includes the total count of the RPC method being invoked.
-
-##### handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds by candidates to gather votes. This metric includes the total count of the RPC method being invoked.
-
-##### handler_latency_yb_consensus_ConsensusService_ChangeConfig
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds by candidates to add or remove a peer from the Raft group. This metric includes the total count of the RPC method being invoked.
+| Metric | Unit | Type | Description |
+| :--- | :--- | :--- | :--- |
+| handler_latency_yb_consensus_ConsensusService_UpdateConsensus | microseconds | counter | The time in microseconds to replicate a batch of log entries from the leader to the follower. This metric includes the total count of the RPC method being invoked.
+| handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes | microseconds | counter | The time in microseconds by candidates to gather votes. This metric includes the total count of the RPC method being invoked.
+| handler_latency_yb_consensus_ConsensusService_ChangeConfig | microseconds | counter | The time in microseconds by candidates to add or remove a peer from the Raft group. This metric includes the total count of the RPC method being invoked.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
@@ -50,11 +38,9 @@ The throughput (Ops/Sec) can be calculated and aggregated for nodes across the e
 
 Clock skew is an important metric for performance and data consistency. It signals if the Hybrid Logical Clock (HLC) used by YugabyteDB is out of state or if your virtual machine was paused or migrated. If the skew is more than 500 milliseconds, it may impact the consistency guarantees of YugabyteDB. If there is unexplained, seemingly random latency in query responses and spikes in the clock skew metric, it could indicate that the virtual machine got migrated to another machine, or the hypervisor is oversubscribed.
 
-##### hybrid_clock_skew
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | gauge | The time in microseconds for clock drift and skew.
+| Metric | Unit | Type | Description |
+| :--- | :--- | :--- | :--- |
+| hybrid_clock_skew| microseconds | gauge | The time in microseconds for clock drift and skew.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
@@ -64,11 +50,9 @@ Clock skew is an important metric for performance and data consistency. It signa
 
 When a Raft peer fails, YugabyteDB executes an automatic remote bootstrap to create a new peer from the remaining ones. Bootstrapping can also result from planned user activity when adding or decommissioning nodes.
 
-##### handler_latency_yb_consensus_ConsensusService_StartRemoteBootstrap
-
-| Unit | Type | Description |
-| :--- | :--- | :--- |
-| microseconds | counter | The time in microseconds to remote bootstrap a new Raft peer. This metric includes the total count of remote bootstrap connections.
+| Metric | Unit | Type | Description |
+| :--- | :--- | :--- | :--- |
+| handler_latency_yb_consensus_ConsensusService_StartRemoteBootstrap | microseconds | counter | The time in microseconds to remote bootstrap a new Raft peer. This metric includes the total count of remote bootstrap connections.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
