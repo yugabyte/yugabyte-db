@@ -119,7 +119,8 @@ build_for_platform() {
     echo "Building ${exec_name}"
     executable="$build_output_dir/$exec_name"
     pushd "$project_dir"
-    env GOOS="$os" GOARCH="$arch" go build -o "$executable" "$project_dir"/cmd/cli/main.go
+    env GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+    go build -o "$executable" "$project_dir"/cmd/cli/main.go
     if [ $? -ne 0 ]; then
         echo "Build failed for $exec_name"
         exit 1

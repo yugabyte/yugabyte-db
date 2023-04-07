@@ -37,7 +37,7 @@ func init() {
 func setUp() {
 	// Sets the env to test to load test config.
 	os.Setenv("env", "TEST")
-	SetCurrentConfig("test-config.conf")
+	SetCurrentConfig("test-config")
 	config := CurrentConfig()
 	server := MockServer()
 	config.Update(PlatformUrlKey, server.URL)

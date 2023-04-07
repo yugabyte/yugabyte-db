@@ -15,24 +15,6 @@ import (
 	"strings"
 )
 
-const (
-	mountPointsVolume    = "mount_points_volume"
-	mountPointsWritable  = "mount_points_writable"
-	masterHTTPPort       = "master_http_port"
-	masterRPCPort        = "master_rpc_port"
-	tserverHTTPPort      = "tserver_http_port"
-	tserverRPCPort       = "tserver_rpc_port"
-	ybControllerHTTPPort = "yb_controller_http_port"
-	ybControllerRPCPort  = "yb_controller_rpc_port"
-	redisServerHTTPPort  = "redis_server_http_port"
-	redisServerRPCPort   = "redis_server_rpc_port"
-	yqlServerHTTPPort    = "yql_server_http_port"
-	yqlServerRPCPort     = "yql_server_rpc_port"
-	ysqlServerHTTPPort   = "ysql_server_http_port"
-	ysqlServerRPCPort    = "ysql_server_rpc_port"
-	sshPort              = "ssh_port"
-)
-
 func httpClient() *util.HttpClient {
 	config := util.CurrentConfig()
 	return util.NewHttpClient(
@@ -150,13 +132,11 @@ func (handler *GetInstanceTypeHandler) Result() *model.NodeInstanceType {
 }
 
 type ValidateNodeInstanceHandler struct {
-	data   map[string]model.PreflightCheckVal
+	data   []model.NodeConfig
 	result *map[string]model.NodeInstanceValidationResponse
 }
 
-func NewValidateNodeInstanceHandler(
-	data map[string]model.PreflightCheckVal,
-) *ValidateNodeInstanceHandler {
+func NewValidateNodeInstanceHandler(data []model.NodeConfig) *ValidateNodeInstanceHandler {
 	return &ValidateNodeInstanceHandler{data: data}
 }
 
@@ -190,13 +170,11 @@ func (handler *ValidateNodeInstanceHandler) Result() *map[string]model.NodeInsta
 }
 
 type PostNodeInstanceHandler struct {
-	data   map[string]model.PreflightCheckVal
+	data   []model.NodeConfig
 	result *map[string]model.NodeInstanceResponse
 }
 
-func NewPostNodeInstanceHandler(
-	data map[string]model.PreflightCheckVal,
-) *PostNodeInstanceHandler {
+func NewPostNodeInstanceHandler(data []model.NodeConfig) *PostNodeInstanceHandler {
 	return &PostNodeInstanceHandler{data: data}
 }
 
@@ -616,7 +594,7 @@ func createNodeAgentCommonInfo(
 
 func createNodeDetailsRequest(
 	config *util.Config,
-	data map[string]model.PreflightCheckVal,
+	data []model.NodeConfig,
 ) model.NodeDetails {
 	nodeDetails := model.NodeDetails{}
 	nodeDetails.IP = config.String(util.NodeIpKey)
@@ -624,73 +602,13 @@ func createNodeDetailsRequest(
 	nodeDetails.Zone = config.String(util.NodeZoneKey)
 	nodeDetails.InstanceType = config.String(util.NodeInstanceTypeKey)
 	nodeDetails.InstanceName = config.String(util.NodeNameKey)
-	nodeDetails.NodeConfigs = getNodeConfig(data)
+	nodeDetails.NodeConfigs = data
 	return nodeDetails
 }
 
 func createNodeInstancesRequest(
 	config *util.Config,
-	data map[string]model.PreflightCheckVal,
+	data []model.NodeConfig,
 ) model.NodeInstances {
 	return model.NodeInstances{Nodes: []model.NodeDetails{createNodeDetailsRequest(config, data)}}
-}
-
-func getNodeConfig(data map[string]model.PreflightCheckVal) []model.NodeConfig {
-	mountPointsWritableMap := make(map[string]string)
-	mountPointsVolumeMap := make(map[string]string)
-	result := make([]model.NodeConfig, 0)
-	for k, v := range data {
-		kSplit := strings.Split(k, ":")
-		switch kSplit[0] {
-		case mountPointsWritable:
-			mountPointsWritableMap[kSplit[1]] = v.Value
-		case mountPointsVolume:
-			mountPointsVolumeMap[kSplit[1]] = v.Value
-		case masterHTTPPort, masterRPCPort, tserverHTTPPort, tserverRPCPort,
-			ybControllerHTTPPort, ybControllerRPCPort, redisServerHTTPPort,
-			redisServerRPCPort, yqlServerHTTPPort, yqlServerRPCPort,
-			ysqlServerHTTPPort, ysqlServerRPCPort, sshPort:
-			portMap := make(map[string]string)
-			portMap[kSplit[1]] = v.Value
-			result = appendMap(kSplit[0], portMap, result)
-		default:
-			// Try Getting Python Version.
-			vSplit := strings.Split(v.Value, " ")
-			if len(vSplit) > 0 && strings.EqualFold(vSplit[0], "Python") {
-				result = append(
-					result,
-					model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: vSplit[1]},
-				)
-			} else {
-				result = append(result, model.NodeConfig{Type: strings.ToUpper(kSplit[0]), Value: v.Value})
-			}
-		}
-	}
-
-	// Marshal the existence of mount points in the request.
-	result = appendMap(mountPointsWritable, mountPointsWritableMap, result)
-
-	// Marshal the mount points volume in the request.
-	result = appendMap(mountPointsVolume, mountPointsVolumeMap, result)
-
-	return result
-}
-
-// Marshal helper function for maps.
-func appendMap(key string, valMap map[string]string, result []model.NodeConfig) []model.NodeConfig {
-	if len(valMap) > 0 {
-		valJSON, err := json.Marshal(valMap)
-		if err != nil {
-			panic("Error while marshaling map")
-		}
-		return append(
-			result,
-			model.NodeConfig{
-				Type:  strings.ToUpper(key),
-				Value: string(valJSON),
-			},
-		)
-	}
-
-	return result
 }
