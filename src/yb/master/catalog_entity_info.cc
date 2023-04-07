@@ -366,6 +366,10 @@ bool TableInfo::is_deleted() const {
   return LockForRead()->is_deleted();
 }
 
+bool TableInfo::IsPreparing() const {
+  return LockForRead()->IsPreparing();
+}
+
 string TableInfo::ToString() const {
   return Substitute("$0 [id=$1]", LockForRead()->pb.name(), table_id_);
 }
@@ -696,14 +700,35 @@ Status TableInfo::CheckAllActiveTabletsRunning() const {
 }
 
 bool TableInfo::IsCreateInProgress() const {
-  SharedLock<decltype(lock_)> l(lock_);
-  for (const auto& e : partitions_) {
-    auto tablet_info_lock = e.second->LockForRead();
-    if (!tablet_info_lock->is_running() && tablet_info_lock->pb.split_depth() == 0) {
-      return true;
+  auto l = LockForRead();
+  return l->pb.state() == SysTablesEntryPB::PREPARING;
+}
+
+bool TableInfo::TransitionTableFromPreparingToRunning(
+    const std::unordered_map<TabletId, const TabletInfo::WriteLock*>& new_running_tablets) {
+  auto* mutable_table_info = mutable_metadata()->mutable_dirty();
+  if (!mutable_table_info->IsPreparing()) {
+    return false;
+  }
+
+  SharedLock l(lock_);
+  for (const auto& [key, tablet_info] : partitions_) {
+    TabletInfo::ReadLock read_lock;
+    const PersistentTabletInfo* persisted_tablet_info = nullptr;
+    if (new_running_tablets.contains(tablet_info->id())) {
+      persisted_tablet_info = new_running_tablets.at(tablet_info->id())->mutable_data();
+    } else {
+      read_lock = tablet_info->LockForRead();
+      persisted_tablet_info = &read_lock.data();
+    }
+
+    if (!persisted_tablet_info->is_running() && persisted_tablet_info->pb.split_depth() == 0) {
+      return false;
     }
   }
-  return false;
+
+  mutable_table_info->pb.set_state(SysTablesEntryPB::RUNNING);
+  return true;
 }
 
 Status TableInfo::SetIsBackfilling() {
