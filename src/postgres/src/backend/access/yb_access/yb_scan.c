@@ -1525,12 +1525,20 @@ YbResetColumnFilter(YbColumnFilter *filter)
 	filter->ybScan = NULL;
 }
 
-static void
+/*
+ * Returns true if the given target column is added according to the filter.
+ * Otherwise returns false.
+ */
+static bool
 YbAddTargetColumnIfRequired(YbColumnFilter *filter, AttrNumber attnum)
 {
 	if (filter->all_attrs_required ||
-	    bms_is_member(attnum - filter->min_attr + 1, filter->required_attrs))
+		bms_is_member(attnum - filter->min_attr + 1, filter->required_attrs))
+	{
 		ybcAddTargetColumn(filter->ybScan, attnum);
+		return true;
+	}
+	return false;
 }
 
 /* Setup the targets */
@@ -1541,6 +1549,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	bool is_index_only_scan = ybScan->prepare_params.index_only_scan;
 	YbColumnFilter filter;
 	YbInitColumnFilter(&filter, ybScan, pg_scan_plan);
+	bool target_added = false;
 	if (is_index_only_scan && index->rd_index->indisprimary)
 	{
 		/*
@@ -1548,13 +1557,13 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		 * table instead of the whole target table.
 		 */
 		for (int i = 0; i < index->rd_index->indnatts; i++)
-			YbAddTargetColumnIfRequired(
+			target_added |= YbAddTargetColumnIfRequired(
 				&filter, index->rd_index->indkey.values[i]);
 	}
 	else
 	{
 		for (AttrNumber attnum = 1; attnum <= ybScan->target_desc->natts; attnum++)
-			YbAddTargetColumnIfRequired(&filter, attnum);
+			target_added |= YbAddTargetColumnIfRequired(&filter, attnum);
 	}
 	YbResetColumnFilter(&filter);
 
@@ -1575,11 +1584,15 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 			if (secondary_index)
 				attnum = secondary_index->rd_index->indkey.values[attnum - 1];
 			ybcAddTargetColumn(ybScan, attnum);
+			target_added = true;
 		}
 	}
 
 	if (scan_plan->target_relation->rd_rel->relhasoids)
+	{
 		ybcAddTargetColumn(ybScan, ObjectIdAttributeNumber);
+		target_added = true;
+	}
 
 	if (is_index_only_scan)
 	{
@@ -1589,7 +1602,23 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 		 * In this case, Postgres requests base_ctid and maybe also data from IndexTable and then uses
 		 * them for further processing.
 		 */
-		ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
+		if (index->rd_index->indisprimary)
+		{
+			/*
+			 * In the case of IndexOnlyScan with no targets, we need to set a
+			 * placeholder for the targets to properly make pg_dml fetcher
+			 * recognize the correct number of rows though the targeted rows are
+			 * not being effectively retrieved. Otherwise, the pg_dml fetcher
+			 * will stop too early when seeing empty rows.
+			 * TODO(#16717): Such placeholder target can be removed once the
+			 * pg_dml fetcher can recognize empty rows in a response with no
+			 * explict targets.
+			 */
+			if (!target_added)
+				ybcAddTargetColumn(ybScan, YBTupleIdAttributeNumber);
+		}
+		else
+			ybcAddTargetColumn(ybScan, YBIdxBaseTupleIdAttributeNumber);
 	}
 	else
 	{
