@@ -700,6 +700,13 @@ Status TabletPeer::SubmitUpdateTransaction(
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);
   }
+  auto scoped_read_operation =
+      VERIFY_RESULT(operation->tablet_safe())->CreateNonAbortableScopedRWOperation();
+  if (!scoped_read_operation.ok()) {
+    auto status = MoveStatus(scoped_read_operation);
+    operation->CompleteWithStatus(status);
+    return status;
+  }
   Submit(std::move(operation), term);
   return Status::OK();
 }
