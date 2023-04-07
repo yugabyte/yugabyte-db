@@ -117,7 +117,7 @@ export const PerformanceDetails: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Box p={2}>
+    <Box>
       <div className={classes.tabSectionContainer}>
         <Tabs value={params.tab} indicatorColor="primary" textColor="primary" data-testid="ClusterTabList">
           {tabList.map((tab) => (
