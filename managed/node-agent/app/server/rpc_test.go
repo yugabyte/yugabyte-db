@@ -167,7 +167,11 @@ func TestSubmitTask(t *testing.T) {
 	echoWord := "Hello Test"
 	taskID := "task1"
 	cmd := fmt.Sprintf("sleep 5 & echo -n \"%s\"", echoWord)
-	req := pb.SubmitTaskRequest{TaskId: taskID, Command: []string{"bash", "-c", cmd}}
+	req := pb.SubmitTaskRequest{TaskId: taskID, Data: &pb.SubmitTaskRequest_CommandInput{
+		CommandInput: &pb.CommandInput{
+			Command: []string{"bash", "-c", cmd},
+		},
+	}}
 	_, err = client.SubmitTask(ctx, &req)
 	if err != nil {
 		t.Fatalf("Failed to submit task - %s", err.Error())
@@ -175,6 +179,7 @@ func TestSubmitTask(t *testing.T) {
 	buffer := bytes.Buffer{}
 	rc := 0
 	retryCount := 0
+outer:
 	for {
 		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -182,20 +187,25 @@ func TestSubmitTask(t *testing.T) {
 			ctx,
 			&pb.DescribeTaskRequest{TaskId: taskID},
 		)
-		res, err := stream.Recv()
-		if err == io.EOF {
-			break
-		}
 		if err != nil {
-			retryCount++
-			t.Logf("Retrying because the error is not EOF - %s", err.Error())
-			continue
+			t.Fatalf("Error in describe call: %s", err.Error())
 		}
-		if res.GetError() != nil {
-			rc = int(res.GetError().Code)
-			buffer.WriteString(res.GetError().Message)
-		} else {
-			buffer.WriteString(res.GetOutput())
+		for {
+			res, err := stream.Recv()
+			if err == io.EOF {
+				break outer
+			}
+			if err != nil {
+				retryCount++
+				t.Logf("Retrying because the error is not EOF - %s", err.Error())
+				break
+			}
+			if res.GetError() != nil {
+				rc = int(res.GetError().Code)
+				buffer.WriteString(res.GetError().Message)
+			} else {
+				buffer.WriteString(res.GetOutput())
+			}
 		}
 	}
 	out := buffer.String()
@@ -318,4 +328,66 @@ func TestDownloadFile(t *testing.T) {
 	if out != content {
 		t.Fatalf("Expected %s, found %s", content, out)
 	}
+}
+
+func TestRunPreflightCheck(t *testing.T) {
+	conn, err := grpc.Dial(serverAddr, dialOpts...)
+	if err != nil {
+		log.Fatalf("Failed to dial: %v", err)
+	}
+	defer conn.Close()
+	client := pb.NewNodeAgentClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	taskID := "PreflightCheckTask1"
+	req := pb.SubmitTaskRequest{TaskId: taskID, Data: &pb.SubmitTaskRequest_PreflightCheckInput{
+		PreflightCheckInput: &pb.PreflightCheckInput{
+			SkipProvisioning:    false,
+			AirGapInstall:       false,
+			InstallNodeExporter: false,
+			YbHomeDir:           "/home/yugabyte",
+			SshPort:             22,
+			MountPaths:          []string{"/mnt/d0"},
+		},
+	}}
+	_, err = client.SubmitTask(ctx, &req)
+	if err != nil {
+		t.Fatalf("Failed to submit task - %s", err.Error())
+	}
+	buffer := bytes.Buffer{}
+	rc := 0
+	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	stream, err := client.DescribeTask(
+		ctx,
+		&pb.DescribeTaskRequest{TaskId: taskID},
+	)
+	if err != nil {
+		t.Fatalf("Error in describe call: %s", err.Error())
+	}
+	for {
+		res, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Error occurred - %s", err.Error())
+		}
+		if res.GetError() != nil {
+			rc = int(res.GetError().Code)
+			buffer.WriteString(res.GetError().Message)
+			break
+		} else {
+			buffer.WriteString(res.GetOutput())
+			if res.State == "Success" {
+				output := res.GetPreflightCheckOutput()
+				t.Logf("Node configs: %+v", output.NodeConfigs)
+				break
+			}
+		}
+	}
+	if rc != 0 {
+		t.Fatalf("Expected exit code of 0, found %d", rc)
+	}
+	t.Logf("Output: %s\n", buffer.String())
 }

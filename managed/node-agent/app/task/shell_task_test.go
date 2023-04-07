@@ -99,11 +99,16 @@ func TestGetOptions(t *testing.T) {
 			tt.accessKey.KeyInfo.AirGapInstall,
 		)
 		t.Run(testName, func(t *testing.T) {
-			handler := NewPreflightCheckHandler(&tt.provider, &tt.instanceType, &tt.accessKey)
+			param := CreatePreflightCheckParam(&tt.provider, &tt.instanceType, &tt.accessKey)
+			handler := NewPreflightCheckHandler(param)
 			result := handler.getOptions("./dummy.sh")
 			isEqual := reflect.DeepEqual(result, tt.expected)
 			if !isEqual {
-				t.Fatalf("Incorrect preflight run options.")
+				t.Fatalf(
+					"Incorrect preflight run options - expected %v, found %v",
+					tt.expected,
+					result,
+				)
 			}
 		})
 	}
