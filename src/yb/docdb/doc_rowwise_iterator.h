@@ -112,7 +112,9 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   // For reverse scans, moves the iterator to the first kv-pair of the previous row after having
   // constructed the current row. For forward scans nothing is necessary because GetSubDocument
   // ensures that the iterator will be positioned on the first kv-pair of the next row.
-  Status AdvanceIteratorToNextDesiredRow() const;
+  // row_finished - true when current row was fully iterated. So we would not have to perform
+  // extra Seek in case of full scan.
+  Status AdvanceIteratorToNextDesiredRow(bool row_finished) const;
 
   // Read next row into a value map using the specified projection.
   Status FillRow(QLTableRow* table_row, const Schema* projection);

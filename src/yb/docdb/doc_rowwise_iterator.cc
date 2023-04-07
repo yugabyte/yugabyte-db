@@ -156,7 +156,7 @@ inline void DocRowwiseIterator::PrevDocKey(const Slice& key) {
   }
 }
 
-Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
+Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) const {
   if (scan_choices_) {
     if (!IsFetchedRowStatic()
         && !scan_choices_->CurrentTargetMatchesKey(row_key_)) {
@@ -166,7 +166,7 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow() const {
   if (!is_forward_scan_) {
     VLOG(4) << __PRETTY_FUNCTION__ << " setting as PrevDocKey";
     db_iter_->PrevDocKey(row_key_);
-  } else {
+  } else if (!row_finished) {
     db_iter_->SeekOutOfSubDoc(row_key_);
   }
 
@@ -179,7 +179,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     QLTableRow* static_row,
     const Schema* static_projection) {
   VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", done_: "
-          << done_;
+          << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
 
   // Repeated HasNext calls (without Skip/NextRow in between) should be idempotent:
   // 1. If a previous call failed we returned the same status.
@@ -296,17 +296,18 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     const auto doc_found = *doc_found_res;
     // Use the write_time of the entire row.
     // May lose some precision by not examining write time of every column.
-    IncrementKeyFoundStats(!doc_found, key_data.write_time);
+    IncrementKeyFoundStats(doc_found == DocReaderResult::kNotFound, key_data.write_time);
 
     if (scan_choices_ && !is_static_column) {
       has_next_status_ = scan_choices_->DoneWithCurrentTarget();
       RETURN_NOT_OK(has_next_status_);
     }
-    has_next_status_ = AdvanceIteratorToNextDesiredRow();
+    has_next_status_ = AdvanceIteratorToNextDesiredRow(
+        doc_found == DocReaderResult::kFoundAndFinished);
     RETURN_NOT_OK(has_next_status_);
     VLOG(4) << __func__ << ", iter: " << !db_iter_->IsOutOfRecords();
 
-    if (doc_found) {
+    if (doc_found != DocReaderResult::kNotFound) {
       if (table_row) {
         if (!static_row) {
           has_next_status_ = FillRow(table_row, projection);
