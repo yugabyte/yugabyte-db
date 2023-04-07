@@ -44,6 +44,7 @@ add_dependencies(
   gen_src_yb_master_master_types_proto
   gen_src_yb_tserver_tserver_service_proto
   gen_src_yb_rpc_any_proto
+  gen_src_yb_consensus_consensus_types_proto
   )
 
 set(PQ_UTILS_SRCS
