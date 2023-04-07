@@ -360,14 +360,16 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return pb.state() == SysTablesEntryPB::DELETING;
   }
 
+  bool IsPreparing() const { return pb.state() == SysTablesEntryPB::PREPARING; }
+
   bool is_running() const {
-    return pb.state() == SysTablesEntryPB::RUNNING ||
+    // Historically, we have always treated PREPARING (tablets not yet ready) and RUNNING as the
+    // same. Changing it now will require all callers of this function to be aware of the new state.
+    return pb.state() == SysTablesEntryPB::PREPARING || pb.state() == SysTablesEntryPB::RUNNING ||
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const {
-    return is_running() && !is_hidden();
-  }
+  bool visible_to_client() const { return is_running() && !is_hidden(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;
@@ -479,6 +481,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool is_running() const;
   bool is_deleted() const;
+  bool IsPreparing() const;
   bool IsOperationalForClient() const {
     auto l = LockForRead();
     return !l->started_hiding_or_deleting();
@@ -627,6 +630,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
+
+  // Transition table from PREPARING to RUNNING state if all its tablets are RUNNING.
+  // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
+  // (dirty copy is modified) and yet to be persisted. Returns true if the table state has
+  // changed.
+  bool TransitionTableFromPreparingToRunning(
+      const std::unordered_map<TabletId, const TabletInfo::WriteLock*>& new_running_tablets);
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {
