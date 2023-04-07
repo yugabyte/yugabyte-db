@@ -22,9 +22,9 @@ The following are key metrics for monitoring RAFT processing.
 
 | Metric | Unit | Type | Description |
 | :--- | :--- | :--- | :--- |
-| `handler_latency_yb_consensus_ConsensusService_UpdateConsensus` | microseconds | counter | Time to replicate a batch of log entries from the leader to the follower. This metric includes the total count of the RPC method being invoked.
-| `handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes` | microseconds | counter | Time by candidates to gather votes. This metric includes the total count of the RPC method being invoked.
-| `handler_latency_yb_consensus_ConsensusService_ChangeConfig` | microseconds | counter | Time by candidates to add or remove a peer from the Raft group. This metric includes the total count of the RPC method being invoked.
+| `handler_latency_yb_consensus_ConsensusService_UpdateConsensus` | microseconds | counter | Time to replicate a batch of log entries from the leader to the follower. Includes the total count of the RPC method being invoked.
+| `handler_latency_yb_consensus_ConsensusService_RequestConsensusVotes` | microseconds | counter | Time by candidates to gather votes. Includes the total count of the RPC method being invoked.
+| `handler_latency_yb_consensus_ConsensusService_ChangeConfig` | microseconds | counter | Time by candidates to add or remove a peer from the Raft group. Includes the total count of the RPC method being invoked.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
@@ -52,7 +52,7 @@ When a Raft peer fails, YugabyteDB executes an automatic remote bootstrap to cre
 
 | Metric | Unit | Type | Description |
 | :--- | :--- | :--- | :--- |
-| `handler_latency_yb_consensus_ConsensusService_StartRemoteBootstrap` | microseconds | counter | Time to remote bootstrap a new Raft peer. This metric includes the total count of remote bootstrap connections.
+| `handler_latency_yb_consensus_ConsensusService_StartRemoteBootstrap` | microseconds | counter | Time to remote bootstrap a new Raft peer. Includes the total count of remote bootstrap connections.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
