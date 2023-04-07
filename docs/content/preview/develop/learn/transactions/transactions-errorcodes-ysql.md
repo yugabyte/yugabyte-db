@@ -2,14 +2,14 @@
 title: Transaction Error Codes in YSQL
 headerTitle: Transaction error codes in YSQL
 linkTitle: Error codes
-description: Understand the error codes returned during a transactions.
+description: Understand the error codes returned during transactions.
 aliases:
   - /preview/develop/learn/acid-transactions/error-codes
 menu:
   preview:
     identifier: transaction-errorcodes-ysql
     parent: acid-transactions-1-ysql
-    weight: 568
+    weight: 570
 type: docs
 ---
 
@@ -29,7 +29,7 @@ WARNING:  25001: there is already a transaction in progress
 
 ## 25006: Read only SQL transaction
 
-This error occurs when certain statements are executed in a read only transaction that violate the read only constraint. For example, modifying records inside a read only transaction.
+This error occurs when certain statements are executed in a read-only transaction that violate the read-only constraint. For example, modifying records inside a read-only transaction.
 
 ```output
 ERROR:  25006: cannot execute UPDATE in a read-only transaction
@@ -72,6 +72,10 @@ ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a confl
 ```
 
 
+{{<tip>}}
+Serialization failure errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql#client-side-retry)
+{{</tip>}}
+
 ## 2D000: Invalid transaction termination
 
 This error occurs when a transaction is terminated either by a `COMMIT` or a `ROLLBACK` in an invalid location. For example, when a `COMMIT` is issued inside a stored procedure that is called from inside a transaction.
@@ -92,7 +96,7 @@ ERROR:  3B001: savepoint "FIRST_SAVE" does not exist
 
 ## Learn more
 
-- [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
+- [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels that are supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.
