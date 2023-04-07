@@ -74,10 +74,10 @@ A description of key metrics in this category is listed in the following table:
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `rocksdb_compact_read_bytes` | bytes | counter | The number of bytes being read to do compaction. |
-| `rocksdb_compact_write_bytes` | bytes | counter | The number of bytes being written to do compaction. |
-| `rocksdb_compaction_times_micros` | microseconds | counter | The time in microseconds for the compaction process to complete. |
-| `rocksdb_numfiles_in_singlecompaction` | files | counter | The number of files in any single compaction. |
+| `rocksdb_compact_read_bytes` | bytes | counter | Number of bytes being read to do compaction. |
+| `rocksdb_compact_write_bytes` | bytes | counter | Number of bytes being written to do compaction. |
+| `rocksdb_compaction_times_micros` | microseconds | counter | Time for the compaction process to complete. |
+| `rocksdb_numfiles_in_singlecompaction` | files | counter | Number of files in any single compaction. |
 
 ## Memtable
 
@@ -87,9 +87,9 @@ Memtable has statistics about reading documents, which essentially are columns i
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `rocksdb_memtable_compaction_micros` | microseconds | counter | The total time in microseconds to compact a set of SST files. |
-| `rocksdb_memtable_hit` | keys | counter | The number of memtable hits. |
-| `rocksdb_memtable_miss` | keys | counter | The number of memtable misses. |
+| `rocksdb_memtable_compaction_micros` | microseconds | counter | Total time to compact a set of SST files. |
+| `rocksdb_memtable_hit` | keys | counter | Number of memtable hits. |
+| `rocksdb_memtable_miss` | keys | counter | Number of memtable misses. |
 
 These metrics are available per tablet and can be aggregated across the entire cluster using appropriate aggregations.
 
@@ -99,10 +99,10 @@ The Write Ahead Log (or WAL) is used to write and persist updates to disk on eac
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `log_sync_latency` | microseconds | counter | The number of microseconds spent to flush (fsync) the WAL entries to disk. |
-| `log_append_latency` | microseconds | counter | The number of microseconds spent on appending a batch of values to the WAL. |
-| `log_group_commit_latency` | microseconds | counter | The number of microseconds spent on committing an entire group. |
-| `log_bytes_logged`| bytes | counter | The number of bytes written to the WAL after the tablet starts. |
-| `log_reader_bytes_read` | bytes | counter | The number of bytes read from WAL after the tablet start. |
+| `log_sync_latency` | microseconds | counter | Time spent to flush (fsync) the WAL entries to disk. |
+| `log_append_latency` | microseconds | counter | Time spent on appending a batch of values to the WAL. |
+| `log_group_commit_latency` | microseconds | counter | Time spent on committing an entire group. |
+| `log_bytes_logged`| bytes | counter | Number of bytes written to the WAL after the tablet starts. |
+| `log_reader_bytes_read` | bytes | counter | Number of bytes read from WAL after the tablet start. |
 
 These metrics are available per tablet and can be aggregated across the entire cluster using appropriate aggregations.
