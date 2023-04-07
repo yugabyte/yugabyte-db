@@ -1,133 +1,107 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
-import { makeStyles, Typography } from '@material-ui/core';
+import { Grid, makeStyles, Typography } from '@material-ui/core';
 import { roundDecimal } from '@app/helpers';
 import { YBProgress } from '@app/components';
+import clsx from 'clsx';
+import type { ClusterData } from '@app/api/src';
 
 const useStyles = makeStyles((theme) => ({
   container: {
     width: '100%'
   },
+  mainContent: {
+    marginTop: theme.spacing(6),
+    marginBottom: theme.spacing(7),
+  },
+  title: {
+    color: theme.palette.grey[900],
+    fontWeight: theme.typography.fontWeightRegular as number,
+    flexGrow: 1,
+  },
   label: {
     color: theme.palette.grey[600],
-    fontWeight: theme.typography.fontWeightMedium as number,
-    marginBottom: theme.spacing(0.75),
-    textTransform: 'uppercase'
+    fontWeight: theme.typography.fontWeightRegular as number,
+    textTransform: 'uppercase',
   },
-  value: {
-    paddingTop: theme.spacing(0.57),
+  graphLabel: {
+    marginBottom: theme.spacing(1),
   },
-  graphText: {
-    paddingBottom: theme.spacing(2)
+  flex: {
+    display: "flex",
+    alignItems: "bottom",
+    gap: theme.spacing(0.5),
+  },
+  marginRight: {
+    marginRight: theme.spacing(1),
+  },
+  largeMarginRight: {
+    marginRight: theme.spacing(4.15),
+  },
+  marginTop: {
+    marginTop: theme.spacing(0.1),
+  },
+  marginBottom: {
+    marginBottom: theme.spacing(1),
   }
 }));
 
 interface DiskUsageGraphProps {
-  totalDiskSize: number;
-  usedDiskSize: number;
+  cluster: ClusterData,
 }
 
-export const DiskUsageGraph: FC<DiskUsageGraphProps> = ({ totalDiskSize, usedDiskSize }) => {
+export const DiskUsageGraph: FC<DiskUsageGraphProps> = ({ cluster }) => {
   const classes = useStyles();
   const { t } = useTranslation();
   // const context = useContext(ClusterContext);
+
+  const clusterSpec = cluster?.spec;
+  const totalDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_gb ?? 0;
+  const usedDiskSize = clusterSpec?.cluster_info?.node_info.disk_size_used_gb ?? 0;
 
   var usedPercentage = usedDiskSize / totalDiskSize;
   if (isNaN(usedPercentage)) {
     usedPercentage = 0;
   }
-  const freeDiskSize = totalDiskSize - usedDiskSize;
 
-  // Get text for disk usage
-  const getDiskUsageText = (diskUsageGb: number) => {
-    diskUsageGb = roundDecimal(diskUsageGb)
-    return t('clusterDetail.overview.usedDiskText', { usedDiskSizeGb: diskUsageGb });
-  }
+  // const freeDiskSize = totalDiskSize - usedDiskSize;
 
-  const getFreeDiskText = (freeDiskGb: number, totalDiskGb: number) => {
-    freeDiskGb = roundDecimal(freeDiskGb)
-    totalDiskGb = roundDecimal(totalDiskGb)
-    return t('clusterDetail.overview.freeDiskText',
-      { freeDiskSizeGb: freeDiskGb, totalDiskSizeGb: totalDiskGb });
-  }
-
-  // Get text for encryption
   const getUsedPercentageText = (usedPercentage: number) => {
     return t('units.percent', { value: roundDecimal(usedPercentage * 100) })
   }
 
-  // Open edit infra
-  // const openEditInfraModal = () => {
-  //   if (context?.dispatch) {
-  //     context.dispatch({ type: OPEN_EDIT_INFRASTRUCTURE_MODAL });
-  //   }
-  // };
-  const colorObj = {
-    green: {
-      r: 51,
-      g: 158,
-      b: 52
-    },
-    yellow: {
-      r: 240,
-      g: 204,
-      b: 98
-    },
-    red: {
-      r: 233,
-      g: 80,
-      b: 63
-    }
-  };
-
-  const calcColor = (value: number) => {
-    let color = '#339e34';
-    let colorPercentage = 0;
-    if (value > 0.3 && value < 0.6) {
-      colorPercentage = (10 * value) / 3 - 1;
-      color =
-        'rgb(' +
-        (colorObj.green.r * (1 - colorPercentage) + colorObj.yellow.r * colorPercentage) +
-        ', ' +
-        (colorObj.green.g * (1 - colorPercentage) + colorObj.yellow.g * colorPercentage) +
-        ', ' +
-        (colorObj.green.b * (1 - colorPercentage) + colorObj.yellow.b * colorPercentage) +
-        ')';
-    }
-    if (value >= 0.6 && value < 0.8) {
-      colorPercentage = 5 * value - 3;
-      color =
-        'rgb(' +
-        (colorObj.yellow.r * (1 - colorPercentage) + colorObj.red.r * colorPercentage) +
-        ', ' +
-        (colorObj.yellow.g * (1 - colorPercentage) + colorObj.red.g * colorPercentage) +
-        ', ' +
-        (colorObj.yellow.b * (1 - colorPercentage) + colorObj.red.b * colorPercentage) +
-        ')';
-    }
-    if (value >= 0.8) {
-      color = '#E9503F';
-    }
-    return color;
-  };
-
   return (
     <div className={classes.container}>
-      <div>
-        <Typography variant="subtitle2" className={classes.label}>
-          {t('clusterDetail.overview.diskUsage')}
+      <div className={classes.mainContent}>
+        <Grid container className={clsx(classes.flex, classes.graphLabel)}>
+          <Grid item>
+            <Typography variant="h5">
+              {getUsedPercentageText(usedPercentage)}
+            </Typography>
+          </Grid>
+          <Grid item>
+          <Typography variant="body2" className={classes.label}>
+            {t('clusterDetail.overview.used')}
+          </Typography>
+          </Grid>
+        </Grid>
+        <YBProgress value={usedPercentage * 100}/>
+      </div>
+      <div className={clsx(classes.flex, classes.marginBottom)}>
+        <Typography variant="body2" className={clsx(classes.label, classes.largeMarginRight)}>
+          {t('clusterDetail.overview.usage')}
         </Typography>
-        <div className={classes.graphText}>
-            <Typography variant="body2" className={classes.value}>
-            {getDiskUsageText(usedDiskSize)}
-            </Typography>
-            <Typography variant="body2" className={classes.value}>
-            {getFreeDiskText(freeDiskSize, totalDiskSize)}
-            </Typography>
-        </div>
-        <YBProgress color={calcColor(usedPercentage)} value={usedPercentage * 100}/>
-        <Typography variant="body2" className={classes.value}>
-          {getUsedPercentageText(usedPercentage)}
+        <Typography variant="h5">
+          {roundDecimal(usedDiskSize)}
+        </Typography>
+        <Typography variant="body2" className={classes.marginTop}>GB</Typography>
+      </div>
+      <div className={classes.flex}>
+        <Typography variant="body2" className={clsx(classes.label, classes.marginRight)}>
+          {t('clusterDetail.overview.available')}
+        </Typography>
+        <Typography variant="body2">
+          {roundDecimal(totalDiskSize)} GB
         </Typography>
       </div>
     </div>
