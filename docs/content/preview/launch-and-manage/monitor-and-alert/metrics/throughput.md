@@ -11,6 +11,25 @@ menu:
     weight: 100
 type: docs
 ---
+Yugabyte supports additional attributes within the latency metrics which enable user to calculate the throughput.  
+These attributes include:
+
+| Attribute | Description |
+| :--- | :--- |
+| `total_count/count` | The number of times the value of a metric has been measured.
+| `min` | The minimum value of a metric across all measurements.
+| `mean` | The average value of the metric across all measurements.
+| `Percentile_75` | The 75th percentile value of the metric across all measurements.
+| `Percentile_95` | The 95th percentile value of the metric across all measurements.
+| `Percentile_99` | The 99th percentile of the metric across all metrics measurements.
+| `Percentile_99_9` | The 99.9th percentile of the metric across all metrics measurements.
+| `Percentile_99_99` | The 99.99th percentile of the metric across all metrics measurements.
+| `max` | The maximum value of the metric across all measurements.
+| `total_sum/sum` | The aggregate of all the metric values across the measurements reflected in total_count/count.
+
+For example, if a `select * from table` is executed once and returns 8 rows in 10 milliseconds, then the `total_count=1`, `total_sum=10`, `min=6`, `max=10`, and `mean=8`. If the same query is run again and returns in 6 milliseconds, then the `total_count=2`, `total_sum=16`, `min=6`, `max=10`, and `mean=8`.
+
+Although these attributes are present in all `handler_latency` metrics, they may not be calculated for all the metrics.
 
 ## YSQL query processing
 
@@ -64,23 +83,3 @@ The following are key metrics for evaluating database IOPS.
 
 These metrics can be viewed as an aggregate across the whole cluster, per table, and per node by applying the appropriate aggregations.
 
-## Latency metric attributes
-
-All handler latency metrics include the following additional attributes:
-
-| Attribute | Description |
-| :--- | :--- |
-| `total_count/count` | The number of times the value of a metric has been measured.
-| `min` | The minimum value of a metric across all measurements.
-| `mean` | The average value of the metric across all measurements.
-| `Percentile_75` | The 75th percentile value of the metric across all measurements.
-| `Percentile_95` | The 95th percentile value of the metric across all measurements.
-| `Percentile_99` | The 99th percentile of the metric across all metrics measurements.
-| `Percentile_99_9` | The 99.9th percentile of the metric across all metrics measurements.
-| `Percentile_99_99` | The 99.99th percentile of the metric across all metrics measurements.
-| `max` | The maximum value of the metric across all measurements.
-| `total_sum/sum` | The aggregate of all the metric values across the measurements reflected in total_count/count.
-
-For example, if a `select * from table` is executed once and returns 8 rows in 10 milliseconds, then the `total_count=1`, `total_sum=10`, `min=6`, `max=10`, and `mean=8`. If the same query is run again and returns in 6 milliseconds, then the `total_count=2`, `total_sum=16`, `min=6`, `max=10`, and `mean=8`.
-
-Although these attributes are present in all `handler_latency` metrics, they may not be calculated for all the metrics.
