@@ -1556,9 +1556,11 @@ void CDCServiceImpl::GetChanges(
       CDCErrorPB::LEADER_NOT_READY,
       context);
 
-  auto res = GetStream(stream_id);
-  RPC_RESULT_RETURN_ERROR(res, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
-  StreamMetadata record = **res;
+  auto stream_result = GetStream(stream_id);
+  RPC_RESULT_RETURN_ERROR(
+      stream_result, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
+  std::shared_ptr<StreamMetadata> stream_meta_ptr =*stream_result;
+  StreamMetadata& record = *stream_meta_ptr;
 
   if (record.source_type == CDCSDK) {
     auto result = CheckStreamActive(producer_tablet, session);
@@ -1667,10 +1669,10 @@ void CDCServiceImpl::GetChanges(
   // Read the latest changes from the Log.
   if (record.source_type == XCLUSTER) {
     status = GetChangesForXCluster(
-        stream_id, req->tablet_id(), from_op_id, record, tablet_peer, session,
+        stream_id, req->tablet_id(), from_op_id, tablet_peer, session,
         std::bind(
             &CDCServiceImpl::UpdateChildrenTabletsOnSplitOp, this, producer_tablet, _1, session),
-        mem_tracker, &msgs_holder, resp, &last_readable_index, get_changes_deadline);
+        mem_tracker, &record, &msgs_holder, resp, &last_readable_index, get_changes_deadline);
   } else {
     uint64_t commit_timestamp;
     OpId last_streamed_op_id;

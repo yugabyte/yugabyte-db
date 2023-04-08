@@ -57,6 +57,13 @@ struct StreamMetadata {
   CDCRequestSource source_type;
   CDCCheckpointType checkpoint_type;
 
+  struct ApplySafeTimeInfo {
+    int64_t apply_safe_time_checkpoint_op_id_ = 0;
+    HybridTime last_apply_safe_time_;
+    MonoTime last_apply_safe_time_update_time_;
+  };
+  std::unordered_map<TableId, ApplySafeTimeInfo> apply_safe_time_info_map_;
+
   StreamMetadata() = default;
 
   StreamMetadata(NamespaceId ns_id,
@@ -95,17 +102,18 @@ Status GetChangesForCDCSDK(
 
 using UpdateOnSplitOpFunc = std::function<Status(const consensus::ReplicateMsg&)>;
 
-Status GetChangesForXCluster(const std::string& stream_id,
-                             const std::string& tablet_id,
-                             const OpId& op_id,
-                             const StreamMetadata& record,
-                             const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                             const client::YBSessionPtr& session,
-                             UpdateOnSplitOpFunc update_on_split_op_func,
-                             const std::shared_ptr<MemTracker>& mem_tracker,
-                             consensus::ReplicateMsgsHolder* msgs_holder,
-                             GetChangesResponsePB* resp,
-                             int64_t* last_readable_opid_index = nullptr,
-                             const CoarseTimePoint deadline = CoarseTimePoint::max());
+Status GetChangesForXCluster(
+    const std::string& stream_id,
+    const std::string& tablet_id,
+    const OpId& op_id,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const client::YBSessionPtr& session,
+    UpdateOnSplitOpFunc update_on_split_op_func,
+    const std::shared_ptr<MemTracker>& mem_tracker,
+    StreamMetadata* stream_metadata,
+    consensus::ReplicateMsgsHolder* msgs_holder,
+    GetChangesResponsePB* resp,
+    int64_t* last_readable_opid_index = nullptr,
+    const CoarseTimePoint deadline = CoarseTimePoint::max());
 }  // namespace cdc
 }  // namespace yb
