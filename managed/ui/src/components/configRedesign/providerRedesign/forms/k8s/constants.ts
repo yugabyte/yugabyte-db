@@ -12,11 +12,13 @@ import {
 } from '../../constants';
 
 const convertToOptions = <KubernetesProviderType extends KubernetesProvider>(
-  kubernetesProvider: readonly KubernetesProviderType[]
+  kubernetesProvider: readonly KubernetesProviderType[],
+  isDisabled = false
 ) =>
   kubernetesProvider.map((kubernetesProvider) => ({
     value: kubernetesProvider,
-    label: KubernetesProviderLabel[kubernetesProvider]
+    label: KubernetesProviderLabel[kubernetesProvider],
+    isDisabled: isDisabled
   }));
 
 export const KUBERNETES_PROVIDER_OPTIONS = {
@@ -24,7 +26,8 @@ export const KUBERNETES_PROVIDER_OPTIONS = {
     KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.MANAGED_SERVICE]
   ),
   [KubernetesProviderType.DEPRECATED]: convertToOptions(
-    KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.DEPRECATED]
+    KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.DEPRECATED],
+    true // Disable selecting deprecated options
   ),
   [KubernetesProviderType.OPEN_SHIFT]: convertToOptions(
     KUBERNETES_PROVIDERS_MAP[KubernetesProviderType.OPEN_SHIFT]

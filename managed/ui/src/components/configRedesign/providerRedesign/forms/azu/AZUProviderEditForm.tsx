@@ -30,7 +30,13 @@ import { FieldGroup } from '../components/FieldGroup';
 import { FormContainer } from '../components/FormContainer';
 import { FormField } from '../components/FormField';
 import { FieldLabel } from '../components/FieldLabel';
-import { getNtpSetupType } from '../../utils';
+import {
+  findExistingRegion,
+  findExistingZone,
+  getDeletedRegions,
+  getDeletedZones,
+  getNtpSetupType
+} from '../../utils';
 import { RegionOperation } from '../configureRegion/constants';
 import {
   addItem,
@@ -46,7 +52,14 @@ import { VersionWarningBanner } from '../components/VersionWarningBanner';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 
-import { AZUAvailabilityZoneMutation, AZUProvider, AZURegionMutation } from '../../types';
+import {
+  AZUAvailabilityZone,
+  AZUAvailabilityZoneMutation,
+  AZUProvider,
+  AZURegion,
+  AZURegionMutation,
+  YBProviderMutation
+} from '../../types';
 
 interface AZUProviderEditFormProps {
   editProvider: EditProvider;
@@ -140,7 +153,7 @@ export const AZUProviderEditForm = ({
     setIsRegionFormModalOpen(true);
   };
   const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT);
+    setRegionOperation(RegionOperation.EDIT_NEW);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -164,14 +177,14 @@ export const AZUProviderEditForm = ({
     }
 
     try {
-      const providerPayload = await constructProviderPayload(formValues);
+      const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
         await editProvider(providerPayload);
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
-    } catch (error) {
-      toast.error(error);
+    } catch (error: any) {
+      toast.error(error.message ?? error);
     }
   };
 
@@ -321,7 +334,7 @@ export const AZUProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
                 <YBInput
-                  value={providerConfig.allAccessKeys[0].keyInfo.keyPairName}
+                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
                   disabled={true}
                   fullWidth
                 />
@@ -329,7 +342,7 @@ export const AZUProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
                 <YBInput
-                  value={providerConfig.allAccessKeys[0].keyInfo.privateKey}
+                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
                   disabled={true}
                   fullWidth
                 />
@@ -382,7 +395,12 @@ export const AZUProviderEditForm = ({
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
-                <FieldLabel>DB Nodes have public internet access?</FieldLabel>
+                <FieldLabel
+                  infoTitle="DB Nodes have public internet access?"
+                  infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance."
+                >
+                  DB Nodes have public internet access?
+                </FieldLabel>
                 <YBToggleField
                   name="dbNodePublicInternetAccess"
                   control={formMethods.control}
@@ -469,7 +487,10 @@ const constructDefaultFormValues = (
   version: providerConfig.version
 });
 
-const constructProviderPayload = async (formValues: AZUProviderEditFormFieldValues) => ({
+const constructProviderPayload = async (
+  formValues: AZUProviderEditFormFieldValues,
+  providerConfig: AZUProvider
+): Promise<YBProviderMutation> => ({
   code: ProviderCode.AZU,
   name: formValues.providerName,
   ...(formValues.editSSHKeypair &&
@@ -496,22 +517,51 @@ const constructProviderPayload = async (formValues: AZUProviderEditFormFieldValu
     sshPort: formValues.sshPort,
     sshUser: formValues.sshUser
   },
-  regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
-    code: regionFormValues.code,
-    details: {
-      cloudInfo: {
-        [ProviderCode.AZU]: {
-          securityGroupId: regionFormValues.securityGroupId,
-          vnet: regionFormValues.vnet,
-          ybImage: regionFormValues.ybImage
-        }
-      }
-    },
-    zones: regionFormValues.zones?.map<AZUAvailabilityZoneMutation>((azFormValues) => ({
-      code: azFormValues.code,
-      name: azFormValues.code,
-      subnet: azFormValues.subnet
-    }))
-  })),
+  regions: [
+    ...formValues.regions.map<AZURegionMutation>((regionFormValues) => {
+      const existingRegion = findExistingRegion<AZUProvider, AZURegion>(
+        providerConfig,
+        regionFormValues.code
+      );
+      return {
+        ...(existingRegion && {
+          active: existingRegion.active,
+          uuid: existingRegion.uuid
+        }),
+        code: regionFormValues.code,
+        details: {
+          cloudInfo: {
+            [ProviderCode.AZU]: {
+              securityGroupId: regionFormValues.securityGroupId,
+              vnet: regionFormValues.vnet,
+              ybImage: regionFormValues.ybImage
+            }
+          }
+        },
+        zones: [
+          ...regionFormValues.zones.map<AZUAvailabilityZoneMutation>((azFormValues) => {
+            const existingZone = findExistingZone<AZURegion, AZUAvailabilityZone>(
+              existingRegion,
+              azFormValues.code
+            );
+            return {
+              ...(existingZone && {
+                active: existingZone.active,
+                uuid: existingZone.uuid
+              }),
+              code: azFormValues.code,
+              name: azFormValues.code,
+              subnet: azFormValues.subnet
+            };
+          }),
+          ...getDeletedZones(existingRegion?.zones, regionFormValues.zones)
+        ]
+      };
+    }),
+    ...getDeletedRegions<AZURegion, CloudVendorRegionField>(
+      providerConfig.regions,
+      formValues.regions
+    )
+  ],
   version: formValues.version
 });
