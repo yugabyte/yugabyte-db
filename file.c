@@ -1092,8 +1092,11 @@ utl_file_frename(PG_FUNCTION_ARGS)
 				IO_EXCEPTION();
 		}
 
-		/* rename() overwrites existing files. */
-		if (_wrename(_srcpath, _dstpath) != 0)
+		/*
+		 * Originaly there was rename() function, but this cannot
+		 * to replace other existing file.
+		 */
+		if (!MoveFileExW(_srcpath, _dstpath, MOVEFILE_REPLACE_EXISTING))
 			IO_EXCEPTION();
 
 		pfree(_dstpath);
@@ -1110,8 +1113,7 @@ utl_file_frename(PG_FUNCTION_ARGS)
 				IO_EXCEPTION();
 		}
 
-		/* rename() overwrites existing files. */
-		if (rename(srcpath, dstpath) != 0)
+		if (!MoveFileEx(_srcpath, _dstpath, MOVEFILE_REPLACE_EXISTING))
 			IO_EXCEPTION();
 	}
 
