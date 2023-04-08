@@ -174,7 +174,7 @@ export const KubernetesProviderLabel = {
   [KubernetesProvider.EKS]: 'Elastic Kubernetes Service',
   [KubernetesProvider.GKE]: 'Google Kubernetes Engine',
   [KubernetesProvider.OPEN_SHIFT]: 'Red Hat OpenShift',
-  [KubernetesProvider.PKS]: 'Pivotal Container Service',
+  [KubernetesProvider.PKS]: 'Pivotal Container Service (Deprecated)',
   [KubernetesProvider.TANZU]: 'VMware Tanzu'
 } as const;
 
