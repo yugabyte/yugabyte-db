@@ -127,7 +127,7 @@ export const AZUProviderCreateForm = ({
     setIsRegionFormModalOpen(true);
   };
   const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT);
+    setRegionOperation(RegionOperation.EDIT_NEW);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -156,8 +156,8 @@ export const AZUProviderCreateForm = ({
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
-    } catch (error) {
-      toast.error(error);
+    } catch (error: any) {
+      toast.error(error.message ?? error);
     }
   };
 
@@ -337,7 +337,12 @@ export const AZUProviderCreateForm = ({
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
-                <FieldLabel>DB Nodes have public internet access?</FieldLabel>
+                <FieldLabel
+                  infoTitle="DB Nodes have public internet access?"
+                  infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance."
+                >
+                  DB Nodes have public internet access?
+                </FieldLabel>
                 <YBToggleField
                   name="dbNodePublicInternetAccess"
                   control={formMethods.control}

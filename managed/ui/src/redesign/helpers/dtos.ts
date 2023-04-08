@@ -18,6 +18,17 @@ export interface HostInfo {
     | string;
 }
 
+export interface SuggestedKubernetesConfig {
+  config: {
+    KUBECONFIG_PULL_SECRET_NAME: string;
+    KUBECONFIG_PULL_SECRET_CONTENT: any;
+    KUBECONFIG_IMAGE_REGISTRY: string;
+    KUBECONFIG_PROVIDER: string;
+  };
+  regionList: { code: string; zoneList: { config: { STORAGE_CLASS: string }; name: string }[] }[];
+  name: string;
+}
+
 export interface PlacementAZ {
   uuid: string;
   name: string;
