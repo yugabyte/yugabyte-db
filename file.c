@@ -1113,7 +1113,7 @@ utl_file_frename(PG_FUNCTION_ARGS)
 				IO_EXCEPTION();
 		}
 
-		if (!MoveFileEx(_srcpath, _dstpath, MOVEFILE_REPLACE_EXISTING))
+		if (!MoveFileEx(srcpath, dstpath, MOVEFILE_REPLACE_EXISTING))
 			IO_EXCEPTION();
 	}
 
