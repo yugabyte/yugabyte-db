@@ -16,6 +16,25 @@ On this page:
 
 ## Releases
 
+### March 31, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.2](../../releases/release-notes/v2.17/#v2.17.2.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+### March 27, 2023
+
+**New Features**
+
+- [YugabyteDB Managed CLI](../../yugabyte-cloud/managed-automation/managed-cli/). Use the YugabyteDB Managed command line interface (ybm CLI) to deploy and manage your YugabyteDB Managed database clusters from your terminal or IDE.
+- Support for AWS PrivateLink (preview release). Connect YugabyteDB Managed clusters on AWS with other AWS resources via private endpoints. Currently only configurable via ybm CLI.
+
+**Enhancements**
+
+- Faster cluster scaling. Up to 2x performance in vertical scaling (adding and removing vCPUs) operations on dedicated clusters.
+- Support for more than 125 additional performance metrics.
+- Ability to reorder performance metrics to create customized dashboards.
+
 ### March 16, 2023
 
 **Database**
@@ -58,6 +77,10 @@ On this page:
 
 - [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.0](../../releases/release-notes/v2.16/#v2.16.0.1) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
 
+**Infrastructure**
+
+- Instance type for new Dedicated clusters on AWS updated to [m6i](https://aws.amazon.com/ec2/instance-types/m6i/).
+
 ### January 13, 2023
 
 **Database**
@@ -79,7 +102,7 @@ On this page:
 
 **New Features**
 
-- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
 
 ### November 28, 2022
 
@@ -149,7 +172,7 @@ On this page:
 **New Features**
 
 - Performance Optimizer for scanning clusters for optimizations (preview release). Provides recommendations on index and schema improvements, and detects connection, query, and CPU skew to identify potentially hot nodes.
-- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
 - API key management for creating and managing bearer tokens for use with the YugabyteDB Managed REST API.
 
 ### June 22, 2022

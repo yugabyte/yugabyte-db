@@ -197,6 +197,9 @@ public class CustomerTask extends Model {
     @EnumValue("CreatePitrConfig")
     CreatePitrConfig,
 
+    @EnumValue("DeletePitrConfig")
+    DeletePitrConfig,
+
     @EnumValue("RestoreSnapshotSchedule")
     RestoreSnapshotSchedule,
 
@@ -348,6 +351,8 @@ public class CustomerTask extends Model {
           return completed ? "Restored " : "Restoring ";
         case CreatePitrConfig:
           return completed ? "Created PITR Config" : "Creating PITR Config";
+        case DeletePitrConfig:
+          return completed ? "Deleted PITR Config" : "Deleting PITR Config";
         case RestoreSnapshotSchedule:
           return completed ? "Restored Snapshot Schedule" : "Restoring Snapshot Schedule";
         case Restart:
@@ -704,7 +709,7 @@ public class CustomerTask extends Model {
   private static String maybeGetEmailFromSchedule() {
     return Schedule.getAllActive()
         .stream()
-        .filter(Schedule::getRunningState)
+        .filter(Schedule::isRunningState)
         .findAny()
         .map(Schedule::getUserEmail)
         .orElse("Unknown");

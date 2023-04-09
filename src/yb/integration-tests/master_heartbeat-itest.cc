@@ -34,6 +34,7 @@
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 
 using namespace std::literals;
@@ -58,11 +59,11 @@ class MasterHeartbeatITest : public YBTableTestBase {
 };
 
 TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
-  FLAGS_enable_load_balancing = false;
-  FLAGS_TEST_pause_before_remote_bootstrap = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_remote_bootstrap) = true;
   // Don't wait too long for PRE-OBSERVER -> OBSERVER config change to succeed, since it will fail
   // anyways in this test. This makes the TearDown complete in a reasonable amount of time.
-  FLAGS_committed_config_change_role_timeout_sec = 1 * kTimeMultiplier;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_committed_config_change_role_timeout_sec) = 1 * kTimeMultiplier;
 
   const auto timeout = 10s;
 
@@ -92,23 +93,30 @@ TEST_F(MasterHeartbeatITest, IgnorePeerNotInConfig) {
   ASSERT_OK(itest::WaitForTabletConfigChange(tablet, new_ts_uuid, consensus::REMOVE_SERVER));
   FLAGS_TEST_pause_before_remote_bootstrap = false;
 
-  SleepFor(FLAGS_heartbeat_interval_ms * 2ms);
-  auto replica_locations = tablet->GetReplicaLocations();
-  LOG(INFO) << Format("Replica locations after new tserver heartbeat: $0", *replica_locations);
-  int leaders = 0, followers = 0;
-  EXPECT_EQ(replica_locations->size(), 3);
-  for (auto& p : *replica_locations) {
-    EXPECT_NE(p.first, new_ts_uuid);
-    EXPECT_EQ(p.second.state, tablet::RaftGroupStatePB::RUNNING);
-    EXPECT_EQ(p.second.member_type, consensus::VOTER);
-    if (p.second.role == LEADER) {
-      ++leaders;
-    } else if (p.second.role == FOLLOWER) {
-      ++followers;
+  ASSERT_OK(WaitFor([&]() {
+    auto replica_locations = tablet->GetReplicaLocations();
+    int leaders = 0, followers = 0;
+    LOG(INFO) << Format("Replica locations after new tserver heartbeat: $0", *replica_locations);
+    if (replica_locations->size() != 3) {
+      return false;
     }
-  }
-  EXPECT_EQ(leaders, 1);
-  EXPECT_EQ(followers, 2);
+    for (auto& p : *replica_locations) {
+      if (p.first == new_ts_uuid ||
+          p.second.state != tablet::RaftGroupStatePB::RUNNING ||
+          p.second.member_type != consensus::VOTER) {
+        return false;
+      }
+      if (p.second.role == LEADER) {
+        ++leaders;
+      } else if (p.second.role == FOLLOWER) {
+        ++followers;
+      }
+    }
+    if (leaders != 1 || followers != 2) {
+      return false;
+    }
+    return true;
+  }, FLAGS_heartbeat_interval_ms * 5ms, "Wait for proper replica locations."));
 }
 
 }  // namespace integration_tests

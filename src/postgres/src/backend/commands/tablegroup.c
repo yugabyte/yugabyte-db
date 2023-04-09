@@ -176,7 +176,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	values[Anum_pg_yb_tablegroup_grptablespace - 1] = tablespaceoid;
 
 	/* Generate new proposed grpoptions (text array) */
-	/* For now no grpoptions. Will be part of Interleaved/Copartitioned */
+	/* For now no grpoptions. Will be part of Interleaved */
 
 	nulls[Anum_pg_yb_tablegroup_grpoptions - 1] = true;
 

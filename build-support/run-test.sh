@@ -95,6 +95,7 @@ yb_readonly_virtualenv=true
 
 detect_architecture
 activate_virtualenv
+set_pythonpath
 
 if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
   # This has to match CTEST_TEST_PROGRAM_RE in run_tests_on_spark.py.

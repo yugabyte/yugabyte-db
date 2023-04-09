@@ -24,6 +24,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -62,6 +63,8 @@ TAG_FLAG(retrying_ts_rpc_max_delay_ms, advanced);
 
 DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
                  "For testing purposes, slow down the run method to take longer.");
+
+DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "description");
 
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -402,17 +405,18 @@ bool RetryingTSRpcTask::RescheduleWithBackoffDelay() {
     LOG_WITH_PREFIX(WARNING) << "Unable to mark this task as MonitoredTaskState::kScheduling";
     return false;
   }
-  auto task_id = master_->messenger()->ScheduleOnReactor(
+  auto task_id_result = master_->messenger()->ScheduleOnReactor(
       std::bind(&RetryingTSRpcTask::RunDelayedTask, shared_from(this), _1),
-      MonoDelta::FromMilliseconds(delay_millis), SOURCE_LOCATION(), master_->messenger());
-  VLOG_WITH_PREFIX_AND_FUNC(4) << "Task id: " << task_id;
-  reactor_task_id_.store(task_id, std::memory_order_release);
-
-  if (task_id == rpc::kInvalidTaskId) {
-    AbortTask(STATUS(Aborted, "Messenger closing"));
+      MonoDelta::FromMilliseconds(delay_millis), SOURCE_LOCATION());
+  if (!task_id_result.ok()) {
+    AbortTask(task_id_result.status());
     UnregisterAsyncTask();
     return false;
   }
+  auto task_id = *task_id_result;
+
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Task id: " << task_id;
+  reactor_task_id_.store(task_id, std::memory_order_release);
 
   return TransitionToWaitingState(MonitoredTaskState::kScheduling);
 }
@@ -992,54 +996,6 @@ bool AsyncBackfillDone::SendRequest(int attempt) {
 }
 
 // ============================================================================
-//  Class AsyncCopartitionTable.
-// ============================================================================
-AsyncCopartitionTable::AsyncCopartitionTable(Master *master,
-                                             ThreadPool* callback_pool,
-                                             const scoped_refptr<TabletInfo>& tablet,
-                                             const scoped_refptr<TableInfo>& table)
-    : RetryingTSRpcTask(master,
-                        callback_pool,
-                        std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)),
-                        table.get(),
-                        /* async_task_throttler */ nullptr),
-      tablet_(tablet), table_(table) {
-}
-
-string AsyncCopartitionTable::description() const {
-  return "Copartition Table RPC for tablet " + tablet_->ToString()
-          + " for " + table_->ToString();
-}
-
-TabletId AsyncCopartitionTable::tablet_id() const {
-  return tablet_->tablet_id();
-}
-
-TabletServerId AsyncCopartitionTable::permanent_uuid() const {
-  return target_ts_desc_ != nullptr ? target_ts_desc_->permanent_uuid() : "";
-}
-
-// TODO(sagnik): modify this to fill all relevant fields for the AsyncCopartition request.
-bool AsyncCopartitionTable::SendRequest(int attempt) {
-
-  tserver::CopartitionTableRequestPB req;
-  req.set_dest_uuid(permanent_uuid());
-  req.set_tablet_id(tablet_->tablet_id());
-  req.set_table_id(table_->id());
-  req.set_table_name(table_->name());
-
-  ts_admin_proxy_->CopartitionTableAsync(req, &resp_, &rpc_, BindRpcCallback());
-  VLOG_WITH_PREFIX(1) << "Send copartition table request to " << permanent_uuid()
-                      << " (attempt " << attempt << "):\n" << req.DebugString();
-  return true;
-}
-
-// TODO(sagnik): modify this to handle the AsyncCopartition Response and retry fail as necessary.
-void AsyncCopartitionTable::HandleResponse(int attempt) {
-  LOG_WITH_PREFIX(INFO) << "master can't handle server responses yet";
-}
-
-// ============================================================================
 //  Class AsyncTruncate.
 // ============================================================================
 void AsyncTruncate::HandleResponse(int attempt) {
@@ -1386,10 +1342,32 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     return;
   }
 
+  auto l = table_->LockForWrite();
+  auto tablet_l = tablet_->LockForWrite();
+  std::unordered_map<TabletId, const TabletInfo::WriteLock*> tablet_locks = {
+      {tablet_->id(), &tablet_l}};
+  if (table_->TransitionTableFromPreparingToRunning(tablet_locks)) {
+    VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
+    Status s = master_->catalog_manager()->sys_catalog()->Upsert(
+        master_->catalog_manager()->leader_ready_term(), table_);
+    if (!s.ok()) {
+      LOG(WARNING) << "Error updating table " << table_->ToString() << ": " << s;
+      TransitionToFailedState(MonitoredTaskState::kRunning, s);
+      return;
+    }
+    tablet_l.Unlock();
+    l.Commit();
+  }
+
   TransitionToCompleteState();
 }
 
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
+  if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled)) {
+    LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
+    return true;
+  }
+
   ts_admin_proxy_->AddTableToTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1)
       << "Send AddTableToTablet request (attempt " << attempt << "):\n" << req_.DebugString();

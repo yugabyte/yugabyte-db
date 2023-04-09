@@ -116,7 +116,7 @@ DBTablePropertiesTest::TestGetPropertiesOfTablesInRange(
   std::vector<LiveFileMetaData> vmd;
   db_->GetLiveFilesMetaData(&vmd);
   for (auto& md : vmd) {
-    std::string fn = md.FullName();
+    std::string fn = md.BaseFilePath();
     bool in_range = false;
     for (auto& r : ranges) {
       // smallestkey < limit && largestkey >= start

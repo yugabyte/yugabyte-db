@@ -53,7 +53,6 @@ import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
-import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -91,7 +90,7 @@ import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 import play.mvc.Http;
-import play.mvc.Http.Context;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 import play.test.Helpers;
 
@@ -103,13 +102,12 @@ public class SessionControllerTest {
     public HandlerWithEmailFromCtx(
         Environment env,
         PlaySessionStore playSessionStore,
-        RuntimeConfigFactory runtimeConfFactory,
-        UserService userService) {
-      super(env, playSessionStore, runtimeConfFactory, userService);
+        RuntimeConfigFactory runtimeConfFactory) {
+      super(env, playSessionStore, runtimeConfFactory);
     }
 
     @Override
-    public String getEmailFromCtx(Context ctx) {
+    public String getEmailFromCtx(Request request) {
       return "test@yugabyte.com";
     }
   }
@@ -203,7 +201,7 @@ public class SessionControllerTest {
     CommonProfile mockProfile = mock(CommonProfile.class);
     when(mockProfile.getEmail()).thenReturn("test@yugabyte.com");
     final Config pac4jConfig = app.injector().instanceOf(Config.class);
-    ProfileManager mockProfileManager = mock(ProfileManager.class);
+    ProfileManager<CommonProfile> mockProfileManager = mock(ProfileManager.class);
     doReturn(ImmutableList.of(mockProfile)).when(mockProfileManager).getAll(anyBoolean());
     doReturn(Optional.of(mockProfile)).when(mockProfileManager).get(anyBoolean());
     pac4jConfig.setProfileManagerFactory("test", webContext -> mockProfileManager);

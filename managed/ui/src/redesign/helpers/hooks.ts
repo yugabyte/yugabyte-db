@@ -65,10 +65,7 @@ export const useCreateProvider = (
         error;
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
-          : handleServerError<YBPBeanValidationError | YBPError>(
-              error,
-              getCreateProviderErrorMessage
-            );
+          : handleServerError(error, { customErrorExtractor: getCreateProviderErrorMessage });
       }
     }
   );
@@ -101,10 +98,7 @@ export const useEditProvider = (
         error;
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
-          : handleServerError<YBPBeanValidationError | YBPError>(
-              error,
-              getEditProviderErrorMessage
-            );
+          : handleServerError(error, { customErrorExtractor: getEditProviderErrorMessage });
       }
     }
   );
@@ -131,7 +125,7 @@ export const useDeleteProvider = (
     onError: (error, variables, context) => {
       mutationOptions?.onError
         ? mutationOptions.onError(error, variables, context)
-        : handleServerError(error);
+        : handleServerError(error, { customErrorLabel: 'Delete provider request failed' });
     }
   });
 
@@ -161,7 +155,7 @@ export const useUpdateInstanceType = (
       onError: (error, variables, context) => {
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
-          : handleServerError(error);
+          : handleServerError(error, { customErrorLabel: 'Update instance type request failed' });
       }
     }
   );
@@ -192,7 +186,7 @@ export const useDeleteInstanceType = (
       onError: (error, variables, context) => {
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
-          : handleServerError(error);
+          : handleServerError(error, { customErrorLabel: 'Delete instance type request failed' });
       }
     }
   );

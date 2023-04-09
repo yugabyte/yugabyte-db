@@ -2,6 +2,7 @@
 build
 logs
 target
+.bsp
 .idea
 .idea_modules
 jacoco.exec

@@ -44,6 +44,8 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
 
+#include "yb/consensus/consensus_types.pb.h"
+
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -69,6 +71,14 @@ struct TableDescription {
   scoped_refptr<NamespaceInfo> namespace_info;
   scoped_refptr<TableInfo> table_info;
   TabletInfos tablet_infos;
+};
+
+struct TabletLeaderLeaseInfo {
+  bool initialized = false;
+  consensus::LeaderLeaseStatus leader_lease_status;
+  MicrosTime ht_lease_expiration = 0;
+  // Number of heartbeats that current tablet leader doesn't have a valid lease.
+  uint64 heartbeats_without_leader_lease = 0;
 };
 
 // Drive usage information on a current replica of a tablet.
@@ -98,11 +108,15 @@ struct TabletReplica {
 
   TabletReplicaDriveInfo drive_info;
 
+  TabletLeaderLeaseInfo leader_lease_info;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
 
   void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
+
+  void UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info);
 
   bool IsStale() const;
 
@@ -244,13 +258,15 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
+  Result<TabletLeaderLeaseInfo> GetLeaderLeaseInfoIfLeader(const std::string& ts_uuid) const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
 
   // Updates a replica in replica_locations_ map if it exists.
-  void UpdateReplicaDriveInfo(const std::string& ts_uuid,
-                              const TabletReplicaDriveInfo& drive_info);
+  void UpdateReplicaInfo(const std::string& ts_uuid,
+                         const TabletReplicaDriveInfo& drive_info,
+                         const TabletLeaderLeaseInfo& leader_lease_info);
 
   // Returns the per-stream replication status bitmasks.
   std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
@@ -360,14 +376,16 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
     return pb.state() == SysTablesEntryPB::DELETING;
   }
 
+  bool IsPreparing() const { return pb.state() == SysTablesEntryPB::PREPARING; }
+
   bool is_running() const {
-    return pb.state() == SysTablesEntryPB::RUNNING ||
+    // Historically, we have always treated PREPARING (tablets not yet ready) and RUNNING as the
+    // same. Changing it now will require all callers of this function to be aware of the new state.
+    return pb.state() == SysTablesEntryPB::PREPARING || pb.state() == SysTablesEntryPB::RUNNING ||
            pb.state() == SysTablesEntryPB::ALTERING;
   }
 
-  bool visible_to_client() const {
-    return is_running() && !is_hidden();
-  }
+  bool visible_to_client() const { return is_running() && !is_hidden(); }
 
   bool is_hiding() const {
     return pb.hide_state() == SysTablesEntryPB::HIDING;
@@ -479,6 +497,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool is_running() const;
   bool is_deleted() const;
+  bool IsPreparing() const;
   bool IsOperationalForClient() const {
     auto l = LockForRead();
     return !l->started_hiding_or_deleting();
@@ -627,6 +646,13 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   // Returns true if the table creation is in-progress.
   bool IsCreateInProgress() const;
+
+  // Transition table from PREPARING to RUNNING state if all its tablets are RUNNING.
+  // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
+  // (dirty copy is modified) and yet to be persisted. Returns true if the table state has
+  // changed.
+  bool TransitionTableFromPreparingToRunning(
+      const std::unordered_map<TabletId, const TabletInfo::WriteLock*>& new_running_tablets);
 
   // Returns true if the table is backfilling an index.
   bool IsBackfilling() const {

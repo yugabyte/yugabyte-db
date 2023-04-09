@@ -67,7 +67,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
-import lombok.Getter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Value;
+import lombok.extern.jackson.Jacksonized;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -407,14 +410,17 @@ public class Util {
   }
 
   @ApiModel(value = "UniverseDetailSubset", description = "A small subset of universe information")
-  @Getter
+  @Value
+  @Jacksonized
+  @Builder
+  @AllArgsConstructor
   public static class UniverseDetailSubset {
-    final UUID uuid;
-    final String name;
-    final boolean updateInProgress;
-    final boolean updateSucceeded;
-    final long creationDate;
-    final boolean universePaused;
+    UUID uuid;
+    String name;
+    boolean updateInProgress;
+    boolean updateSucceeded;
+    long creationDate;
+    boolean universePaused;
 
     public UniverseDetailSubset(Universe universe) {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -677,7 +683,7 @@ public class Util {
 
   public static boolean canConvertJsonNode(JsonNode jsonNode, Class<?> toValueType) {
     try {
-      new ObjectMapper().treeToValue(jsonNode, toValueType);
+      Json.mapper().treeToValue(jsonNode, toValueType);
     } catch (JsonProcessingException e) {
       LOG.info(e.getMessage());
       return false;
@@ -824,11 +830,11 @@ public class Util {
    * @param tarFile the archive we want to sasve to folderPath
    * @param folderPath the directory where we want to extract the archive to
    */
-  public static void extractFilesFromTarGZ(File tarFile, String folderPath) throws IOException {
+  public static void extractFilesFromTarGZ(Path tarFile, String folderPath) throws IOException {
     TarArchiveEntry currentEntry;
     Files.createDirectories(Paths.get(folderPath));
 
-    try (FileInputStream fis = new FileInputStream(tarFile);
+    try (FileInputStream fis = new FileInputStream(tarFile.toFile());
         GZIPInputStream gis = new GZIPInputStream(new BufferedInputStream(fis));
         TarArchiveInputStream tis = new TarArchiveInputStream(gis)) {
       while ((currentEntry = tis.getNextTarEntry()) != null) {

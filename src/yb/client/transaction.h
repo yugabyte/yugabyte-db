@@ -185,6 +185,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
   // sub-transactions).
   std::unordered_map<TableId, uint64_t> GetTableMutationCounts() const;
 
+  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const;
+
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
@@ -192,15 +194,15 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
 class YBSubTransaction {
  public:
-  bool active() const {
-    return highest_subtransaction_id_ >= kMinSubTransactionId;
-  }
-
   void SetActiveSubTransaction(SubTransactionId id);
 
   Status RollbackToSubTransaction(SubTransactionId id);
 
   bool HasSubTransaction(SubTransactionId id) const;
+
+  bool IsDefaultState() const {
+    return sub_txn_.IsDefaultState();
+  }
 
   const SubTransactionMetadata& get() const;
 
@@ -213,7 +215,7 @@ class YBSubTransaction {
 
   // Tracks the highest observed subtransaction_id. Used during "ROLLBACK TO s" to abort from s to
   // the highest live subtransaction_id.
-  SubTransactionId highest_subtransaction_id_ = 0;
+  SubTransactionId highest_subtransaction_id_ = kMinSubTransactionId;
 };
 
 } // namespace client

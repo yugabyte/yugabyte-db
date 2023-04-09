@@ -88,23 +88,6 @@ class HumanReadableNumBytes {
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableNumBytes);
 };
 
-
-// See documentation at HumanReadableNumBytes::LessThan().
-struct humanreadablebytes_less
-    : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string &b) const {
-    return HumanReadableNumBytes::LessThan(a, b);
-  }
-};
-
-// See documentation at HumanReadableNumBytes::LessThan().
-struct humanreadablebytes_greater
-    : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string &b) const {
-    return HumanReadableNumBytes::LessThan(b, a);
-  }
-};
-
 class HumanReadableInt {
  public:
   // Similar to HumanReadableNumBytes::ToInt64(), but uses decimal

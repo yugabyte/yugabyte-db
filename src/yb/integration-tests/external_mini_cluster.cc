@@ -2771,12 +2771,12 @@ Status RestartAllMasters(ExternalMiniCluster* cluster) {
   return Status::OK();
 }
 
-Status CompactTablets(ExternalMiniCluster* cluster) {
+Status CompactTablets(ExternalMiniCluster* cluster, const yb::MonoDelta& timeout) {
   for (auto* daemon : cluster->master_daemons()) {
     master::CompactSysCatalogRequestPB req;
     master::CompactSysCatalogResponsePB resp;
     rpc::RpcController controller;
-    controller.set_timeout(60s * kTimeMultiplier);
+    controller.set_timeout(timeout);
 
     auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
     RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));

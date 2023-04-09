@@ -39,7 +39,6 @@ import {
   Portal
 } from './PluginUtils';
 
-
 import { AddAlertVariablesPopup } from '../../../features/alerts/TemplateComposer/AlertVariablesPopup';
 import { Close, Edit } from '@material-ui/icons';
 
@@ -76,11 +75,24 @@ const useStyle = makeStyles((theme) => ({
     height: '34px',
     color: 'rgba(35, 35, 41, 0.4)',
     textTransform: 'uppercase',
+    fontSize: '10px',
+    fontWeight: 500,
     '& svg': {
+      padding: theme.spacing(0.25),
+      borderRadius: theme.spacing(0.8),
       width: '20px',
       height: '20px',
       color: '#151730',
-      cursor: 'pointer'
+      cursor: 'pointer',
+      '&:hover': {
+        background: theme.palette.grey[100]
+      }
+    }
+  },
+  popoverTooltip: {
+    '& .MuiTooltip-tooltip': {
+      background: theme.palette.grey[900],
+      color: theme.palette.common.white
     }
   }
 }));
@@ -248,8 +260,6 @@ export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => 
       Transforms.move(editor, { distance: 1 });
       ReactEditor.focus(editor);
     }
-
-
   };
 
   //attach helper functions to the editor
@@ -317,6 +327,20 @@ export const useAlertVariablesPlugin: IYBSlatePlugin = ({ editor, enabled }) => 
   };
 };
 
+const useStylesBootstrap = makeStyles((theme) => ({
+  arrow: {
+    '&::before': {
+      color: theme.palette.grey[900],
+      border: 'nonw'
+    }
+  },
+  tooltip: {
+    backgroundColor: theme.palette.grey[900],
+    color: theme.palette.common.white,
+    padding: `${theme.spacing(1.1)}px ${theme.spacing(1.5)}px`
+  }
+}));
+
 interface VariableDetailsPopoverProps {
   element: AlertVariableElement;
   setPosition: (position: DOMRect) => void;
@@ -332,6 +356,7 @@ const VariableDetailsPopover: FC<VariableDetailsPopoverProps> = ({
   children
 }) => {
   const { t } = useTranslation();
+  const titleStyles = useStylesBootstrap();
 
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
   const open = Boolean(anchorEl);
@@ -369,22 +394,36 @@ const VariableDetailsPopover: FC<VariableDetailsPopoverProps> = ({
           <div className={classes.popover}>
             {!ReactEditor.isReadOnly(editor) && (
               <>
-                <Edit
-                  onClick={() => {
-                    // onEdit, delete the element and show the popover
-                    deleteElement(editor, element);
-                    const { selection } = editor;
-                    if (selection) {
-                      const domRange = ReactEditor.toDOMRange(editor, selection);
-                      setPosition(domRange.getBoundingClientRect());
-                    }
-                  }}
-                />
-                <Close
-                  onClick={() => {
-                    deleteElement(editor, element);
-                  }}
-                />
+                <Tooltip
+                  title={t('common.edit') as string}
+                  placement="top"
+                  arrow
+                  classes={titleStyles}
+                >
+                  <Edit
+                    onClick={() => {
+                      // onEdit, delete the element and show the popover
+                      deleteElement(editor, element);
+                      const { selection } = editor;
+                      if (selection) {
+                        const domRange = ReactEditor.toDOMRange(editor, selection);
+                        setPosition(domRange.getBoundingClientRect());
+                      }
+                    }}
+                  />
+                </Tooltip>
+                <Tooltip
+                  title={t('common.remove') as string}
+                  placement="top"
+                  arrow
+                  classes={titleStyles}
+                >
+                  <Close
+                    onClick={() => {
+                      deleteElement(editor, element);
+                    }}
+                  />
+                </Tooltip>
                 <Divider orientation="vertical" flexItem />
               </>
             )}

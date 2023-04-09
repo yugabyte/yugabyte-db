@@ -47,35 +47,7 @@ bool DecodeType(KeyEntryType expected_value_type, const T& default_value, Slice*
 
 namespace {
 
-Result<uint64_t> DecodeMergeFlags(Slice* slice) {
-  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kMergeFlags)) {
-    return util::FastDecodeUnsignedVarInt(slice);
-  } else {
-    return 0;
-  }
-}
-
-Result<DocHybridTime> DecodeIntentDocHT(Slice* slice) {
-  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kHybridTime)) {
-    return DocHybridTime::DecodeFrom(slice);
-  } else {
-    return DocHybridTime::kInvalid;
-  }
-}
-
-Result<MonoDelta> DecodeTTL(Slice* slice) {
-  if (slice->TryConsumeByte(KeyEntryTypeAsChar::kTtl)) {
-    return MonoDelta::FromMilliseconds(VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(slice)));
-  } else {
-    return ValueControlFields::kMaxTtl;
-  }
-}
-
 Result<UserTimeMicros> DecodeTimestamp(Slice* slice) {
-  if (!slice->TryConsumeByte(KeyEntryTypeAsChar::kUserTimestamp)) {
-    return ValueControlFields::kInvalidTimestamp;
-  }
-
   static constexpr int kBytesPerInt64 = sizeof(int64_t);
   if (slice->size() < kBytesPerInt64) {
     return STATUS_FORMAT(
@@ -88,23 +60,58 @@ Result<UserTimeMicros> DecodeTimestamp(Slice* slice) {
   return result;
 }
 
-} // namespace
+KeyEntryType GetKeyEntryType(const Slice& slice) {
+  return !slice.empty() ? static_cast<KeyEntryType>(slice[0]) : KeyEntryType::kInvalid;
+}
 
-Result<ValueControlFields> ValueControlFields::Decode(Slice* slice) {
+void Assign(Slice* intent_doc_ht, const Slice& value) {
+  if (intent_doc_ht) {
+    *intent_doc_ht = value;
+  } else {
+    LOG(DFATAL) << "intent_doc_ht should not be null";
+  }
+}
+
+void Assign(std::nullptr_t intent_doc_ht, const Slice& value) {
+}
+
+// Use template to avoid superfluous null check when intent_doc_ht already nullptr.
+template <class IntentDocHt>
+Result<ValueControlFields> DecodeControlFields(Slice* slice, IntentDocHt intent_doc_ht) {
   Slice original = *slice;
   ValueControlFields result;
-  result.merge_flags = VERIFY_RESULT_PREPEND(
-      DecodeMergeFlags(slice),
-      Format("Failed to decode merge flags in $0", original.ToDebugHexString()));
-  result.intent_doc_ht = VERIFY_RESULT_PREPEND(
-      DecodeIntentDocHT(slice),
-      Format("Failed to decode intent ht in $0", original.ToDebugHexString()));
-  result.ttl = VERIFY_RESULT_PREPEND(
-      DecodeTTL(slice),
-      Format("Failed to decode TTL in $0", original.ToDebugHexString()));
-  result.timestamp = VERIFY_RESULT_PREPEND(
-      DecodeTimestamp(slice),
-      Format("Failed to decode user timestamp in $0", original.ToDebugHexString()));
+  if (slice->empty()) {
+    return result;
+  }
+  auto entry_type = static_cast<KeyEntryType>((*slice)[0]);
+  if (entry_type == KeyEntryType::kMergeFlags) {
+    slice->consume_byte();
+    result.merge_flags = VERIFY_RESULT_PREPEND(
+        util::FastDecodeUnsignedVarInt(slice),
+        Format("Failed to decode merge flags in $0", original.ToDebugHexString()));
+    entry_type = GetKeyEntryType(*slice);
+  }
+  if (entry_type == KeyEntryType::kHybridTime) {
+    slice->consume_byte();
+    Assign(intent_doc_ht, VERIFY_RESULT_PREPEND(
+        DocHybridTime::EncodedFromStart(slice),
+        Format("Failed to decode intent ht in $0", original.ToDebugHexString())));
+    entry_type = GetKeyEntryType(*slice);
+  }
+  if (entry_type == KeyEntryType::kTtl) {
+    slice->consume_byte();
+    result.ttl = MonoDelta::FromMilliseconds(VERIFY_RESULT_PREPEND(
+        util::FastDecodeSignedVarIntUnsafe(slice),
+        Format("Failed to decode TTL in $0", original.ToDebugHexString())));
+    entry_type = GetKeyEntryType(*slice);
+  }
+  if (entry_type == KeyEntryType::kUserTimestamp) {
+    slice->consume_byte();
+    result.timestamp = VERIFY_RESULT_PREPEND(
+        DecodeTimestamp(slice),
+        Format("Failed to decode user timestamp in $0", original.ToDebugHexString()));
+    entry_type = GetKeyEntryType(*slice);
+  }
   return result;
 }
 
@@ -114,10 +121,6 @@ void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
     out->push_back(KeyEntryTypeAsChar::kMergeFlags);
     util::FastAppendUnsignedVarInt(fields.merge_flags, out);
   }
-  if (fields.intent_doc_ht.is_valid()) {
-    out->push_back(KeyEntryTypeAsChar::kHybridTime);
-    fields.intent_doc_ht.AppendEncodedInDocDbFormat(out);
-  }
   if (!fields.ttl.Equals(ValueControlFields::kMaxTtl)) {
     out->push_back(KeyEntryTypeAsChar::kTtl);
     util::FastAppendSignedVarIntToBuffer(fields.ttl.ToMilliseconds(), out);
@@ -126,6 +129,17 @@ void DoAppendEncoded(const ValueControlFields& fields, Out* out) {
     out->push_back(KeyEntryTypeAsChar::kUserTimestamp);
     util::AppendBigEndianUInt64(fields.timestamp, out);
   }
+}
+
+} // namespace
+
+Result<ValueControlFields> ValueControlFields::Decode(Slice* slice) {
+  return DecodeControlFields(slice, nullptr);
+}
+
+Result<ValueControlFields> ValueControlFields::DecodeWithIntentDocHt(
+    Slice* slice, Slice* intent_doc_ht) {
+  return DecodeControlFields(slice, intent_doc_ht);
 }
 
 void ValueControlFields::AppendEncoded(std::string* out) const {
@@ -140,9 +154,6 @@ std::string ValueControlFields::ToString() const {
   std::string result;
   if (merge_flags) {
     result += Format("; merge flags: $0", merge_flags);
-  }
-  if (intent_doc_ht.is_valid()) {
-    result += Format("; intent doc ht: $0", intent_doc_ht);
   }
   if (!ttl.Equals(kMaxTtl)) {
     result += Format("; ttl: $0", ttl);

@@ -24,7 +24,7 @@ export const AdvancedConfiguration: FC = () => {
   const { clusterType, mode, newUniverse }: any = useContext(UniverseFormContext)[0];
 
   const isPrimary = clusterType === ClusterType.PRIMARY;
-  const isCreateMode = mode === ClusterModes.CREATE; //Form is in edit mode
+  const isCreateMode = mode === ClusterModes.CREATE; //Form is in create mode
   const isCreatePrimary = isCreateMode && isPrimary; //Editing Primary Cluster
   const isCreateRR = !newUniverse && isCreateMode && !isPrimary; //Adding Async Cluster to an existing Universe
 
@@ -69,7 +69,7 @@ export const AdvancedConfiguration: FC = () => {
             <SystemDField disabled={!isCreatePrimary} />
           </Box>
           <Box display="flex" width="100%" mt={2.5}>
-            <DeploymentPortsField disabled={!isCreatePrimary} />
+            <DeploymentPortsField disabled={!isCreatePrimary} isEditMode={!isCreateMode} />
           </Box>
         </>
       )}

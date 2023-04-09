@@ -209,6 +209,8 @@ message GetChangesRequestPB {
 
   // This will be the checkpoint used for 'EXPLICIT' checkpoint streams.
   optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
+
+  optional int64 safe_hybrid_time = 11 [default = -1];
 }
 
 message KeyValuePairPB {

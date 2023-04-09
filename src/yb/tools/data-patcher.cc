@@ -419,20 +419,24 @@ Status AddDeltaToSstFile(
           if (storage_db_type == StorageDbType::kRegular) {
             docdb::Value docdb_value;
             auto value_slice = iterator->value();
-            auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
-            if (control_fields.intent_doc_ht.is_valid()) {
-              auto intent_ht = control_fields.intent_doc_ht.hybrid_time();
+            Slice encoded_intent_doc_ht;
+            auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::DecodeWithIntentDocHt(
+                &value_slice, &encoded_intent_doc_ht));
+            if (!encoded_intent_doc_ht.empty()) {
+              auto intent_doc_ht = VERIFY_RESULT(DocHybridTime::FullyDecodeFrom(
+                  encoded_intent_doc_ht));
               if (is_final_pass) {
                 DocHybridTime new_intent_doc_ht(
-                    VERIFY_RESULT(delta_data.AddDelta(intent_ht, FileType::kSST)),
-                    docdb_value.intent_doc_ht().write_id());
-                control_fields.intent_doc_ht = new_intent_doc_ht;
+                    VERIFY_RESULT(delta_data.AddDelta(intent_doc_ht.hybrid_time(), FileType::kSST)),
+                    intent_doc_ht.write_id());
                 value_buffer.clear();
+                value_buffer.push_back(docdb::KeyEntryTypeAsChar::kHybridTime);
+                new_intent_doc_ht.AppendEncodedInDocDbFormat(&value_buffer);
                 control_fields.AppendEncoded(&value_buffer);
                 value_buffer.append(value_slice.cdata(), value_slice.size());
                 value_updated = true;
               } else {
-                delta_data.AddEarlyTime(intent_ht);
+                delta_data.AddEarlyTime(intent_doc_ht.hybrid_time());
               }
             }
           }
@@ -511,6 +515,7 @@ Status AddDeltaToSstFile(
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
         }
       }
+      RETURN_NOT_OK(iterator->status());
 
       if (is_final_pass) {
         done = true;

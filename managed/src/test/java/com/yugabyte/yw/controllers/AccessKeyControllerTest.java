@@ -51,6 +51,7 @@ import com.yugabyte.yw.models.Users;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -397,10 +398,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
-    ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
+    ArgumentCaptor<Path> updatedFile = ArgumentCaptor.forClass(Path.class);
     when(mockAccessManager.uploadKeyFile(
             eq(defaultRegion.getUuid()),
-            any(File.class),
+            any(Path.class),
             eq("key-code-1"),
             eq(AccessManager.KeyType.PRIVATE),
             eq("ssh-user"),
@@ -430,7 +431,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     assertAuditEntry(1, defaultCustomer.getUuid());
     assertNotNull(json);
     try {
-      List<String> lines = Files.readAllLines(updatedFile.getValue().toPath());
+      List<String> lines = Files.readAllLines(updatedFile.getValue());
       assertEquals(1, lines.size());
       assertThat(lines.get(0), allOf(notNullValue(), equalTo("PRIVATE KEY DATA")));
     } catch (IOException e) {
@@ -443,10 +444,10 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.privateKey = "/path/to/private.key";
-    ArgumentCaptor<File> updatedFile = ArgumentCaptor.forClass(File.class);
+    ArgumentCaptor<Path> updatedFile = ArgumentCaptor.forClass(Path.class);
     when(mockAccessManager.uploadKeyFile(
             eq(defaultRegion.getUuid()),
-            any(File.class),
+            any(Path.class),
             eq("key-code-1"),
             eq(AccessManager.KeyType.PRIVATE),
             eq(DEFAULT_SUDO_SSH_USER),
@@ -476,7 +477,7 @@ public class AccessKeyControllerTest extends FakeDBApplication {
     assertAuditEntry(1, defaultCustomer.getUuid());
     assertNotNull(json);
     try {
-      List<String> lines = Files.readAllLines(updatedFile.getValue().toPath());
+      List<String> lines = Files.readAllLines(updatedFile.getValue());
       assertEquals(1, lines.size());
       assertThat(lines.get(0), allOf(notNullValue(), equalTo("PRIVATE KEY DATA")));
     } catch (IOException e) {

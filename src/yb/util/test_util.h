@@ -236,6 +236,11 @@ class StopOnFailure {
   std::atomic<bool>& stop_;
 };
 
+// Corrupt bytes_to_corrupt bytes at specified offset. If offset is negative, treats it as
+// an offset relative to the end of file. Also fixes specified region to not exceed the file before
+// corrupting data.
+Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to_corrupt);
+
 } // namespace yb
 
 // Gives ability to define custom parent class for test fixture.

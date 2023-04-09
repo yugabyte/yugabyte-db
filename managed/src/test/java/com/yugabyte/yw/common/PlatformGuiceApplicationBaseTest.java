@@ -23,6 +23,7 @@ import org.mockito.Mockito;
 import play.inject.guice.GuiceApplicationBuilder;
 import play.mvc.Http;
 import play.mvc.Http.MultipartFormData.Part;
+import play.mvc.Http.Request;
 import play.mvc.Http.RequestBuilder;
 import play.mvc.Result;
 import play.test.Helpers;
@@ -33,6 +34,8 @@ public abstract class PlatformGuiceApplicationBaseTest extends WithApplication {
   protected QueryAlerts mockQueryAlerts;
   protected AlertsGarbageCollector mockAlertsGarbageCollector;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;
+
+  protected Request fakeRequest = Helpers.fakeRequest().build();
 
   protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
     mockHealthChecker = mock(HealthChecker.class);

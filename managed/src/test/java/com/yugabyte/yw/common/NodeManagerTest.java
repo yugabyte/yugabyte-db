@@ -58,6 +58,7 @@ import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -792,6 +793,12 @@ public class NodeManagerTest extends FakeDBApplication {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) params;
         expectedCommand.add("--num_disks");
         expectedCommand.add(String.valueOf(crvParams.numVolumes));
+        if (Common.CloudType.aws.equals(cloud)) {
+          expectedCommand.add("--snapshot_creation_delay");
+          expectedCommand.add("1");
+          expectedCommand.add("--snapshot_creation_max_attempts");
+          expectedCommand.add("1");
+        }
         // intentional fall-thru
       case Create:
         AnsibleCreateServer.Params createParams = (AnsibleCreateServer.Params) params;
@@ -1277,6 +1284,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRootVolumesCommand() {
+    when(mockConfGetter.getGlobalConf(GlobalConfKeys.snapshotCreationDelay)).thenReturn(1);
+    when(mockConfGetter.getGlobalConf(GlobalConfKeys.snapshotCreationMaxAttempts)).thenReturn(1);
     int idx = 0;
     for (TestData t : testData) {
       CreateRootVolumes.Params params = new CreateRootVolumes.Params();

@@ -133,7 +133,7 @@ namespace master {
 
 struct DeferredAssignmentActions;
 class XClusterSafeTimeService;
-struct TemporaryLoadingState;
+struct SysCatalogLoadingState;
 struct KeyRange;
 
 using PlacementId = std::string;
@@ -838,8 +838,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Clears out the existing metadata ('table_names_map_', 'table_ids_map_',
   // and 'tablet_map_'), loads tables metadata into memory and if successful
   // loads the tablets metadata.
-  Status VisitSysCatalog(int64_t term) override;
-  Status RunLoaders(int64_t term) REQUIRES(mutex_);
+  // TODO(asrivastava): This is only public because it is used by a test
+  // (CreateTableStressTest.TestConcurrentCreateTableAndReloadMetadata). Can we refactor that test
+  // to avoid this call and make this private?
+  Status VisitSysCatalog(int64_t term, SysCatalogLoadingState* state);
+  Status RunLoaders(int64_t term, SysCatalogLoadingState* state) REQUIRES(mutex_);
 
   // Waits for the worker queue to finish processing, returns OK if worker queue is idle before
   // the provided timeout, TimedOut Status otherwise.
@@ -998,9 +1001,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
 
-  void ProcessTabletStorageMetadata(
+  void ProcessTabletMetadata(
       const std::string& ts_uuid,
-      const TabletDriveStorageMetadataPB& storage_metadata);
+      const TabletDriveStorageMetadataPB& storage_metadata,
+      const std::optional<TabletLeaderMetricsPB>& leader_metrics);
 
   Status ProcessTabletReplicationStatus(const TabletReplicationStatusPB& replication_state)
       EXCLUDES(mutex_);
@@ -1332,6 +1336,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
     std::lock_guard<MutexType> lock(backfill_mutex_);
     pending_backfill_tables_.emplace(id);
   }
+  void WriteTabletToSysCatalog(const TabletId& tablet_id);
 
   Status UpdateLastFullCompactionRequestTime(const TableId& table_id) override;
 
@@ -1356,13 +1361,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackfillTablet;
   friend class XClusterConfigLoader;
 
-  FRIEND_TEST(SysCatalogTest, TestCatalogManagerTasksTracker);
-  FRIEND_TEST(SysCatalogTest, TestPrepareDefaultClusterConfig);
-  FRIEND_TEST(SysCatalogTest, TestSysCatalogTablesOperations);
-  FRIEND_TEST(SysCatalogTest, TestSysCatalogTabletsOperations);
-  FRIEND_TEST(SysCatalogTest, TestTableInfoCommit);
-
-  FRIEND_TEST(MasterTest, TestTabletsDeletedWhenTableInDeletingState);
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
   FRIEND_TEST(StatefulServiceTest, TestStatefulService);
@@ -1466,13 +1464,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
-
-  // Helper for creating copartitioned table.
-  Status CreateCopartitionedTable(const CreateTableRequestPB& req,
-                                  CreateTableResponsePB* resp,
-                                  rpc::RpcContext* rpc,
-                                  Schema schema,
-                                  scoped_refptr<NamespaceInfo> ns);
 
   // Check that local host is present in master addresses for normal master process start.
   // On error, it could imply that master_addresses is incorrectly set for shell master startup
@@ -1651,11 +1642,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status SendAlterTableRequestInternal(const scoped_refptr<TableInfo>& table,
                                        const TransactionId& txn_id);
-
-  // Start the background task to send the CopartitionTable() RPC to the leader for this
-  // tablet.
-  void SendCopartitionTabletRequest(const scoped_refptr<TabletInfo>& tablet,
-                                    const scoped_refptr<TableInfo>& table);
 
   // Starts the background task to send the SplitTablet RPC to the leader for the specified tablet.
   Status SendSplitTabletRequest(
@@ -1847,11 +1833,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status RegisterTsFromRaftConfig(const consensus::RaftPeerPB& peer);
 
   template <class Loader>
-  Status Load(const std::string& title, TemporaryLoadingState* state, const int64_t term);
+  Status Load(const std::string& title, SysCatalogLoadingState* state, const int64_t term);
 
   void Started();
 
-  void SysCatalogLoaded(int64_t term);
+  void SysCatalogLoaded(int64_t term, const SysCatalogLoadingState& state);
 
   // Ensure the sys catalog tablet respects the leader affinity and blacklist configuration.
   // Chooses an unblacklisted master in the highest priority affinity location to step down to. If
@@ -2741,6 +2727,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Check if this tablet is being kept for xcluster replication or cdcsdk.
   bool RetainedByXRepl(const TabletId& tablet_id);
+
+  void StartPostLoadTasks(const SysCatalogLoadingState& state);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

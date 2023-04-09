@@ -53,6 +53,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
@@ -2112,9 +2113,23 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(Scan), PgMiniBigPrefetchTest) {
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithPackedRow), PgMiniBigPrefetchTest) {
+  constexpr int kNumColumns = 10;
+
   FLAGS_ysql_enable_packed_row = true;
   FLAGS_ysql_enable_packed_row_for_colocated_table = true;
-  Run(kScanRows, kScanBlockSize, kScanReads, /* compact= */ false, /* select= */ true);
+
+  std::string create_cmd = "CREATE TABLE t (a int PRIMARY KEY";
+  std::string insert_cmd = "INSERT INTO t VALUES (generate_series($0, $1)";
+  for (auto column : Range(kNumColumns)) {
+    create_cmd += Format(", c$0 INT", column);
+    insert_cmd += ", trunc(random()*100000000)";
+  }
+  create_cmd += ")";
+  insert_cmd += ")";
+  const std::string select_cmd = "SELECT * FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kScanRows, kScanBlockSize, kScanReads,
+      /* compact= */ false, /* aggregate = */ false);
 }
 
 TEST_F_EX(PgMiniTest, YB_DISABLE_TEST_IN_TSAN(ScanWithCompaction), PgMiniBigPrefetchTest) {
@@ -2434,7 +2449,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
     read_opts.query_id = rocksdb::kDefaultQueryId;
     std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
 
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       Slice key = iter->key();
       ASSERT_FALSE(key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState))
           << "Key: " << iter->key().ToDebugString() << ", value: " << iter->value().ToDebugString();
@@ -3313,20 +3328,5 @@ TEST_F_EX(PgMiniTest, YB_DISABLE_TEST(PerfScanG7RangePK100Columns), PgMiniRf1Pac
     LOG(INFO) << kNumScansPerIteration << " scan(s) took: " << AsString(s.elapsed());
   }
 }
-
-class PgMiniTestNoSavePoints : public PgMiniTest {
- public:
-  void SetUp() override {
-    FLAGS_enable_pg_savepoints = 0;
-    PgMiniTest::SetUp();
-  }
-};
-
-TEST_F(PgMiniTestNoSavePoints, YB_DISABLE_TEST_IN_TSAN(TestSavePointCanBeDisabled)) {
-  auto conn1 = ASSERT_RESULT(Connect());
-  ASSERT_NOK(conn1.Execute("SAVEPOINT A"))
-      << "setting FLAGS_enable_pg_savepoints to false should have made SAVEPOINT produce an error";
-}
-
 } // namespace pgwrapper
 } // namespace yb

@@ -86,6 +86,9 @@ DEFINE_RUNTIME_bool(skip_crash_on_duplicate_snapshot, false,
 DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
                  "Sleep for these many seconds on followers during sys catalog restore");
 
+DEFINE_test_flag(bool, fatal_on_snapshot_verify, true,
+                 "Whether to use DFATAL to log error messages when verifying a snapshot.");
+
 namespace yb {
 namespace master {
 
@@ -502,6 +505,7 @@ class MasterSnapshotCoordinator::Impl {
       .op_id = operation.op_id(),
       .write_time = operation.hybrid_time(),
       .term = leader_term,
+      .db_oid = std::nullopt,
       .schedules = {},
       .non_system_obsolete_tablets = {},
       .non_system_obsolete_tables = {},
@@ -882,7 +886,11 @@ class MasterSnapshotCoordinator::Impl {
             auto error_msg = Format(
                 "PITR: Master metadata verified failed for restoration $0, status: $1",
                 restoration->restoration_id(), status);
-            LOG(DFATAL) << error_msg;
+            if (FLAGS_TEST_fatal_on_snapshot_verify) {
+              LOG(DFATAL) << error_msg;
+            } else {
+              LOG(ERROR) << error_msg;
+            }
           }
 
           auto db_oid = ComputeDbOid(restoration.get());

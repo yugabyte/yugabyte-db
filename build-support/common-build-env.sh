@@ -180,6 +180,7 @@ readonly -a VALID_COMPILER_TYPES=(
   clang
   clang14
   clang15
+  clang16
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -245,6 +246,10 @@ readonly YB_DEFAULT_MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
 MVN_OUTPUT_FILTER_REGEX='^\[INFO\] (Download(ing|ed)( from [-a-z0-9.]+)?): '
 MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] [^ ]+ already added, skipping$'
 MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Resolved: .*$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Resolved plugin: .*$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Resolved dependency: .*$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Installing .* to .*$'
 MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
 readonly MVN_OUTPUT_FILTER_REGEX
 
@@ -484,6 +489,7 @@ set_default_compiler_type() {
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if is_mac; then
       YB_COMPILER_TYPE=clang
+      adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
       YB_COMPILER_TYPE=clang15
@@ -496,7 +502,7 @@ set_default_compiler_type() {
 }
 
 is_clang() {
-  if [[ $YB_COMPILER_TYPE == "clang" ]]; then
+  if [[ $YB_COMPILER_TYPE == clang* ]]; then
     return 0
   else
     return 1
@@ -539,6 +545,7 @@ set_compiler_type_based_on_jenkins_job_name() {
       return
     fi
   fi
+  adjust_compiler_type_on_mac
   validate_compiler_type
   readonly YB_COMPILER_TYPE
   export YB_COMPILER_TYPE
@@ -2205,6 +2212,7 @@ run_shellcheck() {
 }
 
 activate_virtualenv() {
+  detect_architecture
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
 
@@ -2651,6 +2659,21 @@ build_clangd_index() {
   )
 }
 
+adjust_compiler_type_on_mac() {
+  # A workaround for old macOS build workers where the default Clang version is 13 or older.
+  if is_mac &&
+    ! is_apple_silicon &&
+    [[ ${YB_COMPILER_TYPE:-clang} == "clang" ]] &&
+    [[ $(clang --version) =~ clang\ version\ ([0-9]+) ]]
+  then
+    clang_major_version=${BASH_REMATCH[1]}
+    if [[ ${clang_major_version} -lt 14 ]]; then
+      export YB_COMPILER_TYPE=clang14
+      # Used in common-build-env-test.sh to avoid failing when the compiler type is adjusted.
+      export YB_COMPILER_TYPE_WAS_ADJUSTED=true
+    fi
+  fi
+}
 
 # -------------------------------------------------------------------------------------------------
 # Initialization

@@ -232,10 +232,10 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
   let hostBase: OptionTypeBase[] = [];
 
   if (resp?.data) {
-    buckets = uniq(Object.values(resp.data)).map((e) => {
+    buckets = uniq(Object.keys(resp.data)).map((e) => {
       return { value: e, label: e };
     });
-    hostBase = uniq(Object.keys(resp.data)).map((e) => {
+    hostBase = uniq(Object.values(resp.data)).map((e) => {
       return { value: e, label: e };
     });
   }

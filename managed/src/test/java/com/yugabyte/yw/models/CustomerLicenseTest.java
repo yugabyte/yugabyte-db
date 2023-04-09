@@ -46,7 +46,7 @@ public class CustomerLicenseTest extends FakeDBApplication {
     assertValue(licenseInfoJson, "licenseType", "test_license_type");
     assertValue(licenseInfoJson, "license", "/opt/yugaware/licenses/license1.txt");
 
-    CustomerLicense cl = CustomerLicense.get(cLicense.licenseUUID);
+    CustomerLicense cl = CustomerLicense.get(cLicense.getLicenseUUID());
     assertNotNull(cl);
     JsonNode cLInfoJson = Json.toJson(cl);
     assertValue(cLInfoJson, "licenseType", licenseType);

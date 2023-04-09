@@ -386,7 +386,7 @@ export const GFlagsField = ({
         flagname: row?.Name
       };
       return (
-        <div className="table-val-column">
+        <div className={clsx('table-val-column', 'empty-cell', notExists && 'no-border')}>
           {isFlagExist && (
             <Button
               bsClass="flag-icon-button display-inline-flex mb-2"

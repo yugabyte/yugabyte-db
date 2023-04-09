@@ -154,13 +154,22 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     }
 
     if (!req->has_tablet_report() || req->tablet_report().is_incremental()) {
-      // Only process storage metadata if we have plenty of time to process the work (> 50% of
+      // Only process metadata if we have plenty of time to process the work (> 50% of
       // timeout).
       auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
       if (rpc.GetClientDeadline() > safe_time_left) {
-        for (const auto& storage_metadata : req->storage_metadata()) {
-          server_->catalog_manager_impl()->ProcessTabletStorageMetadata(
-                ts_desc.get()->permanent_uuid(), storage_metadata);
+        std::unordered_map<TabletId, TabletLeaderMetricsPB> id_to_leader_metrics;
+        for (auto& info : req->leader_info()) {
+          id_to_leader_metrics[info.tablet_id()] = info;
+        }
+        for (const auto& metadata : req->storage_metadata()) {
+          std::optional<TabletLeaderMetricsPB> leader_metrics;
+          auto iter = id_to_leader_metrics.find(metadata.tablet_id());
+          if (iter != id_to_leader_metrics.end()) {
+            leader_metrics = iter->second;
+          }
+          server_->catalog_manager_impl()->ProcessTabletMetadata(ts_desc.get()->permanent_uuid(),
+                                                                 metadata, leader_metrics);
         }
       }
 

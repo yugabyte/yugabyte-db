@@ -35,107 +35,25 @@ A transaction is a sequence of operations performed as a single logical unit of 
 
 - **Consistency** A completed transaction leaves the database in a consistent internal state. This can either be all the operations in the transactions succeeding or none of them succeeding.
 
-- **Isolation** This property determines how/when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot*, *Serializable*, and *Read Committed* isolation levels. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
+- **Isolation** This property determines how and when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot* isolation level in the YCQL API. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
 
-## Creating the table
+{{<note title="Note">}}
+Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it supports three levels of isolation in the [YSQL](../../../explore/transactions/isolation-levels) API: *Snapshot*, *Serializable*, and *Read Committed*.
+{{</note>}}
 
-The table should be created with the `transactions` property enabled. The statement should look something as follows.
+## Transactions property
+
+To enable distributed transactions on tables in YCQL, create tables with the `transactions` property enabled, as follows:
 
 ```sql
 CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : true };
 ```
 
-### Java example
-
-Here is an example of how to create a simple key-value table which has two columns with transactions enabled.
-
-```java
-String create_stmt =
-  String.format("CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k)) " +
-                "WITH transactions = { 'enabled' : true };",
-                tablename);
-```
-
-## Inserting or updating data
-
-You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
-
-```sql
-BEGIN TRANSACTION
-  statement 1
-  statement 2
-END TRANSACTION;
-```
-
-### Java example
-
-Here is a code snippet of how you would insert data into this table.
-
-```java
-// Insert two key values, (key1, value1) and (key2, value2) as a transaction.
-String create_stmt =
-  String.format("BEGIN TRANSACTION" +
-                "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
-                "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
-                "END TRANSACTION;",
-                tablename, key1, value1,
-                tablename, key2, value2;
-```
-
-## Prepare-bind transactions
-
-You can prepare statements with transactions and bind variables to the prepared statements when executing the query.
-
-### Java example
-
-```java
-String create_stmt =
-  String.format("BEGIN TRANSACTION" +
-                "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
-                "  INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
-                "END TRANSACTION;",
-                tablename, key1, value1,
-                tablename, key2, value2;
-PreparedStatement pstmt = client.prepare(create_stmt);
-
-...
-
-BoundStatement txn1 = pstmt.bind().setString("k1", key1)
-                                  .setString("v1", value1)
-                                  .setString("k2", key2)
-                                  .setString("v2", value2);
-
-ResultSet resultSet = client.execute(txn1);
-```
-
-## Sample Java application
-
-You can find a working example of using transactions with YugabyteDB in the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) repository. This application writes out string keys in pairs, with each pair of keys having the same value written as a transaction. There are multiple readers and writers that update and read these pair of keys. The number of reads and writes to perform can be specified as a parameter.
-
-Here is how you can try out this sample application.
-
-```sh
-Usage:
-  java -jar yb-sample-apps.jar \
-    --workload CassandraTransactionalKeyValue \
-    --nodes 127.0.0.1:9042
-
-  Other options (with default values):
-      [ --num_unique_keys 1000000 ]
-      [ --num_reads -1 ]
-      [ --num_writes -1 ]
-      [ --value_size 0 ]
-      [ --num_threads_read 24 ]
-      [ --num_threads_write 2 ]
-```
-
-Browse the [Java source code for the transaction application](https://github.com/yugabyte/yb-sample-apps/blob/master/src/main/java/com/yugabyte/sample/apps/CassandraTransactionalKeyValue.java) to see how everything fits together.
-
 ## Example with ycqlsh
 
-### Create keyspace and table
+##### Create keyspace and table
 
 Create a keyspace.
 
@@ -169,7 +87,7 @@ where keyspace_name='banking' AND table_name = 'accounts';
 (1 rows)
 ```
 
-### Insert sample data
+##### Insert sample data
 
 Let us seed this table with some sample data.
 
@@ -220,7 +138,7 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
 
 ```
 
-### Execute a transaction
+##### Execute a transaction
 
 Here are a couple of examples of executing transactions.
 
@@ -319,6 +237,69 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
 ----------------
            2250
 ```
+
+
+## Example in Java
+
+##### Create the table
+
+Here is an example of how to create a simple key-value table which has two columns with transactions enabled.
+
+```java
+String create_stmt =
+  String.format("CREATE TABLE IF NOT EXISTS %s (k varchar, v varchar, primary key (k)) " +
+                "WITH transactions = { 'enabled' : true };",
+                tablename);
+```
+
+##### Inserting or updating data
+
+You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
+
+```sql
+BEGIN TRANSACTION
+  statement 1
+  statement 2
+END TRANSACTION;
+```
+
+Here is a code snippet of how you would insert data into this table.
+
+```java
+// Insert two key values, (key1, value1) and (key2, value2) as a transaction.
+String create_stmt =
+  String.format("BEGIN TRANSACTION" +
+                "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
+                "  INSERT INTO %s (k, v) VALUES (%s, %s);" +
+                "END TRANSACTION;",
+                tablename, key1, value1,
+                tablename, key2, value2;
+```
+
+##### Prepare-bind transactions
+
+You can prepare statements with transactions and bind variables to the prepared statements when executing the query.
+
+```java
+String create_stmt =
+  String.format("BEGIN TRANSACTION" +
+                "  INSERT INTO %s (k, v) VALUES (:k1, :v1);" +
+                "  INSERT INTO %s (k, v) VALUES (:k1, :v2);" +
+                "END TRANSACTION;",
+                tablename, key1, value1,
+                tablename, key2, value2;
+PreparedStatement pstmt = client.prepare(create_stmt);
+
+...
+
+BoundStatement txn1 = pstmt.bind().setString("k1", key1)
+                                  .setString("v1", value1)
+                                  .setString("k2", key2)
+                                  .setString("v2", value2);
+
+ResultSet resultSet = client.execute(txn1);
+```
+
 
 ## Note on linearizability
 

@@ -29,15 +29,15 @@ Create a read-replica cluster:
 
 ```sh
 ybm cluster read-replica create \
-  --replica=num_cores=<region-num_cores>,\
-  memory_mb=<memory_mb>,\
-  disk_size_gb=<disk_size_gb>,\
-  code=<GCP or AWS>,\
-  region=<region>,\
-  num_nodes=<num_nodes>,\
-  vpc=<vpc_name>,\
-  num_replicas=<num_replicas>,\
-  multi_zone=<bool>
+  --replica num-cores=2,\
+  memory-mb=4096,\
+  disk-size-gb=200,\
+  cloud-provider=AWS,\
+  region=us-west-3,\
+  num-nodes=3,\
+  vpc=my-vpc,\
+  num-replicas=2,\
+  multi-zone=true
 ```
 
 ## Commands
@@ -49,7 +49,7 @@ Create a read replica for a specified cluster.
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster to which you want to add read replicas. |
-| --replica | Specifications for the read replica provided as key-value pairs.<br>Arguments:<br><ul><li>num_cores - number of vCPUs per node. Default is 2.</li><li>memory_mb - memory (MB) per node. Default is 4096.</li><li>disk_size_gb - disk size (GB) per node. Default is 10.</li><li>code - cloud provider (`AWS` or `GCP`)</li><li>region - region in which to deploy the read replica</li><li>num_nodes - number of nodes for the read replica. Default is 1.</li><li>vpc_name - name of the VPC in which to deploy the read replica</li><li>num_replicas - the replication factor</li><li>multi-zone - whether the read replica is multi-zone (`true` or `false`). Default is false.</li></ul>
+| --replica | Specifications for the read replica provided as key-value pairs.<br>Arguments:<br><ul><li>num-cores - number of vCPUs per node. Default is 2.</li><li>memory-mb - memory (MB) per node. Default is 4096.</li><li>disk-size-gb - disk size (GB) per node. Default is 10.</li><li>cloud-provider - cloud provider (`AWS` or `GCP`)</li><li>region - region in which to deploy the read replica</li><li>num-nodes - number of nodes for the read replica. Default is 1.</li><li>vpc-name - name of the VPC in which to deploy the read replica</li><li>num-replicas - the replication factor</li><li>multi-zone - whether the read replica is multi-zone (`true` or `false`). Default is false.</li></ul>
 
 ### delete
 
@@ -74,4 +74,4 @@ Update a read replica for a specified cluster.
 | Flag | Description |
 | :--- | :--- |
 | --cluster-name | Required. Name of the cluster with read replicas you want to update. |
-| --replica | Specifications for the read replica provided as key-value pairs.<br>Arguments:<br><ul><li>num_cores - number of vCPUs per node. Default is 2.</li><li>memory_mb - memory (MB) per node. Default is 4096.</li><li>disk_size_gb - disk size (GB) per node. Default is 10.</li><li>code - cloud provider (`AWS` or `GCP`)</li><li>region - region in which to deploy the read replica</li><li>num_nodes - number of nodes for the read replica. Default is 1.</li><li>vpc_name - name of the VPC in which to deploy the read replica</li><li>num_replicas - the replication factor</li><li>multi-zone - whether the read replica is multi-zone (`true` or `false`). Default is false.</li></ul>
+| --replica | Specifications for the read replica provided as key-value pairs.<br>Arguments:<br><ul><li>num-cores - number of vCPUs per node. Default is 2.</li><li>memory-mb - memory (MB) per node. Default is 4096.</li><li>disk-size-gb - disk size (GB) per node. Default is 10.</li><li>cloud-provider - cloud provider (`AWS` or `GCP`)</li><li>region - region in which to deploy the read replica</li><li>num-nodes - number of nodes for the read replica. Default is 1.</li><li>vpc-name - name of the VPC in which to deploy the read replica</li><li>num-replicas - the replication factor</li><li>multi-zone - whether the read replica is multi-zone (`true` or `false`). Default is false.</li></ul>

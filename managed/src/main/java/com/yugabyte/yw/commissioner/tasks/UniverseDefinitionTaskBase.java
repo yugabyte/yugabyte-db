@@ -517,16 +517,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   private SelectMastersResult selectMasters(String masterLeader, boolean applySelection) {
     UniverseDefinitionTaskParams.Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster != null) {
-      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       SelectMastersResult result =
           PlacementInfoUtil.selectMasters(
               masterLeader,
-              primaryNodes,
+              taskParams().nodeDetailsSet,
               taskParams().mastersInDefaultRegion
                   ? PlacementInfoUtil.getDefaultRegionCode(taskParams())
                   : null,
               applySelection,
-              primaryCluster.userIntent);
+              taskParams().clusters);
+      Set<NodeDetails> primaryNodes = taskParams().getNodesInCluster(primaryCluster.uuid);
       log.info(
           "Active masters count after balancing = "
               + PlacementInfoUtil.getNumActiveMasters(primaryNodes));

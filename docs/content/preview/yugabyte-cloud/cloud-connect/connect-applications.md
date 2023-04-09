@@ -41,7 +41,7 @@ For more information, refer to [IP allow list](../../cloud-secure-clusters/add-c
 
 #### VPC network
 
-If your cluster is deployed in a VPC, deploy your application in a VPC that is [peered](../../cloud-basics/cloud-vpcs/cloud-add-peering/) with your cluster's VPC, and add the application VPC to the cluster IP allow list.
+If your cluster is deployed in a VPC, deploy your application in a VPC that is [peered](../../cloud-basics/cloud-vpcs/cloud-add-peering/) or [linked](../../cloud-basics/cloud-vpcs/cloud-add-endpoint/) with your cluster's VPC. Peered application VPCs also need to be added to the cluster IP allow list.
 
 Clusters deployed in VPCs don't expose public IP addresses unless you explicitly turn on [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access). If you are connecting from a public IP address (for example, for testing, development, or running sample applications), enable Public Access on the cluster **Settings** tab. Then use the public address in your application connection string. (This configuration is not recommended for production.)
 
@@ -66,7 +66,7 @@ To get the connection parameters for your cluster:
 1. Click **Connect to your Application**.
 1. Click **Download CA Cert** and install the cluster certificate on the computer running the application.
 1. Choose the API used by your application, **YSQL** or **YCQL**, to display the corresponding connection parameters.
-1. If your cluster is deployed in a VPC, choose **Private Address** if your application is in a peered VPC. Otherwise, choose Public Address (only available if you have enabled [Public Access](#vpc-network); not recommended for production).
+1. If your cluster is deployed in a VPC, choose **Private Address** if your application is in a peered VPC. Choose **Private Service Endpoint** if your application is in a linked VPC. Otherwise, choose Public Address (only available if you have enabled [Public Access](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/#enabling-public-access); not recommended for production).
 
 ### Connection parameters
 
@@ -74,7 +74,7 @@ To get the connection parameters for your cluster:
 
   {{% tab header="YSQL" lang="YSQL" %}}
 
-Select **Connection String** to display the string YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
+Select **Connection String** to display the string that YSQL applications can use to connect. Select **Parameters** to display the individual parameters.
 
 Here's an example of a generated `ysqlsh` string:
 

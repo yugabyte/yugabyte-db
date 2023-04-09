@@ -1532,14 +1532,6 @@ void TabletServiceAdminImpl::DeleteTablet(const DeleteTabletRequestPB* req,
   context.RespondSuccess();
 }
 
-// TODO(sagnik): Modify this to actually create a copartitioned table
-void TabletServiceAdminImpl::CopartitionTable(const CopartitionTableRequestPB* req,
-                                              CopartitionTableResponsePB* resp,
-                                              rpc::RpcContext context) {
-  context.RespondSuccess();
-  LOG(INFO) << "tserver doesn't support co-partitioning yet";
-}
-
 void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
                                           FlushTabletsResponsePB* resp,
                                           rpc::RpcContext context) {
@@ -2415,8 +2407,7 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) 
   QLTableRow value_map;
   ScanResultChecksummer collector;
 
-  while (VERIFY_RESULT((**iter).HasNext())) {
-    RETURN_NOT_OK((**iter).NextRow(&value_map));
+  while (VERIFY_RESULT((**iter).FetchNext(&value_map))) {
     collector.HandleRow(*schema, value_map);
   }
 

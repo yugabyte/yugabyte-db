@@ -423,6 +423,9 @@ Status YsqlUpgradeHelper::Upgrade() {
               << " (database " << min_version_entry->database_name_ << ")";
 
     RETURN_NOT_OK(MigrateOnce(min_version_entry));
+    if (pg_global_heartbeat_wait_) {
+      SleepFor(MonoDelta::FromMilliseconds(2 * heartbeat_interval_ms_));
+    }
   }
 
   return Status::OK();
@@ -452,6 +455,16 @@ Status YsqlUpgradeHelper::MigrateOnce(DatabaseEntry* db_entry) {
                         Format("Failed to read migration '$0'", next_migration_filename));
 
   LOG(INFO) << db_name << ": applying migration '" << next_migration_filename << "'";
+
+  // We use the existence of "pg_global" to indicate that we need to wait.
+  // For example, the creation of shared system relation need to be propagated
+  // to invalidate its negative cache entry in other Postgres backends.
+  pg_global_heartbeat_wait_ =
+    db_name == "template1" && boost::icontains(migration_content.ToString(), "pg_global");
+  if (pg_global_heartbeat_wait_) {
+    LOG(INFO) << "Found pg_global in migration file " << next_migration_filename
+              << " when applying to " << db_name;
+  }
 
   // Note that underlying PQexec executes mutiple statements transactionally, where our usual ACID
   // guarantees apply.

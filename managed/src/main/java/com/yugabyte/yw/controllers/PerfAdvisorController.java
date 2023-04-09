@@ -61,6 +61,7 @@ import org.yb.perf_advisor.services.db.PerformanceRecommendationService;
 import org.yb.perf_advisor.services.db.StateChangeAuditInfoService;
 import org.yb.perf_advisor.services.db.ValidationException;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -102,11 +103,11 @@ public class PerfAdvisorController extends AuthenticatedController {
           paramType = "body",
           dataType = "org.yb.perf_advisor.models.paging.PerformanceRecommendationPagedQuery",
           required = true))
-  public Result page(UUID customerUUID) {
+  public Result page(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     PerformanceRecommendationPagedQuery inputQuery =
-        parseJsonAndValidate(PerformanceRecommendationPagedQuery.class);
+        parseJsonAndValidate(request, PerformanceRecommendationPagedQuery.class);
     PerformanceRecommendationFilter inputFilter = inputQuery.getFilter();
     PerformanceRecommendationFilter filter =
         inputFilter.toBuilder().customerId(customerUUID).build();
@@ -128,10 +129,11 @@ public class PerfAdvisorController extends AuthenticatedController {
           paramType = "body",
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
-  public Result hide(UUID customerUUID) {
+  public Result hide(UUID customerUUID, Http.Request request) {
     return updateRecommendations(
         customerUUID,
-        recommendation -> recommendation.setRecommendationState(RecommendationState.HIDDEN));
+        recommendation -> recommendation.setRecommendationState(RecommendationState.HIDDEN),
+        request);
   }
 
   @ApiOperation(value = "Resolve performance recommendations", response = YBPSuccess.class)
@@ -141,10 +143,11 @@ public class PerfAdvisorController extends AuthenticatedController {
           paramType = "body",
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
-  public Result resolve(UUID customerUUID) {
+  public Result resolve(UUID customerUUID, Http.Request request) {
     return updateRecommendations(
         customerUUID,
-        recommendation -> recommendation.setRecommendationState(RecommendationState.RESOLVED));
+        recommendation -> recommendation.setRecommendationState(RecommendationState.RESOLVED),
+        request);
   }
 
   @ApiOperation(value = "Delete performance recommendations", response = YBPSuccess.class)
@@ -154,11 +157,11 @@ public class PerfAdvisorController extends AuthenticatedController {
           paramType = "body",
           dataType = "org.yb.perf_advisor.filters.PerformanceRecommendationFilter",
           required = true))
-  public Result delete(UUID customerUUID) {
+  public Result delete(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     PerformanceRecommendationFilter inputFilter =
-        parseJsonAndValidate(PerformanceRecommendationFilter.class);
+        parseJsonAndValidate(request, PerformanceRecommendationFilter.class);
     PerformanceRecommendationFilter filter =
         inputFilter.toBuilder().customerId(customerUUID).build();
 
@@ -168,21 +171,17 @@ public class PerfAdvisorController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            TargetType.PerformanceRecommendation,
-            null,
-            Audit.ActionType.Delete,
-            request().body().asJson());
+            request, TargetType.PerformanceRecommendation, null, Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
   private Result updateRecommendations(
-      UUID customerUUID, Consumer<PerformanceRecommendation> updater) {
+      UUID customerUUID, Consumer<PerformanceRecommendation> updater, Http.Request request) {
     UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     Customer.getOrBadRequest(customerUUID);
 
     PerformanceRecommendationFilter inputFilter =
-        parseJsonAndValidate(PerformanceRecommendationFilter.class);
+        parseJsonAndValidate(request, PerformanceRecommendationFilter.class);
     PerformanceRecommendationFilter filter =
         inputFilter.toBuilder().customerId(customerUUID).build();
 
@@ -199,11 +198,7 @@ public class PerfAdvisorController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            TargetType.PerformanceRecommendation,
-            null,
-            ActionType.Update,
-            request().body().asJson());
+            request, TargetType.PerformanceRecommendation, null, ActionType.Update);
     return YBPSuccess.empty();
   }
 
@@ -216,11 +211,11 @@ public class PerfAdvisorController extends AuthenticatedController {
           paramType = "body",
           dataType = "org.yb.perf_advisor.models.paging.StateChangeAuditInfoPagedQuery",
           required = true))
-  public Result pageAuditInfo(UUID customerUUID) {
+  public Result pageAuditInfo(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     StateChangeAuditInfoPagedQuery inputQuery =
-        parseJsonAndValidate(StateChangeAuditInfoPagedQuery.class);
+        parseJsonAndValidate(request, StateChangeAuditInfoPagedQuery.class);
     StateChangeAuditInfoFilter inputFilter = inputQuery.getFilter();
     StateChangeAuditInfoFilter filter = inputFilter.toBuilder().customerId(customerUUID).build();
     StateChangeAuditInfoPagedQuery query =
@@ -237,7 +232,7 @@ public class PerfAdvisorController extends AuthenticatedController {
   @ApiOperation(
       value = "Get universe performance advisor settings",
       response = PerfAdvisorSettingsWithDefaults.class)
-  public Result getSettings(UUID customerUUID, UUID universeUUID) {
+  public Result getSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (!customer.getId().equals(universe.getCustomerId())) {
@@ -255,7 +250,7 @@ public class PerfAdvisorController extends AuthenticatedController {
     PerfAdvisorSettingsWithDefaults result =
         new PerfAdvisorSettingsWithDefaults().setDefaultSettings(defaultSettings);
 
-    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     String configString =
         runtimeConfService.getKeyIfPresent(
             customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY, isSuperAdmin);
@@ -280,14 +275,15 @@ public class PerfAdvisorController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.PerfAdvisorSettingsFormData",
           required = true))
   @Transactional
-  public Result updateSettings(UUID customerUUID, UUID universeUUID) {
+  public Result updateSettings(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (!customer.getId().equals(universe.getCustomerId())) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Universe " + universeUUID + " does not belong to customer " + customerUUID);
     }
-    PerfAdvisorSettingsFormData settings = parseJsonAndValidate(PerfAdvisorSettingsFormData.class);
+    PerfAdvisorSettingsFormData settings =
+        parseJsonAndValidate(request, PerfAdvisorSettingsFormData.class);
     String settingsJsonString = Json.stringify(Json.toJson(settings));
     String settingsString =
         ConfigFactory.parseString(
@@ -295,22 +291,18 @@ public class PerfAdvisorController extends AuthenticatedController {
             .root()
             .render();
 
-    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(ctx());
+    boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     runtimeConfService.setKey(
         customerUUID, universeUUID, PERF_ADVISOR_SETTINGS_KEY, settingsString, isSuperAdmin);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            TargetType.PerformanceAdvisorSettings,
-            null,
-            ActionType.Update,
-            request().body().asJson());
+            request, TargetType.PerformanceAdvisorSettings, null, ActionType.Update);
     return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Start performance advisor run for universe", response = YBPSuccess.class)
-  public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID) {
+  public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     if (!customer.getId().equals(universe.getCustomerId())) {
@@ -321,11 +313,7 @@ public class PerfAdvisorController extends AuthenticatedController {
     RunResult result = perfAdvisorScheduler.runPerfAdvisor(customer, universe);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            TargetType.PerformanceAdvisorRun,
-            null,
-            ActionType.Create,
-            request().body().asJson());
+            request, TargetType.PerformanceAdvisorRun, null, ActionType.Create);
     if (result.isStarted()) {
       return YBPSuccess.empty();
     } else {

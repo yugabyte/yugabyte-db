@@ -97,11 +97,14 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   // Does the work of polling for new changes.
   void DoHandleApplyChanges(XClusterOutputClientResponse response);
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
+  void UpdateSchemaVersionsForApply();
 
   cdc::ProducerTabletInfo producer_tablet_info_;
   cdc::ConsumerTabletInfo consumer_tablet_info_;
-  cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(data_mutex_);
-  cdc::ColocatedSchemaVersionMap colocated_schema_version_map_ GUARDED_BY(data_mutex_);
+
+  mutable rw_spinlock schema_version_lock_;
+  cdc::XClusterSchemaVersionMap schema_version_map_ GUARDED_BY(schema_version_lock_);
+  cdc::ColocatedSchemaVersionMap colocated_schema_version_map_ GUARDED_BY(schema_version_lock_);
 
   // Although this is processing serially, it might be on a different thread in the ThreadPool.
   // Using mutex to guarantee cache flush, preventing TSAN warnings.

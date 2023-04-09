@@ -89,7 +89,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               taskParams().useNewHelmNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      createPodsTask(universe.getName(), placement, masterAddresses, true);
+      createPodsTask(universe.getName(), placement, masterAddresses, true, universe.isYbcEnabled());
 
       // Following method assumes primary cluster.
       createSingleKubernetesExecutorTask(
@@ -101,6 +101,16 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Install YBC on the RR tservers and wait for its completion
+      if (universe.isYbcEnabled()) {
+        installYbcOnThePods(
+            universe.getName(),
+            tserversAdded,
+            true,
+            universe.getUniverseDetails().getYbcSoftwareVersion());
+        createWaitForYbcServerTask(tserversAdded);
+      }
 
       // Persist the placement info into the YB master leader.
       createPlacementInfoTask(null /* blacklistNodes */)

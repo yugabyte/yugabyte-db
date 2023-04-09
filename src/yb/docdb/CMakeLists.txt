@@ -54,7 +54,7 @@ ADD_YB_LIBRARY(yb_docdb_encoding
 set(DOCDB_ENCODING_UTIL_SRCS
         primitive_value_util.cc
         )
-    
+
 # DocDB Encoding util lib is shared with PG process as well. Avoid
 # including tserver specific dependencies for it.
 set(DOCDB_ENCODING_UTIL_DEPS
@@ -62,12 +62,11 @@ set(DOCDB_ENCODING_UTIL_DEPS
         yb_ql_common
         yb_util
         )
-    
+
 ADD_YB_LIBRARY(yb_docdb_encoding_util
         SRCS ${DOCDB_ENCODING_UTIL_SRCS}
         DEPS ${DOCDB_ENCODING_UTIL_DEPS}
         )
-    
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 include_directories("${YB_BUILD_ROOT}/postgres_build/src/include/catalog")
@@ -85,6 +84,7 @@ set(DOCDB_SRCS
         docdb_debug.cc
         docdb_filter_policy.cc
         docdb_pgapi.cc
+        docdb_statistics.cc
         docdb_util.cc
         doc_ttl_util.cc
         docdb_compaction_context.cc
@@ -98,6 +98,7 @@ set(DOCDB_SRCS
         doc_pgsql_scanspec.cc
         doc_ql_scanspec.cc
         doc_read_context.cc
+        doc_rowwise_iterator_base.cc
         doc_rowwise_iterator.cc
         doc_write_batch_cache.cc
         doc_write_batch.cc

@@ -157,6 +157,16 @@ const uint64_t kVarIntMasks[] = {
     0xffffffffffffffffULL,
 };
 
+size_t FastDecodeDescendingSignedVarIntSize(Slice src) {
+  if (src.empty()) {
+    return 0;
+  }
+  uint16_t header = src[0] << 8 | (src.size() > 1 ? src[1] : 0);
+  uint64_t negative = -static_cast<uint64_t>((header & 0x8000) == 0);
+  header ^= negative;
+  return __builtin_clz((~header & 0x7fff) | 0x20) - 16;
+}
+
 inline Result<std::pair<int64_t, size_t>> FastDecodeSignedVarInt(
     const uint8_t* const src, size_t src_size, const uint8_t* read_allowed_from) {
   typedef std::pair<int64_t, size_t> ResultType;

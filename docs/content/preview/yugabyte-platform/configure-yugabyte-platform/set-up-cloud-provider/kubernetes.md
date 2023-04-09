@@ -77,6 +77,8 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 - Create a `yugabyte-platform-universe-management` service account.
 - Create a `kubeconfig` file of the earlier-created service account to configure access to the Kubernetes cluster.
 
+This needs to be done for each Kubernetes cluster if you are doing a multi-cluster setup.
+
 ### Service account
 
 The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere.
@@ -196,7 +198,7 @@ Continue configuring your Kubernetes provider as follows:
     - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
     - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments. If the zone is in a different Kubernetes cluster than YugabyteDB Anywhere, a zone-specific `kubeconfig` file needs to be passed.
 3. In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-4. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prerequisites#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+4. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 5. Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
 ## Configure region and zones
@@ -465,3 +467,113 @@ The following overrides are available:
   For more information, see [Helm chart: Prerequisites](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
 
 - Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
+
+## Configure Kubernetes multi-cluster environment
+
+If you plan to create multi-region YugabyteDB universes, you can set up [Multi-Cluster Services](https://git.k8s.io/enhancements/keps/sig-multicluster/1645-multi-cluster-services-api) (MCS) across your Kubernetes clusters. This section covers implementation specific details for setting up MCS on various cloud providers and service mesh tools.
+
+{{< warning title="YugabyteDB Anywhere support for MCS is in beta" >}}
+
+The Kubernetes MCS API is currently in alpha, though there are various implementations of MCS which are [considered to be stable](https://github.com/kubernetes-sigs/mcs-api/issues/17#issuecomment-1309073682). To know more, see [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning) in the Kubernetes documentation.
+
+MCS support in YugabyteDB Anywhere is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Keep in mind following caveats:
+- Universe metrics may not display correct metrics for all the pods.
+- xCluster replication needs an additional manual step to work on OpenShift MCS.
+
+{{< /warning >}}
+
+### Prepare Kubernetes clusters for GKE MCS
+
+GKE MCS allows clusters to be combined as a fleet on Google Cloud. These fleet clusters can export services, which enables you to do cross-cluster communication. For more information, see [Multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/concepts/multi-cluster-services) in the Google Cloud documentation.
+
+To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](https://cloud.google.com/kubernetes-engine/docs/how-to/multi-cluster-services). Note down the unique membership name of each cluster in the fleet, it will be used during the cloud provider setup in YugabyteDB Anywhere.
+
+### Prepare OpenShift clusters for MCS
+
+Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Kubernetes (RHACM) and its Submariner addon to enable MCS. At a very high level this involves following steps:
+
+1. Create a management cluster and install RHACM on it. For details, see [Installing Red Hat Advanced Cluster Management for Kubernetes](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/install/installing) in the Red Hat documentation.
+1. Provision the OpenShift clusters which will be connected together.  
+   Ensure that the CIDRs mentioned in the cluster configuration file at `networking.clusterNetwork`, `networking.serviceNetwork`, and `networking.machineNetwork` are non-overlapping across the multiple clusters. You can find more details about these options in provider-specific sections under the [OpenShift Container Platform installation overview](https://docs.openshift.com/container-platform/4.11/installing/index.html) (look for sections named "Installing a cluster on [provider name] with customizations").
+1. Import the clusters into RHACM as a cluster set, and install the Submariner add-on on them. For more information, see [Configuring Submariner](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/add-ons/add-ons-overview#configuring-submariner).
+1. Note down the cluster names from the cluster set, as these will be used during the cloud provider setup in YugabyteDB Anywhere.
+
+### Prepare Kubernetes clusters for Istio multicluster
+
+An Istio service mesh can span multiple clusters, which allows you to configure MCS. It supports different topologies and network configurations. To install an Istio mesh across multiple Kubernetes clusters, see [Install Multicluster](https://istio.io/latest/docs/setup/install/multicluster/) in the Istio documentation.
+
+The Istio configuration for each cluster should have following options:
+
+```yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        ISTIO_META_DNS_CAPTURE: "true"
+        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+  # rest of the configuration…
+```
+Refer to [Multi-Region YugabyteDB Deployments on Kubernetes with Istio](https://www.yugabyte.com/blog/multi-region-yugabytedb-deployments-on-kubernetes-with-istio/) for a step-by-step guide and an explanation of the options being used.
+
+### Configure the cloud provider for MCS
+
+Once you have the cluster set up, follow the instructions in [Configure the Kubernetes cloud provider](#), and refer to this section for region and zone configuration required for multi-region universes.
+
+
+#### Configure region and zone for GKE MCS
+Follow the steps in [Configure region and zones](#configure-region-and-zones) and set values for all the zones from your Kubernetes clusters connected via GKE MCS as follows:
+
+1. Specify fields such as Region, Zone, and so on as you would normally.
+1. Set the **Cluster DNS Domain** to `clusterset.local`.
+1. Upload the correct **Kube Config** of the cluster.
+1. Set the **Pod Address Template** to `{pod_name}.<cluster membership name>.{service_name}.{namespace}.svc.{cluster_domain}`, where the `<cluster membership name>` is the membership name of the Kubernetes cluster set during the fleet setup.
+1. Set the **Overrides** as follows:
+   ```yaml
+   multicluster:
+     createServiceExports: true
+     kubernetesClusterId: "<cluster membership name>"
+     mcsApiVersion: "net.gke.io/v1"
+   ```
+For example, if your cluster membership name is `yb-asia-south1`, then the **Add new region** screen would look as follows:
+
+![Add new region screen of YugabyteDB Anywhere with GKE MCS](/images/ee/k8s-setup/k8s-add-region-gke-mcs.png)
+
+#### Configure region and zones for OpenShift MCS
+Follow the instructions in [Configure the OpenShift cloud provider](../openshift/) and [Create a provider in YugabyteDB Anywhere](../openshift/#create-a-provider-in-yugabytedb-anywhere). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
+
+1. Specify fields such as Region, Zone, and so on as you would normally.
+1. Set the **Cluster DNS Domain** to `clusterset.local`.
+1. Upload the correct **Kube Config** of the cluster.
+1. Set the **Pod Address Template** to `{pod_name}.<cluster name>.{service_name}.{namespace}.svc.{cluster_domain}`, where the `<cluster name>` is the name of the OpenShift cluster set during the cluster set creation.
+1. Set the **Overrides** as follows:
+   ```yaml
+   multicluster:
+     createServiceExports: true
+     kubernetesClusterId: "<cluster name>"
+   ```
+For example, if your cluster name is `yb-asia-south1`, then the values will be as follows:
+- **Pod Address Template**  
+  `{pod_name}.yb-asia-south1.{service_name}.{namespace}.svc.{cluster_domain}`
+- **Overrides**
+  ```yaml
+  multicluster:
+    createServiceExports: true
+    kubernetesClusterId: "yb-asia-south1"
+  ```
+
+
+#### Configure region and zones for Istio
+Follow the steps in [Configure region and zones](#configure-region-and-zones) and set values for all the zones from your Kubernetes clusters connected via Istio as follows.
+
+1. Specify fields such as Region, Zone, and so on as you would normally.
+1. Upload the correct **Kube Config** of the cluster.
+1. Set the **Pod Address Template** to `{pod_name}.{namespace}.svc.{cluster_domain}`.
+1. Set the **Overrides** as follows:
+   ```yaml
+   istioCompatibility:
+     enabled: true
+   multicluster:
+     createServicePerPod: true
+   ```

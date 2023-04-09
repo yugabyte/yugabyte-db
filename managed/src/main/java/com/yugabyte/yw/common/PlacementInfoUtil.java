@@ -451,7 +451,7 @@ public class PlacementInfoUtil {
     cluster.userIntent.numNodes =
         Math.max(cluster.userIntent.replicationFactor, cluster.userIntent.numNodes);
     AvailableNodeTracker availableNodeTracker =
-        new AvailableNodeTracker(cluster.userIntent, taskParams.getNodesInCluster(cluster.uuid));
+        new AvailableNodeTracker(cluster.uuid, taskParams.clusters, taskParams.nodeDetailsSet);
 
     // Modifying placementInfo if needed.
     if (cluster.placementInfo == null) {
@@ -487,8 +487,7 @@ public class PlacementInfoUtil {
           allowGeoPartitioning);
     }
 
-    verifyPlacement(
-        cluster.userIntent, cluster.placementInfo, taskParams.getNodesInCluster(cluster.uuid));
+    verifyPlacement(cluster, taskParams.clusters, taskParams.nodeDetailsSet);
     removeUnusedPlacementAZs(cluster.placementInfo);
     cluster.userIntent.numNodes = getNodeCountInPlacement(cluster.placementInfo);
 
@@ -555,16 +554,18 @@ public class PlacementInfoUtil {
   /**
    * For the case of onprem provider we need to verify if each zone has enough nodes.
    *
-   * @param userIntent
-   * @param placementInfo
-   * @param nodes
+   * @param cluster Current cluster
+   * @param clusters All clusters
+   * @param nodes All nodes
    */
   private static void verifyPlacement(
-      UserIntent userIntent, PlacementInfo placementInfo, Set<NodeDetails> nodes) {
-    AvailableNodeTracker availableNodeTracker = new AvailableNodeTracker(userIntent, nodes);
+      Cluster cluster, List<Cluster> clusters, Set<NodeDetails> nodes) {
+    AvailableNodeTracker availableNodeTracker =
+        new AvailableNodeTracker(cluster.uuid, clusters, nodes);
     List<String> errors = new ArrayList<>();
     if (availableNodeTracker.isOnprem()) {
-      placementInfo
+      cluster
+          .placementInfo
           .azStream()
           .forEach(
               az -> {
@@ -578,7 +579,7 @@ public class PlacementInfoUtil {
                           "Couldn't find %d nodes of type %s in %s zone "
                               + "(%d is free and %d currently occupied)",
                           az.numNodesInAZ,
-                          userIntent.instanceType,
+                          cluster.userIntent.instanceType,
                           availabilityZone.getName(),
                           available,
                           occupied + willBeFreed));
@@ -1494,10 +1495,10 @@ public class PlacementInfoUtil {
       SelectMastersResult selectMastersResult =
           selectMasters(
               masterLeader,
-              clusterNodes,
+              taskParams.nodeDetailsSet,
               getDefaultRegionCode(taskParams),
               true,
-              cluster.userIntent);
+              taskParams.clusters);
       AtomicInteger maxIdx = new AtomicInteger(clusterNodes.size());
       for (NodeDetails removedMaster : selectMastersResult.removedMasters) {
         if (ephemeralDedicatedMasters.contains(removedMaster)) {
@@ -1642,20 +1643,24 @@ public class PlacementInfoUtil {
    * to the number of free nodes in the zone. Step 4. Master-leader is always preserved.
    *
    * @param masterLeader IP-address of the master-leader.
-   * @param nodes List of nodes of a universe.
+   * @param allNodes List of nodes of a universe.
    * @param defaultRegionCode Code of default region (for Geo-partitioned case).
    * @param applySelection If we need to apply the changes to the masters flags immediately.
-   * @param userIntent User intent for current cluster.
+   * @param clusters Clusters of universe
    * @return Instance of type SelectMastersResult with two lists of nodes - where we need to start
    *     and where we need to stop Masters. List of masters to be stopped doesn't include nodes
    *     which are going to be removed completely.
    */
   public static SelectMastersResult selectMasters(
       String masterLeader,
-      Collection<NodeDetails> nodes,
+      Collection<NodeDetails> allNodes,
       String defaultRegionCode,
       boolean applySelection,
-      UserIntent userIntent) {
+      Collection<Cluster> clusters) {
+    Cluster cluster = clusters.stream().filter(c -> c.clusterType == PRIMARY).findFirst().get();
+    List<NodeDetails> nodes =
+        allNodes.stream().filter(n -> n.isInPlacement(cluster.uuid)).collect(Collectors.toList());
+    UserIntent userIntent = cluster.userIntent;
     final int replicationFactor = userIntent.replicationFactor;
     final boolean dedicatedNodes = userIntent.dedicatedNodes;
     LOG.info(
@@ -1670,7 +1675,8 @@ public class PlacementInfoUtil {
     // Mapping nodes to pairs <region, zone>.
     Map<RegionWithAz, List<NodeDetails>> zoneToNodes = new HashMap<>();
     Map<RegionWithAz, Integer> availableForMastersNodes = new HashMap<>();
-    AvailableNodeTracker availableNodeTracker = new AvailableNodeTracker(userIntent, nodes);
+    AvailableNodeTracker availableNodeTracker =
+        new AvailableNodeTracker(cluster.uuid, clusters, allNodes);
     AtomicInteger numCandidates = new AtomicInteger(0);
     nodes
         .stream()
@@ -2073,13 +2079,15 @@ public class PlacementInfoUtil {
       int intentZones,
       @Nullable UUID defaultRegionUUID,
       Collection<UUID> skipZones) {
+    Cluster cluster = new Cluster(PRIMARY, userIntent);
     return getPlacementInfo(
         clusterType,
         userIntent,
         intentZones,
         defaultRegionUUID,
         skipZones,
-        new AvailableNodeTracker(userIntent, Collections.emptyList()));
+        new AvailableNodeTracker(
+            cluster.uuid, Collections.singletonList(cluster), Collections.emptyList()));
   }
 
   // Returns the AZ placement info for the node in the user intent. It chooses a maximum of

@@ -224,10 +224,6 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
                    ChangeMetadataResponsePB* resp,
                    rpc::RpcContext context) override;
 
-  void CopartitionTable(const CopartitionTableRequestPB* req,
-                        CopartitionTableResponsePB* resp,
-                        rpc::RpcContext context) override;
-
   void FlushTablets(const FlushTabletsRequestPB* req,
                     FlushTabletsResponsePB* resp,
                     rpc::RpcContext context) override;

@@ -25,6 +25,7 @@ import javax.inject.Inject;
 public class CloudAccessKeySetup extends CloudTaskBase {
 
   private final TemplateManager templateManager;
+
   private final AccessManager accessManager;
 
   @Inject
@@ -68,7 +69,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
           taskParams().sshUser,
           taskParams().sshPort,
           taskParams().airGapInstall,
-          false,
+          taskParams().skipProvisioning,
           taskParams().setUpChrony,
           taskParams().ntpServers,
           taskParams().showSetUpChrony,
@@ -85,7 +86,7 @@ public class CloudAccessKeySetup extends CloudTaskBase {
             taskParams().sshUser,
             taskParams().sshPort,
             taskParams().airGapInstall,
-            false,
+            taskParams().skipProvisioning,
             taskParams().setUpChrony,
             taskParams().ntpServers,
             taskParams().showSetUpChrony);

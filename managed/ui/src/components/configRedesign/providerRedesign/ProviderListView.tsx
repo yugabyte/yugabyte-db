@@ -5,16 +5,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import React from 'react';
-import { Box, Typography } from '@material-ui/core';
+import { Box } from '@material-ui/core';
 
-import { YBButton } from '../../../redesign/components';
-import {
-  CloudVendorProviders,
-  KubernetesProviderType,
-  KubernetesProviderTypeLabel,
-  ProviderCode,
-  ProviderLabel
-} from './constants';
+import { CloudVendorProviders, KubernetesProviderType, ProviderCode } from './constants';
 import { ProviderDashboardView } from './InfraProvider';
 import { ProviderList } from './ProviderList';
 
@@ -34,22 +27,6 @@ export const ProviderListView = (props: ProviderListViewProps) => {
   const { providerCode, setCurrentView } = props;
   return (
     <Box padding="25px" minHeight="400px" bgcolor="white">
-      <Box display="flex" marginBottom="35px">
-        <Typography variant="h4">{`${
-          providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
-            ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
-            : ProviderLabel[providerCode]
-        } Configs`}</Typography>
-        <YBButton
-          style={{ marginLeft: 'auto', width: '200px' }}
-          variant="primary"
-          onClick={() => setCurrentView(ProviderDashboardView.CREATE)}
-          data-testid="ProviderListView-CreateConfigButton"
-        >
-          <i className="fa fa-plus" />
-          Create Config
-        </YBButton>
-      </Box>
       {providerCode === ProviderCode.KUBERNETES ? (
         <ProviderList
           providerCode={providerCode}

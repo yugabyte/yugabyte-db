@@ -1722,7 +1722,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         assertThrows(
                 PlatformServiceException.class,
                 () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson))
-            .buildResult();
+            .buildResult(fakeRequest);
 
     assertBadRequest(
         result, "Smart resizing is only supported for AWS / GCP, It is: " + p.getCode());

@@ -291,7 +291,7 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
   memset(desc, 0x0, sizeof(YbTcmallocStats));
 #ifdef YB_TCMALLOC_ENABLED
   using mt = yb::MemTracker;
-  desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
+  desc->total_physical_bytes = mt::GetTCMallocPhysicalBytesUsed();
   desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
   desc->current_allocated_bytes = mt::GetTCMallocCurrentAllocatedBytes();
   desc->pageheap_free_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");

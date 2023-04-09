@@ -26,8 +26,8 @@ from ybops.cloud.aws.utils import (AwsBootstrapClient, YbVpcComponents,
                                    get_clients, get_device_names, get_spot_pricing,
                                    get_vpc_for_subnet, get_zones, has_ephemerals, modify_tags,
                                    query_vpc, update_disk, get_image_arch, get_root_label)
-from ybops.cloud.common.cloud import AbstractCloud
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.cloud.common.cloud import AbstractCloud, InstanceState
+from ybops.common.exceptions import YBOpsRecoverableError, YBOpsRuntimeError
 from ybops.utils import is_valid_ip_address
 from ybops.utils.ssh import (format_rsa_key, validated_key_file)
 
@@ -509,7 +509,8 @@ class AwsCloud(AbstractCloud):
         waiter = ec2.get_waiter('volume_available')
         waiter.wait(VolumeIds=[vol_id])
 
-    def clone_disk(self, args, volume_id, num_disks):
+    def clone_disk(self, args, volume_id, num_disks,
+                   snapshot_creation_delay=15, snapshot_creation_max_attempts=80):
         output = []
         snapshot = None
         ec2 = boto3.client('ec2', args.region)
@@ -531,8 +532,8 @@ class AwsCloud(AbstractCloud):
                 'Tags': resource_tags
             }]
             wait_config = {
-                'Delay': 15,
-                'MaxAttempts': 80
+                'Delay': snapshot_creation_delay,
+                'MaxAttempts': snapshot_creation_max_attempts
             }
             logging.info("==> Going to create a snapshot from {}".format(volume_id))
             snapshot = ec2.create_snapshot(VolumeId=volume_id, TagSpecifications=snapshot_tag_specs)
@@ -679,3 +680,18 @@ class AwsCloud(AbstractCloud):
         for volume_id in volume_ids:
             logging.info('[app] Deleting volume {}'.format(volume_id))
             client.delete_volume(VolumeId=volume_id)
+
+    def normalize_instance_state(self, instance_state):
+        if instance_state:
+            instance_state = instance_state.lower()
+            if instance_state in ("pending", "rebooting"):
+                return InstanceState.STARTING
+            if instance_state in ("running"):
+                return InstanceState.RUNNING
+            if instance_state in ("stopping"):
+                return InstanceState.STOPPING
+            if instance_state in ("stopped"):
+                return InstanceState.STOPPED
+            if instance_state in ("terminated"):
+                return InstanceState.TERMINATED
+        return InstanceState.UNKNOWN

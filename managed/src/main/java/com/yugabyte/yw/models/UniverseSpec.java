@@ -39,6 +39,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -276,7 +277,7 @@ public class UniverseSpec {
   }
 
   public static UniverseSpec importSpec(
-      File tarFile, PlatformPaths platformPaths, Customer customer) throws IOException {
+      Path tarFile, PlatformPaths platformPaths, Customer customer) throws IOException {
 
     String storagePath = platformPaths.storagePath;
     String releasesPath = platformPaths.releasesPath;

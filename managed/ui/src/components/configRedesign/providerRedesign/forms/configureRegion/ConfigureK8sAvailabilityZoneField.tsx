@@ -11,12 +11,26 @@ import { YBButton } from '../../../../common/forms/fields';
 import { useFieldArray, useFormContext } from 'react-hook-form';
 
 import { K8sRegionField } from './ConfigureK8sRegionModal';
-import { K8sCertIssuerType, K8sCertIssuerTypeLabel, K8sRegionFieldLabel } from './constants';
-import { OptionProps, YBInputField, YBRadioGroupField } from '../../../../../redesign/components';
+import {
+  K8sCertIssuerType,
+  K8sCertIssuerTypeLabel,
+  K8sRegionFieldLabel,
+  RegionOperation
+} from './constants';
+import {
+  OptionProps,
+  YBInput,
+  YBInputField,
+  YBRadioGroupField,
+  YBToggleField
+} from '../../../../../redesign/components';
 import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
+import { YBTextAreaField } from '../../../../../redesign/components/YBInput/YBTextAreaField';
 
 interface ConfigureK8sAvailabilityZoneFieldProps {
   isSubmitting: boolean;
+  regionOperation: RegionOperation;
+
   className?: string;
 }
 
@@ -68,6 +82,7 @@ const CERT_ISSUER_TYPE_OPTIONS: OptionProps[] = [
 ];
 
 export const ConfigureK8sAvailabilityZoneField = ({
+  regionOperation,
   isSubmitting,
   className
 }: ConfigureK8sAvailabilityZoneFieldProps) => {
@@ -76,111 +91,135 @@ export const ConfigureK8sAvailabilityZoneField = ({
   const { fields, append, remove } = useFieldArray({ control, name: 'zones' });
 
   const addZoneField = () => {
-    append({ code: '', certIssuerType: K8sCertIssuerType.NONE });
+    append({
+      code: '',
+      certIssuerType: K8sCertIssuerType.NONE,
+      editKubeConfigContent: true,
+      isNewZone: true
+    });
   };
   const zones = watch('zones', []);
   return (
     <div className={clsx(className)}>
       <div className={classes.zonesContainer}>
         <Typography variant="h5">Availability Zones</Typography>
-        {fields.map((zone, index) => (
-          <div key={zone.id}>
-            {index !== 0 && <Divider />}
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.ZONE_CODE}</div>
-              <YBInputField
-                control={control}
-                name={`zones.${index}.code`}
-                placeholder="Enter..."
-                fullWidth
-              />
-            </div>
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.KUBE_CONFIG_CONTENT}</div>
-              <YBDropZoneField
-                name={`zones.${index}.kubeConfigContent`}
-                control={control}
-                actionButtonText="Upload Kube Config File"
-                multipleFiles={false}
-                showHelpText={false}
-              />
-            </div>
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.STORAGE_CLASSES}</div>
-              <YBInputField
-                control={control}
-                name={`zones.${index}.kubernetesStorageClass`}
-                placeholder="Enter..."
-                fullWidth
-              />
-            </div>
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.KUBE_POD_ADDRESS_TEMPLATE}</div>
-              <YBInputField
-                control={control}
-                name={`zones.${index}.kubePodAddressTemplate`}
-                placeholder="Enter..."
-                fullWidth
-              />
-            </div>
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.KUBE_DOMAIN}</div>
-              <YBInputField
-                control={control}
-                name={`zones.${index}.kubeDomain`}
-                placeholder="Enter..."
-                fullWidth
-              />
-            </div>
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.KUBE_NAMESPACE}</div>
-              <YBInputField
-                control={control}
-                name={`zones.${index}.kubeNamespace`}
-                placeholder="Enter..."
-                fullWidth
-              />
-            </div>
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.OVERRIDES}</div>
-              <YBInputField
-                control={control}
-                name={`zones.${index}.overrides`}
-                placeholder="Enter..."
-                fullWidth
-              />
-            </div>
-            <div className={classes.formField}>
-              <div>{K8sRegionFieldLabel.CERT_ISSUER_TYPE}</div>
-              <YBRadioGroupField
-                control={control}
-                name={`zones.${index}.certIssuerType`}
-                options={CERT_ISSUER_TYPE_OPTIONS}
-                orientation="horizontal"
-              />
-            </div>
-            {([
-              K8sCertIssuerType.CLUSTER_ISSUER,
-              K8sCertIssuerType.ISSUER
-            ] as K8sCertIssuerType[]).includes(zones?.[index].certIssuerType) && (
+        {fields.map((zone, index) => {
+          // TODO: We might be able to simplify this to `!!zones[index].kubeConfigFilepath`
+          const hasExistingKubeConfig =
+            regionOperation === RegionOperation.EDIT_EXISTING &&
+            !zones[index].isNewZone &&
+            !!zones[index].kubeConfigFilepath;
+          return (
+            <div key={zone.id}>
+              {index !== 0 && <Divider />}
               <div className={classes.formField}>
-                <div>{K8sRegionFieldLabel.CERT_ISSUER_NAME}</div>
+                <div>{K8sRegionFieldLabel.ZONE_CODE}</div>
                 <YBInputField
                   control={control}
-                  name={`zones.${index}.certIssuerName`}
+                  name={`zones.${index}.code`}
                   placeholder="Enter..."
                   fullWidth
                 />
               </div>
-            )}
-            <YBButton
-              className={classes.removeZoneButton}
-              btnIcon="fa fa-trash-o"
-              btnText="Delete Zone"
-              onClick={() => remove(index)}
-            />
-          </div>
-        ))}
+              {hasExistingKubeConfig && (
+                <>
+                  <div className={classes.formField}>
+                    <div>{K8sRegionFieldLabel.CURRENT_KUBE_CONFIG_FILEPATH}</div>
+                    <YBInput value={zones[index].kubeConfigFilepath} disabled={true} />
+                  </div>
+                  <div className={classes.formField}>
+                    <div>{K8sRegionFieldLabel.EDIT_KUBE_CONFIG}</div>
+                    <YBToggleField
+                      name={`zones.${index}.editKubeConfigContent`}
+                      control={control}
+                    />
+                  </div>
+                </>
+              )}
+              {(!hasExistingKubeConfig || zones[index].editKubeConfigContent) && (
+                <div className={classes.formField}>
+                  <div>{K8sRegionFieldLabel.KUBE_CONFIG_CONTENT}</div>
+                  <YBDropZoneField
+                    name={`zones.${index}.kubeConfigContent`}
+                    control={control}
+                    actionButtonText="Upload Kube Config File"
+                    multipleFiles={false}
+                    showHelpText={false}
+                  />
+                </div>
+              )}
+              <div className={classes.formField}>
+                <div>{K8sRegionFieldLabel.STORAGE_CLASSES}</div>
+                <YBInputField
+                  control={control}
+                  name={`zones.${index}.kubernetesStorageClass`}
+                  placeholder="Enter..."
+                  fullWidth
+                />
+              </div>
+              <div className={classes.formField}>
+                <div>{K8sRegionFieldLabel.KUBE_POD_ADDRESS_TEMPLATE}</div>
+                <YBInputField
+                  control={control}
+                  name={`zones.${index}.kubePodAddressTemplate`}
+                  placeholder="Enter..."
+                  fullWidth
+                />
+              </div>
+              <div className={classes.formField}>
+                <div>{K8sRegionFieldLabel.KUBE_DOMAIN}</div>
+                <YBInputField
+                  control={control}
+                  name={`zones.${index}.kubeDomain`}
+                  placeholder="Enter..."
+                  fullWidth
+                />
+              </div>
+              <div className={classes.formField}>
+                <div>{K8sRegionFieldLabel.KUBE_NAMESPACE}</div>
+                <YBInputField
+                  control={control}
+                  name={`zones.${index}.kubeNamespace`}
+                  placeholder="Enter..."
+                  fullWidth
+                />
+              </div>
+              <div className={classes.formField}>
+                <div>{K8sRegionFieldLabel.OVERRIDES}</div>
+                <YBTextAreaField control={control} name={`zones.${index}.overrides`} />
+              </div>
+              <div className={classes.formField}>
+                <div>{K8sRegionFieldLabel.CERT_ISSUER_TYPE}</div>
+                <YBRadioGroupField
+                  control={control}
+                  name={`zones.${index}.certIssuerType`}
+                  options={CERT_ISSUER_TYPE_OPTIONS}
+                  orientation="horizontal"
+                />
+              </div>
+              {([
+                K8sCertIssuerType.CLUSTER_ISSUER,
+                K8sCertIssuerType.ISSUER
+              ] as K8sCertIssuerType[]).includes(zones?.[index].certIssuerType) && (
+                <div className={classes.formField}>
+                  <div>{K8sRegionFieldLabel.CERT_ISSUER_NAME}</div>
+                  <YBInputField
+                    control={control}
+                    name={`zones.${index}.certIssuerName`}
+                    placeholder="Enter..."
+                    fullWidth
+                  />
+                </div>
+              )}
+              <YBButton
+                className={classes.removeZoneButton}
+                btnIcon="fa fa-trash-o"
+                btnText="Delete Zone"
+                onClick={() => remove(index)}
+              />
+            </div>
+          );
+        })}
         <YBButton
           className={classes.addZoneButton}
           btnIcon="fa fa-plus"

@@ -44,8 +44,18 @@
 namespace yb {
 namespace master {
 
-struct TemporaryLoadingState {
+struct SysCatalogLoadingState {
   std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
+  std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
+
+  void AddPostLoadTask(std::function<void()>&& func, std::string&& msg) {
+    post_load_tasks.push_back({std::move(func), std::move(msg)});
+  }
+
+  void Reset() {
+    parent_to_child_tables.clear();
+    post_load_tasks.clear();
+  }
 };
 
 #define DECLARE_LOADER_CLASS(name, key_type, entry_pb_name, mutex) \
@@ -54,18 +64,18 @@ struct TemporaryLoadingState {
   public: \
     explicit BOOST_PP_CAT(name, Loader)( \
                                          CatalogManager* catalog_manager, \
-                                         TemporaryLoadingState* state, \
+                                         SysCatalogLoadingState* state, \
                                          int64_t term = OpId::kUnknownTerm) \
       : catalog_manager_(catalog_manager), state_(state), term_(term) {} \
     \
   private: \
     Status Visit( \
         const key_type& key, \
-        const entry_pb_name& metadata) override REQUIRES(mutex); \
+        const entry_pb_name& metadata) REQUIRES(mutex) override; \
     \
     CatalogManager *catalog_manager_; \
     \
-    TemporaryLoadingState* state_; \
+    SysCatalogLoadingState* state_; \
     \
     int64_t term_; \
     \

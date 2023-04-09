@@ -640,7 +640,8 @@ class AzureCloudAdmin():
 
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, nsg, image, vol_type, server_type,
-                            region, nic_id, tags, disk_iops, disk_throughput, is_edit=False,
+                            region, nic_id, tags, disk_iops, disk_throughput, spot_price,
+                            use_spot_instance, is_edit=False,
                             json_output=True):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
@@ -701,6 +702,14 @@ class AzureCloudAdmin():
                 }]
             }
         }
+        if use_spot_instance:
+            vm_parameters["priority"] = "Spot"
+            # Default price is -1 which means we pay up to on-demand price
+            if spot_price is not None:
+                vm_parameters["billingProfile"] = {
+                    "maxPrice": spot_price
+                }
+            logging.info(f'[app] Using Azure spot instance')
         if plan is not None:
             vm_parameters["plan"] = plan
 
@@ -896,6 +905,7 @@ class AzureCloudAdmin():
                 if len(parts) != 2 or parts[0] != "PowerState":
                     continue
                 instance_state = parts[1]
+                break
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,
