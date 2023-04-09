@@ -21,11 +21,13 @@ import com.yugabyte.yw.commissioner.tasks.ResumeUniverse;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.AlertConfigFormData;
 import com.yugabyte.yw.forms.EncryptionAtRestKeyParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import javax.inject.Singleton;
@@ -74,10 +76,22 @@ public class UniverseActionsHandler {
           taskUUID);
 
       CustomerTask.TaskType customerTaskType = null;
+      CustomerTask.TargetType customerTargetType = CustomerTask.TargetType.Universe;
+      KmsHistory activeKmsHistory = EncryptionAtRestUtil.getActiveKey(universe.getUniverseUUID());
       switch (taskParams.encryptionAtRestConfig.opType) {
         case ENABLE:
           if (universe.getUniverseDetails().encryptionAtRestConfig.encryptionAtRestEnabled) {
             customerTaskType = CustomerTask.TaskType.RotateEncryptionKey;
+            if (activeKmsHistory != null
+                && !activeKmsHistory
+                    .getConfigUuid()
+                    .equals(taskParams.encryptionAtRestConfig.kmsConfigUUID)) {
+              // Master key rotation case when given config UUID differs from active config UUID.
+              customerTargetType = CustomerTask.TargetType.MasterKey;
+            } else {
+              // Universe key rotation case when given config UUID matches active config UUID.
+              customerTargetType = CustomerTask.TargetType.UniverseKey;
+            }
           } else {
             customerTaskType = CustomerTask.TaskType.EnableEncryptionAtRest;
           }
@@ -95,7 +109,7 @@ public class UniverseActionsHandler {
           customer,
           universe.getUniverseUUID(),
           taskUUID,
-          CustomerTask.TargetType.Universe,
+          customerTargetType,
           customerTaskType,
           universe.getName());
       LOG.info(
