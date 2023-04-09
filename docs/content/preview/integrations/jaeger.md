@@ -18,7 +18,7 @@ Jaeger, inspired by [Dapper](https://research.google.com/pubs/pub36356.html) and
 - Service dependency analysis
 - Performance / latency optimization
 
-Jaeger can be used with various storage backends. YugabyteDB's YCQL API can also be used as a storage backend for Jaeger (version 1.43.0, previous versions are unsupported).
+Jaeger can be used with various storage backends. YugabyteDB's [YCQL](../../api/ycql/) API can also be used as a storage backend for Jaeger (version 1.43.0, previous versions are unsupported).
 
 The Jaeger example on this page uses the [HotROD](https://www.jaegertracing.io/docs/1.43/getting-started/#sample-app-hotrod) sample application to illustrate the use of YCQL as a storage backend.
 
@@ -42,7 +42,7 @@ To use Jaeger, ensure that you have the following:
 
 To build the application, do the following:
 
-1. Jaeger natively supports two databases, Cassandra and Elasticsearch. So you need to set an environment variable `SPAN_STORAGE_TYPE` to specify your choice of database. For this example, set it to cassandra as follows:
+1. Jaeger natively supports two databases, Cassandra and Elasticsearch. So you need to set an environment variable `SPAN_STORAGE_TYPE` to specify your choice of database. For YCQL examples, set it to `cassandra` as follows:
 
     ```sh
     export SPAN_STORAGE_TYPE=cassandra
