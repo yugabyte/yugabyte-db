@@ -46,7 +46,7 @@ The YSQL throughput can be viewed as an aggregate across the whole cluster, per 
 
 ## Database IOPS (reads and writes)
 
-The [YB-TServer](../../../architecture/concepts/yb-tserver/) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each hosts one or more tablet peers.
+The [YB-TServer](../../../../architecture/concepts/yb-tserver/) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each hosts one or more tablet peers.
 
 All handler latency metrics include additional attributes. Refer to [Latency metric attributes](#latency-metric-attributes).
 
