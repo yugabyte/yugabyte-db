@@ -171,3 +171,6 @@ Fix swaggerGen
 [16135] [YCQL] Use Metadata Cache in IsYBTableAltered
 [16140] [DocDB] Bump RBS session default timeout
 [16160] [yugabyted] Stopping the processes properly in MacOS.
+[16763] xCluster: Reduce logging noise during xcluster errors
+[16746] xCluster: Compute and propagate apply_safe_time from producer
+[16402] yugabyted: Set cluster config as sson as the 3rd node joins
