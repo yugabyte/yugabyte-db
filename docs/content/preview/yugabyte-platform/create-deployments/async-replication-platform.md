@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     parent: create-deployments
     identifier: async-replication-platform
-    weight: 633
+    weight: 50
 aliases:
 type: docs
 ---
@@ -57,24 +57,24 @@ You can set up xCluster replication as follows:
 
 1. Click **Validate Table Selection**.
 
-   This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables: 
-   
-   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication: 
-   
+   This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables:
+
+   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication:
+
      ![Create Replication](/images/yp/asynch-replication-332.png)
-   
+
    - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to access the bootstrapping settings, and then proceed by completing the fields of the dialog shown in the following illustration:
-   
+
      ![Create Replication](/images/yp/asynch-replication-335.png)
-   
+
      Select the storage configuration to be used during backup and restore part of bootstrapping. For information on how to configure storage, see [Configure backup storage](../../back-up-restore-universes/configure-backup-storage/).
-   
+
      Optionally, specify the number of parallel threads that can run during bootstrapping. The greater number would result in a more significant decrease of the backup and restore time, but put  more pressure on the universes.
-   
+
      Clicking **Bootstrap and Enable Replication** starts the process of setting up replication. Tables that do not require bootstrapping are set up for replication first, followed by tables that need bootstrapping, database per database.
-   
+
      You can view the progress on xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
-   
+
 1. Optionally, configure alerts on lag, as follows:
 
    - Click **Max acceptable lag time**.
@@ -83,7 +83,7 @@ You can set up xCluster replication as follows:
 
 ### About the table selection
 
-Tables in an xCluster configuration must be of the same type: either YCQL or YSQL. If you are planning to replicate tables of different types, you need to create separate xCluster configurations. 
+Tables in an xCluster configuration must be of the same type: either YCQL or YSQL. If you are planning to replicate tables of different types, you need to create separate xCluster configurations.
 
 To be considered eligible for xCluster replication, tables must meet the following criteria:
 
@@ -134,9 +134,9 @@ This page allows you to do the following:
 
   - To find out the replication lag for a specific table, click the graph icon corresponding to that table.
 
-  - To check if the replication has been properly configured for a table. If so, the table's status is shown as Operational. 
+  - To check if the replication has been properly configured for a table. If so, the table's status is shown as Operational.
 
-    If the replication lag increase beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as Warning. 
+    If the replication lag increase beyond maximum acceptable lag defined during the replication setup or the lag is not being reported, the table's status is shown as Warning.
 
     If the replication lag has increased to the extend that the replication cannot continue without bootstrapping of current data, the status is shown as Error: the table's replication stream is broken, and restarting the replication is required for those tables. If a lag alert is enabled on the replication, you are notified when the lag is behind the specified limit, in which case you may open the table on the replication view to check if any of these tables have their replication status as Error.
 
@@ -145,7 +145,7 @@ This page allows you to do the following:
   - To add more tables to the replication, click **Add Tables** to open the **Add Tables to Replication** dialog which allows you to make a selection from a list of tables that have not been replicated, and then click **Validate Table Selection**.
 
     Note that a table with the same name in the same keyspace and with the same schema must exist on the target universe. Otherwise the table is tagged as No Match and cannot be selected. See [About the table selection](#about-the-table-selection) for additional information.
-    
+
     To make the add table operation faster, it is recommended to add new tables to the replication as soon as they are created. When using YSQL, if a subset of tables of a database is already in replication in a configuration, the remaining tables in that database can only be added to the same configuration. Moreover, if adding a YSQL table requires bootstrapping, the other tables in the same database which are already in replication will be removed from replication. The replication will be set up again for all the tables in that database.
 
 - View detailed statistics on the asynchronous replication lag by selecting **Metrics**, as per the following illustration:
