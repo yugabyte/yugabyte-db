@@ -362,6 +362,10 @@ public class KmsHistory extends Model {
     return KmsConfigUUIDs;
   }
 
+  public KmsConfig getAssociatedKmsConfig() {
+    return KmsConfig.getOrBadRequest(this.configUuid);
+  }
+
   @Override
   public String toString() {
     return Json.newObject()
