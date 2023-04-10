@@ -14,13 +14,13 @@ type: docs
   <ul class="nav nav-tabs-alt nav-tabs-yb">
 
 <li>
-    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link">
+    <a href="../create-universe-multi-zone" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link active">
+    <a href="../create-universe-multi-zone-kubernetes" class="nav-link active">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
