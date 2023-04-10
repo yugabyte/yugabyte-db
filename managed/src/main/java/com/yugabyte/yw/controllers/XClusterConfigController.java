@@ -271,31 +271,37 @@ public class XClusterConfigController extends AuthenticatedController {
     Set<String> tableIdsInRunningStatus =
         xClusterConfig.getTableIdsInStatus(
             xClusterConfig.getTables(), XClusterTableConfig.Status.Running);
-    Map<String, Boolean> isBootstrapRequiredMap;
+    Map<String, Boolean> isBootstrapRequiredMap = null;
     try {
       isBootstrapRequiredMap =
           XClusterConfigTaskBase.isBootstrapRequired(
               this.ybService, tableIdsInRunningStatus, xClusterConfig);
     } catch (Exception e) {
       log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
-      // If isBootstrapRequired method hits error, assume all the tables are in error state.
-      isBootstrapRequiredMap =
-          tableIdsInRunningStatus
-              .stream()
-              .collect(Collectors.toMap(tableId -> tableId, tableId -> true));
     }
-    Set<String> tableIdsInErrorStatus =
-        isBootstrapRequiredMap
-            .entrySet()
-            .stream()
-            .filter(Map.Entry::getValue)
-            .map(Map.Entry::getKey)
-            .collect(Collectors.toSet());
-    xClusterConfig
-        .getTableDetails()
-        .stream()
-        .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.tableId))
-        .forEach(tableConfig -> tableConfig.status = XClusterTableConfig.Status.Error);
+    // If IsBootstrapRequired API hits error, set the statuses to UnableToFetch.
+    if (Objects.isNull(isBootstrapRequiredMap)) {
+      // We do not update the xCluster config object in the DB intentionally because `UnableToFetch`
+      // is only a user facing status.
+      xClusterConfig
+          .getTableDetails()
+          .stream()
+          .filter(tableConfig -> tableIdsInRunningStatus.contains(tableConfig.tableId))
+          .forEach(tableConfig -> tableConfig.status = XClusterTableConfig.Status.UnableToFetch);
+    } else {
+      Set<String> tableIdsInErrorStatus =
+          isBootstrapRequiredMap
+              .entrySet()
+              .stream()
+              .filter(Map.Entry::getValue)
+              .map(Map.Entry::getKey)
+              .collect(Collectors.toSet());
+      xClusterConfig
+          .getTableDetails()
+          .stream()
+          .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.tableId))
+          .forEach(tableConfig -> tableConfig.status = XClusterTableConfig.Status.Error);
+    }
 
     // Wrap XClusterConfig with lag metric data.
     XClusterConfigGetResp resp = new XClusterConfigGetResp();

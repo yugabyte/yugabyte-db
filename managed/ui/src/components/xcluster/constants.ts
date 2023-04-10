@@ -35,7 +35,8 @@ export const XClusterTableStatus = {
   ERROR: 'Error',
   UPDATING: 'Updating',
   VALIDATED: 'Validated',
-  BOOTSTRAPPING: 'Bootstrapping'
+  BOOTSTRAPPING: 'Bootstrapping',
+  UNABLE_TO_FETCH: 'UnableToFetch'
 } as const;
 export type XClusterTableStatus = typeof XClusterTableStatus[keyof typeof XClusterTableStatus];
 //------------------------------------------------------------------------------------

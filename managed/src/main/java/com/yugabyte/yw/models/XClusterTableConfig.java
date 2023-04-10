@@ -86,17 +86,21 @@ public class XClusterTableConfig extends Model {
 
   @ApiModelProperty(
       value = "Status",
-      allowableValues = "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed")
+      allowableValues =
+          "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
   public Status status;
 
   public enum Status {
     Validated("Validated"),
     Running("Running"),
     Updating("Updating"),
-    Warning("Warning"),
-    Error("Error"),
     Bootstrapping("Bootstrapping"),
-    Failed("Failed");
+    Failed("Failed"),
+
+    // The following statuses will not be stored in the YBA DB.
+    Error("Error"),
+    Warning("Warning"),
+    UnableToFetch("UnableToFetch");
 
     private final String status;
 
