@@ -11,8 +11,10 @@ menu:
     weight: 100
 type: docs
 ---
-Yugabyte supports additional attributes within the latency metrics which enable user to calculate the throughput.  
-These attributes include:
+
+YugabyteDB supports additional attributes for latency metrics, which enable you to calculate throughput.
+
+These attributes include the following:
 
 | Attribute | Description |
 | :--- | :--- |
@@ -27,7 +29,7 @@ These attributes include:
 | `max` | The maximum value of the metric across all measurements.
 | `total_sum/sum` | The aggregate of all the metric values across the measurements reflected in total_count/count.
 
-For example, if a `select * from table` is executed once and returns 8 rows in 10 milliseconds, then the `total_count=1`, `total_sum=10`, `min=6`, `max=10`, and `mean=8`. If the same query is run again and returns in 6 milliseconds, then the `total_count=2`, `total_sum=16`, `min=6`, `max=10`, and `mean=8`.
+For example, if `SELECT * FROM table` is executed once and returns 8 rows in 10 microseconds, the `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` metric would have the following attribute values: `total_count=1`, `total_sum=10`, `min=10`, `max=10`, and `mean=10`. If the same query is run again and returns in 6 microseconds, then the attributes would be as follows: `total_count=2`, `total_sum=16`, `min=6`, `max=10`, and `mean=8`.
 
 Although these attributes are present in all `handler_latency` metrics, they may not be calculated for all the metrics.
 
@@ -82,4 +84,3 @@ The following are key metrics for evaluating database IOPS.
 | `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | Time in microseconds to perform READ operations at a tablet level | -->
 
 These metrics can be viewed as an aggregate across the whole cluster, per table, and per node by applying the appropriate aggregations.
-

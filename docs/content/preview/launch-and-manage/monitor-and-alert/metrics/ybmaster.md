@@ -14,7 +14,7 @@ type: docs
 
 The [YB-Master](../../../architecture/concepts/yb-master/) hosts system metadata, records about tables in the system and locations of their tablets, users, roles, permissions, and so on. YB-Masters are also responsible for coordinating background operations such as schema changes, handling addition and removal of nodes from the cluster, automatic re-replication of data on permanent failures, and so on.
 
-All handler latency metrics include additional attributes. Refer to [Latency metric attributes](../throughput/#latency-metric-attributes).
+All handler latency metrics include additional attributes. Refer to [Throughput and latency](../throughput/).
 
 The following are key metrics for evaluating YB-Master performance.
 
