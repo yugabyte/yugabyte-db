@@ -412,8 +412,8 @@ public class BackupsController extends AuthenticatedController {
           (StringUtils.isEmpty(taskParams.cronExpression))
               ? taskParams.schedulingFrequency
               : BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
-      BackupUtil.validateIncrementalScheduleFrequency(
-          taskParams.incrementalBackupFrequency, schedulingFrequency);
+      backupUtil.validateIncrementalScheduleFrequency(
+          taskParams.incrementalBackupFrequency, schedulingFrequency, universe);
     }
     Schedule schedule =
         Schedule.create(

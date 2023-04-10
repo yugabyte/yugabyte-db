@@ -9,6 +9,10 @@ import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.doThrow;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
 
@@ -18,6 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.EditBackupScheduleParams;
@@ -277,6 +282,12 @@ public class ScheduleControllerTest extends FakeDBApplication {
 
   @Test
   public void testEditInvalidIncrementalBackupScheduleFrequency() {
+    doThrow(
+            new PlatformServiceException(
+                BAD_REQUEST,
+                "Incremental backup frequency should be lower than full backup frequency."))
+        .when(mockBackupUtil)
+        .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
     backupRequestParams = new BackupRequestParams();
     backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     backupRequestParams.storageConfigUUID = customerConfig.getConfigUUID();
