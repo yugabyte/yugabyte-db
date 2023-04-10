@@ -93,6 +93,9 @@ DEFINE_UNKNOWN_bool(detect_duplicates_for_retryable_requests, true,
 DEFINE_UNKNOWN_bool(ysql_forward_rpcs_to_local_tserver, false,
             "DEPRECATED. Feature has been removed");
 
+// DEPRECATED. It is assumed that all t-servers and masters in the cluster has this capability.
+// Remove it completely when it won't be necessary to support upgrade from releases which checks
+// the existence on this capability.
 DEFINE_CAPABILITY(PickReadTimeAtTabletServer, 0x8284d67b);
 
 DECLARE_bool(collect_end_to_end_traces);
@@ -446,19 +449,6 @@ bool AsyncRpcBase<Req, Resp>::CommonResponseCheck(const Status& status) {
 
 template <class Req, class Resp>
 void AsyncRpcBase<Req, Resp>::SendRpcToTserver(int attempt_num) {
-  if (!tablet_invoker_.current_ts().HasCapability(CAPABILITY_PickReadTimeAtTabletServer)) {
-    ConsistentReadPoint* read_point = batcher_->read_point();
-    if (read_point && !read_point->GetReadTime()) {
-      auto txn = batcher_->transaction();
-      // If txn is not set, this is a consistent scan across multiple tablets of a
-      // non-transactional YCQL table.
-      if (!txn || txn->isolation() == IsolationLevel::SNAPSHOT_ISOLATION) {
-        read_point->SetCurrentReadTime();
-        read_point->GetReadTime().AddToPB(&req_);
-      }
-    }
-  }
-
   req_.set_rejection_score(batcher_->RejectionScore(attempt_num));
   AsyncRpc::SendRpcToTserver(attempt_num);
 }
