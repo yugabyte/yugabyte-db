@@ -202,8 +202,7 @@ public class AccessKey extends Model {
 
   public KeyInfo getKeyInfo() {
     try {
-      Provider provider = Provider.getOrBadRequest(getProviderUUID());
-      if (provider.details != null) {
+      if (provider != null && provider.details != null) {
         keyInfo.mergeFrom(provider.details);
       } else {
         keyInfo.mergeFrom(new ProviderDetails());

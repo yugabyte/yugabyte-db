@@ -3,10 +3,6 @@ package com.yugabyte.yw.models.helpers;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import java.util.Map;
-import java.util.Objects;
-
-import com.google.common.base.Strings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -28,8 +24,10 @@ import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.DefaultRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
+import java.util.Map;
+import java.util.Objects;
 import play.libs.Json;
 
 public interface CloudInfoInterface {
@@ -580,15 +578,29 @@ public interface CloudInfoInterface {
     }
 
     for (Region region : p.regions) {
-      if (region.zones == null) {
-        return;
-      }
-      for (AvailabilityZone az : region.zones) {
-        config = CloudInfoInterface.fetchEnvVars(az);
-        AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();
-        AvailabilityZoneDetails.AZCloudInfo azCloudInfo = azDetails.getCloudInfo();
-        az.config = populateConfigMap(azCloudInfo, cloudType, config);
-      }
+      mayBeMassageResponse(cloudType, region);
+    }
+  }
+
+  public static void mayBeMassageResponse(Provider p, Region region) {
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
+    ProviderDetails providerDetails = p.details;
+    ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
+    CloudType cloudType = CloudType.valueOf(p.code);
+    p.setConfig(populateConfigMap(cloudInfo, cloudType, config));
+
+    mayBeMassageResponse(cloudType, region);
+  }
+
+  static void mayBeMassageResponse(CloudType cloudType, Region region) {
+    if (region.zones == null) {
+      return;
+    }
+    for (AvailabilityZone az : region.zones) {
+      Map<String, String> config = CloudInfoInterface.fetchEnvVars(az);
+      AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();
+      AvailabilityZoneDetails.AZCloudInfo azCloudInfo = azDetails.getCloudInfo();
+      az.setConfig(populateConfigMap(azCloudInfo, cloudType, config));
     }
   }
 }

@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
@@ -22,7 +22,9 @@ import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
@@ -64,20 +66,24 @@ public class RegionController extends AuthenticatedController {
       responseContainer = "List")
   // todo: include provider field in response
   public Result listAllRegions(UUID customerUUID) {
-    List<Provider> providerList = Provider.getAll(customerUUID);
-    ArrayNode resultArray = Json.newArray();
-    for (Provider provider : providerList) {
-      CloudInfoInterface.mayBeMassageResponse(provider);
-      List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.uuid, 1);
-      for (Region region : regionList) {
-        ObjectNode regionNode = (ObjectNode) Json.toJson(region);
-        ObjectNode providerForRegion = (ObjectNode) Json.toJson(provider);
-        providerForRegion.remove("regions"); // to Avoid recursion
-        regionNode.set("provider", providerForRegion);
-        resultArray.add(regionNode);
-      }
-    }
-    return ok(resultArray);
+    Set<UUID> providerUuids =
+        Provider.getAll(customerUUID)
+            .stream()
+            .map(provider -> provider.uuid)
+            .collect(Collectors.toSet());
+    List<Region> regionList = Region.getFullByProviders(providerUuids);
+    List<JsonNode> result =
+        regionList
+            .stream()
+            .peek(region -> CloudInfoInterface.mayBeMassageResponse(region.provider, region))
+            .map(
+                region -> {
+                  ObjectNode regionNode = (ObjectNode) Json.toJson(region);
+                  regionNode.set("provider", Json.toJson(region.provider));
+                  return regionNode;
+                })
+            .collect(Collectors.toList());
+    return PlatformResults.withData(result);
   }
 
   /**
