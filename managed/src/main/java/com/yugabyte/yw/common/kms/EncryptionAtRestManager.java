@@ -385,6 +385,11 @@ public class EncryptionAtRestManager {
               .collect(Collectors.toList());
       for (HostAndPort hp : masterAddrs) {
         client.addUniverseKeys(ImmutableMap.of(dbKeyId, keyVal), hp);
+        LOG.info(
+            "Sent universe key to universe '{}' and DB node '{}' with key ID: '{}'.",
+            universe.getUniverseUUID(),
+            hp,
+            dbKeyId);
       }
       for (HostAndPort hp : masterAddrs) {
         if (!client.waitForMasterHasUniverseKeyInMemory(KEY_IN_MEMORY_TIMEOUT, dbKeyId, hp)) {
