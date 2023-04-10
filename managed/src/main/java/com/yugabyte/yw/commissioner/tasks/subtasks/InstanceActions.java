@@ -15,6 +15,8 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import java.util.Map;
 import javax.inject.Inject;
+
+import com.yugabyte.yw.models.TaskInfo;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -48,5 +50,18 @@ public class InstanceActions extends NodeTaskBase {
         taskParams().nodeName);
 
     getNodeManager().nodeCommand(taskParams().type, taskParams()).processErrors();
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
+  }
+
+  @Override
+  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+    // don't reboot if disk update failed
+    if (taskParams().type != NodeManager.NodeCommandType.Disk_Update) {
+      super.onFailure(taskInfo, cause);
+    }
   }
 }
