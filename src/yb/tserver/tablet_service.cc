@@ -219,6 +219,10 @@ DECLARE_bool(TEST_enable_db_catalog_version_mode);
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
                  "Skip aborting active transactions during schema change");
 
+DEFINE_test_flag(
+    bool, skip_force_superblock_flush, false,
+    "Used in tests to skip superblock flush on tablet flush.");
+
 double TEST_delay_create_transaction_probability = 0;
 
 namespace yb {
@@ -1573,6 +1577,10 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
       for (const tablet::TabletPtr& tablet : tablet_ptrs) {
         resp->set_failed_tablet_id(tablet->tablet_id());
         RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        if (!FLAGS_TEST_skip_force_superblock_flush) {
+          RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+              tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue), resp, &context);
+        }
         resp->clear_failed_tablet_id();
       }
 
