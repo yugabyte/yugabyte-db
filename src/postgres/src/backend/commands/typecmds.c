@@ -3,7 +3,7 @@
  * typecmds.c
  *	  Routines for SQL commands that manipulate types (and domains).
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1724,7 +1724,6 @@ DefineRange(ParseState *pstate, CreateRangeStmt *stmt)
 	/* Create cast from the range type to its multirange type */
 	CastCreate(typoid, multirangeOid, castFuncOid, 'e', 'f', DEPENDENCY_INTERNAL);
 
-	pfree(multirangeTypeName);
 	pfree(multirangeArrayName);
 
 	return address;
@@ -1913,10 +1912,10 @@ makeMultirangeConstructors(const char *name, Oid namespace,
 	allParamTypes = ObjectIdGetDatum(rangeArrayOid);
 	allParameterTypes = construct_array(&allParamTypes,
 										1, OIDOID,
-										sizeof(Oid), true, 'i');
+										sizeof(Oid), true, TYPALIGN_INT);
 	paramModes = CharGetDatum(FUNC_PARAM_VARIADIC);
 	parameterModes = construct_array(&paramModes, 1, CHAROID,
-									 1, true, 'c');
+									 1, true, TYPALIGN_CHAR);
 	myself = ProcedureCreate(name,	/* name: same as multirange type */
 							 namespace,
 							 false, /* replace */
@@ -3565,6 +3564,8 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 							  0,
 							  ' ',
 							  ' ',
+							  NULL,
+							  0,
 							  ' ',
 							  NULL, /* not an exclusion constraint */
 							  expr, /* Tree form of check constraint */

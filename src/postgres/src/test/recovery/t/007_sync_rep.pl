@@ -1,12 +1,12 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Minimal test testing synchronous replication sync_state transition
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 11;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Query checking sync_priority and sync_state of each standby
 my $check_sql =
@@ -17,6 +17,8 @@ my $check_sql =
 # the configuration file is reloaded before the test.
 sub test_sync_state
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my ($self, $expected, $msg, $setting) = @_;
 
 	if (defined($setting))
@@ -49,7 +51,7 @@ sub start_standby_and_wait
 }
 
 # Initialize primary node
-my $node_primary = PostgresNode->new('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(allows_streaming => 1);
 $node_primary->start;
 my $backup_name = 'primary_backup';
@@ -61,19 +63,19 @@ $node_primary->backup($backup_name);
 # the ordering of each one of them in the WAL sender array of the primary.
 
 # Create standby1 linking to primary
-my $node_standby_1 = PostgresNode->new('standby1');
+my $node_standby_1 = PostgreSQL::Test::Cluster->new('standby1');
 $node_standby_1->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 start_standby_and_wait($node_primary, $node_standby_1);
 
 # Create standby2 linking to primary
-my $node_standby_2 = PostgresNode->new('standby2');
+my $node_standby_2 = PostgreSQL::Test::Cluster->new('standby2');
 $node_standby_2->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 start_standby_and_wait($node_primary, $node_standby_2);
 
 # Create standby3 linking to primary
-my $node_standby_3 = PostgresNode->new('standby3');
+my $node_standby_3 = PostgreSQL::Test::Cluster->new('standby3');
 $node_standby_3->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 start_standby_and_wait($node_primary, $node_standby_3);
@@ -123,7 +125,7 @@ standby3|3|sync),
 start_standby_and_wait($node_primary, $node_standby_1);
 
 # Create standby4 linking to primary
-my $node_standby_4 = PostgresNode->new('standby4');
+my $node_standby_4 = PostgreSQL::Test::Cluster->new('standby4');
 $node_standby_4->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby_4->start;
@@ -215,3 +217,5 @@ standby3|1|quorum
 standby4|1|quorum),
 	'all standbys are considered as candidates for quorum sync standbys',
 	'ANY 2(*)');
+
+done_testing();

@@ -11,7 +11,7 @@
  * algorithm.  Parallel sorts use a variant of this external sort
  * algorithm, and are typically only used for large amounts of data.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/tuplesort.h
@@ -85,6 +85,15 @@ typedef enum
 	SORT_SPACE_TYPE_DISK,
 	SORT_SPACE_TYPE_MEMORY
 } TuplesortSpaceType;
+
+/* Bitwise option flags for tuple sorts */
+#define TUPLESORT_NONE					0
+
+/* specifies whether non-sequential access to the sort result is required */
+#define	TUPLESORT_RANDOMACCESS			(1 << 0)
+
+/* specifies if the tuplesort is able to support bounded sorts */
+#define TUPLESORT_ALLOWBOUNDED			(1 << 1)
 
 typedef struct TuplesortInstrumentation
 {
@@ -201,31 +210,33 @@ extern Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
 											Oid *sortOperators, Oid *sortCollations,
 											bool *nullsFirstFlags,
 											int workMem, SortCoordinate coordinate,
-											bool randomAccess);
+											int sortopt);
 extern Tuplesortstate *tuplesort_begin_cluster(TupleDesc tupDesc,
 											   Relation indexRel, int workMem,
-											   SortCoordinate coordinate, bool randomAccess);
+											   SortCoordinate coordinate,
+											   int sortopt);
 extern Tuplesortstate *tuplesort_begin_index_btree(Relation heapRel,
 												   Relation indexRel,
 												   bool enforceUnique,
+												   bool uniqueNullsNotDistinct,
 												   int workMem, SortCoordinate coordinate,
-												   bool randomAccess);
+												   int sortopt);
 extern Tuplesortstate *tuplesort_begin_index_hash(Relation heapRel,
 												  Relation indexRel,
 												  uint32 high_mask,
 												  uint32 low_mask,
 												  uint32 max_buckets,
 												  int workMem, SortCoordinate coordinate,
-												  bool randomAccess);
+												  int sortopt);
 extern Tuplesortstate *tuplesort_begin_index_gist(Relation heapRel,
 												  Relation indexRel,
 												  int workMem, SortCoordinate coordinate,
-												  bool randomAccess);
+												  int sortopt);
 extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
 											 Oid sortOperator, Oid sortCollation,
 											 bool nullsFirstFlag,
 											 int workMem, SortCoordinate coordinate,
-											 bool randomAccess);
+											 int sortopt);
 
 extern void tuplesort_set_bound(Tuplesortstate *state, int64 bound);
 extern bool tuplesort_used_bound(Tuplesortstate *state);
@@ -268,12 +279,11 @@ extern void tuplesort_initialize_shared(Sharedsort *shared, int nWorkers,
 extern void tuplesort_attach_shared(Sharedsort *shared, dsm_segment *seg);
 
 /*
- * These routines may only be called if randomAccess was specified 'true'.
- * Likewise, backwards scan in gettuple/getdatum is only allowed if
- * randomAccess was specified.  Note that parallel sorts do not support
- * randomAccess.
+ * These routines may only be called if TUPLESORT_RANDOMACCESS was specified
+ * during tuplesort_begin_*.  Additionally backwards scan in gettuple/getdatum
+ * also require TUPLESORT_RANDOMACCESS.  Note that parallel sorts do not
+ * support random access.
  */
-
 extern void tuplesort_rescan(Tuplesortstate *state);
 extern void tuplesort_markpos(Tuplesortstate *state);
 extern void tuplesort_restorepos(Tuplesortstate *state);

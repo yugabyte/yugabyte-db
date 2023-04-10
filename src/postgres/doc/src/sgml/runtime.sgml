@@ -74,10 +74,10 @@
    which is meant as a default database for use by utilities, users and third
    party applications.  The database server itself does not require the
    <literal>postgres</literal> database to exist, but many external utility
-   programs assume it exists.  Another database created within each cluster
-   during initialization is called
-   <literal>template1</literal>.  As the name suggests, this will be used
-   as a template for subsequently created databases; it should not be
+   programs assume it exists.  There are two more databases created within
+   each cluster during initialization, named <literal>template1</literal>
+   and <literal>template0</literal>.  As the names suggest, these will be
+   used as templates for subsequently-created databases; they should not be
    used for actual work.  (See <xref linkend="managing-databases"/> for
    information about creating new databases within a cluster.)
   </para>
@@ -199,8 +199,8 @@ postgres$ <userinput>initdb -D /usr/local/pgsql/data</userinput>
      <primary>password</primary>
      <secondary>of the superuser</secondary>
    </indexterm>
-   Also, specify <option>-A md5</option> or
-   <option>-A password</option> so that the default <literal>trust</literal> authentication
+   Also, specify <option>-A scram-sha-256</option>
+   so that the default <literal>trust</literal> authentication
    mode is not used; or modify the generated <filename>pg_hba.conf</filename>
    file after running <command>initdb</command>, but
    <emphasis>before</emphasis> you start the server for the first time. (Other
@@ -480,6 +480,8 @@ fi
 [Unit]
 Description=PostgreSQL database server
 Documentation=man:postgres(1)
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=notify
@@ -488,7 +490,7 @@ ExecStart=/usr/local/pgsql/bin/postgres -D /usr/local/pgsql/data
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 KillSignal=SIGINT
-TimeoutSec=0
+TimeoutSec=infinity
 
 [Install]
 WantedBy=multi-user.target
@@ -500,11 +502,11 @@ WantedBy=multi-user.target
      <para>
       Consider carefully the timeout
       setting.  <application>systemd</application> has a default timeout of 90
-      seconds as of this writing and will kill a process that does not notify
+      seconds as of this writing and will kill a process that does not report
       readiness within that time.  But a <productname>PostgreSQL</productname>
       server that might have to perform crash recovery at startup could take
-      much longer to become ready.  The suggested value of 0 disables the
-      timeout logic.
+      much longer to become ready.  The suggested value
+      of <literal>infinity</literal> disables the timeout logic.
      </para>
     </listitem>
 
@@ -1277,11 +1279,12 @@ default:\
     <itemizedlist>
      <listitem>
       <para>
-      On <productname>Linux</productname>
-      <filename>/proc/sys/fs/file-max</filename> determines the
-      maximum number of open files that the kernel will support.  It can
-      be changed by writing a different number into the file or by
-      adding an assignment in <filename>/etc/sysctl.conf</filename>.
+      On <productname>Linux</productname> the kernel parameter
+      <varname>fs.file-max</varname> determines the maximum number of open
+      files that the kernel will support.  It can be changed with
+      <literal>sysctl -w fs.file-max=<replaceable>N</replaceable></literal>.
+      To make the setting persist across reboots, add an assignment
+      in <filename>/etc/sysctl.conf</filename>.
       The maximum limit of files per process is fixed at the time the
       kernel is compiled; see
       <filename>/usr/src/linux/Documentation/proc.txt</filename> for
@@ -1316,6 +1319,22 @@ default:\
     system-wide limit, you can set <productname>PostgreSQL</productname>'s <xref
     linkend="guc-max-files-per-process"/> configuration parameter to
     limit the consumption of open files.
+   </para>
+
+   <para>
+    Another kernel limit that may be of concern when supporting large
+    numbers of client connections is the maximum socket connection queue
+    length.  If more than that many connection requests arrive within a very
+    short period, some may get rejected before the postmaster can service
+    the requests, with those clients receiving unhelpful connection failure
+    errors such as <quote>Resource temporarily unavailable</quote> or
+    <quote>Connection refused</quote>.  The default queue length limit is 128
+    on many platforms.  To raise it, adjust the appropriate kernel parameter
+    via <application>sysctl</application>, then restart the postmaster.
+    The parameter is variously named <varname>net.core.somaxconn</varname>
+    on Linux, <varname>kern.ipc.soacceptqueue</varname> on newer FreeBSD,
+    and <varname>kern.ipc.somaxconn</varname> on macOS and other BSD
+    variants.
    </para>
   </sect2>
 
@@ -1552,11 +1571,7 @@ $ <userinput>cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages</userinp
        After receiving <systemitem>SIGTERM</systemitem>, the server
        disallows new connections, but lets existing sessions end their
        work normally. It shuts down only after all of the sessions terminate.
-       If the server is in online backup mode, it additionally waits
-       until online backup mode is no longer active.  While backup mode is
-       active, new connections will still be allowed, but only to superusers
-       (this exception allows a superuser to connect to terminate
-       online backup mode).  If the server is in recovery when a smart
+       If the server is in recovery when a smart
        shutdown is requested, recovery and streaming replication will be
        stopped only after all regular sessions have terminated.
       </para>
@@ -1572,8 +1587,6 @@ $ <userinput>cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages</userinp
        server processes <systemitem>SIGTERM</systemitem>, which will cause them
        to abort their current transactions and exit promptly. It then
        waits for all server processes to exit and finally shuts down.
-       If the server is in online backup mode, backup mode will be
-       terminated, rendering the backup useless.
       </para>
      </listitem>
     </varlistentry>
@@ -1675,7 +1688,7 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
    For <emphasis>major</emphasis> releases of <productname>PostgreSQL</productname>, the
    internal data storage format is subject to change, thus complicating
    upgrades.  The traditional method for moving data to a new major version
-   is to dump and reload the database, though this can be slow.  A
+   is to dump and restore the database, though this can be slow.  A
    faster method is <xref linkend="pgupgrade"/>.  Replication methods are
    also available, as discussed below.
    (If you are using a pre-packaged version
@@ -1761,7 +1774,7 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
 
    <para>
     One upgrade method is to dump data from one major version of
-    <productname>PostgreSQL</productname> and reload it in another &mdash;  to do
+    <productname>PostgreSQL</productname> and restore it in another &mdash;  to do
     this, you must use a <emphasis>logical</emphasis> backup tool like
     <application>pg_dumpall</application>; file system
     level backup methods will not work. (There are checks in place that prevent
@@ -1776,7 +1789,7 @@ $ <userinput>kill -INT `head -1 /usr/local/pgsql/data/postmaster.pid`</userinput
     version of
     <productname>PostgreSQL</productname>, to take advantage of enhancements
     that might have been made in these programs.  Current releases of the
-    dump programs can read data from any server version back to 7.0.
+    dump programs can read data from any server version back to 9.2.
    </para>
 
    <para>
@@ -2182,6 +2195,7 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
 
   <indexterm zone="ssl-tcp">
    <primary>SSL</primary>
+   <secondary>TLS</secondary>
   </indexterm>
 
   <para>
@@ -2193,13 +2207,25 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    enabled at build time (see <xref linkend="installation"/>).
   </para>
 
+  <para>
+   The terms <acronym>SSL</acronym> and <acronym>TLS</acronym> are often used
+   interchangeably to mean a secure encrypted connection using a
+   <acronym>TLS</acronym> protocol. <acronym>SSL</acronym> protocols are the
+   precursors to <acronym>TLS</acronym> protocols, and the term
+   <acronym>SSL</acronym> is still used for encrypted connections even though
+   <acronym>SSL</acronym> protocols are no longer supported.
+   <acronym>SSL</acronym> is used interchangeably with <acronym>TLS</acronym>
+   in <productname>PostgreSQL</productname>.
+
+  </para>
   <sect2 id="ssl-setup">
    <title>Basic Setup</title>
 
   <para>
    With <acronym>SSL</acronym> support compiled in, the
    <productname>PostgreSQL</productname> server can be started with
-   <acronym>SSL</acronym> enabled by setting the parameter
+   support for encrypted connections using <acronym>TLS</acronym> protocols
+   enabled by setting the parameter
    <xref linkend="guc-ssl"/> to <literal>on</literal> in
    <filename>postgresql.conf</filename>.  The server will listen for both normal
    and <acronym>SSL</acronym> connections on the same TCP port, and will negotiate
@@ -2337,7 +2363,8 @@ pg_dumpall -p 5432 | psql -d postgres -p 5433
    you wish to avoid storing them on clients (assuming the root and
    intermediate certificates were created with <literal>v3_ca</literal>
    extensions).  Certificate Revocation List (CRL) entries are also
-   checked if the parameter <xref linkend="guc-ssl-crl-file"/> is set.
+   checked if the parameter <xref linkend="guc-ssl-crl-file"/> or
+   <xref linkend="guc-ssl-crl-dir"/> is set.
   </para>
 
   <para>

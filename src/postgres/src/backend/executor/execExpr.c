@@ -19,7 +19,7 @@
  *	and "Expression Evaluation" sections.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -1203,8 +1203,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				FmgrInfo   *finfo;
 				FunctionCallInfo fcinfo;
 				AclResult	aclresult;
-				FmgrInfo   *hash_finfo;
-				FunctionCallInfo hash_fcinfo;
 				Oid			cmpfuncid;
 
 				/*
@@ -1262,18 +1260,6 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				 */
 				if (OidIsValid(opexpr->hashfuncid))
 				{
-					hash_finfo = palloc0(sizeof(FmgrInfo));
-					hash_fcinfo = palloc0(SizeForFunctionCallInfo(1));
-					fmgr_info(opexpr->hashfuncid, hash_finfo);
-					fmgr_info_set_expr((Node *) node, hash_finfo);
-					InitFunctionCallInfoData(*hash_fcinfo, hash_finfo,
-											 1, opexpr->inputcollid, NULL,
-											 NULL);
-
-					scratch.d.hashedscalararrayop.hash_finfo = hash_finfo;
-					scratch.d.hashedscalararrayop.hash_fcinfo_data = hash_fcinfo;
-					scratch.d.hashedscalararrayop.hash_fn_addr = hash_finfo->fn_addr;
-
 					/* Evaluate scalar directly into left function argument */
 					ExecInitExprRec(scalararg, state,
 									&fcinfo->arg[0], &fcinfo->argnull[0]);
@@ -1292,11 +1278,8 @@ ExecInitExprRec(Expr *node, ExprState *state,
 					scratch.d.hashedscalararrayop.inclause = opexpr->useOr;
 					scratch.d.hashedscalararrayop.finfo = finfo;
 					scratch.d.hashedscalararrayop.fcinfo_data = fcinfo;
-					scratch.d.hashedscalararrayop.fn_addr = finfo->fn_addr;
+					scratch.d.hashedscalararrayop.saop = opexpr;
 
-					scratch.d.hashedscalararrayop.hash_finfo = hash_finfo;
-					scratch.d.hashedscalararrayop.hash_fcinfo_data = hash_fcinfo;
-					scratch.d.hashedscalararrayop.hash_fn_addr = hash_finfo->fn_addr;
 
 					ExprEvalPushStep(state, &scratch);
 				}
@@ -1465,7 +1448,7 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				/* find out the number of columns in the composite type */
 				tupDesc = lookup_rowtype_tupdesc(fstore->resulttype, -1);
 				ncolumns = tupDesc->natts;
-				DecrTupleDescRefCount(tupDesc);
+				ReleaseTupleDesc(tupDesc);
 
 				/* create workspace for column values */
 				values = (Datum *) palloc(sizeof(Datum) * ncolumns);
@@ -1913,16 +1896,16 @@ ExecInitExprRec(Expr *node, ExprState *state,
 				{
 					/* generic record, use types of given expressions */
 					tupdesc = ExecTypeFromExprList(rowexpr->args);
+					/* ... but adopt RowExpr's column aliases */
+					ExecTypeSetColNames(tupdesc, rowexpr->colnames);
+					/* Bless the tupdesc so it can be looked up later */
+					BlessTupleDesc(tupdesc);
 				}
 				else
 				{
 					/* it's been cast to a named type, use that */
 					tupdesc = lookup_rowtype_tupdesc_copy(rowexpr->row_typeid, -1);
 				}
-				/* In either case, adopt RowExpr's column aliases */
-				ExecTypeSetColNames(tupdesc, rowexpr->colnames);
-				/* Bless the tupdesc in case it's now of type RECORD */
-				BlessTupleDesc(tupdesc);
 
 				/*
 				 * In the named-type case, the tupdesc could have more columns
@@ -3091,11 +3074,14 @@ ExecInitSubscriptingRef(ExprEvalStep *scratch, SubscriptingRef *sbsref,
  * (We could use this in FieldStore too, but in that case passing the old
  * value is so cheap there's no need.)
  *
- * Note: it might seem that this needs to recurse, but it does not; the
- * CaseTestExpr, if any, will be directly the arg or refexpr of the top-level
- * node.  Nested-assignment situations give rise to expression trees in which
- * each level of assignment has its own CaseTestExpr, and the recursive
- * structure appears within the newvals or refassgnexpr field.
+ * Note: it might seem that this needs to recurse, but in most cases it does
+ * not; the CaseTestExpr, if any, will be directly the arg or refexpr of the
+ * top-level node.  Nested-assignment situations give rise to expression
+ * trees in which each level of assignment has its own CaseTestExpr, and the
+ * recursive structure appears within the newvals or refassgnexpr field.
+ * There is an exception, though: if the array is an array-of-domain, we will
+ * have a CoerceToDomain as the refassgnexpr, and we need to be able to look
+ * through that.
  */
 static bool
 isAssignmentIndirectionExpr(Expr *expr)
@@ -3116,6 +3102,12 @@ isAssignmentIndirectionExpr(Expr *expr)
 		if (sbsRef->refexpr && IsA(sbsRef->refexpr, CaseTestExpr))
 			return true;
 	}
+	else if (IsA(expr, CoerceToDomain))
+	{
+		CoerceToDomain *cd = (CoerceToDomain *) expr;
+
+		return isAssignmentIndirectionExpr(cd->arg);
+	}
 	return false;
 }
 
@@ -3127,6 +3119,8 @@ ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 					   ExprState *state, Datum *resv, bool *resnull)
 {
 	DomainConstraintRef *constraint_ref;
+	Datum	   *domainval = NULL;
+	bool	   *domainnull = NULL;
 	ListCell   *l;
 
 	scratch->d.domaincheck.resulttype = ctest->resulttype;
@@ -3173,8 +3167,6 @@ ExecInitCoerceToDomain(ExprEvalStep *scratch, CoerceToDomain *ctest,
 	foreach(l, constraint_ref->constraints)
 	{
 		DomainConstraintState *con = (DomainConstraintState *) lfirst(l);
-		Datum	   *domainval = NULL;
-		bool	   *domainnull = NULL;
 		Datum	   *save_innermost_domainval;
 		bool	   *save_innermost_domainnull;
 

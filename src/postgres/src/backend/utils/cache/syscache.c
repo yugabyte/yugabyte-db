@@ -3,7 +3,7 @@
  * syscache.c
  *	  System cache management routines
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -48,9 +48,11 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_partitioned_table.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
+#include "catalog/pg_publication_namespace.h"
 #include "catalog/pg_publication_rel.h"
 #include "catalog/pg_range.h"
 #include "catalog/pg_replication_origin.h"
@@ -599,6 +601,28 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		8
 	},
+	{ParameterAclRelationId,	/* PARAMETERACLNAME */
+		ParameterAclParnameIndexId,
+		1,
+		{
+			Anum_pg_parameter_acl_parname,
+			0,
+			0,
+			0
+		},
+		4
+	},
+	{ParameterAclRelationId,	/* PARAMETERACLOID */
+		ParameterAclOidIndexId,
+		1,
+		{
+			Anum_pg_parameter_acl_oid,
+			0,
+			0,
+			0
+		},
+		4
+	},
 	{PartitionedRelationId,		/* PARTRELID */
 		PartitionedRelidIndexId,
 		1,
@@ -642,6 +666,28 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		8
+	},
+	{PublicationNamespaceRelationId,	/* PUBLICATIONNAMESPACE */
+		PublicationNamespaceObjectIndexId,
+		1,
+		{
+			Anum_pg_publication_namespace_oid,
+			0,
+			0,
+			0
+		},
+		64
+	},
+	{PublicationNamespaceRelationId,	/* PUBLICATIONNAMESPACEMAP */
+		PublicationNamespacePnnspidPnpubidIndexId,
+		2,
+		{
+			Anum_pg_publication_namespace_pnnspid,
+			Anum_pg_publication_namespace_pnpubid,
+			0,
+			0
+		},
+		64
 	},
 	{PublicationRelationId,		/* PUBLICATIONOID */
 		PublicationObjectIndexId,
@@ -766,11 +812,11 @@ static const struct cachedesc cacheinfo[] = {
 		32
 	},
 	{StatisticExtDataRelationId,	/* STATEXTDATASTXOID */
-		StatisticExtDataStxoidIndexId,
-		1,
+		StatisticExtDataStxoidInhIndexId,
+		2,
 		{
 			Anum_pg_statistic_ext_data_stxoid,
-			0,
+			Anum_pg_statistic_ext_data_stxdinherit,
 			0,
 			0
 		},

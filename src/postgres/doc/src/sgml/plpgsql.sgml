@@ -379,7 +379,17 @@ arow RECORD;
 <programlisting>
 quantity integer DEFAULT 32;
 url varchar := 'http://mysite.com';
-user_id CONSTANT integer := 10;
+transaction_time CONSTANT timestamp with time zone := now();
+</programlisting>
+     </para>
+
+     <para>
+      Once declared, a variable's value can be used in later initialization
+      expressions in the same block, for example:
+<programlisting>
+DECLARE
+  x integer := 1;
+  y integer := x + 1;
 </programlisting>
      </para>
 
@@ -1378,7 +1388,7 @@ EXECUTE format('SELECT count(*) FROM %I '
      Another restriction on parameter symbols is that they only work in
      optimizable SQL commands
      (<command>SELECT</command>, <command>INSERT</command>, <command>UPDATE</command>,
-     <command>DELETE</command>, and certain commands containing one of these).
+     <command>DELETE</command>, <command>MERGE</command>, and certain commands containing one of these).
      In other statement
      types (generically called utility statements), you must insert
      values textually even if they are just data values.
@@ -1656,7 +1666,8 @@ GET DIAGNOSTICS integer_var = ROW_COUNT;
           </listitem>
           <listitem>
            <para>
-            <command>UPDATE</command>, <command>INSERT</command>, and <command>DELETE</command>
+            <command>UPDATE</command>, <command>INSERT</command>, <command>DELETE</command>,
+            and <command>MERGE</command>
             statements set <literal>FOUND</literal> true if at least one
             row is affected, false if no row is affected.
            </para>
@@ -3767,7 +3778,7 @@ RAISE ;
 
    <para>
     After <replaceable class="parameter">level</replaceable> if any,
-    you can write a <replaceable class="parameter">format</replaceable>
+    you can specify a <replaceable class="parameter">format</replaceable> string
     (which must be a simple string literal, not an expression).  The
     format string specifies the error message text to be reported.
     The format string can be followed
@@ -5341,9 +5352,9 @@ WARNING:  number of source and target fields in assignment does not match
 DETAIL:  strict_multi_assignment check of extra_warnings is active.
 HINT:  Make sure the query returns the exact list of columns.
 
- foo 
+ foo
 -----
- 
+
 (1 row)
 </programlisting>
    </para>

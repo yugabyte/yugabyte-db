@@ -4,7 +4,7 @@
  *	  Low level infrastructure related to expression evaluation
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/execExpr.h
@@ -582,12 +582,7 @@ typedef struct ExprEvalStep
 			struct ScalarArrayOpExprHashTable *elements_tab;
 			FmgrInfo   *finfo;	/* function's lookup data */
 			FunctionCallInfo fcinfo_data;	/* arguments etc */
-			/* faster to access without additional indirection: */
-			PGFunction	fn_addr;	/* actual call address */
-			FmgrInfo   *hash_finfo; /* function's lookup data */
-			FunctionCallInfo hash_fcinfo_data;	/* arguments etc */
-			/* faster to access without additional indirection: */
-			PGFunction	hash_fn_addr;	/* actual call address */
+			ScalarArrayOpExpr *saop;
 		}			hashedscalararrayop;
 
 		/* for EEOP_XMLEXPR */

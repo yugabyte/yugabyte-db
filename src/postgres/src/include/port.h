@@ -3,7 +3,7 @@
  * port.h
  *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port.h
@@ -14,8 +14,6 @@
 #define PG_PORT_H
 
 #include <ctype.h>
-#include <netdb.h>
-#include <pwd.h>
 
 /*
  * Windows has enough specialized port stuff that we push most of it off
@@ -35,6 +33,11 @@ typedef int pgsocket;
 typedef SOCKET pgsocket;
 
 #define PGINVALID_SOCKET INVALID_SOCKET
+#endif
+
+/* if platform lacks socklen_t, we assume this will work */
+#ifndef HAVE_SOCKLEN_T
+typedef unsigned int socklen_t;
 #endif
 
 /* non-blocking */
@@ -75,28 +78,32 @@ extern void get_parent_directory(char *path);
 extern char **pgfnames(const char *path);
 extern void pgfnames_cleanup(char **filenames);
 
+#define IS_NONWINDOWS_DIR_SEP(ch)	((ch) == '/')
+#define is_nonwindows_absolute_path(filename) \
+( \
+	IS_NONWINDOWS_DIR_SEP((filename)[0]) \
+)
+
+#define IS_WINDOWS_DIR_SEP(ch)	((ch) == '/' || (ch) == '\\')
+/* See path_is_relative_and_below_cwd() for how we handle 'E:abc'. */
+#define is_windows_absolute_path(filename) \
+( \
+	IS_WINDOWS_DIR_SEP((filename)[0]) || \
+	(isalpha((unsigned char) ((filename)[0])) && (filename)[1] == ':' && \
+	 IS_WINDOWS_DIR_SEP((filename)[2])) \
+)
+
 /*
- *	is_absolute_path
+ *	is_absolute_path and IS_DIR_SEP
  *
- *	By making this a macro we avoid needing to include path.c in libpq.
+ *	By using macros here we avoid needing to include path.c in libpq.
  */
 #ifndef WIN32
-#define IS_DIR_SEP(ch)	((ch) == '/')
-
-#define is_absolute_path(filename) \
-( \
-	IS_DIR_SEP((filename)[0]) \
-)
+#define IS_DIR_SEP(ch) IS_NONWINDOWS_DIR_SEP(ch)
+#define is_absolute_path(filename) is_nonwindows_absolute_path(filename)
 #else
-#define IS_DIR_SEP(ch)	((ch) == '/' || (ch) == '\\')
-
-/* See path_is_relative_and_below_cwd() for how we handle 'E:abc'. */
-#define is_absolute_path(filename) \
-( \
-	IS_DIR_SEP((filename)[0]) || \
-	(isalpha((unsigned char) ((filename)[0])) && (filename)[1] == ':' && \
-	 IS_DIR_SEP((filename)[2])) \
-)
+#define IS_DIR_SEP(ch) IS_WINDOWS_DIR_SEP(ch)
+#define is_absolute_path(filename) is_windows_absolute_path(filename)
 #endif
 
 /*
@@ -119,7 +126,8 @@ extern void pgfnames_cleanup(char **filenames);
 	case EHOSTUNREACH: \
 	case ENETDOWN: \
 	case ENETRESET: \
-	case ENETUNREACH
+	case ENETUNREACH: \
+	case ETIMEDOUT
 
 /* Portable locale initialization (in exec.c) */
 extern void set_pglocale_pgservice(const char *argv0, const char *app);
@@ -139,6 +147,11 @@ extern char *exec_pipe_read_line(char *cmd, char *line, int maxsize);
 
 /* Doesn't belong here, but this is used with find_other_exec(), so... */
 #define PG_BACKEND_VERSIONSTR "postgres (PostgreSQL) " PG_VERSION "\n"
+
+#ifdef EXEC_BACKEND
+/* Disable ASLR before exec, for developer builds only (in exec.c) */
+extern int	pg_disable_aslr(void);
+#endif
 
 
 #if defined(WIN32) || defined(__CYGWIN__)
@@ -296,6 +309,7 @@ extern bool rmtree(const char *path, bool rmtopdir);
  * passing of other special options.
  */
 #define		O_DIRECT	0x80000000
+extern HANDLE pgwin32_open_handle(const char *, int, bool);
 extern int	pgwin32_open(const char *, int,...);
 extern FILE *pgwin32_fopen(const char *, const char *);
 #define		open(a,b,c) pgwin32_open(a,b,c)
@@ -361,11 +375,6 @@ extern int	gettimeofday(struct timeval *tp, struct timezone *tzp);
 #ifndef WIN32					/* WIN32 is handled in port/win32_port.h */
 #define pgoff_t off_t
 #endif
-
-extern double pg_erand48(unsigned short xseed[3]);
-extern long pg_lrand48(void);
-extern long pg_jrand48(unsigned short xseed[3]);
-extern void pg_srand48(long seed);
 
 #ifndef HAVE_FLS
 extern int	fls(int mask);
@@ -452,20 +461,12 @@ extern size_t strlcpy(char *dst, const char *src, size_t siz);
 extern size_t strnlen(const char *str, size_t maxlen);
 #endif
 
-#if !defined(HAVE_RANDOM)
-extern long random(void);
-#endif
-
 #ifndef HAVE_SETENV
 extern int	setenv(const char *name, const char *value, int overwrite);
 #endif
 
 #ifndef HAVE_UNSETENV
 extern int	unsetenv(const char *name);
-#endif
-
-#ifndef HAVE_SRANDOM
-extern void srandom(unsigned int seed);
 #endif
 
 #ifndef HAVE_DLOPEN
@@ -491,17 +492,11 @@ extern char *dlerror(void);
 #define RTLD_GLOBAL 0
 #endif
 
-/* thread.h */
+/* thread.c */
 #ifndef WIN32
-extern int	pqGetpwuid(uid_t uid, struct passwd *resultbuf, char *buffer,
-					   size_t buflen, struct passwd **result);
+extern bool pg_get_user_name(uid_t user_id, char *buffer, size_t buflen);
+extern bool pg_get_user_home_dir(uid_t user_id, char *buffer, size_t buflen);
 #endif
-
-extern int	pqGethostbyname(const char *name,
-							struct hostent *resultbuf,
-							char *buffer, size_t buflen,
-							struct hostent **result,
-							int *herrno);
 
 extern void pg_qsort(void *base, size_t nel, size_t elsize,
 					 int (*cmp) (const void *, const void *));
@@ -513,6 +508,9 @@ typedef int (*qsort_arg_comparator) (const void *a, const void *b, void *arg);
 
 extern void qsort_arg(void *base, size_t nel, size_t elsize,
 					  qsort_arg_comparator cmp, void *arg);
+
+extern void qsort_interruptible(void *base, size_t nel, size_t elsize,
+								qsort_arg_comparator cmp, void *arg);
 
 extern void *bsearch_arg(const void *key, const void *base,
 						 size_t nmemb, size_t size,

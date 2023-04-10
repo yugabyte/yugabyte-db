@@ -3,7 +3,7 @@
  * nodeSort.c
  *	  Routines to handle sorting of relations.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -77,6 +77,7 @@ ExecSort(PlanState *pstate)
 		Sort	   *plannode = (Sort *) node->ss.ps.plan;
 		PlanState  *outerNode;
 		TupleDesc	tupDesc;
+		int			tuplesortopts = TUPLESORT_NONE;
 
 		SO1_printf("ExecSort: %s\n",
 				   "sorting subplan");
@@ -105,6 +106,11 @@ ExecSort(PlanState *pstate)
 		outerNode = outerPlanState(node);
 		tupDesc = ExecGetResultType(outerNode);
 
+		if (node->randomAccess)
+			tuplesortopts |= TUPLESORT_RANDOMACCESS;
+		if (node->bounded)
+			tuplesortopts |= TUPLESORT_ALLOWBOUNDED;
+
 		if (node->datumSort)
 			tuplesortstate = tuplesort_begin_datum(TupleDescAttr(tupDesc, 0)->atttypid,
 												   plannode->sortOperators[0],
@@ -112,7 +118,7 @@ ExecSort(PlanState *pstate)
 												   plannode->nullsFirst[0],
 												   work_mem,
 												   NULL,
-												   node->randomAccess);
+												   tuplesortopts);
 		else
 			tuplesortstate = tuplesort_begin_heap(tupDesc,
 												  plannode->numCols,
@@ -122,7 +128,7 @@ ExecSort(PlanState *pstate)
 												  plannode->nullsFirst,
 												  work_mem,
 												  NULL,
-												  node->randomAccess);
+												  tuplesortopts);
 		if (node->bounded)
 			tuplesort_set_bound(tuplesortstate, node->bound);
 		node->tuplesortstate = (void *) tuplesortstate;
@@ -223,6 +229,7 @@ SortState *
 ExecInitSort(Sort *node, EState *estate, int eflags)
 {
 	SortState  *sortstate;
+	TupleDesc	outerTupDesc;
 
 	SO1_printf("ExecInitSort: %s\n",
 			   "initializing sort node");
@@ -277,11 +284,13 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	ExecInitResultTupleSlotTL(&sortstate->ss.ps, &TTSOpsMinimalTuple);
 	sortstate->ss.ps.ps_ProjInfo = NULL;
 
+	outerTupDesc = ExecGetResultType(outerPlanState(sortstate));
+
 	/*
-	 * We perform a Datum sort when we're sorting just a single column,
+	 * We perform a Datum sort when we're sorting just a single byval column,
 	 * otherwise we perform a tuple sort.
 	 */
-	if (ExecGetResultType(outerPlanState(sortstate))->natts == 1)
+	if (outerTupDesc->natts == 1 && TupleDescAttr(outerTupDesc, 0)->attbyval)
 		sortstate->datumSort = true;
 	else
 		sortstate->datumSort = false;

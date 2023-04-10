@@ -14,7 +14,7 @@
  *		remove_useless_result_rtes
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -27,6 +27,7 @@
 
 #include "catalog/pg_type.h"
 #include "funcapi.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
@@ -133,6 +134,86 @@ static Node *find_jointree_node_for_rel(Node *jtnode, int relid);
 
 
 /*
+ * transform_MERGE_to_join
+ *		Replace a MERGE's jointree to also include the target relation.
+ */
+void
+transform_MERGE_to_join(Query *parse)
+{
+	RangeTblEntry *joinrte;
+	JoinExpr   *joinexpr;
+	JoinType	jointype;
+	int			joinrti;
+	List	   *vars;
+
+	if (parse->commandType != CMD_MERGE)
+		return;
+
+	/* XXX probably bogus */
+	vars = NIL;
+
+	/*
+	 * When any WHEN NOT MATCHED THEN INSERT clauses exist, we need to use an
+	 * outer join so that we process all unmatched tuples from the source
+	 * relation.  If none exist, we can use an inner join.
+	 */
+	if (parse->mergeUseOuterJoin)
+		jointype = JOIN_RIGHT;
+	else
+		jointype = JOIN_INNER;
+
+	/* Manufacture a join RTE to use. */
+	joinrte = makeNode(RangeTblEntry);
+	joinrte->rtekind = RTE_JOIN;
+	joinrte->jointype = jointype;
+	joinrte->joinmergedcols = 0;
+	joinrte->joinaliasvars = vars;
+	joinrte->joinleftcols = NIL;	/* MERGE does not allow JOIN USING */
+	joinrte->joinrightcols = NIL;	/* ditto */
+	joinrte->join_using_alias = NULL;
+
+	joinrte->alias = NULL;
+	joinrte->eref = makeAlias("*MERGE*", NIL);
+	joinrte->lateral = false;
+	joinrte->inh = false;
+	joinrte->inFromCl = true;
+	joinrte->requiredPerms = 0;
+	joinrte->checkAsUser = InvalidOid;
+	joinrte->selectedCols = NULL;
+	joinrte->insertedCols = NULL;
+	joinrte->updatedCols = NULL;
+	joinrte->extraUpdatedCols = NULL;
+	joinrte->securityQuals = NIL;
+
+	/*
+	 * Add completed RTE to pstate's range table list, so that we know its
+	 * index.
+	 */
+	parse->rtable = lappend(parse->rtable, joinrte);
+	joinrti = list_length(parse->rtable);
+
+	/*
+	 * Create a JOIN between the target and the source relation.
+	 */
+	joinexpr = makeNode(JoinExpr);
+	joinexpr->jointype = jointype;
+	joinexpr->isNatural = false;
+	joinexpr->larg = (Node *) makeNode(RangeTblRef);
+	((RangeTblRef *) joinexpr->larg)->rtindex = parse->resultRelation;
+	joinexpr->rarg = linitial(parse->jointree->fromlist);	/* original join */
+	joinexpr->usingClause = NIL;
+	joinexpr->join_using_alias = NULL;
+	/* The quals are removed from the jointree and into this specific join */
+	joinexpr->quals = parse->jointree->quals;
+	joinexpr->alias = NULL;
+	joinexpr->rtindex = joinrti;
+
+	/* Make the new join be the sole entry in the query's jointree */
+	parse->jointree->fromlist = list_make1(joinexpr);
+	parse->jointree->quals = NULL;
+}
+
+/*
  * replace_empty_jointree
  *		If the Query's jointree is empty, replace it with a dummy RTE_RESULT
  *		relation.
@@ -235,6 +316,9 @@ static Node *
 pull_up_sublinks_jointree_recurse(PlannerInfo *root, Node *jtnode,
 								  Relids *relids)
 {
+	/* Since this function recurses, it could be driven to stack overflow. */
+	check_stack_depth();
+
 	if (jtnode == NULL)
 	{
 		*relids = NULL;
@@ -732,6 +816,11 @@ pull_up_subqueries_recurse(PlannerInfo *root, Node *jtnode,
 						   JoinExpr *lowest_nulling_outer_join,
 						   AppendRelInfo *containing_appendrel)
 {
+	/* Since this function recurses, it could be driven to stack overflow. */
+	check_stack_depth();
+	/* Also, since it's a bit expensive, let's check for query cancel. */
+	CHECK_FOR_INTERRUPTS();
+
 	Assert(jtnode != NULL);
 	if (IsA(jtnode, RangeTblRef))
 	{
@@ -1863,6 +1952,9 @@ is_simple_union_all(Query *subquery)
 static bool
 is_simple_union_all_recurse(Node *setOp, Query *setOpQuery, List *colTypes)
 {
+	/* Since this function recurses, it could be driven to stack overflow. */
+	check_stack_depth();
+
 	if (IsA(setOp, RangeTblRef))
 	{
 		RangeTblRef *rtr = (RangeTblRef *) setOp;
@@ -2046,6 +2138,15 @@ perform_pullup_replace_vars(PlannerInfo *root,
 		pullup_replace_vars((Node *) parse->targetList, rvcontext);
 	parse->returningList = (List *)
 		pullup_replace_vars((Node *) parse->returningList, rvcontext);
+
+	foreach(lc, parse->windowClause)
+	{
+		WindowClause *wc = lfirst_node(WindowClause, lc);
+
+		if (wc->runCondition != NIL)
+			wc->runCondition = (List *)
+				pullup_replace_vars((Node *) wc->runCondition, rvcontext);
+	}
 	if (parse->onConflict)
 	{
 		parse->onConflict->onConflictSet = (List *)
@@ -2059,6 +2160,17 @@ perform_pullup_replace_vars(PlannerInfo *root,
 		 * We assume ON CONFLICT's arbiterElems, arbiterWhere, exclRelTlist
 		 * can't contain any references to a subquery.
 		 */
+	}
+	if (parse->mergeActionList)
+	{
+		foreach(lc, parse->mergeActionList)
+		{
+			MergeAction *action = lfirst(lc);
+
+			action->qual = pullup_replace_vars(action->qual, rvcontext);
+			action->targetList = (List *)
+				pullup_replace_vars((Node *) action->targetList, rvcontext);
+		}
 	}
 	replace_vars_in_jointree((Node *) parse->jointree, rvcontext,
 							 lowest_nulling_outer_join);
@@ -2281,8 +2393,8 @@ pullup_replace_vars_callback(Var *var,
 		 * If generating an expansion for a var of a named rowtype (ie, this
 		 * is a plain relation RTE), then we must include dummy items for
 		 * dropped columns.  If the var is RECORD (ie, this is a JOIN), then
-		 * omit dropped columns. Either way, attach column names to the
-		 * RowExpr for use of ruleutils.c.
+		 * omit dropped columns.  In the latter case, attach column names to
+		 * the RowExpr for use of the executor and ruleutils.c.
 		 *
 		 * In order to be able to cache the results, we always generate the
 		 * expansion with varlevelsup = 0, and then adjust if needed.
@@ -2303,7 +2415,7 @@ pullup_replace_vars_callback(Var *var,
 		rowexpr->args = fields;
 		rowexpr->row_typeid = var->vartype;
 		rowexpr->row_format = COERCE_IMPLICIT_CAST;
-		rowexpr->colnames = colnames;
+		rowexpr->colnames = (var->vartype == RECORDOID) ? colnames : NIL;
 		rowexpr->location = var->location;
 		newnode = (Node *) rowexpr;
 
@@ -3184,16 +3296,6 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode)
 					jtnode = j->larg;
 				}
 				break;
-			case JOIN_RIGHT:
-				/* Mirror-image of the JOIN_LEFT case */
-				if ((varno = get_result_relid(root, j->larg)) != 0 &&
-					(j->quals == NULL ||
-					 !find_dependent_phvs(root, varno)))
-				{
-					remove_result_refs(root, varno, j->rarg);
-					jtnode = j->rarg;
-				}
-				break;
 			case JOIN_SEMI:
 
 				/*
@@ -3202,14 +3304,17 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode)
 				 * LHS, since we should either return the LHS row or not.  For
 				 * simplicity we inject the filter qual into a new FromExpr.
 				 *
-				 * Unlike the LEFT/RIGHT cases, we just Assert that there are
-				 * no PHVs that need to be evaluated at the semijoin's RHS,
-				 * since the rest of the query couldn't reference any outputs
-				 * of the semijoin's RHS.
+				 * There is a fine point about PHVs that are supposed to be
+				 * evaluated at the RHS.  Such PHVs could only appear in the
+				 * semijoin's qual, since the rest of the query cannot
+				 * reference any outputs of the semijoin's RHS.  Therefore,
+				 * they can't actually go to null before being examined, and
+				 * it'd be OK to just remove the PHV wrapping.  We don't have
+				 * infrastructure for that, but remove_result_refs() will
+				 * relabel them as to be evaluated at the LHS, which is fine.
 				 */
 				if ((varno = get_result_relid(root, j->rarg)) != 0)
 				{
-					Assert(!find_dependent_phvs(root, varno));
 					remove_result_refs(root, varno, j->larg);
 					if (j->quals)
 						jtnode = (Node *)
@@ -3223,6 +3328,7 @@ remove_useless_results_recurse(PlannerInfo *root, Node *jtnode)
 				/* We have no special smarts for these cases */
 				break;
 			default:
+				/* Note: JOIN_RIGHT should be gone at this point */
 				elog(ERROR, "unrecognized join type: %d",
 					 (int) j->jointype);
 				break;

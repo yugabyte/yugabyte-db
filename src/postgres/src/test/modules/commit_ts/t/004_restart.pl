@@ -1,14 +1,14 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Testing of commit timestamps preservation across restarts
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 16;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
-my $node_primary = PostgresNode->new('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(allows_streaming => 1);
 $node_primary->append_conf('postgresql.conf', 'track_commit_timestamp = on');
 $node_primary->start;
@@ -150,3 +150,5 @@ is($after_enable_disabled_ts, '',
 	'timestamp of disabled tx null after re-enable');
 
 $node_primary->stop;
+
+done_testing();

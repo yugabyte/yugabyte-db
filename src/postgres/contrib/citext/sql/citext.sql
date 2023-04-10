@@ -19,34 +19,6 @@ SELECT 'a'::citext = 'b'::citext AS f;
 SELECT 'a'::citext = 'ab'::citext AS f;
 SELECT 'a'::citext <> 'ab'::citext AS t;
 
--- Multibyte sanity tests. Uncomment to run.
--- SELECT 'À'::citext =  'À'::citext AS t;
--- SELECT 'À'::citext =  'à'::citext AS t;
--- SELECT 'À'::text   =  'à'::text   AS f; -- text wins.
--- SELECT 'À'::citext <> 'B'::citext AS t;
-
--- Test combining characters making up canonically equivalent strings.
--- SELECT 'Ä'::text   <> 'Ä'::text   AS t;
--- SELECT 'Ä'::citext <> 'Ä'::citext AS t;
-
--- Test the Turkish dotted I. The lowercase is a single byte while the
--- uppercase is multibyte. This is why the comparison code can't be optimized
--- to compare string lengths.
--- SELECT 'i'::citext = 'İ'::citext AS t;
-
--- Regression.
--- SELECT 'láska'::citext <> 'laská'::citext AS t;
-
--- SELECT 'Ask Bjørn Hansen'::citext = 'Ask Bjørn Hansen'::citext AS t;
--- SELECT 'Ask Bjørn Hansen'::citext = 'ASK BJØRN HANSEN'::citext AS t;
--- SELECT 'Ask Bjørn Hansen'::citext <> 'Ask Bjorn Hansen'::citext AS t;
--- SELECT 'Ask Bjørn Hansen'::citext <> 'ASK BJORN HANSEN'::citext AS t;
--- SELECT citext_cmp('Ask Bjørn Hansen'::citext, 'Ask Bjørn Hansen'::citext) AS zero;
--- SELECT citext_cmp('Ask Bjørn Hansen'::citext, 'ask bjørn hansen'::citext) AS zero;
--- SELECT citext_cmp('Ask Bjørn Hansen'::citext, 'ASK BJØRN HANSEN'::citext) AS zero;
--- SELECT citext_cmp('Ask Bjørn Hansen'::citext, 'Ask Bjorn Hansen'::citext) AS positive;
--- SELECT citext_cmp('Ask Bjorn Hansen'::citext, 'Ask Bjørn Hansen'::citext) AS negative;
-
 -- Test > and >=
 SELECT 'B'::citext > 'a'::citext AS t;
 SELECT 'b'::citext >  'A'::citext AS t;
@@ -361,7 +333,8 @@ INSERT INTO caster (citext)        VALUES ('f'::char);
 
 INSERT INTO caster (chr)           VALUES ('f'::text);
 INSERT INTO caster (text)          VALUES ('f'::"char");
-INSERT INTO caster (chr)           VALUES ('f'::citext);
+INSERT INTO caster (chr)           VALUES ('f'::citext);  -- requires cast
+INSERT INTO caster (chr)           VALUES ('f'::citext::text);
 INSERT INTO caster (citext)        VALUES ('f'::"char");
 
 INSERT INTO caster (name)          VALUES ('foo'::text);
@@ -723,7 +696,7 @@ SELECT to_timestamp('05 Dec 2000',         'DD Mon YYYY'::citext)
 SELECT COUNT(*) = 8::bigint AS t FROM try;
 INSERT INTO try
 VALUES ( to_char(  now()::timestamp,          'HH12:MI:SS') ),
-       ( to_char(  now() + '1 sec'::interval, 'HH12:MI:SS') ), -- timetamptz
+       ( to_char(  now() + '1 sec'::interval, 'HH12:MI:SS') ), -- timestamptz
        ( to_char(  '15h 2m 12s'::interval,    'HH24:MI:SS') ),
        ( to_char(  current_date,              '999') ),
        ( to_char(  125::int,                  '999') ),
@@ -810,24 +783,17 @@ SELECT citext_pattern_ge('b'::citext, 'a'::citext) AS true;
 SELECT citext_pattern_ge('B'::citext, 'a'::citext) AS true;
 SELECT citext_pattern_ge('b'::citext, 'A'::citext) AS true;
 
--- Multi-byte tests below are disabled like the sanity tests above.
--- Uncomment to run them.
-
 -- Test ~<~ and ~<=~
 SELECT 'a'::citext ~<~  'B'::citext AS t;
 SELECT 'b'::citext ~<~  'A'::citext AS f;
--- SELECT 'à'::citext ~<~  'À'::citext AS f;
 SELECT 'a'::citext ~<=~ 'B'::citext AS t;
 SELECT 'a'::citext ~<=~ 'A'::citext AS t;
--- SELECT 'à'::citext ~<=~ 'À'::citext AS t;
 
 -- Test ~>~ and ~>=~
 SELECT 'B'::citext ~>~  'a'::citext AS t;
 SELECT 'b'::citext ~>~  'A'::citext AS t;
--- SELECT 'à'::citext ~>~  'À'::citext AS f;
 SELECT 'B'::citext ~>~  'b'::citext AS f;
 SELECT 'B'::citext ~>=~ 'b'::citext AS t;
--- SELECT 'à'::citext ~>=~ 'À'::citext AS t;
 
 -- Test implicit casting. citext casts to text, but not vice-versa.
 SELECT 'B'::citext ~<~  'a'::text AS t;  -- text wins.

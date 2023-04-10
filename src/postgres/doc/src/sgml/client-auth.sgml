@@ -68,7 +68,7 @@
    cluster's data directory.
    (<acronym>HBA</acronym> stands for host-based authentication.) A default
    <filename>pg_hba.conf</filename> file is installed when the data
-   directory is initialized by <command>initdb</command>.  It is
+   directory is initialized by <xref linkend="app-initdb"/>.  It is
    possible to place the authentication configuration file elsewhere,
    however; see the <xref linkend="guc-hba-file"/> configuration parameter.
   </para>
@@ -417,7 +417,9 @@ hostnogssenc  <replaceable>database</replaceable>  <replaceable>user</replaceabl
       <para>
        Specifies the authentication method to use when a connection matches
        this record. The possible choices are summarized here; details
-       are in <xref linkend="auth-methods"/>.
+       are in <xref linkend="auth-methods"/>.  All the options
+       are lower case and treated case sensitively, so even acronyms like
+       <literal>ldap</literal> must be specified as lower case.
 
        <variablelist>
         <varlistentry>
@@ -894,6 +896,16 @@ mymap   /^(.*)@otherdomain\.com$   guest
    (using <literal>pg_ctl reload</literal>, calling the SQL function
    <function>pg_reload_conf()</function>, or using <literal>kill
    -HUP</literal>) to make it re-read the file.
+  </para>
+
+  <para>
+   The system view
+   <link linkend="view-pg-ident-file-mappings"><structname>pg_ident_file_mappings</structname></link>
+   can be helpful for pre-testing changes to the
+   <filename>pg_ident.conf</filename> file, or for diagnosing problems if
+   loading of the file did not have the desired effects.  Rows in the view with
+   non-null <structfield>error</structfield> fields indicate problems in the
+   corresponding lines of the file.
   </para>
 
   <para>
@@ -1513,7 +1525,7 @@ omicron         bryanh                  guest1
    </note>
 
    <para>
-    The following configuration options are supported for <productname>ident</productname>:
+    The following configuration options are supported for <literal>ident</literal>:
     <variablelist>
      <varlistentry>
       <term><literal>map</literal></term>
@@ -1587,7 +1599,7 @@ omicron         bryanh                  guest1
    </para>
 
    <para>
-    The following configuration options are supported for <productname>peer</productname>:
+    The following configuration options are supported for <literal>peer</literal>:
     <variablelist>
      <varlistentry>
       <term><literal>map</literal></term>

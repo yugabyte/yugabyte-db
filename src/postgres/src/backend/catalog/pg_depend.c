@@ -3,7 +3,7 @@
  * pg_depend.c
  *	  routines to support manipulation of the pg_depend relation
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -177,17 +177,17 @@ recordMultipleDependencies(const ObjectAddress *depender,
  * This must be called during creation of any user-definable object type
  * that could be a member of an extension.
  *
- * If isReplace is true, the object already existed (or might have already
- * existed), so we must check for a pre-existing extension membership entry.
- * Passing false is a guarantee that the object is newly created, and so
- * could not already be a member of any extension.
+ * isReplace must be true if the object already existed, and false if it is
+ * newly created.  In the former case we insist that it already be a member
+ * of the current extension.  In the latter case we can skip checking whether
+ * it is already a member of any extension.
  *
- * Note: isReplace = true is typically used when updating a object in
- * CREATE OR REPLACE and similar commands.  The net effect is that if an
- * extension script uses such a command on a pre-existing free-standing
- * object, the object will be absorbed into the extension.  If the object
- * is already a member of some other extension, the command will fail.
- * This behavior is desirable for cases such as replacing a shell type.
+ * Note: isReplace = true is typically used when updating an object in
+ * CREATE OR REPLACE and similar commands.  We used to allow the target
+ * object to not already be an extension member, instead silently absorbing
+ * it into the current extension.  However, this was both error-prone
+ * (extensions might accidentally overwrite free-standing objects) and
+ * a security hazard (since the object would retain its previous ownership).
  */
 void
 recordDependencyOnCurrentExtension(const ObjectAddress *object,

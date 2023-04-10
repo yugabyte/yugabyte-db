@@ -1,16 +1,16 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # This regression test checks the behavior of the btree validation in the
 # presence of breaking sort order changes.
 #
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 5;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
-my $node = PostgresNode->new('test');
+my $node = PostgreSQL::Test::Cluster->new('test');
 $node->init;
 $node->start;
 
@@ -33,8 +33,7 @@ $node->safe_psql(
 ));
 
 # We have not yet broken the index, so we should get no corruption
-$node->command_like(
-	[ 'pg_amcheck', '-p', $node->port, 'postgres' ],
+$node->command_like([ 'pg_amcheck', '-p', $node->port, 'postgres' ],
 	qr/^$/,
 	'pg_amcheck all schemas, tables and indexes reports no corruption');
 
@@ -57,3 +56,5 @@ $node->command_checks_all(
 	[],
 	'pg_amcheck all schemas, tables and indexes reports fickleidx corruption'
 );
+
+done_testing();

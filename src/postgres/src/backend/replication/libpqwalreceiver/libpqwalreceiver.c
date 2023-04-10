@@ -6,7 +6,7 @@
  * loaded as a dynamic module to avoid linking the main server binary with
  * libpq.
  *
- * Portions Copyright (c) 2010-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -128,8 +128,8 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 {
 	WalReceiverConn *conn;
 	PostgresPollingStatusType status;
-	const char *keys[5];
-	const char *vals[5];
+	const char *keys[6];
+	const char *vals[6];
 	int			i = 0;
 
 	/*
@@ -153,8 +153,20 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 	vals[i] = appname;
 	if (logical)
 	{
+		/* Tell the publisher to translate to our encoding */
 		keys[++i] = "client_encoding";
 		vals[i] = GetDatabaseEncodingName();
+
+		/*
+		 * Force assorted GUC parameters to settings that ensure that the
+		 * publisher will output data values in a form that is unambiguous to
+		 * the subscriber.  (We don't want to modify the subscriber's GUC
+		 * settings, since that might surprise user-defined code running in
+		 * the subscriber, such as triggers.)  This should match what pg_dump
+		 * does.
+		 */
+		keys[++i] = "options";
+		vals[i] = "-c datestyle=ISO -c intervalstyle=postgres -c extra_float_digits=3";
 	}
 	keys[++i] = NULL;
 	vals[i] = NULL;
@@ -165,10 +177,7 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 	conn->streamConn = PQconnectStartParams(keys, vals,
 											 /* expand_dbname = */ true);
 	if (PQstatus(conn->streamConn) == CONNECTION_BAD)
-	{
-		*err = pchomp(PQerrorMessage(conn->streamConn));
-		return NULL;
-	}
+		goto bad_connection_errmsg;
 
 	/*
 	 * Poll connection until we have OK or FAILED status.
@@ -210,10 +219,7 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 	} while (status != PGRES_POLLING_OK && status != PGRES_POLLING_FAILED);
 
 	if (PQstatus(conn->streamConn) != CONNECTION_OK)
-	{
-		*err = pchomp(PQerrorMessage(conn->streamConn));
-		return NULL;
-	}
+		goto bad_connection_errmsg;
 
 	if (logical)
 	{
@@ -224,9 +230,9 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
 			PQclear(res);
-			ereport(ERROR,
-					(errmsg("could not clear search path: %s",
-							pchomp(PQerrorMessage(conn->streamConn)))));
+			*err = psprintf(_("could not clear search path: %s"),
+							pchomp(PQerrorMessage(conn->streamConn)));
+			goto bad_connection;
 		}
 		PQclear(res);
 	}
@@ -234,6 +240,16 @@ libpqrcv_connect(const char *conninfo, bool logical, const char *appname,
 	conn->logical = logical;
 
 	return conn;
+
+	/* error path, using libpq's error message */
+bad_connection_errmsg:
+	*err = pchomp(PQerrorMessage(conn->streamConn));
+
+	/* error path, error already set */
+bad_connection:
+	PQfinish(conn->streamConn);
+	pfree(conn);
+	return NULL;
 }
 
 /*
@@ -862,6 +878,9 @@ libpqrcv_create_slot(WalReceiverConn *conn, const char *slotname,
 	PGresult   *res;
 	StringInfoData cmd;
 	char	   *snapshot;
+	int			use_new_options_syntax;
+
+	use_new_options_syntax = (PQserverVersion(conn->streamConn) >= 150000);
 
 	initStringInfo(&cmd);
 
@@ -872,26 +891,58 @@ libpqrcv_create_slot(WalReceiverConn *conn, const char *slotname,
 
 	if (conn->logical)
 	{
-		appendStringInfoString(&cmd, " LOGICAL pgoutput");
+		appendStringInfoString(&cmd, " LOGICAL pgoutput ");
+		if (use_new_options_syntax)
+			appendStringInfoChar(&cmd, '(');
 		if (two_phase)
-			appendStringInfoString(&cmd, " TWO_PHASE");
-
-		switch (snapshot_action)
 		{
-			case CRS_EXPORT_SNAPSHOT:
-				appendStringInfoString(&cmd, " EXPORT_SNAPSHOT");
-				break;
-			case CRS_NOEXPORT_SNAPSHOT:
-				appendStringInfoString(&cmd, " NOEXPORT_SNAPSHOT");
-				break;
-			case CRS_USE_SNAPSHOT:
-				appendStringInfoString(&cmd, " USE_SNAPSHOT");
-				break;
+			appendStringInfoString(&cmd, "TWO_PHASE");
+			if (use_new_options_syntax)
+				appendStringInfoString(&cmd, ", ");
+			else
+				appendStringInfoChar(&cmd, ' ');
 		}
+
+		if (use_new_options_syntax)
+		{
+			switch (snapshot_action)
+			{
+				case CRS_EXPORT_SNAPSHOT:
+					appendStringInfoString(&cmd, "SNAPSHOT 'export'");
+					break;
+				case CRS_NOEXPORT_SNAPSHOT:
+					appendStringInfoString(&cmd, "SNAPSHOT 'nothing'");
+					break;
+				case CRS_USE_SNAPSHOT:
+					appendStringInfoString(&cmd, "SNAPSHOT 'use'");
+					break;
+			}
+		}
+		else
+		{
+			switch (snapshot_action)
+			{
+				case CRS_EXPORT_SNAPSHOT:
+					appendStringInfoString(&cmd, "EXPORT_SNAPSHOT");
+					break;
+				case CRS_NOEXPORT_SNAPSHOT:
+					appendStringInfoString(&cmd, "NOEXPORT_SNAPSHOT");
+					break;
+				case CRS_USE_SNAPSHOT:
+					appendStringInfoString(&cmd, "USE_SNAPSHOT");
+					break;
+			}
+		}
+
+		if (use_new_options_syntax)
+			appendStringInfoChar(&cmd, ')');
 	}
 	else
 	{
-		appendStringInfoString(&cmd, " PHYSICAL RESERVE_WAL");
+		if (use_new_options_syntax)
+			appendStringInfoString(&cmd, " PHYSICAL (RESERVE_WAL)");
+		else
+			appendStringInfoString(&cmd, " PHYSICAL RESERVE_WAL");
 	}
 
 	res = libpqrcv_PQexec(conn->streamConn, cmd.data);

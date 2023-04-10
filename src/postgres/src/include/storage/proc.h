@@ -4,7 +4,7 @@
  *	  per-process shared memory data structures
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/proc.h
@@ -60,10 +60,19 @@ struct XidCache
 #define		PROC_VACUUM_FOR_WRAPAROUND	0x08	/* set by autovac only */
 #define		PROC_IN_LOGICAL_DECODING	0x10	/* currently doing logical
 												 * decoding outside xact */
+#define		PROC_AFFECTS_ALL_HORIZONS	0x20	/* this proc's xmin must be
+												 * included in vacuum horizons
+												 * in all databases */
 
 /* flags reset at EOXact */
 #define		PROC_VACUUM_STATE_MASK \
 	(PROC_IN_VACUUM | PROC_IN_SAFE_IC | PROC_VACUUM_FOR_WRAPAROUND)
+
+/*
+ * Xmin-related flags. Make sure any flags that affect how the process' Xmin
+ * value is interpreted by VACUUM are included here.
+ */
+#define		PROC_XMIN_FLAGS (PROC_IN_VACUUM | PROC_IN_SAFE_IC)
 
 /*
  * We allow a small number of "weak" relation locks (AccessShareLock,
@@ -78,6 +87,41 @@ struct XidCache
  * structures we could possibly have.  See comments for MAX_BACKENDS.
  */
 #define INVALID_PGPROCNO		PG_INT32_MAX
+
+/*
+ * Flags for PGPROC.delayChkpt
+ *
+ * These flags can be used to delay the start or completion of a checkpoint
+ * for short periods. A flag is in effect if the corresponding bit is set in
+ * the PGPROC of any backend.
+ *
+ * For our purposes here, a checkpoint has three phases: (1) determine the
+ * location to which the redo pointer will be moved, (2) write all the
+ * data durably to disk, and (3) WAL-log the checkpoint.
+ *
+ * Setting DELAY_CHKPT_START prevents the system from moving from phase 1
+ * to phase 2. This is useful when we are performing a WAL-logged modification
+ * of data that will be flushed to disk in phase 2. By setting this flag
+ * before writing WAL and clearing it after we've both written WAL and
+ * performed the corresponding modification, we ensure that if the WAL record
+ * is inserted prior to the new redo point, the corresponding data changes will
+ * also be flushed to disk before the checkpoint can complete. (In the
+ * extremely common case where the data being modified is in shared buffers
+ * and we acquire an exclusive content lock on the relevant buffers before
+ * writing WAL, this mechanism is not needed, because phase 2 will block
+ * until we release the content lock and then flush the modified data to
+ * disk.)
+ *
+ * Setting DELAY_CHKPT_COMPLETE prevents the system from moving from phase 2
+ * to phase 3. This is useful if we are performing a WAL-logged operation that
+ * might invalidate buffers, such as relation truncation. In this case, we need
+ * to ensure that any buffers which were invalidated and thus not flushed by
+ * the checkpoint are actaully destroyed on disk. Replay can cope with a file
+ * or block that doesn't exist, but not with a block that has the wrong
+ * contents.
+ */
+#define DELAY_CHKPT_START		(1<<0)
+#define DELAY_CHKPT_COMPLETE	(1<<1)
 
 typedef enum
 {
@@ -184,7 +228,7 @@ struct PGPROC
 	pg_atomic_uint64 waitStart; /* time at which wait for lock acquisition
 								 * started */
 
-	bool		delayChkpt;		/* true if this proc delays checkpoint start */
+	int			delayChkptFlags;	/* for DELAY_CHKPT_* flags */
 
 	uint8		statusFlags;	/* this backend's status flags, see PROC_*
 								 * above. mirrored in
@@ -360,16 +404,13 @@ typedef struct PROC_HDR
 	Latch	   *checkpointerLatch;
 	/* Current shared estimate of appropriate spins_per_delay value */
 	int			spins_per_delay;
-	/* The proc of the Startup process, since not in ProcArray */
-	PGPROC	   *startupProc;
-	int			startupProcPid;
 	/* Buffer id of the buffer that Startup process waits for pin on, or -1 */
 	int			startupBufferPinWaitBufId;
 } PROC_HDR;
 
 extern PGDLLIMPORT PROC_HDR *ProcGlobal;
 
-extern PGPROC *PreparedXactProcs;
+extern PGDLLIMPORT PGPROC *PreparedXactProcs;
 
 /* Accessor for PGPROC given a pgprocno. */
 #define GetPGProcByNumber(n) (&ProcGlobal->allProcs[(n)])
@@ -390,7 +431,7 @@ extern PGDLLIMPORT int StatementTimeout;
 extern PGDLLIMPORT int LockTimeout;
 extern PGDLLIMPORT int IdleInTransactionSessionTimeout;
 extern PGDLLIMPORT int IdleSessionTimeout;
-extern bool log_lock_waits;
+extern PGDLLIMPORT bool log_lock_waits;
 
 extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
@@ -407,7 +448,6 @@ extern void InitProcess(void);
 extern void InitProcessPhase2(void);
 extern void InitAuxiliaryProcess(void);
 
-extern void PublishStartupProcessInformation(void);
 extern void SetStartupBufferPinWaitBufId(int bufid);
 extern int	GetStartupBufferPinWaitBufId(void);
 
@@ -423,7 +463,7 @@ extern bool IsWaitingForLock(void);
 extern void LockErrorCleanup(void);
 
 extern void ProcWaitForSignal(uint32 wait_event_info);
-extern void ProcSendSignal(int pid);
+extern void ProcSendSignal(int pgprocno);
 
 extern PGPROC *AuxiliaryPidGetProc(int pid);
 

@@ -3,7 +3,7 @@
  * pqmq.c
  *	  Use the frontend/backend protocol for communication over a shm_mq
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	src/backend/libpq/pqmq.c
@@ -154,7 +154,12 @@ mq_putmessage(char msgtype, const char *s, size_t len)
 
 	for (;;)
 	{
-		result = shm_mq_sendv(pq_mq_handle, iov, 2, true);
+		/*
+		 * Immediately notify the receiver by passing force_flush as true so
+		 * that the shared memory value is updated before we send the parallel
+		 * message signal right after this.
+		 */
+		result = shm_mq_sendv(pq_mq_handle, iov, 2, true, true);
 
 		if (pq_mq_parallel_leader_pid != 0)
 			SendProcSignal(pq_mq_parallel_leader_pid,

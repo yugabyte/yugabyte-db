@@ -2,7 +2,7 @@
  *
  * streamutil.h
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/streamutil.h
@@ -15,6 +15,7 @@
 #include "access/xlogdefs.h"
 #include "datatype/timestamp.h"
 #include "libpq-fe.h"
+#include "pqexpbuffer.h"
 
 extern const char *progname;
 extern char *connection_string;
@@ -40,6 +41,20 @@ extern bool RunIdentifySystem(PGconn *conn, char **sysid,
 							  TimeLineID *starttli,
 							  XLogRecPtr *startpos,
 							  char **db_name);
+
+extern void AppendPlainCommandOption(PQExpBuffer buf,
+									 bool use_new_option_syntax,
+									 char *option_value);
+extern void AppendStringCommandOption(PQExpBuffer buf,
+									  bool use_new_option_syntax,
+									  char *option_name, char *option_value);
+extern void AppendIntegerCommandOption(PQExpBuffer buf,
+									   bool use_new_option_syntax,
+									   char *option_name, int32 option_value);
+
+extern bool GetSlotInformation(PGconn *conn, const char *slot_name,
+							   XLogRecPtr *restart_lsn,
+							   TimeLineID *restart_tli);
 extern bool RetrieveWalSegSize(PGconn *conn);
 extern TimestampTz feGetCurrentTimestamp(void);
 extern void feTimestampDifference(TimestampTz start_time, TimestampTz stop_time,

@@ -3,7 +3,7 @@
  * logicalrelation.h
  *	  Relation definitions for logical replication relation mapping.
  *
- * Portions Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/logicalrelation.h
  *
@@ -38,6 +38,7 @@ typedef struct LogicalRepRelMapEntry
 } LogicalRepRelMapEntry;
 
 extern void logicalrep_relmap_update(LogicalRepRelation *remoterel);
+extern void logicalrep_partmap_reset_relmap(LogicalRepRelation *remoterel);
 
 extern LogicalRepRelMapEntry *logicalrep_rel_open(LogicalRepRelId remoteid,
 												  LOCKMODE lockmode);

@@ -2,7 +2,7 @@
  * launcher.c
  *	   PostgreSQL logical replication worker launcher process
  *
- * Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/launcher.c
@@ -42,6 +42,7 @@
 #include "storage/procarray.h"
 #include "storage/procsignal.h"
 #include "tcop/tcopprot.h"
+#include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/pg_lsn.h"
 #include "utils/ps_status.h"
@@ -65,7 +66,7 @@ typedef struct LogicalRepCtxStruct
 	LogicalRepWorker workers[FLEXIBLE_ARRAY_MEMBER];
 } LogicalRepCtxStruct;
 
-LogicalRepCtxStruct *LogicalRepCtx;
+static LogicalRepCtxStruct *LogicalRepCtx;
 
 static void ApplyLauncherWakeup(void);
 static void logicalrep_launcher_onexit(int code, Datum arg);
@@ -74,8 +75,6 @@ static void logicalrep_worker_detach(void);
 static void logicalrep_worker_cleanup(LogicalRepWorker *worker);
 
 static bool on_commit_launcher_wakeup = false;
-
-Datum		pg_stat_get_subscription(PG_FUNCTION_ARGS);
 
 
 /*
@@ -344,11 +343,11 @@ retry:
 	}
 
 	/*
-	 * If we reached the sync worker limit per subscription, just exit
-	 * silently as we might get here because of an otherwise harmless race
-	 * condition.
+	 * We don't allow to invoke more sync workers once we have reached the
+	 * sync worker limit per subscription. So, just return silently as we
+	 * might get here because of an otherwise harmless race condition.
 	 */
-	if (nsyncworkers >= max_sync_workers_per_subscription)
+	if (OidIsValid(relid) && nsyncworkers >= max_sync_workers_per_subscription)
 	{
 		LWLockRelease(LogicalRepWorkerLock);
 		return;
@@ -930,39 +929,13 @@ pg_stat_get_subscription(PG_FUNCTION_ARGS)
 	Oid			subid = PG_ARGISNULL(0) ? InvalidOid : PG_GETARG_OID(0);
 	int			i;
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
 
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
+	InitMaterializedSRF(fcinfo, 0);
 
 	/* Make sure we get consistent view of the workers. */
 	LWLockAcquire(LogicalRepWorkerLock, LW_SHARED);
 
-	for (i = 0; i <= max_logical_replication_workers; i++)
+	for (i = 0; i < max_logical_replication_workers; i++)
 	{
 		/* for each row */
 		Datum		values[PG_STAT_GET_SUBSCRIPTION_COLS];
@@ -1010,7 +983,8 @@ pg_stat_get_subscription(PG_FUNCTION_ARGS)
 		else
 			values[7] = TimestampTzGetDatum(worker.reply_time);
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 
 		/*
 		 * If only a single subscription was requested, and we found it,
@@ -1021,9 +995,6 @@ pg_stat_get_subscription(PG_FUNCTION_ARGS)
 	}
 
 	LWLockRelease(LogicalRepWorkerLock);
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
 }

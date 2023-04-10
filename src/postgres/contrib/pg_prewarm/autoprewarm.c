@@ -16,7 +16,7 @@
  *		relevant database in turn.  The former keeps running after the
  *		initial prewarm is complete to update the dump file periodically.
  *
- *	Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ *	Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  *	IDENTIFICATION
  *		contrib/pg_prewarm/autoprewarm.c
@@ -38,6 +38,7 @@
 #include "postmaster/interrupt.h"
 #include "storage/buf_internals.h"
 #include "storage/dsm.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/latch.h"
 #include "storage/lwlock.h"
@@ -95,6 +96,8 @@ static void apw_start_database_worker(void);
 static bool apw_init_shmem(void);
 static void apw_detach_shmem(int code, Datum arg);
 static int	apw_compare_blockinfo(const void *p, const void *q);
+static void autoprewarm_shmem_request(void);
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
 
 /* Pointer to shared-memory state. */
 static AutoPrewarmSharedState *apw_state = NULL;
@@ -136,13 +139,26 @@ _PG_init(void)
 							 NULL,
 							 NULL);
 
-	EmitWarningsOnPlaceholders("pg_prewarm");
+	MarkGUCPrefixReserved("pg_prewarm");
 
-	RequestAddinShmemSpace(MAXALIGN(sizeof(AutoPrewarmSharedState)));
+	prev_shmem_request_hook = shmem_request_hook;
+	shmem_request_hook = autoprewarm_shmem_request;
 
 	/* Register autoprewarm worker, if enabled. */
 	if (autoprewarm)
 		apw_start_leader_worker();
+}
+
+/*
+ * Requests any additional shared memory required for autoprewarm.
+ */
+static void
+autoprewarm_shmem_request(void)
+{
+	if (prev_shmem_request_hook)
+		prev_shmem_request_hook();
+
+	RequestAddinShmemSpace(MAXALIGN(sizeof(AutoPrewarmSharedState)));
 }
 
 /*

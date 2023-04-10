@@ -3,7 +3,7 @@
  * origin.c
  *	  Logical replication progress tracking support.
  *
- * Copyright (c) 2013-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/replication/logical/origin.c
@@ -74,6 +74,7 @@
 #include "access/htup_details.h"
 #include "access/table.h"
 #include "access/xact.h"
+#include "access/xloginsert.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
 #include "funcapi.h"
@@ -191,7 +192,6 @@ replorigin_check_prerequisites(bool check_slots, bool recoveryOK)
 		ereport(ERROR,
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("cannot manipulate replication origins during recovery")));
-
 }
 
 
@@ -316,7 +316,7 @@ replorigin_create(const char *roname)
 	if (tuple == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("could not find free replication origin OID")));
+				 errmsg("could not find free replication origin ID")));
 
 	heap_freetuple(tuple);
 	return roident;
@@ -352,7 +352,7 @@ restart:
 				if (nowait)
 					ereport(ERROR,
 							(errcode(ERRCODE_OBJECT_IN_USE),
-							 errmsg("could not drop replication origin with OID %d, in use by PID %d",
+							 errmsg("could not drop replication origin with ID %d, in use by PID %d",
 									state->roident,
 									state->acquired_by)));
 
@@ -396,7 +396,7 @@ restart:
 	 */
 	tuple = SearchSysCache1(REPLORIGIDENT, ObjectIdGetDatum(roident));
 	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for replication origin with oid %u",
+		elog(ERROR, "cache lookup failed for replication origin with ID %d",
 			 roident);
 
 	CatalogTupleDelete(rel, tuple);
@@ -473,7 +473,7 @@ replorigin_by_oid(RepOriginId roident, bool missing_ok, char **roname)
 		if (!missing_ok)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("replication origin with OID %u does not exist",
+					 errmsg("replication origin with ID %d does not exist",
 							roident)));
 
 		return false;
@@ -787,7 +787,7 @@ StartupReplicationOrigin(void)
 		last_state++;
 
 		ereport(LOG,
-				(errmsg("recovered replication state of node %u to %X/%X",
+				(errmsg("recovered replication state of node %d to %X/%X",
 						disk_state.roident,
 						LSN_FORMAT_ARGS(disk_state.remote_lsn))));
 	}
@@ -925,7 +925,7 @@ replorigin_advance(RepOriginId node,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("replication origin with OID %d is already active for PID %d",
+					 errmsg("replication origin with ID %d is already active for PID %d",
 							replication_state->roident,
 							replication_state->acquired_by)));
 		}
@@ -936,7 +936,7 @@ replorigin_advance(RepOriginId node,
 	if (replication_state == NULL && free_state == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-				 errmsg("could not find free replication state slot for replication origin with OID %u",
+				 errmsg("could not find free replication state slot for replication origin with ID %d",
 						node),
 				 errhint("Increase max_replication_slots and try again.")));
 
@@ -1059,7 +1059,7 @@ ReplicationOriginExitCleanup(int code, Datum arg)
 
 /*
  * Setup a replication origin in the shared memory struct if it doesn't
- * already exists and cache access to the specific ReplicationSlot so the
+ * already exist and cache access to the specific ReplicationSlot so the
  * array doesn't have to be searched when calling
  * replorigin_session_advance().
  *
@@ -1114,7 +1114,7 @@ replorigin_session_setup(RepOriginId node)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("replication origin with OID %d is already active for PID %d",
+					 errmsg("replication origin with ID %d is already active for PID %d",
 							curstate->roident, curstate->acquired_by)));
 		}
 
@@ -1126,7 +1126,7 @@ replorigin_session_setup(RepOriginId node)
 	if (session_replication_state == NULL && free_slot == -1)
 		ereport(ERROR,
 				(errcode(ERRCODE_CONFIGURATION_LIMIT_EXCEEDED),
-				 errmsg("could not find free replication state slot for replication origin with OID %u",
+				 errmsg("could not find free replication state slot for replication origin with ID %d",
 						node),
 				 errhint("Increase max_replication_slots and try again.")));
 	else if (session_replication_state == NULL)
@@ -1481,40 +1481,13 @@ Datum
 pg_show_replication_origin_status(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
 	int			i;
 #define REPLICATION_ORIGIN_PROGRESS_COLS 4
 
 	/* we want to return 0 rows if slot is set to zero */
 	replorigin_check_prerequisites(false, true);
 
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not allowed in this context")));
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
-	if (tupdesc->natts != REPLICATION_ORIGIN_PROGRESS_COLS)
-		elog(ERROR, "wrong function definition");
-
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
+	InitMaterializedSRF(fcinfo, 0);
 
 	/* prevent slots from being concurrently dropped */
 	LWLockAcquire(ReplicationOriginLock, LW_SHARED);
@@ -1564,10 +1537,9 @@ pg_show_replication_origin_status(PG_FUNCTION_ARGS)
 
 		LWLockRelease(&state->lock);
 
-		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		tuplestore_putvalues(rsinfo->setResult, rsinfo->setDesc,
+							 values, nulls);
 	}
-
-	tuplestore_donestoring(tupstore);
 
 	LWLockRelease(ReplicationOriginLock);
 

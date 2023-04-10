@@ -3,7 +3,7 @@
  * partbounds.c
  *		Support routines for manipulating partition bounds
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -648,13 +648,14 @@ create_list_bounds(PartitionBoundSpec **boundspecs, int nparts,
 																  index);
 
 				/*
-				 * Mark the NULL partition as interleaved if we find that it
-				 * allows some other non-NULL Datum.
+				 * Otherwise, if the null_index exists in the indexes array,
+				 * then the NULL partition must also allow some other Datum,
+				 * therefore it's "interleaved".
 				 */
-				if (partition_bound_accepts_nulls(boundinfo) &&
-					index == boundinfo->null_index)
+				else if (partition_bound_accepts_nulls(boundinfo) &&
+						 index == boundinfo->null_index)
 					boundinfo->interleaved_parts = bms_add_member(boundinfo->interleaved_parts,
-																  boundinfo->null_index);
+																  index);
 
 				last_index = index;
 			}
@@ -2564,6 +2565,9 @@ build_merged_partition_bounds(char strategy, List *merged_datums,
 		merged_bounds->kind = NULL;
 	}
 
+	/* interleaved_parts is always NULL for join relations. */
+	merged_bounds->interleaved_parts = NULL;
+
 	Assert(list_length(merged_indexes) == ndatums);
 	merged_bounds->nindexes = ndatums;
 	merged_bounds->indexes = (int *) palloc(sizeof(int) * ndatums);
@@ -3790,8 +3794,8 @@ partition_hash_bsearch(PartitionBoundInfo boundinfo,
 static int32
 qsort_partition_hbound_cmp(const void *a, const void *b)
 {
-	PartitionHashBound *const h1 = (PartitionHashBound *const) a;
-	PartitionHashBound *const h2 = (PartitionHashBound *const) b;
+	const PartitionHashBound *h1 = (const PartitionHashBound *) a;
+	const PartitionHashBound *h2 = (const PartitionHashBound *) b;
 
 	return partition_hbound_cmp(h1->modulus, h1->remainder,
 								h2->modulus, h2->remainder);
@@ -3805,8 +3809,8 @@ qsort_partition_hbound_cmp(const void *a, const void *b)
 static int32
 qsort_partition_list_value_cmp(const void *a, const void *b, void *arg)
 {
-	Datum		val1 = ((PartitionListValue *const) a)->value,
-				val2 = ((PartitionListValue *const) b)->value;
+	Datum		val1 = ((const PartitionListValue *) a)->value,
+				val2 = ((const PartitionListValue *) b)->value;
 	PartitionKey key = (PartitionKey) arg;
 
 	return DatumGetInt32(FunctionCall2Coll(&key->partsupfunc[0],

@@ -3,7 +3,7 @@
  * matview.c
  *	  materialized view support
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -200,7 +200,8 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	if (concurrent && stmt->skipData)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("CONCURRENTLY and WITH NO DATA options cannot be used together")));
+				 errmsg("%s and %s options cannot be used together",
+						"CONCURRENTLY", "WITH NO DATA")));
 
 	/*
 	 * Check that everything is correct for a refresh. Problems at this point
@@ -351,11 +352,12 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 			HandleYBStatus(YBCPgAlterTableRenameTable(handle, db_name, RelationGetRelationName(matviewRel)));
 			HandleYBStatus(YBCPgExecAlterTable(handle));
 		}
+
 		/*
-		 * Inform stats collector about our activity: basically, we truncated
-		 * the matview and inserted some new data.  (The concurrent code path
-		 * above doesn't need to worry about this because the inserts and
-		 * deletes it issues get counted by lower-level code.)
+		 * Inform cumulative stats system about our activity: basically, we
+		 * truncated the matview and inserted some new data.  (The concurrent
+		 * code path above doesn't need to worry about this because the
+		 * inserts and deletes it issues get counted by lower-level code.)
 		 */
 		pgstat_count_truncate(matviewRel);
 		if (!stmt->skipData)

@@ -1,16 +1,16 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Single-node test: value can be set, and is still present after recovery
 
 use strict;
 use warnings;
 
-use TestLib;
-use Test::More tests => 2;
-use PostgresNode;
+use PostgreSQL::Test::Utils;
+use Test::More;
+use PostgreSQL::Test::Cluster;
 
-my $node = PostgresNode->new('foxtrot');
+my $node = PostgreSQL::Test::Cluster->new('foxtrot');
 $node->init;
 $node->append_conf('postgresql.conf', 'track_commit_timestamp = on');
 $node->start;
@@ -34,3 +34,5 @@ my $recovered_ts = $node->safe_psql('postgres',
 	'select ts.* from pg_class, pg_xact_commit_timestamp(xmin) ts where relname = \'t\''
 );
 is($recovered_ts, $ts, 'commit TS remains after crash recovery');
+
+done_testing();

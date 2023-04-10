@@ -41,7 +41,7 @@
  *	  - SH_SCOPE - in which scope (e.g. extern, static inline) do function
  *		declarations reside
  *	  - SH_RAW_ALLOCATOR - if defined, memory contexts are not used; instead,
- *	    use this to allocate bytes
+ *	    use this to allocate bytes. The allocator must zero the returned space.
  *	  - SH_USE_NONDEFAULT_ALLOCATOR - if defined no element allocator functions
  *		are defined, so you can supply your own
  *	  The following parameters are only relevant when SH_DEFINE is defined:
@@ -86,6 +86,11 @@
  *	  presence is relevant to determine whether a lookup needs to continue
  *	  looking or is done - buckets following a deleted element are shifted
  *	  backwards, unless they're empty or already at their optimal position.
+ *
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ * src/include/lib/simplehash.h
  */
 
 #include "port/pg_bitutils.h"
@@ -288,7 +293,7 @@ SH_SCOPE void SH_STAT(SH_TYPE * tb);
 #define SIMPLEHASH_H
 
 #ifdef FRONTEND
-#define sh_error(...) pg_log_error(__VA_ARGS__)
+#define sh_error(...) pg_fatal(__VA_ARGS__)
 #define sh_log(...) pg_log_info(__VA_ARGS__)
 #else
 #define sh_error(...) elog(ERROR, __VA_ARGS__)
@@ -317,7 +322,7 @@ SH_COMPUTE_PARAMETERS(SH_TYPE * tb, uint64 newsize)
 	 * Verify that allocation of ->data is possible on this platform, without
 	 * overflowing Size.
 	 */
-	if ((((uint64) sizeof(SH_ELEMENT_TYPE)) * size) >= SIZE_MAX / 2)
+	if (unlikely((((uint64) sizeof(SH_ELEMENT_TYPE)) * size) >= SIZE_MAX / 2))
 		sh_error("hash table too large");
 
 	/* now set size */
@@ -431,9 +436,9 @@ SH_CREATE(MemoryContext ctx, uint32 nelements, void *private_data)
 	uint64		size;
 
 #ifdef SH_RAW_ALLOCATOR
-	tb = SH_RAW_ALLOCATOR(sizeof(SH_TYPE));
+	tb = (SH_TYPE *) SH_RAW_ALLOCATOR(sizeof(SH_TYPE));
 #else
-	tb = MemoryContextAllocZero(ctx, sizeof(SH_TYPE));
+	tb = (SH_TYPE *) MemoryContextAllocZero(ctx, sizeof(SH_TYPE));
 	tb->ctx = ctx;
 #endif
 	tb->private_data = private_data;
@@ -443,7 +448,7 @@ SH_CREATE(MemoryContext ctx, uint32 nelements, void *private_data)
 
 	SH_COMPUTE_PARAMETERS(tb, size);
 
-	tb->data = SH_ALLOCATE(tb, sizeof(SH_ELEMENT_TYPE) * tb->size);
+	tb->data = (SH_ELEMENT_TYPE *) SH_ALLOCATE(tb, sizeof(SH_ELEMENT_TYPE) * tb->size);
 
 	return tb;
 }
@@ -488,7 +493,7 @@ SH_GROW(SH_TYPE * tb, uint64 newsize)
 	/* compute parameters for new table */
 	SH_COMPUTE_PARAMETERS(tb, newsize);
 
-	tb->data = SH_ALLOCATE(tb, sizeof(SH_ELEMENT_TYPE) * tb->size);
+	tb->data = (SH_ELEMENT_TYPE *) SH_ALLOCATE(tb, sizeof(SH_ELEMENT_TYPE) * tb->size);
 
 	newdata = tb->data;
 
@@ -602,10 +607,8 @@ restart:
 	 */
 	if (unlikely(tb->members >= tb->grow_threshold))
 	{
-		if (tb->size == SH_MAX_SIZE)
-		{
+		if (unlikely(tb->size == SH_MAX_SIZE))
 			sh_error("hash table size exceeded");
-		}
 
 		/*
 		 * When optimizing, it can be very useful to print these out.
@@ -1056,7 +1059,7 @@ SH_STAT(SH_TYPE * tb)
 	double		fillfactor;
 	uint32		i;
 
-	uint32	   *collisions = palloc0(tb->size * sizeof(uint32));
+	uint32	   *collisions = (uint32 *) palloc0(tb->size * sizeof(uint32));
 	uint32		total_collisions = 0;
 	uint32		max_collisions = 0;
 	double		avg_collisions;
@@ -1111,7 +1114,7 @@ SH_STAT(SH_TYPE * tb)
 		avg_collisions = 0;
 	}
 
-	sh_log("size: " UINT64_FORMAT ", members: %u, filled: %f, total chain: %u, max chain: %u, avg chain: %f, total_collisions: %u, max_collisions: %i, avg_collisions: %f",
+	sh_log("size: " UINT64_FORMAT ", members: %u, filled: %f, total chain: %u, max chain: %u, avg chain: %f, total_collisions: %u, max_collisions: %u, avg_collisions: %f",
 		   tb->size, tb->members, fillfactor, total_chain_length, max_chain_length, avg_chain_length,
 		   total_collisions, max_collisions, avg_collisions);
 }

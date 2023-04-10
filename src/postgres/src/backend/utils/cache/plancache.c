@@ -44,7 +44,7 @@
  * if the old one gets invalidated.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -699,17 +699,17 @@ RevalidateCachedQuery(CachedPlanSource *plansource,
 	if (rawtree == NULL)
 		tlist = NIL;
 	else if (plansource->parserSetup != NULL)
-		tlist = pg_analyze_and_rewrite_params(rawtree,
+		tlist = pg_analyze_and_rewrite_withcb(rawtree,
 											  plansource->query_string,
 											  plansource->parserSetup,
 											  plansource->parserSetupArg,
 											  queryEnv);
 	else
-		tlist = pg_analyze_and_rewrite(rawtree,
-									   plansource->query_string,
-									   plansource->param_types,
-									   plansource->num_params,
-									   queryEnv);
+		tlist = pg_analyze_and_rewrite_fixedparams(rawtree,
+												   plansource->query_string,
+												   plansource->param_types,
+												   plansource->num_params,
+												   queryEnv);
 
 	/* Release snapshot if we got one */
 	if (snapshot_set)

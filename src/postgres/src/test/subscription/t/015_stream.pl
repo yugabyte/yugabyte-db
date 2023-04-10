@@ -1,22 +1,22 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test streaming of simple large transaction
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 4;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Create publisher node
-my $node_publisher = PostgresNode->new('publisher');
+my $node_publisher = PostgreSQL::Test::Cluster->new('publisher');
 $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->append_conf('postgresql.conf',
 	'logical_decoding_work_mem = 64kB');
 $node_publisher->start;
 
 # Create subscriber node
-my $node_subscriber = PostgresNode->new('subscriber');
+my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
 $node_subscriber->init(allows_streaming => 'logical');
 $node_subscriber->start;
 
@@ -41,13 +41,8 @@ $node_subscriber->safe_psql('postgres',
 	"CREATE SUBSCRIPTION tap_sub CONNECTION '$publisher_connstr application_name=$appname' PUBLICATION tap_pub WITH (streaming = on)"
 );
 
-$node_publisher->wait_for_catchup($appname);
-
-# Also wait for initial table sync to finish
-my $synced_query =
-  "SELECT count(1) = 0 FROM pg_subscription_rel WHERE srsubstate NOT IN ('r', 's');";
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+# Wait for initial table sync to finish
+$node_subscriber->wait_for_subscription_sync($node_publisher, $appname);
 
 my $result =
   $node_subscriber->safe_psql('postgres',
@@ -58,7 +53,7 @@ is($result, qq(2|2|2), 'check initial data was copied to subscriber');
 my $in  = '';
 my $out = '';
 
-my $timer = IPC::Run::timeout(180);
+my $timer = IPC::Run::timeout($PostgreSQL::Test::Utils::timeout_default);
 
 my $h = $node_publisher->background_psql('postgres', \$in, \$out, $timer,
 	on_error_stop => 0);
@@ -133,3 +128,5 @@ is($result, qq(6667|6667|6667),
 
 $node_subscriber->stop;
 $node_publisher->stop;
+
+done_testing();

@@ -1,18 +1,18 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 58;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 program_help_ok('reindexdb');
 program_version_ok('reindexdb');
 program_options_handling_ok('reindexdb');
 
-my $node = PostgresNode->new('main');
+my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
 $node->start;
 
@@ -21,7 +21,6 @@ $ENV{PGOPTIONS} = '--client-min-messages=WARNING';
 # Create a tablespace for testing.
 my $tbspace_path = $node->basedir . '/regress_reindex_tbspace';
 mkdir $tbspace_path or die "cannot create directory $tbspace_path";
-$tbspace_path = TestLib::perl2host($tbspace_path);
 my $tbspace_name = 'reindex_tbspace';
 $node->safe_psql('postgres',
 	"CREATE TABLESPACE $tbspace_name LOCATION '$tbspace_path';");
@@ -199,3 +198,5 @@ $node->command_checks_all(
 		qr/^reindexdb: warning: cannot reindex system catalogs concurrently, skipping all/s
 	],
 	'parallel reindexdb for system with --concurrently skips catalogs');
+
+done_testing();

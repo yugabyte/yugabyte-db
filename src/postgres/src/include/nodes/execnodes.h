@@ -4,7 +4,7 @@
  *	  definitions for executor state nodes
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/execnodes.h
@@ -43,6 +43,7 @@ struct ExprContext;
 struct RangeTblEntry;			/* avoid including parsenodes.h here */
 struct ExprEvalStep;			/* avoid including execExpr.h everywhere */
 struct CopyMultiInsertBuffer;
+struct LogicalTapeSet;
 
 
 /* ----------------
@@ -143,6 +144,8 @@ typedef struct ExprState
  *		Unique				is it a unique index?
  *		OpclassOptions		opclass-specific options, or NULL if none
  *		ReadyForInserts		is it valid for inserts?
+ *		CheckedUnchanged	IndexUnchanged status determined yet?
+ *		IndexUnchanged		aminsert hint, cached for retail inserts
  *		Concurrent			are we doing a concurrent index build?
  *		BrokenHotChain		did we detect any broken HOT chains?
  *		ParallelWorkers		# of workers requested (excludes leader)
@@ -173,7 +176,10 @@ typedef struct IndexInfo
 	uint16	   *ii_UniqueStrats;	/* array with one entry per column */
 	Datum	   *ii_OpclassOptions;	/* array with one entry per column */
 	bool		ii_Unique;
+	bool		ii_NullsNotDistinct;
 	bool		ii_ReadyForInserts;
+	bool		ii_CheckedUnchanged;
+	bool		ii_IndexUnchanged;
 	bool		ii_Concurrent;
 	bool		ii_BrokenHotChain;
 	int			ii_ParallelWorkers;
@@ -386,6 +392,22 @@ typedef struct OnConflictSetState
 	ExprState  *oc_WhereClause; /* state for the WHERE clause */
 } OnConflictSetState;
 
+/* ----------------
+ *	 MergeActionState information
+ *
+ *	Executor state for a MERGE action.
+ * ----------------
+ */
+typedef struct MergeActionState
+{
+	NodeTag		type;
+
+	MergeAction *mas_action;	/* associated MergeAction node */
+	ProjectionInfo *mas_proj;	/* projection of the action's targetlist for
+								 * this rel */
+	ExprState  *mas_whenqual;	/* WHEN [NOT] MATCHED AND conditions */
+} MergeActionState;
+
 /*
  * ResultRelInfo
  *
@@ -497,6 +519,10 @@ typedef struct ResultRelInfo
 	/* ON CONFLICT evaluation state */
 	OnConflictSetState *ri_onConflict;
 
+	/* for MERGE, lists of MergeActionState */
+	List	   *ri_matchedMergeAction;
+	List	   *ri_notMatchedMergeAction;
+
 	/* partition check expression state (NULL if not set up yet) */
 	ExprState  *ri_PartitionCheckExpr;
 
@@ -527,7 +553,26 @@ typedef struct ResultRelInfo
 
 	/* for use by copyfrom.c when performing multi-inserts */
 	struct CopyMultiInsertBuffer *ri_CopyMultiInsertBuffer;
+
+	/*
+	 * Used when a leaf partition is involved in a cross-partition update of
+	 * one of its ancestors; see ExecCrossPartitionUpdateForeignKey().
+	 */
+	List	   *ri_ancestorResultRels;
 } ResultRelInfo;
+
+/*
+ * To avoid an ABI-breaking change in the size of ResultRelInfo in back
+ * branches, we create one of these for each result relation for which we've
+ * computed extraUpdatedCols, and store it in EState.es_resultrelinfo_extra.
+ */
+typedef struct ResultRelInfoExtra
+{
+	ResultRelInfo *rinfo;		/* owning ResultRelInfo */
+
+	/* For INSERT/UPDATE, attnums of generated columns to be computed */
+	Bitmapset  *ri_extraUpdatedCols;
+} ResultRelInfoExtra;
 
 /* ----------------
  *	  AsyncRequest
@@ -650,15 +695,22 @@ typedef struct EState
 	struct JitInstrumentation *es_jit_worker_instr;
 
 	/*
-	 * YugaByte-specific fields
+	 * Lists of ResultRelInfos for foreign tables on which batch-inserts are
+	 * to be executed and owning ModifyTableStates, stored in the same order.
 	 */
+	List	   *es_insert_pending_result_relations;
+	List	   *es_insert_pending_modifytables;
 
+	/* List of ResultRelInfoExtra structs (see above) */
+	List	   *es_resultrelinfo_extra;
+
+	/* YugaByte-specific fields */
 	bool yb_es_is_single_row_modify_txn; /* Is this query a single-row modify
-																				* and the only stmt in this txn. */
+										  * and the only stmt in this txn. */
 	bool yb_es_is_fk_check_disabled;	/* Is FK check disabled? */
 	TupleTableSlot *yb_conflict_slot; /* If a conflict is to be resolved when inserting data,
-																		 * we cache the conflict tuple here when processing and
-																		 * then free the slot after the conflict is resolved. */
+									   * we cache the conflict tuple here when processing and
+									   * then free the slot after the conflict is resolved. */
 	YBCPgExecParameters yb_exec_params;
 
 	/*
@@ -1238,6 +1290,12 @@ typedef struct ProjectSetState
 	MemoryContext argcontext;	/* context for SRF arguments */
 } ProjectSetState;
 
+
+/* flags for mt_merge_subcommands */
+#define MERGE_INSERT	0x01
+#define MERGE_UPDATE	0x02
+#define MERGE_DELETE	0x04
+
 /* ----------------
  *	 ModifyTableState information
  * ----------------
@@ -1245,7 +1303,7 @@ typedef struct ProjectSetState
 typedef struct ModifyTableState
 {
 	PlanState	ps;				/* its first field is NodeTag */
-	CmdType		operation;		/* INSERT, UPDATE, or DELETE */
+	CmdType		operation;		/* INSERT, UPDATE, DELETE, or MERGE */
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	bool		mt_done;		/* are we done? */
 	int			mt_nrels;		/* number of entries in resultRelInfo[] */
@@ -1287,6 +1345,14 @@ typedef struct ModifyTableState
 
 	/* controls transition table population for INSERT...ON CONFLICT UPDATE */
 	struct TransitionCaptureState *mt_oc_transition_capture;
+
+	/* Flags showing which subcommands are present INS/UPD/DEL/DO NOTHING */
+	int			mt_merge_subcommands;
+
+	/* tuple counters for MERGE */
+	double		mt_merge_inserted;
+	double		mt_merge_updated;
+	double		mt_merge_deleted;
 
 	/* YB specific attributes. */
 	bool yb_mt_is_single_row_update_or_delete;
@@ -1562,7 +1628,7 @@ typedef struct IndexScanState
 /* ----------------
  *	 IndexOnlyScanState information
  *
- *		indexqual		   execution state for indexqual expressions
+ *		recheckqual		   execution state for recheckqual expressions
  *		ScanKeys		   Skey structures for index quals
  *		NumScanKeys		   number of ScanKeys
  *		OrderByKeys		   Skey structures for index ordering operators
@@ -1581,7 +1647,7 @@ typedef struct IndexScanState
 typedef struct IndexOnlyScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	ExprState  *indexqual;
+	ExprState  *recheckqual;
 	struct ScanKeyData *ioss_ScanKeys;
 	int			ioss_NumScanKeys;
 	struct ScanKeyData *ioss_OrderByKeys;
@@ -2272,8 +2338,12 @@ typedef struct MemoizeState
 								 * NULL if 'last_tuple' is NULL. */
 	bool		singlerow;		/* true if the cache entry is to be marked as
 								 * complete after caching the first tuple. */
+	bool		binary_mode;	/* true when cache key should be compared bit
+								 * by bit, false when using hash equality ops */
 	MemoizeInstrumentation stats;	/* execution statistics */
 	SharedMemoizeInfo *shared_info; /* statistics for parallel workers */
+	Bitmapset  *keyparamids;	/* Param->paramids of expressions belonging to
+								 * param_exprs */
 } MemoizeState;
 
 /* ----------------
@@ -2480,7 +2550,7 @@ typedef struct AggState
 	bool		table_filled;	/* hash table filled yet? */
 	int			num_hashes;
 	MemoryContext hash_metacxt; /* memory for hash table itself */
-	struct HashTapeInfo *hash_tapeinfo; /* metadata for spill tapes */
+	struct LogicalTapeSet *hash_tapeset;	/* tape set for hash spill tapes */
 	struct HashAggSpill *hash_spills;	/* HashAggSpill for each grouping set,
 										 * exists only during first pass */
 	TupleTableSlot *hash_spill_rslot;	/* for reading spill files */
@@ -2523,6 +2593,18 @@ typedef struct AggState
 typedef struct WindowStatePerFuncData *WindowStatePerFunc;
 typedef struct WindowStatePerAggData *WindowStatePerAgg;
 
+/*
+ * WindowAggStatus -- Used to track the status of WindowAggState
+ */
+typedef enum WindowAggStatus
+{
+	WINDOWAGG_DONE,				/* No more processing to do */
+	WINDOWAGG_RUN,				/* Normal processing of window funcs */
+	WINDOWAGG_PASSTHROUGH,		/* Don't eval window funcs */
+	WINDOWAGG_PASSTHROUGH_STRICT	/* Pass-through plus don't store new
+									 * tuples during spool */
+} WindowAggStatus;
+
 typedef struct WindowAggState
 {
 	ScanState	ss;				/* its first field is NodeTag */
@@ -2549,6 +2631,7 @@ typedef struct WindowAggState
 	struct WindowObjectData *agg_winobj;	/* winobj for aggregate fetches */
 	int64		aggregatedbase; /* start row for current aggregates */
 	int64		aggregatedupto; /* rows before this one are aggregated */
+	WindowAggStatus status;		/* run status of WindowAggState */
 
 	int			frameOptions;	/* frame_clause options, see WindowDef */
 	ExprState  *startOffset;	/* expression for starting bound offset */
@@ -2575,8 +2658,17 @@ typedef struct WindowAggState
 	MemoryContext curaggcontext;	/* current aggregate's working data */
 	ExprContext *tmpcontext;	/* short-term evaluation context */
 
+	ExprState  *runcondition;	/* Condition which must remain true otherwise
+								 * execution of the WindowAgg will finish or
+								 * go into pass-through mode.  NULL when there
+								 * is no such condition. */
+
+	bool		use_pass_through;	/* When false, stop execution when
+									 * runcondition is no longer true.  Else
+									 * just stop evaluating window funcs. */
+	bool		top_window;		/* true if this is the top-most WindowAgg or
+								 * the only WindowAgg in this query level */
 	bool		all_first;		/* true if the scan is starting */
-	bool		all_done;		/* true if the scan is finished */
 	bool		partition_spooled;	/* true if all tuples in current partition
 									 * have been spooled into tuplestore */
 	bool		more_partitions;	/* true if there's more partitions after

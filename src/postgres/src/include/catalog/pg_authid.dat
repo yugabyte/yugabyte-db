@@ -3,7 +3,7 @@
 # pg_authid.dat
 #    Initial contents of the pg_authid system catalog.
 #
-# Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/include/catalog/pg_authid.dat
@@ -79,6 +79,11 @@
   rolcreaterole => 'f', rolcreatedb => 'f', rolcanlogin => 'f',
   rolreplication => 'f', rolbypassrls => 'f', rolconnlimit => '-1',
   rolpassword => '_null_', rolvaliduntil => '_null_' },
+{ oid => '4544', oid_symbol => 'ROLE_PG_CHECKPOINT',
+  rolname => 'pg_checkpoint', rolsuper => 'f', rolinherit => 't',
+  rolcreaterole => 'f', rolcreatedb => 'f', rolcanlogin => 'f',
+  rolreplication => 'f', rolbypassrls => 'f', rolconnlimit => '-1',
+  rolpassword => '_null_', rolvaliduntil => '_null_' },
 { oid => '8030', oid_symbol => 'DEFAULT_ROLE_YB_EXTENSION',
   rolname => 'yb_extension', rolsuper => 'f', rolinherit => 't',
   rolcreaterole => 'f', rolcreatedb => 'f', rolcanlogin => 'f',
@@ -94,4 +99,5 @@
   rolcreaterole => 'f', rolcreatedb => 'f', rolcanlogin => 'f',
   rolreplication => 'f', rolbypassrls => 'f', rolconnlimit => '-1',
   rolpassword => '_null_', rolvaliduntil => '_null_' },
+
 ]

@@ -5,7 +5,7 @@
  *
  * This should be included _AFTER_ postgres.h and system include files
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
  * src/pl/plperl/plperl.h
@@ -54,6 +54,8 @@
 #ifdef isnan
 #undef isnan
 #endif
+/* Work around for using MSVC and Strawberry Perl >= 5.30. */
+#define __builtin_expect(expr, val) (expr)
 #endif
 
 /*
@@ -68,6 +70,15 @@
 #define HAS_BOOL 1
 #endif
 
+/*
+ * Newer versions of the perl headers trigger a lot of warnings with our
+ * compiler flags (at least -Wdeclaration-after-statement,
+ * -Wshadow=compatible-local are known to be problematic). The system_header
+ * pragma hides warnings from within the rest of this file, if supported.
+ */
+#ifdef HAVE_PRAGMA_GCC_SYSTEM_HEADER
+#pragma GCC system_header
+#endif
 
 /*
  * Get the basic Perl API.  We use PERL_NO_GET_CONTEXT mode so that our code
@@ -164,9 +175,6 @@
 #endif
 
 /* perl version and platform portability */
-#define NEED_eval_pv
-#define NEED_newRV_noinc
-#define NEED_sv_2pv_flags
 #include "ppport.h"
 
 /*

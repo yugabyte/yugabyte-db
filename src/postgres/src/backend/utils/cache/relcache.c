@@ -3,7 +3,7 @@
  * relcache.c
  *	  POSTGRES relation descriptor cache code
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -41,6 +41,7 @@
 #include "access/tupdesc_details.h"
 #include "access/xact.h"
 #include "access/xlog.h"
+#include "catalog/binary_upgrade.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -68,11 +69,13 @@
 #include "catalog/schemapg.h"
 #include "catalog/storage.h"
 #include "commands/policy.h"
+#include "commands/publicationcmds.h"
 #include "commands/trigger.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/optimizer.h"
+#include "pgstat.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rowsecurity.h"
 #include "storage/lmgr.h"
@@ -161,6 +164,24 @@ bool		criticalSharedRelcachesBuilt = false;
  * might already be obsolete.
  */
 static long relcacheInvalsReceived = 0L;
+
+/*
+ * in_progress_list is a stack of ongoing RelationBuildDesc() calls.  CREATE
+ * INDEX CONCURRENTLY makes catalog changes under ShareUpdateExclusiveLock.
+ * It critically relies on each backend absorbing those changes no later than
+ * next transaction start.  Hence, RelationBuildDesc() loops until it finishes
+ * without accepting a relevant invalidation.  (Most invalidation consumers
+ * don't do this.)
+ */
+typedef struct inprogressent
+{
+	Oid			reloid;			/* OID of relation being built */
+	bool		invalidated;	/* whether an invalidation arrived for it */
+} InProgressEnt;
+
+static InProgressEnt *in_progress_list;
+static int	in_progress_list_len;
+static int	in_progress_list_maxlen;
 
 /*
  * eoxact_list[] stores the OIDs of relations that (might) need AtEOXact
@@ -927,6 +948,8 @@ YBRelationBuildRuleLock(Relation relation)
  * entry, because that keeps the update logic in RelationClearRelation()
  * manageable.  The other subsidiary data structures are simple enough
  * to be easy to free explicitly, anyway.
+ *
+ * Note: The relation's reloptions must have been extracted first.
  */
 static void
 RelationBuildRuleLock(Relation relation)
@@ -992,6 +1015,7 @@ RelationBuildRuleLock(Relation relation)
 		Datum		rule_datum;
 		char	   *rule_str;
 		RewriteRule *rule;
+		Oid			check_as_user;
 
 		rule = (RewriteRule *) MemoryContextAlloc(rulescxt,
 												  sizeof(RewriteRule));
@@ -1031,10 +1055,23 @@ RelationBuildRuleLock(Relation relation)
 		pfree(rule_str);
 
 		/*
-		 * We want the rule's table references to be checked as though by the
-		 * table owner, not the user referencing the rule.  Therefore, scan
-		 * through the rule's actions and set the checkAsUser field on all
-		 * rtable entries.  We have to look at the qual as well, in case it
+		 * If this is a SELECT rule defining a view, and the view has
+		 * "security_invoker" set, we must perform all permissions checks on
+		 * relations referred to by the rule as the invoking user.
+		 *
+		 * In all other cases (including non-SELECT rules on security invoker
+		 * views), perform the permissions checks as the relation owner.
+		 */
+		if (rule->event == CMD_SELECT &&
+			relation->rd_rel->relkind == RELKIND_VIEW &&
+			RelationHasSecurityInvoker(relation))
+			check_as_user = InvalidOid;
+		else
+			check_as_user = relation->rd_rel->relowner;
+
+		/*
+		 * Scan through the rule's actions and set the checkAsUser field on
+		 * all rtable entries. We have to look at the qual as well, in case it
 		 * contains sublinks.
 		 *
 		 * The reason for doing this when the rule is loaded, rather than when
@@ -1043,8 +1080,8 @@ RelationBuildRuleLock(Relation relation)
 		 * the rule tree during load is relatively cheap (compared to
 		 * constructing it in the first place), so we do it here.
 		 */
-		setRuleCheckAsUser((Node *) rule->actions, relation->rd_rel->relowner);
-		setRuleCheckAsUser(rule->qual, relation->rd_rel->relowner);
+		setRuleCheckAsUser((Node *) rule->actions, check_as_user);
+		setRuleCheckAsUser(rule->qual, check_as_user);
 
 		if (numlocks >= maxlocks)
 		{
@@ -1818,6 +1855,7 @@ YBPreloadRelCache()
 static Relation
 RelationBuildDesc(Oid targetRelId, bool insertIt)
 {
+	int			in_progress_offset;
 	Relation	relation;
 	Oid			relid;
 	HeapTuple	pg_class_tuple;
@@ -1851,6 +1889,21 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	}
 #endif
 
+	/* Register to catch invalidation messages */
+	if (in_progress_list_len >= in_progress_list_maxlen)
+	{
+		int			allocsize;
+
+		allocsize = in_progress_list_maxlen * 2;
+		in_progress_list = repalloc(in_progress_list,
+									allocsize * sizeof(*in_progress_list));
+		in_progress_list_maxlen = allocsize;
+	}
+	in_progress_offset = in_progress_list_len++;
+	in_progress_list[in_progress_offset].reloid = targetRelId;
+retry:
+	in_progress_list[in_progress_offset].invalidated = false;
+
 	/*
 	 * find the tuple in pg_class corresponding to the given relation id
 	 */
@@ -1869,6 +1922,8 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 			MemoryContextDelete(tmpcxt);
 		}
 #endif
+		Assert(in_progress_offset + 1 == in_progress_list_len);
+		in_progress_list_len--;
 		return NULL;
 	}
 
@@ -1945,27 +2000,6 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	 */
 	RelationBuildTupleDesc(relation);
 
-	/*
-	 * Fetch rules and triggers that affect this relation
-	 */
-	if (relation->rd_rel->relhasrules)
-		RelationBuildRuleLock(relation);
-	else
-	{
-		relation->rd_rules = NULL;
-		relation->rd_rulescxt = NULL;
-	}
-
-	if (relation->rd_rel->relhastriggers)
-		RelationBuildTriggers(relation);
-	else
-		relation->trigdesc = NULL;
-
-	if (relation->rd_rel->relrowsecurity)
-		RelationBuildRowSecurity(relation);
-	else
-		relation->rd_rsdesc = NULL;
-
 	/* foreign key data is not loaded till asked for */
 	relation->rd_fkeylist = NIL;
 	relation->rd_fkeyvalid = false;
@@ -1985,33 +2019,41 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	/*
 	 * initialize access method information
 	 */
-	switch (relation->rd_rel->relkind)
-	{
-		case RELKIND_INDEX:
-		case RELKIND_PARTITIONED_INDEX:
-			Assert(relation->rd_rel->relam != InvalidOid);
-			RelationInitIndexAccessInfo(relation);
-			break;
-		case RELKIND_RELATION:
-		case RELKIND_TOASTVALUE:
-		case RELKIND_MATVIEW:
-			Assert(relation->rd_rel->relam != InvalidOid);
-			RelationInitTableAccessMethod(relation);
-			break;
-		case RELKIND_SEQUENCE:
-			Assert(relation->rd_rel->relam == InvalidOid);
-			RelationInitTableAccessMethod(relation);
-			break;
-		case RELKIND_VIEW:
-		case RELKIND_COMPOSITE_TYPE:
-		case RELKIND_FOREIGN_TABLE:
-		case RELKIND_PARTITIONED_TABLE:
-			Assert(relation->rd_rel->relam == InvalidOid);
-			break;
-	}
+	if (relation->rd_rel->relkind == RELKIND_INDEX ||
+		relation->rd_rel->relkind == RELKIND_PARTITIONED_INDEX)
+		RelationInitIndexAccessInfo(relation);
+	else if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) ||
+			 relation->rd_rel->relkind == RELKIND_SEQUENCE)
+		RelationInitTableAccessMethod(relation);
+	else
+		Assert(relation->rd_rel->relam == InvalidOid);
 
 	/* extract reloptions if any */
 	RelationParseRelOptions(relation, pg_class_tuple);
+
+	/*
+	 * Fetch rules and triggers that affect this relation.
+	 *
+	 * Note that RelationBuildRuleLock() relies on this being done after
+	 * extracting the relation's reloptions.
+	 */
+	if (relation->rd_rel->relhasrules)
+		RelationBuildRuleLock(relation);
+	else
+	{
+		relation->rd_rules = NULL;
+		relation->rd_rulescxt = NULL;
+	}
+
+	if (relation->rd_rel->relhastriggers)
+		RelationBuildTriggers(relation);
+	else
+		relation->trigdesc = NULL;
+
+	if (relation->rd_rel->relrowsecurity)
+		RelationBuildRowSecurity(relation);
+	else
+		relation->rd_rsdesc = NULL;
 
 	/*
 	 * initialize the relation lock manager information
@@ -2030,6 +2072,21 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	 * now we can free the memory allocated for pg_class_tuple
 	 */
 	heap_freetuple(pg_class_tuple);
+
+	/*
+	 * If an invalidation arrived mid-build, start over.  Between here and the
+	 * end of this function, don't add code that does or reasonably could read
+	 * system catalogs.  That range must be free from invalidation processing
+	 * for the !insertIt case.  For the insertIt case, RelationCacheInsert()
+	 * will enroll this relation in ordinary relcache invalidation processing,
+	 */
+	if (in_progress_list[in_progress_offset].invalidated)
+	{
+		RelationDestroyRelation(relation, false);
+		goto retry;
+	}
+	Assert(in_progress_offset + 1 == in_progress_list_len);
+	in_progress_list_len--;
 
 	/*
 	 * Insert newly created relation into relcache hash table, if requested.
@@ -2214,6 +2271,7 @@ RelationInitIndexAccessInfo(Relation relation)
 	/*
 	 * Look up the index's access method, save the OID of its handler function
 	 */
+	Assert(relation->rd_rel->relam != InvalidOid);
 	tuple = SearchSysCache1(AMOID, ObjectIdGetDatum(relation->rd_rel->relam));
 	if (!HeapTupleIsValid(tuple))
 		elog(ERROR, "cache lookup failed for access method %u",
@@ -2575,6 +2633,7 @@ RelationInitTableAccessMethod(Relation relation)
 		 * seem prudent to show that in the catalog. So just overwrite it
 		 * here.
 		 */
+		Assert(relation->rd_rel->relam == InvalidOid);
 		relation->rd_amhandler = F_HEAP_TABLEAM_HANDLER;
 	}
 	else if (IsCatalogRelation(relation))
@@ -3066,6 +3125,7 @@ RelationReloadIndexInfo(Relation relation)
 		 * the array fields are allowed to change, though.
 		 */
 		relation->rd_index->indisunique = index->indisunique;
+		relation->rd_index->indnullsnotdistinct = index->indnullsnotdistinct;
 		relation->rd_index->indisprimary = index->indisprimary;
 		relation->rd_index->indisexclusion = index->indisexclusion;
 		relation->rd_index->indimmediate = index->indimmediate;
@@ -3179,6 +3239,9 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 	 */
 	RelationCloseSmgr(relation);
 
+	/* break mutual link with stats entry */
+	pgstat_unlink_relation(relation);
+
 	/*
 	 * Free all the subsidiary data structures of the relcache entry, then the
 	 * entry itself.
@@ -3210,8 +3273,8 @@ RelationDestroyRelation(Relation relation, bool remember_tupdesc)
 	bms_free(relation->rd_keyattr);
 	bms_free(relation->rd_pkattr);
 	bms_free(relation->rd_idattr);
-	if (relation->rd_pubactions)
-		pfree(relation->rd_pubactions);
+	if (relation->rd_pubdesc)
+		pfree(relation->rd_pubdesc);
 	if (relation->rd_options)
 		pfree(relation->rd_options);
 	if (relation->rd_indextuple)
@@ -3392,9 +3455,18 @@ RelationClearRelation(Relation relation, bool rebuild)
 		bool		keep_rules;
 		bool		keep_policies;
 		bool		keep_partkey;
+		bool		keep_pgstats;
 
 		/* Build temporary entry, but don't link it into hashtable */
 		newrel = RelationBuildDesc(save_relid, false);
+
+		/*
+		 * Between here and the end of the swap, don't add code that does or
+		 * reasonably could read system catalogs.  That range must be free
+		 * from invalidation processing.  See RelationBuildDesc() manipulation
+		 * of in_progress_list.
+		 */
+
 		if (newrel == NULL)
 		{
 			/*
@@ -3424,6 +3496,21 @@ RelationClearRelation(Relation relation, bool rebuild)
 		keep_policies = equalRSDesc(relation->rd_rsdesc, newrel->rd_rsdesc);
 		/* partkey is immutable once set up, so we can always keep it */
 		keep_partkey = (relation->rd_partkey != NULL);
+
+		/*
+		 * Keep stats pointers, except when the relkind changes (e.g. when
+		 * converting tables into views). Different kinds of relations might
+		 * have different types of stats.
+		 *
+		 * If we don't want to keep the stats, unlink the stats and relcache
+		 * entry (and do so before entering the "critical section"
+		 * below). This is important because otherwise
+		 * PgStat_TableStatus->relation would get out of sync with
+		 * relation->pgstat_info.
+		 */
+		keep_pgstats = relation->rd_rel->relkind == newrel->rd_rel->relkind;
+		if (!keep_pgstats)
+			pgstat_unlink_relation(relation);
 
 		/*
 		 * Perform swapping of the relcache entry contents.  Within this
@@ -3478,8 +3565,14 @@ RelationClearRelation(Relation relation, bool rebuild)
 			SWAPFIELD(RowSecurityDesc *, rd_rsdesc);
 		/* toast OID override must be preserved */
 		SWAPFIELD(Oid, rd_toastoid);
-		/* pgstat_info must be preserved */
-		SWAPFIELD(struct PgStat_TableStatus *, pgstat_info);
+
+		/* pgstat_info / enabled must be preserved */
+		if (keep_pgstats)
+		{
+			SWAPFIELD(struct PgStat_TableStatus *, pgstat_info);
+			SWAPFIELD(bool, pgstat_enabled);
+		}
+
 		/* preserve old partition key if we have one */
 		if (keep_partkey)
 		{
@@ -3634,6 +3727,14 @@ RelationCacheInvalidateEntry(Oid relationId)
 		relcacheInvalsReceived++;
 		RelationFlushRelation(relation);
 	}
+	else
+	{
+		int			i;
+
+		for (i = 0; i < in_progress_list_len; i++)
+			if (in_progress_list[i].reloid == relationId)
+				in_progress_list[i].invalidated = true;
+	}
 }
 
 /*
@@ -3642,11 +3743,11 @@ RelationCacheInvalidateEntry(Oid relationId)
  *	 and rebuild those with positive reference counts.  Also reset the smgr
  *	 relation cache and re-read relation mapping data.
  *
- *	 This is currently used only to recover from SI message buffer overflow,
- *	 so we do not touch relations having new-in-transaction relfilenodes; they
- *	 cannot be targets of cross-backend SI updates (and our own updates now go
- *	 through a separate linked list that isn't limited by the SI message
- *	 buffer size).
+ *	 Apart from debug_discard_caches, this is currently used only to recover
+ *	 from SI message buffer overflow, so we do not touch relations having
+ *	 new-in-transaction relfilenodes; they cannot be targets of cross-backend
+ *	 SI updates (and our own updates now go through a separate linked list
+ *	 that isn't limited by the SI message buffer size).
  *
  *	 We do this in two phases: the first pass deletes deletable items, and
  *	 the second one rebuilds the rebuildable items.  This is essential for
@@ -3664,9 +3765,14 @@ RelationCacheInvalidateEntry(Oid relationId)
  *	 second pass processes nailed-in-cache items before other nondeletable
  *	 items.  This should ensure that system catalogs are up to date before
  *	 we attempt to use them to reload information about other open relations.
+ *
+ *	 After those two phases of work having immediate effects, we normally
+ *	 signal any RelationBuildDesc() on the stack to start over.  However, we
+ *	 don't do this if called as part of debug_discard_caches.  Otherwise,
+ *	 RelationBuildDesc() would become an infinite loop.
  */
 void
-RelationCacheInvalidate(void)
+RelationCacheInvalidate(bool debug_discard)
 {
 	HASH_SEQ_STATUS status;
 	RelIdCacheEnt *idhentry;
@@ -3674,6 +3780,7 @@ RelationCacheInvalidate(void)
 	List	   *rebuildFirstList = NIL;
 	List	   *rebuildList = NIL;
 	ListCell   *l;
+	int			i;
 
 	/*
 	 * Reload relation mapping data before starting to reconstruct cache.
@@ -3760,6 +3867,11 @@ RelationCacheInvalidate(void)
 		RelationClearRelation(relation, true);
 	}
 	list_free(rebuildList);
+
+	if (!debug_discard)
+		/* Any RelationBuildDesc() on the stack must start over. */
+		for (i = 0; i < in_progress_list_len; i++)
+			in_progress_list[i].invalidated = true;
 }
 
 /*
@@ -3911,6 +4023,13 @@ AtEOXact_RelationCache(bool isCommit)
 	int			i;
 
 	/*
+	 * Forget in_progress_list.  This is relevant when we're aborting due to
+	 * an error during RelationBuildDesc().
+	 */
+	Assert(in_progress_list_len == 0 || !isCommit);
+	in_progress_list_len = 0;
+
+	/*
 	 * Unless the eoxact_list[] overflowed, we only need to examine the rels
 	 * listed in it.  Otherwise fall back on a hash_seq_search scan.
 	 *
@@ -4055,6 +4174,14 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 	HASH_SEQ_STATUS status;
 	RelIdCacheEnt *idhentry;
 	int			i;
+
+	/*
+	 * Forget in_progress_list.  This is relevant when we're aborting due to
+	 * an error during RelationBuildDesc().  We don't commit subtransactions
+	 * during RelationBuildDesc().
+	 */
+	Assert(in_progress_list_len == 0 || !isCommit);
+	in_progress_list_len = 0;
 
 	/*
 	 * Unless the eoxact_list[] overflowed, we only need to examine the rels
@@ -4379,10 +4506,7 @@ RelationBuildLocalRelation(const char *relname,
 	 */
 	MemoryContextSwitchTo(oldcxt);
 
-	if (relkind == RELKIND_RELATION ||
-		relkind == RELKIND_SEQUENCE ||
-		relkind == RELKIND_TOASTVALUE ||
-		relkind == RELKIND_MATVIEW)
+	if (RELKIND_HAS_TABLE_AM(relkind) || relkind == RELKIND_SEQUENCE)
 		RelationInitTableAccessMethod(rel);
 
 	/*
@@ -4439,9 +4563,36 @@ RelationSetNewRelfilenode(Relation relation, char persistence)
 	TransactionId freezeXid = InvalidTransactionId;
 	RelFileNode newrnode;
 
-	/* Allocate a new relfilenode */
-	newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace, NULL,
-									   persistence);
+	if (!IsBinaryUpgrade)
+	{
+		/* Allocate a new relfilenode */
+		newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
+										   NULL, persistence);
+	}
+	else if (relation->rd_rel->relkind == RELKIND_INDEX)
+	{
+		if (!OidIsValid(binary_upgrade_next_index_pg_class_relfilenode))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("index relfilenode value not set when in binary upgrade mode")));
+
+		newrelfilenode = binary_upgrade_next_index_pg_class_relfilenode;
+		binary_upgrade_next_index_pg_class_relfilenode = InvalidOid;
+	}
+	else if (relation->rd_rel->relkind == RELKIND_RELATION)
+	{
+		if (!OidIsValid(binary_upgrade_next_heap_pg_class_relfilenode))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("heap relfilenode value not set when in binary upgrade mode")));
+
+		newrelfilenode = binary_upgrade_next_heap_pg_class_relfilenode;
+		binary_upgrade_next_heap_pg_class_relfilenode = InvalidOid;
+	}
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("unexpected request for new relfilenode in binary upgrade mode")));
 
 	/*
 	 * Get a writable copy of the pg_class tuple for the given relation.
@@ -4456,9 +4607,37 @@ RelationSetNewRelfilenode(Relation relation, char persistence)
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
 	/*
-	 * Schedule unlinking of the old storage at transaction commit.
+	 * Schedule unlinking of the old storage at transaction commit, except
+	 * when performing a binary upgrade, when we must do it immediately.
 	 */
-	RelationDropStorage(relation);
+	if (IsBinaryUpgrade)
+	{
+		SMgrRelation	srel;
+
+		/*
+		 * During a binary upgrade, we use this code path to ensure that
+		 * pg_largeobject and its index have the same relfilenode values as in
+		 * the old cluster. This is necessary because pg_upgrade treats
+		 * pg_largeobject like a user table, not a system table. It is however
+		 * possible that a table or index may need to end up with the same
+		 * relfilenode in the new cluster as what it had in the old cluster.
+		 * Hence, we can't wait until commit time to remove the old storage.
+		 *
+		 * In general, this function needs to have transactional semantics,
+		 * and removing the old storage before commit time surely isn't.
+		 * However, it doesn't really matter, because if a binary upgrade
+		 * fails at this stage, the new cluster will need to be recreated
+		 * anyway.
+		 */
+		srel = smgropen(relation->rd_node, relation->rd_backend);
+		smgrdounlinkall(&srel, 1, false);
+		smgrclose(srel);
+	}
+	else
+	{
+		/* Not a binary upgrade, so just schedule it to happen later. */
+		RelationDropStorage(relation);
+	}
 
 	/*
 	 * Create storage for the main fork of the new relfilenode.  If it's a
@@ -4471,32 +4650,25 @@ RelationSetNewRelfilenode(Relation relation, char persistence)
 	newrnode = relation->rd_node;
 	newrnode.relNode = newrelfilenode;
 
-	switch (relation->rd_rel->relkind)
+	if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind))
 	{
-		case RELKIND_INDEX:
-		case RELKIND_SEQUENCE:
-			{
-				/* handle these directly, at least for now */
-				SMgrRelation srel;
+		table_relation_set_new_filenode(relation, &newrnode,
+										persistence,
+										&freezeXid, &minmulti);
+	}
+	else if (RELKIND_HAS_STORAGE(relation->rd_rel->relkind))
+	{
+		/* handle these directly, at least for now */
+		SMgrRelation srel;
 
-				srel = RelationCreateStorage(newrnode, persistence);
-				smgrclose(srel);
-			}
-			break;
-
-		case RELKIND_RELATION:
-		case RELKIND_TOASTVALUE:
-		case RELKIND_MATVIEW:
-			table_relation_set_new_filenode(relation, &newrnode,
-											persistence,
-											&freezeXid, &minmulti);
-			break;
-
-		default:
-			/* we shouldn't be called for anything else */
-			elog(ERROR, "relation \"%s\" does not have storage",
-				 RelationGetRelationName(relation));
-			break;
+		srel = RelationCreateStorage(newrnode, persistence, true);
+		smgrclose(srel);
+	}
+	else
+	{
+		/* we shouldn't be called for anything else */
+		elog(ERROR, "relation \"%s\" does not have storage",
+			 RelationGetRelationName(relation));
 	}
 
 	/*
@@ -4609,6 +4781,7 @@ void
 RelationCacheInitialize(void)
 {
 	HASHCTL		ctl;
+	int			allocsize;
 
 	/*
 	 * make sure cache memory context exists
@@ -4623,6 +4796,15 @@ RelationCacheInitialize(void)
 	ctl.entrysize = sizeof(RelIdCacheEnt);
 	RelationIdCache = hash_create("Relcache by OID", INITRELCACHESIZE,
 								  &ctl, HASH_ELEM | HASH_BLOBS);
+
+	/*
+	 * reserve enough in_progress_list slots for many cases
+	 */
+	allocsize = 4;
+	in_progress_list =
+		MemoryContextAlloc(CacheMemoryContext,
+						   allocsize * sizeof(*in_progress_list));
+	in_progress_list_maxlen = allocsize;
 
 	/*
 	 * relation mapper needs to be initialized too
@@ -4955,10 +5137,7 @@ RelationCacheInitializePhase3(void)
 
 		/* Reload tableam data if needed */
 		if (relation->rd_tableam == NULL &&
-			(relation->rd_rel->relkind == RELKIND_RELATION ||
-			 relation->rd_rel->relkind == RELKIND_SEQUENCE ||
-			 relation->rd_rel->relkind == RELKIND_TOASTVALUE ||
-			 relation->rd_rel->relkind == RELKIND_MATVIEW))
+			(RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind) || relation->rd_rel->relkind == RELKIND_SEQUENCE))
 		{
 			RelationInitTableAccessMethod(relation);
 			Assert(relation->rd_tableam != NULL);
@@ -5379,7 +5558,7 @@ RelationGetFKeyList(Relation relation)
 								   info->conkey,
 								   info->confkey,
 								   info->conpfeqop,
-								   NULL, NULL);
+								   NULL, NULL, NULL, NULL);
 
 		/* Add FK's node to the result list */
 		result = lappend(result, info);
@@ -6354,34 +6533,61 @@ RelationGetExclusionInfo(Relation indexRelation,
 }
 
 /*
- * Get publication actions for the given relation.
+ * Get the publication information for the given relation.
+ *
+ * Traverse all the publications which the relation is in to get the
+ * publication actions and validate the row filter expressions for such
+ * publications if any. We consider the row filter expression as invalid if it
+ * references any column which is not part of REPLICA IDENTITY.
+ *
+ * To avoid fetching the publication information repeatedly, we cache the
+ * publication actions and row filter validation information.
  */
-struct PublicationActions *
-GetRelationPublicationActions(Relation relation)
+void
+RelationBuildPublicationDesc(Relation relation, PublicationDesc *pubdesc)
 {
 	List	   *puboids;
 	ListCell   *lc;
 	MemoryContext oldcxt;
-	PublicationActions *pubactions = palloc0(sizeof(PublicationActions));
+	Oid			schemaid;
+	List	   *ancestors = NIL;
+	Oid			relid = RelationGetRelid(relation);
 
 	/*
 	 * If not publishable, it publishes no actions.  (pgoutput_change() will
 	 * ignore it.)
 	 */
 	if (!is_publishable_relation(relation))
-		return pubactions;
+	{
+		memset(pubdesc, 0, sizeof(PublicationDesc));
+		pubdesc->rf_valid_for_update = true;
+		pubdesc->rf_valid_for_delete = true;
+		pubdesc->cols_valid_for_update = true;
+		pubdesc->cols_valid_for_delete = true;
+		return;
+	}
 
-	if (relation->rd_pubactions)
-		return memcpy(pubactions, relation->rd_pubactions,
-					  sizeof(PublicationActions));
+	if (relation->rd_pubdesc)
+	{
+		memcpy(pubdesc, relation->rd_pubdesc, sizeof(PublicationDesc));
+		return;
+	}
+
+	memset(pubdesc, 0, sizeof(PublicationDesc));
+	pubdesc->rf_valid_for_update = true;
+	pubdesc->rf_valid_for_delete = true;
+	pubdesc->cols_valid_for_update = true;
+	pubdesc->cols_valid_for_delete = true;
 
 	/* Fetch the publication membership info. */
-	puboids = GetRelationPublications(RelationGetRelid(relation));
+	puboids = GetRelationPublications(relid);
+	schemaid = RelationGetNamespace(relation);
+	puboids = list_concat_unique_oid(puboids, GetSchemaPublications(schemaid));
+
 	if (relation->rd_rel->relispartition)
 	{
 		/* Add publications that the ancestors are in too. */
-		List	   *ancestors = get_partition_ancestors(RelationGetRelid(relation));
-		ListCell   *lc;
+		ancestors = get_partition_ancestors(relid);
 
 		foreach(lc, ancestors)
 		{
@@ -6389,6 +6595,9 @@ GetRelationPublicationActions(Relation relation)
 
 			puboids = list_concat_unique_oid(puboids,
 											 GetRelationPublications(ancestor));
+			schemaid = get_rel_namespace(ancestor);
+			puboids = list_concat_unique_oid(puboids,
+											 GetSchemaPublications(schemaid));
 		}
 	}
 	puboids = list_concat_unique_oid(puboids, GetAllTablesPublications());
@@ -6406,35 +6615,80 @@ GetRelationPublicationActions(Relation relation)
 
 		pubform = (Form_pg_publication) GETSTRUCT(tup);
 
-		pubactions->pubinsert |= pubform->pubinsert;
-		pubactions->pubupdate |= pubform->pubupdate;
-		pubactions->pubdelete |= pubform->pubdelete;
-		pubactions->pubtruncate |= pubform->pubtruncate;
+		pubdesc->pubactions.pubinsert |= pubform->pubinsert;
+		pubdesc->pubactions.pubupdate |= pubform->pubupdate;
+		pubdesc->pubactions.pubdelete |= pubform->pubdelete;
+		pubdesc->pubactions.pubtruncate |= pubform->pubtruncate;
+
+		/*
+		 * Check if all columns referenced in the filter expression are part
+		 * of the REPLICA IDENTITY index or not.
+		 *
+		 * If the publication is FOR ALL TABLES then it means the table has no
+		 * row filters and we can skip the validation.
+		 */
+		if (!pubform->puballtables &&
+			(pubform->pubupdate || pubform->pubdelete) &&
+			pub_rf_contains_invalid_column(pubid, relation, ancestors,
+										   pubform->pubviaroot))
+		{
+			if (pubform->pubupdate)
+				pubdesc->rf_valid_for_update = false;
+			if (pubform->pubdelete)
+				pubdesc->rf_valid_for_delete = false;
+		}
+
+		/*
+		 * Check if all columns are part of the REPLICA IDENTITY index or not.
+		 *
+		 * If the publication is FOR ALL TABLES then it means the table has no
+		 * column list and we can skip the validation.
+		 */
+		if (!pubform->puballtables &&
+			(pubform->pubupdate || pubform->pubdelete) &&
+			pub_collist_contains_invalid_column(pubid, relation, ancestors,
+												pubform->pubviaroot))
+		{
+			if (pubform->pubupdate)
+				pubdesc->cols_valid_for_update = false;
+			if (pubform->pubdelete)
+				pubdesc->cols_valid_for_delete = false;
+		}
 
 		ReleaseSysCache(tup);
 
 		/*
-		 * If we know everything is replicated, there is no point to check for
-		 * other publications.
+		 * If we know everything is replicated and the row filter is invalid
+		 * for update and delete, there is no point to check for other
+		 * publications.
 		 */
-		if (pubactions->pubinsert && pubactions->pubupdate &&
-			pubactions->pubdelete && pubactions->pubtruncate)
+		if (pubdesc->pubactions.pubinsert && pubdesc->pubactions.pubupdate &&
+			pubdesc->pubactions.pubdelete && pubdesc->pubactions.pubtruncate &&
+			!pubdesc->rf_valid_for_update && !pubdesc->rf_valid_for_delete)
+			break;
+
+		/*
+		 * If we know everything is replicated and the column list is invalid
+		 * for update and delete, there is no point to check for other
+		 * publications.
+		 */
+		if (pubdesc->pubactions.pubinsert && pubdesc->pubactions.pubupdate &&
+			pubdesc->pubactions.pubdelete && pubdesc->pubactions.pubtruncate &&
+			!pubdesc->cols_valid_for_update && !pubdesc->cols_valid_for_delete)
 			break;
 	}
 
-	if (relation->rd_pubactions)
+	if (relation->rd_pubdesc)
 	{
-		pfree(relation->rd_pubactions);
-		relation->rd_pubactions = NULL;
+		pfree(relation->rd_pubdesc);
+		relation->rd_pubdesc = NULL;
 	}
 
-	/* Now save copy of the actions in the relcache entry. */
+	/* Now save copy of the descriptor in the relcache entry. */
 	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
-	relation->rd_pubactions = palloc(sizeof(PublicationActions));
-	memcpy(relation->rd_pubactions, pubactions, sizeof(PublicationActions));
+	relation->rd_pubdesc = palloc(sizeof(PublicationDesc));
+	memcpy(relation->rd_pubdesc, pubdesc, sizeof(PublicationDesc));
 	MemoryContextSwitchTo(oldcxt);
-
-	return pubactions;
 }
 
 /*
@@ -6943,10 +7197,7 @@ load_relcache_init_file(bool shared)
 				nailed_rels++;
 
 			/* Load table AM data */
-			if (rel->rd_rel->relkind == RELKIND_RELATION ||
-				rel->rd_rel->relkind == RELKIND_SEQUENCE ||
-				rel->rd_rel->relkind == RELKIND_TOASTVALUE ||
-				rel->rd_rel->relkind == RELKIND_MATVIEW)
+			if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind) || rel->rd_rel->relkind == RELKIND_SEQUENCE)
 				RelationInitTableAccessMethod(rel);
 
 			Assert(rel->rd_index == NULL);
@@ -7007,7 +7258,7 @@ load_relcache_init_file(bool shared)
 		rel->rd_keyattr = NULL;
 		rel->rd_pkattr = NULL;
 		rel->rd_idattr = NULL;
-		rel->rd_pubactions = NULL;
+		rel->rd_pubdesc = NULL;
 		rel->rd_statvalid = false;
 		rel->rd_statlist = NIL;
 		rel->rd_fkeyvalid = false;
@@ -7331,7 +7582,7 @@ write_item(const void *data, Size len, FILE *fp)
 {
 	if (fwrite(&len, 1, sizeof(len), fp) != sizeof(len))
 		elog(FATAL, "could not write init file");
-	if (fwrite(data, 1, len, fp) != len)
+	if (len > 0 && fwrite(data, 1, len, fp) != len)
 		elog(FATAL, "could not write init file");
 }
 

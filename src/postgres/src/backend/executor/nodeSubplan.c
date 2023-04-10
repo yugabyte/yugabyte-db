@@ -11,7 +11,7 @@
  * subplans, which are re-evaluated every time their result is required.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -26,7 +26,6 @@
  */
 #include "postgres.h"
 
-#include <limits.h>
 #include <math.h>
 
 #include "access/htup_details.h"
@@ -35,6 +34,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/optimizer.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -499,7 +499,7 @@ buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 	node->havehashrows = false;
 	node->havenullrows = false;
 
-	nbuckets = (long) Min(planstate->plan->plan_rows, (double) LONG_MAX);
+	nbuckets = clamp_cardinality_to_long(planstate->plan->plan_rows);
 	if (nbuckets < 1)
 		nbuckets = 1;
 

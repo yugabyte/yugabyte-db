@@ -8,7 +8,7 @@
  *
  * A TupleQueueReader reads tuples from a shm_mq and returns the tuples.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -60,7 +60,7 @@ tqueueReceiveSlot(TupleTableSlot *slot, DestReceiver *self)
 
 	/* Send the tuple itself. */
 	tuple = ExecFetchSlotMinimalTuple(slot, &should_free);
-	result = shm_mq_send(tqueue->queue, tuple->t_len, tuple, false);
+	result = shm_mq_send(tqueue->queue, tuple->t_len, tuple, false, false);
 
 	if (should_free)
 		pfree(tuple);

@@ -13,7 +13,7 @@
 # No output if everything is OK, else compiler errors.
 #
 # src/tools/pginclude/headerscheck
-# Copyright (c) 2009-2021, PostgreSQL Global Development Group
+# Copyright (c) 2009-2022, PostgreSQL Global Development Group
 
 if [ -z "$1" ]; then
     srcdir="."
@@ -71,6 +71,7 @@ do
 	test "$f" = src/include/port/win32/sys/socket.h && continue
 	test "$f" = src/include/port/win32_msvc/dirent.h && continue
 	test "$f" = src/include/port/win32_msvc/utime.h && continue
+	test "$f" = src/include/port/win32ntdll.h && continue
 	test "$f" = src/port/pthread-win32.h && continue
 
 	# Likewise, these files are platform-specific, and the one
@@ -110,6 +111,7 @@ do
 
 	# Also not meant to be included standalone.
 	test "$f" = src/include/common/unicode_combining_table.h && continue
+	test "$f" = src/include/common/unicode_east_asian_fw_table.h && continue
 
 	# We can't make these Bison output files compilable standalone
 	# without using "%code require", which old Bison versions lack.

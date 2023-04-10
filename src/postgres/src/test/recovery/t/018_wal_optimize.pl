@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test WAL replay when some operation has skipped WAL.
 #
@@ -12,12 +12,14 @@
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 38;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 sub check_orphan_relfilenodes
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my ($node, $test_name) = @_;
 
 	my $db_oid = $node->safe_psql('postgres',
@@ -43,7 +45,7 @@ sub run_wal_optimize
 {
 	my $wal_level = shift;
 
-	my $node = PostgresNode->new("node_$wal_level");
+	my $node = PostgreSQL::Test::Cluster->new("node_$wal_level");
 	$node->init;
 	$node->append_conf(
 		'postgresql.conf', qq(
@@ -58,7 +60,6 @@ wal_skip_threshold = 0
 	# Setup
 	my $tablespace_dir = $node->basedir . '/tablespace_other';
 	mkdir($tablespace_dir);
-	$tablespace_dir = TestLib::perl2host($tablespace_dir);
 	my $result;
 
 	# Test redo of CREATE TABLESPACE.
@@ -146,11 +147,10 @@ wal_skip_threshold = 0
 	# Data file for COPY query in subsequent tests
 	my $basedir   = $node->basedir;
 	my $copy_file = "$basedir/copy_data.txt";
-	TestLib::append_to_file(
+	PostgreSQL::Test::Utils::append_to_file(
 		$copy_file, qq(20000,30000
 20001,30001
 20002,30002));
-	$copy_file = TestLib::perl2host($copy_file);
 
 	# Test truncation with inserted tuples using both INSERT and COPY.  Tuples
 	# inserted after the truncation should be seen.
@@ -397,3 +397,5 @@ wal_skip_threshold = 0
 # Run same test suite for multiple wal_level values.
 run_wal_optimize("minimal");
 run_wal_optimize("replica");
+
+done_testing();

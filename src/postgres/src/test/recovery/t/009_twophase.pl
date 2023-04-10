@@ -1,19 +1,21 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Tests dedicated to two-phase commit in recovery
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 24;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 my $psql_out = '';
 my $psql_rc  = '';
 
 sub configure_and_reload
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my ($node, $parameter) = @_;
 	my $name = $node->name;
 
@@ -29,7 +31,7 @@ sub configure_and_reload
 # Set up two nodes, which will alternately be primary and replication standby.
 
 # Setup london node
-my $node_london = PostgresNode->new("london");
+my $node_london = PostgreSQL::Test::Cluster->new("london");
 $node_london->init(allows_streaming => 1);
 $node_london->append_conf(
 	'postgresql.conf', qq(
@@ -40,7 +42,7 @@ $node_london->start;
 $node_london->backup('london_backup');
 
 # Setup paris node
-my $node_paris = PostgresNode->new('paris');
+my $node_paris = PostgreSQL::Test::Cluster->new('paris');
 $node_paris->init_from_backup($node_london, 'london_backup',
 	has_streaming => 1);
 $node_paris->start;
@@ -478,3 +480,5 @@ $cur_standby->psql(
 is( $psql_out,
 	qq{27|issued to paris},
 	"Check expected t_009_tbl2 data on standby");
+
+done_testing();

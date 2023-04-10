@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_views.sql
  *
@@ -266,6 +266,7 @@ CREATE VIEW pg_stats_ext WITH (security_barrier) AS
            ) AS attnames,
            pg_get_statisticsobjdef_expressions(s.oid) as exprs,
            s.stxkind AS kinds,
+           sd.stxdinherit AS inherited,
            sd.stxdndistinct AS n_distinct,
            sd.stxddependencies AS dependencies,
            m.most_common_vals,
@@ -298,6 +299,7 @@ CREATE VIEW pg_stats_ext_exprs WITH (security_barrier) AS
            s.stxname AS statistics_name,
            pg_get_userbyid(s.stxowner) AS statistics_owner,
            stat.expr,
+           sd.stxdinherit AS inherited,
            (stat.a).stanullfrac AS null_frac,
            (stat.a).stawidth AS avg_width,
            (stat.a).stadistinct AS n_distinct,
@@ -366,7 +368,14 @@ CREATE VIEW pg_publication_tables AS
     SELECT
         P.pubname AS pubname,
         N.nspname AS schemaname,
-        C.relname AS tablename
+        C.relname AS tablename,
+        ( SELECT array_agg(a.attname ORDER BY a.attnum)
+          FROM pg_attribute a
+          WHERE a.attrelid = GPT.relid AND a.attnum > 0 AND
+                NOT a.attisdropped AND
+                (a.attnum = ANY(GPT.attrs) OR GPT.attrs IS NULL)
+        ) AS attnames,
+        pg_get_expr(GPT.qual, GPT.relid) AS rowfilter
     FROM pg_publication P,
          LATERAL pg_get_publication_tables(P.pubname) GPT,
          pg_class C JOIN pg_namespace N ON (N.oid = C.relnamespace)
@@ -605,6 +614,12 @@ CREATE VIEW pg_hba_file_rules AS
 REVOKE ALL ON pg_hba_file_rules FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION pg_hba_file_rules() FROM PUBLIC;
 
+CREATE VIEW pg_ident_file_mappings AS
+   SELECT * FROM pg_ident_file_mappings() AS A;
+
+REVOKE ALL ON pg_ident_file_mappings FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION pg_ident_file_mappings() FROM PUBLIC;
+
 CREATE VIEW pg_timezone_abbrevs AS
     SELECT * FROM pg_timezone_abbrevs();
 
@@ -621,13 +636,17 @@ CREATE VIEW pg_shmem_allocations AS
     SELECT * FROM pg_get_shmem_allocations();
 
 REVOKE ALL ON pg_shmem_allocations FROM PUBLIC;
+GRANT SELECT ON pg_shmem_allocations TO pg_read_all_stats;
 REVOKE EXECUTE ON FUNCTION pg_get_shmem_allocations() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION pg_get_shmem_allocations() TO pg_read_all_stats;
 
 CREATE VIEW pg_backend_memory_contexts AS
     SELECT * FROM pg_get_backend_memory_contexts();
 
 REVOKE ALL ON pg_backend_memory_contexts FROM PUBLIC;
+GRANT SELECT ON pg_backend_memory_contexts TO pg_read_all_stats;
 REVOKE EXECUTE ON FUNCTION pg_get_backend_memory_contexts() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION pg_get_backend_memory_contexts() TO pg_read_all_stats;
 
 -- Statistics views
 
@@ -711,22 +730,31 @@ CREATE VIEW pg_statio_all_tables AS
             pg_stat_get_blocks_fetched(C.oid) -
                     pg_stat_get_blocks_hit(C.oid) AS heap_blks_read,
             pg_stat_get_blocks_hit(C.oid) AS heap_blks_hit,
-            sum(pg_stat_get_blocks_fetched(I.indexrelid) -
-                    pg_stat_get_blocks_hit(I.indexrelid))::bigint AS idx_blks_read,
-            sum(pg_stat_get_blocks_hit(I.indexrelid))::bigint AS idx_blks_hit,
+            I.idx_blks_read AS idx_blks_read,
+            I.idx_blks_hit AS idx_blks_hit,
             pg_stat_get_blocks_fetched(T.oid) -
                     pg_stat_get_blocks_hit(T.oid) AS toast_blks_read,
             pg_stat_get_blocks_hit(T.oid) AS toast_blks_hit,
-            pg_stat_get_blocks_fetched(X.indexrelid) -
-                    pg_stat_get_blocks_hit(X.indexrelid) AS tidx_blks_read,
-            pg_stat_get_blocks_hit(X.indexrelid) AS tidx_blks_hit
+            X.idx_blks_read AS tidx_blks_read,
+            X.idx_blks_hit AS tidx_blks_hit
     FROM pg_class C LEFT JOIN
-            pg_index I ON C.oid = I.indrelid LEFT JOIN
-            pg_class T ON C.reltoastrelid = T.oid LEFT JOIN
-            pg_index X ON T.oid = X.indrelid
+            pg_class T ON C.reltoastrelid = T.oid
             LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
-    WHERE C.relkind IN ('r', 't', 'm')
-    GROUP BY C.oid, N.nspname, C.relname, T.oid, X.indexrelid;
+            LEFT JOIN LATERAL (
+              SELECT sum(pg_stat_get_blocks_fetched(indexrelid) -
+                         pg_stat_get_blocks_hit(indexrelid))::bigint
+                     AS idx_blks_read,
+                     sum(pg_stat_get_blocks_hit(indexrelid))::bigint
+                     AS idx_blks_hit
+              FROM pg_index WHERE indrelid = C.oid ) I ON true
+            LEFT JOIN LATERAL (
+              SELECT sum(pg_stat_get_blocks_fetched(indexrelid) -
+                         pg_stat_get_blocks_hit(indexrelid))::bigint
+                     AS idx_blks_read,
+                     sum(pg_stat_get_blocks_hit(indexrelid))::bigint
+                     AS idx_blks_hit
+              FROM pg_index WHERE indrelid = T.oid ) X ON true
+    WHERE C.relkind IN ('r', 't', 'm');
 
 CREATE VIEW pg_statio_sys_tables AS
     SELECT * FROM pg_statio_all_tables
@@ -898,6 +926,20 @@ CREATE VIEW pg_stat_wal_receiver AS
             s.conninfo
     FROM pg_stat_get_wal_receiver() s
     WHERE s.pid IS NOT NULL;
+
+CREATE VIEW pg_stat_recovery_prefetch AS
+    SELECT
+            s.stats_reset,
+            s.prefetch,
+            s.hit,
+            s.skip_init,
+            s.skip_new,
+            s.skip_fpw,
+            s.skip_rep,
+            s.wal_distance,
+            s.block_distance,
+            s.io_depth
+     FROM pg_stat_get_recovery_prefetch() s;
 
 CREATE VIEW pg_stat_subscription AS
     SELECT
@@ -1273,6 +1315,17 @@ REVOKE ALL ON pg_replication_origin_status FROM public;
 
 -- All columns of pg_subscription except subconninfo are publicly readable.
 REVOKE ALL ON pg_subscription FROM public;
-GRANT SELECT (oid, subdbid, subname, subowner, subenabled, subbinary,
-              substream, subtwophasestate, subslotname, subsynccommit, subpublications)
+GRANT SELECT (oid, subdbid, subskiplsn, subname, subowner, subenabled,
+              subbinary, substream, subtwophasestate, subdisableonerr, subslotname,
+              subsynccommit, subpublications)
     ON pg_subscription TO public;
+
+CREATE VIEW pg_stat_subscription_stats AS
+    SELECT
+        ss.subid,
+        s.subname,
+        ss.apply_error_count,
+        ss.sync_error_count,
+        ss.stats_reset
+    FROM pg_subscription as s,
+         pg_stat_get_subscription_stats(s.oid) as ss;

@@ -11,7 +11,7 @@
  * so for all external functions, all the referenced functions (and
  * prerequisites) will be imported.
  *
- * Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/lib/llvmjit/llvmjit_inline.cpp
@@ -62,6 +62,7 @@ extern "C"
 #include <llvm/IR/ModuleSummaryIndex.h>
 #include <llvm/Linker/IRMover.h>
 #include <llvm/Support/ManagedStatic.h>
+#include <llvm/Support/MemoryBuffer.h>
 
 
 /*
@@ -594,7 +595,11 @@ function_inlinable(llvm::Function &F,
 	if (F.materialize())
 		elog(FATAL, "failed to materialize metadata");
 
-	if (F.getAttributes().hasFnAttribute(llvm::Attribute::NoInline))
+#if LLVM_VERSION_MAJOR < 14
+#define hasFnAttr hasFnAttribute
+#endif
+
+	if (F.getAttributes().hasFnAttr(llvm::Attribute::NoInline))
 	{
 		ilog(DEBUG1, "ineligibile to import %s due to noinline",
 			 F.getName().data());
@@ -871,7 +876,9 @@ create_redirection_function(std::unique_ptr<llvm::Module> &importMod,
 	llvm::Function *AF;
 	llvm::BasicBlock *BB;
 	llvm::CallInst *fwdcall;
+#if LLVM_VERSION_MAJOR < 14
 	llvm::Attribute inlineAttribute;
+#endif
 
 	AF = llvm::Function::Create(F->getFunctionType(),
 								LinkageTypes::AvailableExternallyLinkage,
@@ -880,9 +887,13 @@ create_redirection_function(std::unique_ptr<llvm::Module> &importMod,
 
 	Builder.SetInsertPoint(BB);
 	fwdcall = Builder.CreateCall(F, &*AF->arg_begin());
+#if LLVM_VERSION_MAJOR < 14
 	inlineAttribute = llvm::Attribute::get(Context,
 										   llvm::Attribute::AlwaysInline);
 	fwdcall->addAttribute(~0U, inlineAttribute);
+#else
+	fwdcall->addFnAttr(llvm::Attribute::AlwaysInline);
+#endif
 	Builder.CreateRet(fwdcall);
 
 	return AF;

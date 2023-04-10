@@ -67,7 +67,7 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
   DEFAULT <replaceable>default_expr</replaceable> |
   GENERATED ALWAYS AS ( <replaceable>generation_expr</replaceable> ) STORED |
   GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <replaceable>sequence_options</replaceable> ) ] |
-  UNIQUE <replaceable class="parameter">index_parameters</replaceable> |
+  UNIQUE [ NULLS [ NOT ] DISTINCT ] <replaceable class="parameter">index_parameters</replaceable> |
   PRIMARY KEY <replaceable class="parameter">index_parameters</replaceable> |
   REFERENCES <replaceable class="parameter">reftable</replaceable> [ ( <replaceable class="parameter">refcolumn</replaceable> ) ] [ MATCH FULL | MATCH PARTIAL | MATCH SIMPLE ]
     [ ON DELETE <replaceable class="parameter">referential_action</replaceable> ] [ ON UPDATE <replaceable class="parameter">referential_action</replaceable> ] }
@@ -77,7 +77,7 @@ CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } | UNLOGGED ] TABLE [ IF NOT EXI
 
 [ CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> ]
 { CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ] |
-  UNIQUE ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) <replaceable class="parameter">index_parameters</replaceable> |
+  UNIQUE [ NULLS [ NOT ] DISTINCT ] ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) <replaceable class="parameter">index_parameters</replaceable> |
   PRIMARY KEY ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) <replaceable class="parameter">index_parameters</replaceable> |
   EXCLUDE [ USING <replaceable class="parameter">index_method</replaceable> ] ( <replaceable class="parameter">exclude_element</replaceable> WITH <replaceable class="parameter">operator</replaceable> [, ... ] ) <replaceable class="parameter">index_parameters</replaceable> [ WHERE ( <replaceable class="parameter">predicate</replaceable> ) ] |
   FOREIGN KEY ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) REFERENCES <replaceable class="parameter">reftable</replaceable> [ ( <replaceable class="parameter">refcolumn</replaceable> [, ... ] ) ]
@@ -105,6 +105,10 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
 <phrase><replaceable class="parameter">exclude_element</replaceable> in an <literal>EXCLUDE</literal> constraint is:</phrase>
 
 { <replaceable class="parameter">column_name</replaceable> | ( <replaceable class="parameter">expression</replaceable> ) } [ <replaceable class="parameter">opclass</replaceable> ] [ ASC | DESC ] [ NULLS { FIRST | LAST } ]
+
+<phrase><replaceable class="parameter">referential_action</replaceable> in a <literal>FOREIGN KEY</literal>/<literal>REFERENCES</literal> constraint is:</phrase>
+
+{ NO ACTION | RESTRICT | CASCADE | SET NULL [ ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) ] | SET DEFAULT [ ( <replaceable class="parameter">column_name</replaceable> [, ... ] ) ] }
 </synopsis>
 
  </refsynopsisdiv>
@@ -124,8 +128,8 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
    schema.  Otherwise it is created in the current schema.  Temporary
    tables exist in a special schema, so a schema name cannot be given
    when creating a temporary table.  The name of the table must be
-   distinct from the name of any other table, sequence, index, view,
-   or foreign table in the same schema.
+   distinct from the name of any other relation (table, sequence, index, view,
+   materialized view, or foreign table) in the same schema.
   </para>
 
   <para>
@@ -210,6 +214,11 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       of an unlogged table are also not replicated to standby servers.
       Any indexes created on an unlogged table are automatically unlogged as
       well.
+     </para>
+
+     <para>
+      If this is specified, any sequences created together with the unlogged
+      table (for identity or serial columns) are also created as unlogged.
      </para>
     </listitem>
    </varlistentry>
@@ -913,8 +922,8 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
    </varlistentry>
 
    <varlistentry>
-    <term><literal>UNIQUE</literal> (column constraint)</term>
-    <term><literal>UNIQUE ( <replaceable class="parameter">column_name</replaceable> [, ... ] )</literal>
+    <term><literal>UNIQUE [ NULLS [ NOT ] DISTINCT ]</literal> (column constraint)</term>
+    <term><literal>UNIQUE [ NULLS [ NOT ] DISTINCT ] ( <replaceable class="parameter">column_name</replaceable> [, ... ] )</literal>
     <optional> <literal>INCLUDE ( <replaceable class="parameter">column_name</replaceable> [, ...])</literal> </optional> (table constraint)</term>
 
     <listitem>
@@ -930,7 +939,8 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
 
      <para>
       For the purpose of a unique constraint, null values are not
-      considered equal.
+      considered equal, unless <literal>NULLS NOT DISTINCT</literal> is
+      specified.
      </para>
 
      <para>
@@ -1165,19 +1175,23 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
        </varlistentry>
 
        <varlistentry>
-        <term><literal>SET NULL</literal></term>
+        <term><literal>SET NULL [ ( <replaceable>column_name</replaceable> [, ... ] ) ]</literal></term>
         <listitem>
          <para>
-          Set the referencing column(s) to null.
+          Set all of the referencing columns, or a specified subset of the
+          referencing columns, to null. A subset of columns can only be
+          specified for <literal>ON DELETE</literal> actions.
          </para>
         </listitem>
        </varlistentry>
 
        <varlistentry>
-        <term><literal>SET DEFAULT</literal></term>
+        <term><literal>SET DEFAULT [ ( <replaceable>column_name</replaceable> [, ... ] ) ]</literal></term>
         <listitem>
          <para>
-          Set the referencing column(s) to their default values.
+          Set all of the referencing columns, or a specified subset of the
+          referencing columns, to their default values. A subset of columns
+          can only be specified for <literal>ON DELETE</literal> actions.
           (There must be a row in the referenced table matching the default
           values, if they are not null, or the operation will fail.)
          </para>
@@ -1394,7 +1408,9 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       to the indicated percentage; the remaining space on each page is
       reserved for updating rows on that page.  This gives <command>UPDATE</command>
       a chance to place the updated copy of a row on the same page as the
-      original, which is more efficient than placing it on a different page.
+      original, which is more efficient than placing it on a different
+      page, and makes <link linkend="storage-hot">heap-only tuple
+      updates</link> more likely.
       For a table whose entries are never updated, complete packing is the
       best choice, but in heavily updated tables smaller fillfactors are
       appropriate.  This parameter cannot be set for TOAST tables.
@@ -2215,6 +2231,16 @@ CREATE TABLE cities_partdef
 
    <para>
     The <literal>EXCLUDE</literal> constraint type is a
+    <productname>PostgreSQL</productname> extension.
+   </para>
+  </refsect2>
+
+  <refsect2>
+   <title>Foreign-Key Constraint Actions</title>
+
+   <para>
+    The ability to specify column lists in the foreign-key actions
+    <literal>SET DEFAULT</literal> and <literal>SET NULL</literal> is a
     <productname>PostgreSQL</productname> extension.
    </para>
   </refsect2>

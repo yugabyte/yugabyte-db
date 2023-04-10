@@ -3,7 +3,7 @@
  * pg_shseclabel.h
  *	  definition of the "shared security label" system catalog (pg_shseclabel)
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_shseclabel.h
@@ -39,9 +39,7 @@ CATALOG(pg_shseclabel,3592,SharedSecLabelRelationId) BKI_SHARED_RELATION BKI_ROW
 
 typedef FormData_pg_shseclabel * Form_pg_shseclabel;
 
-DECLARE_TOAST(pg_shseclabel, 4060, 4061);
-#define PgShseclabelToastTable 4060
-#define PgShseclabelToastIndex 4061
+DECLARE_TOAST_WITH_MACRO(pg_shseclabel, 4060, 4061, PgShseclabelToastTable, PgShseclabelToastIndex);
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_shseclabel_object_index, 3593, SharedSecLabelObjectIndexId, on pg_shseclabel using btree(objoid oid_ops, classoid oid_ops, provider text_ops));
 

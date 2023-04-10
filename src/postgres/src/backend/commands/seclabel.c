@@ -3,7 +3,7 @@
  * seclabel.c
  *	  routines to support security label feature.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * -------------------------------------------------------------------------
@@ -79,7 +79,9 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_OPCLASS:
 		case OBJECT_OPERATOR:
 		case OBJECT_OPFAMILY:
+		case OBJECT_PARAMETER_ACL:
 		case OBJECT_POLICY:
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_RULE:
 		case OBJECT_STATISTIC_EXT:
@@ -245,8 +247,8 @@ GetSharedSecurityLabel(const ObjectAddress *object, const char *provider)
 
 	pg_shseclabel = table_open(SharedSecLabelRelationId, AccessShareLock);
 
-	scan = systable_beginscan(pg_shseclabel, SharedSecLabelObjectIndexId, true,
-							  NULL, 3, keys);
+	scan = systable_beginscan(pg_shseclabel, SharedSecLabelObjectIndexId,
+							  criticalSharedRelcachesBuilt, NULL, 3, keys);
 
 	tuple = systable_getnext(scan);
 	if (HeapTupleIsValid(tuple))

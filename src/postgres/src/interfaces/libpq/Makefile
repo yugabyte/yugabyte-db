@@ -2,7 +2,7 @@
 #
 # Makefile for src/interfaces/libpq library
 #
-# Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/interfaces/libpq/Makefile
@@ -13,6 +13,7 @@ subdir = src/interfaces/libpq
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
+export with_ssl
 
 PGFILEDESC = "PostgreSQL Access Library"
 
@@ -94,7 +95,9 @@ SHLIB_PREREQS = submake-libpgport
 
 SHLIB_EXPORTS = exports.txt
 
+ifeq ($(with_ssl),openssl)
 PKG_CONFIG_REQUIRES_PRIVATE = libssl libcrypto
+endif
 
 all: all-lib libpq-refs-stamp
 
@@ -115,7 +118,9 @@ backend_src = $(top_srcdir)/src/backend
 libpq-refs-stamp: $(shlib)
 ifneq ($(enable_coverage), yes)
 ifeq (,$(filter aix solaris,$(PORTNAME)))
-	! nm -A -u $< 2>/dev/null | grep -v __cxa_atexit | grep exit
+	@if nm -A -u $< 2>/dev/null | grep -v __cxa_atexit | grep exit; then \
+		echo 'libpq must not be calling any function which invokes exit'; exit 1; \
+	fi
 endif
 endif
 	touch $@
@@ -135,8 +140,16 @@ install: all installdirs install-lib
 	$(INSTALL_DATA) $(srcdir)/pqexpbuffer.h '$(DESTDIR)$(includedir_internal)'
 	$(INSTALL_DATA) $(srcdir)/pg_service.conf.sample '$(DESTDIR)$(datadir)/pg_service.conf.sample'
 
-installcheck:
-	$(MAKE) -C test $@
+test-build:
+	$(MAKE) -C test all
+
+check installcheck: export PATH := $(CURDIR)/test:$(PATH)
+
+check: test-build all
+	$(prove_check)
+
+installcheck: test-build all
+	$(prove_installcheck)
 
 installdirs: installdirs-lib
 	$(MKDIR_P) '$(DESTDIR)$(includedir)' '$(DESTDIR)$(includedir_internal)' '$(DESTDIR)$(datadir)'
@@ -151,6 +164,7 @@ uninstall: uninstall-lib
 
 clean distclean: clean-lib
 	$(MAKE) -C test $@
+	rm -rf tmp_check
 	rm -f $(OBJS) pthread.h libpq-refs-stamp
 # Might be left over from a Win32 client-only build
 	rm -f pg_config_paths.h

@@ -1,12 +1,12 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test generic xlog record work for bloom index replication.
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 31;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 my $node_primary;
 my $node_standby;
@@ -16,12 +16,10 @@ sub test_index_replay
 {
 	my ($test_name) = @_;
 
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	# Wait for standby to catch up
-	my $applname = $node_standby->name;
-	my $caughtup_query =
-	  "SELECT pg_current_wal_lsn() <= write_lsn FROM pg_stat_replication WHERE application_name = '$applname';";
-	$node_primary->poll_query_until('postgres', $caughtup_query)
-	  or die "Timed out while waiting for standby 1 to catch up";
+	$node_primary->wait_for_catchup($node_standby);
 
 	my $queries = qq(SET enable_seqscan=off;
 SET enable_bitmapscan=on;
@@ -43,7 +41,7 @@ SELECT * FROM tst WHERE i = 7 AND t = 'e';
 }
 
 # Initialize primary node
-$node_primary = PostgresNode->new('primary');
+$node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(allows_streaming => 1);
 $node_primary->start;
 my $backup_name = 'my_backup';
@@ -52,7 +50,7 @@ my $backup_name = 'my_backup';
 $node_primary->backup($backup_name);
 
 # Create streaming standby linking to primary
-$node_standby = PostgresNode->new('standby');
+$node_standby = PostgreSQL::Test::Cluster->new('standby');
 $node_standby->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby->start;
@@ -82,3 +80,5 @@ for my $i (1 .. 10)
 	);
 	test_index_replay("insert $i");
 }
+
+done_testing();

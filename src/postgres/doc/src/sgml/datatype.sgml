@@ -1217,6 +1217,8 @@ SELECT '52093.89'::money::numeric::float8;
     <type>char(<replaceable>n</replaceable>)</type> are aliases for <type>character
     varying(<replaceable>n</replaceable>)</type> and
     <type>character(<replaceable>n</replaceable>)</type>, respectively.
+    If specified, the length must be greater than zero and cannot exceed
+    10485760.
     <type>character</type> without length specifier is equivalent to
     <type>character(1)</type>. If <type>character varying</type> is used
     without length specifier, the type accepts strings of any size. The
@@ -1338,9 +1340,10 @@ SELECT b, char_length(b) FROM test2;
    <para>
     There are two other fixed-length character types in
     <productname>PostgreSQL</productname>, shown in <xref
-    linkend="datatype-character-special-table"/>. The <type>name</type>
-    type exists <emphasis>only</emphasis> for the storage of identifiers
-    in the internal system catalogs and is not intended for use by the general user. Its
+    linkend="datatype-character-special-table"/>.
+    These are not intended for general-purpose use, only for use
+    in the internal system catalogs.
+    The <type>name</type> type is used to store identifiers. Its
     length is currently defined as 64 bytes (63 usable characters plus
     terminator) but should be referenced using the constant
     <symbol>NAMEDATALEN</symbol> in <literal>C</literal> source code.
@@ -1348,7 +1351,8 @@ SELECT b, char_length(b) FROM test2;
     is therefore adjustable for special uses); the default maximum
     length might change in a future release. The type <type>"char"</type>
     (note the quotes) is different from <type>char(1)</type> in that it
-    only uses one byte of storage. It is internally used in the system
+    only uses one byte of storage, and therefore can store only a single
+    ASCII character. It is used in the system
     catalogs as a simplistic enumeration type.
    </para>
 
@@ -2844,7 +2848,7 @@ P <optional> <replaceable>years</replaceable>-<replaceable>months</replaceable>-
      weeks'</literal> or <literal>'01:02:03.45'</literal>.  However,
      because interval internally stores only three integer units (months,
      days, microseconds), fractional units must be spilled to smaller
-     units.  Fractional parts of units greater than months is rounded to
+     units.  Fractional parts of units greater than months are rounded to
      be an integer number of months, e.g. <literal>'1.5 years'</literal>
      becomes <literal>'1 year 6 mons'</literal>.  Fractional parts of
      weeks and days are computed to be an integer number of days and
@@ -3177,7 +3181,7 @@ CREATE TABLE person (
 );
 INSERT INTO person VALUES ('Moe', 'happy');
 SELECT * FROM person WHERE current_mood = 'happy';
- name | current_mood 
+ name | current_mood
 ------+--------------
  Moe  | happy
 (1 row)
@@ -3198,14 +3202,14 @@ SELECT * FROM person WHERE current_mood = 'happy';
 INSERT INTO person VALUES ('Larry', 'sad');
 INSERT INTO person VALUES ('Curly', 'ok');
 SELECT * FROM person WHERE current_mood > 'sad';
- name  | current_mood 
+ name  | current_mood
 -------+--------------
  Moe   | happy
  Curly | ok
 (2 rows)
 
 SELECT * FROM person WHERE current_mood > 'sad' ORDER BY current_mood;
- name  | current_mood 
+ name  | current_mood
 -------+--------------
  Curly | ok
  Moe   | happy
@@ -3214,7 +3218,7 @@ SELECT * FROM person WHERE current_mood > 'sad' ORDER BY current_mood;
 SELECT name
 FROM person
 WHERE current_mood = (SELECT MIN(current_mood) FROM person);
- name  
+ name
 -------
  Larry
 (1 row)
@@ -3253,7 +3257,7 @@ ERROR:  operator does not exist: mood = happiness
 <programlisting>
 SELECT person.name, holidays.num_weeks FROM person, holidays
   WHERE person.current_mood::text = holidays.happiness::text;
- name | num_weeks 
+ name | num_weeks
 ------+-----------
  Moe  |         4
 (1 row)
@@ -3562,8 +3566,9 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 
     <para>
      Polygons are represented by lists of points (the vertexes of the
-     polygon). Polygons are very similar to closed paths, but are
-     stored differently and have their own set of support routines.
+     polygon). Polygons are very similar to closed paths; the essential
+     difference is that a polygon is considered to include the area
+     within it, while a path is not.
     </para>
 
     <para>
@@ -3903,13 +3908,13 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
     </para>
 
     <para>
-     IEEE Std 802-2001 specifies the second shown form (with hyphens)
+     IEEE Standard 802-2001 specifies the second form shown (with hyphens)
      as the canonical form for MAC addresses, and specifies the first
-     form (with colons) as the bit-reversed notation, so that
-     08-00-2b-01-02-03 = 01:00:4D:08:04:0C.  This convention is widely
+     form (with colons) as used with bit-reversed, MSB-first notation, so that
+     08-00-2b-01-02-03 = 10:00:D4:80:40:C0.  This convention is widely
      ignored nowadays, and it is relevant only for obsolete network
      protocols (such as Token Ring).  PostgreSQL makes no provisions
-     for bit reversal, and all accepted formats use the canonical LSB
+     for bit reversal; all accepted formats use the canonical LSB
      order.
     </para>
 
@@ -3981,7 +3986,7 @@ SELECT person.name, holidays.num_weeks FROM person, holidays
 <programlisting>
 SELECT macaddr8_set7bit('08:00:2b:01:02:03');
 <computeroutput>
-    macaddr8_set7bit     
+    macaddr8_set7bit
 -------------------------
  0a:00:2b:ff:fe:01:02:03
 (1 row)
@@ -4123,7 +4128,7 @@ SELECT 'a fat cat sat on a mat and ate a fat rat'::tsvector;
 
 <programlisting>
 SELECT $$the lexeme '    ' contains spaces$$::tsvector;
-                 tsvector                  
+                 tsvector
 -------------------------------------------
  '    ' 'contains' 'lexeme' 'spaces' 'the'
 </programlisting>
@@ -4134,7 +4139,7 @@ SELECT $$the lexeme '    ' contains spaces$$::tsvector;
 
 <programlisting>
 SELECT $$the lexeme 'Joe''s' contains a quote$$::tsvector;
-                    tsvector                    
+                    tsvector
 ------------------------------------------------
  'Joe''s' 'a' 'contains' 'lexeme' 'quote' 'the'
 </programlisting>
@@ -4164,7 +4169,7 @@ SELECT 'a:1 fat:2 cat:3 sat:4 on:5 a:6 mat:7 and:8 ate:9 a:10 fat:11 rat:12'::ts
 
 <programlisting>
 SELECT 'a:1A fat:2B,4C cat:5D'::tsvector;
-          tsvector          
+          tsvector
 ----------------------------
  'a':1A 'cat':5 'fat':2B,4C
 </programlisting>
@@ -4183,7 +4188,7 @@ SELECT 'a:1A fat:2B,4C cat:5D'::tsvector;
 
 <programlisting>
 SELECT 'The Fat Rats'::tsvector;
-      tsvector      
+      tsvector
 --------------------
  'Fat' 'Rats' 'The'
 </programlisting>
@@ -4196,7 +4201,7 @@ SELECT 'The Fat Rats'::tsvector;
 
 <programlisting>
 SELECT to_tsvector('english', 'The Fat Rats');
-   to_tsvector   
+   to_tsvector
 -----------------
  'fat':2 'rat':3
 </programlisting>
@@ -4238,17 +4243,17 @@ SELECT to_tsvector('english', 'The Fat Rats');
 
 <programlisting>
 SELECT 'fat &amp; rat'::tsquery;
-    tsquery    
+    tsquery
 ---------------
  'fat' &amp; 'rat'
 
 SELECT 'fat &amp; (rat | cat)'::tsquery;
-          tsquery          
+          tsquery
 ---------------------------
  'fat' &amp; ( 'rat' | 'cat' )
 
 SELECT 'fat &amp; rat &amp; ! cat'::tsquery;
-        tsquery         
+        tsquery
 ------------------------
  'fat' &amp; 'rat' &amp; !'cat'
 </programlisting>
@@ -4272,7 +4277,7 @@ SELECT 'fat:ab &amp; cat'::tsquery;
      to specify prefix matching:
 <programlisting>
 SELECT 'super:*'::tsquery;
-  tsquery  
+  tsquery
 -----------
  'super':*
 </programlisting>
@@ -4289,7 +4294,7 @@ SELECT 'super:*'::tsquery;
 
 <programlisting>
 SELECT to_tsquery('Fat:ab &amp; Cats');
-    to_tsquery    
+    to_tsquery
 ------------------
  'fat':AB &amp; 'cat'
 </programlisting>

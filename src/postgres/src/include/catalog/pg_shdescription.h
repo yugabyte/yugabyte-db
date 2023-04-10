@@ -16,7 +16,7 @@
  * across tables.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_shdescription.h
@@ -55,9 +55,7 @@ CATALOG(pg_shdescription,2396,SharedDescriptionRelationId) BKI_SHARED_RELATION
  */
 typedef FormData_pg_shdescription * Form_pg_shdescription;
 
-DECLARE_TOAST(pg_shdescription, 2846, 2847);
-#define PgShdescriptionToastTable 2846
-#define PgShdescriptionToastIndex 2847
+DECLARE_TOAST_WITH_MACRO(pg_shdescription, 2846, 2847, PgShdescriptionToastTable, PgShdescriptionToastIndex);
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_shdescription_o_c_index, 2397, SharedDescriptionObjIndexId, on pg_shdescription using btree(objoid oid_ops, classoid oid_ops));
 

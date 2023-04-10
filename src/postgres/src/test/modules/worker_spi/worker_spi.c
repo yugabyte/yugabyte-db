@@ -13,7 +13,7 @@
  * "delta" type.  Delta rows will be deleted by this worker and their values
  * aggregated into the total.
  *
- * Copyright (c) 2013-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/worker_spi/worker_spi.c
@@ -265,7 +265,7 @@ worker_spi_main(Datum main_arg)
 		PopActiveSnapshot();
 		CommitTransactionCommand();
 		debug_query_string = NULL;
-		pgstat_report_stat(false);
+		pgstat_report_stat(true);
 		pgstat_report_activity(STATE_IDLE, NULL);
 	}
 
@@ -282,7 +282,6 @@ void
 _PG_init(void)
 {
 	BackgroundWorker worker;
-	unsigned int i;
 
 	/* get the configuration */
 	DefineCustomIntVariable("worker_spi.naptime",
@@ -323,6 +322,8 @@ _PG_init(void)
 							   0,
 							   NULL, NULL, NULL);
 
+	MarkGUCPrefixReserved("worker_spi");
+
 	/* set up common data for all our workers */
 	memset(&worker, 0, sizeof(worker));
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
@@ -336,7 +337,7 @@ _PG_init(void)
 	/*
 	 * Now fill in worker-specific data, and do the actual registrations.
 	 */
-	for (i = 1; i <= worker_spi_total_workers; i++)
+	for (int i = 1; i <= worker_spi_total_workers; i++)
 	{
 		snprintf(worker.bgw_name, BGW_MAXLEN, "worker_spi worker %d", i);
 		snprintf(worker.bgw_type, BGW_MAXLEN, "worker_spi");

@@ -5,7 +5,7 @@
  *
  * Author: Magnus Hagander <magnus@hagander.net>
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/pg_receivewal.c
@@ -19,6 +19,13 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#ifdef USE_LZ4
+#include <lz4frame.h>
+#endif
+#ifdef HAVE_LIBZ
+#include <zlib.h>
+#endif
 
 #include "access/xlog_internal.h"
 #include "common/file_perm.h"
@@ -45,10 +52,13 @@ static bool do_drop_slot = false;
 static bool do_sync = true;
 static bool synchronous = false;
 static char *replication_slot = NULL;
+static pg_compress_algorithm compression_algorithm = PG_COMPRESSION_NONE;
 static XLogRecPtr endpos = InvalidXLogRecPtr;
 
 
 static void usage(void);
+static void parse_compress_options(char *option, char **algorithm,
+								   char **detail);
 static DIR *get_destination_dir(char *dest_folder);
 static void close_destination_dir(DIR *dest_dir, char *dest_folder);
 static XLogRecPtr FindStreamingStart(uint32 *tli);
@@ -62,16 +72,6 @@ disconnect_atexit(void)
 	if (conn != NULL)
 		PQfinish(conn);
 }
-
-/* Routines to evaluate segment file format */
-#define IsCompressXLogFileName(fname)	 \
-	(strlen(fname) == XLOG_FNAME_LEN + strlen(".gz") && \
-	 strspn(fname, "0123456789ABCDEF") == XLOG_FNAME_LEN &&		\
-	 strcmp((fname) + XLOG_FNAME_LEN, ".gz") == 0)
-#define IsPartialCompressXLogFileName(fname)	\
-	(strlen(fname) == XLOG_FNAME_LEN + strlen(".gz.partial") && \
-	 strspn(fname, "0123456789ABCDEF") == XLOG_FNAME_LEN &&		\
-	 strcmp((fname) + XLOG_FNAME_LEN, ".gz.partial") == 0)
 
 static void
 usage(void)
@@ -92,7 +92,8 @@ usage(void)
 	printf(_("      --synchronous      flush write-ahead log immediately after writing\n"));
 	printf(_("  -v, --verbose          output verbose messages\n"));
 	printf(_("  -V, --version          output version information, then exit\n"));
-	printf(_("  -Z, --compress=0-9     compress logs with given compression level\n"));
+	printf(_("  -Z, --compress=METHOD[:DETAIL]\n"
+			 "                         compress as specified\n"));
 	printf(_("  -?, --help             show this help, then exit\n"));
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR   connection string\n"));
@@ -106,6 +107,138 @@ usage(void)
 	printf(_("      --drop-slot        drop the replication slot (for the slot's name see --slot)\n"));
 	printf(_("\nReport bugs to <%s>.\n"), PACKAGE_BUGREPORT);
 	printf(_("%s home page: <%s>\n"), PACKAGE_NAME, PACKAGE_URL);
+}
+
+/*
+ * Basic parsing of a value specified for -Z/--compress
+ *
+ * The parsing consists of a METHOD:DETAIL string fed later on to a more
+ * advanced routine in charge of proper validation checks.  This only extracts
+ * METHOD and DETAIL.  If only an integer is found, the method is implied by
+ * the value specified.
+ */
+static void
+parse_compress_options(char *option, char **algorithm, char **detail)
+{
+	char	   *sep;
+	char	   *endp;
+	long		result;
+
+	/*
+	 * Check whether the compression specification consists of a bare integer.
+	 *
+	 * For backward-compatibility, assume "none" if the integer found is zero
+	 * and "gzip" otherwise.
+	 */
+	result = strtol(option, &endp, 10);
+	if (*endp == '\0')
+	{
+		if (result == 0)
+		{
+			*algorithm = pstrdup("none");
+			*detail = NULL;
+		}
+		else
+		{
+			*algorithm = pstrdup("gzip");
+			*detail = pstrdup(option);
+		}
+		return;
+	}
+
+	/*
+	 * Check whether there is a compression detail following the algorithm
+	 * name.
+	 */
+	sep = strchr(option, ':');
+	if (sep == NULL)
+	{
+		*algorithm = pstrdup(option);
+		*detail = NULL;
+	}
+	else
+	{
+		char	   *alg;
+
+		alg = palloc((sep - option) + 1);
+		memcpy(alg, option, sep - option);
+		alg[sep - option] = '\0';
+
+		*algorithm = alg;
+		*detail = pstrdup(sep + 1);
+	}
+}
+
+/*
+ * Check if the filename looks like a WAL file, letting caller know if this
+ * WAL segment is partial and/or compressed.
+ */
+static bool
+is_xlogfilename(const char *filename, bool *ispartial,
+				pg_compress_algorithm *wal_compression_algorithm)
+{
+	size_t		fname_len = strlen(filename);
+	size_t		xlog_pattern_len = strspn(filename, "0123456789ABCDEF");
+
+	/* File does not look like a WAL file */
+	if (xlog_pattern_len != XLOG_FNAME_LEN)
+		return false;
+
+	/* File looks like a completed uncompressed WAL file */
+	if (fname_len == XLOG_FNAME_LEN)
+	{
+		*ispartial = false;
+		*wal_compression_algorithm = PG_COMPRESSION_NONE;
+		return true;
+	}
+
+	/* File looks like a completed gzip-compressed WAL file */
+	if (fname_len == XLOG_FNAME_LEN + strlen(".gz") &&
+		strcmp(filename + XLOG_FNAME_LEN, ".gz") == 0)
+	{
+		*ispartial = false;
+		*wal_compression_algorithm = PG_COMPRESSION_GZIP;
+		return true;
+	}
+
+	/* File looks like a completed LZ4-compressed WAL file */
+	if (fname_len == XLOG_FNAME_LEN + strlen(".lz4") &&
+		strcmp(filename + XLOG_FNAME_LEN, ".lz4") == 0)
+	{
+		*ispartial = false;
+		*wal_compression_algorithm = PG_COMPRESSION_LZ4;
+		return true;
+	}
+
+	/* File looks like a partial uncompressed WAL file */
+	if (fname_len == XLOG_FNAME_LEN + strlen(".partial") &&
+		strcmp(filename + XLOG_FNAME_LEN, ".partial") == 0)
+	{
+		*ispartial = true;
+		*wal_compression_algorithm = PG_COMPRESSION_NONE;
+		return true;
+	}
+
+	/* File looks like a partial gzip-compressed WAL file */
+	if (fname_len == XLOG_FNAME_LEN + strlen(".gz.partial") &&
+		strcmp(filename + XLOG_FNAME_LEN, ".gz.partial") == 0)
+	{
+		*ispartial = true;
+		*wal_compression_algorithm = PG_COMPRESSION_GZIP;
+		return true;
+	}
+
+	/* File looks like a partial LZ4-compressed WAL file */
+	if (fname_len == XLOG_FNAME_LEN + strlen(".lz4.partial") &&
+		strcmp(filename + XLOG_FNAME_LEN, ".lz4.partial") == 0)
+	{
+		*ispartial = true;
+		*wal_compression_algorithm = PG_COMPRESSION_LZ4;
+		return true;
+	}
+
+	/* File does not look like something we know */
+	return false;
 }
 
 static bool
@@ -167,10 +300,7 @@ get_destination_dir(char *dest_folder)
 	Assert(dest_folder != NULL);
 	dir = opendir(dest_folder);
 	if (dir == NULL)
-	{
-		pg_log_error("could not open directory \"%s\": %m", basedir);
-		exit(1);
-	}
+		pg_fatal("could not open directory \"%s\": %m", dest_folder);
 
 	return dir;
 }
@@ -184,10 +314,7 @@ close_destination_dir(DIR *dest_dir, char *dest_folder)
 {
 	Assert(dest_dir != NULL && dest_folder != NULL);
 	if (closedir(dest_dir))
-	{
-		pg_log_error("could not close directory \"%s\": %m", dest_folder);
-		exit(1);
-	}
+		pg_fatal("could not close directory \"%s\": %m", dest_folder);
 }
 
 
@@ -213,33 +340,11 @@ FindStreamingStart(uint32 *tli)
 	{
 		uint32		tli;
 		XLogSegNo	segno;
+		pg_compress_algorithm wal_compression_algorithm;
 		bool		ispartial;
-		bool		iscompress;
 
-		/*
-		 * Check if the filename looks like an xlog file, or a .partial file.
-		 */
-		if (IsXLogFileName(dirent->d_name))
-		{
-			ispartial = false;
-			iscompress = false;
-		}
-		else if (IsPartialXLogFileName(dirent->d_name))
-		{
-			ispartial = true;
-			iscompress = false;
-		}
-		else if (IsCompressXLogFileName(dirent->d_name))
-		{
-			ispartial = false;
-			iscompress = true;
-		}
-		else if (IsPartialCompressXLogFileName(dirent->d_name))
-		{
-			ispartial = true;
-			iscompress = true;
-		}
-		else
+		if (!is_xlogfilename(dirent->d_name,
+							 &ispartial, &wal_compression_algorithm))
 			continue;
 
 		/*
@@ -250,24 +355,29 @@ FindStreamingStart(uint32 *tli)
 		/*
 		 * Check that the segment has the right size, if it's supposed to be
 		 * completed.  For non-compressed segments just check the on-disk size
-		 * and see if it matches a completed segment. For compressed segments,
-		 * look at the last 4 bytes of the compressed file, which is where the
-		 * uncompressed size is located for gz files with a size lower than
-		 * 4GB, and then compare it to the size of a completed segment. The 4
-		 * last bytes correspond to the ISIZE member according to
+		 * and see if it matches a completed segment.  For gzip-compressed
+		 * segments, look at the last 4 bytes of the compressed file, which is
+		 * where the uncompressed size is located for files with a size lower
+		 * than 4GB, and then compare it to the size of a completed segment.
+		 * The 4 last bytes correspond to the ISIZE member according to
 		 * http://www.zlib.org/rfc-gzip.html.
+		 *
+		 * For LZ4-compressed segments, uncompress the file in a throw-away
+		 * buffer keeping track of the uncompressed size, then compare it to
+		 * the size of a completed segment.  Per its protocol, LZ4 does not
+		 * store the uncompressed size of an object by default.  contentSize
+		 * is one possible way to do that, but we need to rely on a method
+		 * where WAL segments could have been compressed by a different source
+		 * than pg_receivewal, like an archive_command with lz4.
 		 */
-		if (!ispartial && !iscompress)
+		if (!ispartial && wal_compression_algorithm == PG_COMPRESSION_NONE)
 		{
 			struct stat statbuf;
 			char		fullpath[MAXPGPATH * 2];
 
 			snprintf(fullpath, sizeof(fullpath), "%s/%s", basedir, dirent->d_name);
 			if (stat(fullpath, &statbuf) != 0)
-			{
-				pg_log_error("could not stat file \"%s\": %m", fullpath);
-				exit(1);
-			}
+				pg_fatal("could not stat file \"%s\": %m", fullpath);
 
 			if (statbuf.st_size != WalSegSz)
 			{
@@ -276,7 +386,7 @@ FindStreamingStart(uint32 *tli)
 				continue;
 			}
 		}
-		else if (!ispartial && iscompress)
+		else if (!ispartial && wal_compression_algorithm == PG_COMPRESSION_GZIP)
 		{
 			int			fd;
 			char		buf[4];
@@ -288,27 +398,20 @@ FindStreamingStart(uint32 *tli)
 
 			fd = open(fullpath, O_RDONLY | PG_BINARY, 0);
 			if (fd < 0)
-			{
-				pg_log_error("could not open compressed file \"%s\": %m",
-							 fullpath);
-				exit(1);
-			}
+				pg_fatal("could not open compressed file \"%s\": %m",
+						 fullpath);
 			if (lseek(fd, (off_t) (-4), SEEK_END) < 0)
-			{
-				pg_log_error("could not seek in compressed file \"%s\": %m",
-							 fullpath);
-				exit(1);
-			}
+				pg_fatal("could not seek in compressed file \"%s\": %m",
+						 fullpath);
 			r = read(fd, (char *) buf, sizeof(buf));
 			if (r != sizeof(buf))
 			{
 				if (r < 0)
-					pg_log_error("could not read compressed file \"%s\": %m",
-								 fullpath);
+					pg_fatal("could not read compressed file \"%s\": %m",
+							 fullpath);
 				else
-					pg_log_error("could not read compressed file \"%s\": read %d of %zu",
-								 fullpath, r, sizeof(buf));
-				exit(1);
+					pg_fatal("could not read compressed file \"%s\": read %d of %zu",
+							 fullpath, r, sizeof(buf));
 			}
 
 			close(fd);
@@ -321,6 +424,97 @@ FindStreamingStart(uint32 *tli)
 							   dirent->d_name, bytes_out);
 				continue;
 			}
+		}
+		else if (!ispartial && wal_compression_algorithm == PG_COMPRESSION_LZ4)
+		{
+#ifdef USE_LZ4
+#define LZ4_CHUNK_SZ	64 * 1024	/* 64kB as maximum chunk size read */
+			int			fd;
+			ssize_t		r;
+			size_t		uncompressed_size = 0;
+			char		fullpath[MAXPGPATH * 2];
+			char	   *outbuf;
+			char	   *readbuf;
+			LZ4F_decompressionContext_t ctx = NULL;
+			LZ4F_decompressOptions_t dec_opt;
+			LZ4F_errorCode_t status;
+
+			memset(&dec_opt, 0, sizeof(dec_opt));
+			snprintf(fullpath, sizeof(fullpath), "%s/%s", basedir, dirent->d_name);
+
+			fd = open(fullpath, O_RDONLY | PG_BINARY, 0);
+			if (fd < 0)
+				pg_fatal("could not open file \"%s\": %m", fullpath);
+
+			status = LZ4F_createDecompressionContext(&ctx, LZ4F_VERSION);
+			if (LZ4F_isError(status))
+				pg_fatal("could not create LZ4 decompression context: %s",
+						 LZ4F_getErrorName(status));
+
+			outbuf = pg_malloc0(LZ4_CHUNK_SZ);
+			readbuf = pg_malloc0(LZ4_CHUNK_SZ);
+			do
+			{
+				char	   *readp;
+				char	   *readend;
+
+				r = read(fd, readbuf, LZ4_CHUNK_SZ);
+				if (r < 0)
+					pg_fatal("could not read file \"%s\": %m", fullpath);
+
+				/* Done reading the file */
+				if (r == 0)
+					break;
+
+				/* Process one chunk */
+				readp = readbuf;
+				readend = readbuf + r;
+				while (readp < readend)
+				{
+					size_t		out_size = LZ4_CHUNK_SZ;
+					size_t		read_size = readend - readp;
+
+					memset(outbuf, 0, LZ4_CHUNK_SZ);
+					status = LZ4F_decompress(ctx, outbuf, &out_size,
+											 readp, &read_size, &dec_opt);
+					if (LZ4F_isError(status))
+						pg_fatal("could not decompress file \"%s\": %s",
+								 fullpath,
+								 LZ4F_getErrorName(status));
+
+					readp += read_size;
+					uncompressed_size += out_size;
+				}
+
+				/*
+				 * No need to continue reading the file when the
+				 * uncompressed_size exceeds WalSegSz, even if there are still
+				 * data left to read. However, if uncompressed_size is equal
+				 * to WalSegSz, it should verify that there is no more data to
+				 * read.
+				 */
+			} while (uncompressed_size <= WalSegSz && r > 0);
+
+			close(fd);
+			pg_free(outbuf);
+			pg_free(readbuf);
+
+			status = LZ4F_freeDecompressionContext(ctx);
+			if (LZ4F_isError(status))
+				pg_fatal("could not free LZ4 decompression context: %s",
+						 LZ4F_getErrorName(status));
+
+			if (uncompressed_size != WalSegSz)
+			{
+				pg_log_warning("compressed segment file \"%s\" has incorrect uncompressed size %zu, skipping",
+							   dirent->d_name, uncompressed_size);
+				continue;
+			}
+#else
+			pg_log_error("cannot check file \"%s\": compression with %s not supported by this build",
+						 dirent->d_name, "LZ4");
+			exit(1);
+#endif
 		}
 
 		/* Looks like a valid segment. Remember that we saw it. */
@@ -335,10 +529,7 @@ FindStreamingStart(uint32 *tli)
 	}
 
 	if (errno)
-	{
-		pg_log_error("could not read directory \"%s\": %m", basedir);
-		exit(1);
-	}
+		pg_fatal("could not read directory \"%s\": %m", basedir);
 
 	close_destination_dir(dir, basedir);
 
@@ -404,14 +595,39 @@ StreamLog(void)
 		exit(1);
 
 	/*
-	 * Figure out where to start streaming.
+	 * Figure out where to start streaming.  First scan the local directory.
 	 */
 	stream.startpos = FindStreamingStart(&stream.timeline);
 	if (stream.startpos == InvalidXLogRecPtr)
 	{
-		stream.startpos = serverpos;
-		stream.timeline = servertli;
+		/*
+		 * Try to get the starting point from the slot if any.  This is
+		 * supported in PostgreSQL 15 and newer.
+		 */
+		if (replication_slot != NULL &&
+			PQserverVersion(conn) >= 150000)
+		{
+			if (!GetSlotInformation(conn, replication_slot, &stream.startpos,
+									&stream.timeline))
+			{
+				/* Error is logged by GetSlotInformation() */
+				return;
+			}
+		}
+
+		/*
+		 * If it the starting point is still not known, use the current WAL
+		 * flush value as last resort.
+		 */
+		if (stream.startpos == InvalidXLogRecPtr)
+		{
+			stream.startpos = serverpos;
+			stream.timeline = servertli;
+		}
 	}
+
+	Assert(stream.startpos != InvalidXLogRecPtr &&
+		   stream.timeline != 0);
 
 	/*
 	 * Always start streaming at the beginning of a segment
@@ -432,7 +648,9 @@ StreamLog(void)
 	stream.synchronous = synchronous;
 	stream.do_sync = do_sync;
 	stream.mark_done = false;
-	stream.walmethod = CreateWalDirectoryMethod(basedir, compresslevel,
+	stream.walmethod = CreateWalDirectoryMethod(basedir,
+												compression_algorithm,
+												compresslevel,
 												stream.do_sync);
 	stream.partial_suffix = ".partial";
 	stream.replication_slot = replication_slot;
@@ -500,6 +718,10 @@ main(int argc, char **argv)
 	char	   *db_name;
 	uint32		hi,
 				lo;
+	pg_compress_specification compression_spec;
+	char	   *compression_detail = NULL;
+	char	   *compression_algorithm_str = "none";
+	char	   *error_detail = NULL;
 
 	pg_logging_init(argv[0]);
 	progname = get_progname(argv[0]);
@@ -558,10 +780,7 @@ main(int argc, char **argv)
 				break;
 			case 'E':
 				if (sscanf(optarg, "%X/%X", &hi, &lo) != 2)
-				{
-					pg_log_error("could not parse end position \"%s\"", optarg);
-					exit(1);
-				}
+					pg_fatal("could not parse end position \"%s\"", optarg);
 				endpos = ((uint64) hi) << 32 | lo;
 				break;
 			case 'n':
@@ -571,9 +790,8 @@ main(int argc, char **argv)
 				verbose++;
 				break;
 			case 'Z':
-				if (!option_parse_int(optarg, "-Z/--compress", 0, 9,
-									  &compresslevel))
-					exit(1);
+				parse_compress_options(optarg, &compression_algorithm_str,
+									   &compression_detail);
 				break;
 /* action */
 			case 1:
@@ -592,12 +810,8 @@ main(int argc, char **argv)
 				do_sync = false;
 				break;
 			default:
-
-				/*
-				 * getopt_long already emitted a complaint
-				 */
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-						progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 				exit(1);
 		}
 	}
@@ -609,16 +823,14 @@ main(int argc, char **argv)
 	{
 		pg_log_error("too many command-line arguments (first is \"%s\")",
 					 argv[optind]);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (do_drop_slot && do_create_slot)
 	{
 		pg_log_error("cannot use --create-slot together with --drop-slot");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
@@ -627,16 +839,14 @@ main(int argc, char **argv)
 		/* translator: second %s is an option name */
 		pg_log_error("%s needs a slot to be specified using --slot",
 					 do_drop_slot ? "--drop-slot" : "--create-slot");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
 	if (synchronous && !do_sync)
 	{
 		pg_log_error("cannot use --synchronous together with --no-sync");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
@@ -646,18 +856,30 @@ main(int argc, char **argv)
 	if (basedir == NULL && !do_drop_slot && !do_create_slot)
 	{
 		pg_log_error("no target directory specified");
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
-#ifndef HAVE_LIBZ
-	if (compresslevel != 0)
-	{
-		pg_log_error("this build does not support compression");
-		exit(1);
-	}
-#endif
+	/*
+	 * Compression options
+	 */
+	if (!parse_compress_algorithm(compression_algorithm_str,
+								  &compression_algorithm))
+		pg_fatal("unrecognized compression algorithm: \"%s\"",
+				 compression_algorithm_str);
+
+	parse_compress_specification(compression_algorithm, compression_detail,
+								 &compression_spec);
+	error_detail = validate_compress_specification(&compression_spec);
+	if (error_detail != NULL)
+		pg_fatal("invalid compression specification: %s",
+				 error_detail);
+
+	/* Extract the compression level */
+	compresslevel = compression_spec.level;
+
+	if (compression_algorithm == PG_COMPRESSION_ZSTD)
+		pg_fatal("compression with %s is not yet supported", "ZSTD");
 
 	/*
 	 * Check existence of destination folder.
@@ -669,10 +891,6 @@ main(int argc, char **argv)
 		close_destination_dir(dir, basedir);
 	}
 
-#ifndef WIN32
-	pqsignal(SIGINT, sigint_handler);
-#endif
-
 	/*
 	 * Obtain a connection before doing anything.
 	 */
@@ -681,6 +899,14 @@ main(int argc, char **argv)
 		/* error message already written in GetConnection() */
 		exit(1);
 	atexit(disconnect_atexit);
+
+	/*
+	 * Trap signals.  (Don't do this until after the initial password prompt,
+	 * if one is needed, in GetConnection.)
+	 */
+#ifndef WIN32
+	pqsignal(SIGINT, sigint_handler);
+#endif
 
 	/*
 	 * Run IDENTIFY_SYSTEM to make sure we've successfully have established a
@@ -695,11 +921,8 @@ main(int argc, char **argv)
 	 * be defined in this context.
 	 */
 	if (db_name)
-	{
-		pg_log_error("replication connection using slot \"%s\" is unexpectedly database specific",
-					 replication_slot);
-		exit(1);
-	}
+		pg_fatal("replication connection using slot \"%s\" is unexpectedly database specific",
+				 replication_slot);
 
 	/*
 	 * Set umask so that directories/files are created with the same
@@ -757,10 +980,7 @@ main(int argc, char **argv)
 			exit(0);
 		}
 		else if (noloop)
-		{
-			pg_log_error("disconnected");
-			exit(1);
-		}
+			pg_fatal("disconnected");
 		else
 		{
 			/* translator: check source for value for %d */

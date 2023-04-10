@@ -8,7 +8,7 @@
  *
  * This code is released under the terms of the PostgreSQL License.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/test/regress/pg_regress.c
@@ -122,7 +122,9 @@ static void make_directory(const char *dir);
 
 static void header(const char *fmt,...) pg_attribute_printf(1, 2);
 static void status(const char *fmt,...) pg_attribute_printf(1, 2);
-static void ysqlsh_command(const char *database, const char *query,...) pg_attribute_printf(2, 3);
+static StringInfo psql_start_command(void);
+static void psql_add_command(StringInfo buf, const char *query,...) pg_attribute_printf(2, 3);
+static void psql_end_command(StringInfo buf, const char *database);
 
 /*
  * allow core files if possible.
@@ -437,181 +439,6 @@ string_matches_pattern(const char *str, const char *pattern)
 }
 
 /*
- * Replace all occurrences of "replace" in "string" with "replacement".
- * The StringInfo will be suitably enlarged if necessary.
- *
- * Note: this is optimized on the assumption that most calls will find
- * no more than one occurrence of "replace", and quite likely none.
- */
-void
-replace_string(StringInfo string, const char *replace, const char *replacement)
-{
-	int			pos = 0;
-	char	   *ptr;
-
-	while ((ptr = strstr(string->data + pos, replace)) != NULL)
-	{
-		/* Must copy the remainder of the string out of the StringInfo */
-		char	   *suffix = pg_strdup(ptr + strlen(replace));
-
-		/* Truncate StringInfo at start of found string ... */
-		string->len = ptr - string->data;
-		/* ... and append the replacement (this restores the trailing '\0') */
-		appendStringInfoString(string, replacement);
-		/* Next search should start after the replacement */
-		pos = string->len;
-		/* Put back the remainder of the string */
-		appendStringInfoString(string, suffix);
-		free(suffix);
-	}
-}
-
-/*
- * Convert *.source found in the "source" directory, replacing certain tokens
- * in the file contents with their intended values, and put the resulting files
- * in the "dest" directory, replacing the ".source" prefix in their names with
- * the given suffix.
- */
-static void
-convert_sourcefiles_in(const char *source_subdir, const char *dest_dir, const char *dest_subdir, const char *suffix)
-{
-	char		testtablespace[MAXPGPATH];
-	char		indir[MAXPGPATH];
-	char		outdir_sub[MAXPGPATH];
-	char	  **name;
-	char	  **names;
-	int			count = 0;
-
-	snprintf(indir, MAXPGPATH, "%s/%s", inputdir, source_subdir);
-
-	/* Check that indir actually exists and is a directory */
-	if (!directory_exists(indir))
-	{
-		/*
-		 * No warning, to avoid noise in tests that do not have these
-		 * directories; for example, ecpg, contrib and src/pl.
-		 */
-		return;
-	}
-
-	names = pgfnames(indir);
-	if (!names)
-		/* Error logged in pgfnames */
-		exit(2);
-
-	/* Create the "dest" subdirectory if not present */
-	snprintf(outdir_sub, MAXPGPATH, "%s/%s", dest_dir, dest_subdir);
-	if (!directory_exists(outdir_sub))
-		make_directory(outdir_sub);
-
-	/* We might need to replace @testtablespace@ */
-	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", outputdir);
-
-	/* finally loop on each file and do the replacement */
-	for (name = names; *name; name++)
-	{
-		char		srcfile[MAXPGPATH];
-		char		destfile[MAXPGPATH];
-		char		prefix[MAXPGPATH];
-		FILE	   *infile,
-				   *outfile;
-		StringInfoData line;
-
-		/* reject filenames not finishing in ".source" */
-		if (strlen(*name) < 8)
-			continue;
-		if (strcmp(*name + strlen(*name) - 7, ".source") != 0)
-			continue;
-
-		count++;
-
-		/* build the full actual paths to open */
-		snprintf(prefix, strlen(*name) - 6, "%s", *name);
-		snprintf(srcfile, MAXPGPATH, "%s/%s", indir, *name);
-		snprintf(destfile, MAXPGPATH, "%s/%s/%s.%s", dest_dir, dest_subdir,
-				 prefix, suffix);
-
-		infile = fopen(srcfile, "r");
-		if (!infile)
-		{
-			fprintf(stderr, _("%s: could not open file \"%s\" for reading: %s\n"),
-					progname, srcfile, strerror(errno));
-			exit(2);
-		}
-		outfile = fopen(destfile, "w");
-		if (!outfile)
-		{
-			fprintf(stderr, _("%s: could not open file \"%s\" for writing: %s\n"),
-					progname, destfile, strerror(errno));
-			exit(2);
-		}
-
-		initStringInfo(&line);
-
-		while (pg_get_line_buf(infile, &line))
-		{
-			replace_string(&line, "@abs_srcdir@", inputdir);
-			replace_string(&line, "@abs_builddir@", outputdir);
-			replace_string(&line, "@testtablespace@", testtablespace);
-			replace_string(&line, "@libdir@", dlpath);
-			replace_string(&line, "@DLSUFFIX@", DLSUFFIX);
-			fputs(line.data, outfile);
-		}
-
-		pfree(line.data);
-		fclose(infile);
-		fclose(outfile);
-	}
-
-	/*
-	 * If we didn't process any files, complain because it probably means
-	 * somebody neglected to pass the needed --inputdir argument.
-	 */
-	if (count <= 0)
-	{
-		fprintf(stderr, _("%s: no *.source files found in \"%s\"\n"),
-				progname, indir);
-		exit(2);
-	}
-
-	pgfnames_cleanup(names);
-}
-
-/* Create the .sql and .out files from the .source files, if any */
-static void
-convert_sourcefiles(void)
-{
-	convert_sourcefiles_in("input", outputdir, "sql", "sql");
-	convert_sourcefiles_in("output", outputdir, "expected", "out");
-}
-
-/*
- * Clean out the test tablespace dir, or create it if it doesn't exist.
- *
- * On Windows, doing this cleanup here makes it possible to run the
- * regression tests under a Windows administrative user account with the
- * restricted token obtained when starting pg_regress.
- */
-static void
-prepare_testtablespace_dir(void)
-{
-	char		testtablespace[MAXPGPATH];
-
-	snprintf(testtablespace, MAXPGPATH, "%s/testtablespace", outputdir);
-
-	if (directory_exists(testtablespace))
-	{
-		if (!rmtree(testtablespace, true))
-		{
-			fprintf(stderr, _("\n%s: could not remove test tablespace \"%s\"\n"),
-					progname, testtablespace);
-			exit(2);
-		}
-	}
-	make_directory(testtablespace);
-}
-
-/*
  * Scan resultmap file to find which platform-specific expected files to use.
  *
  * The format of each line of the file is
@@ -744,6 +571,14 @@ initialize_environment(void)
 	 */
 	setenv("PGAPPNAME", "pg_regress", 1);
 
+	/*
+	 * Set variables that the test scripts may need to refer to.
+	 */
+	setenv("PG_ABS_SRCDIR", inputdir, 1);
+	setenv("PG_ABS_BUILDDIR", outputdir, 1);
+	setenv("PG_LIBDIR", dlpath, 1);
+	setenv("PG_DLSUFFIX", DLSUFFIX, 1);
+
 	if (nolocale)
 	{
 		/*
@@ -770,9 +605,9 @@ initialize_environment(void)
 	}
 
 	/*
-	 * Set translation-related settings to English; otherwise ysqlsh will
+	 * Set translation-related settings to English; otherwise psql will
 	 * produce translated messages and produce diffs.  (XXX If we ever support
-	 * translation of pg_regress, this needs to be moved elsewhere, where ysqlsh
+	 * translation of pg_regress, this needs to be moved elsewhere, where psql
 	 * is actually called.)
 	 */
 	unsetenv("LANGUAGE");
@@ -814,13 +649,13 @@ initialize_environment(void)
 	if (temp_instance)
 	{
 		/*
-		 * Clear out any environment vars that might cause ysqlsh to connect to
+		 * Clear out any environment vars that might cause psql to connect to
 		 * the wrong postmaster, or otherwise behave in nondefault ways. (Note
-		 * we also use ysqlsh's -X switch consistently, so that ~/.psqlrc files
+		 * we also use psql's -X switch consistently, so that ~/.psqlrc files
 		 * won't mess things up.)  Also, set PGPORT to the temp port, and set
 		 * PGHOST depending on whether we are using TCP or Unix sockets.
 		 *
-		 * This list should be kept in sync with TestLib.pm.
+		 * This list should be kept in sync with PostgreSQL/Test/Utils.pm.
 		 */
 		unsetenv("PGCHANNELBINDING");
 		/* PGCLIENTENCODING, see above */
@@ -911,10 +746,16 @@ initialize_environment(void)
 		 */
 		pghost = getenv("PGHOST");
 		pgport = getenv("PGPORT");
-#ifndef HAVE_UNIX_SOCKETS
 		if (!pghost)
-			pghost = "localhost";
+		{
+			/* Keep this bit in sync with libpq's default host location: */
+#ifdef HAVE_UNIX_SOCKETS
+			if (DEFAULT_PGSOCKET_DIR[0])
+				 /* do nothing, we'll print "Unix socket" below */ ;
+			else
 #endif
+				pghost = "localhost";	/* DefaultHost in fe-connect.c */
+		}
 
 		if (pghost && pgport)
 			printf(_("(using postmaster on %s, port %s)\n"), pghost, pgport);
@@ -926,7 +767,6 @@ initialize_environment(void)
 			printf(_("(using postmaster on Unix socket, default port)\n"));
 	}
 
-	convert_sourcefiles();
 	load_resultmap();
 }
 
@@ -940,7 +780,7 @@ fmtHba(const char *raw)
 	const char *rp;
 	char	   *wp;
 
-	wp = ret = realloc(ret, 3 + strlen(raw) * 2);
+	wp = ret = pg_realloc(ret, 3 + strlen(raw) * 2);
 
 	*wp++ = '"';
 	for (rp = raw; *rp; rp++)
@@ -1136,50 +976,93 @@ config_sspi_auth(const char *pgdata, const char *superuser_name)
 #endif							/* ENABLE_SSPI */
 
 /*
- * Issue a command via ysqlsh, connecting to the specified database
+ * psql_start_command, psql_add_command, psql_end_command
+ *
+ * Issue one or more commands within one psql call.
+ * Set up with psql_start_command, then add commands one at a time
+ * with psql_add_command, and finally execute with psql_end_command.
  *
  * Since we use system(), this doesn't return until the operation finishes
  */
-static void
-ysqlsh_command(const char *database, const char *query,...)
+static StringInfo
+psql_start_command(void)
 {
-	char		query_formatted[1024];
-	char		query_escaped[2048];
-	char		ysqlsh_cmd[MAXPGPATH + 2048];
-	va_list		args;
-	char	   *s;
-	char	   *d;
+	StringInfo	buf = makeStringInfo();
+
+	appendStringInfo(buf,
+					 "\"%s%sysqlsh\" -X",
+					 bindir ? bindir : "",
+					 bindir ? "/" : "");
+	return buf;
+}
+
+static void
+psql_add_command(StringInfo buf, const char *query,...)
+{
+	StringInfoData cmdbuf;
+	const char *cmdptr;
+
+	/* Add each command as a -c argument in the psql call */
+	appendStringInfoString(buf, " -c \"");
 
 	/* Generate the query with insertion of sprintf arguments */
-	va_start(args, query);
-	vsnprintf(query_formatted, sizeof(query_formatted), query, args);
-	va_end(args);
+	initStringInfo(&cmdbuf);
+	for (;;)
+	{
+		va_list		args;
+		int			needed;
+
+		va_start(args, query);
+		needed = appendStringInfoVA(&cmdbuf, query, args);
+		va_end(args);
+		if (needed == 0)
+			break;				/* success */
+		enlargeStringInfo(&cmdbuf, needed);
+	}
 
 	/* Now escape any shell double-quote metacharacters */
-	d = query_escaped;
-	for (s = query_formatted; *s; s++)
+	for (cmdptr = cmdbuf.data; *cmdptr; cmdptr++)
 	{
-		if (strchr("\\\"$`", *s))
-			*d++ = '\\';
-		*d++ = *s;
+		if (strchr("\\\"$`", *cmdptr))
+			appendStringInfoChar(buf, '\\');
+		appendStringInfoChar(buf, *cmdptr);
 	}
-	*d = '\0';
 
-	/* And now we can build and execute the shell command */
-	snprintf(ysqlsh_cmd, sizeof(ysqlsh_cmd),
-			 "\"%s%sysqlsh\" -X -c \"%s\" \"%s\"",
-			 bindir ? bindir : "",
-			 bindir ? "/" : "",
-			 query_escaped,
-			 database);
+	appendStringInfoChar(buf, '"');
 
-	if (system(ysqlsh_cmd) != 0)
+	pfree(cmdbuf.data);
+}
+
+static void
+psql_end_command(StringInfo buf, const char *database)
+{
+	/* Add the database name --- assume it needs no extra escaping */
+	appendStringInfo(buf,
+					 " \"%s\"",
+					 database);
+
+	/* And now we can execute the shell command */
+	if (system(buf->data) != 0)
 	{
-		/* ysqlsh probably already reported the error */
-		fprintf(stderr, _("command failed: %s\n"), ysqlsh_cmd);
+		/* psql probably already reported the error */
+		fprintf(stderr, _("command failed: %s\n"), buf->data);
 		exit(2);
 	}
+
+	/* Clean up */
+	pfree(buf->data);
+	pfree(buf);
 }
+
+/*
+ * Shorthand macro for the common case of a single command
+ */
+#define psql_command(database, ...) \
+	do { \
+		StringInfo cmdbuf = psql_start_command(); \
+		psql_add_command(cmdbuf, __VA_ARGS__); \
+		psql_end_command(cmdbuf, database); \
+	} while (0)
 
 /*
  * Spawn a process to execute the given shell command; don't wait for it
@@ -1200,6 +1083,10 @@ spawn_process(const char *cmdline)
 	fflush(stderr);
 	if (logfile)
 		fflush(logfile);
+
+#ifdef EXEC_BACKEND
+	pg_disable_aslr();
+#endif
 
 	pid = fork();
 	if (pid == -1)
@@ -2033,13 +1920,19 @@ open_result_files(void)
 static void
 drop_database_if_exists(const char *dbname)
 {
+	StringInfo	buf = psql_start_command();
+
 	header(_("dropping database \"%s\""), dbname);
-	ysqlsh_command("postgres", "DROP DATABASE IF EXISTS \"%s\"", dbname);
+	/* Set warning level so we don't see chatter about nonexistent DB */
+	psql_add_command(buf, "SET client_min_messages = warning");
+	psql_add_command(buf, "DROP DATABASE IF EXISTS \"%s\"", dbname);
+	psql_end_command(buf, "postgres");
 }
 
 static void
 create_database(const char *dbname)
 {
+	StringInfo	buf = psql_start_command();
 	_stringlist *sl;
 
 	/*
@@ -2048,19 +1941,20 @@ create_database(const char *dbname)
 	 */
 	header(_("creating database \"%s\""), dbname);
 	if (encoding)
-		ysqlsh_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0 ENCODING='%s'%s", dbname, encoding,
-					 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
+		psql_add_command(buf, "CREATE DATABASE \"%s\" TEMPLATE=template0 ENCODING='%s'%s", dbname, encoding,
+						 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
 	else
-		ysqlsh_command("postgres", "CREATE DATABASE \"%s\" TEMPLATE=template0%s", dbname,
-					 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
-	ysqlsh_command(dbname,
-				 "ALTER DATABASE \"%s\" SET lc_messages TO 'C';"
-				 "ALTER DATABASE \"%s\" SET lc_monetary TO 'C';"
-				 "ALTER DATABASE \"%s\" SET lc_numeric TO 'C';"
-				 "ALTER DATABASE \"%s\" SET lc_time TO 'C';"
-				 "ALTER DATABASE \"%s\" SET bytea_output TO 'hex';"
-				 "ALTER DATABASE \"%s\" SET timezone_abbreviations TO 'Default';",
-				 dbname, dbname, dbname, dbname, dbname, dbname);
+		psql_add_command(buf, "CREATE DATABASE \"%s\" TEMPLATE=template0%s", dbname,
+						 (nolocale) ? " LC_COLLATE='C' LC_CTYPE='C'" : "");
+	psql_add_command(buf,
+					 "ALTER DATABASE \"%s\" SET lc_messages TO 'C';"
+					 "ALTER DATABASE \"%s\" SET lc_monetary TO 'C';"
+					 "ALTER DATABASE \"%s\" SET lc_numeric TO 'C';"
+					 "ALTER DATABASE \"%s\" SET lc_time TO 'C';"
+					 "ALTER DATABASE \"%s\" SET bytea_output TO 'hex';"
+					 "ALTER DATABASE \"%s\" SET timezone_abbreviations TO 'Default';",
+					 dbname, dbname, dbname, dbname, dbname, dbname);
+	psql_end_command(buf, "postgres");
 
 	/*
 	 * Install any requested extensions.  We use CREATE IF NOT EXISTS so that
@@ -2069,27 +1963,35 @@ create_database(const char *dbname)
 	for (sl = loadextension; sl != NULL; sl = sl->next)
 	{
 		header(_("installing %s"), sl->str);
-		ysqlsh_command(dbname, "CREATE EXTENSION IF NOT EXISTS \"%s\"", sl->str);
+		psql_command(dbname, "CREATE EXTENSION IF NOT EXISTS \"%s\"", sl->str);
 	}
 }
 
 static void
 drop_role_if_exists(const char *rolename)
 {
+	StringInfo	buf = psql_start_command();
+
 	header(_("dropping role \"%s\""), rolename);
-	ysqlsh_command("postgres", "DROP ROLE IF EXISTS \"%s\"", rolename);
+	/* Set warning level so we don't see chatter about nonexistent role */
+	psql_add_command(buf, "SET client_min_messages = warning");
+	psql_add_command(buf, "DROP ROLE IF EXISTS \"%s\"", rolename);
+	psql_end_command(buf, "postgres");
 }
 
 static void
 create_role(const char *rolename, const _stringlist *granted_dbs)
 {
+	StringInfo	buf = psql_start_command();
+
 	header(_("creating role \"%s\""), rolename);
-	ysqlsh_command("postgres", "CREATE ROLE \"%s\" WITH LOGIN", rolename);
+	psql_add_command(buf, "CREATE ROLE \"%s\" WITH LOGIN", rolename);
 	for (; granted_dbs != NULL; granted_dbs = granted_dbs->next)
 	{
-		ysqlsh_command("postgres", "GRANT ALL ON DATABASE \"%s\" TO \"%s\"",
-					 granted_dbs->str, rolename);
+		psql_add_command(buf, "GRANT ALL ON DATABASE \"%s\" TO \"%s\"",
+						 granted_dbs->str, rolename);
 	}
+	psql_end_command(buf, "postgres");
 }
 
 static void
@@ -2110,10 +2012,9 @@ help(void)
 	printf(_("      --encoding=ENCODING       use ENCODING as the encoding\n"));
 	printf(_("  -h, --help                    show this help, then exit\n"));
 	printf(_("      --inputdir=DIR            take input files from DIR (default \".\")\n"));
-	printf(_("      --launcher=CMD            use CMD as launcher of ysqlsh\n"));
+	printf(_("      --launcher=CMD            use CMD as launcher of psql\n"));
 	printf(_("      --load-extension=EXT      load the named extension before running the\n"));
 	printf(_("                                tests; can appear multiple times\n"));
-	printf(_("      --make-testtablespace-dir create testtablespace directory\n"));
 	printf(_("      --max-connections=N       maximum number of concurrent connections\n"));
 	printf(_("                                (default is 0, meaning unlimited)\n"));
 	printf(_("      --max-concurrent-tests=N  maximum number of concurrent tests in schedule\n"));
@@ -2172,12 +2073,10 @@ regression_main(int argc, char *argv[],
 		{"load-extension", required_argument, NULL, 22},
 		{"config-auth", required_argument, NULL, 24},
 		{"max-concurrent-tests", required_argument, NULL, 25},
-		{"make-testtablespace-dir", no_argument, NULL, 26},
 		{NULL, 0, NULL, 0}
 	};
 
 	bool		use_unix_sockets;
-	bool		make_testtablespace_dir = false;
 	_stringlist *sl;
 	int			c;
 	int			i;
@@ -2303,9 +2202,6 @@ regression_main(int argc, char *argv[],
 			case 25:
 				max_concurrent_tests = atoi(optarg);
 				break;
-			case 26:
-				make_testtablespace_dir = true;
-				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("\nTry \"%s -h\" for more information.\n"),
@@ -2321,6 +2217,17 @@ regression_main(int argc, char *argv[],
 	{
 		add_stringlist_item(&extra_tests, argv[optind]);
 		optind++;
+	}
+
+	/*
+	 * We must have a database to run the tests in; either a default name, or
+	 * one supplied by the --dbname switch.
+	 */
+	if (!(dblist && dblist->str && dblist->str[0]))
+	{
+		fprintf(stderr, _("%s: no database name was specified\n"),
+				progname);
+		exit(2);
 	}
 
 	if (config_auth_datadir)
@@ -2357,9 +2264,6 @@ regression_main(int argc, char *argv[],
 #if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
 	unlimit_core_size();
 #endif
-
-	if (make_testtablespace_dir)
-		prepare_testtablespace_dir();
 
 	if (temp_instance)
 	{
@@ -2468,7 +2372,7 @@ regression_main(int argc, char *argv[],
 		 * Check if there is a postmaster running already.
 		 */
 		snprintf(buf2, sizeof(buf2),
-				 "\"%s%sysqlsh\" -X postgres <%s 2>%s",
+				 "\"%s%spsql\" -X postgres <%s 2>%s",
 				 bindir ? bindir : "",
 				 bindir ? "/" : "",
 				 DEVNULL, DEVNULL);
@@ -2537,7 +2441,7 @@ regression_main(int argc, char *argv[],
 
 		for (i = 0; i < wait_seconds; i++)
 		{
-			/* Done if ysqlsh succeeds */
+			/* Done if psql succeeds */
 			if (system(buf2) == 0)
 				break;
 

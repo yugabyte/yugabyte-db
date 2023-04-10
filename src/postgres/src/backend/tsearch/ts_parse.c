@@ -3,7 +3,7 @@
  * ts_parse.c
  *		main parse functions for tsearch
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -248,7 +248,7 @@ LexizeExec(LexizeData *ld, ParsedLex **correspondLexem)
 		dict = lookup_ts_dictionary_cache(ld->curDictId);
 
 		/*
-		 * Dictionary ld->curDictId asks  us about following words
+		 * Dictionary ld->curDictId asks us about following words
 		 */
 
 		while (ld->curSub)
@@ -433,6 +433,8 @@ parsetext(Oid cfgId, ParsedText *prs, char *buf, int buflen)
 /*
  * Headline framework
  */
+
+/* Add a word to prs->words[] */
 static void
 hladdword(HeadlineParsedText *prs, char *buf, int buflen, int type)
 {
@@ -449,6 +451,14 @@ hladdword(HeadlineParsedText *prs, char *buf, int buflen, int type)
 	prs->curwords++;
 }
 
+/*
+ * Add pos and matching-query-item data to the just-added word.
+ * Here, buf/buflen represent a processed lexeme, not raw token text.
+ *
+ * If the query contains more than one matching item, we replicate
+ * the last-added word so that each item can be pointed to.  The
+ * duplicate entries are marked with repeated = 1.
+ */
 static void
 hlfinditem(HeadlineParsedText *prs, TSQuery query, int32 pos, char *buf, int buflen)
 {
@@ -584,12 +594,14 @@ hlparsetext(Oid cfgId, HeadlineParsedText *prs, TSQuery query, char *buf, int bu
 			else
 				addHLParsedLex(prs, query, lexs, NULL);
 		} while (norms);
-
 	} while (type > 0);
 
 	FunctionCall1(&(prsobj->prsend), PointerGetDatum(prsdata));
 }
 
+/*
+ * Generate the headline, as a text object, from HeadlineParsedText.
+ */
 text *
 generateHeadline(HeadlineParsedText *prs)
 {
@@ -629,7 +641,6 @@ generateHeadline(HeadlineParsedText *prs)
 					memcpy(ptr, prs->fragdelim, prs->fragdelimlen);
 					ptr += prs->fragdelimlen;
 				}
-
 			}
 			if (wrd->replace)
 			{

@@ -3,7 +3,7 @@
  * dependencies.c
  *	  POSTGRES functional dependencies
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -24,12 +24,14 @@
 #include "nodes/pathnodes.h"
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
+#include "parser/parsetree.h"
 #include "statistics/extended_stats_internal.h"
 #include "statistics/statistics.h"
 #include "utils/bytea.h"
 #include "utils/fmgroids.h"
 #include "utils/fmgrprotos.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
@@ -197,7 +199,6 @@ DependencyGenerator_free(DependencyGenerator state)
 {
 	pfree(state->dependencies);
 	pfree(state);
-
 }
 
 /* generate next combination */
@@ -325,12 +326,6 @@ dependency_degree(StatsBuildData *data, int k, AttrNumber *dependency)
 		group_size++;
 	}
 
-	if (items)
-		pfree(items);
-
-	pfree(mss);
-	pfree(attnums_dep);
-
 	/* Compute the 'degree of validity' as (supporting/total). */
 	return (n_supporting_rows * 1.0 / data->numrows);
 }
@@ -359,8 +354,14 @@ statext_dependencies_build(StatsBuildData *data)
 
 	/* result */
 	MVDependencies *dependencies = NULL;
+	MemoryContext cxt;
 
 	Assert(data->nattnums >= 2);
+
+	/* tracks memory allocated by dependency_degree calls */
+	cxt = AllocSetContextCreate(CurrentMemoryContext,
+								"dependency_degree cxt",
+								ALLOCSET_DEFAULT_SIZES);
 
 	/*
 	 * We'll try build functional dependencies starting from the smallest ones
@@ -380,9 +381,16 @@ statext_dependencies_build(StatsBuildData *data)
 		{
 			double		degree;
 			MVDependency *d;
+			MemoryContext oldcxt;
+
+			/* release memory used by dependency degree calculation */
+			oldcxt = MemoryContextSwitchTo(cxt);
 
 			/* compute how valid the dependency seems */
 			degree = dependency_degree(data, k, dependency);
+
+			MemoryContextSwitchTo(oldcxt);
+			MemoryContextReset(cxt);
 
 			/*
 			 * if the dependency seems entirely invalid, don't store it
@@ -424,6 +432,8 @@ statext_dependencies_build(StatsBuildData *data)
 		 */
 		DependencyGenerator_free(DependencyGenerator);
 	}
+
+	MemoryContextDelete(cxt);
 
 	return dependencies;
 }
@@ -608,14 +618,16 @@ dependency_is_fully_matched(MVDependency *dependency, Bitmapset *attnums)
  *		Load the functional dependencies for the indicated pg_statistic_ext tuple
  */
 MVDependencies *
-statext_dependencies_load(Oid mvoid)
+statext_dependencies_load(Oid mvoid, bool inh)
 {
 	MVDependencies *result;
 	bool		isnull;
 	Datum		deps;
 	HeapTuple	htup;
 
-	htup = SearchSysCache1(STATEXTDATASTXOID, ObjectIdGetDatum(mvoid));
+	htup = SearchSysCache2(STATEXTDATASTXOID,
+						   ObjectIdGetDatum(mvoid),
+						   BoolGetDatum(inh));
 	if (!HeapTupleIsValid(htup))
 		elog(ERROR, "cache lookup failed for statistics object %u", mvoid);
 
@@ -1400,6 +1412,7 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 	int			ndependencies;
 	int			i;
 	AttrNumber	attnum_offset;
+	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
 
 	/* unique expressions */
 	Node	  **unique_exprs;
@@ -1588,6 +1601,10 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 		if (stat->kind != STATS_EXT_DEPENDENCIES)
 			continue;
 
+		/* skip statistics with mismatching stxdinherit value */
+		if (stat->inherit != rte->inh)
+			continue;
+
 		/*
 		 * Count matching attributes - we have to undo the attnum offsets. The
 		 * input attribute numbers are not offset (expressions are not
@@ -1634,7 +1651,7 @@ dependencies_clauselist_selectivity(PlannerInfo *root,
 		if (nmatched + nexprs < 2)
 			continue;
 
-		deps = statext_dependencies_load(stat->statOid);
+		deps = statext_dependencies_load(stat->statOid, rte->inh);
 
 		/*
 		 * The expressions may be represented by different attnums in the

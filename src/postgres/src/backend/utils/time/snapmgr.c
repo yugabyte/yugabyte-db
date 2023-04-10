@@ -35,7 +35,7 @@
  * stack is empty.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -554,12 +554,14 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 	CurrentSnapshot->xmax = sourcesnap->xmax;
 	CurrentSnapshot->xcnt = sourcesnap->xcnt;
 	Assert(sourcesnap->xcnt <= GetMaxSnapshotXidCount());
-	memcpy(CurrentSnapshot->xip, sourcesnap->xip,
-		   sourcesnap->xcnt * sizeof(TransactionId));
+	if (sourcesnap->xcnt > 0)
+		memcpy(CurrentSnapshot->xip, sourcesnap->xip,
+			   sourcesnap->xcnt * sizeof(TransactionId));
 	CurrentSnapshot->subxcnt = sourcesnap->subxcnt;
 	Assert(sourcesnap->subxcnt <= GetMaxSnapshotSubxidCount());
-	memcpy(CurrentSnapshot->subxip, sourcesnap->subxip,
-		   sourcesnap->subxcnt * sizeof(TransactionId));
+	if (sourcesnap->subxcnt > 0)
+		memcpy(CurrentSnapshot->subxip, sourcesnap->subxip,
+			   sourcesnap->subxcnt * sizeof(TransactionId));
 	CurrentSnapshot->suboverflowed = sourcesnap->suboverflowed;
 	CurrentSnapshot->takenDuringRecovery = sourcesnap->takenDuringRecovery;
 	/* NB: curcid should NOT be copied, it's a local matter */
@@ -697,9 +699,24 @@ FreeSnapshot(Snapshot snapshot)
 void
 PushActiveSnapshot(Snapshot snap)
 {
+	PushActiveSnapshotWithLevel(snap, GetCurrentTransactionNestLevel());
+}
+
+/*
+ * PushActiveSnapshotWithLevel
+ *		Set the given snapshot as the current active snapshot
+ *
+ * Same as PushActiveSnapshot except that caller can specify the
+ * transaction nesting level that "owns" the snapshot.  This level
+ * must not be deeper than the current top of the snapshot stack.
+ */
+void
+PushActiveSnapshotWithLevel(Snapshot snap, int snap_level)
+{
 	ActiveSnapshotElt *newactive;
 
 	Assert(snap != InvalidSnapshot);
+	Assert(ActiveSnapshot == NULL || snap_level >= ActiveSnapshot->as_level);
 
 	newactive = MemoryContextAlloc(TopTransactionContext, sizeof(ActiveSnapshotElt));
 
@@ -713,7 +730,7 @@ PushActiveSnapshot(Snapshot snap)
 		newactive->as_snap = snap;
 
 	newactive->as_next = ActiveSnapshot;
-	newactive->as_level = GetCurrentTransactionNestLevel();
+	newactive->as_level = snap_level;
 
 	newactive->as_snap->active_count++;
 
@@ -928,9 +945,9 @@ xmin_cmp(const pairingheap_node *a, const pairingheap_node *b, void *arg)
 /*
  * SnapshotResetXmin
  *
- * If there are no more snapshots, we can reset our PGPROC->xmin to InvalidXid.
- * Note we can do this without locking because we assume that storing an Xid
- * is atomic.
+ * If there are no more snapshots, we can reset our PGPROC->xmin to
+ * InvalidTransactionId. Note we can do this without locking because we assume
+ * that storing an Xid is atomic.
  *
  * Even if there are some remaining snapshots, we may be able to advance our
  * PGPROC->xmin to some degree.  This typically happens when a portal is
@@ -1632,6 +1649,32 @@ ThereAreNoPriorRegisteredSnapshots(void)
 		return true;
 
 	return false;
+}
+
+/*
+ * HaveRegisteredOrActiveSnapshots
+ *		Is there any registered or active snapshot?
+ *
+ * NB: Unless pushed or active, the cached catalog snapshot will not cause
+ * this function to return true. That allows this function to be used in
+ * checks enforcing a longer-lived snapshot.
+ */
+bool
+HaveRegisteredOrActiveSnapshot(void)
+{
+	if (ActiveSnapshot != NULL)
+		return true;
+
+	/*
+	 * The catalog snapshot is in RegisteredSnapshots when valid, but can be
+	 * removed at any time due to invalidation processing. If explicitly
+	 * registered more than one snapshot has to be in RegisteredSnapshots.
+	 */
+	if (CatalogSnapshot != NULL &&
+		pairingheap_is_singular(&RegisteredSnapshots))
+		return false;
+
+	return !pairingheap_is_empty(&RegisteredSnapshots);
 }
 
 

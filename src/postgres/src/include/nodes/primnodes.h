@@ -7,7 +7,7 @@
  *	  and join trees.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/primnodes.h
@@ -159,8 +159,8 @@ typedef struct Expr
  * is abused to signify references to columns of a custom scan tuple type.)
  *
  * ROWID_VAR is used in the planner to identify nonce variables that carry
- * row identity information during UPDATE/DELETE.  This value should never
- * be seen outside the planner.
+ * row identity information during UPDATE/DELETE/MERGE.  This value should
+ * never be seen outside the planner.
  *
  * In the parser, varnosyn and varattnosyn are either identical to
  * varno/varattno, or they specify the column's position in an aliased JOIN
@@ -1065,15 +1065,13 @@ typedef struct ArrayExpr
  * than vice versa.)  It is important not to assume that length(args) is
  * the same as the number of columns logically present in the rowtype.
  *
- * colnames provides field names in cases where the names can't easily be
- * obtained otherwise.  Names *must* be provided if row_typeid is RECORDOID.
- * If row_typeid identifies a known composite type, colnames can be NIL to
- * indicate the type's cataloged field names apply.  Note that colnames can
- * be non-NIL even for a composite type, and typically is when the RowExpr
- * was created by expanding a whole-row Var.  This is so that we can retain
- * the column alias names of the RTE that the Var referenced (which would
- * otherwise be very difficult to extract from the parsetree).  Like the
- * args list, colnames is one-for-one with physical fields of the rowtype.
+ * colnames provides field names if the ROW() result is of type RECORD.
+ * Names *must* be provided if row_typeid is RECORDOID; but if it is a
+ * named composite type, colnames will be ignored in favor of using the
+ * type's cataloged field names, so colnames should be NIL.  Like the
+ * args list, colnames is defined to be one-for-one with physical fields
+ * of the rowtype (although dropped columns shouldn't appear in the
+ * RECORD case, so this fine point is currently moot).
  */
 typedef struct RowExpr
 {

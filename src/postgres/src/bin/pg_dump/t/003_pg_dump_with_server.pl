@@ -1,16 +1,16 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 3;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
-my $tempdir       = TestLib::tempdir;
+my $tempdir = PostgreSQL::Test::Utils::tempdir;
 
-my $node = PostgresNode->new('main');
+my $node = PostgreSQL::Test::Cluster->new('main');
 my $port = $node->port;
 
 $node->init;
@@ -30,9 +30,11 @@ my ($cmd, $stdout, $stderr, $result);
 
 command_fails_like(
 	[ "pg_dump", '-p', $port, '--include-foreign-data=s0', 'postgres' ],
-	qr/foreign-data wrapper \"dummy\" has no handler\r?\npg_dump: error: query was:.*t0/,
+	qr/foreign-data wrapper \"dummy\" has no handler\r?\npg_dump: detail: Query was: .*t0/,
 	"correctly fails to dump a foreign table from a dummy FDW");
 
 command_ok(
 	[ "pg_dump", '-p', $port, '-a', '--include-foreign-data=s2', 'postgres' ],
 	"dump foreign server with no tables");
+
+done_testing();

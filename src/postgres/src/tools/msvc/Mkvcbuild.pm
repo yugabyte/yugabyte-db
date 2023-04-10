@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 package Mkvcbuild;
 
@@ -35,22 +35,22 @@ my $libpq;
 my @unlink_on_exit;
 
 # Set of variables for modules in contrib/ and src/test/modules/
-my $contrib_defines = {};
-my @contrib_uselibpq = ();
+my $contrib_defines        = {};
+my @contrib_uselibpq       = ();
 my @contrib_uselibpgport   = ();
 my @contrib_uselibpgcommon = ();
-my $contrib_extralibs     = { 'libpq_pipeline' => ['ws2_32.lib'] };
+my $contrib_extralibs      = { 'libpq_pipeline' => ['ws2_32.lib'] };
 my $contrib_extraincludes  = {};
 my $contrib_extrasource    = {};
-my @contrib_excludes = (
-	'bool_plperl',      'commit_ts',
-	'hstore_plperl',    'hstore_plpython',
-	'intagg',           'jsonb_plperl',
-	'jsonb_plpython',   'ltree_plpython',
-	'pgcrypto',         'sepgsql',
-	'brin',             'test_extensions',
-	'test_misc',        'test_pg_dump',
-	'snapshot_too_old', 'unsafe_tests');
+my @contrib_excludes       = (
+	'bool_plperl',     'commit_ts',
+	'hstore_plperl',   'hstore_plpython',
+	'intagg',          'jsonb_plperl',
+	'jsonb_plpython',  'ltree_plpython',
+	'sepgsql',         'brin',
+	'test_extensions', 'test_misc',
+	'test_pg_dump',    'snapshot_too_old',
+	'unsafe_tests');
 
 # Set of variables for frontend modules
 my $frontend_defines = { 'initdb' => 'FRONTEND' };
@@ -99,15 +99,16 @@ sub mkvcbuild
 	$solution = CreateSolution($vsVersion, $config);
 
 	our @pgportfiles = qw(
-	  chklocale.c explicit_bzero.c fls.c getpeereid.c getrusage.c inet_aton.c random.c
-	  srandom.c getaddrinfo.c gettimeofday.c inet_net_ntop.c kill.c open.c
-	  erand48.c snprintf.c strlcat.c strlcpy.c dirmod.c noblock.c path.c
+	  chklocale.c explicit_bzero.c fls.c getpeereid.c getrusage.c inet_aton.c
+	  getaddrinfo.c gettimeofday.c inet_net_ntop.c kill.c open.c
+	  snprintf.c strlcat.c strlcpy.c dirmod.c noblock.c path.c
 	  dirent.c dlopen.c getopt.c getopt_long.c link.c
 	  pread.c preadv.c pwrite.c pwritev.c pg_bitutils.c
 	  pg_strong_random.c pgcheckdir.c pgmkdirp.c pgsleep.c pgstrcasecmp.c
 	  pqsignal.c mkdtemp.c qsort.c qsort_arg.c bsearch_arg.c quotes.c system.c
-	  strerror.c tar.c thread.c
-	  win32env.c win32error.c win32security.c win32setlocale.c win32stat.c);
+	  strerror.c tar.c
+	  win32env.c win32error.c win32ntdll.c
+	  win32security.c win32setlocale.c win32stat.c);
 
 	push(@pgportfiles, 'strtof.c') if ($vsVersion < '14.00');
 
@@ -123,13 +124,13 @@ sub mkvcbuild
 	}
 
 	our @pgcommonallfiles = qw(
-	  archive.c base64.c checksum_helper.c
+	  archive.c base64.c checksum_helper.c compression.c
 	  config_info.c controldata_utils.c d2s.c encnames.c exec.c
 	  f2s.c file_perm.c file_utils.c hashfn.c ip.c jsonapi.c
 	  keywords.c kwlookup.c link-canary.c md5_common.c
-	  pg_get_line.c pg_lzcompress.c pgfnames.c psprintf.c relpath.c rmtree.c
-	  saslprep.c scram-common.c string.c stringinfo.c unicode_norm.c username.c
-	  wait_error.c wchar.c);
+	  pg_get_line.c pg_lzcompress.c pg_prng.c pgfnames.c psprintf.c relpath.c
+	  rmtree.c saslprep.c scram-common.c string.c stringinfo.c unicode_norm.c
+	  username.c wait_error.c wchar.c);
 
 	if ($solution->{options}->{openssl})
 	{
@@ -283,6 +284,24 @@ sub mkvcbuild
 	$libpqwalreceiver->AddIncludeDir('src/interfaces/libpq');
 	$libpqwalreceiver->AddReference($postgres, $libpq);
 
+	my $libpq_testclient =
+	  $solution->AddProject('libpq_testclient', 'exe', 'misc',
+		'src/interfaces/libpq/test');
+	$libpq_testclient->AddFile(
+		'src/interfaces/libpq/test/libpq_testclient.c');
+	$libpq_testclient->AddIncludeDir('src/interfaces/libpq');
+	$libpq_testclient->AddReference($libpgport, $libpq);
+	$libpq_testclient->AddLibrary('ws2_32.lib');
+
+	my $libpq_uri_regress =
+	  $solution->AddProject('libpq_uri_regress', 'exe', 'misc',
+		'src/interfaces/libpq/test');
+	$libpq_uri_regress->AddFile(
+		'src/interfaces/libpq/test/libpq_uri_regress.c');
+	$libpq_uri_regress->AddIncludeDir('src/interfaces/libpq');
+	$libpq_uri_regress->AddReference($libpgport, $libpq);
+	$libpq_uri_regress->AddLibrary('ws2_32.lib');
+
 	my $pgoutput = $solution->AddProject('pgoutput', 'dll', '',
 		'src/backend/replication/pgoutput');
 	$pgoutput->AddReference($postgres);
@@ -373,7 +392,14 @@ sub mkvcbuild
 	}
 
 	my $pgbasebackup = AddSimpleFrontend('pg_basebackup', 1);
+	# This list of files has to match BBOBJS in pg_basebackup's Makefile.
 	$pgbasebackup->AddFile('src/bin/pg_basebackup/pg_basebackup.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_file.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_gzip.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_inject.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_lz4.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_zstd.c');
+	$pgbasebackup->AddFile('src/bin/pg_basebackup/bbstreamer_tar.c');
 	$pgbasebackup->AddLibrary('ws2_32.lib');
 
 	my $pgreceivewal = AddSimpleFrontend('pg_basebackup', 1);
@@ -440,48 +466,14 @@ sub mkvcbuild
 
 	if (!$solution->{options}->{openssl})
 	{
-		push @contrib_excludes, 'sslinfo', 'ssl_passphrase_callback';
+		push @contrib_excludes, 'sslinfo', 'ssl_passphrase_callback',
+		  'pgcrypto';
 	}
 
 	if (!$solution->{options}->{uuid})
 	{
 		push @contrib_excludes, 'uuid-ossp';
 	}
-
-	# AddProject() does not recognize the constructs used to populate OBJS in
-	# the pgcrypto Makefile, so it will discover no files.
-	my $pgcrypto =
-	  $solution->AddProject('pgcrypto', 'dll', 'crypto', 'contrib/pgcrypto');
-	$pgcrypto->AddFiles(
-		'contrib/pgcrypto', 'pgcrypto.c',
-		'px.c',             'px-hmac.c',
-		'px-crypt.c',       'crypt-gensalt.c',
-		'crypt-blowfish.c', 'crypt-des.c',
-		'crypt-md5.c',      'mbuf.c',
-		'pgp.c',            'pgp-armor.c',
-		'pgp-cfb.c',        'pgp-compress.c',
-		'pgp-decrypt.c',    'pgp-encrypt.c',
-		'pgp-info.c',       'pgp-mpi.c',
-		'pgp-pubdec.c',     'pgp-pubenc.c',
-		'pgp-pubkey.c',     'pgp-s2k.c',
-		'pgp-pgsql.c');
-	if ($solution->{options}->{openssl})
-	{
-		$pgcrypto->AddFiles('contrib/pgcrypto', 'openssl.c',
-			'pgp-mpi-openssl.c');
-	}
-	else
-	{
-		$pgcrypto->AddFiles(
-			'contrib/pgcrypto', 'internal.c',
-			'internal-sha2.c',  'blf.c',
-			'rijndael.c',       'pgp-mpi-internal.c',
-			'imath.c');
-	}
-	$pgcrypto->AddReference($postgres);
-	$pgcrypto->AddLibrary('ws2_32.lib');
-	my $mf = Project::read_file('contrib/pgcrypto/Makefile');
-	GenerateContribSqlFiles('pgcrypto', $mf);
 
 	foreach my $subdir ('contrib', 'src/test/modules')
 	{
@@ -518,6 +510,11 @@ sub mkvcbuild
 		  if (!(defined($pyprefix) && defined($pyver)));
 
 		my $pymajorver = substr($pyver, 0, 1);
+
+		die
+		  "Python version $pyver is too old (version 3 or later is required)"
+		  if int($pymajorver) < 3;
+
 		my $plpython = $solution->AddProject('plpython' . $pymajorver,
 			'dll', 'PLs', 'src/pl/plpython');
 		$plpython->AddIncludeDir($pyprefix . '/include');
@@ -583,6 +580,9 @@ sub mkvcbuild
 
 		# hack to prevent duplicate definitions of uid_t/gid_t
 		push(@perl_embed_ccflags, 'PLPERL_HAVE_UID_GID');
+		# prevent binary mismatch between MSVC built plperl and
+		# Strawberry or msys ucrt perl libraries
+		push(@perl_embed_ccflags, 'NO_THREAD_SAFE_LOCALE');
 
 		# Windows offers several 32-bit ABIs.  Perl is sensitive to
 		# sizeof(time_t), one of the ABI dimensions.  To get 32-bit time_t,
@@ -795,7 +795,7 @@ sub mkvcbuild
 		}
 	}
 
-	$mf =
+	my $mf =
 	  Project::read_file('src/backend/utils/mb/conversion_procs/Makefile');
 	$mf =~ s{\\\r?\n}{}g;
 	$mf =~ m{SUBDIRS\s*=\s*(.*)$}m
@@ -933,7 +933,7 @@ sub AddTransformModule
 	# Add PL dependencies
 	$p->AddIncludeDir($pl_src);
 	$p->AddReference($pl_proj);
-	$p->AddIncludeDir($_) for @{$pl_proj->{includes}};
+	$p->AddIncludeDir($_) for @{ $pl_proj->{includes} };
 	foreach my $pl_lib (@{ $pl_proj->{libraries} })
 	{
 		$p->AddLibrary($pl_lib);
@@ -943,7 +943,7 @@ sub AddTransformModule
 	if ($type_proj)
 	{
 		$p->AddIncludeDir($type_src);
-		$p->AddIncludeDir($_) for @{$type_proj->{includes}};
+		$p->AddIncludeDir($_) for @{ $type_proj->{includes} };
 		foreach my $type_lib (@{ $type_proj->{libraries} })
 		{
 			$p->AddLibrary($type_lib);
@@ -957,9 +957,9 @@ sub AddTransformModule
 # Add a simple contrib project
 sub AddContrib
 {
-	my $subdir = shift;
-	my $n      = shift;
-	my $mf     = Project::read_file("$subdir/$n/Makefile");
+	my $subdir   = shift;
+	my $n        = shift;
+	my $mf       = Project::read_file("$subdir/$n/Makefile");
 	my @projects = ();
 
 	if ($mf =~ /^MODULE_big\s*=\s*(.*)$/mg)
@@ -995,7 +995,8 @@ sub AddContrib
 	}
 
 	# Process custom compiler flags
-	if ($mf =~ /^PG_CPPFLAGS\s*=\s*(.*)$/mg || $mf =~ /^override\s*CPPFLAGS\s*[+:]?=\s*(.*)$/mg)
+	if (   $mf =~ /^PG_CPPFLAGS\s*=\s*(.*)$/mg
+		|| $mf =~ /^override\s*CPPFLAGS\s*[+:]?=\s*(.*)$/mg)
 	{
 		foreach my $flag (split /\s+/, $1)
 		{
