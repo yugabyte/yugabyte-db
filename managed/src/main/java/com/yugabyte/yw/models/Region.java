@@ -396,6 +396,18 @@ public class Region extends Model {
     return find.query().where().eq("provider_UUID", providerUUID).findList();
   }
 
+  public static List<Region> getFullByProviders(Collection<UUID> providers) {
+    if (CollectionUtils.isEmpty(providers)) {
+      return Collections.emptyList();
+    }
+    return find.query()
+        .fetch("provider")
+        .fetch("zones")
+        .where()
+        .in("provider_UUID", providers)
+        .findList();
+  }
+
   public static Region getOrBadRequest(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
     Region region = get(customerUUID, providerUUID, regionUUID);
     if (region == null) {
