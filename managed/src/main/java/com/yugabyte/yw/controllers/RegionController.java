@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.controllers;
 
-import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.RegionHandler;
@@ -21,10 +21,9 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,22 +67,21 @@ public class RegionController extends AuthenticatedController {
       responseContainer = "List")
   // todo: include provider field in response
   public Result listAllRegions(UUID customerUUID) {
-    Map<UUID, Provider> providers =
-        Provider.getAll(customerUUID)
+    Set<UUID> providerUuids =
+        Provider.getAll(customerUUID).stream().map(Provider::getUuid).collect(Collectors.toSet());
+    List<Region> regionList = Region.getFullByProviders(providerUuids);
+    List<JsonNode> result =
+        regionList
             .stream()
-            .collect(Collectors.toMap(Provider::getUuid, Function.identity()));
-    providers.values().forEach(CloudInfoInterface::mayBeMassageResponse);
-    ArrayNode resultArray = Json.newArray();
-    List<Region> regionList = Region.fetchValidRegions(customerUUID, providers.keySet(), 1);
-    for (Region region : regionList) {
-      ObjectNode regionNode = (ObjectNode) Json.toJson(region);
-      Provider enhancedProvider = providers.get(region.getProvider().getUuid());
-      ObjectNode providerForRegion = (ObjectNode) Json.toJson(enhancedProvider);
-      providerForRegion.remove("regions"); // to Avoid recursion
-      regionNode.set("provider", providerForRegion);
-      resultArray.add(regionNode);
-    }
-    return ok(resultArray);
+            .peek(region -> CloudInfoInterface.mayBeMassageResponse(region.getProvider(), region))
+            .map(
+                region -> {
+                  ObjectNode regionNode = (ObjectNode) Json.toJson(region);
+                  regionNode.set("provider", Json.toJson(region.getProvider()));
+                  return regionNode;
+                })
+            .collect(Collectors.toList());
+    return PlatformResults.withData(result);
   }
 
   /**

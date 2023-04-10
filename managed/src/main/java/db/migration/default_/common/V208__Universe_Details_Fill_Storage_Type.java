@@ -5,7 +5,8 @@ package db.migration.default_.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.migrations.V208;
+import com.yugabyte.yw.models.migrations.V208.UniverseDefinitionTaskParams;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -40,7 +41,7 @@ public class V208__Universe_Details_Fill_Storage_Type extends BaseJavaMigration 
     }
   }
 
-  private boolean processCluster(UniverseDefinitionTaskParams.Cluster cluster) {
+  private boolean processCluster(V208.Cluster cluster) {
     if (cluster.userIntent == null
         || cluster.userIntent.deviceInfo == null
         || cluster.userIntent.deviceInfo.storageType != null) {

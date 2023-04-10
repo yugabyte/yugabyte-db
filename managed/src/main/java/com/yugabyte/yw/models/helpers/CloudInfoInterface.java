@@ -579,15 +579,29 @@ public interface CloudInfoInterface {
     }
 
     for (Region region : p.getRegions()) {
-      if (region.getZones() == null) {
-        return;
-      }
-      for (AvailabilityZone az : region.getZones()) {
-        config = CloudInfoInterface.fetchEnvVars(az);
-        AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();
-        AvailabilityZoneDetails.AZCloudInfo azCloudInfo = azDetails.getCloudInfo();
-        az.setConfig(populateConfigMap(azCloudInfo, cloudType, config));
-      }
+      mayBeMassageResponse(cloudType, region);
+    }
+  }
+
+  public static void mayBeMassageResponse(Provider p, Region region) {
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(p);
+    ProviderDetails providerDetails = p.getDetails();
+    ProviderDetails.CloudInfo cloudInfo = providerDetails.getCloudInfo();
+    CloudType cloudType = CloudType.valueOf(p.getCode());
+    p.setConfig(populateConfigMap(cloudInfo, cloudType, config));
+
+    mayBeMassageResponse(cloudType, region);
+  }
+
+  static void mayBeMassageResponse(CloudType cloudType, Region region) {
+    if (region.getZones() == null) {
+      return;
+    }
+    for (AvailabilityZone az : region.getZones()) {
+      Map<String, String> config = CloudInfoInterface.fetchEnvVars(az);
+      AvailabilityZoneDetails azDetails = az.getAvailabilityZoneDetails();
+      AvailabilityZoneDetails.AZCloudInfo azCloudInfo = azDetails.getCloudInfo();
+      az.setConfig(populateConfigMap(azCloudInfo, cloudType, config));
     }
   }
 }
