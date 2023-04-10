@@ -3,7 +3,7 @@
  * jsonb_gin.c
  *	 GIN support functions for jsonb
  *
- * Copyright (c) 2014-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2022, PostgreSQL Global Development Group
  *
  * We provide two opclasses for jsonb indexing: jsonb_ops and jsonb_path_ops.
  * For their description see json.sgml and comments in jsonb.h.
@@ -896,9 +896,10 @@ gin_extract_jsonb_query(PG_FUNCTION_ARGS)
 			/* Nulls in the array are ignored */
 			if (key_nulls[i])
 				continue;
+			/* We rely on the array elements not being toasted */
 			entries[j++] = make_text_key(JGINFLAG_KEY,
-										 VARDATA(key_datums[i]),
-										 VARSIZE(key_datums[i]) - VARHDRSZ);
+										 VARDATA_ANY(key_datums[i]),
+										 VARSIZE_ANY_EXHDR(key_datums[i]));
 		}
 
 		*nentries = j;

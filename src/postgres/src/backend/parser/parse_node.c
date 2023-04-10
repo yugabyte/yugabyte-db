@@ -3,7 +3,7 @@
  * parse_node.c
  *	  various routines that make nodes for querytrees
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -26,7 +26,6 @@
 #include "parser/parse_relation.h"
 #include "parser/parsetree.h"
 #include "utils/builtins.h"
-#include "utils/int8.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/varbit.h"
@@ -83,7 +82,7 @@ free_parsestate(ParseState *pstate)
 	 */
 	if (pstate->p_next_resno - 1 > MaxTupleAttributeNumber)
 		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
 				 errmsg("target lists can have at most %d entries",
 						MaxTupleAttributeNumber)));
 
@@ -353,7 +352,6 @@ make_const(ParseState *pstate, A_Const *aconst)
 {
 	Const	   *con;
 	Datum		val;
-	int64		val64;
 	Oid			typeid;
 	int			typelen;
 	bool		typebyval;
@@ -376,7 +374,7 @@ make_const(ParseState *pstate, A_Const *aconst)
 	switch (nodeTag(&aconst->val))
 	{
 		case T_Integer:
-			val = Int32GetDatum(aconst->val.ival.val);
+			val = Int32GetDatum(intVal(&aconst->val));
 
 			typeid = INT4OID;
 			typelen = sizeof(int32);
@@ -384,46 +382,63 @@ make_const(ParseState *pstate, A_Const *aconst)
 			break;
 
 		case T_Float:
-			/* could be an oversize integer as well as a float ... */
-			if (scanint8(aconst->val.fval.val, true, &val64))
 			{
-				/*
-				 * It might actually fit in int32. Probably only INT_MIN can
-				 * occur, but we'll code the test generally just to be sure.
-				 */
-				int32		val32 = (int32) val64;
+				/* could be an oversize integer as well as a float ... */
 
-				if (val64 == (int64) val32)
+				int64		val64;
+				char	   *endptr;
+
+				errno = 0;
+				val64 = strtoi64(aconst->val.fval.fval, &endptr, 10);
+				if (errno == 0 && *endptr == '\0')
 				{
-					val = Int32GetDatum(val32);
+					/*
+					 * It might actually fit in int32. Probably only INT_MIN
+					 * can occur, but we'll code the test generally just to be
+					 * sure.
+					 */
+					int32		val32 = (int32) val64;
 
-					typeid = INT4OID;
-					typelen = sizeof(int32);
-					typebyval = true;
+					if (val64 == (int64) val32)
+					{
+						val = Int32GetDatum(val32);
+
+						typeid = INT4OID;
+						typelen = sizeof(int32);
+						typebyval = true;
+					}
+					else
+					{
+						val = Int64GetDatum(val64);
+
+						typeid = INT8OID;
+						typelen = sizeof(int64);
+						typebyval = FLOAT8PASSBYVAL;	/* int8 and float8 alike */
+					}
 				}
 				else
 				{
-					val = Int64GetDatum(val64);
+					/* arrange to report location if numeric_in() fails */
+					setup_parser_errposition_callback(&pcbstate, pstate, aconst->location);
+					val = DirectFunctionCall3(numeric_in,
+											  CStringGetDatum(aconst->val.fval.fval),
+											  ObjectIdGetDatum(InvalidOid),
+											  Int32GetDatum(-1));
+					cancel_parser_errposition_callback(&pcbstate);
 
-					typeid = INT8OID;
-					typelen = sizeof(int64);
-					typebyval = FLOAT8PASSBYVAL;	/* int8 and float8 alike */
+					typeid = NUMERICOID;
+					typelen = -1;	/* variable len */
+					typebyval = false;
 				}
+				break;
 			}
-			else
-			{
-				/* arrange to report location if numeric_in() fails */
-				setup_parser_errposition_callback(&pcbstate, pstate, aconst->location);
-				val = DirectFunctionCall3(numeric_in,
-										  CStringGetDatum(aconst->val.fval.val),
-										  ObjectIdGetDatum(InvalidOid),
-										  Int32GetDatum(-1));
-				cancel_parser_errposition_callback(&pcbstate);
 
-				typeid = NUMERICOID;
-				typelen = -1;	/* variable len */
-				typebyval = false;
-			}
+		case T_Boolean:
+			val = BoolGetDatum(boolVal(&aconst->val));
+
+			typeid = BOOLOID;
+			typelen = 1;
+			typebyval = true;
 			break;
 
 		case T_String:
@@ -432,7 +447,7 @@ make_const(ParseState *pstate, A_Const *aconst)
 			 * We assume here that UNKNOWN's internal representation is the
 			 * same as CSTRING
 			 */
-			val = CStringGetDatum(aconst->val.sval.val);
+			val = CStringGetDatum(strVal(&aconst->val));
 
 			typeid = UNKNOWNOID;	/* will be coerced later */
 			typelen = -2;		/* cstring-style varwidth type */
@@ -443,7 +458,7 @@ make_const(ParseState *pstate, A_Const *aconst)
 			/* arrange to report location if bit_in() fails */
 			setup_parser_errposition_callback(&pcbstate, pstate, aconst->location);
 			val = DirectFunctionCall3(bit_in,
-									  CStringGetDatum(aconst->val.bsval.val),
+									  CStringGetDatum(aconst->val.bsval.bsval),
 									  ObjectIdGetDatum(InvalidOid),
 									  Int32GetDatum(-1));
 			cancel_parser_errposition_callback(&pcbstate);

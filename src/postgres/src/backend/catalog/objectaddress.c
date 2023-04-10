@@ -3,7 +3,7 @@
  * objectaddress.c
  *	  functions for working with ObjectAddresses
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -45,9 +45,11 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opfamily.h"
+#include "catalog/pg_parameter_acl.h"
 #include "catalog/pg_policy.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_publication.h"
+#include "catalog/pg_publication_namespace.h"
 #include "catalog/pg_publication_rel.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic_ext.h"
@@ -838,6 +840,10 @@ static const struct object_type_map
 	{
 		"event trigger", OBJECT_EVENT_TRIGGER
 	},
+	/* OCLASS_PARAMETER_ACL */
+	{
+		"parameter ACL", OBJECT_PARAMETER_ACL
+	},
 	/* OCLASS_POLICY */
 	{
 		"policy", OBJECT_POLICY
@@ -845,6 +851,10 @@ static const struct object_type_map
 	/* OCLASS_PUBLICATION */
 	{
 		"publication", OBJECT_PUBLICATION
+	},
+	/* OCLASS_PUBLICATION_NAMESPACE */
+	{
+		"publication namespace", OBJECT_PUBLICATION_NAMESPACE
 	},
 	/* OCLASS_PUBLICATION_REL */
 	{
@@ -896,6 +906,8 @@ static ObjectAddress get_object_address_usermapping(List *object,
 static ObjectAddress get_object_address_publication_rel(List *object,
 														Relation *relp,
 														bool missing_ok);
+static ObjectAddress get_object_address_publication_schema(List *object,
+														   bool missing_ok);
 static ObjectAddress get_object_address_defacl(List *object,
 											   bool missing_ok);
 static const ObjectPropertyType *get_object_property_data(Oid class_id);
@@ -1016,7 +1028,6 @@ get_object_address(ObjectType objtype, Node *object,
 					address.objectId = get_domain_constraint_oid(domaddr.objectId,
 																 constrname, missing_ok);
 					address.objectSubId = 0;
-
 				}
 				break;
 			case OBJECT_DATABASE:
@@ -1028,6 +1039,7 @@ get_object_address(ObjectType objtype, Node *object,
 			case OBJECT_FDW:
 			case OBJECT_FOREIGN_SERVER:
 			case OBJECT_EVENT_TRIGGER:
+			case OBJECT_PARAMETER_ACL:
 			case OBJECT_ACCESS_METHOD:
 			case OBJECT_PUBLICATION:
 			case OBJECT_SUBSCRIPTION:
@@ -1134,6 +1146,10 @@ get_object_address(ObjectType objtype, Node *object,
 			case OBJECT_USER_MAPPING:
 				address = get_object_address_usermapping(castNode(List, object),
 														 missing_ok);
+				break;
+			case OBJECT_PUBLICATION_NAMESPACE:
+				address = get_object_address_publication_schema(castNode(List, object),
+																missing_ok);
 				break;
 			case OBJECT_PUBLICATION_REL:
 				address = get_object_address_publication_rel(castNode(List, object),
@@ -1329,6 +1345,11 @@ get_object_address_unqualified(ObjectType objtype,
 		case OBJECT_EVENT_TRIGGER:
 			address.classId = EventTriggerRelationId;
 			address.objectId = get_event_trigger_oid(name, missing_ok);
+			address.objectSubId = 0;
+			break;
+		case OBJECT_PARAMETER_ACL:
+			address.classId = ParameterAclRelationId;
+			address.objectId = ParameterAclLookup(name, missing_ok);
 			address.objectSubId = 0;
 			break;
 		case OBJECT_PUBLICATION:
@@ -1594,39 +1615,11 @@ get_object_address_attrdef(ObjectType objtype, List *object,
 
 	tupdesc = RelationGetDescr(relation);
 
-	/* Look up attribute number and scan pg_attrdef to find its tuple */
+	/* Look up attribute number and fetch the pg_attrdef OID */
 	attnum = get_attnum(reloid, attname);
 	defoid = InvalidOid;
 	if (attnum != InvalidAttrNumber && tupdesc->constr != NULL)
-	{
-		Relation	attrdef;
-		ScanKeyData keys[2];
-		SysScanDesc scan;
-		HeapTuple	tup;
-
-		attrdef = relation_open(AttrDefaultRelationId, AccessShareLock);
-		ScanKeyInit(&keys[0],
-					Anum_pg_attrdef_adrelid,
-					BTEqualStrategyNumber,
-					F_OIDEQ,
-					ObjectIdGetDatum(reloid));
-		ScanKeyInit(&keys[1],
-					Anum_pg_attrdef_adnum,
-					BTEqualStrategyNumber,
-					F_INT2EQ,
-					Int16GetDatum(attnum));
-		scan = systable_beginscan(attrdef, AttrDefaultIndexId, true,
-								  NULL, 2, keys);
-		if (HeapTupleIsValid(tup = systable_getnext(scan)))
-		{
-			Form_pg_attrdef atdform = (Form_pg_attrdef) GETSTRUCT(tup);
-
-			defoid = atdform->oid;
-		}
-
-		systable_endscan(scan);
-		relation_close(attrdef, AccessShareLock);
-	}
+		defoid = GetAttrDefaultOid(reloid, attnum);
 	if (!OidIsValid(defoid))
 	{
 		if (!missing_ok)
@@ -1963,6 +1956,49 @@ get_object_address_publication_rel(List *object,
 }
 
 /*
+ * Find the ObjectAddress for a publication schema. The first element of the
+ * object parameter is the schema name, the second is the publication name.
+ */
+static ObjectAddress
+get_object_address_publication_schema(List *object, bool missing_ok)
+{
+	ObjectAddress address;
+	Publication *pub;
+	char	   *pubname;
+	char	   *schemaname;
+	Oid			schemaid;
+
+	ObjectAddressSet(address, PublicationNamespaceRelationId, InvalidOid);
+
+	/* Fetch schema name and publication name from input list */
+	schemaname = strVal(linitial(object));
+	pubname = strVal(lsecond(object));
+
+	schemaid = get_namespace_oid(schemaname, missing_ok);
+	if (!OidIsValid(schemaid))
+		return address;
+
+	/* Now look up the pg_publication tuple */
+	pub = GetPublicationByName(pubname, missing_ok);
+	if (!pub)
+		return address;
+
+	/* Find the publication schema mapping in syscache */
+	address.objectId =
+		GetSysCacheOid2(PUBLICATIONNAMESPACEMAP,
+						Anum_pg_publication_namespace_oid,
+						ObjectIdGetDatum(schemaid),
+						ObjectIdGetDatum(pub->oid));
+	if (!OidIsValid(address.objectId) && !missing_ok)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("publication schema \"%s\" in publication \"%s\" does not exist",
+						schemaname, pubname)));
+
+	return address;
+}
+
+/*
  * Find the ObjectAddress for a default ACL.
  */
 static ObjectAddress
@@ -2234,9 +2270,16 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 	 */
 	switch (type)
 	{
+		case OBJECT_PUBLICATION_NAMESPACE:
+		case OBJECT_USER_MAPPING:
+			if (list_length(name) != 1)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("name list length must be exactly %d", 1)));
+			/* fall through to check args length */
+			/* FALLTHROUGH */
 		case OBJECT_DOMCONSTRAINT:
 		case OBJECT_CAST:
-		case OBJECT_USER_MAPPING:
 		case OBJECT_PUBLICATION_REL:
 		case OBJECT_DEFACL:
 		case OBJECT_TRANSFORM:
@@ -2307,6 +2350,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_FDW:
 		case OBJECT_FOREIGN_SERVER:
 		case OBJECT_LANGUAGE:
+		case OBJECT_PARAMETER_ACL:
 		case OBJECT_PUBLICATION:
 		case OBJECT_ROLE:
 		case OBJECT_SCHEMA:
@@ -2331,6 +2375,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_PUBLICATION_REL:
 			objnode = (Node *) list_make2(name, linitial(args));
 			break;
+		case OBJECT_PUBLICATION_NAMESPACE:
 		case OBJECT_USER_MAPPING:
 			objnode = (Node *) list_make2(linitial(name), linitial(args));
 			break;
@@ -2605,6 +2650,7 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 		case OBJECT_TSPARSER:
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_ACCESS_METHOD:
+		case OBJECT_PARAMETER_ACL:
 			/* We treat these object types as being owned by superusers */
 			if (!superuser_arg(roleid))
 				ereport(ERROR,
@@ -2891,6 +2937,55 @@ get_catalog_object_by_oid(Relation catalog, AttrNumber oidcol, Oid objectId)
 }
 
 /*
+ * getPublicationSchemaInfo
+ *
+ * Get publication name and schema name from the object address into pubname and
+ * nspname. Both pubname and nspname are palloc'd strings which will be freed by
+ * the caller.
+ */
+static bool
+getPublicationSchemaInfo(const ObjectAddress *object, bool missing_ok,
+						 char **pubname, char **nspname)
+{
+	HeapTuple	tup;
+	Form_pg_publication_namespace pnform;
+
+	tup = SearchSysCache1(PUBLICATIONNAMESPACE,
+						  ObjectIdGetDatum(object->objectId));
+	if (!HeapTupleIsValid(tup))
+	{
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for publication schema %u",
+				 object->objectId);
+		return false;
+	}
+
+	pnform = (Form_pg_publication_namespace) GETSTRUCT(tup);
+	*pubname = get_publication_name(pnform->pnpubid, missing_ok);
+	if (!(*pubname))
+	{
+		ReleaseSysCache(tup);
+		return false;
+	}
+
+	*nspname = get_namespace_name(pnform->pnnspid);
+	if (!(*nspname))
+	{
+		Oid			schemaid = pnform->pnnspid;
+
+		pfree(*pubname);
+		ReleaseSysCache(tup);
+		if (!missing_ok)
+			elog(ERROR, "cache lookup failed for schema %u",
+				 schemaid);
+		return false;
+	}
+
+	ReleaseSysCache(tup);
+	return true;
+}
+
+/*
  * getObjectDescription: build an object description for messages
  *
  * The result is a palloc'd string.  NULL is returned for an undefined
@@ -3098,48 +3193,21 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 
 		case OCLASS_DEFAULT:
 			{
-				Relation	attrdefDesc;
-				ScanKeyData skey[1];
-				SysScanDesc adscan;
-				HeapTuple	tup;
-				Form_pg_attrdef attrdef;
 				ObjectAddress colobject;
 
-				attrdefDesc = table_open(AttrDefaultRelationId, AccessShareLock);
+				colobject = GetAttrDefaultColumnAddress(object->objectId);
 
-				ScanKeyInit(&skey[0],
-							Anum_pg_attrdef_oid,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(object->objectId));
-
-				adscan = systable_beginscan(attrdefDesc, AttrDefaultOidIndexId,
-											true, NULL, 1, skey);
-
-				tup = systable_getnext(adscan);
-
-				if (!HeapTupleIsValid(tup))
+				if (!OidIsValid(colobject.objectId))
 				{
 					if (!missing_ok)
 						elog(ERROR, "could not find tuple for attrdef %u",
 							 object->objectId);
-
-					systable_endscan(adscan);
-					table_close(attrdefDesc, AccessShareLock);
 					break;
 				}
-
-				attrdef = (Form_pg_attrdef) GETSTRUCT(tup);
-
-				colobject.classId = RelationRelationId;
-				colobject.objectId = attrdef->adrelid;
-				colobject.objectSubId = attrdef->adnum;
 
 				/* translator: %s is typically "column %s of table %s" */
 				appendStringInfo(&buffer, _("default value for %s"),
 								 getObjectDescription(&colobject, false));
-
-				systable_endscan(adscan);
-				table_close(attrdefDesc, AccessShareLock);
 				break;
 			}
 
@@ -3876,6 +3944,32 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				break;
 			}
 
+		case OCLASS_PARAMETER_ACL:
+			{
+				HeapTuple	tup;
+				Datum		nameDatum;
+				bool		isNull;
+				char	   *parname;
+
+				tup = SearchSysCache1(PARAMETERACLOID,
+									  ObjectIdGetDatum(object->objectId));
+				if (!HeapTupleIsValid(tup))
+				{
+					if (!missing_ok)
+						elog(ERROR, "cache lookup failed for parameter ACL %u",
+							 object->objectId);
+					break;
+				}
+				nameDatum = SysCacheGetAttr(PARAMETERACLOID, tup,
+											Anum_pg_parameter_acl_parname,
+											&isNull);
+				Assert(!isNull);
+				parname = TextDatumGetCString(nameDatum);
+				appendStringInfo(&buffer, _("parameter %s"), parname);
+				ReleaseSysCache(tup);
+				break;
+			}
+
 		case OCLASS_POLICY:
 			{
 				Relation	policy_rel;
@@ -3929,6 +4023,22 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 
 				if (pubname)
 					appendStringInfo(&buffer, _("publication %s"), pubname);
+				break;
+			}
+
+		case OCLASS_PUBLICATION_NAMESPACE:
+			{
+				char	   *pubname;
+				char	   *nspname;
+
+				if (!getPublicationSchemaInfo(object, missing_ok,
+											  &pubname, &nspname))
+					break;
+
+				appendStringInfo(&buffer, _("publication of schema %s in publication %s"),
+								 nspname, pubname);
+				pfree(pubname);
+				pfree(nspname);
 				break;
 			}
 
@@ -4529,12 +4639,20 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 			appendStringInfoString(&buffer, "event trigger");
 			break;
 
+		case OCLASS_PARAMETER_ACL:
+			appendStringInfoString(&buffer, "parameter ACL");
+			break;
+
 		case OCLASS_POLICY:
 			appendStringInfoString(&buffer, "policy");
 			break;
 
 		case OCLASS_PUBLICATION:
 			appendStringInfoString(&buffer, "publication");
+			break;
+
+		case OCLASS_PUBLICATION_NAMESPACE:
+			appendStringInfoString(&buffer, "publication namespace");
 			break;
 
 		case OCLASS_PUBLICATION_REL:
@@ -4945,50 +5063,22 @@ getObjectIdentityParts(const ObjectAddress *object,
 
 		case OCLASS_DEFAULT:
 			{
-				Relation	attrdefDesc;
-				ScanKeyData skey[1];
-				SysScanDesc adscan;
-
-				HeapTuple	tup;
-				Form_pg_attrdef attrdef;
 				ObjectAddress colobject;
 
-				attrdefDesc = table_open(AttrDefaultRelationId, AccessShareLock);
+				colobject = GetAttrDefaultColumnAddress(object->objectId);
 
-				ScanKeyInit(&skey[0],
-							Anum_pg_attrdef_oid,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(object->objectId));
-
-				adscan = systable_beginscan(attrdefDesc, AttrDefaultOidIndexId,
-											true, NULL, 1, skey);
-
-				tup = systable_getnext(adscan);
-
-				if (!HeapTupleIsValid(tup))
+				if (!OidIsValid(colobject.objectId))
 				{
 					if (!missing_ok)
 						elog(ERROR, "could not find tuple for attrdef %u",
 							 object->objectId);
-
-					systable_endscan(adscan);
-					table_close(attrdefDesc, AccessShareLock);
 					break;
 				}
-
-				attrdef = (Form_pg_attrdef) GETSTRUCT(tup);
-
-				colobject.classId = RelationRelationId;
-				colobject.objectId = attrdef->adrelid;
-				colobject.objectSubId = attrdef->adnum;
 
 				appendStringInfo(&buffer, "for %s",
 								 getObjectIdentityParts(&colobject,
 														objname, objargs,
 														false));
-
-				systable_endscan(adscan);
-				table_close(attrdefDesc, AccessShareLock);
 				break;
 			}
 
@@ -5614,7 +5704,6 @@ getObjectIdentityParts(const ObjectAddress *object,
 					systable_endscan(rcscan);
 					table_close(defaclrel, AccessShareLock);
 					break;
-
 				}
 
 				defacl = (Form_pg_default_acl) GETSTRUCT(tup);
@@ -5717,6 +5806,34 @@ getObjectIdentityParts(const ObjectAddress *object,
 				break;
 			}
 
+		case OCLASS_PARAMETER_ACL:
+			{
+				HeapTuple	tup;
+				Datum		nameDatum;
+				bool		isNull;
+				char	   *parname;
+
+				tup = SearchSysCache1(PARAMETERACLOID,
+									  ObjectIdGetDatum(object->objectId));
+				if (!HeapTupleIsValid(tup))
+				{
+					if (!missing_ok)
+						elog(ERROR, "cache lookup failed for parameter ACL %u",
+							 object->objectId);
+					break;
+				}
+				nameDatum = SysCacheGetAttr(PARAMETERACLOID, tup,
+											Anum_pg_parameter_acl_parname,
+											&isNull);
+				Assert(!isNull);
+				parname = TextDatumGetCString(nameDatum);
+				appendStringInfoString(&buffer, parname);
+				if (objname)
+					*objname = list_make1(parname);
+				ReleaseSysCache(tup);
+				break;
+			}
+
 		case OCLASS_POLICY:
 			{
 				Relation	polDesc;
@@ -5762,6 +5879,30 @@ getObjectIdentityParts(const ObjectAddress *object,
 					if (objname)
 						*objname = list_make1(pubname);
 				}
+				break;
+			}
+
+		case OCLASS_PUBLICATION_NAMESPACE:
+			{
+				char	   *pubname;
+				char	   *nspname;
+
+				if (!getPublicationSchemaInfo(object, missing_ok, &pubname,
+											  &nspname))
+					break;
+				appendStringInfo(&buffer, "%s in publication %s",
+								 nspname, pubname);
+
+				if (objargs)
+					*objargs = list_make1(pubname);
+				else
+					pfree(pubname);
+
+				if (objname)
+					*objname = list_make1(nspname);
+				else
+					pfree(nspname);
+
 				break;
 			}
 

@@ -4,7 +4,7 @@
  *	  prototypes for various files in optimizer/path
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/paths.h
@@ -144,7 +144,6 @@ extern EquivalenceMember *find_computable_ec_member(PlannerInfo *root,
 													List *exprs,
 													Relids relids,
 													bool require_parallel_safe);
-extern Expr *find_em_expr_for_rel(EquivalenceClass *ec, RelOptInfo *rel);
 extern bool relation_can_be_sorted_early(PlannerInfo *root, RelOptInfo *rel,
 										 EquivalenceClass *ec,
 										 bool require_parallel_safe);

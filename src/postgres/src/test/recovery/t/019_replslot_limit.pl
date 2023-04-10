@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test for replication slot limit
 # Ensure that max_slot_wal_keep_size limits the number of WAL files to
@@ -7,17 +7,17 @@
 use strict;
 use warnings;
 
-use TestLib;
-use PostgresNode;
+use PostgreSQL::Test::Utils;
+use PostgreSQL::Test::Cluster;
 
 use File::Path qw(rmtree);
-use Test::More tests => $TestLib::windows_os ? 16 : 20;
+use Test::More;
 use Time::HiRes qw(usleep);
 
 $ENV{PGDATABASE} = 'postgres';
 
 # Initialize primary node, setting wal-segsize to 1MB
-my $node_primary = PostgresNode->new('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 $node_primary->init(allows_streaming => 1, extra => ['--wal-segsize=1']);
 $node_primary->append_conf(
 	'postgresql.conf', qq(
@@ -41,7 +41,7 @@ my $backup_name = 'my_backup';
 $node_primary->backup($backup_name);
 
 # Create a standby linking to it using the replication slot
-my $node_standby = PostgresNode->new('standby_1');
+my $node_standby = PostgreSQL::Test::Cluster->new('standby_1');
 $node_standby->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby->append_conf('postgresql.conf', "primary_slot_name = 'rep1'");
@@ -49,8 +49,7 @@ $node_standby->append_conf('postgresql.conf', "primary_slot_name = 'rep1'");
 $node_standby->start;
 
 # Wait until standby has replayed enough data
-my $start_lsn = $node_primary->lsn('write');
-$node_primary->wait_for_catchup($node_standby, 'replay', $start_lsn);
+$node_primary->wait_for_catchup($node_standby);
 
 # Stop standby
 $node_standby->stop;
@@ -84,8 +83,7 @@ is($result, "reserved|t", 'check that slot is working');
 # The standby can reconnect to primary
 $node_standby->start;
 
-$start_lsn = $node_primary->lsn('write');
-$node_primary->wait_for_catchup($node_standby, 'replay', $start_lsn);
+$node_primary->wait_for_catchup($node_standby);
 
 $node_standby->stop;
 
@@ -115,8 +113,7 @@ is($result, "reserved",
 
 # The standby can reconnect to primary
 $node_standby->start;
-$start_lsn = $node_primary->lsn('write');
-$node_primary->wait_for_catchup($node_standby, 'replay', $start_lsn);
+$node_primary->wait_for_catchup($node_standby);
 $node_standby->stop;
 
 # wal_keep_size overrides max_slot_wal_keep_size
@@ -135,8 +132,7 @@ $result = $node_primary->safe_psql('postgres',
 
 # The standby can reconnect to primary
 $node_standby->start;
-$start_lsn = $node_primary->lsn('write');
-$node_primary->wait_for_catchup($node_standby, 'replay', $start_lsn);
+$node_primary->wait_for_catchup($node_standby);
 $node_standby->stop;
 
 # Advance WAL again without checkpoint, reducing remain by 6 MB.
@@ -163,8 +159,7 @@ is($result, "unreserved|t",
 # The standby still can connect to primary before a checkpoint
 $node_standby->start;
 
-$start_lsn = $node_primary->lsn('write');
-$node_primary->wait_for_catchup($node_standby, 'replay', $start_lsn);
+$node_primary->wait_for_catchup($node_standby);
 
 $node_standby->stop;
 
@@ -260,7 +255,7 @@ ok($failed, 'check that replication has been broken');
 $node_primary->stop;
 $node_standby->stop;
 
-my $node_primary2 = PostgresNode->new('primary2');
+my $node_primary2 = PostgreSQL::Test::Cluster->new('primary2');
 $node_primary2->init(allows_streaming => 1);
 $node_primary2->append_conf(
 	'postgresql.conf', qq(
@@ -281,7 +276,7 @@ max_slot_wal_keep_size = 0
 ));
 $node_primary2->start;
 
-$node_standby = PostgresNode->new('standby_2');
+$node_standby = PostgreSQL::Test::Cluster->new('standby_2');
 $node_standby->init_from_backup($node_primary2, $backup_name,
 	has_streaming => 1);
 $node_standby->append_conf('postgresql.conf', "primary_slot_name = 'rep1'");
@@ -296,7 +291,7 @@ my @result =
 		 SELECT pg_switch_wal();
 		 CHECKPOINT;
 		 SELECT 'finished';",
-		timeout => '60'));
+		timeout => $PostgreSQL::Test::Utils::timeout_default));
 is($result[1], 'finished', 'check if checkpoint command is not blocked');
 
 $node_primary2->stop;
@@ -305,7 +300,7 @@ $node_standby->stop;
 # The next test depends on Perl's `kill`, which apparently is not
 # portable to Windows.  (It would be nice to use Test::More's `subtest`,
 # but that's not in the ancient version we require.)
-if ($TestLib::windows_os)
+if ($PostgreSQL::Test::Utils::windows_os)
 {
 	done_testing();
 	exit;
@@ -313,7 +308,7 @@ if ($TestLib::windows_os)
 
 # Get a slot terminated while the walsender is active
 # We do this by sending SIGSTOP to the walsender.  Skip this on Windows.
-my $node_primary3 = PostgresNode->new('primary3');
+my $node_primary3 = PostgreSQL::Test::Cluster->new('primary3');
 $node_primary3->init(allows_streaming => 1, extra => ['--wal-segsize=1']);
 $node_primary3->append_conf(
 	'postgresql.conf', qq(
@@ -329,15 +324,53 @@ $node_primary3->safe_psql('postgres',
 $backup_name = 'my_backup';
 $node_primary3->backup($backup_name);
 # Create standby
-my $node_standby3 = PostgresNode->new('standby_3');
+my $node_standby3 = PostgreSQL::Test::Cluster->new('standby_3');
 $node_standby3->init_from_backup($node_primary3, $backup_name,
 	has_streaming => 1);
 $node_standby3->append_conf('postgresql.conf', "primary_slot_name = 'rep3'");
 $node_standby3->start;
-$node_primary3->wait_for_catchup($node_standby3->name, 'replay');
-my $senderpid = $node_primary3->safe_psql('postgres',
-	"SELECT pid FROM pg_stat_activity WHERE backend_type = 'walsender'");
+$node_primary3->wait_for_catchup($node_standby3);
+
+my $senderpid;
+
+# We've seen occasional cases where multiple walsender pids are still active
+# at this point, apparently just due to process shutdown being slow. To avoid
+# spurious failures, retry a couple times.
+my $i = 0;
+while (1)
+{
+	my ($stdout, $stderr);
+
+	$senderpid = $node_primary3->safe_psql('postgres',
+		"SELECT pid FROM pg_stat_activity WHERE backend_type = 'walsender'");
+
+	last if $senderpid =~ qr/^[0-9]+$/;
+
+	diag "multiple walsenders active in iteration $i";
+
+	# show information about all active connections
+	$node_primary3->psql(
+		'postgres',
+		"\\a\\t\nSELECT * FROM pg_stat_activity",
+		stdout => \$stdout,
+		stderr => \$stderr);
+	diag $stdout, $stderr;
+
+	# unlikely that the problem would resolve after 15s, so give up at point
+	if ($i++ == 150)
+	{
+		# An immediate shutdown may hide evidence of a locking bug. If
+		# retrying didn't resolve the issue, shut down in fast mode.
+		$node_primary3->stop('fast');
+		$node_standby3->stop('fast');
+		die "could not determine walsender pid, can't continue";
+	}
+
+	usleep(100_000);
+}
+
 like($senderpid, qr/^[0-9]+$/, "have walsender pid $senderpid");
+
 my $receiverpid = $node_standby3->safe_psql('postgres',
 	"SELECT pid FROM pg_stat_activity WHERE backend_type = 'walreceiver'");
 like($receiverpid, qr/^[0-9]+$/, "have walreceiver pid $receiverpid");
@@ -348,7 +381,7 @@ $logstart = get_log_size($node_primary3);
 kill 'STOP', $senderpid, $receiverpid;
 advance_wal($node_primary3, 2);
 
-my $max_attempts = 180;
+my $max_attempts = $PostgreSQL::Test::Utils::timeout_default;
 while ($max_attempts-- >= 0)
 {
 	if (find_in_log(
@@ -371,7 +404,7 @@ $node_primary3->poll_query_until('postgres',
 	"lost")
   or die "timed out waiting for slot to be lost";
 
-$max_attempts = 180;
+$max_attempts = $PostgreSQL::Test::Utils::timeout_default;
 while ($max_attempts-- >= 0)
 {
 	if (find_in_log(
@@ -419,10 +452,12 @@ sub find_in_log
 	my ($node, $pat, $off) = @_;
 
 	$off = 0 unless defined $off;
-	my $log = TestLib::slurp_file($node->logfile);
+	my $log = PostgreSQL::Test::Utils::slurp_file($node->logfile);
 	return 0 if (length($log) <= $off);
 
 	$log = substr($log, $off);
 
 	return $log =~ m/$pat/;
 }
+
+done_testing();

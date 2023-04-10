@@ -10,7 +10,7 @@
  * And contributors:
  * Nabil Sayegh <postgresql@e-trolley.de>
  *
- * Copyright (c) 2002-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2022, PostgreSQL Global Development Group
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation for any purpose, without fee, and without a written agreement
@@ -36,6 +36,7 @@
 
 #include "access/htup_details.h"
 #include "catalog/pg_type.h"
+#include "common/pg_prng.h"
 #include "executor/spi.h"
 #include "funcapi.h"
 #include "lib/stringinfo.h"
@@ -290,8 +291,8 @@ get_normal_pair(float8 *x1, float8 *x2)
 
 	do
 	{
-		u1 = (float8) random() / (float8) MAX_RANDOM_VALUE;
-		u2 = (float8) random() / (float8) MAX_RANDOM_VALUE;
+		u1 = pg_prng_double(&pg_global_prng_state);
+		u2 = pg_prng_double(&pg_global_prng_state);
 
 		v1 = (2.0 * u1) - 1.0;
 		v2 = (2.0 * u2) - 1.0;
@@ -942,8 +943,6 @@ get_crosstab_tuplestore(char *sql,
 		/* internal error */
 		elog(ERROR, "get_crosstab_tuplestore: SPI_finish() failed");
 
-	tuplestore_donestoring(tupstore);
-
 	return tupstore;
 }
 
@@ -1480,7 +1479,7 @@ validateConnectbyTupleDesc(TupleDesc td, bool show_branch, bool show_serial)
 						"fifth column must be type %s",
 						format_type_be(INT4OID))));
 
-	/* check that the type of the fifth column is INT4 */
+	/* check that the type of the fourth column is INT4 */
 	if (!show_branch && show_serial &&
 		TupleDescAttr(td, 3)->atttypid != INT4OID)
 		ereport(ERROR,

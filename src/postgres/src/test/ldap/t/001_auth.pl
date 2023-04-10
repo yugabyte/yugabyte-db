@@ -1,28 +1,30 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
-use TestLib;
-use PostgresNode;
+use PostgreSQL::Test::Utils;
+use PostgreSQL::Test::Cluster;
 use Test::More;
 
-if ($ENV{with_ldap} eq 'yes')
-{
-	plan tests => 28;
-}
-else
-{
-	plan skip_all => 'LDAP not supported by this build';
-}
 
 my ($slapd, $ldap_bin_dir, $ldap_schema_dir);
 
 $ldap_bin_dir = undef;    # usually in PATH
 
-if ($^O eq 'darwin' && -d '/usr/local/opt/openldap')
+if ($ENV{with_ldap} ne 'yes')
 {
-	# typical paths for Homebrew
+	plan skip_all => 'LDAP not supported by this build';
+}
+elsif ($^O eq 'darwin' && -d '/opt/homebrew/opt/openldap')
+{
+	# typical paths for Homebrew on ARM
+	$slapd           = '/opt/homebrew/opt/openldap/libexec/slapd';
+	$ldap_schema_dir = '/opt/homebrew/etc/openldap/schema';
+}
+elsif ($^O eq 'darwin' && -d '/usr/local/opt/openldap')
+{
+	# typical paths for Homebrew on Intel
 	$slapd           = '/usr/local/opt/openldap/libexec/slapd';
 	$ldap_schema_dir = '/usr/local/etc/openldap/schema';
 }
@@ -43,6 +45,16 @@ elsif ($^O eq 'freebsd')
 	$slapd           = '/usr/local/libexec/slapd';
 	$ldap_schema_dir = '/usr/local/etc/openldap/schema';
 }
+elsif ($^O eq 'openbsd')
+{
+	$slapd           = '/usr/local/libexec/slapd';
+	$ldap_schema_dir = '/usr/local/share/examples/openldap/schema';
+}
+else
+{
+	plan skip_all =>
+	  "ldap tests not supported on $^O or dependencies not installed";
+}
 
 # make your own edits here
 #$slapd = '';
@@ -51,21 +63,21 @@ elsif ($^O eq 'freebsd')
 
 $ENV{PATH} = "$ldap_bin_dir:$ENV{PATH}" if $ldap_bin_dir;
 
-my $ldap_datadir  = "${TestLib::tmp_check}/openldap-data";
-my $slapd_certs   = "${TestLib::tmp_check}/slapd-certs";
-my $slapd_conf    = "${TestLib::tmp_check}/slapd.conf";
-my $slapd_pidfile = "${TestLib::tmp_check}/slapd.pid";
-my $slapd_logfile = "${TestLib::log_path}/slapd.log";
-my $ldap_conf     = "${TestLib::tmp_check}/ldap.conf";
+my $ldap_datadir  = "${PostgreSQL::Test::Utils::tmp_check}/openldap-data";
+my $slapd_certs   = "${PostgreSQL::Test::Utils::tmp_check}/slapd-certs";
+my $slapd_conf    = "${PostgreSQL::Test::Utils::tmp_check}/slapd.conf";
+my $slapd_pidfile = "${PostgreSQL::Test::Utils::tmp_check}/slapd.pid";
+my $slapd_logfile = "${PostgreSQL::Test::Utils::log_path}/slapd.log";
+my $ldap_conf     = "${PostgreSQL::Test::Utils::tmp_check}/ldap.conf";
 my $ldap_server   = 'localhost';
-my $ldap_port     = PostgresNode::get_free_port();
-my $ldaps_port    = PostgresNode::get_free_port();
+my $ldap_port     = PostgreSQL::Test::Cluster::get_free_port();
+my $ldaps_port    = PostgreSQL::Test::Cluster::get_free_port();
 my $ldap_url      = "ldap://$ldap_server:$ldap_port";
 my $ldaps_url     = "ldaps://$ldap_server:$ldaps_port";
 my $ldap_basedn   = 'dc=example,dc=net';
 my $ldap_rootdn   = 'cn=Manager,dc=example,dc=net';
 my $ldap_rootpw   = 'secret';
-my $ldap_pwfile   = "${TestLib::tmp_check}/ldappassword";
+my $ldap_pwfile   = "${PostgreSQL::Test::Utils::tmp_check}/ldappassword";
 
 note "setting up slapd";
 
@@ -130,10 +142,12 @@ while (1)
 	last
 	  if (
 		system_log(
-			"ldapsearch", "-h", $ldap_server, "-p",
-			$ldap_port,   "-s", "base",       "-b",
-			$ldap_basedn, "-D", $ldap_rootdn, "-y",
-			$ldap_pwfile, "-n", "'objectclass=*'") == 0);
+			"ldapsearch", "-sbase",
+			"-H",         $ldap_url,
+			"-b",         $ldap_basedn,
+			"-D",         $ldap_rootdn,
+			"-y",         $ldap_pwfile,
+			"-n",         "'objectclass=*'") == 0);
 	die "cannot connect to slapd" if ++$retries >= 300;
 	note "waiting for slapd to accept requests...";
 	Time::HiRes::usleep(1000000);
@@ -153,7 +167,7 @@ system_or_bail 'ldappasswd', '-x', '-y', $ldap_pwfile, '-s', 'secret2',
 
 note "setting up PostgreSQL instance";
 
-my $node = PostgresNode->new('node');
+my $node = PostgreSQL::Test::Cluster->new('node');
 $node->init;
 $node->append_conf('postgresql.conf', "log_connections = on\n");
 $node->start;
@@ -166,6 +180,8 @@ note "running tests";
 
 sub test_access
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my ($node, $role, $expected_res, $test_name, %params) = @_;
 	my $connstr = "user=$role";
 
@@ -363,3 +379,5 @@ $node->restart;
 
 $ENV{"PGPASSWORD"} = 'secret1';
 test_access($node, 'test1', 2, 'bad combination of LDAPS and StartTLS');
+
+done_testing();

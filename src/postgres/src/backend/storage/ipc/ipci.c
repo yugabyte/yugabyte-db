@@ -3,7 +3,7 @@
  * ipci.c
  *	  POSTGRES inter-process communication initialization code.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -22,6 +22,8 @@
 #include "access/subtrans.h"
 #include "access/syncscan.h"
 #include "access/twophase.h"
+#include "access/xlogprefetcher.h"
+#include "access/xlogrecovery.h"
 #include "commands/async.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -53,25 +55,21 @@ int			shared_memory_type = DEFAULT_SHARED_MEMORY_TYPE;
 shmem_startup_hook_type shmem_startup_hook = NULL;
 
 static Size total_addin_request = 0;
-static bool addin_request_allowed = true;
-
 
 /*
  * RequestAddinShmemSpace
  *		Request that extra shmem space be allocated for use by
  *		a loadable module.
  *
- * This is only useful if called from the _PG_init hook of a library that
- * is loaded into the postmaster via shared_preload_libraries.  Once
- * shared memory has been allocated, calls will be ignored.  (We could
- * raise an error, but it seems better to make it a no-op, so that
- * libraries containing such calls can be reloaded if needed.)
+ * This may only be called via the shmem_request_hook of a library that is
+ * loaded into the postmaster via shared_preload_libraries.  Calls from
+ * elsewhere will fail.
  */
 void
 RequestAddinShmemSpace(Size size)
 {
-	if (IsUnderPostmaster || !addin_request_allowed)
-		return;					/* too late */
+	if (!process_shmem_requests_in_progress)
+		elog(FATAL, "cannot request additional shared memory outside shmem_request_hook");
 	total_addin_request = add_size(total_addin_request, size);
 }
 
@@ -81,9 +79,6 @@ RequestAddinShmemSpace(Size size)
  *
  * If num_semaphores is not NULL, it will be set to the number of semaphores
  * required.
- *
- * Note that this function freezes the additional shared memory request size
- * from loadable modules.
  */
 Size
 CalculateShmemSize(int *num_semaphores)
@@ -118,7 +113,9 @@ CalculateShmemSize(int *num_semaphores)
 	size = add_size(size, LockShmemSize());
 	size = add_size(size, PredicateLockShmemSize());
 	size = add_size(size, ProcGlobalShmemSize());
+	size = add_size(size, XLogPrefetchShmemSize());
 	size = add_size(size, XLOGShmemSize());
+	size = add_size(size, XLogRecoveryShmemSize());
 	size = add_size(size, CLOGShmemSize());
 	size = add_size(size, CommitTsShmemSize());
 	size = add_size(size, SUBTRANSShmemSize());
@@ -143,12 +140,12 @@ CalculateShmemSize(int *num_semaphores)
 	size = add_size(size, BTreeShmemSize());
 	size = add_size(size, SyncScanShmemSize());
 	size = add_size(size, AsyncShmemSize());
+	size = add_size(size, StatsShmemSize());
 #ifdef EXEC_BACKEND
 	size = add_size(size, ShmemBackendArraySize());
 #endif
 
-	/* freeze the addin request size and include it */
-	addin_request_allowed = false;
+	/* include additional requested shmem from preload libraries */
 	size = add_size(size, total_addin_request);
 
 	/* might as well round it off to a multiple of a typical page size */
@@ -241,6 +238,8 @@ CreateSharedMemoryAndSemaphores(void)
 	 * Set up xlog, clog, and buffers
 	 */
 	XLOGShmemInit();
+	XLogPrefetchShmemInit();
+	XLogRecoveryShmemInit();
 	CLOGShmemInit();
 	CommitTsShmemInit();
 	SUBTRANSShmemInit();
@@ -293,6 +292,7 @@ CreateSharedMemoryAndSemaphores(void)
 	BTreeShmemInit();
 	SyncScanShmemInit();
 	AsyncShmemInit();
+	StatsShmemInit();
 
 #ifdef EXEC_BACKEND
 
@@ -334,7 +334,8 @@ InitializeShmemGUCs(void)
 	size_b = CalculateShmemSize(NULL);
 	size_mb = add_size(size_b, (1024 * 1024) - 1) / (1024 * 1024);
 	sprintf(buf, "%zu", size_mb);
-	SetConfigOption("shared_memory_size", buf, PGC_INTERNAL, PGC_S_OVERRIDE);
+	SetConfigOption("shared_memory_size", buf,
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 
 	/*
 	 * Calculate the number of huge pages required.
@@ -346,6 +347,7 @@ InitializeShmemGUCs(void)
 
 		hp_required = add_size(size_b / hp_size, 1);
 		sprintf(buf, "%zu", hp_required);
-		SetConfigOption("shared_memory_size_in_huge_pages", buf, PGC_INTERNAL, PGC_S_OVERRIDE);
+		SetConfigOption("shared_memory_size_in_huge_pages", buf,
+						PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 	}
 }

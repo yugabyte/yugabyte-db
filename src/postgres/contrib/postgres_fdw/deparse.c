@@ -24,7 +24,7 @@
  * with collations that match the remote table's columns, which we can
  * consider to be user error.
  *
- * Portions Copyright (c) 2012-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/deparse.c
@@ -40,6 +40,7 @@
 #include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -154,6 +155,7 @@ static void deparseParam(Param *node, deparse_expr_cxt *context);
 static void deparseSubscriptingRef(SubscriptingRef *node, deparse_expr_cxt *context);
 static void deparseFuncExpr(FuncExpr *node, deparse_expr_cxt *context);
 static void deparseOpExpr(OpExpr *node, deparse_expr_cxt *context);
+static bool isPlainForeignVar(Expr *node, deparse_expr_cxt *context);
 static void deparseOperatorName(StringInfo buf, Form_pg_operator opform);
 static void deparseDistinctExpr(DistinctExpr *node, deparse_expr_cxt *context);
 static void deparseScalarArrayOpExpr(ScalarArrayOpExpr *node,
@@ -184,6 +186,8 @@ static void deparseRangeTblRef(StringInfo buf, PlannerInfo *root,
 							   Index ignore_rel, List **ignore_conds, List **params_list);
 static void deparseAggref(Aggref *node, deparse_expr_cxt *context);
 static void appendGroupByClause(List *tlist, deparse_expr_cxt *context);
+static void appendOrderBySuffix(Oid sortop, Oid sortcoltype, bool nulls_first,
+								deparse_expr_cxt *context);
 static void appendAggOrderBy(List *orderList, List *targetList,
 							 deparse_expr_cxt *context);
 static void appendFunctionName(Oid funcid, deparse_expr_cxt *context);
@@ -1037,6 +1041,33 @@ is_foreign_param(PlannerInfo *root,
 			break;
 	}
 	return false;
+}
+
+/*
+ * Returns true if it's safe to push down the sort expression described by
+ * 'pathkey' to the foreign server.
+ */
+bool
+is_foreign_pathkey(PlannerInfo *root,
+				   RelOptInfo *baserel,
+				   PathKey *pathkey)
+{
+	EquivalenceClass *pathkey_ec = pathkey->pk_eclass;
+	PgFdwRelationInfo *fpinfo = (PgFdwRelationInfo *) baserel->fdw_private;
+
+	/*
+	 * is_foreign_expr would detect volatile expressions as well, but checking
+	 * ec_has_volatile here saves some cycles.
+	 */
+	if (pathkey_ec->ec_has_volatile)
+		return false;
+
+	/* can't push down the sort if the pathkey's opfamily is not shippable */
+	if (!is_shippable(pathkey->pk_opfamily, OperatorFamilyRelationId, fpinfo))
+		return false;
+
+	/* can push if a suitable EC member exists */
+	return (find_em_for_rel(root, pathkey_ec, baserel) != NULL);
 }
 
 /*
@@ -2712,9 +2743,14 @@ deparseYbBatchedExpr(YbBatchedExpr *node, deparse_expr_cxt *context)
  * Deparse given constant value into context->buf.
  *
  * This function has to be kept in sync with ruleutils.c's get_const_expr.
- * As for that function, showtype can be -1 to never show "::typename" decoration,
- * or +1 to always show it, or 0 to show it only if the constant wouldn't be assumed
- * to be the right type by default.
+ *
+ * As in that function, showtype can be -1 to never show "::typename"
+ * decoration, +1 to always show it, or 0 to show it only if the constant
+ * wouldn't be assumed to be the right type by default.
+ *
+ * In addition, this code allows showtype to be -2 to indicate that we should
+ * not show "::typename" decoration if the constant is printed as an untyped
+ * literal or NULL (while in other cases, behaving as for showtype == 0).
  */
 static void
 deparseConst(Const *node, deparse_expr_cxt *context, int showtype)
@@ -2724,6 +2760,7 @@ deparseConst(Const *node, deparse_expr_cxt *context, int showtype)
 	bool		typIsVarlena;
 	char	   *extval;
 	bool		isfloat = false;
+	bool		isstring = false;
 	bool		needlabel;
 
 	if (node->constisnull)
@@ -2779,13 +2816,14 @@ deparseConst(Const *node, deparse_expr_cxt *context, int showtype)
 			break;
 		default:
 			deparseStringLiteral(buf, extval);
+			isstring = true;
 			break;
 	}
 
 	pfree(extval);
 
-	if (showtype < 0)
-		return;
+	if (showtype == -1)
+		return;					/* never print type label */
 
 	/*
 	 * For showtype == 0, append ::typename unless the constant will be
@@ -2805,7 +2843,13 @@ deparseConst(Const *node, deparse_expr_cxt *context, int showtype)
 			needlabel = !isfloat || (node->consttypmod >= 0);
 			break;
 		default:
-			needlabel = true;
+			if (showtype == -2)
+			{
+				/* label unless we printed it as an untyped string */
+				needlabel = !isstring;
+			}
+			else
+				needlabel = true;
 			break;
 	}
 	if (needlabel || showtype > 0)
@@ -2970,6 +3014,8 @@ deparseOpExpr(OpExpr *node, deparse_expr_cxt *context)
 	StringInfo	buf = context->buf;
 	HeapTuple	tuple;
 	Form_pg_operator form;
+	Expr	   *right;
+	bool		canSuppressRightConstCast = false;
 	char		oprkind;
 
 	/* Retrieve information about the operator from system catalog. */
@@ -2983,13 +3029,58 @@ deparseOpExpr(OpExpr *node, deparse_expr_cxt *context)
 	Assert((oprkind == 'l' && list_length(node->args) == 1) ||
 		   (oprkind == 'b' && list_length(node->args) == 2));
 
+	right = llast(node->args);
+
 	/* Always parenthesize the expression. */
 	appendStringInfoChar(buf, '(');
 
 	/* Deparse left operand, if any. */
 	if (oprkind == 'b')
 	{
-		deparseExpr(linitial(node->args), context);
+		Expr	   *left = linitial(node->args);
+		Oid			leftType = exprType((Node *) left);
+		Oid			rightType = exprType((Node *) right);
+		bool		canSuppressLeftConstCast = false;
+
+		/*
+		 * When considering a binary operator, if one operand is a Const that
+		 * can be printed as a bare string literal or NULL (i.e., it will look
+		 * like type UNKNOWN to the remote parser), the Const normally
+		 * receives an explicit cast to the operator's input type.  However,
+		 * in Const-to-Var comparisons where both operands are of the same
+		 * type, we prefer to suppress the explicit cast, leaving the Const's
+		 * type resolution up to the remote parser.  The remote's resolution
+		 * heuristic will assume that an unknown input type being compared to
+		 * a known input type is of that known type as well.
+		 *
+		 * This hack allows some cases to succeed where a remote column is
+		 * declared with a different type in the local (foreign) table.  By
+		 * emitting "foreigncol = 'foo'" not "foreigncol = 'foo'::text" or the
+		 * like, we allow the remote parser to pick an "=" operator that's
+		 * compatible with whatever type the remote column really is, such as
+		 * an enum.
+		 *
+		 * We allow cast suppression to happen only when the other operand is
+		 * a plain foreign Var.  Although the remote's unknown-type heuristic
+		 * would apply to other cases just as well, we would be taking a
+		 * bigger risk that the inferred type is something unexpected.  With
+		 * this restriction, if anything goes wrong it's the user's fault for
+		 * not declaring the local column with the same type as the remote
+		 * column.
+		 */
+		if (leftType == rightType)
+		{
+			if (IsA(left, Const))
+				canSuppressLeftConstCast = isPlainForeignVar(right, context);
+			else if (IsA(right, Const))
+				canSuppressRightConstCast = isPlainForeignVar(left, context);
+		}
+
+		if (canSuppressLeftConstCast)
+			deparseConst((Const *) left, context, -2);
+		else
+			deparseExpr(left, context);
+
 		appendStringInfoChar(buf, ' ');
 	}
 
@@ -2998,11 +3089,50 @@ deparseOpExpr(OpExpr *node, deparse_expr_cxt *context)
 
 	/* Deparse right operand. */
 	appendStringInfoChar(buf, ' ');
-	deparseExpr(llast(node->args), context);
+
+	if (canSuppressRightConstCast)
+		deparseConst((Const *) right, context, -2);
+	else
+		deparseExpr(right, context);
 
 	appendStringInfoChar(buf, ')');
 
 	ReleaseSysCache(tuple);
+}
+
+/*
+ * Will "node" deparse as a plain foreign Var?
+ */
+static bool
+isPlainForeignVar(Expr *node, deparse_expr_cxt *context)
+{
+	/*
+	 * We allow the foreign Var to have an implicit RelabelType, mainly so
+	 * that this'll work with varchar columns.  Note that deparseRelabelType
+	 * will not print such a cast, so we're not breaking the restriction that
+	 * the expression print as a plain Var.  We won't risk it for an implicit
+	 * cast that requires a function, nor for non-implicit RelabelType; such
+	 * cases seem too likely to involve semantics changes compared to what
+	 * would happen on the remote side.
+	 */
+	if (IsA(node, RelabelType) &&
+		((RelabelType *) node)->relabelformat == COERCE_IMPLICIT_CAST)
+		node = ((RelabelType *) node)->arg;
+
+	if (IsA(node, Var))
+	{
+		/*
+		 * The Var must be one that'll deparse as a foreign column reference
+		 * (cf. deparseVar).
+		 */
+		Var		   *var = (Var *) node;
+		Relids		relids = context->scanrel->relids;
+
+		if (bms_is_member(var->varno, relids) && var->varlevelsup == 0)
+			return true;
+	}
+
+	return false;
 }
 
 /*
@@ -3362,44 +3492,59 @@ appendAggOrderBy(List *orderList, List *targetList, deparse_expr_cxt *context)
 	{
 		SortGroupClause *srt = (SortGroupClause *) lfirst(lc);
 		Node	   *sortexpr;
-		Oid			sortcoltype;
-		TypeCacheEntry *typentry;
 
 		if (!first)
 			appendStringInfoString(buf, ", ");
 		first = false;
 
+		/* Deparse the sort expression proper. */
 		sortexpr = deparseSortGroupClause(srt->tleSortGroupRef, targetList,
 										  false, context);
-		sortcoltype = exprType(sortexpr);
-		/* See whether operator is default < or > for datatype */
-		typentry = lookup_type_cache(sortcoltype,
-									 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
-		if (srt->sortop == typentry->lt_opr)
-			appendStringInfoString(buf, " ASC");
-		else if (srt->sortop == typentry->gt_opr)
-			appendStringInfoString(buf, " DESC");
-		else
-		{
-			HeapTuple	opertup;
-			Form_pg_operator operform;
-
-			appendStringInfoString(buf, " USING ");
-
-			/* Append operator name. */
-			opertup = SearchSysCache1(OPEROID, ObjectIdGetDatum(srt->sortop));
-			if (!HeapTupleIsValid(opertup))
-				elog(ERROR, "cache lookup failed for operator %u", srt->sortop);
-			operform = (Form_pg_operator) GETSTRUCT(opertup);
-			deparseOperatorName(buf, operform);
-			ReleaseSysCache(opertup);
-		}
-
-		if (srt->nulls_first)
-			appendStringInfoString(buf, " NULLS FIRST");
-		else
-			appendStringInfoString(buf, " NULLS LAST");
+		/* Add decoration as needed. */
+		appendOrderBySuffix(srt->sortop, exprType(sortexpr), srt->nulls_first,
+							context);
 	}
+}
+
+/*
+ * Append the ASC, DESC, USING <OPERATOR> and NULLS FIRST / NULLS LAST parts
+ * of an ORDER BY clause.
+ */
+static void
+appendOrderBySuffix(Oid sortop, Oid sortcoltype, bool nulls_first,
+					deparse_expr_cxt *context)
+{
+	StringInfo	buf = context->buf;
+	TypeCacheEntry *typentry;
+
+	/* See whether operator is default < or > for sort expr's datatype. */
+	typentry = lookup_type_cache(sortcoltype,
+								 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+
+	if (sortop == typentry->lt_opr)
+		appendStringInfoString(buf, " ASC");
+	else if (sortop == typentry->gt_opr)
+		appendStringInfoString(buf, " DESC");
+	else
+	{
+		HeapTuple	opertup;
+		Form_pg_operator operform;
+
+		appendStringInfoString(buf, " USING ");
+
+		/* Append operator name. */
+		opertup = SearchSysCache1(OPEROID, ObjectIdGetDatum(sortop));
+		if (!HeapTupleIsValid(opertup))
+			elog(ERROR, "cache lookup failed for operator %u", sortop);
+		operform = (Form_pg_operator) GETSTRUCT(opertup);
+		deparseOperatorName(buf, operform);
+		ReleaseSysCache(opertup);
+	}
+
+	if (nulls_first)
+		appendStringInfoString(buf, " NULLS FIRST");
+	else
+		appendStringInfoString(buf, " NULLS LAST");
 }
 
 /*
@@ -3482,9 +3627,13 @@ appendGroupByClause(List *tlist, deparse_expr_cxt *context)
 }
 
 /*
- * Deparse ORDER BY clause according to the given pathkeys for given base
- * relation. From given pathkeys expressions belonging entirely to the given
- * base relation are obtained and deparsed.
+ * Deparse ORDER BY clause defined by the given pathkeys.
+ *
+ * The clause should use Vars from context->scanrel if !has_final_sort,
+ * or from context->foreignrel's targetlist if has_final_sort.
+ *
+ * We find a suitable pathkey expression (some earlier step
+ * should have verified that there is one) and deparse it.
  */
 static void
 appendOrderByClause(List *pathkeys, bool has_final_sort,
@@ -3492,8 +3641,7 @@ appendOrderByClause(List *pathkeys, bool has_final_sort,
 {
 	ListCell   *lcell;
 	int			nestlevel;
-	char	   *delim = " ";
-	RelOptInfo *baserel = context->scanrel;
+	const char *delim = " ";
 	StringInfo	buf = context->buf;
 
 	/* Make sure any constants in the exprs are printed portably */
@@ -3503,7 +3651,9 @@ appendOrderByClause(List *pathkeys, bool has_final_sort,
 	foreach(lcell, pathkeys)
 	{
 		PathKey    *pathkey = lfirst(lcell);
+		EquivalenceMember *em;
 		Expr	   *em_expr;
+		Oid			oprid;
 
 		if (has_final_sort)
 		{
@@ -3511,26 +3661,48 @@ appendOrderByClause(List *pathkeys, bool has_final_sort,
 			 * By construction, context->foreignrel is the input relation to
 			 * the final sort.
 			 */
-			em_expr = find_em_expr_for_input_target(context->root,
-													pathkey->pk_eclass,
-													context->foreignrel->reltarget);
+			em = find_em_for_rel_target(context->root,
+										pathkey->pk_eclass,
+										context->foreignrel);
 		}
 		else
-			em_expr = find_em_expr_for_rel(pathkey->pk_eclass, baserel);
+			em = find_em_for_rel(context->root,
+								 pathkey->pk_eclass,
+								 context->scanrel);
 
-		Assert(em_expr != NULL);
+		/*
+		 * We don't expect any error here; it would mean that shippability
+		 * wasn't verified earlier.  For the same reason, we don't recheck
+		 * shippability of the sort operator.
+		 */
+		if (em == NULL)
+			elog(ERROR, "could not find pathkey item to sort");
+
+		em_expr = em->em_expr;
+
+		/*
+		 * Lookup the operator corresponding to the strategy in the opclass.
+		 * The datatype used by the opfamily is not necessarily the same as
+		 * the expression type (for array types for example).
+		 */
+		oprid = get_opfamily_member(pathkey->pk_opfamily,
+									em->em_datatype,
+									em->em_datatype,
+									pathkey->pk_strategy);
+		if (!OidIsValid(oprid))
+			elog(ERROR, "missing operator %d(%u,%u) in opfamily %u",
+				 pathkey->pk_strategy, em->em_datatype, em->em_datatype,
+				 pathkey->pk_opfamily);
 
 		appendStringInfoString(buf, delim);
 		deparseExpr(em_expr, context);
-		if (pathkey->pk_strategy == BTLessStrategyNumber)
-			appendStringInfoString(buf, " ASC");
-		else
-			appendStringInfoString(buf, " DESC");
 
-		if (pathkey->pk_nulls_first)
-			appendStringInfoString(buf, " NULLS FIRST");
-		else
-			appendStringInfoString(buf, " NULLS LAST");
+		/*
+		 * Here we need to use the expression's actual type to discover
+		 * whether the desired operator will be the default or not.
+		 */
+		appendOrderBySuffix(oprid, exprType((Node *) em_expr),
+							pathkey->pk_nulls_first, context);
 
 		delim = ", ";
 	}

@@ -12,7 +12,7 @@
  * identifying statement boundaries in multi-statement source strings.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/parsenodes.h
@@ -93,7 +93,9 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
 #define ACL_CREATE		(1<<9)	/* for namespaces and databases */
 #define ACL_CREATE_TEMP (1<<10) /* for databases */
 #define ACL_CONNECT		(1<<11) /* for databases */
-#define N_ACL_RIGHTS	12		/* 1 plus the last 1<<x */
+#define ACL_SET			(1<<12) /* for configuration parameters */
+#define ACL_ALTER_SYSTEM (1<<13)	/* for configuration parameters */
+#define N_ACL_RIGHTS	14		/* 1 plus the last 1<<x */
 #define ACL_NO_RIGHTS	0
 /* Currently, SELECT ... FOR [KEY] UPDATE/SHARE requires UPDATE privileges */
 #define ACL_SELECT_FOR_UPDATE	ACL_UPDATE
@@ -118,7 +120,7 @@ typedef struct Query
 {
 	NodeTag		type;
 
-	CmdType		commandType;	/* select|insert|update|delete|utility */
+	CmdType		commandType;	/* select|insert|update|delete|merge|utility */
 
 	QuerySource querySource;	/* where did I come from? */
 
@@ -129,7 +131,7 @@ typedef struct Query
 	Node	   *utilityStmt;	/* non-null if commandType == CMD_UTILITY */
 
 	int			resultRelation; /* rtable index of target relation for
-								 * INSERT/UPDATE/DELETE; 0 for SELECT */
+								 * INSERT/UPDATE/DELETE/MERGE; 0 for SELECT */
 
 	bool		hasAggs;		/* has aggregates in tlist or havingQual */
 	bool		hasWindowFuncs; /* has window functions in tlist */
@@ -146,7 +148,11 @@ typedef struct Query
 	List	   *cteList;		/* WITH list (of CommonTableExpr's) */
 
 	List	   *rtable;			/* list of range table entries */
-	FromExpr   *jointree;		/* table join tree (FROM and WHERE clauses) */
+	FromExpr   *jointree;		/* table join tree (FROM and WHERE clauses);
+								 * also USING clause for MERGE */
+
+	List	   *mergeActionList;	/* list of actions for MERGE (only) */
+	bool		mergeUseOuterJoin;	/* whether to use outer join */
 
 	List	   *targetList;		/* target list (of TargetEntry) */
 
@@ -296,6 +302,7 @@ typedef struct A_Expr
 typedef struct A_Const
 {
 	NodeTag		type;
+
 	/*
 	 * Value nodes are inline for performance.  You can treat 'val' as a node,
 	 * as in IsA(&val, Integer).  'val' is not valid if isnull is true.
@@ -305,6 +312,7 @@ typedef struct A_Const
 		Node		node;
 		Integer		ival;
 		Float		fval;
+		Boolean		boolval;
 		String		sval;
 		BitString	bsval;
 	}			val;
@@ -763,7 +771,8 @@ typedef struct DefElem
 	NodeTag		type;
 	char	   *defnamespace;	/* NULL if unqualified name */
 	char	   *defname;
-	Node	   *arg;			/* typically Integer, Float, String, or TypeName */
+	Node	   *arg;			/* typically Integer, Float, String, or
+								 * TypeName */
 	DefElemAction defaction;	/* unspecified action, or SET/ADD/DROP */
 	int			location;		/* token location, or -1 if unknown */
 } DefElem;
@@ -975,14 +984,7 @@ typedef struct PartitionCmd
  *	  which triggers to fire and in FDWs to know which changed columns they
  *	  need to ship off.
  *
- *	  Generated columns that are caused to be updated by an update to a base
- *	  column are listed in extraUpdatedCols.  This is not considered for
- *	  permission checking, but it is useful in those places that want to know
- *	  the full set of columns being updated as opposed to only the ones the
- *	  user explicitly mentioned in the query.  (There is currently no need for
- *	  an extraInsertedCols, but it could exist.)  Note that extraUpdatedCols
- *	  is populated during query rewrite, NOT in the parser, since generated
- *	  columns could be added after a rule has been parsed and stored.
+ *	  extraUpdatedCols is no longer used or maintained; it's always empty.
  *
  *	  securityQuals is a list of security barrier quals (boolean expressions),
  *	  to be tested in the listed order before returning a row from the
@@ -1029,8 +1031,8 @@ typedef struct RangeTblEntry
 	 *
 	 * rellockmode is really LOCKMODE, but it's declared int to avoid having
 	 * to include lock-related headers here.  It must be RowExclusiveLock if
-	 * the RTE is an INSERT/UPDATE/DELETE target, else RowShareLock if the RTE
-	 * is a SELECT FOR UPDATE/FOR SHARE target, else AccessShareLock.
+	 * the RTE is an INSERT/UPDATE/DELETE/MERGE target, else RowShareLock if
+	 * the RTE is a SELECT FOR UPDATE/FOR SHARE target, else AccessShareLock.
 	 *
 	 * Note: in some cases, rule expansion may result in RTEs that are marked
 	 * with RowExclusiveLock even though they are not the target of the
@@ -1151,7 +1153,7 @@ typedef struct RangeTblEntry
 	 * Fields valid for ENR RTEs (else NULL/zero):
 	 */
 	char	   *enrname;		/* name of ephemeral named relation */
-	Cardinality	enrtuples;		/* estimated or actual from caller */
+	Cardinality enrtuples;		/* estimated or actual from caller */
 
 	/*
 	 * Fields valid in all RTEs:
@@ -1225,7 +1227,9 @@ typedef enum WCOKind
 	WCO_VIEW_CHECK,				/* WCO on an auto-updatable view */
 	WCO_RLS_INSERT_CHECK,		/* RLS INSERT WITH CHECK policy */
 	WCO_RLS_UPDATE_CHECK,		/* RLS UPDATE WITH CHECK policy */
-	WCO_RLS_CONFLICT_CHECK		/* RLS ON CONFLICT DO UPDATE USING policy */
+	WCO_RLS_CONFLICT_CHECK,		/* RLS ON CONFLICT DO UPDATE USING policy */
+	WCO_RLS_MERGE_UPDATE_CHECK, /* RLS MERGE UPDATE USING policy */
+	WCO_RLS_MERGE_DELETE_CHECK	/* RLS MERGE DELETE USING policy */
 } WCOKind;
 
 typedef struct WithCheckOption
@@ -1400,6 +1404,7 @@ typedef struct WindowClause
 	int			frameOptions;	/* frame_clause options, see WindowDef */
 	Node	   *startOffset;	/* expression for starting bound, if any */
 	Node	   *endOffset;		/* expression for ending bound, if any */
+	List	   *runCondition;	/* qual to help short-circuit execution */
 	Oid			startInRangeFunc;	/* in_range function for startOffset */
 	Oid			endInRangeFunc; /* in_range function for endOffset */
 	Oid			inRangeColl;	/* collation for in_range tests */
@@ -1542,6 +1547,39 @@ typedef struct CommonTableExpr
 	 ((Query *) (cte)->ctequery)->returningList)
 
 /*
+ * MergeWhenClause -
+ *		raw parser representation of a WHEN clause in a MERGE statement
+ *
+ * This is transformed into MergeAction by parse analysis
+ */
+typedef struct MergeWhenClause
+{
+	NodeTag		type;
+	bool		matched;		/* true=MATCHED, false=NOT MATCHED */
+	CmdType		commandType;	/* INSERT/UPDATE/DELETE/DO NOTHING */
+	OverridingKind override;	/* OVERRIDING clause */
+	Node	   *condition;		/* WHEN conditions (raw parser) */
+	List	   *targetList;		/* INSERT/UPDATE targetlist */
+	/* the following members are only used in INSERT actions */
+	List	   *values;			/* VALUES to INSERT, or NULL */
+} MergeWhenClause;
+
+/*
+ * MergeAction -
+ *		Transformed representation of a WHEN clause in a MERGE statement
+ */
+typedef struct MergeAction
+{
+	NodeTag		type;
+	bool		matched;		/* true=MATCHED, false=NOT MATCHED */
+	CmdType		commandType;	/* INSERT/UPDATE/DELETE/DO NOTHING */
+	OverridingKind override;	/* OVERRIDING clause */
+	Node	   *qual;			/* transformed WHEN conditions */
+	List	   *targetList;		/* the target list (of TargetEntry) */
+	List	   *updateColnos;	/* target attribute numbers of an UPDATE */
+} MergeAction;
+
+/*
  * TriggerTransition -
  *	   representation of transition row or table naming clause
  *
@@ -1633,6 +1671,20 @@ typedef struct UpdateStmt
 	List	   *returningList;	/* list of expressions to return */
 	WithClause *withClause;		/* WITH clause */
 } UpdateStmt;
+
+/* ----------------------
+ *		Merge Statement
+ * ----------------------
+ */
+typedef struct MergeStmt
+{
+	NodeTag		type;
+	RangeVar   *relation;		/* target relation to merge into */
+	Node	   *sourceRelation; /* source relation */
+	Node	   *joinCondition;	/* join condition between source and target */
+	List	   *mergeWhenClauses;	/* list of MergeWhenClause(es) */
+	WithClause *withClause;		/* WITH clause */
+} MergeStmt;
 
 /* ----------------------
  *		Select Statement
@@ -1820,9 +1872,11 @@ typedef enum ObjectType
 	OBJECT_OPCLASS,
 	OBJECT_OPERATOR,
 	OBJECT_OPFAMILY,
+	OBJECT_PARAMETER_ACL,
 	OBJECT_POLICY,
 	OBJECT_PROCEDURE,
 	OBJECT_PUBLICATION,
+	OBJECT_PUBLICATION_NAMESPACE,
 	OBJECT_PUBLICATION_REL,
 	OBJECT_ROLE,
 	OBJECT_ROUTINE,
@@ -1977,6 +2031,8 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 								 * constraint, or parent table */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
 	bool		missing_ok;		/* skip error if missing? */
+	bool		recurse;		/* exec-time recursion */
+
 	bool		yb_is_add_primary_key;	/* checks if adding primary key */
 } AlterTableCmd;
 
@@ -2287,6 +2343,7 @@ typedef struct Constraint
 	char		generated_when; /* ALWAYS or BY DEFAULT */
 
 	/* Fields used for unique constraints (UNIQUE and PRIMARY KEY): */
+	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	List	   *keys;			/* String nodes naming referenced key
 								 * column(s) */
 	List	   *including;		/* String nodes naming referenced nonkey
@@ -2312,6 +2369,7 @@ typedef struct Constraint
 	char		fk_matchtype;	/* FULL, PARTIAL, SIMPLE */
 	char		fk_upd_action;	/* ON UPDATE action */
 	char		fk_del_action;	/* ON DELETE action */
+	List	   *fk_del_set_cols;	/* ON DELETE SET NULL/DEFAULT (col1, col2) */
 	List	   *old_conpfeqop;	/* pg_constraint.conpfeqop of my former self */
 	Oid			old_pktable_oid;	/* pg_constraint.confrelid of my former
 									 * self */
@@ -2963,6 +3021,7 @@ typedef struct IndexStmt
 	SubTransactionId oldFirstRelfilenodeSubid;	/* rd_firstRelfilenodeSubid of
 												 * oldNode */
 	bool		unique;			/* is index unique? */
+	bool		nulls_not_distinct; /* null treatment for UNIQUE constraints */
 	bool		primary;		/* is index a primary key? */
 	bool		isconstraint;	/* is it for a pkey/unique constraint? */
 	bool		deferrable;		/* is the constraint DEFERRABLE? */
@@ -3365,6 +3424,12 @@ typedef struct AlterDatabaseStmt
 	List	   *options;		/* List of DefElem nodes */
 } AlterDatabaseStmt;
 
+typedef struct AlterDatabaseRefreshCollStmt
+{
+	NodeTag		type;
+	char	   *dbname;
+} AlterDatabaseRefreshCollStmt;
+
 typedef struct AlterDatabaseSetStmt
 {
 	NodeTag		type;
@@ -3733,16 +3798,46 @@ typedef struct PublicationTable
 {
 	NodeTag		type;
 	RangeVar   *relation;		/* relation to be published */
+	Node	   *whereClause;	/* qualifications */
+	List	   *columns;		/* List of columns in a publication table */
 } PublicationTable;
+
+/*
+ * Publication object type
+ */
+typedef enum PublicationObjSpecType
+{
+	PUBLICATIONOBJ_TABLE,		/* A table */
+	PUBLICATIONOBJ_TABLES_IN_SCHEMA,	/* All tables in schema */
+	PUBLICATIONOBJ_TABLES_IN_CUR_SCHEMA,	/* All tables in first element of
+											 * search_path */
+	PUBLICATIONOBJ_CONTINUATION /* Continuation of previous type */
+} PublicationObjSpecType;
+
+typedef struct PublicationObjSpec
+{
+	NodeTag		type;
+	PublicationObjSpecType pubobjtype;	/* type of this publication object */
+	char	   *name;
+	PublicationTable *pubtable;
+	int			location;		/* token location, or -1 if unknown */
+} PublicationObjSpec;
 
 typedef struct CreatePublicationStmt
 {
 	NodeTag		type;
 	char	   *pubname;		/* Name of the publication */
 	List	   *options;		/* List of DefElem nodes */
-	List	   *tables;			/* Optional list of tables to add */
+	List	   *pubobjects;		/* Optional list of publication objects */
 	bool		for_all_tables; /* Special publication for all tables in db */
 } CreatePublicationStmt;
+
+typedef enum AlterPublicationAction
+{
+	AP_AddObjects,				/* add objects to publication */
+	AP_DropObjects,				/* remove objects from publication */
+	AP_SetObjects				/* set list of objects */
+} AlterPublicationAction;
 
 typedef struct AlterPublicationStmt
 {
@@ -3752,10 +3847,14 @@ typedef struct AlterPublicationStmt
 	/* parameters used for ALTER PUBLICATION ... WITH */
 	List	   *options;		/* List of DefElem nodes */
 
-	/* parameters used for ALTER PUBLICATION ... ADD/DROP TABLE */
-	List	   *tables;			/* List of tables to add/drop */
+	/*
+	 * Parameters used for ALTER PUBLICATION ... ADD/DROP/SET publication
+	 * objects.
+	 */
+	List	   *pubobjects;		/* Optional list of publication objects */
 	bool		for_all_tables; /* Special publication for all tables in db */
-	DefElemAction tableAction;	/* What action to perform with the tables */
+	AlterPublicationAction action;	/* What action to perform with the given
+									 * objects */
 } AlterPublicationStmt;
 
 typedef struct CreateSubscriptionStmt
@@ -3775,7 +3874,8 @@ typedef enum AlterSubscriptionType
 	ALTER_SUBSCRIPTION_ADD_PUBLICATION,
 	ALTER_SUBSCRIPTION_DROP_PUBLICATION,
 	ALTER_SUBSCRIPTION_REFRESH,
-	ALTER_SUBSCRIPTION_ENABLED
+	ALTER_SUBSCRIPTION_ENABLED,
+	ALTER_SUBSCRIPTION_SKIP
 } AlterSubscriptionType;
 
 typedef struct AlterSubscriptionStmt

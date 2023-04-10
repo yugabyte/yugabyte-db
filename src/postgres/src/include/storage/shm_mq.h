@@ -3,7 +3,7 @@
  * shm_mq.h
  *	  single-reader, single-writer shared memory message queue
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/shm_mq.h
@@ -70,9 +70,10 @@ extern shm_mq *shm_mq_get_queue(shm_mq_handle *mqh);
 
 /* Send or receive messages. */
 extern shm_mq_result shm_mq_send(shm_mq_handle *mqh,
-								 Size nbytes, const void *data, bool nowait);
-extern shm_mq_result shm_mq_sendv(shm_mq_handle *mqh,
-								  shm_mq_iovec *iov, int iovcnt, bool nowait);
+								 Size nbytes, const void *data, bool nowait,
+								 bool force_flush);
+extern shm_mq_result shm_mq_sendv(shm_mq_handle *mqh, shm_mq_iovec *iov,
+								  int iovcnt, bool nowait, bool force_flush);
 extern shm_mq_result shm_mq_receive(shm_mq_handle *mqh,
 									Size *nbytesp, void **datap, bool nowait);
 

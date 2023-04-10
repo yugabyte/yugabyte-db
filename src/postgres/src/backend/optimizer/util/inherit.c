@@ -3,12 +3,12 @@
  * inherit.c
  *	  Routines to process child relations in inheritance trees
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  src/backend/optimizer/path/inherit.c
+ *	  src/backend/optimizer/util/inherit.c
  *
  *-------------------------------------------------------------------------
  */
@@ -25,6 +25,7 @@
 #include "optimizer/inherit.h"
 #include "optimizer/optimizer.h"
 #include "optimizer/pathnode.h"
+#include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
@@ -48,6 +49,10 @@ static void expand_single_inheritance_child(PlannerInfo *root,
 static Bitmapset *translate_col_privs(Relation parentrel,
 									  const Bitmapset *parent_privs,
 									  List *translated_vars);
+static Bitmapset *translate_col_privs_multilevel(PlannerInfo *root,
+												 RelOptInfo *rel,
+												 RelOptInfo *parent_rel,
+												 Bitmapset *parent_cols);
 static void expand_appendrel_subquery(PlannerInfo *root, RelOptInfo *rel,
 									  RangeTblEntry *rte, Index rti);
 
@@ -334,11 +339,6 @@ expand_partitioned_rtentry(PlannerInfo *root, RelOptInfo *relinfo,
 		root->partColsUpdated =
 			has_partition_attrs(parentrel, parentrte->updatedCols, NULL);
 
-	/*
-	 * There shouldn't be any generated columns in the partition key.
-	 */
-	Assert(!has_partition_attrs(parentrel, parentrte->extraUpdatedCols, NULL));
-
 	/* Nothing further to do here if there are no partitions. */
 	if (partdesc->nparts == 0)
 		return;
@@ -560,16 +560,12 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 		childrte->updatedCols = translate_col_privs(parentrel,
 													parentrte->updatedCols,
 													appinfo->translated_vars);
-		childrte->extraUpdatedCols = translate_col_privs(parentrel,
-														 parentrte->extraUpdatedCols,
-														 appinfo->translated_vars);
 	}
 	else
 	{
 		childrte->selectedCols = bms_copy(parentrte->selectedCols);
 		childrte->insertedCols = bms_copy(parentrte->insertedCols);
 		childrte->updatedCols = bms_copy(parentrte->updatedCols);
-		childrte->extraUpdatedCols = bms_copy(parentrte->extraUpdatedCols);
 	}
 
 	/*
@@ -614,7 +610,7 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 
 	/*
 	 * If we are creating a child of the query target relation (only possible
-	 * in UPDATE/DELETE), add it to all_result_relids, as well as
+	 * in UPDATE/DELETE/MERGE), add it to all_result_relids, as well as
 	 * leaf_result_relids if appropriate, and make sure that we generate
 	 * required row-identity data.
 	 */
@@ -651,6 +647,52 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 									 childrte, childrel);
 		}
 	}
+}
+
+/*
+ * get_rel_all_updated_cols
+ * 		Returns the set of columns of a given "simple" relation that are
+ * 		updated by this query.
+ */
+Bitmapset *
+get_rel_all_updated_cols(PlannerInfo *root, RelOptInfo *rel)
+{
+	Index		relid;
+	RangeTblEntry *rte;
+	Bitmapset  *updatedCols,
+			   *extraUpdatedCols;
+
+	Assert(root->parse->commandType == CMD_UPDATE);
+	Assert(IS_SIMPLE_REL(rel));
+
+	/*
+	 * We obtain updatedCols for the query's result relation.  Then, if
+	 * necessary, we map it to the column numbers of the relation for which
+	 * they were requested.
+	 */
+	relid = root->parse->resultRelation;
+	rte = planner_rt_fetch(relid, root);
+
+	updatedCols = rte->updatedCols;
+
+	if (rel->relid != relid)
+	{
+		RelOptInfo *top_parent_rel = find_base_rel(root, relid);
+
+		Assert(IS_OTHER_REL(rel));
+
+		updatedCols = translate_col_privs_multilevel(root, rel, top_parent_rel,
+													 updatedCols);
+	}
+
+	/*
+	 * Now we must check to see if there are any generated columns that depend
+	 * on the updatedCols, and add them to the result.
+	 */
+	extraUpdatedCols = get_dependent_generated_columns(root, rel->relid,
+													   updatedCols);
+
+	return bms_union(updatedCols, extraUpdatedCols);
 }
 
 /*
@@ -705,6 +747,44 @@ translate_col_privs(Relation parentrel,
 	}
 
 	return child_privs;
+}
+
+/*
+ * translate_col_privs_multilevel
+ *		Recursively translates the column numbers contained in 'parent_cols'
+ *		to the column numbers of a descendant relation given by 'rel'
+ *
+ * Note that because this is based on translate_col_privs, it will expand
+ * a whole-row reference into all inherited columns.  This is not an issue
+ * for current usages, but beware.
+ */
+static Bitmapset *
+translate_col_privs_multilevel(PlannerInfo *root, RelOptInfo *rel,
+							   RelOptInfo *parent_rel,
+							   Bitmapset *parent_cols)
+{
+	AppendRelInfo *appinfo;
+
+	/* Fast path for easy case. */
+	if (parent_cols == NULL)
+		return NULL;
+
+	Assert(root->append_rel_array != NULL);
+	appinfo = root->append_rel_array[rel->relid];
+	Assert(appinfo != NULL);
+
+	/* Recurse if immediate parent is not the top parent. */
+	if (appinfo->parent_relid != parent_rel->relid)
+	{
+		RelOptInfo *next_parent = find_base_rel(root, appinfo->parent_relid);
+
+		parent_cols = translate_col_privs_multilevel(root, next_parent,
+													 parent_rel,
+													 parent_cols);
+	}
+
+	/* Now translate for this child. */
+	return translate_col_privs(parent_cols, appinfo->translated_vars);
 }
 
 /*

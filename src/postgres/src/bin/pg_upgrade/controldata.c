@@ -3,7 +3,7 @@
  *
  *	controldata functions
  *
- *	Copyright (c) 2010-2021, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/controldata.c
  */
 
@@ -493,7 +493,6 @@ get_control_data(ClusterInfo *cluster, bool live_check)
 				pg_fatal("%d: controldata retrieval problem\n", __LINE__);
 
 			p++;				/* remove ':' char */
-			/* used later for contrib check */
 			cluster->controldata.data_checksum_version = str2uint(p);
 			got_data_checksum_version = true;
 		}

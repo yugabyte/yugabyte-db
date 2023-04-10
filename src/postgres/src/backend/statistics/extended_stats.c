@@ -6,7 +6,7 @@
  * Generic code supporting statistics objects created via CREATE STATISTICS.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -25,11 +25,13 @@
 #include "catalog/pg_statistic_ext.h"
 #include "catalog/pg_statistic_ext_data.h"
 #include "executor/executor.h"
+#include "commands/defrem.h"
 #include "commands/progress.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/optimizer.h"
+#include "parser/parsetree.h"
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "statistics/extended_stats_internal.h"
@@ -77,7 +79,7 @@ typedef struct StatExtEntry
 static List *fetch_statentries_for_relation(Relation pg_statext, Oid relid);
 static VacAttrStats **lookup_var_attr_stats(Relation rel, Bitmapset *attrs, List *exprs,
 											int nvacatts, VacAttrStats **vacatts);
-static void statext_store(Oid statOid,
+static void statext_store(Oid statOid, bool inh,
 						  MVNDistinct *ndistinct, MVDependencies *dependencies,
 						  MCVList *mcv, Datum exprs, VacAttrStats **stats);
 static int	statext_compute_stattarget(int stattarget,
@@ -110,7 +112,7 @@ static StatsBuildData *make_build_data(Relation onerel, StatExtEntry *stat,
  * requested stats, and serializes them back into the catalog.
  */
 void
-BuildRelationExtStatistics(Relation onerel, double totalrows,
+BuildRelationExtStatistics(Relation onerel, bool inh, double totalrows,
 						   int numrows, HeapTuple *rows,
 						   int natts, VacAttrStats **vacattrstats)
 {
@@ -125,13 +127,15 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 	if (!natts)
 		return;
 
+	/* the list of stats has to be allocated outside the memory context */
+	pg_stext = table_open(StatisticExtRelationId, RowExclusiveLock);
+	statslist = fetch_statentries_for_relation(pg_stext, RelationGetRelid(onerel));
+
+	/* memory context for building each statistics object */
 	cxt = AllocSetContextCreate(GetCurrentMemoryContext(),
 								"BuildRelationExtStatistics",
 								ALLOCSET_DEFAULT_SIZES);
 	oldcxt = MemoryContextSwitchTo(cxt);
-
-	pg_stext = table_open(StatisticExtRelationId, RowExclusiveLock);
-	statslist = fetch_statentries_for_relation(pg_stext, RelationGetRelid(onerel));
 
 	/* report this phase */
 	if (statslist != NIL)
@@ -180,7 +184,7 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 			continue;
 		}
 
-		/* compute statistics target for this statistics */
+		/* compute statistics target for this statistics object */
 		stattarget = statext_compute_stattarget(stat->stattarget,
 												bms_num_members(stat->columns),
 												stats);
@@ -193,7 +197,7 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 		if (stattarget == 0)
 			continue;
 
-		/* evaluate expressions (if the statistics has any) */
+		/* evaluate expressions (if the statistics object has any) */
 		data = make_build_data(onerel, stat, numrows, rows, stats, stattarget);
 
 		/* compute statistic of each requested type */
@@ -228,20 +232,23 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
 		}
 
 		/* store the statistics in the catalog */
-		statext_store(stat->statOid, ndistinct, dependencies, mcv, exprstats, stats);
+		statext_store(stat->statOid, inh,
+					  ndistinct, dependencies, mcv, exprstats, stats);
 
 		/* for reporting progress */
 		pgstat_progress_update_param(PROGRESS_ANALYZE_EXT_STATS_COMPUTED,
 									 ++ext_cnt);
 
-		/* free the build data (allocated as a single chunk) */
-		pfree(data);
+		/* free the data used for building this statistics object */
+		MemoryContextReset(cxt);
 	}
-
-	table_close(pg_stext, RowExclusiveLock);
 
 	MemoryContextSwitchTo(oldcxt);
 	MemoryContextDelete(cxt);
+
+	list_free(statslist);
+
+	table_close(pg_stext, RowExclusiveLock);
 }
 
 /*
@@ -253,9 +260,9 @@ BuildRelationExtStatistics(Relation onerel, double totalrows,
  * when analyzing only some of the columns, this will skip statistics objects
  * that would require additional columns.
  *
- * See statext_compute_stattarget for details about how we compute statistics
- * target for a statistics object (from the object target, attribute targets
- * and default statistics target).
+ * See statext_compute_stattarget for details about how we compute the
+ * statistics target for a statistics object (from the object target,
+ * attribute targets and default statistics target).
  */
 int
 ComputeExtStatisticsRows(Relation onerel,
@@ -325,8 +332,8 @@ ComputeExtStatisticsRows(Relation onerel,
  *
  * When computing target for extended statistics objects, we consider three
  * places where the target may be set - the statistics object itself,
- * attributes the statistics is defined on, and then the default statistics
- * target.
+ * attributes the statistics object is defined on, and then the default
+ * statistics target.
  *
  * First we look at what's set for the statistics object itself, using the
  * ALTER STATISTICS ... SET STATISTICS command. If we find a valid value
@@ -695,11 +702,11 @@ examine_expression(Node *expr, int stattarget)
 }
 
 /*
- * Using 'vacatts' of size 'nvacatts' as input data, return a newly built
+ * Using 'vacatts' of size 'nvacatts' as input data, return a newly-built
  * VacAttrStats array which includes only the items corresponding to
- * attributes indicated by 'stxkeys'. If we don't have all of the per column
- * stats available to compute the extended stats, then we return NULL to indicate
- * to the caller that the stats should not be built.
+ * attributes indicated by 'attrs'.  If we don't have all of the per-column
+ * stats available to compute the extended stats, then we return NULL to
+ * indicate to the caller that the stats should not be built.
  */
 static VacAttrStats **
 lookup_var_attr_stats(Relation rel, Bitmapset *attrs, List *exprs,
@@ -777,22 +784,26 @@ lookup_var_attr_stats(Relation rel, Bitmapset *attrs, List *exprs,
  *	tuple.
  */
 static void
-statext_store(Oid statOid,
+statext_store(Oid statOid, bool inh,
 			  MVNDistinct *ndistinct, MVDependencies *dependencies,
 			  MCVList *mcv, Datum exprs, VacAttrStats **stats)
 {
 	Relation	pg_stextdata;
-	HeapTuple	stup,
-				oldtup;
+	HeapTuple	stup;
 	Datum		values[Natts_pg_statistic_ext_data];
 	bool		nulls[Natts_pg_statistic_ext_data];
-	bool		replaces[Natts_pg_statistic_ext_data];
 
 	pg_stextdata = table_open(StatisticExtDataRelationId, RowExclusiveLock);
 
 	memset(nulls, true, sizeof(nulls));
-	memset(replaces, false, sizeof(replaces));
 	memset(values, 0, sizeof(values));
+
+	/* basic info */
+	values[Anum_pg_statistic_ext_data_stxoid - 1] = ObjectIdGetDatum(statOid);
+	nulls[Anum_pg_statistic_ext_data_stxoid - 1] = false;
+
+	values[Anum_pg_statistic_ext_data_stxdinherit - 1] = BoolGetDatum(inh);
+	nulls[Anum_pg_statistic_ext_data_stxdinherit - 1] = false;
 
 	/*
 	 * Construct a new pg_statistic_ext_data tuple, replacing the calculated
@@ -826,25 +837,15 @@ statext_store(Oid statOid,
 		values[Anum_pg_statistic_ext_data_stxdexpr - 1] = exprs;
 	}
 
-	/* always replace the value (either by bytea or NULL) */
-	replaces[Anum_pg_statistic_ext_data_stxdndistinct - 1] = true;
-	replaces[Anum_pg_statistic_ext_data_stxddependencies - 1] = true;
-	replaces[Anum_pg_statistic_ext_data_stxdmcv - 1] = true;
-	replaces[Anum_pg_statistic_ext_data_stxdexpr - 1] = true;
+	/*
+	 * Delete the old tuple if it exists, and insert a new one. It's easier
+	 * than trying to update or insert, based on various conditions.
+	 */
+	RemoveStatisticsDataById(statOid, inh);
 
-	/* there should already be a pg_statistic_ext_data tuple */
-	oldtup = SearchSysCache1(STATEXTDATASTXOID, ObjectIdGetDatum(statOid));
-	if (!HeapTupleIsValid(oldtup))
-		elog(ERROR, "cache lookup failed for statistics object %u", statOid);
-
-	/* replace it */
-	stup = heap_modify_tuple(oldtup,
-							 RelationGetDescr(pg_stextdata),
-							 values,
-							 nulls,
-							 replaces);
-	ReleaseSysCache(oldtup);
-	CatalogTupleUpdate(pg_stextdata, &stup->t_self, stup);
+	/* form and insert a new tuple */
+	stup = heap_form_tuple(RelationGetDescr(pg_stextdata), values, nulls);
+	CatalogTupleInsert(pg_stextdata, stup);
 
 	heap_freetuple(stup);
 
@@ -957,7 +958,7 @@ compare_datums_simple(Datum a, Datum b, SortSupport ssup)
  * build_attnums_array
  *		Transforms a bitmap into an array of AttrNumber values.
  *
- * This is used for extended statistics only, so all the attribute must be
+ * This is used for extended statistics only, so all the attributes must be
  * user-defined. That means offsetting by FirstLowInvalidHeapAttributeNumber
  * is not necessary here (and when querying the bitmap).
  */
@@ -1128,8 +1129,8 @@ build_sorted_items(StatsBuildData *data, int *nitems,
 	}
 
 	/* do the sort, using the multi-sort */
-	qsort_arg((void *) items, nrows, sizeof(SortItem),
-			  multi_sort_compare, mss);
+	qsort_interruptible((void *) items, nrows, sizeof(SortItem),
+						multi_sort_compare, mss);
 
 	return items;
 }
@@ -1230,7 +1231,7 @@ stat_covers_expressions(StatisticExtInfo *stat, List *exprs,
  * further tiebreakers are needed.
  */
 StatisticExtInfo *
-choose_best_statistics(List *stats, char requiredkind,
+choose_best_statistics(List *stats, char requiredkind, bool inh,
 					   Bitmapset **clause_attnums, List **clause_exprs,
 					   int nclauses)
 {
@@ -1250,6 +1251,10 @@ choose_best_statistics(List *stats, char requiredkind,
 
 		/* skip statistics that are not of the correct type */
 		if (info->kind != requiredkind)
+			continue;
+
+		/* skip statistics with mismatching inheritance flag */
+		if (info->inherit != inh)
 			continue;
 
 		/*
@@ -1311,10 +1316,38 @@ choose_best_statistics(List *stats, char requiredkind,
  * statext_is_compatible_clause_internal
  *		Determines if the clause is compatible with MCV lists.
  *
- * Does the heavy lifting of actually inspecting the clauses for
- * statext_is_compatible_clause. It needs to be split like this because
- * of recursion.  The attnums bitmap is an input/output parameter collecting
- * attribute numbers from all compatible clauses (recursively).
+ * To be compatible, the given clause must be a combination of supported
+ * clauses built from Vars or sub-expressions (where a sub-expression is
+ * something that exactly matches an expression found in statistics objects).
+ * This function recursively examines the clause and extracts any
+ * sub-expressions that will need to be matched against statistics.
+ *
+ * Currently, we only support the following types of clauses:
+ *
+ * (a) OpExprs of the form (Var/Expr op Const), or (Const op Var/Expr), where
+ * the op is one of ("=", "<", ">", ">=", "<=")
+ *
+ * (b) (Var/Expr IS [NOT] NULL)
+ *
+ * (c) combinations using AND/OR/NOT
+ *
+ * (d) ScalarArrayOpExprs of the form (Var/Expr op ANY (Const)) or
+ * (Var/Expr op ALL (Const))
+ *
+ * In the future, the range of supported clauses may be expanded to more
+ * complex cases, for example (Var op Var).
+ *
+ * Arguments:
+ * clause: (sub)clause to be inspected (bare clause, not a RestrictInfo)
+ * relid: rel that all Vars in clause must belong to
+ * *attnums: input/output parameter collecting attribute numbers of all
+ *		mentioned Vars.  Note that we do not offset the attribute numbers,
+ *		so we can't cope with system columns.
+ * *exprs: input/output parameter collecting primitive subclauses within
+ *		the clause tree
+ *
+ * Returns false if there is something we definitively can't handle.
+ * On true return, we can proceed to match the *exprs against statistics.
  */
 static bool
 statext_is_compatible_clause_internal(PlannerInfo *root, Node *clause,
@@ -1338,10 +1371,14 @@ statext_is_compatible_clause_internal(PlannerInfo *root, Node *clause,
 		if (var->varlevelsup > 0)
 			return false;
 
-		/* Also skip system attributes (we don't allow stats on those). */
+		/*
+		 * Also reject system attributes and whole-row Vars (we don't allow
+		 * stats on those).
+		 */
 		if (!AttrNumberIsForUserDefinedAttr(var->varattno))
 			return false;
 
+		/* OK, record the attnum for later permissions checks. */
 		*attnums = bms_add_member(*attnums, var->varattno);
 
 		return true;
@@ -1415,13 +1452,18 @@ statext_is_compatible_clause_internal(PlannerInfo *root, Node *clause,
 		RangeTblEntry *rte = root->simple_rte_array[relid];
 		ScalarArrayOpExpr *expr = (ScalarArrayOpExpr *) clause;
 		Node	   *clause_expr;
+		bool		expronleft;
 
 		/* Only expressions with two arguments are considered compatible. */
 		if (list_length(expr->args) != 2)
 			return false;
 
 		/* Check if the expression has the right shape (one Var, one Const) */
-		if (!examine_opclause_args(expr->args, &clause_expr, NULL, NULL))
+		if (!examine_opclause_args(expr->args, &clause_expr, NULL, &expronleft))
+			return false;
+
+		/* We only support Var on left, Const on right */
+		if (!expronleft)
 			return false;
 
 		/*
@@ -1496,7 +1538,7 @@ statext_is_compatible_clause_internal(PlannerInfo *root, Node *clause,
 		foreach(lc, expr->args)
 		{
 			/*
-			 * Had we found incompatible clause in the arguments, treat the
+			 * If we find an incompatible clause in the arguments, treat the
 			 * whole clause as incompatible.
 			 */
 			if (!statext_is_compatible_clause_internal(root,
@@ -1535,27 +1577,28 @@ statext_is_compatible_clause_internal(PlannerInfo *root, Node *clause,
  * statext_is_compatible_clause
  *		Determines if the clause is compatible with MCV lists.
  *
- * Currently, we only support the following types of clauses:
+ * See statext_is_compatible_clause_internal, above, for the basic rules.
+ * This layer deals with RestrictInfo superstructure and applies permissions
+ * checks to verify that it's okay to examine all mentioned Vars.
  *
- * (a) OpExprs of the form (Var/Expr op Const), or (Const op Var/Expr), where
- * the op is one of ("=", "<", ">", ">=", "<=")
+ * Arguments:
+ * clause: clause to be inspected (in RestrictInfo form)
+ * relid: rel that all Vars in clause must belong to
+ * *attnums: input/output parameter collecting attribute numbers of all
+ *		mentioned Vars.  Note that we do not offset the attribute numbers,
+ *		so we can't cope with system columns.
+ * *exprs: input/output parameter collecting primitive subclauses within
+ *		the clause tree
  *
- * (b) (Var/Expr IS [NOT] NULL)
- *
- * (c) combinations using AND/OR/NOT
- *
- * (d) ScalarArrayOpExprs of the form (Var/Expr op ANY (array)) or (Var/Expr
- * op ALL (array))
- *
- * In the future, the range of supported clauses may be expanded to more
- * complex cases, for example (Var op Var).
+ * Returns false if there is something we definitively can't handle.
+ * On true return, we can proceed to match the *exprs against statistics.
  */
 static bool
 statext_is_compatible_clause(PlannerInfo *root, Node *clause, Index relid,
 							 Bitmapset **attnums, List **exprs)
 {
 	RangeTblEntry *rte = root->simple_rte_array[relid];
-	RestrictInfo *rinfo = (RestrictInfo *) clause;
+	RestrictInfo *rinfo;
 	int			clause_relid;
 	Oid			userid;
 
@@ -1584,8 +1627,9 @@ statext_is_compatible_clause(PlannerInfo *root, Node *clause, Index relid,
 	}
 
 	/* Otherwise it must be a RestrictInfo. */
-	if (!IsA(rinfo, RestrictInfo))
+	if (!IsA(clause, RestrictInfo))
 		return false;
+	rinfo = (RestrictInfo *) clause;
 
 	/* Pseudoconstants are not really interesting here. */
 	if (rinfo->pseudoconstant)
@@ -1607,34 +1651,48 @@ statext_is_compatible_clause(PlannerInfo *root, Node *clause, Index relid,
 	 */
 	userid = rte->checkAsUser ? rte->checkAsUser : GetUserId();
 
+	/* Table-level SELECT privilege is sufficient for all columns */
 	if (pg_class_aclcheck(rte->relid, userid, ACL_SELECT) != ACLCHECK_OK)
 	{
 		Bitmapset  *clause_attnums = NULL;
+		int			attnum = -1;
 
-		/* Don't have table privilege, must check individual columns */
+		/*
+		 * We have to check per-column privileges.  *attnums has the attnums
+		 * for individual Vars we saw, but there may also be Vars within
+		 * subexpressions in *exprs.  We can use pull_varattnos() to extract
+		 * those, but there's an impedance mismatch: attnums returned by
+		 * pull_varattnos() are offset by FirstLowInvalidHeapAttributeNumber,
+		 * while attnums within *attnums aren't.  Convert *attnums to the
+		 * offset style so we can combine the results.
+		 */
+		while ((attnum = bms_next_member(*attnums, attnum)) >= 0)
+		{
+			clause_attnums =
+				bms_add_member(clause_attnums,
+							   attnum - FirstLowInvalidHeapAttributeNumber);
+		}
+
+		/* Now merge attnums from *exprs into clause_attnums */
 		if (*exprs != NIL)
-		{
-			pull_varattnos((Node *) exprs, relid, &clause_attnums);
-			clause_attnums = bms_add_members(clause_attnums, *attnums);
-		}
-		else
-			clause_attnums = *attnums;
+			pull_varattnos((Node *) *exprs, relid, &clause_attnums);
 
-		if (bms_is_member(InvalidAttrNumber, clause_attnums))
+		attnum = -1;
+		while ((attnum = bms_next_member(clause_attnums, attnum)) >= 0)
 		{
-			/* Have a whole-row reference, must have access to all columns */
-			if (pg_attribute_aclcheck_all(rte->relid, userid, ACL_SELECT,
-										  ACLMASK_ALL) != ACLCHECK_OK)
-				return false;
-		}
-		else
-		{
-			/* Check the columns referenced by the clause */
-			int			attnum = -1;
+			/* Undo the offset */
+			AttrNumber	attno = attnum + FirstLowInvalidHeapAttributeNumber;
 
-			while ((attnum = bms_next_member(clause_attnums, attnum)) >= 0)
+			if (attno == InvalidAttrNumber)
 			{
-				if (pg_attribute_aclcheck(rte->relid, attnum, userid,
+				/* Whole-row reference, so must have access to all columns */
+				if (pg_attribute_aclcheck_all(rte->relid, userid, ACL_SELECT,
+											  ACLMASK_ALL) != ACLCHECK_OK)
+					return false;
+			}
+			else
+			{
+				if (pg_attribute_aclcheck(rte->relid, attno, userid,
 										  ACL_SELECT) != ACLCHECK_OK)
 					return false;
 			}
@@ -1690,6 +1748,7 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 	List	  **list_exprs;		/* expressions matched to any statistic */
 	int			listidx;
 	Selectivity sel = (is_or) ? 0.0 : 1.0;
+	RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
 
 	/* check if there's any stats that might be useful for us. */
 	if (!has_stats_of_kind(rel->statlist, STATS_EXT_MCV))
@@ -1742,7 +1801,7 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 		Bitmapset  *simple_clauses;
 
 		/* find the best suited statistics object for these attnums */
-		stat = choose_best_statistics(rel->statlist, STATS_EXT_MCV,
+		stat = choose_best_statistics(rel->statlist, STATS_EXT_MCV, rte->inh,
 									  list_attnums, list_exprs,
 									  list_length(clauses));
 
@@ -1785,8 +1844,8 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 
 			/*
 			 * The clause was not estimated yet, and we've extracted either
-			 * attnums of expressions from it. Ignore it if it's not fully
-			 * covered by the chosen statistics.
+			 * attnums or expressions from it. Ignore it if it's not fully
+			 * covered by the chosen statistics object.
 			 *
 			 * We need to check both attributes and expressions, and reject if
 			 * either is not covered.
@@ -1831,7 +1890,7 @@ statext_mcv_clauselist_selectivity(PlannerInfo *root, List *clauses, int varReli
 			MCVList    *mcv_list;
 
 			/* Load the MCV list stored in the statistics object */
-			mcv_list = statext_mcv_load(stat->statOid);
+			mcv_list = statext_mcv_load(stat->statOid, rte->inh);
 
 			/*
 			 * Compute the selectivity of the ORed list of clauses covered by
@@ -2392,7 +2451,7 @@ serialize_expr_stats(AnlExprData *exprdata, int nexprs)
  * identified by the supplied index.
  */
 HeapTuple
-statext_expressions_load(Oid stxoid, int idx)
+statext_expressions_load(Oid stxoid, bool inh, int idx)
 {
 	bool		isnull;
 	Datum		value;
@@ -2402,7 +2461,8 @@ statext_expressions_load(Oid stxoid, int idx)
 	HeapTupleData tmptup;
 	HeapTuple	tup;
 
-	htup = SearchSysCache1(STATEXTDATASTXOID, ObjectIdGetDatum(stxoid));
+	htup = SearchSysCache2(STATEXTDATASTXOID,
+						   ObjectIdGetDatum(stxoid), BoolGetDatum(inh));
 	if (!HeapTupleIsValid(htup))
 		elog(ERROR, "cache lookup failed for statistics object %u", stxoid);
 

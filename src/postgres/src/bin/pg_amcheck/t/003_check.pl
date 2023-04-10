@@ -1,14 +1,13 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
 
-use Fcntl qw(:seek);
-use Test::More tests => 63;
+use Test::More;
 
 my ($node, $port, %corrupt_page, %remove_relation);
 
@@ -90,8 +89,8 @@ sub corrupt_first_page
 	# Corrupt some line pointers.  The values are chosen to hit the
 	# various line-pointer-corruption checks in verify_heapam.c
 	# on both little-endian and big-endian architectures.
-	seek($fh, 32, SEEK_SET)
-	  or BAIL_OUT("seek failed: $!");
+	sysseek($fh, 32, 0)
+	  or BAIL_OUT("sysseek failed: $!");
 	syswrite(
 		$fh,
 		pack("L*",
@@ -120,7 +119,7 @@ sub perform_all_corruptions()
 }
 
 # Test set-up
-$node = PostgresNode->new('test');
+$node = PostgreSQL::Test::Cluster->new('test');
 $node->init;
 $node->append_conf('postgresql.conf', 'autovacuum=off');
 $node->start;
@@ -316,7 +315,7 @@ plan_to_remove_relation_file('db2', 's1.t1_btree');
 # Leave 'db3' uncorrupted
 #
 
-# Standard first arguments to TestLib functions
+# Standard first arguments to PostgreSQL::Test::Utils functions
 my @cmd = ('pg_amcheck', '-p', $port);
 
 # Regular expressions to match various expected output
@@ -517,3 +516,5 @@ $node->command_checks_all(
 	[ @cmd, '-d', 'db1', '-d', 'db2', '-d', 'db3', '-S', 's*' ],
 	0, [$no_output_re], [$no_output_re],
 	'pg_amcheck excluding all corrupt schemas');
+
+done_testing();

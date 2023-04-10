@@ -9,7 +9,7 @@
  *		but it should be possible to use much of the control logic just
  *		as presented here.
  *
- * Copyright (c) 2013-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		src/test/modules/test_shm_mq/worker.c
@@ -190,7 +190,7 @@ copy_messages(shm_mq_handle *inqh, shm_mq_handle *outqh)
 			break;
 
 		/* Send it back out. */
-		res = shm_mq_send(outqh, len, data, false);
+		res = shm_mq_send(outqh, len, data, false, true);
 		if (res != SHM_MQ_SUCCESS)
 			break;
 	}

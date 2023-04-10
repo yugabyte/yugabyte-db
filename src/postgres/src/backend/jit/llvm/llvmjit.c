@@ -3,7 +3,7 @@
  * llvmjit.c
  *	  Core part of the LLVM JIT provider.
  *
- * Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/jit/llvm/llvmjit.c
@@ -171,6 +171,7 @@ static void
 llvm_release_context(JitContext *context)
 {
 	LLVMJitContext *llvm_context = (LLVMJitContext *) context;
+	ListCell   *lc;
 
 	/*
 	 * When this backend is exiting, don't clean up LLVM. As an error might
@@ -188,12 +189,9 @@ llvm_release_context(JitContext *context)
 		llvm_context->module = NULL;
 	}
 
-	while (llvm_context->handles != NIL)
+	foreach(lc, llvm_context->handles)
 	{
-		LLVMJitHandle *jit_handle;
-
-		jit_handle = (LLVMJitHandle *) linitial(llvm_context->handles);
-		llvm_context->handles = list_delete_first(llvm_context->handles);
+		LLVMJitHandle *jit_handle = (LLVMJitHandle *) lfirst(lc);
 
 #if LLVM_VERSION_MAJOR > 11
 		{
@@ -221,6 +219,8 @@ llvm_release_context(JitContext *context)
 
 		pfree(jit_handle);
 	}
+	list_free(llvm_context->handles);
+	llvm_context->handles = NIL;
 }
 
 /*
@@ -799,6 +799,16 @@ llvm_session_initialize(void)
 	LLVMInitializeNativeAsmParser();
 
 	/*
+	 * When targeting an LLVM version with opaque pointers enabled by
+	 * default, turn them off for the context we build our code in.  We don't
+	 * need to do so for other contexts (e.g. llvm_ts_context).  Once the IR is
+	 * generated, it carries the necessary information.
+	 */
+#if LLVM_VERSION_MAJOR > 14
+	LLVMContextSetOpaquePointers(LLVMGetGlobalContext(), false);
+#endif
+
+	/*
 	 * Synchronize types early, as that also includes inferring the target
 	 * triple.
 	 */
@@ -806,7 +816,7 @@ llvm_session_initialize(void)
 
 	if (LLVMGetTargetFromTriple(llvm_triple, &llvm_targetref, &error) != 0)
 	{
-		elog(FATAL, "failed to query triple %s\n", error);
+		elog(FATAL, "failed to query triple %s", error);
 	}
 
 	/*
@@ -890,8 +900,8 @@ llvm_shutdown(int code, Datum arg)
 	 * has occurred in the middle of LLVM code. It is not safe to call back
 	 * into LLVM (which is why a FATAL error was thrown).
 	 *
-	 * We do need to shutdown LLVM in other shutdown cases, otherwise
-	 * e.g. profiling data won't be written out.
+	 * We do need to shutdown LLVM in other shutdown cases, otherwise e.g.
+	 * profiling data won't be written out.
 	 */
 	if (llvm_in_fatal_on_oom())
 	{
@@ -1112,7 +1122,11 @@ llvm_resolve_symbols(LLVMOrcDefinitionGeneratorRef GeneratorObj, void *Ctx,
 					 LLVMOrcJITDylibRef JD, LLVMOrcJITDylibLookupFlags JDLookupFlags,
 					 LLVMOrcCLookupSet LookupSet, size_t LookupSetSize)
 {
+#if LLVM_VERSION_MAJOR > 14
+	LLVMOrcCSymbolMapPairs symbols = palloc0(sizeof(LLVMOrcCSymbolMapPair) * LookupSetSize);
+#else
 	LLVMOrcCSymbolMapPairs symbols = palloc0(sizeof(LLVMJITCSymbolMapPair) * LookupSetSize);
+#endif
 	LLVMErrorRef error;
 	LLVMOrcMaterializationUnitRef mu;
 
@@ -1230,7 +1244,11 @@ llvm_create_jit_instance(LLVMTargetMachineRef tm)
 	 * Symbol resolution support for "special" functions, e.g. a call into an
 	 * SQL callable function.
 	 */
+#if LLVM_VERSION_MAJOR > 14
+	ref_gen = LLVMOrcCreateCustomCAPIDefinitionGenerator(llvm_resolve_symbols, NULL, NULL);
+#else
 	ref_gen = LLVMOrcCreateCustomCAPIDefinitionGenerator(llvm_resolve_symbols, NULL);
+#endif
 	LLVMOrcJITDylibAddGenerator(LLVMOrcLLJITGetMainJITDylib(lljit), ref_gen);
 
 	return lljit;

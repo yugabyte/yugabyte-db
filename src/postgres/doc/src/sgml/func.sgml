@@ -1046,7 +1046,7 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        </para>
        <para>
         <literal>@ -5.0</literal>
-        <returnvalue>5</returnvalue>
+        <returnvalue>5.0</returnvalue>
        </para></entry>
       </row>
 
@@ -1463,7 +1463,7 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        </para>
        <para>
        <literal>log(2.0, 64.0)</literal>
-       <returnvalue>6.0000000000</returnvalue>
+       <returnvalue>6.0000000000000000</returnvalue>
        </para></entry>
       </row>
 
@@ -1598,6 +1598,10 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>round(42.4382, 2)</literal>
         <returnvalue>42.44</returnvalue>
+       </para>
+       <para>
+        <literal>round(1234.56, -1)</literal>
+        <returnvalue>1230</returnvalue>
        </para></entry>
       </row>
 
@@ -1832,14 +1836,18 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
    </table>
 
   <para>
-   The <function>random()</function> function uses a simple linear
-   congruential algorithm.  It is fast but not suitable for cryptographic
+   The <function>random()</function> function uses a deterministic
+   pseudo-random number generator.
+   It is fast but not suitable for cryptographic
    applications; see the <xref linkend="pgcrypto"/> module for a more
    secure alternative.
    If <function>setseed()</function> is called, the series of results of
    subsequent <function>random()</function> calls in the current session
    can be repeated by re-issuing <function>setseed()</function> with the same
    argument.
+   Without any prior <function>setseed()</function> call in the same
+   session, the first <function>random()</function> call obtains a seed
+   from a platform-dependent source of random bits.
   </para>
 
   <para>
@@ -2708,18 +2716,23 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
    </table>
 
    <para>
-    Additional string manipulation functions are available and are
-    listed in <xref linkend="functions-string-other"/>.  Some of them are used internally to implement the
-    <acronym>SQL</acronym>-standard string functions listed in <xref linkend="functions-string-sql"/>.
+    Additional string manipulation functions and operators are available
+    and are listed in <xref linkend="functions-string-other"/>.  (Some of
+    these are used internally to implement
+    the <acronym>SQL</acronym>-standard string functions listed in
+    <xref linkend="functions-string-sql"/>.)
+    There are also pattern-matching operators, which are described in
+    <xref linkend="functions-matching"/>, and operators for full-text
+    search, which are described in <xref linkend="textsearch"/>.
    </para>
 
    <table id="functions-string-other">
-    <title>Other String Functions</title>
+    <title>Other String Functions and Operators</title>
     <tgroup cols="1">
      <thead>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
-        Function
+        Function/Operator
        </para>
        <para>
         Description
@@ -2731,6 +2744,25 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
      </thead>
 
      <tbody>
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>character string</primary>
+         <secondary>prefix test</secondary>
+        </indexterm>
+        <type>text</type> <literal>^@</literal> <type>text</type>
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Returns true if the first string starts with the second string
+        (equivalent to the <function>starts_with()</function> function).
+       </para>
+       <para>
+        <literal>'alphabet' ^@ 'alph'</literal>
+        <returnvalue>t</returnvalue>
+       </para></entry>
+      </row>
+
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
@@ -3487,6 +3519,84 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>starts_with</primary>
+        </indexterm>
+        <function>starts_with</function> ( <parameter>string</parameter> <type>text</type>, <parameter>prefix</parameter> <type>text</type> )
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Returns true if <parameter>string</parameter> starts
+        with <parameter>prefix</parameter>.
+       </para>
+       <para>
+        <literal>starts_with('alphabet', 'alph')</literal>
+        <returnvalue>t</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm id="function-string-to-array">
+         <primary>string_to_array</primary>
+        </indexterm>
+        <function>string_to_array</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
+        <returnvalue>text[]</returnvalue>
+       </para>
+       <para>
+        Splits the <parameter>string</parameter> at occurrences
+        of <parameter>delimiter</parameter> and forms the resulting fields
+        into a <type>text</type> array.
+        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
+        each character in the <parameter>string</parameter> will become a
+        separate element in the array.
+        If <parameter>delimiter</parameter> is an empty string, then
+        the <parameter>string</parameter> is treated as a single field.
+        If <parameter>null_string</parameter> is supplied and is
+        not <literal>NULL</literal>, fields matching that string are
+        replaced by <literal>NULL</literal>.
+        See also <link linkend="function-array-to-string"><function>array_to_string</function></link>.
+       </para>
+       <para>
+        <literal>string_to_array('xx~~yy~~zz', '~~', 'yy')</literal>
+        <returnvalue>{xx,NULL,zz}</returnvalue>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>string_to_table</primary>
+        </indexterm>
+        <function>string_to_table</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
+        <returnvalue>setof text</returnvalue>
+       </para>
+       <para>
+        Splits the <parameter>string</parameter> at occurrences
+        of <parameter>delimiter</parameter> and returns the resulting fields
+        as a set of <type>text</type> rows.
+        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
+        each character in the <parameter>string</parameter> will become a
+        separate row of the result.
+        If <parameter>delimiter</parameter> is an empty string, then
+        the <parameter>string</parameter> is treated as a single field.
+        If <parameter>null_string</parameter> is supplied and is
+        not <literal>NULL</literal>, fields matching that string are
+        replaced by <literal>NULL</literal>.
+       </para>
+       <para>
+        <literal>string_to_table('xx~^~yy~^~zz', '~^~', 'yy')</literal>
+        <returnvalue></returnvalue>
+<programlisting>
+ xx
+ NULL
+ zz
+</programlisting>
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>strpos</primary>
         </indexterm>
         <function>strpos</function> ( <parameter>string</parameter> <type>text</type>, <parameter>substring</parameter> <type>text</type> )
@@ -3529,83 +3639,6 @@ repeat('Pg', 4) <returnvalue>PgPgPgPg</returnvalue>
        <para>
         <literal>substr('alphabet', 3, 2)</literal>
         <returnvalue>ph</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>starts_with</primary>
-        </indexterm>
-        <function>starts_with</function> ( <parameter>string</parameter> <type>text</type>, <parameter>prefix</parameter> <type>text</type> )
-        <returnvalue>boolean</returnvalue>
-       </para>
-       <para>
-        Returns true if <parameter>string</parameter> starts
-        with <parameter>prefix</parameter>.
-       </para>
-       <para>
-        <literal>starts_with('alphabet', 'alph')</literal>
-        <returnvalue>t</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>string_to_array</primary>
-        </indexterm>
-        <function>string_to_array</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
-        <returnvalue>text[]</returnvalue>
-       </para>
-       <para>
-        Splits the <parameter>string</parameter> at occurrences
-        of <parameter>delimiter</parameter> and forms the resulting fields
-        into a <type>text</type> array.
-        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
-        each character in the <parameter>string</parameter> will become a
-        separate element in the array.
-        If <parameter>delimiter</parameter> is an empty string, then
-        the <parameter>string</parameter> is treated as a single field.
-        If <parameter>null_string</parameter> is supplied and is
-        not <literal>NULL</literal>, fields matching that string are
-        replaced by <literal>NULL</literal>.
-       </para>
-       <para>
-        <literal>string_to_array('xx~~yy~~zz', '~~', 'yy')</literal>
-        <returnvalue>{xx,NULL,zz}</returnvalue>
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>string_to_table</primary>
-        </indexterm>
-        <function>string_to_table</function> ( <parameter>string</parameter> <type>text</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
-        <returnvalue>setof text</returnvalue>
-       </para>
-       <para>
-        Splits the <parameter>string</parameter> at occurrences
-        of <parameter>delimiter</parameter> and returns the resulting fields
-        as a set of <type>text</type> rows.
-        If <parameter>delimiter</parameter> is <literal>NULL</literal>,
-        each character in the <parameter>string</parameter> will become a
-        separate row of the result.
-        If <parameter>delimiter</parameter> is an empty string, then
-        the <parameter>string</parameter> is treated as a single field.
-        If <parameter>null_string</parameter> is supplied and is
-        not <literal>NULL</literal>, fields matching that string are
-        replaced by <literal>NULL</literal>.
-       </para>
-       <para>
-        <literal>string_to_table('xx~^~yy~^~zz', '~^~', 'yy')</literal>
-        <returnvalue></returnvalue>
-<programlisting>
- xx
- NULL
- zz
-</programlisting>
        </para></entry>
       </row>
 
@@ -5285,9 +5318,10 @@ cast(-44 as bit(12))           <lineannotation>111111010100</lineannotation>
    </para>
 
    <para>
-    Also see the prefix operator <literal>^@</literal> and corresponding
-    <function>starts_with</function> function, which are useful in cases
-    where simply matching the beginning of a string is needed.
+    Also see the starts-with operator <literal>^@</literal> and the
+    corresponding <function>starts_with()</function> function, which are
+    useful in cases where simply matching the beginning of a string is
+    needed.
    </para>
   </sect2>
 
@@ -5984,44 +6018,44 @@ regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 3, 'i')
     Some examples:
 <programlisting>
 SELECT foo FROM regexp_split_to_table('the quick brown fox jumps over the lazy dog', '\s+') AS foo;
-  foo   
+  foo
 -------
- the    
- quick  
- brown  
- fox    
- jumps 
- over   
- the    
- lazy   
- dog    
+ the
+ quick
+ brown
+ fox
+ jumps
+ over
+ the
+ lazy
+ dog
 (9 rows)
 
 SELECT regexp_split_to_array('the quick brown fox jumps over the lazy dog', '\s+');
-              regexp_split_to_array             
+              regexp_split_to_array
 -----------------------------------------------
  {the,quick,brown,fox,jumps,over,the,lazy,dog}
 (1 row)
 
 SELECT foo FROM regexp_split_to_table('the quick brown fox', '\s*') AS foo;
- foo 
+ foo
 -----
- t         
- h         
- e         
- q         
- u         
- i         
- c         
- k         
- b         
- r         
- o         
- w         
- n         
- f         
- o         
- x         
+ t
+ h
+ e
+ q
+ u
+ i
+ c
+ k
+ b
+ r
+ o
+ w
+ n
+ f
+ o
+ x
 (16 rows)
 </programlisting>
    </para>
@@ -6129,7 +6163,7 @@ regexp_substr('ABCDEFGHI', '(c..)(...)', 1, 1, 'i', 2)
    <para>
     A branch is zero or more <firstterm>quantified atoms</firstterm> or
     <firstterm>constraints</firstterm>, concatenated.
-    It matches a match for the first, followed by a match for the second, etc;
+    It matches a match for the first, followed by a match for the second, etc.;
     an empty branch matches the empty string.
    </para>
 
@@ -7328,10 +7362,26 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
 <!-- end re_syntax.n man page -->
 
    <sect3 id="posix-vs-xquery">
-   <title>Differences from XQuery (<literal>LIKE_REGEX</literal>)</title>
+   <title>Differences from SQL Standard and XQuery</title>
 
    <indexterm zone="posix-vs-xquery">
-    <primary><literal>LIKE_REGEX</literal></primary>
+    <primary>LIKE_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>OCCURRENCES_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>POSITION_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>SUBSTRING_REGEX</primary>
+   </indexterm>
+
+   <indexterm zone="posix-vs-xquery">
+    <primary>TRANSLATE_REGEX</primary>
    </indexterm>
 
    <indexterm zone="posix-vs-xquery">
@@ -7339,16 +7389,75 @@ SELECT regexp_match('abc01234xyz', '(?:(.*?)(\d+)(.*)){1,1}');
    </indexterm>
 
     <para>
-     Since SQL:2008, the SQL standard includes
-     a <literal>LIKE_REGEX</literal> operator that performs pattern
+     Since SQL:2008, the SQL standard includes regular expression operators
+     and functions that performs pattern
      matching according to the XQuery regular expression
-     standard.  <productname>PostgreSQL</productname> does not yet
-     implement this operator, but you can get very similar behavior using
-     the <function>regexp_match()</function> function, since XQuery
-     regular expressions are quite close to the ARE syntax described above.
+     standard:
+     <itemizedlist>
+      <listitem><para><literal>LIKE_REGEX</literal></para></listitem>
+      <listitem><para><literal>OCCURRENCES_REGEX</literal></para></listitem>
+      <listitem><para><literal>POSITION_REGEX</literal></para></listitem>
+      <listitem><para><literal>SUBSTRING_REGEX</literal></para></listitem>
+      <listitem><para><literal>TRANSLATE_REGEX</literal></para></listitem>
+     </itemizedlist>
+     <productname>PostgreSQL</productname> does not currently implement these
+     operators and functions.  You can get approximately equivalent
+     functionality in each case as shown in <xref
+     linkend="functions-regexp-sql-table"/>.  (Various optional clauses on
+     both sides have been omitted in this table.)
+    </para>
+
+    <table id="functions-regexp-sql-table">
+     <title>Regular Expression Functions Equivalencies</title>
+
+     <tgroup cols="2">
+      <thead>
+       <row>
+        <entry>SQL standard</entry>
+        <entry>PostgreSQL</entry>
+       </row>
+      </thead>
+
+      <tbody>
+       <row>
+        <entry><literal><replaceable>string</replaceable> LIKE_REGEX <replaceable>pattern</replaceable></literal></entry>
+        <entry><literal>regexp_like(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal> or <literal><replaceable>string</replaceable> ~ <replaceable>pattern</replaceable></literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>OCCURRENCES_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable>)</literal></entry>
+        <entry><literal>regexp_count(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>POSITION_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable>)</literal></entry>
+        <entry><literal>regexp_instr(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>SUBSTRING_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable>)</literal></entry>
+        <entry><literal>regexp_substr(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>)</literal></entry>
+       </row>
+
+       <row>
+        <entry><literal>TRANSLATE_REGEX(<replaceable>pattern</replaceable> IN <replaceable>string</replaceable> WITH <replaceable>replacement</replaceable>)</literal></entry>
+        <entry><literal>regexp_replace(<replaceable>string</replaceable>, <replaceable>pattern</replaceable>, <replaceable>replacement</replaceable>)</literal></entry>
+       </row>
+      </tbody>
+     </tgroup>
+    </table>
+
+    <para>
+     Regular expression functions similar to those provided by PostgreSQL are
+     also available in a number of other SQL implementations, whereas the
+     SQL-standard functions are not as widely implemented.  Some of the
+     details of the regular expression syntax will likely differ in each
+     implementation.
     </para>
 
     <para>
+     The SQL-standard operators and functions use XQuery regular expressions,
+     which are quite close to the ARE syntax described above.
      Notable differences between the existing POSIX-based
      regular-expression feature and XQuery regular expressions include:
 
@@ -10951,7 +11060,7 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
        </para>
        <para>
         Computes the center point.
-        Available for <type>box</type>, <type>lseg</type>, <type>path</type>,
+        Available for <type>box</type>, <type>lseg</type>,
         <type>polygon</type>, <type>circle</type>.
        </para>
        <para>
@@ -11017,8 +11126,6 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         (<type>point</type>, <type>line</type>),
         (<type>lseg</type>, <type>box</type>),
         (<type>lseg</type>, <type>lseg</type>),
-        (<type>lseg</type>, <type>line</type>),
-        (<type>line</type>, <type>box</type>),
         (<type>line</type>, <type>lseg</type>).
        </para>
        <para>
@@ -11038,7 +11145,6 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         of <type>point</type> with another geometric type, and for
         these additional pairs of types:
         (<type>box</type>, <type>lseg</type>),
-        (<type>box</type>, <type>line</type>),
         (<type>lseg</type>, <type>line</type>),
         (<type>polygon</type>, <type>circle</type>)
         (and the commutator cases).
@@ -12895,8 +13001,10 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         <returnvalue>tsvector</returnvalue>
        </para>
        <para>
-        Converts an array of lexemes to a <type>tsvector</type>.
-        The given strings are used as-is without further processing.
+        Converts an array of text strings to a <type>tsvector</type>.
+        The given strings are used as lexemes as-is, without further
+        processing.  Array elements must not be empty strings
+        or <literal>NULL</literal>.
        </para>
        <para>
         <literal>array_to_tsvector('{fat,cat,rat}'::text[])</literal>
@@ -13079,6 +13187,9 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         Assigns the specified <parameter>weight</parameter> to elements
         of the <parameter>vector</parameter> that are listed
         in <parameter>lexemes</parameter>.
+        The strings in <parameter>lexemes</parameter> are taken as lexemes
+        as-is, without further processing.  Strings that do not match any
+        lexeme in <parameter>vector</parameter> are ignored.
        </para>
        <para>
         <literal>setweight('fat:2,4 cat:3 rat:5,6B'::tsvector, 'A', '{cat,rat}')</literal>
@@ -13240,6 +13351,8 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
        <para>
         Removes any occurrence of the given <parameter>lexeme</parameter>
         from the <parameter>vector</parameter>.
+        The <parameter>lexeme</parameter> string is treated as a lexeme as-is,
+        without further processing.
        </para>
        <para>
         <literal>ts_delete('fat:2,4 cat:3 rat:5A'::tsvector, 'fat')</literal>
@@ -13256,6 +13369,9 @@ CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple
         Removes any occurrences of the lexemes
         in <parameter>lexemes</parameter>
         from the <parameter>vector</parameter>.
+        The strings in <parameter>lexemes</parameter> are taken as lexemes
+        as-is, without further processing.  Strings that do not match any
+        lexeme in <parameter>vector</parameter> are ignored.
        </para>
        <para>
         <literal>ts_delete('fat:2,4 cat:3 rat:5A'::tsvector, ARRAY['fat','rat'])</literal>
@@ -14291,32 +14407,32 @@ SELECT xmlexists('//town[text() = ''Toronto'']' PASSING BY VALUE '<towns><town>T
 <screen><![CDATA[
 SET xmloption TO DOCUMENT;
 SELECT xml_is_well_formed('<>');
- xml_is_well_formed 
+ xml_is_well_formed
 --------------------
  f
 (1 row)
 
 SELECT xml_is_well_formed('<abc/>');
- xml_is_well_formed 
+ xml_is_well_formed
 --------------------
  t
 (1 row)
 
 SET xmloption TO CONTENT;
 SELECT xml_is_well_formed('abc');
- xml_is_well_formed 
+ xml_is_well_formed
 --------------------
  t
 (1 row)
 
 SELECT xml_is_well_formed_document('<pg:foo xmlns:pg="http://postgresql.org/stuff">bar</pg:foo>');
- xml_is_well_formed_document 
+ xml_is_well_formed_document
 -----------------------------
  t
 (1 row)
 
 SELECT xml_is_well_formed_document('<pg:foo xmlns:pg="http://postgresql.org/stuff">bar</my:foo>');
- xml_is_well_formed_document 
+ xml_is_well_formed_document
 -----------------------------
  f
 (1 row)
@@ -14383,7 +14499,7 @@ SELECT xml_is_well_formed_document('<pg:foo xmlns:pg="http://postgresql.org/stuf
 SELECT xpath('/my:a/text()', '<my:a xmlns:my="http://example.com">test</my:a>',
              ARRAY[ARRAY['my', 'http://example.com']]);
 
- xpath  
+ xpath
 --------
  {test}
 (1 row)
@@ -14431,7 +14547,7 @@ SELECT xpath('//mydefns:b/text()', '<a xmlns="http://example.com"><b>test</b></a
 SELECT xpath_exists('/my:a/text()', '<my:a xmlns:my="http://example.com">test</my:a>',
                      ARRAY[ARRAY['my', 'http://example.com']]);
 
- xpath_exists  
+ xpath_exists
 --------------
  t
 (1 row)
@@ -14664,7 +14780,7 @@ SELECT xmltable.*
                              'concat(SIZE[@unit!="sq_km"], " ", SIZE[@unit!="sq_km"]/@unit)',
                         premier_name text PATH 'PREMIER_NAME' DEFAULT 'not specified');
 
- id | ordinality | COUNTRY_NAME | country_id | size_sq_km |  size_other  | premier_name  
+ id | ordinality | COUNTRY_NAME | country_id | size_sq_km |  size_other  | premier_name
 ----+------------+--------------+------------+------------+--------------+---------------
   1 |          1 | Australia    | AU         |            |              | not specified
   5 |          2 | Japan        | JP         |            | 145935 sq_mi | Shinzo Abe
@@ -14685,9 +14801,9 @@ $$ AS data;
 
 SELECT xmltable.*
   FROM xmlelements, XMLTABLE('/root' PASSING data COLUMNS element text);
-         element         
+         element
 -------------------------
-   Hello2a2   bbbxxxCC  
+   Hello2a2   bbbxxxCC
 ]]></screen>
     </para>
 
@@ -15037,6 +15153,12 @@ table2-mapping
    <type>jsonb</type>, though not for <type>json</type>.  The comparison
    operators follow the ordering rules for B-tree operations outlined in
    <xref linkend="json-indexing"/>.
+   See also <xref linkend="functions-aggregate"/> for the aggregate
+   function <function>json_agg</function> which aggregates record
+   values as JSON, the aggregate function
+   <function>json_object_agg</function> which aggregates pairs of values
+   into a JSON object, and their <type>jsonb</type> equivalents,
+   <function>jsonb_agg</function> and <function>jsonb_object_agg</function>.
   </para>
 
   <table id="functions-json-op-table">
@@ -15758,6 +15880,10 @@ table2-mapping
        <para>
         <literal>json_array_length('[1,2,3,{"f1":1,"f2":[5,6]},4]')</literal>
         <returnvalue>5</returnvalue>
+       </para>
+       <para>
+        <literal>jsonb_array_length('[]')</literal>
+        <returnvalue>0</returnvalue>
        </para></entry>
       </row>
 
@@ -16178,7 +16304,7 @@ table2-mapping
        </para>
        <para>
         <literal>jsonb_set_lax('[{"f1":1,"f2":null},2,null,3]', '{0,f1}', null)</literal>
-        <returnvalue>[{"f1":null,"f2":null},2,null,3]</returnvalue>
+        <returnvalue>[{"f1": null, "f2": null}, 2, null, 3]</returnvalue>
        </para>
        <para>
         <literal>jsonb_set_lax('[{"f1":99,"f2":null},2]', '{0,f3}', null, true, 'return_target')</literal>
@@ -16417,7 +16543,7 @@ table2-mapping
         comparisons.
        </para>
        <para>
-        <literal>jsonb_path_exists_tz('["2015-08-01 12:00:00 -05"]', '$[*] ? (@.datetime() &lt; "2015-08-02".datetime())')</literal>
+        <literal>jsonb_path_exists_tz('["2015-08-01 12:00:00-05"]', '$[*] ? (@.datetime() &lt; "2015-08-02".datetime())')</literal>
         <returnvalue>t</returnvalue>
        </para></entry>
       </row>
@@ -16488,15 +16614,6 @@ table2-mapping
      </tbody>
     </tgroup>
    </table>
-
-  <para>
-    See also <xref linkend="functions-aggregate"/> for the aggregate
-    function <function>json_agg</function> which aggregates record
-    values as JSON, the aggregate function
-    <function>json_object_agg</function> which aggregates pairs of values
-    into a JSON object, and their <type>jsonb</type> equivalents,
-    <function>jsonb_agg</function> and <function>jsonb_object_agg</function>.
-  </para>
  </sect2>
 
  <sect2 id="functions-sqljson-path">
@@ -17610,24 +17727,37 @@ SELECT setval('myseq', 42, false);    <lineannotation>Next <function>nextval</fu
   <caution>
    <para>
     To avoid blocking concurrent transactions that obtain numbers from
-    the same sequence, a <function>nextval</function> operation is never
-    rolled back; that is, once a value has been fetched it is considered
-    used and will not be returned again.  This is true even if the
-    surrounding transaction later aborts, or if the calling query ends
-    up not using the value.  For example an <command>INSERT</command> with
+    the same sequence, the value obtained by <function>nextval</function>
+    is not reclaimed for re-use if the calling transaction later aborts.
+    This means that transaction aborts or database crashes can result in
+    gaps in the sequence of assigned values.  That can happen without a
+    transaction abort, too.  For example an <command>INSERT</command> with
     an <literal>ON CONFLICT</literal> clause will compute the to-be-inserted
     tuple, including doing any required <function>nextval</function>
     calls, before detecting any conflict that would cause it to follow
-    the <literal>ON CONFLICT</literal> rule instead.  Such cases will leave
-    unused <quote>holes</quote> in the sequence of assigned values.
+    the <literal>ON CONFLICT</literal> rule instead.
     Thus, <productname>PostgreSQL</productname> sequence
     objects <emphasis>cannot be used to obtain <quote>gapless</quote>
     sequences</emphasis>.
    </para>
 
    <para>
-    Likewise, any sequence state changes made by <function>setval</function>
-    are not undone if the transaction rolls back.
+    Likewise, sequence state changes made by <function>setval</function>
+    are immediately visible to other transactions, and are not undone if
+    the calling transaction rolls back.
+   </para>
+
+   <para>
+    If the database cluster crashes before committing a transaction
+    containing a <function>nextval</function>
+    or <function>setval</function> call, the sequence state change might
+    not have made its way to persistent storage, so that it is uncertain
+    whether the sequence will have its original or updated state after the
+    cluster restarts.  This is harmless for usage of the sequence within
+    the database, since other effects of uncommitted transactions will not
+    be visible either.  However, if you wish to use a sequence value for
+    persistent outside-the-database purposes, make sure that the
+    <function>nextval</function> call has been committed before doing so.
    </para>
   </caution>
 
@@ -18186,10 +18316,19 @@ SELECT NULLIF(value, '(none)') ...
        </para>
        <para>
         Returns the length of the requested array dimension.
+        (Produces NULL instead of 0 for empty or missing array dimensions.)
        </para>
        <para>
         <literal>array_length(array[1,2,3], 1)</literal>
         <returnvalue>3</returnvalue>
+       </para>
+       <para>
+        <literal>array_length(array[]::int[], 1)</literal>
+        <returnvalue>NULL</returnvalue>
+       </para>
+       <para>
+        <literal>array_length(array['text'], 2)</literal>
+        <returnvalue>NULL</returnvalue>
        </para></entry>
       </row>
 
@@ -18332,7 +18471,7 @@ SELECT NULLIF(value, '(none)') ...
 
       <row>
        <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
+        <indexterm id="function-array-to-string">
          <primary>array_to_string</primary>
         </indexterm>
         <function>array_to_string</function> ( <parameter>array</parameter> <type>anyarray</type>, <parameter>delimiter</parameter> <type>text</type> <optional>, <parameter>null_string</parameter> <type>text</type> </optional> )
@@ -18345,6 +18484,7 @@ SELECT NULLIF(value, '(none)') ...
         If <parameter>null_string</parameter> is given and is
         not <literal>NULL</literal>, then <literal>NULL</literal> array
         entries are represented by that string; otherwise, they are omitted.
+        See also <link linkend="function-string-to-array"><function>string_to_array</function></link>.
        </para>
        <para>
         <literal>array_to_string(ARRAY[1, 2, 3, NULL, 5], ',', '*')</literal>
@@ -18463,18 +18603,6 @@ SELECT NULLIF(value, '(none)') ...
      </tbody>
     </tgroup>
    </table>
-
-   <note>
-    <para>
-     There are two differences in the behavior of <function>string_to_array</function>
-     from pre-9.1 versions of <productname>PostgreSQL</productname>.
-     First, it will return an empty (zero-element) array rather
-     than <literal>NULL</literal> when the input string is of zero length.
-     Second, if the delimiter string is <literal>NULL</literal>, the function
-     splits the input into individual characters, rather than
-     returning <literal>NULL</literal> as before.
-    </para>
-   </note>
 
    <para>
     See also <xref linkend="functions-aggregate"/> about the aggregate
@@ -18835,7 +18963,7 @@ SELECT NULLIF(value, '(none)') ...
         Is the element contained by the multirange?
        </para>
        <para>
-        <literal>42 &lt;@ '{[1,7)}'::int4multirange</literal>
+        <literal>4 &lt;@ '{[1,7)}'::int4multirange</literal>
         <returnvalue>t</returnvalue>
        </para></entry>
       </row>
@@ -19863,7 +19991,7 @@ SELECT NULLIF(value, '(none)') ...
         values.  Available for any numeric, string, date/time, or enum type,
         as well as <type>inet</type>, <type>interval</type>,
         <type>money</type>, <type>oid</type>, <type>pg_lsn</type>,
-        <type>tid</type>,
+        <type>tid</type>, <type>xid8</type>,
         and arrays of any of these types.
        </para></entry>
        <entry>Yes</entry>
@@ -19882,7 +20010,7 @@ SELECT NULLIF(value, '(none)') ...
         values.  Available for any numeric, string, date/time, or enum type,
         as well as <type>inet</type>, <type>interval</type>,
         <type>money</type>, <type>oid</type>, <type>pg_lsn</type>,
-        <type>tid</type>,
+        <type>tid</type>, <type>xid8</type>,
         and arrays of any of these types.
        </para></entry>
        <entry>Yes</entry>
@@ -19895,6 +20023,11 @@ SELECT NULLIF(value, '(none)') ...
         </indexterm>
         <function>range_agg</function> ( <parameter>value</parameter>
          <type>anyrange</type> )
+        <returnvalue>anymultirange</returnvalue>
+       </para>
+       <para role="func_signature">
+        <function>range_agg</function> ( <parameter>value</parameter>
+         <type>anymultirange</type> )
         <returnvalue>anymultirange</returnvalue>
        </para>
        <para>
@@ -19910,6 +20043,11 @@ SELECT NULLIF(value, '(none)') ...
         </indexterm>
         <function>range_intersect_agg</function> ( <parameter>value</parameter>
          <type>anyrange</type> )
+        <returnvalue>anyrange</returnvalue>
+       </para>
+       <para role="func_signature">
+        <function>range_intersect_agg</function> ( <parameter>value</parameter>
+         <type>anymultirange</type> )
         <returnvalue>anymultirange</returnvalue>
        </para>
        <para>
@@ -22339,10 +22477,12 @@ SELECT * FROM pg_ls_dir('.') WITH ORDINALITY AS t(ls,n);
         format, <function>pg_current_logfile</function> without an argument
         returns the path of the file having the first format found in the
         ordered list: <literal>stderr</literal>,
-        <literal>csvlog</literal>.  <literal>NULL</literal> is returned
-        if no log file has any of these formats.
+        <literal>csvlog</literal>, <literal>jsonlog</literal>.
+        <literal>NULL</literal> is returned if no log file has any of these
+        formats.
         To request information about a specific log file format, supply
-        either <literal>csvlog</literal> or <literal>stderr</literal> as the
+        either <literal>csvlog</literal>, <literal>jsonlog</literal> or
+        <literal>stderr</literal> as the
         value of the optional parameter. The result is <literal>NULL</literal>
         if the log format requested is not configured in
         <xref linkend="guc-log-destination"/>.
@@ -22747,6 +22887,25 @@ SELECT has_function_privilege('joeuser', 'myfunc(int, text)', 'execute');
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
+         <primary>has_parameter_privilege</primary>
+        </indexterm>
+        <function>has_parameter_privilege</function> (
+          <optional> <parameter>user</parameter> <type>name</type> or <type>oid</type>, </optional>
+          <parameter>parameter</parameter> <type>text</type>,
+          <parameter>privilege</parameter> <type>text</type> )
+        <returnvalue>boolean</returnvalue>
+       </para>
+       <para>
+        Does user have privilege for configuration parameter?
+        The parameter name is case-insensitive.
+        Allowable privilege types are <literal>SET</literal>
+        and <literal>ALTER SYSTEM</literal>.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
          <primary>has_schema_privilege</primary>
         </indexterm>
         <function>has_schema_privilege</function> (
@@ -23028,6 +23187,7 @@ SELECT has_function_privilege('joeuser', 'myfunc(int, text)', 'execute');
         'l' for <literal>LANGUAGE</literal>,
         'L' for <literal>LARGE OBJECT</literal>,
         'n' for <literal>SCHEMA</literal>,
+        'p' for <literal>PARAMETER</literal>,
         't' for <literal>TABLESPACE</literal>,
         'F' for <literal>FOREIGN DATA WRAPPER</literal>,
         'S' for <literal>FOREIGN SERVER</literal>,
@@ -23338,6 +23498,36 @@ SELECT pg_type_is_visible('myschema.widget'::regtype);
         Returns the SQL name for a data type that is identified by its type
         OID and possibly a type modifier.  Pass NULL for the type modifier if
         no specific modifier is known.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry id="pg-char-to-encoding" role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_char_to_encoding</primary>
+        </indexterm>
+        <function>pg_char_to_encoding</function> ( <parameter>encoding</parameter> <type>name</type> )
+        <returnvalue>integer</returnvalue>
+       </para>
+       <para>
+        Converts the supplied encoding name into an integer representing the
+        internal identifier used in some system catalog tables.
+        Returns <literal>-1</literal> if an unknown encoding name is provided.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry id="pg-encoding-to-char" role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_encoding_to_char</primary>
+        </indexterm>
+        <function>pg_encoding_to_char</function> ( <parameter>encoding</parameter> <type>integer</type> )
+        <returnvalue>name</returnvalue>
+       </para>
+       <para>
+        Converts the integer used as the internal identifier of an encoding in some
+        system catalog tables into a human-readable string.
+        Returns an empty string if an invalid encoding number is provided.
        </para></entry>
       </row>
 
@@ -23727,6 +23917,23 @@ SELECT currval(pg_get_serial_sequence('sometable', 'id'));
         Returns the set of storage options represented by a value from
         <structname>pg_class</structname>.<structfield>reloptions</structfield> or
         <structname>pg_attribute</structname>.<structfield>attoptions</structfield>.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_settings_get_flags</primary>
+        </indexterm>
+        <function>pg_settings_get_flags</function> ( <parameter>guc</parameter> <type>text</type> )
+        <returnvalue>text[]</returnvalue>
+       </para>
+       <para>
+        Returns an array of the flags associated with the given GUC, or
+        <literal>NULL</literal> if it does not exist. The result is
+        an empty array if the GUC exists but there are no flags to show.
+        Only the most useful flags listed in
+        <xref linkend="functions-pg-settings-flags"/> are exposed.
        </para></entry>
       </row>
 
@@ -24128,6 +24335,46 @@ SELECT collation for ('foo' COLLATE "de_DE");
       <entry><literal>can_include</literal></entry>
       <entry>Does the access method support the <literal>INCLUDE</literal>
         clause of <literal>CREATE INDEX</literal>?
+      </entry>
+     </row>
+    </tbody>
+   </tgroup>
+  </table>
+
+  <table id="functions-pg-settings-flags">
+   <title>GUC Flags</title>
+   <tgroup cols="2">
+    <thead>
+     <row><entry>Flag</entry><entry>Description</entry></row>
+    </thead>
+    <tbody>
+     <row>
+      <entry><literal>EXPLAIN</literal></entry>
+      <entry>Parameters with this flag are included in
+       <command>EXPLAIN (SETTINGS)</command> commands.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>NO_SHOW_ALL</literal></entry>
+      <entry>Parameters with this flag are excluded from
+       <command>SHOW ALL</command> commands.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>NO_RESET_ALL</literal></entry>
+      <entry>Parameters with this flag are excluded from
+       <command>RESET ALL</command> commands.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>NOT_IN_SAMPLE</literal></entry>
+      <entry>Parameters with this flag are not included in
+       <filename>postgresql.conf</filename> by default.
+      </entry>
+     </row>
+     <row>
+      <entry><literal>RUNTIME_COMPUTED</literal></entry>
+      <entry>Parameters with this flag are runtime-computed ones.
       </entry>
      </row>
     </tbody>
@@ -25269,7 +25516,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         Cancels the current query of the session whose backend process has the
         specified process ID.  This is also allowed if the
         calling role is a member of the role whose backend is being canceled or
-        the calling role has been granted <literal>pg_signal_backend</literal>,
+        the calling role has privileges of <literal>pg_signal_backend</literal>,
         however only superusers can cancel superuser backends.
        </para></entry>
       </row>
@@ -25284,13 +25531,14 @@ SELECT collation for ('foo' COLLATE "de_DE");
        </para>
        <para>
         Requests to log the memory contexts of the backend with the
-        specified process ID.  These memory contexts will be logged at
+        specified process ID.  This function can send the request to
+        backends and auxiliary processes except logger.  These memory contexts
+        will be logged at
         <literal>LOG</literal> message level. They will appear in
         the server log based on the log configuration set
-        (See <xref linkend="runtime-config-logging"/> for more information),
+        (see <xref linkend="runtime-config-logging"/> for more information),
         but will not be sent to the client regardless of
         <xref linkend="guc-client-min-messages"/>.
-        Only superusers can request to log the memory contexts.
        </para></entry>
       </row>
 
@@ -25308,8 +25556,9 @@ SELECT collation for ('foo' COLLATE "de_DE");
         sending a <systemitem>SIGHUP</systemitem> signal to the postmaster
         process, which in turn sends <systemitem>SIGHUP</systemitem> to each
         of its children.) You can use the
-        <link linkend="view-pg-file-settings"><structname>pg_file_settings</structname></link> and
-        <link linkend="view-pg-hba-file-rules"><structname>pg_hba_file_rules</structname></link> views
+        <link linkend="view-pg-file-settings"><structname>pg_file_settings</structname></link>,
+        <link linkend="view-pg-hba-file-rules"><structname>pg_hba_file_rules</structname></link> and
+        <link linkend="view-pg-hba-file-rules"><structname>pg_ident_file_mappings</structname></link> views
         to check the configuration files for possible errors, before reloading.
        </para></entry>
       </row>
@@ -25341,7 +25590,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
         Terminates the session whose backend process has the
         specified process ID.  This is also allowed if the calling role
         is a member of the role whose backend is being terminated or the
-        calling role has been granted <literal>pg_signal_backend</literal>,
+        calling role has privileges of <literal>pg_signal_backend</literal>,
         however only superusers can terminate superuser backends.
        </para>
        <para>
@@ -25380,7 +25629,7 @@ SELECT collation for ('foo' COLLATE "de_DE");
     to log the memory contexts of a backend process. For example:
 <programlisting>
 postgres=# SELECT pg_log_backend_memory_contexts(pg_backend_pid());
- pg_log_backend_memory_contexts 
+ pg_log_backend_memory_contexts
 --------------------------------
  t
 (1 row)
@@ -25420,9 +25669,8 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
     The functions shown in <xref
     linkend="functions-admin-backup-table"/> assist in making on-line backups.
     These functions cannot be executed during recovery (except
-    non-exclusive <function>pg_start_backup</function>,
-    non-exclusive <function>pg_stop_backup</function>,
-    <function>pg_is_in_backup</function>, <function>pg_backup_start_time</function>
+    <function>pg_backup_start</function>,
+    <function>pg_backup_stop</function>,
     and <function>pg_wal_lsn_diff</function>).
    </para>
 
@@ -25511,13 +25759,12 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
-         <primary>pg_start_backup</primary>
+         <primary>pg_backup_start</primary>
         </indexterm>
-        <function>pg_start_backup</function> (
+        <function>pg_backup_start</function> (
           <parameter>label</parameter> <type>text</type>
           <optional>, <parameter>fast</parameter> <type>boolean</type>
-          <optional>, <parameter>exclusive</parameter> <type>boolean</type>
-          </optional></optional> )
+          </optional> )
         <returnvalue>pg_lsn</returnvalue>
        </para>
        <para>
@@ -25526,23 +25773,9 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
         (Typically this would be the name under which the backup dump file
         will be stored.)
         If the optional second parameter is given as <literal>true</literal>,
-        it specifies executing <function>pg_start_backup</function> as quickly
+        it specifies executing <function>pg_backup_start</function> as quickly
         as possible.  This forces an immediate checkpoint which will cause a
         spike in I/O operations, slowing any concurrently executing queries.
-        The optional third parameter specifies whether to perform an exclusive
-        or non-exclusive backup (default is exclusive).
-       </para>
-       <para>
-        When used in exclusive mode, this function writes a backup label file
-        (<filename>backup_label</filename>) and, if there are any links in
-        the <filename>pg_tblspc/</filename> directory, a tablespace map file
-        (<filename>tablespace_map</filename>) into the database cluster's data
-        directory, then performs a checkpoint, and then returns the backup's
-        starting write-ahead log location.  (The user can ignore this
-        result value, but it is provided in case it is useful.)  When used in
-        non-exclusive mode, the contents of these files are instead returned
-        by the <function>pg_stop_backup</function> function, and should be
-        copied to the backup area by the user.
        </para>
        <para>
         This function is restricted to superusers by default, but other users
@@ -25553,36 +25786,32 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
       <row>
        <entry role="func_table_entry"><para role="func_signature">
         <indexterm>
-         <primary>pg_stop_backup</primary>
+         <primary>pg_backup_stop</primary>
         </indexterm>
-        <function>pg_stop_backup</function> (
-          <parameter>exclusive</parameter> <type>boolean</type>
-          <optional>, <parameter>wait_for_archive</parameter> <type>boolean</type>
+        <function>pg_backup_stop</function> (
+          <optional><parameter>wait_for_archive</parameter> <type>boolean</type>
           </optional> )
-        <returnvalue>setof record</returnvalue>
+        <returnvalue>record</returnvalue>
         ( <parameter>lsn</parameter> <type>pg_lsn</type>,
         <parameter>labelfile</parameter> <type>text</type>,
         <parameter>spcmapfile</parameter> <type>text</type> )
        </para>
        <para>
-        Finishes performing an exclusive or non-exclusive on-line backup.
-        The <parameter>exclusive</parameter> parameter must match the
-        previous <function>pg_start_backup</function> call.
-        In an exclusive backup, <function>pg_stop_backup</function> removes
-        the backup label file and, if it exists, the tablespace map file
-        created by <function>pg_start_backup</function>.  In a non-exclusive
-        backup, the desired contents of these files are returned as part of
-        the result of the function, and should be written to files in the
-        backup area (not in the data directory).
+        Finishes performing an on-line backup.  The desired contents of the
+        backup label file and the tablespace map file are returned as part of
+        the result of the function and must be written to files in the
+        backup area.  These files must not be written to the live data directory
+        (doing so will cause PostgreSQL to fail to restart in the event of a
+        crash).
        </para>
        <para>
-        There is an optional second parameter of type <type>boolean</type>.
+        There is an optional parameter of type <type>boolean</type>.
         If false, the function will return immediately after the backup is
         completed, without waiting for WAL to be archived.  This behavior is
         only useful with backup software that independently monitors WAL
         archiving.  Otherwise, WAL required to make the backup consistent might
         be missing and make the backup useless.  By default or when this
-        parameter is true, <function>pg_stop_backup</function> will wait for
+        parameter is true, <function>pg_backup_stop</function> will wait for
         WAL to be archived when archiving is enabled.  (On a standby, this
         means that it will wait only when <varname>archive_mode</varname> =
         <literal>always</literal>.  If write activity on the primary is low,
@@ -25592,7 +25821,7 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
        <para>
         When executed on a primary, this function also creates a backup
         history file in the write-ahead log archive area.  The history file
-        includes the label given to <function>pg_start_backup</function>, the
+        includes the label given to <function>pg_backup_start</function>, the
         starting and ending write-ahead log locations for the backup, and the
         starting and ending times of the backup.  After recording the ending
         location, the current write-ahead log insertion point is automatically
@@ -25603,58 +25832,15 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
        <para>
         The result of the function is a single record.
         The <parameter>lsn</parameter> column holds the backup's ending
-        write-ahead log location (which again can be ignored).  The second and
-        third columns are <literal>NULL</literal> when ending an exclusive
-        backup; after a non-exclusive backup they hold the desired contents of
-        the label and tablespace map files.
+        write-ahead log location (which again can be ignored).  The second
+        column returns the contents of the backup label file, and the third
+        column returns the contents of the tablespace map file.  These must be
+        stored as part of the backup and are required as part of the restore
+        process.
        </para>
        <para>
         This function is restricted to superusers by default, but other users
         can be granted EXECUTE to run the function.
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <function>pg_stop_backup</function> ()
-        <returnvalue>pg_lsn</returnvalue>
-       </para>
-       <para>
-        Finishes performing an exclusive on-line backup.  This simplified
-        version is equivalent to <literal>pg_stop_backup(true,
-        true)</literal>, except that it only returns the <type>pg_lsn</type>
-        result.
-       </para>
-       <para>
-        This function is restricted to superusers by default, but other users
-        can be granted EXECUTE to run the function.
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>pg_is_in_backup</primary>
-        </indexterm>
-        <function>pg_is_in_backup</function> ()
-        <returnvalue>boolean</returnvalue>
-       </para>
-       <para>
-        Returns true if an on-line exclusive backup is in progress.
-       </para></entry>
-      </row>
-
-      <row>
-       <entry role="func_table_entry"><para role="func_signature">
-        <indexterm>
-         <primary>pg_backup_start_time</primary>
-        </indexterm>
-        <function>pg_backup_start_time</function> ()
-        <returnvalue>timestamp with time zone</returnvalue>
-       </para>
-       <para>
-        Returns the start time of the current on-line exclusive backup if one
-        is in progress, otherwise <literal>NULL</literal>.
        </para></entry>
       </row>
 
@@ -25755,7 +25941,7 @@ LOG:  Grand total: 1651920 bytes in 201 blocks; 622360 free (88 chunks); 1029560
     corresponding write-ahead log file name and byte offset from
     a <type>pg_lsn</type> value.  For example:
 <programlisting>
-postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
+postgres=# SELECT * FROM pg_walfile_name_offset((pg_backup_stop()).lsn);
         file_name         | file_offset
 --------------------------+-------------
  00000001000000000000000D |     4039624
@@ -25864,6 +26050,25 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
         then this will remain static at the time of the last transaction
         applied during recovery.  When the server has been started normally
         without recovery, the function returns <literal>NULL</literal>.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_get_wal_resource_managers</primary>
+        </indexterm>
+        <function>pg_get_wal_resource_managers</function> ()
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>rm_id</parameter> <type>integer</type>,
+        <parameter>rm_name</parameter> <type>text</type>,
+        <parameter>rm_builtin</parameter> <type>boolean</type> )
+       </para>
+       <para>
+        Returns the currently-loaded WAL resource managers in the system. The
+        column <parameter>rm_builtin</parameter> indicates whether it's a
+        built-in resource manager, or a custom resource manager loaded by an
+        extension.
        </para></entry>
       </row>
      </tbody>
@@ -26182,7 +26387,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
         <indexterm>
          <primary>pg_create_logical_replication_slot</primary>
         </indexterm>
-        <function>pg_create_logical_replication_slot</function> ( <parameter>slot_name</parameter> <type>name</type>, <parameter>plugin</parameter> <type>name</type> <optional>, <parameter>temporary</parameter> <type>boolean</type>, <parameter>two_phase</parameter> <type>boolean</type> </optional> )
+        <function>pg_create_logical_replication_slot</function> ( <parameter>slot_name</parameter> <type>name</type>, <parameter>plugin</parameter> <type>name</type> <optional>, <parameter>temporary</parameter> <type>boolean</type>, <parameter>twophase</parameter> <type>boolean</type> </optional> )
         <returnvalue>record</returnvalue>
         ( <parameter>slot_name</parameter> <type>name</type>,
         <parameter>lsn</parameter> <type>pg_lsn</type> )
@@ -26195,7 +26400,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
         the slot should not be permanently stored to disk and is only meant
         for use by the current session. Temporary slots are also
         released upon any error. The optional fourth parameter,
-        <parameter>two_phase</parameter>, when set to true, specifies
+        <parameter>twophase</parameter>, when set to true, specifies
         that the decoding of prepared transactions is enabled for this
         slot. A call to this function has the same effect as the replication
         protocol command <literal>CREATE_REPLICATION_SLOT ... LOGICAL</literal>.
@@ -26384,7 +26589,8 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
        </para>
        <para>
         Looks up a replication origin by name and returns the internal ID. If
-        no such replication origin is found an error is thrown.
+        no such replication origin is found, <literal>NULL</literal> is
+        returned.
        </para></entry>
       </row>
 
@@ -26512,7 +26718,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
       </row>
 
       <row>
-       <entry role="func_table_entry"><para role="func_signature">
+       <entry id="pg-logical-emit-message" role="func_table_entry"><para role="func_signature">
         <indexterm>
          <primary>pg_logical_emit_message</primary>
         </indexterm>
@@ -26615,7 +26821,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
         Computes the total disk space used by the database with the specified
         name or OID.  To use this function, you must
         have <literal>CONNECT</literal> privilege on the specified database
-        (which is granted by default) or be a member of
+        (which is granted by default) or have privileges of
         the <literal>pg_read_all_stats</literal> role.
        </para></entry>
       </row>
@@ -26745,7 +26951,7 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
         Computes the total disk space used in the tablespace with the
         specified name or OID. To use this function, you must
         have <literal>CREATE</literal> privilege on the specified tablespace
-        or be a member of the <literal>pg_read_all_stats</literal> role,
+        or have privileges of the <literal>pg_read_all_stats</literal> role,
         unless it is the default tablespace for the current database.
        </para></entry>
       </row>
@@ -26890,6 +27096,24 @@ postgres=# SELECT * FROM pg_walfile_name_offset(pg_stop_backup());
         <structname>pg_collation</structname>.<structfield>collversion</structfield>,
         then objects depending on the collation might need to be rebuilt.  See
         also <xref linkend="sql-altercollation"/>.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_database_collation_actual_version</primary>
+        </indexterm>
+        <function>pg_database_collation_actual_version</function> ( <type>oid</type> )
+        <returnvalue>text</returnvalue>
+       </para>
+       <para>
+        Returns the actual version of the database's collation as it is currently
+        installed in the operating system.  If this is different from the
+        value in
+        <structname>pg_database</structname>.<structfield>datcollversion</structfield>,
+        then objects depending on the collation might need to be rebuilt.  See
+        also <xref linkend="sql-alterdatabase"/>.
        </para></entry>
       </row>
 
@@ -27206,7 +27430,7 @@ SELECT pg_size_pretty(sum(pg_relation_size(relid))) AS total_size
         a dot, directories, and other special files are excluded.
        </para>
        <para>
-        This function is restricted to superusers and members of
+        This function is restricted to superusers and roles with privileges of
         the <literal>pg_monitor</literal> role by default, but other users can
         be granted EXECUTE to run the function.
        </para></entry>
@@ -27228,6 +27452,79 @@ SELECT pg_size_pretty(sum(pg_relation_size(relid))) AS total_size
         ordinary file in the server's write-ahead log (WAL) directory.
         Filenames beginning with a dot, directories, and other special files
         are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and roles with privileges of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_logicalmapdir</primary>
+        </indexterm>
+        <function>pg_ls_logicalmapdir</function> ()
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_logical/mappings</filename>
+        directory. Filenames beginning with a dot, directories, and other
+        special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_logicalsnapdir</primary>
+        </indexterm>
+        <function>pg_ls_logicalsnapdir</function> ()
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_logical/snapshots</filename>
+        directory. Filenames beginning with a dot, directories, and other
+        special files are excluded.
+       </para>
+       <para>
+        This function is restricted to superusers and members of
+        the <literal>pg_monitor</literal> role by default, but other users can
+        be granted EXECUTE to run the function.
+       </para></entry>
+      </row>
+
+      <row>
+       <entry role="func_table_entry"><para role="func_signature">
+        <indexterm>
+         <primary>pg_ls_replslotdir</primary>
+        </indexterm>
+        <function>pg_ls_replslotdir</function> ( <parameter>slot_name</parameter> <type>text</type> )
+        <returnvalue>setof record</returnvalue>
+        ( <parameter>name</parameter> <type>text</type>,
+        <parameter>size</parameter> <type>bigint</type>,
+        <parameter>modification</parameter> <type>timestamp with time zone</type> )
+       </para>
+       <para>
+        Returns the name, size, and last modification time (mtime) of each
+        ordinary file in the server's <filename>pg_replslot/slot_name</filename>
+        directory, where <parameter>slot_name</parameter> is the name of the
+        replication slot provided as input of the function. Filenames beginning
+        with a dot, directories, and other special files are excluded.
        </para>
        <para>
         This function is restricted to superusers and members of
@@ -27366,6 +27663,7 @@ SELECT convert_from(pg_read_binary_file('file_in_utf8.txt'), 'UTF8');
         can be granted EXECUTE to run the function.
        </para></entry>
       </row>
+
      </tbody>
     </tgroup>
    </table>

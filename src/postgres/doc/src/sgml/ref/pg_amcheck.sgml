@@ -41,8 +41,9 @@ PostgreSQL documentation
   </para>
 
   <para>
-   Only table relations and btree indexes are currently supported.  Other
-   relation types are silently skipped.
+   Only ordinary and toast table relations, materialized views, sequences, and
+   btree indexes are currently supported.  Other relation types are silently
+   skipped.
   </para>
 
   <para>
@@ -124,7 +125,7 @@ PostgreSQL documentation
       </para>
       <para>
        This is similar to the <option>--relation</option> option, except that
-       it applies only to indexes, not tables.
+       it applies only to indexes, not to other relation types.
       </para>
      </listitem>
     </varlistentry>
@@ -140,7 +141,7 @@ PostgreSQL documentation
       </para>
       <para>
        This is similar to the <option>--exclude-relation</option> option,
-       except that it applies only to indexes, not tables.
+       except that it applies only to indexes, not other relation types.
       </para>
      </listitem>
     </varlistentry>
@@ -236,7 +237,8 @@ PostgreSQL documentation
       </para>
       <para>
        This is similar to the <option>--relation</option> option, except that
-       it applies only to tables, not indexes.
+       it applies only to tables, materialized views, and sequences, not to
+       indexes.
       </para>
      </listitem>
     </varlistentry>
@@ -252,7 +254,8 @@ PostgreSQL documentation
       </para>
       <para>
        This is similar to the <option>--exclude-relation</option> option,
-       except that it applies only to tables, not indexes.
+       except that it applies only to tables, materialized views, and
+       sequences, not to indexes.
       </para>
      </listitem>
     </varlistentry>
@@ -431,6 +434,18 @@ PostgreSQL documentation
     </varlistentry>
    </variablelist>
   </para>
+
+  <warning>
+   <para>
+    The extra checks performed against B-tree indexes when the
+    <option>--parent-check</option> option or the
+    <option>--rootdescend</option> option is specified require
+    relatively strong relation-level locks.  These checks are the only
+    checks that will block concurrent data modification from
+    <command>INSERT</command>, <command>UPDATE</command>, and
+    <command>DELETE</command> commands.
+   </para>
+  </warning>
 
   <para>
    The following command-line options control the connection to the server:

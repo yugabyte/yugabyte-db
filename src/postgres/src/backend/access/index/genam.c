@@ -3,7 +3,7 @@
  * genam.c
  *	  general index access method routines
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -310,6 +310,8 @@ index_compute_xid_horizon_for_tuples(Relation irel,
 
 	Assert(nitems > 0);
 
+	delstate.irel = irel;
+	delstate.iblknum = BufferGetBlockNumber(ibuf);
 	delstate.bottomup = false;
 	delstate.bottomupfreespace = 0;
 	delstate.ndeltids = 0;
@@ -319,16 +321,17 @@ index_compute_xid_horizon_for_tuples(Relation irel,
 	/* identify what the index tuples about to be deleted point to */
 	for (int i = 0; i < nitems; i++)
 	{
+		OffsetNumber offnum = itemnos[i];
 		ItemId		iitemid;
 
-		iitemid = PageGetItemId(ipage, itemnos[i]);
+		iitemid = PageGetItemId(ipage, offnum);
 		itup = (IndexTuple) PageGetItem(ipage, iitemid);
 
 		Assert(ItemIdIsDead(iitemid));
 
 		ItemPointerCopy(&itup->t_tid, &delstate.deltids[i].tid);
 		delstate.deltids[i].id = delstate.ndeltids;
-		delstate.status[i].idxoffnum = InvalidOffsetNumber; /* unused */
+		delstate.status[i].idxoffnum = offnum;
 		delstate.status[i].knowndeletable = true;	/* LP_DEAD-marked */
 		delstate.status[i].promising = false;	/* unused */
 		delstate.status[i].freespace = 0;	/* unused */

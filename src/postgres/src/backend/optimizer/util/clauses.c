@@ -3,7 +3,7 @@
  * clauses.c
  *	  routines to manipulate qualification clauses
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -152,6 +152,7 @@ static Query *substitute_actual_srf_parameters(Query *expr,
 											   int nargs, List *args);
 static Node *substitute_actual_srf_parameters_mutator(Node *node,
 													  substitute_actual_srf_parameters_context *context);
+static bool pull_paramids_walker(Node *node, Bitmapset **context);
 
 
 /*****************************************************************************
@@ -2122,7 +2123,8 @@ eval_const_expressions(PlannerInfo *root, Node *node)
  *
  * We'll use a hash table if all of the following conditions are met:
  * 1. The 2nd argument of the array contain only Consts.
- * 2. useOr is true.
+ * 2. useOr is true or there is a valid negator operator for the
+ *	  ScalarArrayOpExpr's opno.
  * 3. There's valid hash function for both left and righthand operands and
  *	  these hash functions are the same.
  * 4. If the array contains enough elements for us to consider it to be
@@ -4145,7 +4147,7 @@ add_function_defaults(List *args, int pronargs, HeapTuple func_tuple)
 	if (ndelete < 0)
 		elog(ERROR, "not enough default arguments");
 	if (ndelete > 0)
-		defaults = list_copy_tail(defaults, ndelete);
+		defaults = list_delete_first_n(defaults, ndelete);
 
 	/* And form the combined argument list, not modifying the input list */
 	return list_concat_copy(args, defaults);
@@ -5062,7 +5064,7 @@ inline_set_returning_function(PlannerInfo *root, RangeTblEntry *rte)
 		if (list_length(raw_parsetree_list) != 1)
 			goto fail;
 
-		querytree_list = pg_analyze_and_rewrite_params(linitial(raw_parsetree_list),
+		querytree_list = pg_analyze_and_rewrite_withcb(linitial(raw_parsetree_list),
 													   src,
 													   (ParserSetupHook) sql_fn_parser_setup,
 													   pinfo, NULL);
@@ -5219,6 +5221,36 @@ substitute_actual_srf_parameters_mutator(Node *node,
 	return expression_tree_mutator(node,
 								   substitute_actual_srf_parameters_mutator,
 								   (void *) context);
+}
+
+/*
+ * pull_paramids
+ *		Returns a Bitmapset containing the paramids of all Params in 'expr'.
+ */
+Bitmapset *
+pull_paramids(Expr *expr)
+{
+	Bitmapset  *result = NULL;
+
+	(void) pull_paramids_walker((Node *) expr, &result);
+
+	return result;
+}
+
+static bool
+pull_paramids_walker(Node *node, Bitmapset **context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Param))
+	{
+		Param	   *param = (Param *) node;
+
+		*context = bms_add_member(*context, param->paramid);
+		return false;
+	}
+	return expression_tree_walker(node, pull_paramids_walker,
+								  (void *) context);
 }
 
 typedef struct replace_varnos_context

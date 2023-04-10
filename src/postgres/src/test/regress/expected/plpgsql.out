@@ -2256,6 +2256,33 @@ select refcursor_test2(20000, 20000) as "Should be false",
  f               | t
 (1 row)
 
+-- should fail
+create function constant_refcursor() returns refcursor as $$
+declare
+    rc constant refcursor;
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
+select constant_refcursor();
+ERROR:  variable "rc" is declared CONSTANT
+CONTEXT:  PL/pgSQL function constant_refcursor() line 5 at OPEN
+-- but it's okay like this
+create or replace function constant_refcursor() returns refcursor as $$
+declare
+    rc constant refcursor := 'my_cursor_name';
+begin
+    open rc for select a from rc_test;
+    return rc;
+end
+$$ language plpgsql;
+select constant_refcursor();
+ constant_refcursor 
+--------------------
+ my_cursor_name
+(1 row)
+
 --
 -- tests for cursors with named parameter arguments
 --
@@ -4227,7 +4254,7 @@ select * from tftest(10);
 (2 rows)
 
 drop function tftest(int);
-create or replace function rttest()
+create function rttest()
 returns setof int as $$
 declare rc int;
 begin
@@ -4258,6 +4285,31 @@ NOTICE:  f 0
      20
 (4 rows)
 
+-- check some error cases, too
+create or replace function rttest()
+returns setof int as $$
+begin
+  return query select 10 into no_such_table;
+end;
+$$ language plpgsql;
+select * from rttest();
+ERROR:  SELECT INTO query does not return tuples
+CONTEXT:  SQL statement "select 10 into no_such_table"
+PL/pgSQL function rttest() line 3 at RETURN QUERY
+create or replace function rttest()
+returns setof int as $$
+begin
+  return query execute 'select 10 into no_such_table';
+end;
+$$ language plpgsql;
+select * from rttest();
+ERROR:  SELECT INTO query does not return tuples
+CONTEXT:  SQL statement "select 10 into no_such_table"
+PL/pgSQL function rttest() line 3 at RETURN QUERY
+select * from no_such_table;
+ERROR:  relation "no_such_table" does not exist
+LINE 1: select * from no_such_table;
+                      ^
 drop function rttest();
 -- Test for proper cleanup at subtransaction exit.  This example
 -- exposed a bug in PG 8.2.
@@ -4612,24 +4664,50 @@ NOTICE:  caught division by zero
 NOTICE:  caught division by zero
 NOTICE:  caught division by zero
 -- Check variable scoping -- a var is not available in its own or prior
--- default expressions.
-create function scope_test() returns int as $$
+-- default expressions, but it is available in later ones.
+do $$
+declare x int := x + 1;  -- error
+begin
+  raise notice 'x = %', x;
+end;
+$$;
+ERROR:  column "x" does not exist
+LINE 1: x + 1
+        ^
+QUERY:  x + 1
+CONTEXT:  PL/pgSQL function inline_code_block line 2 during statement block local variable initialization
+do $$
+declare y int := x + 1;  -- error
+        x int := 42;
+begin
+  raise notice 'x = %, y = %', x, y;
+end;
+$$;
+ERROR:  column "x" does not exist
+LINE 1: x + 1
+        ^
+QUERY:  x + 1
+CONTEXT:  PL/pgSQL function inline_code_block line 2 during statement block local variable initialization
+do $$
+declare x int := 42;
+        y int := x + 1;
+begin
+  raise notice 'x = %, y = %', x, y;
+end;
+$$;
+NOTICE:  x = 42, y = 43
+do $$
 declare x int := 42;
 begin
   declare y int := x + 1;
           x int := x + 2;
+          z int := x * 10;
   begin
-    return x * 100 + y;
+    raise notice 'x = %, y = %, z = %', x, y, z;
   end;
 end;
-$$ language plpgsql;
-select scope_test();
- scope_test 
-------------
-       4443
-(1 row)
-
-drop function scope_test();
+$$;
+NOTICE:  x = 44, y = 43, z = 440
 -- Check handling of conflicts between plpgsql vars and table columns.
 set plpgsql.variable_conflict = error;
 create function conflict_test() returns setof int8_tbl as $$

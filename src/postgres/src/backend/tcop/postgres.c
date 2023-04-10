@@ -3,7 +3,7 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -42,7 +42,7 @@
 #include "catalog/pg_type.h"
 #include "commands/async.h"
 #include "commands/prepare.h"
-#include "executor/spi.h"
+#include "common/pg_prng.h"
 #include "jit/jit.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
@@ -138,17 +138,15 @@ static long max_stack_depth_bytes = 100 * 1024L;
 
 /*
  * Stack base pointer -- initialized by PostmasterMain and inherited by
- * subprocesses. This is not static because old versions of PL/Java modify
- * it directly. Newer versions use set_stack_base(), but we want to stay
- * binary-compatible for the time being.
+ * subprocesses (but see also InitPostmasterChild).
  */
-char	   *stack_base_ptr = NULL;
+static char *stack_base_ptr = NULL;
 
 /*
  * On IA64 we also have to remember the register stack base.
  */
 #if defined(__ia64__) || defined(__ia64)
-char	   *register_stack_base_ptr = NULL;
+static char *register_stack_base_ptr = NULL;
 #endif
 
 /*
@@ -659,9 +657,11 @@ pg_parse_query(const char *query_string)
  * NOTE: for reasons mentioned above, this must be separate from raw parsing.
  */
 List *
-pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
-					   Oid *paramTypes, int numParams,
-					   QueryEnvironment *queryEnv)
+pg_analyze_and_rewrite_fixedparams(RawStmt *parsetree,
+								   const char *query_string,
+								   const Oid *paramTypes,
+								   int numParams,
+								   QueryEnvironment *queryEnv)
 {
 	Query	   *query;
 	List	   *querytree_list;
@@ -674,8 +674,8 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 	if (log_parser_stats)
 		ResetUsage();
 
-	query = parse_analyze(parsetree, query_string, paramTypes, numParams,
-						  queryEnv);
+	query = parse_analyze_fixedparams(parsetree, query_string, paramTypes, numParams,
+									  queryEnv);
 
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
@@ -691,23 +691,19 @@ pg_analyze_and_rewrite(RawStmt *parsetree, const char *query_string,
 }
 
 /*
- * Do parse analysis and rewriting.  This is the same as pg_analyze_and_rewrite
- * except that external-parameter resolution is determined by parser callback
- * hooks instead of a fixed list of parameter datatypes.
+ * Do parse analysis and rewriting.  This is the same as
+ * pg_analyze_and_rewrite_fixedparams except that it's okay to deduce
+ * information about $n symbol datatypes from context.
  */
 List *
-pg_analyze_and_rewrite_params(RawStmt *parsetree,
-							  const char *query_string,
-							  ParserSetupHook parserSetup,
-							  void *parserSetupArg,
-							  QueryEnvironment *queryEnv)
+pg_analyze_and_rewrite_varparams(RawStmt *parsetree,
+								 const char *query_string,
+								 Oid **paramTypes,
+								 int *numParams,
+								 QueryEnvironment *queryEnv)
 {
-	ParseState *pstate;
 	Query	   *query;
 	List	   *querytree_list;
-	JumbleState *jstate = NULL;
-
-	Assert(query_string != NULL);	/* required as of 8.4 */
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
 
@@ -717,29 +713,72 @@ pg_analyze_and_rewrite_params(RawStmt *parsetree,
 	if (log_parser_stats)
 		ResetUsage();
 
-	pstate = make_parsestate(NULL);
-	pstate->p_sourcetext = query_string;
-	pstate->p_queryEnv = queryEnv;
-	(*parserSetup) (pstate, parserSetupArg);
+	query = parse_analyze_varparams(parsetree, query_string, paramTypes, numParams,
+									queryEnv);
 
-	query = transformTopLevelStmt(pstate, parsetree);
+	/*
+	 * Check all parameter types got determined.
+	 */
+	for (int i = 0; i < *numParams; i++)
+	{
+		Oid			ptype = (*paramTypes)[i];
 
-	if (pstate->p_target_relation &&
+		if (ptype == InvalidOid || ptype == UNKNOWNOID)
+			ereport(ERROR,
+					(errcode(ERRCODE_INDETERMINATE_DATATYPE),
+					 errmsg("could not determine data type of parameter $%d",
+							i + 1)));
+	}
+
+	if (log_parser_stats)
+		ShowUsage("PARSE ANALYSIS STATISTICS");
+
+	/*
+	 * (2) Rewrite the queries, as necessary
+	 */
+	querytree_list = pg_rewrite_query(query);
+
+	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
+
+	return querytree_list;
+}
+
+/*
+ * Do parse analysis and rewriting.  This is the same as
+ * pg_analyze_and_rewrite_fixedparams except that, instead of a fixed list of
+ * parameter datatypes, a parser callback is supplied that can do
+ * external-parameter resolution and possibly other things.
+ */
+List *
+pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
+							  const char *query_string,
+							  ParserSetupHook parserSetup,
+							  void *parserSetupArg,
+							  QueryEnvironment *queryEnv)
+{
+	Query	   *query;
+	List	   *querytree_list;
+
+	TRACE_POSTGRESQL_QUERY_REWRITE_START(query_string);
+
+	/*
+	 * (1) Perform parse analysis.
+	 */
+	if (log_parser_stats)
+		ResetUsage();
+
+	query = parse_analyze_withcb(parsetree, query_string, parserSetup, parserSetupArg,
+								 queryEnv);
+
+#ifdef YB_TODO
+	/* YB_TODO(neil) The IF block needs to be rewrite in this module. */
+	 if (pstate->p_target_relation &&
 		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
 		&& IsYugaByteEnabled())
 	{
 		SetTxnWithPGRel();
 	}
-
-	if (IsQueryIdEnabled())
-		jstate = JumbleQuery(query, query_string);
-
-	if (post_parse_analyze_hook)
-		(*post_parse_analyze_hook) (pstate, query, jstate);
-
-	free_parsestate(pstate);
-
-	pgstat_report_query_id(query->queryId, false);
+#endif
 
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
@@ -1156,8 +1195,8 @@ exec_simple_query(const char *query_string)
 		else
 			oldcontext = MemoryContextSwitchTo(MessageContext);
 
-		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
-												NULL, 0, NULL);
+		querytree_list = pg_analyze_and_rewrite_fixedparams(parsetree, query_string,
+															NULL, 0, NULL);
 
 		plantree_list = pg_plan_queries(querytree_list, query_string,
 										CURSOR_OPT_PARALLEL_OK, NULL);
@@ -1277,6 +1316,13 @@ exec_simple_query(const char *query_string)
 		}
 		else
 		{
+			/*
+			 * We had better not see XACT_FLAGS_NEEDIMMEDIATECOMMIT set if
+			 * we're not calling finish_xact_command().  (The implicit
+			 * transaction block should have prevented it from getting set.)
+			 */
+			Assert(!(MyXactFlags & XACT_FLAGS_NEEDIMMEDIATECOMMIT));
+
 			/*
 			 * We need a CommandCounterIncrement after every query, except
 			 * those that start or end a transaction block.
@@ -1442,7 +1488,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 
 	if (parsetree_list != NIL)
 	{
-		Query	   *query;
 		bool		snapshot_set = false;
 
 		raw_parse_tree = linitial_node(RawStmt, parsetree_list);
@@ -1482,34 +1527,13 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		/*
 		 * Analyze and rewrite the query.  Note that the originally specified
 		 * parameter set is not required to be complete, so we have to use
-		 * parse_analyze_varparams().
+		 * pg_analyze_and_rewrite_varparams().
 		 */
-		if (log_parser_stats)
-			ResetUsage();
-
-		query = parse_analyze_varparams(raw_parse_tree,
-										query_string,
-										&paramTypes,
-										&numParams);
-
-		/*
-		 * Check all parameter types got determined.
-		 */
-		for (int i = 0; i < numParams; i++)
-		{
-			Oid			ptype = paramTypes[i];
-
-			if (ptype == InvalidOid || ptype == UNKNOWNOID)
-				ereport(ERROR,
-						(errcode(ERRCODE_INDETERMINATE_DATATYPE),
-						 errmsg("could not determine data type of parameter $%d",
-								i + 1)));
-		}
-
-		if (log_parser_stats)
-			ShowUsage("PARSE ANALYSIS STATISTICS");
-
-		querytree_list = pg_rewrite_query(query);
+		querytree_list = pg_analyze_and_rewrite_varparams(raw_parse_tree,
+														  query_string,
+														  &paramTypes,
+														  &numParams,
+														  NULL);
 
 		/* Done with the snapshot used for parsing */
 		if (snapshot_set)
@@ -2119,32 +2143,16 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	/*
 	 * We must copy the sourceText and prepStmtName into MessageContext in
-	 * case the portal is destroyed during finish_xact_command. Can avoid the
-	 * copy if it's not an xact command, though.
+	 * case the portal is destroyed during finish_xact_command.  We do not
+	 * make a copy of the portalParams though, preferring to just not print
+	 * them in that case.
 	 */
-	if (is_xact_command)
-	{
-		sourceText = pstrdup(portal->sourceText);
-		if (portal->prepStmtName)
-			prepStmtName = pstrdup(portal->prepStmtName);
-		else
-			prepStmtName = "<unnamed>";
-
-		/*
-		 * An xact command shouldn't have any parameters, which is a good
-		 * thing because they wouldn't be around after finish_xact_command.
-		 */
-		portalParams = NULL;
-	}
+	sourceText = pstrdup(portal->sourceText);
+	if (portal->prepStmtName)
+		prepStmtName = pstrdup(portal->prepStmtName);
 	else
-	{
-		sourceText = portal->sourceText;
-		if (portal->prepStmtName)
-			prepStmtName = portal->prepStmtName;
-		else
-			prepStmtName = "<unnamed>";
-		portalParams = portal->portalParams;
-	}
+		prepStmtName = "<unnamed>";
+	portalParams = portal->portalParams;
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -2243,13 +2251,24 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	if (completed)
 	{
-		if (is_xact_command)
+		if (is_xact_command || (MyXactFlags & XACT_FLAGS_NEEDIMMEDIATECOMMIT))
 		{
 			/*
 			 * If this was a transaction control statement, commit it.  We
 			 * will start a new xact command for the next command (if any).
+			 * Likewise if the statement required immediate commit.  Without
+			 * this provision, we wouldn't force commit until Sync is
+			 * received, which creates a hazard if the client tries to
+			 * pipeline immediate-commit statements.
 			 */
 			finish_xact_command();
+
+			/*
+			 * These commands typically don't have any parameters, and even if
+			 * one did we couldn't print them now because the storage went
+			 * away during finish_xact_command.  So pretend there were none.
+			 */
+			portalParams = NULL;
 		}
 		else
 		{
@@ -2258,6 +2277,12 @@ exec_execute_message(const char *portal_name, long max_rows)
 			 * those that start or end a transaction block.
 			 */
 			CommandCounterIncrement();
+
+			/*
+			 * Set XACT_FLAGS_PIPELINING whenever we complete an Execute
+			 * message without immediately committing the transaction.
+			 */
+			MyXactFlags |= XACT_FLAGS_PIPELINING;
 
 			/*
 			 * Disable statement timeout whenever we complete an Execute
@@ -2274,6 +2299,12 @@ exec_execute_message(const char *portal_name, long max_rows)
 		/* Portal run not complete, so send PortalSuspended */
 		if (whereToSendOutput == DestRemote)
 			pq_putemptymessage('s');
+
+		/*
+		 * Set XACT_FLAGS_PIPELINING whenever we suspend an Execute message,
+		 * too.
+		 */
+		MyXactFlags |= XACT_FLAGS_PIPELINING;
 	}
 
 	/*
@@ -2389,13 +2420,13 @@ check_log_duration(char *msec_str, bool was_logged)
 
 		/*
 		 * Do not log if log_statement_sample_rate = 0. Log a sample if
-		 * log_statement_sample_rate <= 1 and avoid unnecessary random() call
-		 * if log_statement_sample_rate = 1.
+		 * log_statement_sample_rate <= 1 and avoid unnecessary PRNG call if
+		 * log_statement_sample_rate = 1.
 		 */
 		if (exceeded_sample_duration)
 			in_sample = log_statement_sample_rate != 0 &&
 				(log_statement_sample_rate == 1 ||
-				 random() <= log_statement_sample_rate * MAX_RANDOM_VALUE);
+				 pg_prng_double(&pg_global_prng_state) <= log_statement_sample_rate);
 
 		if (exceeded_duration || in_sample || log_duration || xact_is_sampled)
 		{
@@ -2656,7 +2687,6 @@ exec_describe_statement_message(const char *stmt_name)
 	}
 	else
 		pq_putemptymessage('n');	/* NoData */
-
 }
 
 /*
@@ -2965,7 +2995,7 @@ die(SIGNAL_ARGS)
 		YBCInterruptPgGate();
 	}
 
-	/* for the statistics collector */
+	/* for the cumulative stats system */
 	pgStatSessionEndCause = DISCONNECT_KILLED;
 
 	/* If we're still here, waken anything waiting on the process latch */
@@ -3400,6 +3430,17 @@ ProcessInterrupts(void)
 			IdleSessionTimeoutPending = false;
 	}
 
+	/*
+	 * If there are pending stats updates and we currently are truly idle
+	 * (matching the conditions in PostgresMain(), report stats now.
+	 */
+	if (IdleStatsUpdateTimeoutPending &&
+		DoingCommandRead && !IsTransactionOrTransactionBlock())
+	{
+		IdleStatsUpdateTimeoutPending = false;
+		pgstat_report_stat(true);
+	}
+
 	if (ProcSignalBarrierPending)
 		ProcessProcSignalBarrier();
 
@@ -3457,7 +3498,9 @@ ia64_get_bsp(void)
 pg_stack_base_t
 set_stack_base(void)
 {
+#ifndef HAVE__BUILTIN_FRAME_ADDRESS
 	char		stack_base;
+#endif
 	pg_stack_base_t old;
 
 #if defined(__ia64__) || defined(__ia64)
@@ -3467,8 +3510,16 @@ set_stack_base(void)
 	old = stack_base_ptr;
 #endif
 
-	/* Set up reference point for stack depth checking */
+	/*
+	 * Set up reference point for stack depth checking.  On recent gcc we use
+	 * __builtin_frame_address() to avoid a warning about storing a local
+	 * variable's address in a long-lived variable.
+	 */
+#ifdef HAVE__BUILTIN_FRAME_ADDRESS
+	stack_base_ptr = __builtin_frame_address(0);
+#else
 	stack_base_ptr = &stack_base;
+#endif
 #if defined(__ia64__) || defined(__ia64)
 	register_stack_base_ptr = ia64_get_bsp();
 #endif
@@ -5007,8 +5058,31 @@ PostgresSingleUserMain(int argc, char *argv[],
 	/* read control file (error checking and contains config ) */
 	LocalProcessControlFile(false);
 
+	/*
+	 * process any libraries that should be preloaded at postmaster start
+	 */
+	process_shared_preload_libraries();
+
 	/* Initialize MaxBackends */
 	InitializeMaxBackends();
+
+	/*
+	 * Give preloaded libraries a chance to request additional shared memory.
+	 */
+	process_shmem_requests();
+
+	/*
+	 * Now that loadable modules have had their chance to request additional
+	 * shared memory, determine the value of any runtime-computed GUCs that
+	 * depend on the amount of shared memory required.
+	 */
+	InitializeShmemGUCs();
+
+	/*
+	 * Now that modules have been loaded, we can process any custom resource
+	 * managers specified in the wal_consistency_checking GUC.
+	 */
+	InitializeWalConsistencyChecking();
 
 	CreateSharedMemoryAndSemaphores();
 
@@ -5134,7 +5208,11 @@ PostgresMain(const char *dbname, const char *username)
 	 * it inside InitPostgres() instead.  In particular, anything that
 	 * involves database access should be there, not here.
 	 */
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, false);
+	InitPostgres(dbname, InvalidOid,	/* database to connect to */
+				 username, InvalidOid,	/* role to connect as */
+				 !am_walsender, /* honor session_preload_libraries? */
+				 false,			/* don't ignore datallowconn */
+				 NULL);			/* no out_dbname */
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't
@@ -5169,12 +5247,6 @@ PostgresMain(const char *dbname, const char *username)
 	/* Perform initialization specific to a WAL sender process. */
 	if (am_walsender)
 		InitWalSender();
-
-	/*
-	 * process any libraries that should be preloaded at backend start (this
-	 * likewise can't be done until GUC settings are complete)
-	 */
-	process_session_preload_libraries();
 
 	/*
 	 * Send this backend's cancellation info to the frontend.
@@ -5293,14 +5365,13 @@ PostgresMain(const char *dbname, const char *username)
 			WalSndErrorCleanup();
 
 		PortalErrorCleanup();
-		SPICleanup();
 
 		/*
 		 * We can't release replication slots inside AbortTransaction() as we
 		 * need to be able to start and abort transactions while having a slot
 		 * acquired. But we never need to hold them across top level errors,
-		 * so releasing here is fine. There's another cleanup in ProcKill()
-		 * ensuring we'll correctly cleanup on FATAL errors as well.
+		 * so releasing here is fine. There also is a before_shmem_exit()
+		 * callback ensuring correct cleanup on FATAL errors.
 		 */
 		if (MyReplicationSlot != NULL)
 			ReplicationSlotRelease();
@@ -5384,12 +5455,13 @@ PostgresMain(const char *dbname, const char *username)
 		 *
 		 * Note: this includes fflush()'ing the last of the prior output.
 		 *
-		 * This is also a good time to send collected statistics to the
-		 * collector, and to update the PS stats display.  We avoid doing
-		 * those every time through the message loop because it'd slow down
-		 * processing of batched messages, and because we don't want to report
-		 * uncommitted updates (that confuses autovacuum).  The notification
-		 * processor wants a call too, if we are not in a transaction block.
+		 * This is also a good time to flush out collected statistics to the
+		 * cumulative stats system, and to update the PS stats display.  We
+		 * avoid doing those every time through the message loop because it'd
+		 * slow down processing of batched messages, and because we don't want
+		 * to report uncommitted updates (that confuses autovacuum).  The
+		 * notification processor wants a call too, if we are not in a
+		 * transaction block.
 		 *
 		 * Also, if an idle timeout is enabled, start the timer for that.
 		 */
@@ -5423,6 +5495,8 @@ PostgresMain(const char *dbname, const char *username)
 			}
 			else
 			{
+				long		stats_timeout;
+
 				if (IsYugaByteEnabled() && yb_need_cache_refresh)
 				{
 					YBRefreshCache();
@@ -5438,7 +5512,32 @@ PostgresMain(const char *dbname, const char *username)
 				if (notifyInterruptPending)
 					ProcessNotifyInterrupt(false);
 
-				pgstat_report_stat(false);
+				/*
+				 * Check if we need to report stats. If pgstat_report_stat()
+				 * decides it's too soon to flush out pending stats / lock
+				 * contention prevented reporting, it'll tell us when we
+				 * should try to report stats again (so that stats updates
+				 * aren't unduly delayed if the connection goes idle for a
+				 * long time). We only enable the timeout if we don't already
+				 * have a timeout in progress, because we don't disable the
+				 * timeout below. enable_timeout_after() needs to determine
+				 * the current timestamp, which can have a negative
+				 * performance impact. That's OK because pgstat_report_stat()
+				 * won't have us wake up sooner than a prior call.
+				 */
+				stats_timeout = pgstat_report_stat(false);
+				if (stats_timeout > 0)
+				{
+					if (!get_timeout_active(IDLE_STATS_UPDATE_TIMEOUT))
+						enable_timeout_after(IDLE_STATS_UPDATE_TIMEOUT,
+											 stats_timeout);
+				}
+				else
+				{
+					/* all stats flushed, no need for the timeout */
+					if (get_timeout_active(IDLE_STATS_UPDATE_TIMEOUT))
+						disable_timeout(IDLE_STATS_UPDATE_TIMEOUT, false);
+				}
 
 				set_ps_display("idle");
 				pgstat_report_activity(STATE_IDLE, NULL);
@@ -5473,7 +5572,7 @@ PostgresMain(const char *dbname, const char *username)
 		firstchar = ReadCommand(&input_message);
 
 		/*
-		 * (4) turn off the idle-in-transaction and idle-session timeouts, if
+		 * (4) turn off the idle-in-transaction and idle-session timeouts if
 		 * active.  We do this before step (5) so that any last-moment timeout
 		 * is certain to be detected in step (5).
 		 *
@@ -5945,7 +6044,7 @@ PostgresMain(const char *dbname, const char *username)
 				 */
 			case EOF:
 
-				/* for the statistics collector */
+				/* for the cumulative statistics system */
 				pgStatSessionEndCause = DISCONNECT_CLIENT_EOF;
 
 				switch_fallthrough(); /* FALLTHROUGH */

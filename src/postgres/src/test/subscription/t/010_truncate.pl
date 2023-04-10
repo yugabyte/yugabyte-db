@@ -1,20 +1,20 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test TRUNCATE
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 14;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # setup
 
-my $node_publisher = PostgresNode->new('publisher');
+my $node_publisher = PostgreSQL::Test::Cluster->new('publisher');
 $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->start;
 
-my $node_subscriber = PostgresNode->new('subscriber');
+my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
 $node_subscriber->init(allows_streaming => 'logical');
 $node_subscriber->append_conf('postgresql.conf',
 	qq(max_logical_replication_workers = 6));
@@ -67,10 +67,7 @@ $node_subscriber->safe_psql('postgres',
 );
 
 # Wait for initial sync of all subscriptions
-my $synced_query =
-  "SELECT count(1) = 0 FROM pg_subscription_rel WHERE srsubstate NOT IN ('r', 's');";
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+$node_subscriber->wait_for_subscription_sync;
 
 # insert data to truncate
 
@@ -211,8 +208,7 @@ $node_subscriber->safe_psql('postgres',
 );
 
 # wait for initial data sync
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+$node_subscriber->wait_for_subscription_sync;
 
 # insert data to truncate
 
@@ -239,3 +235,5 @@ is($result, qq(0||), 'truncate replicated for multiple subscriptions');
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT deadlocks FROM pg_stat_database WHERE datname='postgres'");
 is($result, qq(0), 'no deadlocks detected');
+
+done_testing();

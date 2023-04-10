@@ -3,7 +3,7 @@
  * pg_operator.c
  *	  routines to support manipulation of the pg_operator relation
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -864,7 +864,7 @@ makeOperatorDependencies(HeapTuple tuple,
 
 	/* Dependency on extension */
 	if (makeExtensionDep)
-		recordDependencyOnCurrentExtension(&myself, true);
+		recordDependencyOnCurrentExtension(&myself, isUpdate);
 
 	return myself;
 }

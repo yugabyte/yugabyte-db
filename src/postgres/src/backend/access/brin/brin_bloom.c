@@ -2,7 +2,7 @@
  * brin_bloom.c
  *		Implementation of Bloom opclass for BRIN
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -49,7 +49,7 @@
  * We use a scheme requiring only two functions described in this paper:
  *
  * Less Hashing, Same Performance:Building a Better Bloom Filter
- * Adam Kirsch, Michael Mitzenmacher†, Harvard School of Engineering and
+ * Adam Kirsch, Michael Mitzenmacher, Harvard School of Engineering and
  * Applied Sciences, Cambridge, Massachusetts [DOI 10.1002/rsa.20208]
  *
  * The two hash functions h1 and h2 are calculated using hard-coded seeds,
@@ -257,7 +257,6 @@ typedef struct BloomFilter
 
 	/* data of the bloom filter */
 	char		data[FLEXIBLE_ARRAY_MEMBER];
-
 } BloomFilter;
 
 

@@ -3,7 +3,7 @@
  * parse_clause.c
  *	  handle clauses in parser
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -155,7 +155,7 @@ transformFromClause(ParseState *pstate, List *frmList)
 
 /*
  * setTargetTable
- *	  Add the target relation of INSERT/UPDATE/DELETE to the range table,
+ *	  Add the target relation of INSERT/UPDATE/DELETE/MERGE to the range table,
  *	  and make the special links to it in the ParseState.
  *
  *	  We also open the target relation and acquire a write lock on it.
@@ -165,7 +165,9 @@ transformFromClause(ParseState *pstate, List *frmList)
  *
  *	  If alsoSource is true, add the target to the query's joinlist and
  *	  namespace.  For INSERT, we don't want the target to be joined to;
- *	  it's a destination of tuples, not a source.   For UPDATE/DELETE,
+ *	  it's a destination of tuples, not a source.  MERGE is actually
+ *	  both, but we'll add it separately to joinlist and namespace, so
+ *	  doing nothing (like INSERT) is correct here.  For UPDATE/DELETE,
  *	  we do need to scan or join the target.  (NOTE: we do not bother
  *	  to check for namespace conflict; we assume that the namespace was
  *	  initially empty in these cases.)
@@ -1056,6 +1058,9 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 						ParseNamespaceItem **top_nsitem,
 						List **namespace)
 {
+	/* Guard against stack overflow due to overly deep subtree */
+	check_stack_depth();
+
 	if (IsA(n, RangeVar))
 	{
 		/* Plain relation reference, or perhaps a CTE reference */
@@ -1439,21 +1444,6 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 			extractRemainingColumns(r_nscolumns, r_colnames, &r_colnos,
 									&res_colnames, &res_colvars,
 									res_nscolumns + res_colindex);
-
-		/*
-		 * Check alias (AS clause), if any.
-		 */
-		if (j->alias)
-		{
-			if (j->alias->colnames != NIL)
-			{
-				if (list_length(j->alias->colnames) > list_length(res_colnames))
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("column alias list for \"%s\" has too many entries",
-									j->alias->aliasname)));
-			}
-		}
 
 		/*
 		 * Now build an RTE and nsitem for the result of the join.
@@ -2000,7 +1990,7 @@ findTargetlistEntrySQL92(ParseState *pstate, Node *node, List **tlist,
 	}
 	if (IsA(node, A_Const))
 	{
-		A_Const	   *aconst = castNode(A_Const, node);
+		A_Const    *aconst = castNode(A_Const, node);
 		int			targetlist_pos = 0;
 		int			target_pos;
 
@@ -2842,6 +2832,7 @@ transformWindowDefinitions(ParseState *pstate,
 											 rangeopfamily, rangeopcintype,
 											 &wc->endInRangeFunc,
 											 windef->endOffset);
+		wc->runCondition = NIL;
 		wc->winref = winref;
 
 		result = lappend(result, wc);

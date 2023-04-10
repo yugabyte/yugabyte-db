@@ -7,7 +7,7 @@
  *	AccessExclusiveLocks and starting snapshots for Hot Standby mode.
  *	Plus conflict recovery processing.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -20,6 +20,7 @@
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xloginsert.h"
+#include "access/xlogrecovery.h"
 #include "access/xlogutils.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -45,6 +46,7 @@ static HTAB *RecoveryLockLists;
 
 /* Flags set by timeout handlers */
 static volatile sig_atomic_t got_standby_deadlock_timeout = false;
+static volatile sig_atomic_t got_standby_delay_timeout = false;
 static volatile sig_atomic_t got_standby_lock_timeout = false;
 
 static void ResolveRecoveryConflictWithVirtualXIDs(VirtualTransactionId *waitlist,
@@ -130,7 +132,7 @@ InitRecoveryTransactionEnvironment(void)
  *
  * This must be called even in shutdown of startup process if transaction
  * tracking has been initialized. Otherwise some locks the tracked
- * transactions were holding will not be released and and may interfere with
+ * transactions were holding will not be released and may interfere with
  * the processes still running (but will exit soon later) at the exit of
  * startup process.
  */
@@ -792,7 +794,8 @@ ResolveRecoveryConflictWithBufferPin(void)
 	}
 
 	/*
-	 * Wait to be signaled by UnpinBuffer().
+	 * Wait to be signaled by UnpinBuffer() or for the wait to be interrupted
+	 * by one of the timeouts established above.
 	 *
 	 * We assume that only UnpinBuffer() and the timeout requests established
 	 * above can wake us up here. WakeupRecovery() called by walreceiver or
@@ -801,7 +804,9 @@ ResolveRecoveryConflictWithBufferPin(void)
 	 */
 	ProcWaitForSignal(PG_WAIT_BUFFER_PIN);
 
-	if (got_standby_deadlock_timeout)
+	if (got_standby_delay_timeout)
+		SendRecoveryConflictWithBufferPin(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN);
+	else if (got_standby_deadlock_timeout)
 	{
 		/*
 		 * Send out a request for hot-standby backends to check themselves for
@@ -816,8 +821,7 @@ ResolveRecoveryConflictWithBufferPin(void)
 		 * not be so harmful because the period that the buffer is kept pinned
 		 * is basically no so long. But we should fix this?
 		 */
-		SendRecoveryConflictWithBufferPin(
-										  PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK);
+		SendRecoveryConflictWithBufferPin(PROCSIG_RECOVERY_CONFLICT_STARTUP_DEADLOCK);
 	}
 
 	/*
@@ -827,6 +831,7 @@ ResolveRecoveryConflictWithBufferPin(void)
 	 * individually, but that'd be slower.
 	 */
 	disable_all_timeouts(false);
+	got_standby_delay_timeout = false;
 	got_standby_deadlock_timeout = false;
 }
 
@@ -886,8 +891,8 @@ CheckRecoveryConflictDeadlock(void)
  */
 
 /*
- * StandbyDeadLockHandler() will be called if STANDBY_DEADLOCK_TIMEOUT
- * occurs before STANDBY_TIMEOUT.
+ * StandbyDeadLockHandler() will be called if STANDBY_DEADLOCK_TIMEOUT is
+ * exceeded.
  */
 void
 StandbyDeadLockHandler(void)
@@ -897,16 +902,11 @@ StandbyDeadLockHandler(void)
 
 /*
  * StandbyTimeoutHandler() will be called if STANDBY_TIMEOUT is exceeded.
- * Send out a request to release conflicting buffer pins unconditionally,
- * so we can press ahead with applying changes in recovery.
  */
 void
 StandbyTimeoutHandler(void)
 {
-	/* forget any pending STANDBY_DEADLOCK_TIMEOUT request */
-	disable_timeout(STANDBY_DEADLOCK_TIMEOUT, false);
-
-	SendRecoveryConflictWithBufferPin(PROCSIG_RECOVERY_CONFLICT_BUFFERPIN);
+	got_standby_delay_timeout = true;
 }
 
 /*
@@ -986,9 +986,11 @@ StandbyAcquireAccessExclusiveLock(TransactionId xid, Oid dbOid, Oid relOid)
 static void
 StandbyReleaseLockList(List *locks)
 {
-	while (locks)
+	ListCell   *lc;
+
+	foreach(lc, locks)
 	{
-		xl_standby_lock *lock = (xl_standby_lock *) linitial(locks);
+		xl_standby_lock *lock = (xl_standby_lock *) lfirst(lc);
 		LOCKTAG		locktag;
 
 		elog(trace_recovery(DEBUG4),
@@ -1002,9 +1004,9 @@ StandbyReleaseLockList(List *locks)
 				 lock->xid, lock->dbOid, lock->relOid);
 			Assert(false);
 		}
-		pfree(lock);
-		locks = list_delete_first(locks);
 	}
+
+	list_free_deep(locks);
 }
 
 static void
@@ -1180,7 +1182,7 @@ standby_redo(XLogReaderState *record)
  * starting to accumulate changes at a point just prior to when we derive
  * the snapshot on the primary, then ignore duplicates when we later apply
  * the snapshot from the running xacts record. This is implemented during
- * CreateCheckpoint() where we use the logical checkpoint location as
+ * CreateCheckPoint() where we use the logical checkpoint location as
  * our starting point and then write the running xacts record immediately
  * before writing the main checkpoint WAL record. Since we always start
  * up from a checkpoint and are immediately at our starting point, we
@@ -1270,10 +1272,10 @@ LogStandbySnapshot(void)
 /*
  * Record an enhanced snapshot of running transactions into WAL.
  *
- * The definitions of RunningTransactionsData and xl_xact_running_xacts are
- * similar. We keep them separate because xl_xact_running_xacts is a
- * contiguous chunk of memory and never exists fully until it is assembled in
- * WAL. The inserted records are marked as not being important for durability,
+ * The definitions of RunningTransactionsData and xl_running_xacts are
+ * similar. We keep them separate because xl_running_xacts is a contiguous
+ * chunk of memory and never exists fully until it is assembled in WAL.
+ * The inserted records are marked as not being important for durability,
  * to avoid triggering superfluous checkpoint / archiving activity.
  */
 static XLogRecPtr

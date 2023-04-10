@@ -66,7 +66,7 @@ COMMENT ON
   TRIGGER <replaceable class="parameter">trigger_name</replaceable> ON <replaceable class="parameter">table_name</replaceable> |
   TYPE <replaceable class="parameter">object_name</replaceable> |
   VIEW <replaceable class="parameter">object_name</replaceable>
-} IS '<replaceable class="parameter">text</replaceable>'
+} IS { <replaceable class="parameter">string_literal</replaceable> | NULL }
 
 <phrase>where <replaceable>aggregate_signature</replaceable> is:</phrase>
 
@@ -88,6 +88,11 @@ COMMENT ON
    issue a new <command>COMMENT</command> command for the same object.  To remove a
    comment, write <literal>NULL</literal> in place of the text string.
    Comments are automatically dropped when their object is dropped.
+  </para>
+
+  <para>
+   A <literal>SHARE UPDATE EXCLUSIVE</literal> lock is acquired on the
+   object to be commented.
   </para>
 
   <para>
@@ -257,11 +262,19 @@ COMMENT ON
     </varlistentry>
 
    <varlistentry>
-    <term><replaceable class="parameter">text</replaceable></term>
+    <term><replaceable class="parameter">string_literal</replaceable></term>
     <listitem>
      <para>
-      The new comment, written as a string literal; or <literal>NULL</literal>
-      to drop the comment.
+      The new comment contents, written as a string literal.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>NULL</literal></term>
+    <listitem>
+     <para>
+      Write <literal>NULL</literal> to drop the comment.
      </para>
     </listitem>
    </varlistentry>
@@ -344,7 +357,7 @@ COMMENT ON TEXT SEARCH CONFIGURATION my_config IS 'Special word filtering';
 COMMENT ON TEXT SEARCH DICTIONARY swedish IS 'Snowball stemmer for Swedish language';
 COMMENT ON TEXT SEARCH PARSER my_parser IS 'Splits text into words';
 COMMENT ON TEXT SEARCH TEMPLATE snowball IS 'Snowball stemmer';
-COMMENT ON TRANSFORM FOR hstore LANGUAGE plpythonu IS 'Transform between hstore and Python dict';
+COMMENT ON TRANSFORM FOR hstore LANGUAGE plpython3u IS 'Transform between hstore and Python dict';
 COMMENT ON TRIGGER my_trigger ON my_table IS 'Used for RI';
 COMMENT ON TYPE complex IS 'Complex number data type';
 COMMENT ON VIEW my_view IS 'View of departmental costs';

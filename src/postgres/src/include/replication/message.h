@@ -2,7 +2,7 @@
  * message.h
  *	   Exports from replication/logical/message.c
  *
- * Copyright (c) 2013-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/message.h
  *-------------------------------------------------------------------------
@@ -32,10 +32,10 @@ typedef struct xl_logical_message
 extern XLogRecPtr LogLogicalMessage(const char *prefix, const char *message,
 									size_t size, bool transactional);
 
-/* RMGR API*/
+/* RMGR API */
 #define XLOG_LOGICAL_MESSAGE	0x00
-void		logicalmsg_redo(XLogReaderState *record);
-void		logicalmsg_desc(StringInfo buf, XLogReaderState *record);
-const char *logicalmsg_identify(uint8 info);
+extern void logicalmsg_redo(XLogReaderState *record);
+extern void logicalmsg_desc(StringInfo buf, XLogReaderState *record);
+extern const char *logicalmsg_identify(uint8 info);
 
 #endif							/* PG_LOGICAL_MESSAGE_H */

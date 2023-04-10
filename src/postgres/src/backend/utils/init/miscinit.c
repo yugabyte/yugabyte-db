@@ -3,7 +3,7 @@
  * miscinit.c
  *	  miscellaneous initialization support stuff
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -40,6 +40,7 @@
 #include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/interrupt.h"
+#include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
@@ -107,13 +108,12 @@ InitPostmasterChild(void)
 #endif
 
 	/*
-	 * Set reference point for stack-depth checking. We re-do that even in the
-	 * !EXEC_BACKEND case, because there are some edge cases where processes
-	 * are started with an alternative stack (e.g. starting bgworkers when
-	 * running postgres using the rr debugger, as bgworkers are launched from
-	 * signal handlers).
+	 * Set reference point for stack-depth checking.  This might seem
+	 * redundant in !EXEC_BACKEND builds; but it's not because the postmaster
+	 * launches its children from signal handlers, so we might be running on
+	 * an alternative stack.
 	 */
-	set_stack_base();
+	(void) set_stack_base();
 
 	InitProcessGlobals();
 
@@ -289,9 +289,6 @@ GetBackendTypeDesc(BackendType backendType)
 			break;
 		case B_ARCHIVER:
 			backendDesc = "archiver";
-			break;
-		case B_STATS_COLLECTOR:
-			backendDesc = "stats collector";
 			break;
 		case B_LOGGER:
 			backendDesc = "logger";
@@ -792,7 +789,7 @@ InitializeSessionUserId(const char *rolename, Oid roleid)
 					PGC_BACKEND, PGC_S_OVERRIDE);
 	SetConfigOption("is_superuser",
 					AuthenticatedUserIsSuperuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 
 	ReleaseSysCache(roleTup);
 }
@@ -855,7 +852,7 @@ SetSessionAuthorization(Oid userid, bool is_superuser)
 
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 }
 
 /*
@@ -912,7 +909,7 @@ SetCurrentRoleId(Oid roleid, bool is_superuser)
 
 	SetConfigOption("is_superuser",
 					is_superuser ? "on" : "off",
-					PGC_INTERNAL, PGC_S_OVERRIDE);
+					PGC_INTERNAL, PGC_S_DYNAMIC_DEFAULT);
 }
 
 
@@ -1627,6 +1624,10 @@ char	   *local_preload_libraries_string = NULL;
 
 /* Flag telling that we are loading shared_preload_libraries */
 bool		process_shared_preload_libraries_in_progress = false;
+bool		process_shared_preload_libraries_done = false;
+
+shmem_request_hook_type shmem_request_hook = NULL;
+bool		process_shmem_requests_in_progress = false;
 
 /*
  * load the shared libraries listed in 'libraries'
@@ -1694,6 +1695,7 @@ process_shared_preload_libraries(void)
 				   "shared_preload_libraries",
 				   false);
 	process_shared_preload_libraries_in_progress = false;
+	process_shared_preload_libraries_done = true;
 }
 
 /*
@@ -1708,6 +1710,18 @@ process_session_preload_libraries(void)
 	load_libraries(local_preload_libraries_string,
 				   "local_preload_libraries",
 				   true);
+}
+
+/*
+ * process any shared memory requests from preloaded libraries
+ */
+void
+process_shmem_requests(void)
+{
+	process_shmem_requests_in_progress = true;
+	if (shmem_request_hook)
+		shmem_request_hook();
+	process_shmem_requests_in_progress = false;
 }
 
 void

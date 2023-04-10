@@ -2,7 +2,7 @@
  * Copyright (c) 1983, 1995, 1996 Eric P. Allman
  * Copyright (c) 1988, 1993
  *	The Regents of the University of California.  All rights reserved.
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -108,6 +108,16 @@
 #undef	fprintf
 #undef	vprintf
 #undef	printf
+
+/*
+ * We use the platform's native snprintf() for some machine-dependent cases.
+ * While that's required by C99, Microsoft Visual Studio lacks it before
+ * VS2015.  Fortunately, we don't really need the length check in practice,
+ * so just fall back to native sprintf() on that platform.
+ */
+#if defined(_MSC_VER) && _MSC_VER < 1900	/* pre-VS2015 */
+#define snprintf(str,size,...) sprintf(str,__VA_ARGS__)
+#endif
 
 /*
  * Info about where the formatted output is going.
@@ -1002,8 +1012,8 @@ fmtptr(const void *value, PrintfTarget *target)
 	int			vallen;
 	char		convert[64];
 
-	/* we rely on regular C library's sprintf to do the basic conversion */
-	vallen = sprintf(convert, "%p", value);
+	/* we rely on regular C library's snprintf to do the basic conversion */
+	vallen = snprintf(convert, sizeof(convert), "%p", value);
 	if (vallen < 0)
 		target->failed = true;
 	else
@@ -1015,8 +1025,8 @@ fmtint(long long value, char type, int forcesign, int leftjust,
 	   int minlen, int zpad, int precision, int pointflag,
 	   PrintfTarget *target)
 {
-	unsigned long long base;
 	unsigned long long uvalue;
+	int			base;
 	int			dosign;
 	const char *cvt = "0123456789abcdef";
 	int			signvalue = 0;
@@ -1075,12 +1085,36 @@ fmtint(long long value, char type, int forcesign, int leftjust,
 		vallen = 0;
 	else
 	{
-		/* make integer string */
-		do
+		/*
+		 * Convert integer to string.  We special-case each of the possible
+		 * base values so as to avoid general-purpose divisions.  On most
+		 * machines, division by a fixed constant can be done much more
+		 * cheaply than a general divide.
+		 */
+		if (base == 10)
 		{
-			convert[sizeof(convert) - (++vallen)] = cvt[uvalue % base];
-			uvalue = uvalue / base;
-		} while (uvalue);
+			do
+			{
+				convert[sizeof(convert) - (++vallen)] = cvt[uvalue % 10];
+				uvalue = uvalue / 10;
+			} while (uvalue);
+		}
+		else if (base == 16)
+		{
+			do
+			{
+				convert[sizeof(convert) - (++vallen)] = cvt[uvalue % 16];
+				uvalue = uvalue / 16;
+			} while (uvalue);
+		}
+		else					/* base == 8 */
+		{
+			do
+			{
+				convert[sizeof(convert) - (++vallen)] = cvt[uvalue % 8];
+				uvalue = uvalue / 8;
+			} while (uvalue);
+		}
 	}
 
 	zeropad = Max(0, precision - vallen);
@@ -1129,11 +1163,11 @@ fmtfloat(double value, char type, int forcesign, int leftjust,
 	int			padlen;			/* amount to pad with spaces */
 
 	/*
-	 * We rely on the regular C library's sprintf to do the basic conversion,
+	 * We rely on the regular C library's snprintf to do the basic conversion,
 	 * then handle padding considerations here.
 	 *
 	 * The dynamic range of "double" is about 1E+-308 for IEEE math, and not
-	 * too wildly more than that with other hardware.  In "f" format, sprintf
+	 * too wildly more than that with other hardware.  In "f" format, snprintf
 	 * could therefore generate at most 308 characters to the left of the
 	 * decimal point; while we need to allow the precision to get as high as
 	 * 308+17 to ensure that we don't truncate significant digits from very
@@ -1185,14 +1219,14 @@ fmtfloat(double value, char type, int forcesign, int leftjust,
 			fmt[2] = '*';
 			fmt[3] = type;
 			fmt[4] = '\0';
-			vallen = sprintf(convert, fmt, prec, value);
+			vallen = snprintf(convert, sizeof(convert), fmt, prec, value);
 		}
 		else
 		{
 			fmt[0] = '%';
 			fmt[1] = type;
 			fmt[2] = '\0';
-			vallen = sprintf(convert, fmt, value);
+			vallen = snprintf(convert, sizeof(convert), fmt, value);
 		}
 		if (vallen < 0)
 			goto fail;
@@ -1321,7 +1355,7 @@ pg_strfromd(char *str, size_t count, int precision, double value)
 			fmt[2] = '*';
 			fmt[3] = 'g';
 			fmt[4] = '\0';
-			vallen = sprintf(convert, fmt, precision, value);
+			vallen = snprintf(convert, sizeof(convert), fmt, precision, value);
 			if (vallen < 0)
 			{
 				target.failed = true;

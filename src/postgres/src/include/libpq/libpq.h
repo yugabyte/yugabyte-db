@@ -4,7 +4,7 @@
  *	  POSTGRES LIBPQ buffer structure definitions.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/libpq.h
@@ -58,10 +58,11 @@ extern const PGDLLIMPORT PQcommMethods *PqCommMethods;
 /*
  * prototypes for functions in pqcomm.c
  */
-extern WaitEventSet *FeBeWaitSet;
+extern PGDLLIMPORT WaitEventSet *FeBeWaitSet;
 
 #define FeBeWaitSetSocketPos 0
 #define FeBeWaitSetLatchPos 1
+#define FeBeWaitSetNEvents 3
 
 extern int	StreamServerPort(int family, const char *hostName,
 							 unsigned short portNumber, const char *unixSocketDir,
@@ -79,6 +80,7 @@ extern int	pq_getmessage(StringInfo s, int maxlen);
 extern int	pq_getbyte(void);
 extern int	pq_peekbyte(void);
 extern int	pq_getbyte_if_available(unsigned char *c);
+extern bool pq_buffer_has_data(void);
 extern int	pq_putmessage_v2(char msgtype, const char *s, size_t len);
 extern bool pq_check_connection(void);
 
@@ -88,17 +90,17 @@ extern int	pq_putbytes(const char *s, size_t len);
 /*
  * prototypes for functions in be-secure.c
  */
-extern char *ssl_library;
-extern char *ssl_cert_file;
-extern char *ssl_key_file;
-extern char *ssl_ca_file;
-extern char *ssl_crl_file;
-extern char *ssl_crl_dir;
-extern char *ssl_dh_params_file;
+extern PGDLLIMPORT char *ssl_library;
+extern PGDLLIMPORT char *ssl_cert_file;
+extern PGDLLIMPORT char *ssl_key_file;
+extern PGDLLIMPORT char *ssl_ca_file;
+extern PGDLLIMPORT char *ssl_crl_file;
+extern PGDLLIMPORT char *ssl_crl_dir;
+extern PGDLLIMPORT char *ssl_dh_params_file;
 extern PGDLLIMPORT char *ssl_passphrase_command;
 extern PGDLLIMPORT bool ssl_passphrase_command_supports_reload;
 #ifdef USE_SSL
-extern bool ssl_loaded_verify_locations;
+extern PGDLLIMPORT bool ssl_loaded_verify_locations;
 #endif
 
 extern int	secure_initialize(bool isServerStart);
@@ -119,11 +121,11 @@ extern ssize_t secure_open_gssapi(Port *port);
 #endif
 
 /* GUCs */
-extern char *SSLCipherSuites;
-extern char *SSLECDHCurve;
-extern bool SSLPreferServerCiphers;
-extern int	ssl_min_protocol_version;
-extern int	ssl_max_protocol_version;
+extern PGDLLIMPORT char *SSLCipherSuites;
+extern PGDLLIMPORT char *SSLECDHCurve;
+extern PGDLLIMPORT bool SSLPreferServerCiphers;
+extern PGDLLIMPORT int ssl_min_protocol_version;
+extern PGDLLIMPORT int ssl_max_protocol_version;
 
 enum ssl_protocol_versions
 {

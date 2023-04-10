@@ -3,7 +3,7 @@
  * parse_expr.c
  *	  handle expressions in parser
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -482,6 +482,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 		case EXPR_KIND_INSERT_TARGET:
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
+		case EXPR_KIND_MERGE_WHEN:
 		case EXPR_KIND_GROUP_BY:
 		case EXPR_KIND_ORDER_BY:
 		case EXPR_KIND_DISTINCT_ON:
@@ -1121,6 +1122,11 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 		allexprs = list_concat(list_make1(lexpr), rnonvars);
 		scalar_type = select_common_type(pstate, allexprs, NULL, NULL);
 
+		/* We have to verify that the selected type actually works */
+		if (OidIsValid(scalar_type) &&
+			!verify_common_type(scalar_type, allexprs))
+			scalar_type = InvalidOid;
+
 		/*
 		 * Do we have an array type to use?  Aside from the case where there
 		 * isn't one, we don't risk using ScalarArrayOpExpr when the common
@@ -1683,8 +1689,8 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 
 	/*
 	 * Check to see if the sublink is in an invalid place within the query. We
-	 * allow sublinks everywhere in SELECT/INSERT/UPDATE/DELETE, but generally
-	 * not in utility statements.
+	 * allow sublinks everywhere in SELECT/INSERT/UPDATE/DELETE/MERGE, but
+	 * generally not in utility statements.
 	 */
 	err = NULL;
 	switch (pstate->p_expr_kind)
@@ -1712,6 +1718,7 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 		case EXPR_KIND_INSERT_TARGET:
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
+		case EXPR_KIND_MERGE_WHEN:
 		case EXPR_KIND_GROUP_BY:
 		case EXPR_KIND_ORDER_BY:
 		case EXPR_KIND_DISTINCT_ON:
@@ -2080,6 +2087,14 @@ transformRowExpr(ParseState *pstate, RowExpr *r, bool allowDefault)
 	/* Transform the field expressions */
 	newr->args = transformExpressionList(pstate, r->args,
 										 pstate->p_expr_kind, allowDefault);
+
+	/* Disallow more columns than will fit in a tuple */
+	if (list_length(newr->args) > MaxTupleAttributeNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_COLUMNS),
+				 errmsg("ROW expressions can have at most %d entries",
+						MaxTupleAttributeNumber),
+				 parser_errposition(pstate, r->location)));
 
 	/* Barring later casting, we consider the type RECORD */
 	newr->row_typeid = RECORDOID;
@@ -3039,6 +3054,8 @@ ParseExprKindName(ParseExprKind exprKind)
 		case EXPR_KIND_UPDATE_SOURCE:
 		case EXPR_KIND_UPDATE_TARGET:
 			return "UPDATE";
+		case EXPR_KIND_MERGE_WHEN:
+			return "MERGE WHEN";
 		case EXPR_KIND_GROUP_BY:
 			return "GROUP BY";
 		case EXPR_KIND_ORDER_BY:

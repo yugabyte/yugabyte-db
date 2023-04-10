@@ -3,7 +3,7 @@
  * lsyscache.c
  *	  Convenience routines for common queries in the system catalog cache.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1129,8 +1129,13 @@ get_constraint_name(Oid conoid)
  *		Given the OID of a unique, primary-key, or exclusion constraint,
  *		return the OID of the underlying index.
  *
- * Return InvalidOid if the index couldn't be found; this suggests the
- * given OID is bogus, but we leave it to caller to decide what to do.
+ * Returns InvalidOid if the constraint could not be found or is of
+ * the wrong type.
+ *
+ * The intent of this function is to return the index "owned" by the
+ * specified constraint.  Therefore we must check contype, since some
+ * pg_constraint entries (e.g. for foreign-key constraints) store the
+ * OID of an index that is referenced but not owned by the constraint.
  */
 Oid
 get_constraint_index(Oid conoid)
@@ -1143,7 +1148,12 @@ get_constraint_index(Oid conoid)
 		Form_pg_constraint contup = (Form_pg_constraint) GETSTRUCT(tp);
 		Oid			result;
 
-		result = contup->conindid;
+		if (contup->contype == CONSTRAINT_UNIQUE ||
+			contup->contype == CONSTRAINT_PRIMARY ||
+			contup->contype == CONSTRAINT_EXCLUSION)
+			result = contup->conindid;
+		else
+			result = InvalidOid;
 		ReleaseSysCache(tp);
 		return result;
 	}
@@ -3469,7 +3479,7 @@ Oid
 get_index_column_opclass(Oid index_oid, int attno)
 {
 	HeapTuple	tuple;
-	Form_pg_index rd_index PG_USED_FOR_ASSERTS_ONLY;
+	Form_pg_index rd_index;
 	Datum		datum;
 	bool		isnull;
 	oidvector  *indclass;

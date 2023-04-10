@@ -172,7 +172,7 @@
  *
  *			Jan Wieck
  *
- * Copyright (c) 1999-2021, PostgreSQL Global Development Group
+ * Copyright (c) 1999-2022, PostgreSQL Global Development Group
  *
  * src/common/pg_lzcompress.c
  * ----------
@@ -825,7 +825,7 @@ pglz_decompress(const char *source, int32 slen, char *dest,
 
 
 /* ----------
- * pglz_max_compressed_size -
+ * pglz_maximum_compressed_size -
  *
  *		Calculate the maximum compressed size for a given amount of raw data.
  *		Return the maximum size, or total compressed size if maximum size is

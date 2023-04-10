@@ -3,7 +3,7 @@
  * nodeFuncs.c
  *		Various general-purpose manipulations of Node trees
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -736,6 +736,12 @@ expression_returns_set_walker(Node *node, void *context)
 			return true;
 		/* else fall through to check args */
 	}
+
+	/*
+	 * If you add any more cases that return sets, also fix
+	 * expression_returns_set_rows() in clauses.c and IS_SRF_CALL() in
+	 * tlist.c.
+	 */
 
 	/* Avoid recursion for some cases that parser checks not to return a set */
 	if (IsA(node, Aggref))
@@ -2212,6 +2218,26 @@ expression_tree_walker(Node *node,
 					return true;
 			}
 			break;
+		case T_PartitionBoundSpec:
+			{
+				PartitionBoundSpec *pbs = (PartitionBoundSpec *) node;
+
+				if (walker(pbs->listdatums, context))
+					return true;
+				if (walker(pbs->lowerdatums, context))
+					return true;
+				if (walker(pbs->upperdatums, context))
+					return true;
+			}
+			break;
+		case T_PartitionRangeDatum:
+			{
+				PartitionRangeDatum *prd = (PartitionRangeDatum *) node;
+
+				if (walker(prd->value, context))
+					return true;
+			}
+			break;
 		case T_List:
 			foreach(temp, (List *) node)
 			{
@@ -2242,6 +2268,16 @@ expression_tree_walker(Node *node,
 				if (walker(onconflict->onConflictWhere, context))
 					return true;
 				if (walker(onconflict->exclRelTlist, context))
+					return true;
+			}
+			break;
+		case T_MergeAction:
+			{
+				MergeAction *action = (MergeAction *) node;
+
+				if (walker(action->qual, context))
+					return true;
+				if (walker(action->targetList, context))
 					return true;
 			}
 			break;
@@ -2790,6 +2826,8 @@ query_tree_walker(Query *query,
 		return true;
 	if (walker((Node *) query->onConflict, context))
 		return true;
+	if (walker((Node *) query->mergeActionList, context))
+		return true;
 	if (walker((Node *) query->returningList, context))
 		return true;
 	if (walker((Node *) query->jointree, context))
@@ -3024,11 +3062,6 @@ expression_tree_mutator(Node *node,
 
 #define FLATCOPY(newnode, node, nodetype)  \
 	( (newnode) = (nodetype *) palloc(sizeof(nodetype)), \
-	  memcpy((newnode), (node), sizeof(nodetype)) )
-
-#define CHECKFLATCOPY(newnode, node, nodetype)	\
-	( AssertMacro(IsA((node), nodetype)), \
-	  (newnode) = (nodetype *) palloc(sizeof(nodetype)), \
 	  memcpy((newnode), (node), sizeof(nodetype)) )
 
 #define MUTATE(newfield, oldfield, fieldtype)  \
@@ -3519,6 +3552,28 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_PartitionBoundSpec:
+			{
+				PartitionBoundSpec *pbs = (PartitionBoundSpec *) node;
+				PartitionBoundSpec *newnode;
+
+				FLATCOPY(newnode, pbs, PartitionBoundSpec);
+				MUTATE(newnode->listdatums, pbs->listdatums, List *);
+				MUTATE(newnode->lowerdatums, pbs->lowerdatums, List *);
+				MUTATE(newnode->upperdatums, pbs->upperdatums, List *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_PartitionRangeDatum:
+			{
+				PartitionRangeDatum *prd = (PartitionRangeDatum *) node;
+				PartitionRangeDatum *newnode;
+
+				FLATCOPY(newnode, prd, PartitionRangeDatum);
+				MUTATE(newnode->value, prd->value, Node *);
+				return (Node *) newnode;
+			}
+			break;
 		case T_List:
 			{
 				/*
@@ -3561,6 +3616,18 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->onConflictSet, oc->onConflictSet, List *);
 				MUTATE(newnode->onConflictWhere, oc->onConflictWhere, Node *);
 				MUTATE(newnode->exclRelTlist, oc->exclRelTlist, List *);
+
+				return (Node *) newnode;
+			}
+			break;
+		case T_MergeAction:
+			{
+				MergeAction *action = (MergeAction *) node;
+				MergeAction *newnode;
+
+				FLATCOPY(newnode, action, MergeAction);
+				MUTATE(newnode->qual, action->qual, Node *);
+				MUTATE(newnode->targetList, action->targetList, List *);
 
 				return (Node *) newnode;
 			}
@@ -3730,9 +3797,9 @@ expression_tree_mutator(Node *node,
  * which is the bitwise OR of flag values to suppress mutating of
  * indicated items.  (More flag bits may be added as needed.)
  *
- * Normally the Query node itself is copied, but some callers want it to be
- * modified in-place; they must pass QTW_DONT_COPY_QUERY in flags.  All
- * modified substructure is safely copied in any case.
+ * Normally the top-level Query node itself is copied, but some callers want
+ * it to be modified in-place; they must pass QTW_DONT_COPY_QUERY in flags.
+ * All modified substructure is safely copied in any case.
  */
 Query *
 query_tree_mutator(Query *query,
@@ -3753,6 +3820,7 @@ query_tree_mutator(Query *query,
 	MUTATE(query->targetList, query->targetList, List *);
 	MUTATE(query->withCheckOptions, query->withCheckOptions, List *);
 	MUTATE(query->onConflict, query->onConflict, OnConflictExpr *);
+	MUTATE(query->mergeActionList, query->mergeActionList, List *);
 	MUTATE(query->returningList, query->returningList, List *);
 	MUTATE(query->jointree, query->jointree, FromExpr *);
 	MUTATE(query->setOperations, query->setOperations, Node *);
@@ -3847,10 +3915,7 @@ range_table_mutator(List *rtable,
 				break;
 			case RTE_SUBQUERY:
 				if (!(flags & QTW_IGNORE_RT_SUBQUERIES))
-				{
-					CHECKFLATCOPY(newrte->subquery, rte->subquery, Query);
-					MUTATE(newrte->subquery, newrte->subquery, Query *);
-				}
+					MUTATE(newrte->subquery, rte->subquery, Query *);
 				else
 				{
 					/* else, copy RT subqueries as-is */
@@ -3945,9 +4010,9 @@ query_or_expression_tree_mutator(Node *node,
  * boundaries: we descend to everything that's possibly interesting.
  *
  * Currently, the node type coverage here extends only to DML statements
- * (SELECT/INSERT/UPDATE/DELETE) and nodes that can appear in them, because
- * this is used mainly during analysis of CTEs, and only DML statements can
- * appear in CTEs.
+ * (SELECT/INSERT/UPDATE/DELETE/MERGE) and nodes that can appear in them,
+ * because this is used mainly during analysis of CTEs, and only DML
+ * statements can appear in CTEs.
  */
 bool
 raw_expression_tree_walker(Node *node,
@@ -3973,6 +4038,7 @@ raw_expression_tree_walker(Node *node,
 		case T_SQLValueFunction:
 		case T_Integer:
 		case T_Float:
+		case T_Boolean:
 		case T_String:
 		case T_BitString:
 		case T_ParamRef:
@@ -4123,6 +4189,34 @@ raw_expression_tree_walker(Node *node,
 				if (walker(stmt->returningList, context))
 					return true;
 				if (walker(stmt->withClause, context))
+					return true;
+			}
+			break;
+		case T_MergeStmt:
+			{
+				MergeStmt  *stmt = (MergeStmt *) node;
+
+				if (walker(stmt->relation, context))
+					return true;
+				if (walker(stmt->sourceRelation, context))
+					return true;
+				if (walker(stmt->joinCondition, context))
+					return true;
+				if (walker(stmt->mergeWhenClauses, context))
+					return true;
+				if (walker(stmt->withClause, context))
+					return true;
+			}
+			break;
+		case T_MergeWhenClause:
+			{
+				MergeWhenClause *mergeWhenClause = (MergeWhenClause *) node;
+
+				if (walker(mergeWhenClause->condition, context))
+					return true;
+				if (walker(mergeWhenClause->targetList, context))
+					return true;
+				if (walker(mergeWhenClause->values, context))
 					return true;
 			}
 			break;

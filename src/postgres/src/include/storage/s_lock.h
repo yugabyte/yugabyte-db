@@ -86,7 +86,7 @@
  *	when using the SysV semaphore code.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	  src/include/storage/s_lock.h
@@ -337,31 +337,25 @@ tas(volatile slock_t *lock)
 
 #define S_UNLOCK(lock) __sync_lock_release(lock)
 
-#endif	 /* HAVE_GCC__SYNC_INT32_TAS */
-#endif	 /* __arm__ || __arm || __aarch64__ || __aarch64 */
-
-
 /*
- * RISC-V likewise uses __sync_lock_test_and_set(int *, int) if available.
+ * Using an ISB instruction to delay in spinlock loops appears beneficial on
+ * high-core-count ARM64 processors.  It seems mostly a wash for smaller gear,
+ * and ISB doesn't exist at all on pre-v7 ARM chips.
  */
-#if defined(__riscv)
-#ifdef HAVE_GCC__SYNC_INT32_TAS
-#define HAS_TEST_AND_SET
+#if defined(__aarch64__) || defined(__aarch64)
 
-#define TAS(lock) tas(lock)
+#define SPIN_DELAY() spin_delay()
 
-typedef int slock_t;
-
-static __inline__ int
-tas(volatile slock_t *lock)
+static __inline__ void
+spin_delay(void)
 {
-	return __sync_lock_test_and_set(lock, 1);
+	__asm__ __volatile__(
+		" isb;				\n");
 }
 
-#define S_UNLOCK(lock) __sync_lock_release(lock)
-
+#endif	 /* __aarch64__ || __aarch64 */
 #endif	 /* HAVE_GCC__SYNC_INT32_TAS */
-#endif	 /* __riscv */
+#endif	 /* __arm__ || __arm || __aarch64__ || __aarch64 */
 
 
 /* S/390 and S/390x Linux (32- and 64-bit zSeries) */
@@ -748,6 +742,51 @@ tas(volatile slock_t *lock)
 typedef unsigned char slock_t;
 #endif
 
+
+/*
+ * If we have no platform-specific knowledge, but we found that the compiler
+ * provides __sync_lock_test_and_set(), use that.  Prefer the int-width
+ * version over the char-width version if we have both, on the rather dubious
+ * grounds that that's known to be more likely to work in the ARM ecosystem.
+ * (But we dealt with ARM above.)
+ */
+#if !defined(HAS_TEST_AND_SET)
+
+#if defined(HAVE_GCC__SYNC_INT32_TAS)
+#define HAS_TEST_AND_SET
+
+#define TAS(lock) tas(lock)
+
+typedef int slock_t;
+
+static __inline__ int
+tas(volatile slock_t *lock)
+{
+	return __sync_lock_test_and_set(lock, 1);
+}
+
+#define S_UNLOCK(lock) __sync_lock_release(lock)
+
+#elif defined(HAVE_GCC__SYNC_CHAR_TAS)
+#define HAS_TEST_AND_SET
+
+#define TAS(lock) tas(lock)
+
+typedef char slock_t;
+
+static __inline__ int
+tas(volatile slock_t *lock)
+{
+	return __sync_lock_test_and_set(lock, 1);
+}
+
+#define S_UNLOCK(lock) __sync_lock_release(lock)
+
+#endif	 /* HAVE_GCC__SYNC_INT32_TAS */
+
+#endif	/* !defined(HAS_TEST_AND_SET) */
+
+
 /*
  * Default implementation of S_UNLOCK() for gcc/icc.
  *
@@ -1025,7 +1064,7 @@ extern int	tas(volatile slock_t *lock);		/* in port/.../tas.s, or
 #define TAS_SPIN(lock)	TAS(lock)
 #endif	 /* TAS_SPIN */
 
-extern slock_t dummy_spinlock;
+extern PGDLLIMPORT slock_t dummy_spinlock;
 
 /*
  * Platform-independent out-of-line support routines
@@ -1065,7 +1104,7 @@ init_spin_delay(SpinDelayStatus *status,
 }
 
 #define init_local_spin_delay(status) init_spin_delay(status, __FILE__, __LINE__, PG_FUNCNAME_MACRO)
-void perform_spin_delay(SpinDelayStatus *status);
-void finish_spin_delay(SpinDelayStatus *status);
+extern void perform_spin_delay(SpinDelayStatus *status);
+extern void finish_spin_delay(SpinDelayStatus *status);
 
 #endif	 /* S_LOCK_H */

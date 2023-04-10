@@ -6,7 +6,7 @@
  * This module deals with SubLinks and CTEs, but not subquery RTEs (i.e.,
  * not sub-SELECT-in-FROM cases).
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -61,7 +61,6 @@ typedef struct inline_cte_walker_context
 {
 	const char *ctename;		/* name and relative level of target CTE */
 	int			levelsup;
-	int			refcount;		/* number of remaining references */
 	Query	   *ctequery;		/* query to substitute */
 } inline_cte_walker_context;
 
@@ -850,10 +849,10 @@ hash_ok_operator(OpExpr *expr)
 	/* quick out if not a binary operator */
 	if (list_length(expr->args) != 2)
 		return false;
-	if (opid == ARRAY_EQ_OP)
+	if (opid == ARRAY_EQ_OP ||
+		opid == RECORD_EQ_OP)
 	{
-		/* array_eq is strict, but must check input type to ensure hashable */
-		/* XXX record_eq will need same treatment when it becomes hashable */
+		/* these are strict, but must check input type to ensure hashable */
 		Node	   *leftarg = linitial(expr->args);
 
 		return op_hashjoinable(opid, exprType(leftarg));
@@ -1157,13 +1156,9 @@ inline_cte(PlannerInfo *root, CommonTableExpr *cte)
 	context.ctename = cte->ctename;
 	/* Start at levelsup = -1 because we'll immediately increment it */
 	context.levelsup = -1;
-	context.refcount = cte->cterefcount;
 	context.ctequery = castNode(Query, cte->ctequery);
 
 	(void) inline_cte_walker((Node *) root->parse, &context);
-
-	/* Assert we replaced all references */
-	Assert(context.refcount == 0);
 }
 
 static bool
@@ -1226,9 +1221,6 @@ inline_cte_walker(Node *node, inline_cte_walker_context *context)
 			rte->coltypes = NIL;
 			rte->coltypmods = NIL;
 			rte->colcollations = NIL;
-
-			/* Count the number of replacements we've done */
-			context->refcount--;
 		}
 
 		return false;
@@ -2344,6 +2336,8 @@ finalize_plan(PlannerInfo *root, Plan *plan,
 
 		case T_IndexOnlyScan:
 			finalize_primnode((Node *) ((IndexOnlyScan *) plan)->indexqual,
+							  &context);
+			finalize_primnode((Node *) ((IndexOnlyScan *) plan)->recheckqual,
 							  &context);
 			finalize_primnode((Node *) ((IndexOnlyScan *) plan)->indexorderby,
 							  &context);

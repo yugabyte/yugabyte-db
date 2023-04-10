@@ -4,7 +4,7 @@
  *	  various support functions for SP-GiST
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -25,6 +25,7 @@
 #include "catalog/pg_amop.h"
 #include "commands/vacuum.h"
 #include "nodes/nodeFuncs.h"
+#include "parser/parse_coerce.h"
 #include "storage/bufmgr.h"
 #include "storage/indexfsm.h"
 #include "storage/lmgr.h"
@@ -218,8 +219,19 @@ spgGetCache(Relation index)
 		 * correctly, so believe leafType if it's given.)
 		 */
 		if (!OidIsValid(cache->config.leafType))
+		{
 			cache->config.leafType =
 				TupleDescAttr(RelationGetDescr(index), spgKeyColumn)->atttypid;
+
+			/*
+			 * If index column type is binary-coercible to atttype (for
+			 * example, it's a domain over atttype), treat it as plain atttype
+			 * to avoid thinking we need to compress.
+			 */
+			if (cache->config.leafType != atttype &&
+				IsBinaryCoercible(cache->config.leafType, atttype))
+				cache->config.leafType = atttype;
+		}
 
 		/* Get the information we need about each relevant datatype */
 		fillTypeDesc(&cache->attType, atttype);
@@ -734,7 +746,6 @@ spgoptions(Datum reloptions, bool validate)
 									  RELOPT_KIND_SPGIST,
 									  sizeof(SpGistOptions),
 									  tab, lengthof(tab));
-
 }
 
 /*
@@ -1290,7 +1301,7 @@ spgproperty(Oid index_oid, int attno,
 	/*
 	 * Currently, SP-GiST distance-ordered scans require that there be a
 	 * distance operator in the opclass with the default types. So we assume
-	 * that if such a operator exists, then there's a reason for it.
+	 * that if such an operator exists, then there's a reason for it.
 	 */
 
 	/* First we need to know the column's opclass. */

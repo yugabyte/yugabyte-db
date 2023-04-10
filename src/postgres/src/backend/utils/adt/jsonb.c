@@ -3,7 +3,7 @@
  * jsonb.c
  *		I/O routines for jsonb type
  *
- * Copyright (c) 2014-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/adt/jsonb.c
@@ -861,7 +861,6 @@ datum_to_jsonb(Datum val, bool is_null, JsonbInState *result,
 					sem.object_field_start = jsonb_in_object_field_start;
 
 					pg_parse_json_or_ereport(lex, &sem);
-
 				}
 				break;
 			case JSONBTYPE_JSONB:

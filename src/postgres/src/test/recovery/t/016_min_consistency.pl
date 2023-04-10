@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test for checking consistency of on-disk pages for a cluster with
 # the minimum recovery LSN, ensuring that the updates happen across
@@ -9,9 +9,9 @@
 
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 1;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Find the largest LSN in the set of pages part of the given relation
 # file.  This is used for offline checks of page consistency.  The LSN
@@ -43,7 +43,7 @@ sub find_largest_lsn
 }
 
 # Initialize primary node
-my $primary = PostgresNode->new('primary');
+my $primary = PostgreSQL::Test::Cluster->new('primary');
 $primary->init(allows_streaming => 1);
 
 # Set shared_buffers to a very low value to enforce discard and flush
@@ -61,7 +61,7 @@ $primary->start;
 
 # setup/start a standby
 $primary->backup('bkp');
-my $standby = PostgresNode->new('standby');
+my $standby = PostgreSQL::Test::Cluster->new('standby');
 $standby->init_from_backup($primary, 'bkp', has_streaming => 1);
 $standby->start;
 
@@ -78,7 +78,7 @@ $primary->safe_psql('postgres', 'CHECKPOINT;');
 $primary->safe_psql('postgres', 'UPDATE test1 SET a = a + 1;');
 
 # Wait for last record to have been replayed on the standby.
-$primary->wait_for_catchup($standby, 'replay', $primary->lsn('insert'));
+$primary->wait_for_catchup($standby);
 
 # Fill in the standby's shared buffers with the data filled in
 # previously.
@@ -99,7 +99,7 @@ my $relfilenode = $primary->safe_psql('postgres',
 	"SELECT pg_relation_filepath('test1'::regclass);");
 
 # Wait for last record to have been replayed on the standby.
-$primary->wait_for_catchup($standby, 'replay', $primary->lsn('insert'));
+$primary->wait_for_catchup($standby);
 
 # Issue a restart point on the standby now, which makes the checkpointer
 # update minRecoveryPoint.
@@ -139,3 +139,5 @@ die "No minRecoveryPoint in control file found\n"
 # the pages on disk.
 ok($offline_recovery_lsn ge $offline_max_lsn,
 	"Check offline that table data is consistent with minRecoveryPoint");
+
+done_testing();

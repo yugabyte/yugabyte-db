@@ -129,10 +129,6 @@ SELECT l1.s, l2.s FROM LINE_TBL l1, LINE_TBL l2 WHERE l1.s ?-| l2.s;
 -- Distance to line
 SELECT l1.s, l2.s, l1.s <-> l2.s FROM LINE_TBL l1, LINE_TBL l2;
 
--- Distance to box
-SELECT l.s, b.f1, l.s <-> b.f1 FROM LINE_TBL l, BOX_TBL b;
-SELECT l.s, b.f1, b.f1 <-> l.s FROM LINE_TBL l, BOX_TBL b;
-
 -- Intersect with line
 SELECT l1.s, l2.s FROM LINE_TBL l1, LINE_TBL l2 WHERE l1.s ?# l2.s;
 
@@ -144,9 +140,6 @@ SELECT l1.s, l2.s, l1.s # l2.s FROM LINE_TBL l1, LINE_TBL l2;
 
 -- Closest point to line segment
 SELECT l.s, l1.s, l.s ## l1.s FROM LINE_TBL l, LSEG_TBL l1;
-
--- Closest point to box
-SELECT l.s, b.f1, l.s ## b.f1 FROM LINE_TBL l, BOX_TBL b;
 
 --
 -- Line segments
@@ -212,9 +205,6 @@ SELECT l.s, b.f1 FROM LSEG_TBL l, BOX_TBL b WHERE l.s ?# b.f1;
 
 -- Intersection point with line segment
 SELECT l1.s, l2.s, l1.s # l2.s FROM LSEG_TBL l1, LSEG_TBL l2;
-
--- Closest point to line
-SELECT l.s, l1.s, l.s ## l1.s FROM LSEG_TBL l, LINE_TBL l1;
 
 -- Closest point to line segment
 SELECT l1.s, l2.s, l1.s ## l2.s FROM LSEG_TBL l1, LSEG_TBL l2;
@@ -284,9 +274,6 @@ SELECT f1, area(f1) FROM PATH_TBL;
 
 -- Length
 SELECT f1, @-@ f1 FROM PATH_TBL;
-
--- Center
-SELECT f1, @@ f1 FROM PATH_TBL;
 
 -- To polygon
 SELECT f1, f1::polygon FROM PATH_TBL WHERE isclosed(f1);
@@ -510,3 +497,29 @@ SELECT c.f1, p.f1, c.f1 / p.f1 FROM CIRCLE_TBL c, POINT_TBL p WHERE p.f1 ~= '(0,
 
 -- Distance to polygon
 SELECT c.f1, p.f1, c.f1 <-> p.f1 FROM CIRCLE_TBL c, POLYGON_TBL p;
+
+-- Check index behavior for circles
+
+CREATE INDEX gcircleind ON circle_tbl USING gist (f1);
+
+SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
+    ORDER BY area(f1);
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
+    ORDER BY area(f1);
+SELECT * FROM circle_tbl WHERE f1 && circle(point(1,-2), 1)
+    ORDER BY area(f1);
+
+-- Check index behavior for polygons
+
+CREATE INDEX gpolygonind ON polygon_tbl USING gist (f1);
+
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
+    ORDER BY (poly_center(f1))[0];
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
+    ORDER BY (poly_center(f1))[0];
+SELECT * FROM polygon_tbl WHERE f1 @> '((1,1),(2,2),(2,1))'::polygon
+    ORDER BY (poly_center(f1))[0];

@@ -3,7 +3,7 @@
  * outfuncs.c
  *	  Output functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -124,11 +124,18 @@ static void outChar(StringInfo str, char c);
 			appendStringInfo(str, " %u", node->fldname[i]); \
 	} while(0)
 
+/*
+ * This macro supports the case that the field is NULL.  For the other array
+ * macros, that is currently not needed.
+ */
 #define WRITE_INDEX_ARRAY(fldname, len) \
 	do { \
 		appendStringInfoString(str, " :" CppAsString(fldname) " "); \
-		for (int i = 0; i < len; i++) \
-			appendStringInfo(str, " %u", node->fldname[i]); \
+		if (node->fldname) \
+			for (int i = 0; i < len; i++) \
+				appendStringInfo(str, " %u", node->fldname[i]); \
+		else \
+			appendStringInfoString(str, "<>"); \
 	} while(0)
 
 #define WRITE_INT_ARRAY(fldname, len) \
@@ -430,6 +437,8 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(onConflictWhere);
 	WRITE_UINT_FIELD(exclRelRTI);
 	WRITE_NODE_FIELD(exclRelTlist);
+	WRITE_NODE_FIELD(mergeActionLists);
+
 	WRITE_NODE_FIELD(ybPushdownTlist);
 	WRITE_NODE_FIELD(ybReturningColumns);
 	WRITE_NODE_FIELD(ybColumnRefs);
@@ -601,6 +610,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 
 	WRITE_OID_FIELD(indexid);
 	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(recheckqual);
 	WRITE_NODE_FIELD(indexorderby);
 	WRITE_NODE_FIELD(indextlist);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
@@ -659,6 +669,7 @@ _outSubqueryScan(StringInfo str, const SubqueryScan *node)
 	_outScanInfo(str, (const Scan *) node);
 
 	WRITE_NODE_FIELD(subplan);
+	WRITE_ENUM_FIELD(scanstatus, SubqueryScanStatus);
 }
 
 static void
@@ -860,11 +871,14 @@ _outWindowAgg(StringInfo str, const WindowAgg *node)
 	WRITE_INT_FIELD(frameOptions);
 	WRITE_NODE_FIELD(startOffset);
 	WRITE_NODE_FIELD(endOffset);
+	WRITE_NODE_FIELD(runCondition);
+	WRITE_NODE_FIELD(runConditionOrig);
 	WRITE_OID_FIELD(startInRangeFunc);
 	WRITE_OID_FIELD(endInRangeFunc);
 	WRITE_OID_FIELD(inRangeColl);
 	WRITE_BOOL_FIELD(inRangeAsc);
 	WRITE_BOOL_FIELD(inRangeNullsFirst);
+	WRITE_BOOL_FIELD(topWindow);
 }
 
 static void
@@ -900,7 +914,9 @@ _outMemoize(StringInfo str, const Memoize *node)
 	WRITE_OID_ARRAY(collations, node->numKeys);
 	WRITE_NODE_FIELD(param_exprs);
 	WRITE_BOOL_FIELD(singlerow);
+	WRITE_BOOL_FIELD(binary_mode);
 	WRITE_UINT_FIELD(est_entries);
+	WRITE_BITMAPSET_FIELD(keyparamids);
 }
 
 static void
@@ -2017,6 +2033,7 @@ _outMemoizePath(StringInfo str, const MemoizePath *node)
 	WRITE_NODE_FIELD(hash_operators);
 	WRITE_NODE_FIELD(param_exprs);
 	WRITE_BOOL_FIELD(singlerow);
+	WRITE_BOOL_FIELD(binary_mode);
 	WRITE_FLOAT_FIELD(calls, "%.0f");
 	WRITE_UINT_FIELD(est_entries);
 }
@@ -2188,6 +2205,8 @@ _outWindowAggPath(StringInfo str, const WindowAggPath *node)
 
 	WRITE_NODE_FIELD(subpath);
 	WRITE_NODE_FIELD(winclause);
+	WRITE_NODE_FIELD(qual);
+	WRITE_BOOL_FIELD(topwindow);
 }
 
 static void
@@ -2252,6 +2271,7 @@ _outModifyTablePath(StringInfo str, const ModifyTablePath *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(onconflict);
 	WRITE_INT_FIELD(epqParam);
+	WRITE_NODE_FIELD(mergeActionLists);
 }
 
 static void
@@ -2616,7 +2636,8 @@ _outRestrictInfo(StringInfo str, const RestrictInfo *node)
 	WRITE_NODE_FIELD(right_em);
 	WRITE_BOOL_FIELD(outer_is_left);
 	WRITE_OID_FIELD(hashjoinoperator);
-	WRITE_OID_FIELD(hasheqoperator);
+	WRITE_OID_FIELD(left_hasheqoperator);
+	WRITE_OID_FIELD(right_hasheqoperator);
 }
 
 static void
@@ -2822,6 +2843,7 @@ _outIndexStmt(StringInfo str, const IndexStmt *node)
 	WRITE_UINT_FIELD(oldCreateSubid);
 	WRITE_UINT_FIELD(oldFirstRelfilenodeSubid);
 	WRITE_BOOL_FIELD(unique);
+	WRITE_BOOL_FIELD(nulls_not_distinct);
 	WRITE_BOOL_FIELD(primary);
 	WRITE_BOOL_FIELD(isconstraint);
 	WRITE_BOOL_FIELD(deferrable);
@@ -3144,6 +3166,8 @@ _outQuery(StringInfo str, const Query *node)
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(constraintDeps);
 	WRITE_NODE_FIELD(withCheckOptions);
+	WRITE_NODE_FIELD(mergeActionList);
+	WRITE_BOOL_FIELD(mergeUseOuterJoin);
 	WRITE_LOCATION_FIELD(stmt_location);
 	WRITE_INT_FIELD(stmt_len);
 }
@@ -3194,6 +3218,7 @@ _outWindowClause(StringInfo str, const WindowClause *node)
 	WRITE_INT_FIELD(frameOptions);
 	WRITE_NODE_FIELD(startOffset);
 	WRITE_NODE_FIELD(endOffset);
+	WRITE_NODE_FIELD(runCondition);
 	WRITE_OID_FIELD(startInRangeFunc);
 	WRITE_OID_FIELD(endInRangeFunc);
 	WRITE_OID_FIELD(inRangeColl);
@@ -3270,6 +3295,32 @@ _outCommonTableExpr(StringInfo str, const CommonTableExpr *node)
 	WRITE_NODE_FIELD(ctecoltypes);
 	WRITE_NODE_FIELD(ctecoltypmods);
 	WRITE_NODE_FIELD(ctecolcollations);
+}
+
+static void
+_outMergeWhenClause(StringInfo str, const MergeWhenClause *node)
+{
+	WRITE_NODE_TYPE("MERGEWHENCLAUSE");
+
+	WRITE_BOOL_FIELD(matched);
+	WRITE_ENUM_FIELD(commandType, CmdType);
+	WRITE_ENUM_FIELD(override, OverridingKind);
+	WRITE_NODE_FIELD(condition);
+	WRITE_NODE_FIELD(targetList);
+	WRITE_NODE_FIELD(values);
+}
+
+static void
+_outMergeAction(StringInfo str, const MergeAction *node)
+{
+	WRITE_NODE_TYPE("MERGEACTION");
+
+	WRITE_BOOL_FIELD(matched);
+	WRITE_ENUM_FIELD(commandType, CmdType);
+	WRITE_ENUM_FIELD(override, OverridingKind);
+	WRITE_NODE_FIELD(qual);
+	WRITE_NODE_FIELD(targetList);
+	WRITE_NODE_FIELD(updateColnos);
 }
 
 static void
@@ -3468,29 +3519,35 @@ _outA_Expr(StringInfo str, const A_Expr *node)
 static void
 _outInteger(StringInfo str, const Integer *node)
 {
-	appendStringInfo(str, "%d", node->val);
+	appendStringInfo(str, "%d", node->ival);
 }
 
 static void
 _outFloat(StringInfo str, const Float *node)
 {
 	/*
-	 * We assume the value is a valid numeric literal and so does not
-	 * need quoting.
+	 * We assume the value is a valid numeric literal and so does not need
+	 * quoting.
 	 */
-	appendStringInfoString(str, node->val);
+	appendStringInfoString(str, node->fval);
+}
+
+static void
+_outBoolean(StringInfo str, const Boolean *node)
+{
+	appendStringInfoString(str, node->boolval ? "true" : "false");
 }
 
 static void
 _outString(StringInfo str, const String *node)
 {
 	/*
-	 * We use outToken to provide escaping of the string's content,
-	 * but we don't want it to do anything with an empty string.
+	 * We use outToken to provide escaping of the string's content, but we
+	 * don't want it to do anything with an empty string.
 	 */
 	appendStringInfoChar(str, '"');
-	if (node->val[0] != '\0')
-		outToken(str, node->val);
+	if (node->sval[0] != '\0')
+		outToken(str, node->sval);
 	appendStringInfoChar(str, '"');
 }
 
@@ -3498,7 +3555,7 @@ static void
 _outBitString(StringInfo str, const BitString *node)
 {
 	/* internal representation already has leading 'b' */
-	appendStringInfoString(str, node->val);
+	appendStringInfoString(str, node->bsval);
 }
 
 static void
@@ -3539,7 +3596,7 @@ _outA_Const(StringInfo str, const A_Const *node)
 	WRITE_NODE_TYPE("A_CONST");
 
 	if (node->isnull)
-		appendStringInfoString(str, "NULL");
+		appendStringInfoString(str, " NULL");
 	else
 	{
 		appendStringInfoString(str, " :val ");
@@ -3722,8 +3779,7 @@ _outConstraint(StringInfo str, const Constraint *node)
 
 		case CONSTR_IDENTITY:
 			appendStringInfoString(str, "IDENTITY");
-			WRITE_NODE_FIELD(raw_expr);
-			WRITE_STRING_FIELD(cooked_expr);
+			WRITE_NODE_FIELD(options);
 			WRITE_CHAR_FIELD(generated_when);
 			break;
 
@@ -3739,6 +3795,8 @@ _outConstraint(StringInfo str, const Constraint *node)
 			WRITE_BOOL_FIELD(is_no_inherit);
 			WRITE_NODE_FIELD(raw_expr);
 			WRITE_STRING_FIELD(cooked_expr);
+			WRITE_BOOL_FIELD(skip_validation);
+			WRITE_BOOL_FIELD(initially_valid);
 			break;
 
 		case CONSTR_PRIMARY:
@@ -3755,6 +3813,7 @@ _outConstraint(StringInfo str, const Constraint *node)
 
 		case CONSTR_UNIQUE:
 			appendStringInfoString(str, "UNIQUE");
+			WRITE_BOOL_FIELD(nulls_not_distinct);
 			WRITE_NODE_FIELD(keys);
 			WRITE_NODE_FIELD(including);
 			WRITE_NODE_FIELD(options);
@@ -3784,6 +3843,7 @@ _outConstraint(StringInfo str, const Constraint *node)
 			WRITE_CHAR_FIELD(fk_matchtype);
 			WRITE_CHAR_FIELD(fk_upd_action);
 			WRITE_CHAR_FIELD(fk_del_action);
+			WRITE_NODE_FIELD(fk_del_set_cols);
 			WRITE_NODE_FIELD(old_conpfeqop);
 			WRITE_OID_FIELD(old_pktable_oid);
 			WRITE_BOOL_FIELD(skip_validation);
@@ -3904,6 +3964,8 @@ outNode(StringInfo str, const void *obj)
 		_outInteger(str, (Integer *) obj);
 	else if (IsA(obj, Float))
 		_outFloat(str, (Float *) obj);
+	else if (IsA(obj, Boolean))
+		_outBoolean(str, (Boolean *) obj);
 	else if (IsA(obj, String))
 		_outString(str, (String *) obj);
 	else if (IsA(obj, BitString))
@@ -4491,6 +4553,12 @@ outNode(StringInfo str, const void *obj)
 				break;
 			case T_CommonTableExpr:
 				_outCommonTableExpr(str, obj);
+				break;
+			case T_MergeWhenClause:
+				_outMergeWhenClause(str, obj);
+				break;
+			case T_MergeAction:
+				_outMergeAction(str, obj);
 				break;
 			case T_SetOperationStmt:
 				_outSetOperationStmt(str, obj);

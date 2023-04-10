@@ -4,7 +4,7 @@
  *	  utilities routines for the postgres GiST index access method.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -19,6 +19,7 @@
 #include "access/htup_details.h"
 #include "access/reloptions.h"
 #include "catalog/pg_opclass.h"
+#include "common/pg_prng.h"
 #include "storage/indexfsm.h"
 #include "storage/lmgr.h"
 #include "utils/float.h"
@@ -507,7 +508,7 @@ gistchoose(Relation r, Page p, IndexTuple it,	/* it has compressed entry */
 			if (keep_current_best == -1)
 			{
 				/* we didn't make the random choice yet for this old best */
-				keep_current_best = (random() <= (MAX_RANDOM_VALUE / 2)) ? 1 : 0;
+				keep_current_best = pg_prng_bool(&pg_global_prng_state) ? 1 : 0;
 			}
 			if (keep_current_best == 0)
 			{
@@ -529,7 +530,7 @@ gistchoose(Relation r, Page p, IndexTuple it,	/* it has compressed entry */
 			if (keep_current_best == -1)
 			{
 				/* we didn't make the random choice yet for this old best */
-				keep_current_best = (random() <= (MAX_RANDOM_VALUE / 2)) ? 1 : 0;
+				keep_current_best = pg_prng_bool(&pg_global_prng_state) ? 1 : 0;
 			}
 			if (keep_current_best == 1)
 				break;

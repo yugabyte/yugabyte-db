@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 #
 # Test situation where a target data directory contains
@@ -32,15 +32,15 @@
 
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 3;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 use File::Copy;
 
-my $tmp_folder = TestLib::tempdir;
+my $tmp_folder = PostgreSQL::Test::Utils::tempdir;
 
-my $node_1 = PostgresNode->new('node_1');
+my $node_1 = PostgreSQL::Test::Cluster->new('node_1');
 $node_1->init(allows_streaming => 1);
 $node_1->append_conf(
 	'postgresql.conf', qq(
@@ -60,17 +60,16 @@ $node_1->safe_psql('postgres', "INSERT INTO public.bar VALUES ('in both')");
 my $backup_name = 'my_backup';
 $node_1->backup($backup_name);
 
-my $node_2 = PostgresNode->new('node_2');
+my $node_2 = PostgreSQL::Test::Cluster->new('node_2');
 $node_2->init_from_backup($node_1, $backup_name, has_streaming => 1);
 $node_2->start;
 
-my $node_3 = PostgresNode->new('node_3');
+my $node_3 = PostgreSQL::Test::Cluster->new('node_3');
 $node_3->init_from_backup($node_1, $backup_name, has_streaming => 1);
 $node_3->start;
 
 # Wait until node 3 has connected and caught up
-my $lsn = $node_1->lsn('insert');
-$node_1->wait_for_catchup('node_3', 'replay', $lsn);
+$node_1->wait_for_catchup('node_3');
 
 #
 # Swap the roles of node_1 and node_3, so that node_1 follows node_3.
@@ -106,8 +105,7 @@ $node_2->restart();
 #
 
 # make sure node_1 is full caught up with node_3 first
-$lsn = $node_3->lsn('insert');
-$node_3->wait_for_catchup('node_1', 'replay', $lsn);
+$node_3->wait_for_catchup('node_1');
 
 $node_1->promote;
 # Force a checkpoint after promotion, like earlier.
@@ -175,3 +173,5 @@ and this too), 'table foo after rewind');
 
 $result = $node_2->safe_psql('postgres', 'SELECT * FROM public.bar');
 is($result, qq(in both), 'table bar after rewind');
+
+done_testing();

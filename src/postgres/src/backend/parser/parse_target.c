@@ -3,7 +3,7 @@
  * parse_target.c
  *	  handle target lists
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -214,7 +214,9 @@ transformTargetList(ParseState *pstate, List *targetlist,
  * This is the identical transformation to transformTargetList, except that
  * the input list elements are bare expressions without ResTarget decoration,
  * and the output elements are likewise just expressions without TargetEntry
- * decoration.  We use this for ROW() and VALUES() constructs.
+ * decoration.  Also, we don't expect any multiassign constructs within the
+ * list, so there's nothing to do for that.  We use this for ROW() and
+ * VALUES() constructs.
  *
  * exprKind is not enough to tell us whether to allow SetToDefault, so
  * an additional flag is needed for that.
@@ -275,9 +277,6 @@ transformExpressionList(ParseState *pstate, List *exprlist,
 
 		result = lappend(result, e);
 	}
-
-	/* Shouldn't have any multiassign items here */
-	Assert(pstate->p_multiassign_exprs == NIL);
 
 	return result;
 }
@@ -1321,6 +1320,7 @@ ExpandAllTables(ParseState *pstate, int location)
 							 expandNSItemAttrs(pstate,
 											   nsitem,
 											   0,
+											   true,
 											   location));
 	}
 
@@ -1383,7 +1383,7 @@ ExpandSingleTable(ParseState *pstate, ParseNamespaceItem *nsitem,
 	if (make_target_entry)
 	{
 		/* expandNSItemAttrs handles permissions marking */
-		return expandNSItemAttrs(pstate, nsitem, sublevels_up, location);
+		return expandNSItemAttrs(pstate, nsitem, sublevels_up, true, location);
 	}
 	else
 	{

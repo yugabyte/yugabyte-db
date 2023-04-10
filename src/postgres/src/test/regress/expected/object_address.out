@@ -45,6 +45,7 @@ CREATE TRANSFORM FOR int LANGUAGE SQL (
 -- suppress warning that depends on wal_level
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION addr_pub FOR TABLE addr_nsp.gentable;
+CREATE PUBLICATION addr_pub_schema FOR TABLES IN SCHEMA addr_nsp;
 RESET client_min_messages;
 CREATE SUBSCRIPTION regress_addr_sub CONNECTION '' PUBLICATION bar WITH (connect = false, slot_name = NONE);
 WARNING:  tables were not subscribed, you will have to run ALTER SUBSCRIPTION ... REFRESH PUBLICATION to subscribe the tables
@@ -104,7 +105,7 @@ BEGIN
 		('text search template'), ('text search configuration'),
 		('policy'), ('user mapping'), ('default acl'), ('transform'),
 		('operator of access method'), ('function of access method'),
-		('publication relation')
+		('publication namespace'), ('publication relation')
 	LOOP
 		FOR names IN VALUES ('{eins}'), ('{addr_nsp, zwei}'), ('{eins, zwei, drei}')
 		LOOP
@@ -284,10 +285,10 @@ WARNING:  error for policy,{eins,zwei,drei},{}: schema "eins" does not exist
 WARNING:  error for policy,{eins,zwei,drei},{integer}: schema "eins" does not exist
 WARNING:  error for user mapping,{eins},{}: argument list length must be exactly 1
 WARNING:  error for user mapping,{eins},{integer}: user mapping for user "eins" on server "integer" does not exist
-WARNING:  error for user mapping,{addr_nsp,zwei},{}: argument list length must be exactly 1
-WARNING:  error for user mapping,{addr_nsp,zwei},{integer}: user mapping for user "addr_nsp" on server "integer" does not exist
-WARNING:  error for user mapping,{eins,zwei,drei},{}: argument list length must be exactly 1
-WARNING:  error for user mapping,{eins,zwei,drei},{integer}: user mapping for user "eins" on server "integer" does not exist
+WARNING:  error for user mapping,{addr_nsp,zwei},{}: name list length must be exactly 1
+WARNING:  error for user mapping,{addr_nsp,zwei},{integer}: name list length must be exactly 1
+WARNING:  error for user mapping,{eins,zwei,drei},{}: name list length must be exactly 1
+WARNING:  error for user mapping,{eins,zwei,drei},{integer}: name list length must be exactly 1
 WARNING:  error for default acl,{eins},{}: argument list length must be exactly 1
 WARNING:  error for default acl,{eins},{integer}: unrecognized default ACL object type "i"
 WARNING:  error for default acl,{addr_nsp,zwei},{}: argument list length must be exactly 1
@@ -312,6 +313,12 @@ WARNING:  error for function of access method,{addr_nsp,zwei},{}: name list leng
 WARNING:  error for function of access method,{addr_nsp,zwei},{integer}: name list length must be at least 3
 WARNING:  error for function of access method,{eins,zwei,drei},{}: argument list length must be exactly 2
 WARNING:  error for function of access method,{eins,zwei,drei},{integer}: argument list length must be exactly 2
+WARNING:  error for publication namespace,{eins},{}: argument list length must be exactly 1
+WARNING:  error for publication namespace,{eins},{integer}: schema "eins" does not exist
+WARNING:  error for publication namespace,{addr_nsp,zwei},{}: name list length must be exactly 1
+WARNING:  error for publication namespace,{addr_nsp,zwei},{integer}: name list length must be exactly 1
+WARNING:  error for publication namespace,{eins,zwei,drei},{}: name list length must be exactly 1
+WARNING:  error for publication namespace,{eins,zwei,drei},{integer}: name list length must be exactly 1
 WARNING:  error for publication relation,{eins},{}: argument list length must be exactly 1
 WARNING:  error for publication relation,{eins},{integer}: relation "eins" does not exist
 WARNING:  error for publication relation,{addr_nsp,zwei},{}: argument list length must be exactly 1
@@ -427,6 +434,7 @@ WITH objects (type, name, args) AS (VALUES
 				('transform', '{int}', '{sql}'),
 				('access method', '{btree}', '{}'),
 				('publication', '{addr_pub}', '{}'),
+				('publication namespace', '{addr_nsp}', '{addr_pub_schema}'),
 				('publication relation', '{addr_nsp, gentable}', '{addr_pub}'),
 				('subscription', '{regress_addr_sub}', '{}'),
 				('statistics object', '{addr_nsp, gentable_stat}', '{}')
@@ -490,7 +498,8 @@ SELECT (pg_identify_object(addr1.classid, addr1.objid, addr1.objsubid)).*,
  subscription              |            | regress_addr_sub  | regress_addr_sub                                                     | t
  publication               |            | addr_pub          | addr_pub                                                             | t
  publication relation      |            |                   | addr_nsp.gentable in publication addr_pub                            | t
-(49 rows)
+ publication namespace     |            |                   | addr_nsp in publication addr_pub_schema                              | t
+(50 rows)
 
 ---
 --- Cleanup resources
@@ -502,6 +511,7 @@ drop cascades to foreign table genftable
 drop cascades to server integer
 drop cascades to user mapping for regress_addr_user on server integer
 DROP PUBLICATION addr_pub;
+DROP PUBLICATION addr_pub_schema;
 DROP SUBSCRIPTION regress_addr_sub;
 DROP SCHEMA addr_nsp CASCADE;
 NOTICE:  drop cascades to 14 other objects
@@ -554,7 +564,7 @@ WITH objects (classid, objid, objsubid) AS (VALUES
     ('pg_namespace'::regclass, 0, 0), -- no schema
     ('pg_statistic_ext'::regclass, 0, 0), -- no statistics
     ('pg_ts_parser'::regclass, 0, 0), -- no TS parser
-    ('pg_ts_dict'::regclass, 0, 0), -- no TS dictionnary
+    ('pg_ts_dict'::regclass, 0, 0), -- no TS dictionary
     ('pg_ts_template'::regclass, 0, 0), -- no TS template
     ('pg_ts_config'::regclass, 0, 0), -- no TS configuration
     ('pg_authid'::regclass, 0, 0), -- no role

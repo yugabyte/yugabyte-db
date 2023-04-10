@@ -58,6 +58,23 @@ typedef enum _teSection
 	SECTION_POST_DATA			/* stuff to be processed after data */
 } teSection;
 
+/* We need one enum entry per prepared query in pg_dump */
+enum _dumpPreparedQueries
+{
+	PREPQUERY_DUMPAGG,
+	PREPQUERY_DUMPBASETYPE,
+	PREPQUERY_DUMPCOMPOSITETYPE,
+	PREPQUERY_DUMPDOMAIN,
+	PREPQUERY_DUMPENUMTYPE,
+	PREPQUERY_DUMPFUNC,
+	PREPQUERY_DUMPOPR,
+	PREPQUERY_DUMPRANGETYPE,
+	PREPQUERY_DUMPTABLEATTACH,
+	PREPQUERY_GETCOLUMNACLS,
+	PREPQUERY_GETDOMAINCONSTRAINTS,
+	NUM_PREP_QUERIES			/* must be last */
+};
+
 /* Parameters needed by ConnectDatabase; same for dump and restore */
 typedef struct _connParams
 {
@@ -76,6 +93,7 @@ typedef struct _restoreOptions
 {
 	int			createDB;		/* Issue commands to create the database */
 	int			noOwner;		/* Don't try to match original object owner */
+	int			noTableAm;		/* Don't issue table-AM-related commands */
 	int			noTablespace;	/* Don't issue tablespace-related commands */
 	int			disable_triggers;	/* disable triggers during data-only
 									 * restore */
@@ -158,13 +176,13 @@ typedef struct _dumpOptions
 	int			no_security_labels;
 	int			no_publications;
 	int			no_subscriptions;
-	int			no_synchronized_snapshots;
 	int			no_toast_compression;
 	int			no_unlogged_table_data;
 	int			no_tablegroups;
 	int			no_tablegroup_creations;
 	int			serializable_deferrable;
 	int			disable_triggers;
+	int			outputNoTableAm;
 	int			outputNoTablespaces;
 	int			use_setsessauth;
 	int			enable_row_security;
@@ -219,6 +237,9 @@ typedef struct Archive
 	bool		exit_on_error;	/* whether to exit on SQL errors... */
 	int			n_errors;		/* number of errors (if no die) */
 
+	/* prepared-query status */
+	bool	   *is_prepared;	/* indexed by enum _dumpPreparedQueries */
+
 	/* The rest is private */
 } Archive;
 
@@ -241,6 +262,7 @@ typedef struct Archive
 
 typedef struct
 {
+	/* Note: this struct must not contain any unused bytes */
 	Oid			tableoid;
 	Oid			oid;
 } CatalogId;

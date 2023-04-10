@@ -29,8 +29,31 @@ CREATE USER regress_priv_user5;	-- duplicate
 ERROR:  role "regress_priv_user5" already exists
 CREATE USER regress_priv_user6;
 CREATE USER regress_priv_user7;
+CREATE USER regress_priv_user8;
+CREATE USER regress_priv_user9;
+CREATE USER regress_priv_user10;
+CREATE ROLE regress_priv_role;
 GRANT pg_read_all_data TO regress_priv_user6;
 GRANT pg_write_all_data TO regress_priv_user7;
+GRANT pg_read_all_settings TO regress_priv_user8 WITH ADMIN OPTION;
+SET SESSION AUTHORIZATION regress_priv_user8;
+GRANT pg_read_all_settings TO regress_priv_user9 WITH ADMIN OPTION;
+SET SESSION AUTHORIZATION regress_priv_user9;
+GRANT pg_read_all_settings TO regress_priv_user10;
+SET SESSION AUTHORIZATION regress_priv_user8;
+REVOKE pg_read_all_settings FROM regress_priv_user10;
+REVOKE ADMIN OPTION FOR pg_read_all_settings FROM regress_priv_user9;
+REVOKE pg_read_all_settings FROM regress_priv_user9;
+RESET SESSION AUTHORIZATION;
+REVOKE ADMIN OPTION FOR pg_read_all_settings FROM regress_priv_user8;
+SET SESSION AUTHORIZATION regress_priv_user8;
+SET ROLE pg_read_all_settings;
+RESET ROLE;
+RESET SESSION AUTHORIZATION;
+REVOKE pg_read_all_settings FROM regress_priv_user8;
+DROP USER regress_priv_user10;
+DROP USER regress_priv_user9;
+DROP USER regress_priv_user8;
 CREATE GROUP regress_priv_group1;
 CREATE GROUP regress_priv_group2 WITH USER regress_priv_user1, regress_priv_user2;
 ALTER GROUP regress_priv_group1 ADD USER regress_priv_user4;
@@ -44,6 +67,12 @@ CREATE FUNCTION leak(integer,integer) RETURNS boolean
   LANGUAGE internal IMMUTABLE STRICT;  -- but deliberately not LEAKPROOF
 ALTER FUNCTION leak(integer,integer) OWNER TO regress_priv_user1;
 -- test owner privileges
+GRANT regress_priv_role TO regress_priv_user1 WITH ADMIN OPTION GRANTED BY CURRENT_ROLE;
+REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY foo; -- error
+REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY regress_priv_user2; -- error
+REVOKE ADMIN OPTION FOR regress_priv_role FROM regress_priv_user1 GRANTED BY CURRENT_USER;
+REVOKE regress_priv_role FROM regress_priv_user1 GRANTED BY CURRENT_ROLE;
+DROP ROLE regress_priv_role;
 SET SESSION AUTHORIZATION regress_priv_user1;
 SELECT session_user, current_user;
     session_user    |    current_user    
@@ -670,6 +699,104 @@ SELECT atest6 FROM atest6; -- ok
 (0 rows)
 
 COPY atest6 TO stdout; -- ok
+-- test column privileges with MERGE
+SET SESSION AUTHORIZATION regress_priv_user1;
+CREATE TABLE mtarget (a int, b text);
+CREATE TABLE msource (a int, b text);
+INSERT INTO mtarget VALUES (1, 'init1'), (2, 'init2');
+INSERT INTO msource VALUES (1, 'source1'), (2, 'source2'), (3, 'source3');
+GRANT SELECT (a) ON msource TO regress_priv_user4;
+GRANT SELECT (a) ON mtarget TO regress_priv_user4;
+GRANT INSERT (a,b) ON mtarget TO regress_priv_user4;
+GRANT UPDATE (b) ON mtarget TO regress_priv_user4;
+SET SESSION AUTHORIZATION regress_priv_user4;
+--
+-- test source privileges
+--
+-- fail (no SELECT priv on s.b)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+ERROR:  permission denied for table msource
+-- fail (s.b used in the INSERTed values)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = 'x'
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+ERROR:  permission denied for table msource
+-- fail (s.b used in the WHEN quals)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND s.b = 'x' THEN
+	UPDATE SET b = 'x'
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+ERROR:  permission denied for table msource
+-- this should be ok since only s.a is accessed
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = 'ok'
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+ROLLBACK;
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT SELECT (b) ON msource TO regress_priv_user4;
+SET SESSION AUTHORIZATION regress_priv_user4;
+-- should now be ok
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+ROLLBACK;
+--
+-- test target privileges
+--
+-- fail (no SELECT priv on t.b)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = t.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, NULL);
+ERROR:  permission denied for table mtarget
+-- fail (no UPDATE on t.a)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b, a = t.a + 1
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+ERROR:  permission denied for table mtarget
+-- fail (no SELECT on t.b)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND t.b IS NOT NULL THEN
+	UPDATE SET b = s.b
+WHEN NOT MATCHED THEN
+	INSERT VALUES (a, b);
+ERROR:  permission denied for table mtarget
+-- ok
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED THEN
+	UPDATE SET b = s.b;
+ROLLBACK;
+-- fail (no DELETE)
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND t.b IS NOT NULL THEN
+	DELETE;
+ERROR:  permission denied for table mtarget
+-- grant delete privileges
+SET SESSION AUTHORIZATION regress_priv_user1;
+GRANT DELETE ON mtarget TO regress_priv_user4;
+-- should be ok now
+BEGIN;
+MERGE INTO mtarget t USING msource s ON t.a = s.a
+WHEN MATCHED AND t.b IS NOT NULL THEN
+	DELETE;
+ROLLBACK;
 -- check error reporting with column privs
 SET SESSION AUTHORIZATION regress_priv_user1;
 CREATE TABLE t1 (c1 int, c2 int, c3 int check (c3 < 5), primary key (c1, c2));
@@ -1597,14 +1724,8 @@ SET ROLE regress_priv_group2;
 GRANT regress_priv_group2 TO regress_priv_user5; -- fails: SET ROLE did not help
 ERROR:  must have admin option on role "regress_priv_group2"
 SET SESSION AUTHORIZATION regress_priv_group2;
-GRANT regress_priv_group2 TO regress_priv_user5; -- ok: a role can self-admin
-NOTICE:  role "regress_priv_user5" is already a member of role "regress_priv_group2"
-CREATE FUNCTION dogrant_fails() RETURNS void LANGUAGE sql SECURITY DEFINER AS
-	'GRANT regress_priv_group2 TO regress_priv_user5';
-SELECT dogrant_fails();			-- fails: no self-admin in SECURITY DEFINER
+GRANT regress_priv_group2 TO regress_priv_user5; -- fails: no self-admin
 ERROR:  must have admin option on role "regress_priv_group2"
-CONTEXT:  SQL function "dogrant_fails" statement 1
-DROP FUNCTION dogrant_fails();
 SET SESSION AUTHORIZATION regress_priv_user4;
 DROP FUNCTION dogrant_ok();
 REVOKE regress_priv_group2 FROM regress_priv_user5;
@@ -2484,3 +2605,50 @@ REVOKE TRUNCATE ON lock_table FROM regress_locktable_user;
 -- clean up
 DROP TABLE lock_table;
 DROP USER regress_locktable_user;
+-- test to check privileges of system views pg_shmem_allocations and
+-- pg_backend_memory_contexts.
+-- switch to superuser
+\c -
+CREATE ROLE regress_readallstats;
+SELECT has_table_privilege('regress_readallstats','pg_backend_memory_contexts','SELECT'); -- no
+ has_table_privilege 
+---------------------
+ f
+(1 row)
+
+SELECT has_table_privilege('regress_readallstats','pg_shmem_allocations','SELECT'); -- no
+ has_table_privilege 
+---------------------
+ f
+(1 row)
+
+GRANT pg_read_all_stats TO regress_readallstats;
+SELECT has_table_privilege('regress_readallstats','pg_backend_memory_contexts','SELECT'); -- yes
+ has_table_privilege 
+---------------------
+ t
+(1 row)
+
+SELECT has_table_privilege('regress_readallstats','pg_shmem_allocations','SELECT'); -- yes
+ has_table_privilege 
+---------------------
+ t
+(1 row)
+
+-- run query to ensure that functions within views can be executed
+SET ROLE regress_readallstats;
+SELECT COUNT(*) >= 0 AS ok FROM pg_backend_memory_contexts;
+ ok 
+----
+ t
+(1 row)
+
+SELECT COUNT(*) >= 0 AS ok FROM pg_shmem_allocations;
+ ok 
+----
+ t
+(1 row)
+
+RESET ROLE;
+-- clean up
+DROP ROLE regress_readallstats;

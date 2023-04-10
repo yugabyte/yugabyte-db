@@ -1,7 +1,7 @@
 /*
  * PostgreSQL System Functions
  *
- * Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * src/backend/catalog/system_functions.sql
  *
@@ -377,14 +377,14 @@ BEGIN ATOMIC
 END;
 
 CREATE OR REPLACE FUNCTION
-  pg_start_backup(label text, fast boolean DEFAULT false, exclusive boolean DEFAULT true)
-  RETURNS pg_lsn STRICT VOLATILE LANGUAGE internal AS 'pg_start_backup'
+  pg_backup_start(label text, fast boolean DEFAULT false)
+  RETURNS pg_lsn STRICT VOLATILE LANGUAGE internal AS 'pg_backup_start'
   PARALLEL RESTRICTED;
 
-CREATE OR REPLACE FUNCTION pg_stop_backup (
-        exclusive boolean, wait_for_archive boolean DEFAULT true,
-        OUT lsn pg_lsn, OUT labelfile text, OUT spcmapfile text)
-  RETURNS SETOF record STRICT VOLATILE LANGUAGE internal as 'pg_stop_backup_v2'
+CREATE OR REPLACE FUNCTION pg_backup_stop (
+        wait_for_archive boolean DEFAULT true, OUT lsn pg_lsn,
+        OUT labelfile text, OUT spcmapfile text)
+  RETURNS record STRICT VOLATILE LANGUAGE internal as 'pg_backup_stop'
   PARALLEL RESTRICTED;
 
 CREATE OR REPLACE FUNCTION
@@ -603,11 +603,9 @@ AS 'unicode_is_normalized';
 -- available to superuser / cluster owner, if they choose.
 --
 
-REVOKE EXECUTE ON FUNCTION pg_start_backup(text, boolean, boolean) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_backup_start(text, boolean) FROM public;
 
-REVOKE EXECUTE ON FUNCTION pg_stop_backup() FROM public;
-
-REVOKE EXECUTE ON FUNCTION pg_stop_backup(boolean, boolean) FROM public;
+REVOKE EXECUTE ON FUNCTION pg_backup_stop(boolean) FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_create_restore_point(text) FROM public;
 
@@ -638,6 +636,10 @@ REVOKE EXECUTE ON FUNCTION pg_stat_reset_single_table_counters(oid) FROM public;
 REVOKE EXECUTE ON FUNCTION pg_stat_reset_single_function_counters(oid) FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_stat_reset_replication_slot(text) FROM public;
+
+REVOKE EXECUTE ON FUNCTION pg_stat_have_stats(text, oid, oid) FROM public;
+
+REVOKE EXECUTE ON FUNCTION pg_stat_reset_subscription_stats(oid) FROM public;
 
 REVOKE EXECUTE ON FUNCTION lo_import(text) FROM public;
 
@@ -699,6 +701,14 @@ REVOKE EXECUTE ON FUNCTION pg_ls_dir(text) FROM public;
 
 REVOKE EXECUTE ON FUNCTION pg_ls_dir(text,boolean,boolean) FROM public;
 
+REVOKE EXECUTE ON FUNCTION pg_log_backend_memory_contexts(integer) FROM PUBLIC;
+
+REVOKE EXECUTE ON FUNCTION pg_ls_logicalsnapdir() FROM PUBLIC;
+
+REVOKE EXECUTE ON FUNCTION pg_ls_logicalmapdir() FROM PUBLIC;
+
+REVOKE EXECUTE ON FUNCTION pg_ls_replslotdir(text) FROM PUBLIC;
+
 --
 -- We also set up some things as accessible to standard roles.
 --
@@ -712,6 +722,12 @@ GRANT EXECUTE ON FUNCTION pg_ls_archive_statusdir() TO pg_monitor;
 GRANT EXECUTE ON FUNCTION pg_ls_tmpdir() TO pg_monitor;
 
 GRANT EXECUTE ON FUNCTION pg_ls_tmpdir(oid) TO pg_monitor;
+
+GRANT EXECUTE ON FUNCTION pg_ls_logicalsnapdir() TO pg_monitor;
+
+GRANT EXECUTE ON FUNCTION pg_ls_logicalmapdir() TO pg_monitor;
+
+GRANT EXECUTE ON FUNCTION pg_ls_replslotdir(text) TO pg_monitor;
 
 GRANT pg_read_all_settings TO pg_monitor;
 

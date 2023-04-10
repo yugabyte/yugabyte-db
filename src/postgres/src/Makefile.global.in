@@ -366,6 +366,8 @@ XGETTEXT = @XGETTEXT@
 
 GZIP	= gzip
 BZIP2	= bzip2
+LZ4	= @LZ4@
+ZSTD	= @ZSTD@
 
 DOWNLOAD = wget -O $@ --no-use-server-timestamps
 #DOWNLOAD = curl -o $@
@@ -381,7 +383,7 @@ DOWNLOAD = wget -O $@ --no-use-server-timestamps
 UNICODE_VERSION = 14.0.0
 
 # Pick a release from here: <http://cldr.unicode.org/index/downloads>
-CLDR_VERSION = 39
+CLDR_VERSION = 41
 
 
 # Tree-wide build support
@@ -454,7 +456,7 @@ ld_library_path_var = LD_LIBRARY_PATH
 # need something more here. If not defined then the expansion does
 # nothing.
 with_temp_install = \
-	PATH="$(abs_top_builddir)/tmp_install$(bindir):$$PATH" \
+	PATH="$(abs_top_builddir)/tmp_install$(bindir):$(CURDIR):$$PATH" \
 	$(call add_to_path,$(strip $(ld_library_path_var)),$(abs_top_builddir)/tmp_install$(libdir)) \
 	$(with_temp_install_extra)
 
@@ -462,22 +464,24 @@ ifeq ($(enable_tap_tests),yes)
 
 ifndef PGXS
 define prove_installcheck
-rm -rf '$(CURDIR)'/tmp_check
-$(MKDIR_P) '$(CURDIR)'/tmp_check
+echo "+++ tap install-check in $(subdir) +++" && \
+rm -rf '$(CURDIR)'/tmp_check && \
+$(MKDIR_P) '$(CURDIR)'/tmp_check && \
 cd $(srcdir) && \
-   TESTDIR='$(CURDIR)' PATH="$(bindir):$$PATH" PGPORT='6$(DEF_PGPORT)' \
-   top_builddir='$(CURDIR)/$(top_builddir)' \
+   TESTDIR='$(CURDIR)' PATH="$(bindir):$(CURDIR):$$PATH" \
+   PGPORT='6$(DEF_PGPORT)' top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
    REGRESS_SHLIB='$(abs_top_builddir)/src/test/regress/regress$(DLSUFFIX)' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 else # PGXS case
 define prove_installcheck
-rm -rf '$(CURDIR)'/tmp_check
-$(MKDIR_P) '$(CURDIR)'/tmp_check
+echo "+++ tap install-check in $(subdir) +++" && \
+rm -rf '$(CURDIR)'/tmp_check && \
+$(MKDIR_P) '$(CURDIR)'/tmp_check && \
 cd $(srcdir) && \
-   TESTDIR='$(CURDIR)' PATH="$(bindir):$$PATH" PGPORT='6$(DEF_PGPORT)' \
-   top_builddir='$(top_builddir)' \
+   TESTDIR='$(CURDIR)' PATH="$(bindir):$(CURDIR):$$PATH" \
+   PGPORT='6$(DEF_PGPORT)' top_builddir='$(top_builddir)' \
    PG_REGRESS='$(top_builddir)/src/test/regress/pg_regress' \
    REGRESS_SHLIB='$(abs_top_builddir)/src/test/regress/regress$(DLSUFFIX)' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
@@ -485,16 +489,18 @@ endef
 endif # PGXS
 
 define prove_check
-rm -rf '$(CURDIR)'/tmp_check
-$(MKDIR_P) '$(CURDIR)'/tmp_check
+echo "+++ tap check in $(subdir) +++" && \
+rm -rf '$(CURDIR)'/tmp_check && \
+$(MKDIR_P) '$(CURDIR)'/tmp_check && \
 cd $(srcdir) && \
    TESTDIR='$(CURDIR)' $(with_temp_install) PGPORT='6$(DEF_PGPORT)' \
+   top_builddir='$(CURDIR)/$(top_builddir)' \
    PG_REGRESS='$(CURDIR)/$(top_builddir)/src/test/regress/pg_regress' \
    $(PROVE) $(PG_PROVE_FLAGS) $(PROVE_FLAGS) $(if $(PROVE_TESTS),$(PROVE_TESTS),t/*.pl)
 endef
 
 else
-prove_installcheck = @echo "TAP tests not enabled"
+prove_installcheck = @echo "TAP tests not enabled. Try configuring with --enable-tap-tests"
 prove_check = $(prove_installcheck)
 endif
 
@@ -560,6 +566,8 @@ WIN32_STACK_RLIMIT=4194304
 
 # Set if we have a working win32 crashdump header
 have_win32_dbghelp = @have_win32_dbghelp@
+
+DLSUFFIX = @DLSUFFIX@
 
 # Pull in platform-specific magic
 include $(top_builddir)/src/Makefile.port
@@ -638,7 +646,6 @@ submake-libpgfeutils: | submake-generated-headers
 
 ifneq ($(USE_MODULE_DB),)
   PL_TESTDB = pl_regression_$(NAME)
-  # Replace this with $(or ...) if we ever require GNU make 3.81.
   ifneq ($(MODULE_big),)
     CONTRIB_TESTDB=contrib_regression_$(MODULE_big)
     ISOLATION_TESTDB=isolation_regression_$(MODULE_big)
@@ -671,6 +678,7 @@ pg_regress_locale_flags = $(if $(ENCODING),--encoding=$(ENCODING)) $(NOLOCALE)
 pg_regress_clean_files = results/ regression.diffs regression.out tmp_check/ tmp_check_iso/ log/ output_iso/
 
 pg_regress_check = \
+    echo "+++ regress check in $(subdir) +++" && \
     $(with_temp_install) \
     $(top_builddir)/src/test/regress/pg_regress \
     --temp-instance=./tmp_check \
@@ -679,12 +687,14 @@ pg_regress_check = \
     $(TEMP_CONF) \
     $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
 pg_regress_installcheck = \
+    echo "+++ regress install-check in $(subdir) +++" && \
     $(top_builddir)/src/test/regress/pg_regress \
     --inputdir=$(srcdir) \
     --bindir='$(bindir)' \
     $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
 
 pg_isolation_regress_check = \
+    echo "+++ isolation check in $(subdir) +++" && \
     $(with_temp_install) \
     $(top_builddir)/src/test/isolation/pg_isolation_regress \
     --temp-instance=./tmp_check_iso \
@@ -693,6 +703,7 @@ pg_isolation_regress_check = \
     $(TEMP_CONF) \
     $(pg_regress_locale_flags) $(EXTRA_REGRESS_OPTS)
 pg_isolation_regress_installcheck = \
+    echo "+++ isolation install-check in $(subdir) +++" && \
     $(top_builddir)/src/test/isolation/pg_isolation_regress \
     --inputdir=$(srcdir) --outputdir=output_iso \
     --bindir='$(bindir)' \
@@ -881,11 +892,11 @@ install-strip:
 # allows parallel make across directories and lets make -k and -q work
 # correctly.
 
-# We need the $(eval) function and order-only prerequisites, which are
-# available in GNU make 3.80.  That also happens to be the version
-# where the .VARIABLES variable was introduced, so this is a simple check.
-ifndef .VARIABLES
-$(error GNU make 3.80 or newer is required.  You are using version $(MAKE_VERSION))
+# We need the ability to export target-specific variables, which was
+# added in GNU make 3.81.  That also happens to be the version
+# where the .FEATURES variable was introduced, so this is a simple check.
+ifndef .FEATURES
+$(error GNU make 3.81 or newer is required.  You are using version $(MAKE_VERSION))
 endif
 
 # This function is only for internal use below.  It should be called
@@ -893,7 +904,7 @@ endif
 # given subdirectory.  For the tree-wide all/install/check/installcheck cases,
 # ensure we do our one-time tasks before recursing (see targets above).
 # Note that to avoid a nasty bug in make 3.80,
-# this function has to avoid using any complicated constructs (like
+# this function was written to not use any complicated constructs (like
 # multiple targets on a line) and also not contain any lines that expand
 # to more than about 200 bytes.  This is why we make it apply to just one
 # subdirectory at a time, rather than to a list of subdirectories.

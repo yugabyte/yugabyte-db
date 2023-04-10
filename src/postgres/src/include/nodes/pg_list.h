@@ -27,7 +27,7 @@
  * always be so; try to be careful to maintain the distinction.)
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/pg_list.h
@@ -564,6 +564,7 @@ extern pg_nodiscard List *list_delete_int(List *list, int datum);
 extern pg_nodiscard List *list_delete_oid(List *list, Oid datum);
 extern pg_nodiscard List *list_delete_first(List *list);
 extern pg_nodiscard List *list_delete_last(List *list);
+extern pg_nodiscard List *list_delete_first_n(List *list, int n);
 extern pg_nodiscard List *list_delete_nth_cell(List *list, int n);
 extern pg_nodiscard List *list_delete_cell(List *list, ListCell *cell);
 
@@ -598,6 +599,7 @@ extern void list_free(List *list);
 extern void list_free_deep(List *list);
 
 extern pg_nodiscard List *list_copy(const List *list);
+extern pg_nodiscard List *list_copy_head(const List *oldlist, int len);
 extern pg_nodiscard List *list_copy_tail(const List *list, int nskip);
 extern pg_nodiscard List *list_copy_deep(const List *oldlist);
 

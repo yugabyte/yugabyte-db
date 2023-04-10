@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Testing streaming replication where standby is promoted and a new cascading
 # standby (without WAL) is connected to the promoted standby.  Both archiving
@@ -8,15 +8,15 @@
 # standby can follow the new primary (promoted standby).
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
 
 use File::Basename;
 use FindBin;
-use Test::More tests => 1;
+use Test::More;
 
 # Initialize primary node
-my $node_primary = PostgresNode->new('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 
 # Set up an archive command that will copy the history file but not the WAL
 # files. No real archive command should behave this way; the point is to
@@ -28,10 +28,10 @@ $node_primary->init(allows_streaming => 1, has_archiving => 1);
 # Note: consistent use of forward slashes here avoids any escaping problems
 # that arise from use of backslashes. That means we need to double-quote all
 # the paths in the archive_command
-my $perlbin = TestLib::perl2host($^X);
-$perlbin =~ s!\\!/!g if $TestLib::windows_os;
+my $perlbin = $^X;
+$perlbin =~ s!\\!/!g if $PostgreSQL::Test::Utils::windows_os;
 my $archivedir_primary = $node_primary->archive_dir;
-$archivedir_primary =~ s!\\!/!g if $TestLib::windows_os;
+$archivedir_primary =~ s!\\!/!g if $PostgreSQL::Test::Utils::windows_os;
 $node_primary->append_conf(
 	'postgresql.conf', qq(
 archive_command = '"$perlbin" "$FindBin::RealBin/cp_history_files" "%p" "$archivedir_primary/%f"'
@@ -47,7 +47,7 @@ my $backup_name = 'my_backup';
 $node_primary->backup($backup_name);
 
 # Create streaming standby linking to primary
-my $node_standby = PostgresNode->new('standby');
+my $node_standby = PostgreSQL::Test::Cluster->new('standby');
 $node_standby->init_from_backup(
 	$node_primary, $backup_name,
 	allows_streaming => 1,
@@ -60,7 +60,7 @@ $node_standby->backup($backup_name, backup_options => ['-Xnone']);
 
 # Create cascading standby but don't start it yet.
 # Must set up both streaming and archiving.
-my $node_cascade = PostgresNode->new('cascade');
+my $node_cascade = PostgreSQL::Test::Cluster->new('cascade');
 $node_cascade->init_from_backup($node_standby, $backup_name,
 	has_streaming => 1);
 $node_cascade->enable_restoring($node_primary);
@@ -101,11 +101,12 @@ $node_cascade->start;
 $node_standby->safe_psql('postgres', "CREATE TABLE tab_int AS SELECT 1 AS a");
 
 # Wait for the replication to catch up
-$node_standby->wait_for_catchup($node_cascade, 'replay',
-	$node_standby->lsn('insert'));
+$node_standby->wait_for_catchup($node_cascade);
 
 # Check that cascading standby has the new content
 my $result =
   $node_cascade->safe_psql('postgres', "SELECT count(*) FROM tab_int");
 print "cascade: $result\n";
 is($result, 1, 'check streamed content on cascade standby');
+
+done_testing();

@@ -1,36 +1,36 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
 
-use Config;
-use PostgresNode;
-use TestLib;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
 use Test::More;
 
-my $node = PostgresNode->new('main');
+my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
 $node->start;
 
 my $numrows = 700;
-$ENV{PATH} = "$ENV{TESTDIR}:$ENV{PATH}";
 
 my ($out, $err) = run_command([ 'libpq_pipeline', 'tests' ]);
 die "oops: $err" unless $err eq '';
 my @tests = split(/\s+/, $out);
 
-mkdir "$TestLib::tmp_check/traces";
+mkdir "$PostgreSQL::Test::Utils::tmp_check/traces";
 
 for my $testname (@tests)
 {
 	my @extraargs = ('-r', $numrows);
 	my $cmptrace = grep(/^$testname$/,
 		qw(simple_pipeline nosync multi_pipelines prepared singlerow
-		  pipeline_abort transaction disallowed_in_pipeline)) > 0;
+		  pipeline_abort pipeline_idle transaction
+		  disallowed_in_pipeline)) > 0;
 
 	# For a bunch of tests, generate a libpq trace file too.
-	my $traceout = "$TestLib::tmp_check/traces/$testname.trace";
+	my $traceout =
+	  "$PostgreSQL::Test::Utils::tmp_check/traces/$testname.trace";
 	if ($cmptrace)
 	{
 		push @extraargs, "-t", $traceout;

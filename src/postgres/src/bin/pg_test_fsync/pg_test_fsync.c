@@ -15,6 +15,7 @@
 
 #include "access/xlogdefs.h"
 #include "common/logging.h"
+#include "common/pg_prng.h"
 #include "getopt_long.h"
 
 /*
@@ -46,10 +47,7 @@ do { \
 	alarm_triggered = false; \
 	if (CreateThread(NULL, 0, process_alarm, NULL, 0, NULL) == \
 		INVALID_HANDLE_VALUE) \
-	{ \
-		pg_log_error("could not create thread for alarm"); \
-		exit(1); \
-	} \
+		pg_fatal("could not create thread for alarm"); \
 	gettimeofday(&start_t, NULL); \
 } while (0)
 #endif
@@ -94,7 +92,7 @@ static int	pg_fsync_writethrough(int fd);
 #endif
 static void print_elapse(struct timeval start_t, struct timeval stop_t, int ops);
 
-#define die(msg) do { pg_log_error("%s: %m", _(msg)); exit(1); } while(0)
+#define die(msg) pg_fatal("%s: %m", _(msg))
 
 
 int
@@ -116,6 +114,8 @@ main(int argc, char *argv[])
 	/* Not defined on win32 */
 	pqsignal(SIGHUP, signal_cleanup);
 #endif
+
+	pg_prng_seed(&pg_global_prng_state, (uint64) time(NULL));
 
 	prepare_buf();
 
@@ -183,24 +183,20 @@ handle_args(int argc, char *argv[])
 					errno != 0 || optval != (unsigned int) optval)
 				{
 					pg_log_error("invalid argument for option %s", "--secs-per-test");
-					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+					pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 					exit(1);
 				}
 
 				secs_per_test = (unsigned int) optval;
 				if (secs_per_test == 0)
-				{
-					pg_log_error("%s must be in range %u..%u",
-								 "--secs-per-test", 1, UINT_MAX);
-					exit(1);
-				}
+					pg_fatal("%s must be in range %u..%u",
+							 "--secs-per-test", 1, UINT_MAX);
 				break;
 
 			default:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-						progname);
+				/* getopt_long already emitted a complaint */
+				pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 				exit(1);
-				break;
 		}
 	}
 
@@ -208,8 +204,7 @@ handle_args(int argc, char *argv[])
 	{
 		pg_log_error("too many command-line arguments (first is \"%s\")",
 					 argv[optind]);
-		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+		pg_log_error_hint("Try \"%s --help\" for more information.", progname);
 		exit(1);
 	}
 
@@ -233,7 +228,7 @@ prepare_buf(void)
 
 	/* write random data into buffer */
 	for (ops = 0; ops < DEFAULT_XLOG_SEG_SIZE; ops++)
-		full_buf[ops] = random();
+		full_buf[ops] = (char) pg_prng_int32(&pg_global_prng_state);
 
 	buf = (char *) TYPEALIGN(XLOG_BLCKSZ, full_buf);
 }

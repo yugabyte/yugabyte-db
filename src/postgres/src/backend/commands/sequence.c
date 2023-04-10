@@ -3,7 +3,7 @@
  * sequence.c
  *	  PostgreSQL sequences support code.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -30,6 +30,7 @@
 #include "catalog/objectaccess.h"
 #include "catalog/pg_sequence.h"
 #include "catalog/pg_type.h"
+#include "catalog/storage_xlog.h"
 #include "commands/defrem.h"
 #include "commands/sequence.h"
 #include "commands/tablecmds.h"
@@ -98,6 +99,7 @@ static HTAB *seqhashtab = NULL; /* hash table for SeqTable items */
 static SeqTableData *last_used_seq = NULL;
 
 static void fill_seq_with_data(Relation rel, HeapTuple tuple);
+static void fill_seq_fork_with_data(Relation rel, HeapTuple tuple, ForkNumber forkNum);
 static Relation lock_and_open_sequence(SeqTable seq);
 static void create_seq_hashtable(void);
 static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
@@ -135,12 +137,6 @@ DefineSequence(ParseState *pstate, CreateSeqStmt *seq)
 	Datum		pgs_values[Natts_pg_sequence];
 	bool		pgs_nulls[Natts_pg_sequence];
 	int			i;
-
-	/* Unlogged sequences are not implemented -- not clear if useful. */
-	if (seq->sequence->relpersistence == RELPERSISTENCE_UNLOGGED)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unlogged sequences are not supported")));
 
 	/*
 	 * If if_not_exists was given and a relation with the same name already
@@ -386,9 +382,33 @@ ResetSequence(Oid seq_relid)
 
 /*
  * Initialize a sequence's relation with the specified tuple as content
+ *
+ * This handles unlogged sequences by writing to both the main and the init
+ * fork as necessary.
  */
 static void
 fill_seq_with_data(Relation rel, HeapTuple tuple)
+{
+	fill_seq_fork_with_data(rel, tuple, MAIN_FORKNUM);
+
+	if (rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
+	{
+		SMgrRelation srel;
+
+		srel = smgropen(rel->rd_node, InvalidBackendId);
+		smgrcreate(srel, INIT_FORKNUM, false);
+		log_smgrcreate(&rel->rd_node, INIT_FORKNUM);
+		fill_seq_fork_with_data(rel, tuple, INIT_FORKNUM);
+		FlushRelationBuffers(rel);
+		smgrclose(srel);
+	}
+}
+
+/*
+ * Initialize a sequence's relation fork with the specified tuple as content
+ */
+static void
+fill_seq_fork_with_data(Relation rel, HeapTuple tuple, ForkNumber forkNum)
 {
 	Buffer		buf;
 	Page		page;
@@ -397,7 +417,7 @@ fill_seq_with_data(Relation rel, HeapTuple tuple)
 
 	/* Initialize first page of relation with special magic number */
 
-	buf = ReadBuffer(rel, P_NEW);
+	buf = ReadBufferExtended(rel, forkNum, P_NEW, RBM_NORMAL, NULL);
 	Assert(BufferGetBlockNumber(buf) == 0);
 
 	page = BufferGetPage(buf);
@@ -438,7 +458,7 @@ fill_seq_with_data(Relation rel, HeapTuple tuple)
 		elog(ERROR, "failed to add sequence tuple to page");
 
 	/* XLOG stuff */
-	if (RelationNeedsWAL(rel))
+	if (RelationNeedsWAL(rel) || forkNum == INIT_FORKNUM)
 	{
 		xl_seq_rec	xlrec;
 		XLogRecPtr	recptr;
@@ -615,6 +635,28 @@ done_updating:
 	relation_close(seqrel, NoLock);
 
 	return address;
+}
+
+void
+SequenceChangePersistence(Oid relid, char newrelpersistence)
+{
+	SeqTable	elm;
+	Relation	seqrel;
+	Buffer		buf;
+	HeapTupleData seqdatatuple;
+
+	init_sequence(relid, &elm, &seqrel);
+
+	/* check the comment above nextval_internal()'s equivalent call. */
+	if (RelationNeedsWAL(seqrel))
+		GetTopTransactionId();
+
+	(void) read_seq_tuple(seqrel, &buf, &seqdatatuple);
+	RelationSetNewRelfilenode(seqrel, newrelpersistence);
+	fill_seq_with_data(seqrel, &seqdatatuple);
+	UnlockReleaseBuffer(buf);
+
+	relation_close(seqrel, NoLock);
 }
 
 void
@@ -881,15 +923,11 @@ check_bounds:
 				if (rescnt > 0)
 					break;		/* stop fetching */
 				if (!cycle)
-				{
-					char		buf[100];
-
-					snprintf(buf, sizeof(buf), INT64_FORMAT, maxv);
 					ereport(ERROR,
 							(errcode(ERRCODE_SEQUENCE_GENERATOR_LIMIT_EXCEEDED),
-							 errmsg("nextval: reached maximum value of sequence \"%s\" (%s)",
-									RelationGetRelationName(seqrel), buf)));
-				}
+							 errmsg("nextval: reached maximum value of sequence \"%s\" (%lld)",
+									RelationGetRelationName(seqrel),
+									(long long) maxv)));
 				next = minv;
 			}
 			else
@@ -904,15 +942,11 @@ check_bounds:
 				if (rescnt > 0)
 					break;		/* stop fetching */
 				if (!cycle)
-				{
-					char		buf[100];
-
-					snprintf(buf, sizeof(buf), INT64_FORMAT, minv);
 					ereport(ERROR,
 							(errcode(ERRCODE_SEQUENCE_GENERATOR_LIMIT_EXCEEDED),
-							 errmsg("nextval: reached minimum value of sequence \"%s\" (%s)",
-									RelationGetRelationName(seqrel), buf)));
-				}
+							 errmsg("nextval: reached minimum value of sequence \"%s\" (%lld)",
+									RelationGetRelationName(seqrel),
+									(long long) minv)));
 				next = maxv;
 			}
 			else
@@ -1167,20 +1201,11 @@ do_setval(Oid relid, int64 next, bool iscalled)
 	}
 
 	if ((next < minv) || (next > maxv))
-	{
-		char		bufv[100],
-					bufm[100],
-					bufx[100];
-
-		snprintf(bufv, sizeof(bufv), INT64_FORMAT, next);
-		snprintf(bufm, sizeof(bufm), INT64_FORMAT, minv);
-		snprintf(bufx, sizeof(bufx), INT64_FORMAT, maxv);
 		ereport(ERROR,
 				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("setval: value %s is out of bounds for sequence \"%s\" (%s..%s)",
-						bufv, RelationGetRelationName(seqrel),
-						bufm, bufx)));
-	}
+				 errmsg("setval: value %lld is out of bounds for sequence \"%s\" (%lld..%lld)",
+						(long long) next, RelationGetRelationName(seqrel),
+						(long long) minv, (long long) maxv)));
 
 	/* Set the currval() state only if iscalled = true */
 	if (iscalled)
@@ -1634,7 +1659,7 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* CYCLE */
 	if (is_cycled != NULL)
 	{
-		seqform->seqcycle = intVal(is_cycled->arg);
+		seqform->seqcycle = boolVal(is_cycled->arg);
 		Assert(BoolIsValid(seqform->seqcycle));
 		seqdataform->log_cnt = 0;
 	}
@@ -1669,16 +1694,11 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* Validate maximum value.  No need to check INT8 as seqmax is an int64 */
 	if ((seqform->seqtypid == INT2OID && (seqform->seqmax < PG_INT16_MIN || seqform->seqmax > PG_INT16_MAX))
 		|| (seqform->seqtypid == INT4OID && (seqform->seqmax < PG_INT32_MIN || seqform->seqmax > PG_INT32_MAX)))
-	{
-		char		bufx[100];
-
-		snprintf(bufx, sizeof(bufx), INT64_FORMAT, seqform->seqmax);
-
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("MAXVALUE (%s) is out of range for sequence data type %s",
-						bufx, format_type_be(seqform->seqtypid))));
-	}
+				 errmsg("MAXVALUE (%lld) is out of range for sequence data type %s",
+						(long long) seqform->seqmax,
+						format_type_be(seqform->seqtypid))));
 
 	/* MINVALUE (null arg means NO MINVALUE) */
 	if (min_value != NULL && min_value->arg)
@@ -1706,30 +1726,19 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 	/* Validate minimum value.  No need to check INT8 as seqmin is an int64 */
 	if ((seqform->seqtypid == INT2OID && (seqform->seqmin < PG_INT16_MIN || seqform->seqmin > PG_INT16_MAX))
 		|| (seqform->seqtypid == INT4OID && (seqform->seqmin < PG_INT32_MIN || seqform->seqmin > PG_INT32_MAX)))
-	{
-		char		bufm[100];
-
-		snprintf(bufm, sizeof(bufm), INT64_FORMAT, seqform->seqmin);
-
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("MINVALUE (%s) is out of range for sequence data type %s",
-						bufm, format_type_be(seqform->seqtypid))));
-	}
+				 errmsg("MINVALUE (%lld) is out of range for sequence data type %s",
+						(long long) seqform->seqmin,
+						format_type_be(seqform->seqtypid))));
 
 	/* crosscheck min/max */
 	if (seqform->seqmin >= seqform->seqmax)
-	{
-		char		bufm[100],
-					bufx[100];
-
-		snprintf(bufm, sizeof(bufm), INT64_FORMAT, seqform->seqmin);
-		snprintf(bufx, sizeof(bufx), INT64_FORMAT, seqform->seqmax);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("MINVALUE (%s) must be less than MAXVALUE (%s)",
-						bufm, bufx)));
-	}
+				 errmsg("MINVALUE (%lld) must be less than MAXVALUE (%lld)",
+						(long long) seqform->seqmin,
+						(long long) seqform->seqmax)));
 
 	/* START WITH */
 	if (start_value != NULL)
@@ -1746,29 +1755,17 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 
 	/* crosscheck START */
 	if (seqform->seqstart < seqform->seqmin)
-	{
-		char		bufs[100],
-					bufm[100];
-
-		snprintf(bufs, sizeof(bufs), INT64_FORMAT, seqform->seqstart);
-		snprintf(bufm, sizeof(bufm), INT64_FORMAT, seqform->seqmin);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("START value (%s) cannot be less than MINVALUE (%s)",
-						bufs, bufm)));
-	}
+				 errmsg("START value (%lld) cannot be less than MINVALUE (%lld)",
+						(long long) seqform->seqstart,
+						(long long) seqform->seqmin)));
 	if (seqform->seqstart > seqform->seqmax)
-	{
-		char		bufs[100],
-					bufm[100];
-
-		snprintf(bufs, sizeof(bufs), INT64_FORMAT, seqform->seqstart);
-		snprintf(bufm, sizeof(bufm), INT64_FORMAT, seqform->seqmax);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("START value (%s) cannot be greater than MAXVALUE (%s)",
-						bufs, bufm)));
-	}
+				 errmsg("START value (%lld) cannot be greater than MAXVALUE (%lld)",
+						(long long) seqform->seqstart,
+						(long long) seqform->seqmax)));
 
 	/* RESTART [WITH] */
 	if (restart_value != NULL)
@@ -1788,44 +1785,27 @@ init_params(ParseState *pstate, List *options, bool for_identity,
 
 	/* crosscheck RESTART (or current value, if changing MIN/MAX) */
 	if (seqdataform->last_value < seqform->seqmin)
-	{
-		char		bufs[100],
-					bufm[100];
-
-		snprintf(bufs, sizeof(bufs), INT64_FORMAT, seqdataform->last_value);
-		snprintf(bufm, sizeof(bufm), INT64_FORMAT, seqform->seqmin);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("RESTART value (%s) cannot be less than MINVALUE (%s)",
-						bufs, bufm)));
-	}
+				 errmsg("RESTART value (%lld) cannot be less than MINVALUE (%lld)",
+						(long long) seqdataform->last_value,
+						(long long) seqform->seqmin)));
 	if (seqdataform->last_value > seqform->seqmax)
-	{
-		char		bufs[100],
-					bufm[100];
-
-		snprintf(bufs, sizeof(bufs), INT64_FORMAT, seqdataform->last_value);
-		snprintf(bufm, sizeof(bufm), INT64_FORMAT, seqform->seqmax);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("RESTART value (%s) cannot be greater than MAXVALUE (%s)",
-						bufs, bufm)));
-	}
+				 errmsg("RESTART value (%lld) cannot be greater than MAXVALUE (%lld)",
+						(long long) seqdataform->last_value,
+						(long long) seqform->seqmax)));
 
 	/* CACHE */
 	if (cache_value != NULL)
 	{
 		seqform->seqcache = defGetInt64(cache_value);
 		if (seqform->seqcache <= 0)
-		{
-			char		buf[100];
-
-			snprintf(buf, sizeof(buf), INT64_FORMAT, seqform->seqcache);
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("CACHE (%s) must be greater than zero",
-							buf)));
-		}
+					 errmsg("CACHE (%lld) must be greater than zero",
+							(long long) seqform->seqcache)));
 		seqdataform->log_cnt = 0;
 	}
 	else if (isInit)
@@ -1985,7 +1965,7 @@ sequence_options(Oid relid)
 	options = lappend(options,
 					  makeDefElem("cache", (Node *) makeFloat(psprintf(INT64_FORMAT, pgsform->seqcache)), -1));
 	options = lappend(options,
-					  makeDefElem("cycle", (Node *) makeInteger(pgsform->seqcycle), -1));
+					  makeDefElem("cycle", (Node *) makeBoolean(pgsform->seqcycle), -1));
 	options = lappend(options,
 					  makeDefElem("increment", (Node *) makeFloat(psprintf(INT64_FORMAT, pgsform->seqincrement)), -1));
 	options = lappend(options,

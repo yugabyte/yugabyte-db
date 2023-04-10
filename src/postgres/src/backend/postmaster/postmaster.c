@@ -32,7 +32,7 @@
  *	  clients.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -95,9 +95,11 @@
 
 #include "access/transam.h"
 #include "access/xlog.h"
+#include "access/xlogrecovery.h"
 #include "catalog/pg_control.h"
 #include "common/file_perm.h"
 #include "common/ip.h"
+#include "common/pg_prng.h"
 #include "common/string.h"
 #include "lib/ilist.h"
 #include "libpq/auth.h"
@@ -256,7 +258,6 @@ static pid_t StartupPID = 0,
 			WalReceiverPID = 0,
 			AutoVacPID = 0,
 			PgArchPID = 0,
-			PgStatPID = 0,
 			SysLoggerPID = 0;
 
 /* Startup process's status */
@@ -352,14 +353,7 @@ static PMState pmState = PM_INIT;
  * connsAllowed is a sub-state indicator showing the active restriction.
  * It is of no interest unless pmState is PM_RUN or PM_HOT_STANDBY.
  */
-typedef enum
-{
-	ALLOW_ALL_CONNS,			/* normal not-shutting-down state */
-	ALLOW_SUPERUSER_CONNS,		/* only superusers can connect */
-	ALLOW_NO_CONNS				/* no new connections allowed, period */
-} ConnsAllowedState;
-
-static ConnsAllowedState connsAllowed = ALLOW_ALL_CONNS;
+static bool connsAllowed = true;
 
 /* Start time of SIGKILL timeout during immediate shutdown or child crash */
 /* Zero means timeout is not running */
@@ -524,7 +518,6 @@ typedef struct
 	PGPROC	   *AuxiliaryProcs;
 	PGPROC	   *PreparedXactProcs;
 	PMSignalData *PMSignalState;
-	InheritableSocket pgStatSock;
 	pid_t		PostmasterPid;
 	TimestampTz PgStartTime;
 	TimestampTz PgReloadTime;
@@ -676,9 +669,8 @@ PostmasterMain(int argc, char *argv[])
 	 * CAUTION: when changing this list, check for side-effects on the signal
 	 * handling setup of child processes.  See tcop/postgres.c,
 	 * bootstrap/bootstrap.c, postmaster/bgwriter.c, postmaster/walwriter.c,
-	 * postmaster/autovacuum.c, postmaster/pgarch.c, postmaster/pgstat.c,
-	 * postmaster/syslogger.c, postmaster/bgworker.c and
-	 * postmaster/checkpointer.c.
+	 * postmaster/autovacuum.c, postmaster/pgarch.c, postmaster/syslogger.c,
+	 * postmaster/bgworker.c and postmaster/checkpointer.c.
 	 */
 	pqinitmask();
 	PG_SETMASK(&BlockSig);
@@ -947,6 +939,16 @@ PostmasterMain(int argc, char *argv[])
 			puts(config_val ? config_val : "");
 			ExitPostmaster(0);
 		}
+
+		/*
+		 * A runtime-computed GUC will be printed later on.  As we initialize
+		 * a server startup sequence, silence any log messages that may show
+		 * up in the output generated.  FATAL and more severe messages are
+		 * useful to show, even if one would only expect at least PANIC.  LOG
+		 * entries are hidden.
+		 */
+		SetConfigOption("log_min_messages", "FATAL", PGC_SUSET,
+						PGC_S_OVERRIDE);
 	}
 
 	/* Verify that DataDir looks reasonable */
@@ -1054,10 +1056,8 @@ PostmasterMain(int argc, char *argv[])
 	LocalProcessControlFile(false);
 
 	/*
-	 * Register the apply launcher.  Since it registers a background worker,
-	 * it needs to be called before InitializeMaxBackends(), and it's probably
-	 * a good idea to call it before any modules had chance to take the
-	 * background worker slots.
+	 * Register the apply launcher.  It's probably a good idea to call this
+	 * before any modules had a chance to take the background worker slots.
 	 */
 	ApplyLauncherRegister();
 
@@ -1085,10 +1085,15 @@ PostmasterMain(int argc, char *argv[])
 		ApplyLauncherRegister();
 
 	/*
-	 * Now that loadable modules have had their chance to register background
-	 * workers, calculate MaxBackends.
+	 * Now that loadable modules have had their chance to alter any GUCs,
+	 * calculate MaxBackends.
 	 */
 	InitializeMaxBackends();
+
+	/*
+	 * Give preloaded libraries a chance to request additional shared memory.
+	 */
+	process_shmem_requests();
 
 	/*
 	 * Now that loadable modules have had their chance to request additional
@@ -1096,6 +1101,12 @@ PostmasterMain(int argc, char *argv[])
 	 * depend on the amount of shared memory required.
 	 */
 	InitializeShmemGUCs();
+
+	/*
+	 * Now that modules have been loaded, we can process any custom resource
+	 * managers specified in the wal_consistency_checking GUC.
+	 */
+	InitializeWalConsistencyChecking();
 
 	/*
 	 * If -C was specified with a runtime-computed GUC, we held off printing
@@ -1131,7 +1142,7 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Set reference point for stack-depth checking.
 	 */
-	set_stack_base();
+	(void) set_stack_base();
 
 	/*
 	 * Initialize pipe (or process handle on Windows) that allows children to
@@ -1438,12 +1449,6 @@ PostmasterMain(int argc, char *argv[])
 	 * Postgres processes running in this directory, so this should be safe.
 	 */
 	RemovePgTempFiles();
-
-	/*
-	 * Initialize stats collection subsystem (this does NOT start the
-	 * collector process!)
-	 */
-	pgstat_init();
 
 	/*
 	 * Initialize the autovacuum subsystem (again, no process start yet)
@@ -1917,11 +1922,6 @@ ServerLoop(void)
 				start_autovac_launcher = false; /* signal processed */
 		}
 
-		/* If we have lost the stats collector, try to start a new one */
-		if (PgStatPID == 0 &&
-			(pmState == PM_RUN || pmState == PM_HOT_STANDBY))
-			PgStatPID = pgstat_start();
-
 		/* If we have lost the archiver, try to start a new one. */
 		if (PgArchPID == 0 && PgArchStartupAllowed())
 			PgArchPID = StartArchiver();
@@ -2147,6 +2147,13 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 	if (proto == CANCEL_REQUEST_CODE)
 	{
+		if (len != sizeof(CancelRequestPacket))
+		{
+			ereport(COMMERROR,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("invalid length of startup packet")));
+			return STATUS_ERROR;
+		}
 		processCancelRequest(port, buf);
 		/* Not really an error, but we don't want to proceed further */
 		return STATUS_ERROR;
@@ -2158,7 +2165,7 @@ ProcessStartupPacket(Port *port, bool ssl_done, bool gss_done)
 
 #ifdef USE_SSL
 		/* No SSL when disabled or on Unix sockets */
-		if (!LoadedSSL || IS_AF_UNIX(port->laddr.addr.ss_family))
+		if (!LoadedSSL || port->laddr.addr.ss_family == AF_UNIX)
 			SSLok = 'N';
 		else
 			SSLok = 'S';		/* Support for SSL */
@@ -2183,6 +2190,18 @@ retry1:
 #endif
 
 		/*
+		 * At this point we should have no data already buffered.  If we do,
+		 * it was received before we performed the SSL handshake, so it wasn't
+		 * encrypted and indeed may have been injected by a man-in-the-middle.
+		 * We report this case to the client.
+		 */
+		if (pq_buffer_has_data())
+			ereport(FATAL,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("received unencrypted data after SSL request"),
+					 errdetail("This could be either a client-software bug or evidence of an attempted man-in-the-middle attack.")));
+
+		/*
 		 * regular startup packet, cancel, etc packet should follow, but not
 		 * another SSL negotiation request, and a GSS request should only
 		 * follow if SSL was rejected (client may negotiate in either order)
@@ -2195,7 +2214,7 @@ retry1:
 
 #ifdef ENABLE_GSS
 		/* No GSSAPI encryption when on Unix socket */
-		if (!IS_AF_UNIX(port->laddr.addr.ss_family))
+		if (port->laddr.addr.ss_family != AF_UNIX)
 			GSSok = 'G';
 #endif
 
@@ -2213,6 +2232,18 @@ retry1:
 		if (GSSok == 'G' && secure_open_gssapi(port) == -1)
 			return STATUS_ERROR;
 #endif
+
+		/*
+		 * At this point we should have no data already buffered.  If we do,
+		 * it was received before we performed the GSS handshake, so it wasn't
+		 * encrypted and indeed may have been injected by a man-in-the-middle.
+		 * We report this case to the client.
+		 */
+		if (pq_buffer_has_data())
+			ereport(FATAL,
+					(errcode(ERRCODE_PROTOCOL_VIOLATION),
+					 errmsg("received unencrypted data after GSSAPI encryption request"),
+					 errdetail("This could be either a client-software bug or evidence of an attempted man-in-the-middle attack.")));
 
 		/*
 		 * regular startup packet, cancel, etc packet should follow, but not
@@ -2483,9 +2514,6 @@ retry1:
 					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 					 errmsg("sorry, too many clients already")));
 			break;
-		case CAC_SUPERUSER:
-			/* OK for now, will check in InitPostgres */
-			break;
 		case CAC_OK:
 			break;
 	}
@@ -2620,19 +2648,10 @@ canAcceptConnections(int backend_type)
 
 	/*
 	 * "Smart shutdown" restrictions are applied only to normal connections,
-	 * not to autovac workers or bgworkers.  When only superusers can connect,
-	 * we return CAC_SUPERUSER to indicate that superuserness must be checked
-	 * later.  Note that neither CAC_OK nor CAC_SUPERUSER can safely be
-	 * returned until we have checked for too many children.
+	 * not to autovac workers or bgworkers.
 	 */
-	if (connsAllowed != ALLOW_ALL_CONNS &&
-		backend_type == BACKEND_TYPE_NORMAL)
-	{
-		if (connsAllowed == ALLOW_SUPERUSER_CONNS)
-			result = CAC_SUPERUSER; /* allow superusers only */
-		else
-			return CAC_SHUTDOWN;	/* shutdown is pending */
-	}
+	if (!connsAllowed && backend_type == BACKEND_TYPE_NORMAL)
+		return CAC_SHUTDOWN;	/* shutdown is pending */
 
 	/*
 	 * Don't start too many children.
@@ -2773,19 +2792,19 @@ ClosePostmasterPorts(bool am_syslogger)
 void
 InitProcessGlobals(void)
 {
-	unsigned int rseed;
-
 	MyProcPid = getpid();
 	MyStartTimestamp = GetCurrentTimestamp();
 	MyStartTime = timestamptz_to_time_t(MyStartTimestamp);
 
 	/*
-	 * Set a different seed for random() in every process.  We want something
+	 * Set a different global seed in every process.  We want something
 	 * unpredictable, so if possible, use high-quality random bits for the
 	 * seed.  Otherwise, fall back to a seed based on timestamp and PID.
 	 */
-	if (!pg_strong_random(&rseed, sizeof(rseed)))
+	if (unlikely(!pg_prng_strong_seed(&pg_global_prng_state)))
 	{
+		uint64		rseed;
+
 		/*
 		 * Since PIDs and timestamps tend to change more frequently in their
 		 * least significant bits, shift the timestamp left to allow a larger
@@ -2803,8 +2822,16 @@ InitProcessGlobals(void)
 			((uint64) MyStartTimestamp << 12) ^
 			((uint64) MyStartTimestamp >> 20);
 #endif
+		pg_prng_seed(&pg_global_prng_state, rseed);
 	}
-	srandom(rseed);
+
+	/*
+	 * Also make sure that we've set a good seed for random(3).  Use of that
+	 * is deprecated in core Postgres, but extensions might use it.
+	 */
+#ifndef WIN32
+	srandom(pg_prng_uint32(&pg_global_prng_state));
+#endif
 }
 
 
@@ -2863,8 +2890,6 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(PgArchPID, SIGHUP);
 		if (SysLoggerPID != 0)
 			signal_child(SysLoggerPID, SIGHUP);
-		if (PgStatPID != 0)
-			signal_child(PgStatPID, SIGHUP);
 
 		/* Reload authentication config files too */
 		if (!load_hba())
@@ -2949,17 +2974,12 @@ pmdie(SIGNAL_ARGS)
 #endif
 
 			/*
-			 * If we reached normal running, we have to wait for any online
-			 * backup mode to end; otherwise go straight to waiting for client
-			 * backends to exit.  (The difference is that in the former state,
-			 * we'll still let in new superuser clients, so that somebody can
-			 * end the online backup mode.)  If already in PM_STOP_BACKENDS or
-			 * a later state, do not change it.
+			 * If we reached normal running, we go straight to waiting for
+			 * client backends to exit.  If already in PM_STOP_BACKENDS or a
+			 * later state, do not change it.
 			 */
-			if (pmState == PM_RUN)
-				connsAllowed = ALLOW_SUPERUSER_CONNS;
-			else if (pmState == PM_HOT_STANDBY)
-				connsAllowed = ALLOW_NO_CONNS;
+			if (pmState == PM_RUN || pmState == PM_HOT_STANDBY)
+				connsAllowed = false;
 			else if (pmState == PM_STARTUP || pmState == PM_RECOVERY)
 			{
 				/* There should be no clients, so proceed to stop children */
@@ -3197,7 +3217,7 @@ reaper(SIGNAL_ARGS)
 			AbortStartTime = 0;
 			ReachedNormalRunning = true;
 			pmState = PM_RUN;
-			connsAllowed = ALLOW_ALL_CONNS;
+			connsAllowed = true;
 
 			YbCrashWhileLockIntermediateState = false;
 
@@ -3222,8 +3242,6 @@ reaper(SIGNAL_ARGS)
 				AutoVacPID = StartAutoVacLauncher();
 			if (PgArchStartupAllowed() && PgArchPID == 0)
 				PgArchPID = StartArchiver();
-			if (PgStatPID == 0)
-				PgStatPID = pgstat_start();
 
 			/* workers may be scheduled to start now */
 			maybe_start_bgworkers();
@@ -3290,13 +3308,6 @@ reaper(SIGNAL_ARGS)
 				SignalChildren(SIGUSR2);
 
 				pmState = PM_SHUTDOWN_2;
-
-				/*
-				 * We can also shut down the stats collector now; there's
-				 * nothing left for it to do.
-				 */
-				if (PgStatPID != 0)
-					signal_child(PgStatPID, SIGQUIT);
 			}
 			else
 			{
@@ -3372,22 +3383,6 @@ reaper(SIGNAL_ARGS)
 								 _("archiver process"));
 			if (PgArchStartupAllowed())
 				PgArchPID = StartArchiver();
-			continue;
-		}
-
-		/*
-		 * Was it the statistics collector?  If so, just try to start a new
-		 * one; no need to force reset of the rest of the system.  (If fail,
-		 * we'll try again in future cycles of the main loop.)
-		 */
-		if (pid == PgStatPID)
-		{
-			PgStatPID = 0;
-			if (!EXIT_STATUS_0(exitstatus))
-				LogChildExit(LOG, _("statistics collector process"),
-							 pid, exitstatus);
-			if (pmState == PM_RUN || pmState == PM_HOT_STANDBY)
-				PgStatPID = pgstat_start();
 			continue;
 		}
 
@@ -3855,24 +3850,9 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(PgArchPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
-	/*
-	 * Force a power-cycle of the pgstat process too.  (This isn't absolutely
-	 * necessary, but it seems like a good idea for robustness, and it
-	 * simplifies the state-machine logic in the case where a shutdown request
-	 * arrives during crash processing.)
-	 */
-	if (PgStatPID != 0 && take_action)
-	{
-		ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 "SIGQUIT",
-								 (int) PgStatPID)));
-		signal_child(PgStatPID, SIGQUIT);
-		allow_immediate_pgstat_restart();
-	}
-
 	if (YBIsEnabledInPostgresEnvVar() && !YBShouldRestartAllChildrenIfOneCrashes() && !take_action)
 		return;
+
 	/* We do NOT restart the syslogger */
 
 	if (Shutdown != ImmediateShutdown)
@@ -3973,21 +3953,11 @@ PostmasterStateMachine(void)
 	/* If we're doing a smart shutdown, try to advance that state. */
 	if (pmState == PM_RUN || pmState == PM_HOT_STANDBY)
 	{
-		if (connsAllowed == ALLOW_SUPERUSER_CONNS)
+		if (!connsAllowed)
 		{
 			/*
-			 * ALLOW_SUPERUSER_CONNS state ends as soon as online backup mode
-			 * is not active.
-			 */
-			if (!BackupInProgress())
-				connsAllowed = ALLOW_NO_CONNS;
-		}
-
-		if (connsAllowed == ALLOW_NO_CONNS)
-		{
-			/*
-			 * ALLOW_NO_CONNS state ends when we have no normal client
-			 * backends running.  Then we're ready to stop other children.
+			 * This state ends when we have no normal client backends running.
+			 * Then we're ready to stop other children.
 			 */
 			if (CountChildren(BACKEND_TYPE_NORMAL) == 0)
 				pmState = PM_STOP_BACKENDS;
@@ -4099,12 +4069,10 @@ PostmasterStateMachine(void)
 					FatalError = true;
 					pmState = PM_WAIT_DEAD_END;
 
-					/* Kill the walsenders, archiver and stats collector too */
+					/* Kill the walsenders and archiver too */
 					SignalChildren(SIGQUIT);
 					if (PgArchPID != 0)
 						signal_child(PgArchPID, SIGQUIT);
-					if (PgStatPID != 0)
-						signal_child(PgStatPID, SIGQUIT);
 				}
 			}
 		}
@@ -4128,8 +4096,7 @@ PostmasterStateMachine(void)
 	{
 		/*
 		 * PM_WAIT_DEAD_END state ends when the BackendList is entirely empty
-		 * (ie, no dead_end children remain), and the archiver and stats
-		 * collector are gone too.
+		 * (ie, no dead_end children remain), and the archiver is gone too.
 		 *
 		 * The reason we wait for those two is to protect them against a new
 		 * postmaster starting conflicting subprocesses; this isn't an
@@ -4139,8 +4106,7 @@ PostmasterStateMachine(void)
 		 * normal state transition leading up to PM_WAIT_DEAD_END, or during
 		 * FatalError processing.
 		 */
-		if (dlist_is_empty(&BackendList) &&
-			PgArchPID == 0 && PgStatPID == 0)
+		if (dlist_is_empty(&BackendList) && PgArchPID == 0)
 		{
 			/* These other guys should be dead already */
 			Assert(StartupPID == 0);
@@ -4175,18 +4141,6 @@ PostmasterStateMachine(void)
 		}
 		else
 		{
-			/*
-			 * Terminate exclusive backup mode to avoid recovery after a clean
-			 * fast shutdown.  Since an exclusive backup can only be taken
-			 * during normal running (and not, for example, while running
-			 * under Hot Standby) it only makes sense to do this if we reached
-			 * normal running. If we're still in recovery, the backup file is
-			 * one we're recovering *from*, and we must keep it around so that
-			 * recovery restarts from the right place.
-			 */
-			if (ReachedNormalRunning)
-				CancelBackup();
-
 			/*
 			 * Normal exit from the postmaster is here.  We don't need to log
 			 * anything here, since the UnlinkLockFiles proc_exit callback
@@ -4360,8 +4314,6 @@ TerminateChildren(int signal)
 		signal_child(AutoVacPID, signal);
 	if (PgArchPID != 0)
 		signal_child(PgArchPID, signal);
-	if (PgStatPID != 0)
-		signal_child(PgStatPID, signal);
 }
 
 /*
@@ -4408,8 +4360,7 @@ BackendStartup(Port *port)
 
 	/* Pass down canAcceptConnections state */
 	port->canAcceptConnections = canAcceptConnections(BACKEND_TYPE_NORMAL);
-	bn->dead_end = (port->canAcceptConnections != CAC_OK &&
-					port->canAcceptConnections != CAC_SUPERUSER);
+	bn->dead_end = (port->canAcceptConnections != CAC_OK);
 
 	/*
 	 * Unless it's a dead_end child, assign it a child slot number
@@ -5157,7 +5108,7 @@ SubPostmasterMain(int argc, char *argv[])
 	 * If testing EXEC_BACKEND on Linux, you should run this as root before
 	 * starting the postmaster:
 	 *
-	 * echo 0 >/proc/sys/kernel/randomize_va_space
+	 * sysctl -w kernel.randomize_va_space=0
 	 *
 	 * This prevents using randomized stack and code addresses that cause the
 	 * child process's memory map to be different from the parent's, making it
@@ -5321,12 +5272,6 @@ SubPostmasterMain(int argc, char *argv[])
 
 		StartBackgroundWorker();
 	}
-	if (strcmp(argv[1], "--forkcol") == 0)
-	{
-		/* Do not want to attach to shared memory */
-
-		PgstatCollectorMain(argc, argv);	/* does not return */
-	}
 	if (strcmp(argv[1], "--forklog") == 0)
 	{
 		/* Do not want to attach to shared memory */
@@ -5430,12 +5375,6 @@ sigusr1_handler(SIGNAL_ARGS)
 	if (CheckPostmasterSignal(PMSIGNAL_BEGIN_HOT_STANDBY) &&
 		pmState == PM_RECOVERY && Shutdown == NoShutdown)
 	{
-		/*
-		 * Likewise, start other special children as needed.
-		 */
-		Assert(PgStatPID == 0);
-		PgStatPID = pgstat_start();
-
 		ereport(LOG,
 				(errmsg("database system is ready to accept read-only connections")));
 
@@ -5446,7 +5385,7 @@ sigusr1_handler(SIGNAL_ARGS)
 #endif
 
 		pmState = PM_HOT_STANDBY;
-		connsAllowed = ALLOW_ALL_CONNS;
+		connsAllowed = true;
 
 		/* Some workers may be scheduled to start now */
 		StartWorkerNeeded = true;
@@ -5938,7 +5877,11 @@ BackgroundWorkerInitializeConnection(const char *dbname, const char *username, u
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(dbname, InvalidOid,	/* database to connect to */
+				 username, InvalidOid,	/* role to connect as */
+				 false,			/* never honor session_preload_libraries */
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
+				 NULL);			/* no out_dbname */
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
@@ -5961,7 +5904,11 @@ BackgroundWorkerInitializeConnectionByOid(Oid dboid, Oid useroid, uint32 flags)
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("database connection requirement not indicated during registration")));
 
-	InitPostgres(NULL, dboid, NULL, useroid, NULL, (flags & BGWORKER_BYPASS_ALLOWCONN) != 0);
+	InitPostgres(NULL, dboid,	/* database to connect to */
+				 NULL, useroid, /* role to connect as */
+				 false,			/* never honor session_preload_libraries */
+				 (flags & BGWORKER_BYPASS_ALLOWCONN) != 0,	/* ignore datallowconn? */
+				 NULL);			/* no out_dbname */
 
 	/* it had better not gotten out of "init" mode yet */
 	if (!IsInitProcessingMode())
@@ -6136,7 +6083,6 @@ bgworker_should_start_now(BgWorkerStartTime start_time)
 			if (start_time == BgWorkerStart_PostmasterStart)
 				return true;
 			/* fall through */
-
 	}
 
 	return false;
@@ -6361,7 +6307,6 @@ extern slock_t *ShmemLock;
 extern slock_t *ProcStructLock;
 extern PGPROC *AuxiliaryProcs;
 extern PMSignalData *PMSignalState;
-extern pgsocket pgStatSock;
 extern pg_time_t first_syslogger_file_time;
 
 #ifndef WIN32
@@ -6417,8 +6362,6 @@ save_backend_variables(BackendParameters *param, Port *port,
 	param->AuxiliaryProcs = AuxiliaryProcs;
 	param->PreparedXactProcs = PreparedXactProcs;
 	param->PMSignalState = PMSignalState;
-	if (!write_inheritable_socket(&param->pgStatSock, pgStatSock, childPid))
-		return false;
 
 	param->PostmasterPid = PostmasterPid;
 	param->PgStartTime = PgStartTime;
@@ -6652,7 +6595,6 @@ restore_backend_variables(BackendParameters *param, Port *port)
 	AuxiliaryProcs = param->AuxiliaryProcs;
 	PreparedXactProcs = param->PreparedXactProcs;
 	PMSignalState = param->PMSignalState;
-	read_inheritable_socket(&pgStatSock, &param->pgStatSock);
 
 	PostmasterPid = param->PostmasterPid;
 	PgStartTime = param->PgStartTime;
@@ -6691,8 +6633,6 @@ restore_backend_variables(BackendParameters *param, Port *port)
 	if (postmaster_alive_fds[1] >= 0)
 		ReserveExternalFD();
 #endif
-	if (pgStatSock != PGINVALID_SOCKET)
-		ReserveExternalFD();
 }
 
 

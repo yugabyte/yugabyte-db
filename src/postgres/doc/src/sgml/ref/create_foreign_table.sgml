@@ -35,7 +35,8 @@ CREATE FOREIGN TABLE [ IF NOT EXISTS ] <replaceable class="parameter">table_name
   { <replaceable class="parameter">column_name</replaceable> [ WITH OPTIONS ] [ <replaceable class="parameter">column_constraint</replaceable> [ ... ] ]
     | <replaceable>table_constraint</replaceable> }
     [, ... ]
-) ] <replaceable class="parameter">partition_bound_spec</replaceable>
+) ]
+{ FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable> | DEFAULT }
   SERVER <replaceable class="parameter">server_name</replaceable>
 [ OPTIONS ( <replaceable class="parameter">option</replaceable> '<replaceable class="parameter">value</replaceable>' [, ... ] ) ]
 
@@ -52,6 +53,13 @@ CREATE FOREIGN TABLE [ IF NOT EXISTS ] <replaceable class="parameter">table_name
 
 [ CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> ]
 CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
+
+<phrase>and <replaceable class="parameter">partition_bound_spec</replaceable> is:</phrase>
+
+IN ( <replaceable class="parameter">partition_bound_expr</replaceable> [, ...] ) |
+FROM ( { <replaceable class="parameter">partition_bound_expr</replaceable> | MINVALUE | MAXVALUE } [, ...] )
+  TO ( { <replaceable class="parameter">partition_bound_expr</replaceable> | MINVALUE | MAXVALUE } [, ...] ) |
+WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REMAINDER <replaceable class="parameter">numeric_literal</replaceable> )
 </synopsis>
  </refsynopsisdiv>
 
@@ -69,8 +77,8 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
    myschema.mytable ...</literal>) then the table is created in the specified
    schema.  Otherwise it is created in the current schema.
    The name of the foreign table must be
-   distinct from the name of any other foreign table, table, sequence, index,
-   view, or materialized view in the same schema.
+   distinct from the name of any other relation (table, sequence, index, view,
+   materialized view, or foreign table) in the same schema.
   </para>
 
   <para>
@@ -165,7 +173,7 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
    </varlistentry>
 
    <varlistentry>
-    <term><literal>PARTITION OF <replaceable>parent_table</replaceable> FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable></literal></term>
+    <term><literal>PARTITION OF <replaceable>parent_table</replaceable> { FOR VALUES <replaceable class="parameter">partition_bound_spec</replaceable> | DEFAULT }</literal></term>
     <listitem>
      <para>
       This form can be used to create the foreign table as partition of
@@ -348,9 +356,31 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
     constraints on foreign tables, it does assume that they are correct
     for purposes of query optimization.  If there are rows visible in the
     foreign table that do not satisfy a declared constraint, queries on
-    the table might produce incorrect answers.  It is the user's
+    the table might produce errors or incorrect answers.  It is the user's
     responsibility to ensure that the constraint definition matches
     reality.
+   </para>
+
+   <caution>
+    <para>
+     When a foreign table is used as a partition of a partitioned table,
+     there is an implicit constraint that its contents must satisfy the
+     partitioning rule.  Again, it is the user's responsibility to ensure
+     that that is true, which is best done by installing a matching
+     constraint on the remote server.
+    </para>
+   </caution>
+
+   <para>
+    Within a partitioned table containing foreign-table partitions,
+    an <command>UPDATE</command> that changes the partition key value can
+    cause a row to be moved from a local partition to a foreign-table
+    partition, provided the foreign data wrapper supports tuple routing.
+    However it is not currently possible to move a row from a
+    foreign-table partition to another partition.
+    An <command>UPDATE</command> that would require doing that will fail
+    due to the partitioning constraint, assuming that that is properly
+    enforced by the remote server.
    </para>
 
    <para>
@@ -361,12 +391,6 @@ CHECK ( <replaceable class="parameter">expression</replaceable> ) [ NO INHERIT ]
     not enforced that a query of the foreign table returns values for stored
     generated columns that are consistent with the generation expression.
     Again, this might result in incorrect query results.
-   </para>
-
-   <para>
-    While rows can be moved from local partitions to a foreign-table partition
-    (provided the foreign data wrapper supports tuple routing), they cannot be
-    moved from a foreign-table partition to another partition.
    </para>
  </refsect1>
 

@@ -4,7 +4,7 @@
  *	  POSTGRES low-level lock mechanism
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/lock.h
@@ -34,23 +34,24 @@ typedef struct PROC_QUEUE
 } PROC_QUEUE;
 
 /* GUC variables */
-extern int	max_locks_per_xact;
+extern PGDLLIMPORT int max_locks_per_xact;
 
 #ifdef LOCK_DEBUG
-extern int	Trace_lock_oidmin;
-extern bool Trace_locks;
-extern bool Trace_userlocks;
-extern int	Trace_lock_table;
-extern bool Debug_deadlocks;
+extern PGDLLIMPORT int Trace_lock_oidmin;
+extern PGDLLIMPORT bool Trace_locks;
+extern PGDLLIMPORT bool Trace_userlocks;
+extern PGDLLIMPORT int Trace_lock_table;
+extern PGDLLIMPORT bool Debug_deadlocks;
 #endif							/* LOCK_DEBUG */
 
 
 /*
  * Top-level transactions are identified by VirtualTransactionIDs comprising
- * PGPROC fields backendId and lxid.  For prepared transactions, the
- * LocalTransactionId is an ordinary XID.  These are guaranteed unique over
- * the short term, but will be reused after a database restart or XID
- * wraparound; hence they should never be stored on disk.
+ * PGPROC fields backendId and lxid.  For recovered prepared transactions, the
+ * LocalTransactionId is an ordinary XID; LOCKTAG_VIRTUALTRANSACTION never
+ * refers to that kind.  These are guaranteed unique over the short term, but
+ * will be reused after a database restart or XID wraparound; hence they
+ * should never be stored on disk.
  *
  * Note that struct VirtualTransactionId can not be assumed to be atomically
  * assignable as a whole.  However, type LocalTransactionId is assumed to
@@ -70,7 +71,7 @@ typedef struct
 #define LocalTransactionIdIsValid(lxid) ((lxid) != InvalidLocalTransactionId)
 #define VirtualTransactionIdIsValid(vxid) \
 	(LocalTransactionIdIsValid((vxid).localTransactionId))
-#define VirtualTransactionIdIsPreparedXact(vxid) \
+#define VirtualTransactionIdIsRecoveredPreparedXact(vxid) \
 	((vxid).backendId == InvalidBackendId)
 #define VirtualTransactionIdEquals(vxid1, vxid2) \
 	((vxid1).backendId == (vxid2).backendId && \
@@ -153,7 +154,7 @@ typedef enum LockTagType
 
 #define LOCKTAG_LAST_TYPE	LOCKTAG_ADVISORY
 
-extern const char *const LockTagTypeNames[];
+extern PGDLLIMPORT const char *const LockTagTypeNames[];
 
 /*
  * The LOCKTAG struct is defined with malice aforethought to fit into 16

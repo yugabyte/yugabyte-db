@@ -5,7 +5,7 @@
  * This implements Unicode normalization, per the documentation at
  * https://www.unicode.org/reports/tr15/.
  *
- * Portions Copyright (c) 2017-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2017-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/common/unicode_norm.c
@@ -438,6 +438,10 @@ unicode_normalize(UnicodeNormalizationForm form, const pg_wchar *input)
 		decompose_code(*p, compat, &decomp_chars, &current_size);
 	decomp_chars[decomp_size] = '\0';
 	Assert(decomp_size == current_size);
+
+	/* Leave if there is nothing to decompose */
+	if (decomp_size == 0)
+		return decomp_chars;
 
 	/*
 	 * Now apply canonical ordering.

@@ -65,6 +65,20 @@
  *	(XXX is it worth testing likewise for duplicate catcache flush entries?
  *	Probably not.)
  *
+ *	Many subsystems own higher-level caches that depend on relcache and/or
+ *	catcache, and they register callbacks here to invalidate their caches.
+ *	While building a higher-level cache entry, a backend may receive a
+ *	callback for the being-built entry or one of its dependencies.  This
+ *	implies the new higher-level entry would be born stale, and it might
+ *	remain stale for the life of the backend.  Many caches do not prevent
+ *	that.  They rely on DDL for can't-miss catalog changes taking
+ *	AccessExclusiveLock on suitable objects.  (For a change made with less
+ *	locking, backends might never read the change.)  The relation cache,
+ *	however, needs to reflect changes from CREATE INDEX CONCURRENTLY no later
+ *	than the beginning of the next transaction.  Hence, when a relevant
+ *	invalidation callback arrives during a build, relcache.c reattempts that
+ *	build.  Caches with similar needs could do likewise.
+ *
  *	If a relcache flush is issued for a system relation that we preload
  *	from the relcache init file, we must also delete the init file so that
  *	it will be rebuilt during the next backend restart.  The actual work of
@@ -84,7 +98,7 @@
  *	support the decoding of the in-progress transactions.  See
  *	CommandEndInvalidationMessages.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -99,6 +113,7 @@
 
 #include "access/htup_details.h"
 #include "access/xact.h"
+#include "access/xloginsert.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_constraint.h"
 #include "miscadmin.h"
@@ -636,7 +651,7 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 			int			i;
 
 			if (msg->rc.relId == InvalidOid)
-				RelationCacheInvalidate();
+				RelationCacheInvalidate(false);
 			else
 				RelationCacheInvalidateEntry(msg->rc.relId);
 
@@ -681,16 +696,40 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 }
 
 /*
- *		CallSystemCacheCallbacks
+ *		InvalidateSystemCaches
  *
- *		Calls all syscache and relcache invalidation callbacks.
- *		This is useful when the entire cache is being reloaded or
- *		invalidated, rather than a single cache entry.
+ *		This blows away all tuples in the system catalog caches and
+ *		all the cached relation descriptors and smgr cache entries.
+ *		Relation descriptors that have positive refcounts are then rebuilt.
+ *
+ *		We call this when we see a shared-inval-queue overflow signal,
+ *		since that tells us we've lost some shared-inval messages and hence
+ *		don't know what needs to be invalidated.
  */
+InvalidateSystemCaches(void)
+{
+	if (IsYugaByteEnabled()) {
+		// In case of YugaByte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
+		// But it can't be done here as 'YBRefreshCache' can't be called from within the transaction.
+		// Resetting catalog version will force cache refresh as soon as possible.
+		YBResetCatalogVersion();
+		return;
+	}
+
+	InvalidateSystemCachesExtended(false, false);
+}
+
 void
-CallSystemCacheCallbacks(void)
+InvalidateSystemCachesExtended(bool debug_discard, bool yb_callback)
 {
 	int			i;
+
+	if (!yb_callback)
+	{
+		InvalidateCatalogSnapshot();
+		ResetCatalogCaches();
+		RelationCacheInvalidate(debug_discard); /* gets smgr and relmap too */
+	}
 
 	for (i = 0; i < syscache_callback_count; i++)
 	{
@@ -708,32 +747,17 @@ CallSystemCacheCallbacks(void)
 }
 
 /*
- *		InvalidateSystemCaches
+ *		CallSystemCacheCallbacks
  *
- *		This blows away all tuples in the system catalog caches and
- *		all the cached relation descriptors and smgr cache entries.
- *		Relation descriptors that have positive refcounts are then rebuilt.
- *
- *		We call this when we see a shared-inval-queue overflow signal,
- *		since that tells us we've lost some shared-inval messages and hence
- *		don't know what needs to be invalidated.
+ *		Calls all syscache and relcache invalidation callbacks.
+ *		This is useful when the entire cache is being reloaded or
+ *		invalidated, rather than a single cache entry.
  */
 void
-InvalidateSystemCaches(void)
+CallSystemCacheCallbacks(void)
 {
-	if (IsYugaByteEnabled()) {
-		// In case of YugaByte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
-		// But it can't be done here as 'YBRefreshCache' can't be called from within the transaction.
-		// Resetting catalog version will force cache refresh as soon as possible.
-		YBResetCatalogVersion();
-		return;
-	}
-	InvalidateCatalogSnapshot();
-	ResetCatalogCaches();
-	RelationCacheInvalidate();	/* gets smgr and relmap too */
-	CallSystemCacheCallbacks();
+	InvalidateSystemCachesExtended(true, true /* yb_callback */);
 }
-
 
 /* ----------------------------------------------------------------
  *					  public functions
@@ -786,7 +810,7 @@ AcceptInvalidationMessages(void)
 		if (recursion_depth < debug_discard_caches)
 		{
 			recursion_depth++;
-			InvalidateSystemCaches();
+			InvalidateSystemCachesExtended(true, false);
 			recursion_depth--;
 		}
 	}

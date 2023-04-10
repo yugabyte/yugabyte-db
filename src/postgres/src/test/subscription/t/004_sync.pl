@@ -1,20 +1,20 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Tests for logical replication table syncing
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 8;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Initialize publisher node
-my $node_publisher = PostgresNode->new('publisher');
+my $node_publisher = PostgreSQL::Test::Cluster->new('publisher');
 $node_publisher->init(allows_streaming => 'logical');
 $node_publisher->start;
 
 # Create subscriber node
-my $node_subscriber = PostgresNode->new('subscriber');
+my $node_subscriber = PostgreSQL::Test::Cluster->new('subscriber');
 $node_subscriber->init(allows_streaming => 'logical');
 $node_subscriber->append_conf('postgresql.conf',
 	"wal_retrieve_retry_interval = 1ms");
@@ -39,13 +39,8 @@ $node_subscriber->safe_psql('postgres',
 	"CREATE SUBSCRIPTION tap_sub CONNECTION '$publisher_connstr' PUBLICATION tap_pub"
 );
 
-$node_publisher->wait_for_catchup('tap_sub');
-
-# Also wait for initial table sync to finish
-my $synced_query =
-  "SELECT count(1) = 0 FROM pg_subscription_rel WHERE srsubstate NOT IN ('r', 's');";
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+# Wait for initial table sync to finish
+$node_subscriber->wait_for_subscription_sync($node_publisher, 'tap_sub');
 
 my $result =
   $node_subscriber->safe_psql('postgres', "SELECT count(*) FROM tab_rep");
@@ -71,8 +66,7 @@ $node_subscriber->poll_query_until('postgres', $started_query)
 $node_subscriber->safe_psql('postgres', "DELETE FROM tab_rep;");
 
 # wait for sync to finish this time
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+$node_subscriber->wait_for_subscription_sync;
 
 # check that all data is synced
 $result =
@@ -107,8 +101,7 @@ $node_subscriber->safe_psql('postgres',
 );
 
 # and wait for data sync to finish again
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+$node_subscriber->wait_for_subscription_sync;
 
 # check that all data is synced
 $result =
@@ -133,8 +126,7 @@ $node_subscriber->safe_psql('postgres',
 	"ALTER SUBSCRIPTION tap_sub REFRESH PUBLICATION");
 
 # wait for sync to finish
-$node_subscriber->poll_query_until('postgres', $synced_query)
-  or die "Timed out while waiting for subscriber to synchronize data";
+$node_subscriber->wait_for_subscription_sync;
 
 $result = $node_subscriber->safe_psql('postgres',
 	"SELECT count(*) FROM tab_rep_next");
@@ -171,10 +163,16 @@ $result = $node_subscriber->poll_query_until('postgres', $started_query)
 # subscriber is stuck on data copy for constraint violation.
 $node_subscriber->safe_psql('postgres', "DROP SUBSCRIPTION tap_sub");
 
-$result = $node_publisher->safe_psql('postgres',
-	"SELECT count(*) FROM pg_replication_slots");
-is($result, qq(0),
+# When DROP SUBSCRIPTION tries to drop the tablesync slot, the slot may not
+# have been created, which causes the slot to be created after the DROP
+# SUSCRIPTION finishes. Such slots eventually get dropped at walsender exit
+# time. So, to prevent being affected by such ephemeral tablesync slots, we
+# wait until all the slots have been cleaned.
+ok( $node_publisher->poll_query_until(
+		'postgres', 'SELECT count(*) = 0 FROM pg_replication_slots'),
 	'DROP SUBSCRIPTION during error can clean up the slots on the publisher');
 
 $node_subscriber->stop('fast');
 $node_publisher->stop('fast');
+
+done_testing();

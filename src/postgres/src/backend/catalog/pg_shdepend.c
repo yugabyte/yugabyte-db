@@ -3,7 +3,7 @@
  * pg_shdepend.c
  *	  routines to support manipulation of the pg_shdepend relation
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -965,15 +965,18 @@ copyTemplateDependencies(Oid templateDbId, Oid newDbId)
 
 		ExecClearTuple(slot[slot_stored_count]);
 
+		memset(slot[slot_stored_count]->tts_isnull, false,
+			   slot[slot_stored_count]->tts_tupleDescriptor->natts * sizeof(bool));
+
 		shdep = (Form_pg_shdepend) GETSTRUCT(tup);
 
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_dbid] = ObjectIdGetDatum(newDbId);
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_classid] = shdep->classid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objid] = shdep->objid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objsubid] = shdep->objsubid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refclassid] = shdep->refclassid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refobjid] = shdep->refobjid;
-		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_deptype] = shdep->deptype;
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_dbid - 1] = ObjectIdGetDatum(newDbId);
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_classid - 1] = shdep->classid;
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objid - 1] = shdep->objid;
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_objsubid - 1] = shdep->objsubid;
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refclassid - 1] = shdep->refclassid;
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_refobjid - 1] = shdep->refobjid;
+		slot[slot_stored_count]->tts_values[Anum_pg_shdepend_deptype - 1] = shdep->deptype;
 
 		ExecStoreVirtualTuple(slot[slot_stored_count]);
 		slot_stored_count++;
@@ -1294,6 +1297,12 @@ storeObjectDescription(StringInfo descs,
 					   int count)
 {
 	char	   *objdesc = getObjectDescription(object, false);
+
+	/*
+	 * An object being dropped concurrently doesn't need to be reported.
+	 */
+	if (objdesc == NULL)
+		return;
 
 	/* separate entries with a newline */
 	if (descs->len != 0)

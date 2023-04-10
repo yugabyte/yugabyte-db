@@ -40,7 +40,8 @@ PostgreSQL documentation
   <para>
    <application>pg_receivewal</application> streams the write-ahead
    log in real time as it's being generated on the server, and does not wait
-   for segments to complete like <xref linkend="guc-archive-command"/> does.
+   for segments to complete like <xref linkend="guc-archive-command"/> and
+   <xref linkend="guc-archive-library"/> do.
    For this reason, it is not necessary to set
    <xref linkend="guc-archive-timeout"/> when using
     <application>pg_receivewal</application>.
@@ -73,6 +74,39 @@ PostgreSQL documentation
    The server must also be configured with
    <xref linkend="guc-max-wal-senders"/> set high enough to leave at least
    one session available for the stream.
+  </para>
+
+  <para>
+   The starting point of the write-ahead log streaming is calculated when
+   <application>pg_receivewal</application> starts:
+   <orderedlist>
+    <listitem>
+     <para>
+      First, scan the directory where the WAL segment files are written and
+      find the newest completed segment file, using as the starting point the
+      beginning of the next WAL segment file.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      If a starting point cannot be calculated with the previous method,
+      and if a replication slot is used, an extra
+      <command>READ_REPLICATION_SLOT</command> command is issued to retrieve
+      the slot's <literal>restart_lsn</literal> to use as the starting point.
+      This option is only available when streaming write-ahead logs from
+      <productname>PostgreSQL</productname> 15 and up.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      If a starting point cannot be calculated with the previous method,
+      the latest WAL flush location is used as reported by the server from
+      an <literal>IDENTIFY_SYSTEM</literal> command.
+     </para>
+    </listitem>
+   </orderedlist>
   </para>
 
   <para>
@@ -231,13 +265,35 @@ PostgreSQL documentation
 
      <varlistentry>
       <term><option>-Z <replaceable class="parameter">level</replaceable></option></term>
+      <term><option>-Z <replaceable class="parameter">method</replaceable>[:<replaceable>detail</replaceable>]</option></term>
       <term><option>--compress=<replaceable class="parameter">level</replaceable></option></term>
+      <term><option>--compress=<replaceable class="parameter">method</replaceable>[:<replaceable>detail</replaceable>]</option></term>
       <listitem>
        <para>
-        Enables gzip compression of write-ahead logs, and specifies the
-        compression level (0 through 9, 0 being no compression and 9 being best
-        compression).  The suffix <filename>.gz</filename> will
-        automatically be added to all filenames.
+        Enables compression of write-ahead logs.
+       </para>
+       <para>
+        The compression method can be set to <literal>gzip</literal>,
+        <literal>lz4</literal> (if <productname>PostgreSQL</productname>
+        was compiled with <option>--with-lz4</option>) or
+        <literal>none</literal> for no compression.
+        A compression detail string can optionally be specified.  If the
+        detail string is an integer, it specifies the compression level.
+        Otherwise, it should be a comma-separated list of items, each of the
+        form <literal>keyword</literal> or <literal>keyword=value</literal>.
+        Currently, the only supported keyword is <literal>level</literal>.
+       </para>
+       <para>
+        If no compression level is specified, the default compression level
+        will be used. If only a level is specified without mentioning an
+        algorithm, <literal>gzip</literal> compression will be used if the
+        level is greater than 0, and no compression will be used if the level
+        is 0.
+       </para>
+       <para>
+        The suffix <filename>.gz</filename> will automatically be added to
+        all filenames when using <literal>gzip</literal>, and the suffix
+        <filename>.lz4</filename> is added when using <literal>lz4</literal>.
        </para>
       </listitem>
      </varlistentry>
@@ -431,11 +487,13 @@ PostgreSQL documentation
 
   <para>
    When using <application>pg_receivewal</application> instead of
-   <xref linkend="guc-archive-command"/> as the main WAL backup method, it is
+   <xref linkend="guc-archive-command"/> or
+   <xref linkend="guc-archive-library"/> as the main WAL backup method, it is
    strongly recommended to use replication slots.  Otherwise, the server is
    free to recycle or remove write-ahead log files before they are backed up,
    because it does not have any information, either
-   from <xref linkend="guc-archive-command"/> or the replication slots, about
+   from <xref linkend="guc-archive-command"/> or
+   <xref linkend="guc-archive-library"/> or the replication slots, about
    how far the WAL stream has been archived.  Note, however, that a
    replication slot will fill up the server's disk space if the receiver does
    not keep up with fetching the WAL data.

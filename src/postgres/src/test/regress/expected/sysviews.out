@@ -20,7 +20,7 @@ select count(*) >= 0 as ok from pg_available_extensions;
 (1 row)
 
 -- The entire output of pg_backend_memory_contexts is not stable,
--- we test only the existance and basic condition of TopMemoryContext.
+-- we test only the existence and basic condition of TopMemoryContext.
 select name, ident, parent, level, total_bytes >= free_bytes
   from pg_backend_memory_contexts where level = 0;
        name       | ident | parent | level | ?column? 
@@ -48,11 +48,20 @@ select count(*) >= 0 as ok from pg_file_settings;
  t
 (1 row)
 
--- There will surely be at least one rule
-select count(*) > 0 as ok from pg_hba_file_rules;
- ok 
-----
- t
+-- There will surely be at least one rule, with no errors.
+select count(*) > 0 as ok, count(*) FILTER (WHERE error IS NOT NULL) = 0 AS no_err
+  from pg_hba_file_rules;
+ ok | no_err 
+----+--------
+ t  | t
+(1 row)
+
+-- There may be no rules, and there should be no errors.
+select count(*) >= 0 as ok, count(*) FILTER (WHERE error IS NOT NULL) = 0 AS no_err
+  from pg_ident_file_mappings;
+ ok | no_err 
+----+--------
+ t  | t
 (1 row)
 
 -- There will surely be at least one active lock
@@ -71,6 +80,13 @@ select count(*) = 0 as ok from pg_prepared_statements;
 
 -- See also prepared_xacts.sql
 select count(*) >= 0 as ok from pg_prepared_xacts;
+ ok 
+----
+ t
+(1 row)
+
+-- There will surely be at least one SLRU cache
+select count(*) > 0 as ok from pg_stat_slru;
  ok 
 ----
  t

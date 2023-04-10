@@ -174,7 +174,7 @@ ORDER BY c.relpages DESC LIMIT 10;
       hypothetically, undiscovered bugs in the underlying B-Tree index
       access method code.  Note that
       <function>bt_index_parent_check</function> cannot be used when
-      Hot Standby mode is enabled (i.e., on read-only physical
+      hot standby mode is enabled (i.e., on read-only physical
       replicas), unlike <function>bt_index_check</function>.
      </para>
     </listitem>
@@ -220,10 +220,10 @@ SET client_min_messages = DEBUG1;
     </term>
     <listitem>
      <para>
-      Checks a table for structural corruption, where pages in the relation
-      contain data that is invalidly formatted, and for logical corruption,
-      where pages are structurally valid but inconsistent with the rest of the
-      database cluster.
+      Checks a table, sequence, or materialized view for structural corruption,
+      where pages in the relation contain data that is invalidly formatted, and
+      for logical corruption, where pages are structurally valid but
+      inconsistent with the rest of the database cluster.
      </para>
      <para>
       The following optional arguments are recognized:

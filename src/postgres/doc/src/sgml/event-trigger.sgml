@@ -242,7 +242,7 @@
         <entry align="center"><literal>X</literal></entry>
         <entry align="center"><literal>X</literal></entry>
         <entry align="center"><literal>-</literal></entry>
-        <entry align="center"><literal>-</literal></entry>
+        <entry align="center"><literal>X</literal></entry>
         <entry align="left"></entry>
        </row>
        <row>
@@ -287,6 +287,14 @@
        </row>
        <row>
         <entry align="left"><literal>ALTER PUBLICATION</literal></entry>
+        <entry align="center"><literal>X</literal></entry>
+        <entry align="center"><literal>X</literal></entry>
+        <entry align="center"><literal>-</literal></entry>
+        <entry align="center"><literal>-</literal></entry>
+        <entry align="left"></entry>
+       </row>
+       <row>
+        <entry align="left"><literal>ALTER ROUTINE</literal></entry>
         <entry align="center"><literal>X</literal></entry>
         <entry align="center"><literal>X</literal></entry>
         <entry align="center"><literal>-</literal></entry>
@@ -854,6 +862,14 @@
         <entry align="left"></entry>
        </row>
        <row>
+        <entry align="left"><literal>DROP ROUTINE</literal></entry>
+        <entry align="center"><literal>X</literal></entry>
+        <entry align="center"><literal>X</literal></entry>
+        <entry align="center"><literal>X</literal></entry>
+        <entry align="center"><literal>-</literal></entry>
+        <entry align="left"></entry>
+       </row>
+       <row>
         <entry align="left"><literal>DROP RULE</literal></entry>
         <entry align="center"><literal>X</literal></entry>
         <entry align="center"><literal>X</literal></entry>
@@ -1178,8 +1194,9 @@ noddl(PG_FUNCTION_ARGS)
     trigdata = (EventTriggerData *) fcinfo->context;
 
     ereport(ERROR,
-        (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                 errmsg("command \"%s\" denied", trigdata->tag)));
+            (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+             errmsg("command \"%s\" denied",
+                    GetCommandTagName(trigdata->tag))));
 
     PG_RETURN_NULL();
 }

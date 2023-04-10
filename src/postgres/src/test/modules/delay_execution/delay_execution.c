@@ -10,7 +10,7 @@
  * test behaviors where some specified action happens in another backend
  * between parsing and execution of any desired query.
  *
- * Copyright (c) 2020-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2020-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/test/modules/delay_execution/delay_execution.c
@@ -36,9 +36,8 @@ static int	post_planning_lock_id = 0;
 /* Save previous planner hook user to be a good citizen */
 static planner_hook_type prev_planner_hook = NULL;
 
-/* Module load/unload functions */
+/* Module load function */
 void		_PG_init(void);
-void		_PG_fini(void);
 
 
 /* planner_hook function to provide the desired delay */
@@ -91,14 +90,9 @@ _PG_init(void)
 							NULL,
 							NULL);
 
+	MarkGUCPrefixReserved("delay_execution");
+
 	/* Install our hook */
 	prev_planner_hook = planner_hook;
 	planner_hook = delay_execution_planner;
-}
-
-/* Module unload function (pro forma, not used currently) */
-void
-_PG_fini(void)
-{
-	planner_hook = prev_planner_hook;
 }

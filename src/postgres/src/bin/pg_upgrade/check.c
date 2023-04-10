@@ -3,13 +3,14 @@
  *
  *	server checks and output routines
  *
- *	Copyright (c) 2010-2021, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/check.c
  */
 
 #include "postgres_fe.h"
 
 #include "catalog/pg_authid_d.h"
+#include "catalog/pg_collation.h"
 #include "fe_utils/string_utils.h"
 #include "mb/pg_wchar.h"
 #include "pg_upgrade.h"
@@ -23,6 +24,7 @@ static void check_proper_datallowconn(ClusterInfo *cluster);
 static void check_for_prepared_transactions(ClusterInfo *cluster);
 static void check_for_isn_and_int8_passing_mismatch(ClusterInfo *cluster);
 static void check_for_user_defined_postfix_ops(ClusterInfo *cluster);
+static void check_for_incompatible_polymorphics(ClusterInfo *cluster);
 static void check_for_tables_with_oids(ClusterInfo *cluster);
 static void check_for_composite_data_type_usage(ClusterInfo *cluster);
 static void check_for_reg_data_type_usage(ClusterInfo *cluster);
@@ -122,6 +124,13 @@ check_and_dump_old_cluster(bool live_check)
 		check_for_user_defined_postfix_ops(&old_cluster);
 
 	/*
+	 * PG 14 changed polymorphic functions from anyarray to
+	 * anycompatiblearray.
+	 */
+	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 1300)
+		check_for_incompatible_polymorphics(&old_cluster);
+
+	/*
 	 * Pre-PG 12 allowed tables to be declared WITH OIDS, which is not
 	 * supported anymore. Verify there are none, iff applicable.
 	 */
@@ -158,10 +167,6 @@ check_and_dump_old_cluster(bool live_check)
 	/* Pre-PG 9.4 had a different 'line' data type internal format */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 903)
 		old_9_3_check_for_line_data_type_usage(&old_cluster);
-
-	/* Pre-PG 9.0 had no large object permissions */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 804)
-		new_9_0_populate_pg_largeobject_metadata(&old_cluster, true);
 
 	/*
 	 * While not a check option, we do this now because this is the only time
@@ -213,6 +218,8 @@ report_clusters_compatible(void)
 		pg_log(PG_REPORT, "\n*Clusters are compatible*\n");
 		/* stops new cluster */
 		stop_postmaster(false);
+
+		cleanup_output_dirs();
 		exit(0);
 	}
 
@@ -232,10 +239,6 @@ issue_warnings_and_set_wal_level(void)
 	 * WAL record showing wal_level as 'replica'.
 	 */
 	start_postmaster(&new_cluster, true);
-
-	/* Create dummy large object permissions for old < PG 9.0? */
-	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 804)
-		new_9_0_populate_pg_largeobject_metadata(&new_cluster, false);
 
 	/* Reindex hash indexes for old < 10.0 */
 	if (GET_MAJOR_VERSION(old_cluster.major_version) <= 906)
@@ -295,8 +298,9 @@ check_cluster_versions(void)
 	 * upgrades
 	 */
 
-	if (GET_MAJOR_VERSION(old_cluster.major_version) < 804)
-		pg_fatal("This utility can only upgrade from PostgreSQL version 8.4 and later.\n");
+	if (GET_MAJOR_VERSION(old_cluster.major_version) < 902)
+		pg_fatal("This utility can only upgrade from PostgreSQL version %s and later.\n",
+				 "9.2");
 
 	/* Only current PG version is supported as a target */
 	if (GET_MAJOR_VERSION(new_cluster.major_version) != GET_MAJOR_VERSION(PG_VERSION_NUM))
@@ -331,12 +335,6 @@ check_cluster_compatibility(bool live_check)
 	get_control_data(&new_cluster, false);
 	check_control_data(&old_cluster.controldata, &new_cluster.controldata);
 
-	/* We read the real port number for PG >= 9.1 */
-	if (live_check && GET_MAJOR_VERSION(old_cluster.major_version) <= 900 &&
-		old_cluster.port == DEF_PGUPORT)
-		pg_fatal("When checking a pre-PG 9.1 live old server, "
-				 "you must specify the old server's port number.\n");
-
 	if (live_check && old_cluster.port == new_cluster.port)
 		pg_fatal("When checking a live server, "
 				 "the old and new port numbers must be different.\n");
@@ -363,6 +361,18 @@ check_locale_and_encoding(DbInfo *olddb, DbInfo *newdb)
 	if (!equivalent_locale(LC_CTYPE, olddb->db_ctype, newdb->db_ctype))
 		pg_fatal("lc_ctype values for database \"%s\" do not match:  old \"%s\", new \"%s\"\n",
 				 olddb->db_name, olddb->db_ctype, newdb->db_ctype);
+	if (olddb->db_collprovider != newdb->db_collprovider)
+		pg_fatal("locale providers for database \"%s\" do not match:  old \"%s\", new \"%s\"\n",
+				 olddb->db_name,
+				 collprovider_name(olddb->db_collprovider),
+				 collprovider_name(newdb->db_collprovider));
+	if ((olddb->db_iculocale == NULL && newdb->db_iculocale != NULL) ||
+		(olddb->db_iculocale != NULL && newdb->db_iculocale == NULL) ||
+		(olddb->db_iculocale != NULL && newdb->db_iculocale != NULL && strcmp(olddb->db_iculocale, newdb->db_iculocale) != 0))
+		pg_fatal("ICU locale values for database \"%s\" do not match:  old \"%s\", new \"%s\"\n",
+				 olddb->db_name,
+				 olddb->db_iculocale ? olddb->db_iculocale : "(null)",
+				 newdb->db_iculocale ? newdb->db_iculocale : "(null)");
 }
 
 /*
@@ -479,11 +489,6 @@ check_databases_are_compatible(void)
  * they do, it would cause an error while restoring global objects.
  * This allows the failure to be detected at check time, rather than
  * during schema restore.
- *
- * Note, v8.4 has no tablespace_suffix, which is fine so long as the
- * version being upgraded *to* has a suffix, since it's not allowed
- * to pg_upgrade from a version to the same version if tablespaces are
- * in use.
  */
 static void
 check_for_new_tablespace_dir(ClusterInfo *new_cluster)
@@ -535,7 +540,7 @@ create_script_for_old_cluster_deletion(char **deletion_script_file_name)
 	if (path_is_prefix_of_path(old_cluster_pgdata, new_cluster_pgdata))
 	{
 		pg_log(PG_WARNING,
-			   "\nWARNING:  new data directory should not be inside the old data directory, e.g. %s\n", old_cluster_pgdata);
+			   "\nWARNING:  new data directory should not be inside the old data directory, i.e. %s\n", old_cluster_pgdata);
 
 		/* Unlink file in case it is left over from a previous run. */
 		unlink(*deletion_script_file_name);
@@ -559,7 +564,7 @@ create_script_for_old_cluster_deletion(char **deletion_script_file_name)
 		{
 			/* reproduce warning from CREATE TABLESPACE that is in the log */
 			pg_log(PG_WARNING,
-				   "\nWARNING:  user-defined tablespace locations should not be inside the data directory, e.g. %s\n", old_tablespace_dir);
+				   "\nWARNING:  user-defined tablespace locations should not be inside the data directory, i.e. %s\n", old_tablespace_dir);
 
 			/* Unlink file in case it is left over from a previous run. */
 			unlink(*deletion_script_file_name);
@@ -597,11 +602,6 @@ create_script_for_old_cluster_deletion(char **deletion_script_file_name)
 			int			dbnum;
 
 			fprintf(script, "\n");
-			/* remove PG_VERSION? */
-			if (GET_MAJOR_VERSION(old_cluster.major_version) <= 804)
-				fprintf(script, RM_CMD " %s%cPG_VERSION\n",
-						fix_path_separator(os_info.old_tablespaces[tblnum]),
-						PATH_SEPARATOR);
 
 			for (dbnum = 0; dbnum < old_cluster.dbarr.ndbs; dbnum++)
 				fprintf(script, RMDIR_CMD " %c%s%c%u%c\n", PATH_QUOTE,
@@ -693,6 +693,13 @@ check_is_install_user(ClusterInfo *cluster)
 }
 
 
+/*
+ *	check_proper_datallowconn
+ *
+ *	Ensure that all non-template0 databases allow connections since they
+ *	otherwise won't be restored; and that template0 explicitly doesn't allow
+ *	connections since it would make pg_dumpall --globals restore fail.
+ */
 static void
 check_proper_datallowconn(ClusterInfo *cluster)
 {
@@ -702,8 +709,15 @@ check_proper_datallowconn(ClusterInfo *cluster)
 	int			ntups;
 	int			i_datname;
 	int			i_datallowconn;
+	FILE	   *script = NULL;
+	char		output_path[MAXPGPATH];
+	bool		found = false;
 
 	prep_status("Checking database connection settings");
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "databases_with_datallowconn_false.txt");
 
 	conn_template1 = connectToServer(cluster, "template1");
 
@@ -735,8 +749,14 @@ check_proper_datallowconn(ClusterInfo *cluster)
 			 * restore
 			 */
 			if (strcmp(datallowconn, "f") == 0)
-				pg_fatal("All non-template0 databases must allow connections, "
-						 "i.e. their pg_database.datallowconn must be true\n");
+			{
+				found = true;
+				if (script == NULL && (script = fopen_priv(output_path, "w")) == NULL)
+					pg_fatal("could not open file \"%s\": %s\n",
+							 output_path, strerror(errno));
+
+				fprintf(script, "%s\n", datname);
+			}
 		}
 	}
 
@@ -744,7 +764,22 @@ check_proper_datallowconn(ClusterInfo *cluster)
 
 	PQfinish(conn_template1);
 
-	check_ok();
+	if (script)
+		fclose(script);
+
+	if (found)
+	{
+		pg_log(PG_REPORT, "fatal\n");
+		pg_fatal("All non-template0 databases must allow connections, i.e. their\n"
+				 "pg_database.datallowconn must be true.  Your installation contains\n"
+				 "non-template0 databases with their pg_database.datallowconn set to\n"
+				 "false.  Consider allowing connection for all non-template0 databases\n"
+				 "or drop the databases which do not allow connections.  A list of\n"
+				 "databases with the problem is in the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+		check_ok();
 }
 
 
@@ -807,7 +842,8 @@ check_for_isn_and_int8_passing_mismatch(ClusterInfo *cluster)
 		return;
 	}
 
-	snprintf(output_path, sizeof(output_path),
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
 			 "contrib_isn_and_int8_pass_by_value.txt");
 
 	for (dbnum = 0; dbnum < cluster->dbarr.ndbs; dbnum++)
@@ -884,7 +920,8 @@ check_for_user_defined_postfix_ops(ClusterInfo *cluster)
 
 	prep_status("Checking for user-defined postfix operators");
 
-	snprintf(output_path, sizeof(output_path),
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
 			 "postfix_ops.txt");
 
 	/* Find any user defined postfix operators */
@@ -971,6 +1008,136 @@ check_for_user_defined_postfix_ops(ClusterInfo *cluster)
 }
 
 /*
+ *	check_for_incompatible_polymorphics()
+ *
+ *	Make sure nothing is using old polymorphic functions with
+ *	anyarray/anyelement rather than the new anycompatible variants.
+ */
+static void
+check_for_incompatible_polymorphics(ClusterInfo *cluster)
+{
+	PGresult   *res;
+	FILE	   *script = NULL;
+	char		output_path[MAXPGPATH];
+	PQExpBufferData old_polymorphics;
+
+	prep_status("Checking for incompatible polymorphic functions");
+
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "incompatible_polymorphics.txt");
+
+	/* The set of problematic functions varies a bit in different versions */
+	initPQExpBuffer(&old_polymorphics);
+
+	appendPQExpBufferStr(&old_polymorphics,
+						 "'array_append(anyarray,anyelement)'"
+						 ", 'array_cat(anyarray,anyarray)'"
+						 ", 'array_prepend(anyelement,anyarray)'");
+
+	if (GET_MAJOR_VERSION(cluster->major_version) >= 903)
+		appendPQExpBufferStr(&old_polymorphics,
+							 ", 'array_remove(anyarray,anyelement)'"
+							 ", 'array_replace(anyarray,anyelement,anyelement)'");
+
+	if (GET_MAJOR_VERSION(cluster->major_version) >= 905)
+		appendPQExpBufferStr(&old_polymorphics,
+							 ", 'array_position(anyarray,anyelement)'"
+							 ", 'array_position(anyarray,anyelement,integer)'"
+							 ", 'array_positions(anyarray,anyelement)'"
+							 ", 'width_bucket(anyelement,anyarray)'");
+
+	for (int dbnum = 0; dbnum < cluster->dbarr.ndbs; dbnum++)
+	{
+		bool		db_used = false;
+		DbInfo	   *active_db = &cluster->dbarr.dbs[dbnum];
+		PGconn	   *conn = connectToServer(cluster, active_db->db_name);
+		int			ntups;
+		int			i_objkind,
+					i_objname;
+
+		/*
+		 * The query below hardcodes FirstNormalObjectId as 16384 rather than
+		 * interpolating that C #define into the query because, if that
+		 * #define is ever changed, the cutoff we want to use is the value
+		 * used by pre-version 14 servers, not that of some future version.
+		 */
+		res = executeQueryOrDie(conn,
+		/* Aggregate transition functions */
+								"SELECT 'aggregate' AS objkind, p.oid::regprocedure::text AS objname "
+								"FROM pg_proc AS p "
+								"JOIN pg_aggregate AS a ON a.aggfnoid=p.oid "
+								"JOIN pg_proc AS transfn ON transfn.oid=a.aggtransfn "
+								"WHERE p.oid >= 16384 "
+								"AND a.aggtransfn = ANY(ARRAY[%s]::regprocedure[]) "
+								"AND a.aggtranstype = ANY(ARRAY['anyarray', 'anyelement']::regtype[]) "
+
+		/* Aggregate final functions */
+								"UNION ALL "
+								"SELECT 'aggregate' AS objkind, p.oid::regprocedure::text AS objname "
+								"FROM pg_proc AS p "
+								"JOIN pg_aggregate AS a ON a.aggfnoid=p.oid "
+								"JOIN pg_proc AS finalfn ON finalfn.oid=a.aggfinalfn "
+								"WHERE p.oid >= 16384 "
+								"AND a.aggfinalfn = ANY(ARRAY[%s]::regprocedure[]) "
+								"AND a.aggtranstype = ANY(ARRAY['anyarray', 'anyelement']::regtype[]) "
+
+		/* Operators */
+								"UNION ALL "
+								"SELECT 'operator' AS objkind, op.oid::regoperator::text AS objname "
+								"FROM pg_operator AS op "
+								"WHERE op.oid >= 16384 "
+								"AND oprcode = ANY(ARRAY[%s]::regprocedure[]) "
+								"AND oprleft = ANY(ARRAY['anyarray', 'anyelement']::regtype[]);",
+								old_polymorphics.data,
+								old_polymorphics.data,
+								old_polymorphics.data);
+
+		ntups = PQntuples(res);
+
+		i_objkind = PQfnumber(res, "objkind");
+		i_objname = PQfnumber(res, "objname");
+
+		for (int rowno = 0; rowno < ntups; rowno++)
+		{
+			if (script == NULL &&
+				(script = fopen_priv(output_path, "w")) == NULL)
+				pg_fatal("could not open file \"%s\": %s\n",
+						 output_path, strerror(errno));
+			if (!db_used)
+			{
+				fprintf(script, "In database: %s\n", active_db->db_name);
+				db_used = true;
+			}
+
+			fprintf(script, "  %s: %s\n",
+					PQgetvalue(res, rowno, i_objkind),
+					PQgetvalue(res, rowno, i_objname));
+		}
+
+		PQclear(res);
+		PQfinish(conn);
+	}
+
+	if (script)
+	{
+		fclose(script);
+		pg_log(PG_REPORT, "fatal\n");
+		pg_fatal("Your installation contains user-defined objects that refer to internal\n"
+				 "polymorphic functions with arguments of type \"anyarray\" or \"anyelement\".\n"
+				 "These user-defined objects must be dropped before upgrading and restored\n"
+				 "afterwards, changing them to refer to the new corresponding functions with\n"
+				 "arguments of type \"anycompatiblearray\" and \"anycompatible\".\n"
+				 "A list of the problematic objects is in the file:\n"
+				 "    %s\n\n", output_path);
+	}
+	else
+		check_ok();
+
+	termPQExpBuffer(&old_polymorphics);
+}
+
+/*
  * Verify that no tables are declared WITH OIDS.
  */
 static void
@@ -983,7 +1150,8 @@ check_for_tables_with_oids(ClusterInfo *cluster)
 
 	prep_status("Checking for tables WITH OIDS");
 
-	snprintf(output_path, sizeof(output_path),
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
 			 "tables_with_oids.txt");
 
 	/* Find any tables declared WITH OIDS */
@@ -1066,7 +1234,9 @@ check_for_composite_data_type_usage(ClusterInfo *cluster)
 
 	prep_status("Checking for system-defined composite types in user tables");
 
-	snprintf(output_path, sizeof(output_path), "tables_using_composite.txt");
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "tables_using_composite.txt");
 
 	/*
 	 * Look for composite types that were made during initdb *or* belong to
@@ -1123,7 +1293,9 @@ check_for_reg_data_type_usage(ClusterInfo *cluster)
 
 	prep_status("Checking for reg* data types in user tables");
 
-	snprintf(output_path, sizeof(output_path), "tables_using_reg.txt");
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "tables_using_reg.txt");
 
 	/*
 	 * Note: older servers will not have all of these reg* types, so we have
@@ -1176,7 +1348,9 @@ check_for_jsonb_9_4_usage(ClusterInfo *cluster)
 
 	prep_status("Checking for incompatible \"jsonb\" data type");
 
-	snprintf(output_path, sizeof(output_path), "tables_using_jsonb.txt");
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
+			 "tables_using_jsonb.txt");
 
 	if (check_for_data_type_usage(cluster, "pg_catalog.jsonb", output_path))
 	{
@@ -1238,7 +1412,8 @@ check_for_user_defined_encoding_conversions(ClusterInfo *cluster)
 
 	prep_status("Checking for user-defined encoding conversions");
 
-	snprintf(output_path, sizeof(output_path),
+	snprintf(output_path, sizeof(output_path), "%s/%s",
+			 log_opts.basedir,
 			 "encoding_conversions.txt");
 
 	/* Find any user defined encoding conversions */

@@ -1,18 +1,18 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 17;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 program_help_ok('createuser');
 program_version_ok('createuser');
 program_options_handling_ok('createuser');
 
-my $node = PostgresNode->new('main');
+my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
 $node->start;
 
@@ -35,3 +35,5 @@ $node->issues_sql_like(
 
 $node->command_fails([ 'createuser', 'regress_user1' ],
 	'fails if role already exists');
+
+done_testing();

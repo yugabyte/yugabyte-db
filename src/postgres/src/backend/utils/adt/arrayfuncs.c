@@ -3,7 +3,7 @@
  * arrayfuncs.c
  *	  Support functions for arrays.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -4030,7 +4030,8 @@ hash_array(PG_FUNCTION_ARGS)
 
 			/*
 			 * Make fake type cache entry structure.  Note that we can't just
-			 * modify typentry, since that points directly into the type cache.
+			 * modify typentry, since that points directly into the type
+			 * cache.
 			 */
 			record_typentry = palloc0(sizeof(*record_typentry));
 			record_typentry->type_id = element_type;
@@ -6721,7 +6722,7 @@ trim_array(PG_FUNCTION_ARGS)
 {
 	ArrayType  *v = PG_GETARG_ARRAYTYPE_P(0);
 	int			n = PG_GETARG_INT32(1);
-	int			array_length = ARR_DIMS(v)[0];
+	int			array_length = (ARR_NDIM(v) > 0) ? ARR_DIMS(v)[0] : 0;
 	int16		elmlen;
 	bool		elmbyval;
 	char		elmalign;
@@ -6741,8 +6742,11 @@ trim_array(PG_FUNCTION_ARGS)
 	/* Set all the bounds as unprovided except the first upper bound */
 	memset(lowerProvided, false, sizeof(lowerProvided));
 	memset(upperProvided, false, sizeof(upperProvided));
-	upper[0] = ARR_LBOUND(v)[0] + array_length - n - 1;
-	upperProvided[0] = true;
+	if (ARR_NDIM(v) > 0)
+	{
+		upper[0] = ARR_LBOUND(v)[0] + array_length - n - 1;
+		upperProvided[0] = true;
+	}
 
 	/* Fetch the needed information about the element type */
 	get_typlenbyvalalign(ARR_ELEMTYPE(v), &elmlen, &elmbyval, &elmalign);

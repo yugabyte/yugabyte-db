@@ -192,6 +192,26 @@ SELECT * FROM gtest1 ORDER BY a;
  3 | 6
 (1 row)
 
+-- test MERGE
+CREATE TABLE gtestm (
+  id int PRIMARY KEY,
+  f1 int,
+  f2 int,
+  f3 int GENERATED ALWAYS AS (f1 * 2) STORED,
+  f4 int GENERATED ALWAYS AS (f2 * 2) STORED
+);
+INSERT INTO gtestm VALUES (1, 5, 100);
+MERGE INTO gtestm t USING (VALUES (1, 10), (2, 20)) v(id, f1) ON t.id = v.id
+  WHEN MATCHED THEN UPDATE SET f1 = v.f1
+  WHEN NOT MATCHED THEN INSERT VALUES (v.id, v.f1, 200);
+SELECT * FROM gtestm ORDER BY id;
+ id | f1 | f2  | f3 | f4  
+----+----+-----+----+-----
+  1 | 10 | 100 | 20 | 200
+  2 | 20 | 200 | 40 | 400
+(2 rows)
+
+DROP TABLE gtestm;
 -- views
 CREATE VIEW gtest1v AS SELECT * FROM gtest1;
 SELECT * FROM gtest1v;
@@ -337,6 +357,25 @@ CREATE TABLE gtest1_2 () INHERITS (gtest0, gtesty);  -- error
 NOTICE:  merging multiple inherited definitions of column "b"
 ERROR:  inherited column "b" has a generation conflict
 DROP TABLE gtesty;
+-- test correct handling of GENERATED column that's only in child
+CREATE TABLE gtestp (f1 int);
+CREATE TABLE gtestc (f2 int GENERATED ALWAYS AS (f1+1) STORED) INHERITS(gtestp);
+INSERT INTO gtestc values(42);
+TABLE gtestc;
+ f1 | f2 
+----+----
+ 42 | 43
+(1 row)
+
+UPDATE gtestp SET f1 = f1 * 10;
+TABLE gtestc;
+ f1  | f2  
+-----+-----
+ 420 | 421
+(1 row)
+
+DROP TABLE gtestp CASCADE;
+NOTICE:  drop cascades to table gtestc
 -- test stored update
 CREATE TABLE gtest3 (a int, b int GENERATED ALWAYS AS (a * 3) STORED);
 INSERT INTO gtest3 (a) VALUES (1), (2), (3), (NULL);
@@ -477,7 +516,12 @@ SELECT * FROM gtest_tableoid;
 
 -- drop column behavior
 CREATE TABLE gtest10 (a int PRIMARY KEY, b int, c int GENERATED ALWAYS AS (b * 2) STORED);
-ALTER TABLE gtest10 DROP COLUMN b;
+ALTER TABLE gtest10 DROP COLUMN b;  -- fails
+ERROR:  cannot drop column b of table gtest10 because other objects depend on it
+DETAIL:  column c of table gtest10 depends on column b of table gtest10
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
+ALTER TABLE gtest10 DROP COLUMN b CASCADE;  -- drops c too
+NOTICE:  drop cascades to column c of table gtest10
 \d gtest10
               Table "public.gtest10"
  Column |  Type   | Collation | Nullable | Default 
@@ -519,6 +563,10 @@ SELECT a, c FROM gtest12s;  -- allowed
 (2 rows)
 
 RESET ROLE;
+DROP FUNCTION gf1(int);  -- fail
+ERROR:  cannot drop function gf1(integer) because other objects depend on it
+DETAIL:  column c of table gtest12s depends on function gf1(integer)
+HINT:  Use DROP ... CASCADE to drop the dependent objects too.
 DROP TABLE gtest11s, gtest12s;
 DROP FUNCTION gf1(int);
 DROP USER regress_user11;
@@ -928,7 +976,7 @@ CREATE TRIGGER gtest2a BEFORE INSERT OR UPDATE ON gtest26
   WHEN (NEW.b < 0)  -- error
   EXECUTE PROCEDURE gtest_trigger_func();
 ERROR:  BEFORE trigger's WHEN condition cannot reference NEW generated columns
-LINE 3:   WHEN (NEW.b < 0)  
+LINE 3:   WHEN (NEW.b < 0)  -- error
                 ^
 DETAIL:  Column "b" is a generated column.
 CREATE TRIGGER gtest2b BEFORE INSERT OR UPDATE ON gtest26
@@ -936,7 +984,7 @@ CREATE TRIGGER gtest2b BEFORE INSERT OR UPDATE ON gtest26
   WHEN (NEW.* IS NOT NULL)  -- error
   EXECUTE PROCEDURE gtest_trigger_func();
 ERROR:  BEFORE trigger's WHEN condition cannot reference NEW generated columns
-LINE 3:   WHEN (NEW.* IS NOT NULL)  
+LINE 3:   WHEN (NEW.* IS NOT NULL)  -- error
                 ^
 DETAIL:  A whole-row reference is used and the table contains generated columns.
 CREATE TRIGGER gtest2 BEFORE INSERT ON gtest26

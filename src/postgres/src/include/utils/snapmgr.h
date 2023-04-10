@@ -3,7 +3,7 @@
  * snapmgr.h
  *	  POSTGRES snapshot manager
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/snapmgr.h
@@ -53,7 +53,7 @@ extern TimestampTz GetSnapshotCurrentTimestamp(void);
 extern TimestampTz GetOldSnapshotThresholdTimestamp(void);
 extern void SnapshotTooOldMagicForTest(void);
 
-extern bool FirstSnapshotSet;
+extern PGDLLIMPORT bool FirstSnapshotSet;
 
 extern PGDLLIMPORT TransactionId TransactionXmin;
 extern PGDLLIMPORT TransactionId RecentXmin;
@@ -97,11 +97,13 @@ extern PGDLLIMPORT SnapshotData CatalogSnapshotData;
 	((snapshot)->snapshot_type == SNAPSHOT_MVCC || \
 	 (snapshot)->snapshot_type == SNAPSHOT_HISTORIC_MVCC)
 
+#ifndef FRONTEND
 static inline bool
 OldSnapshotThresholdActive(void)
 {
 	return old_snapshot_threshold >= 0;
 }
+#endif
 
 extern Snapshot GetTransactionSnapshot(void);
 extern Snapshot GetLatestSnapshot(void);
@@ -114,6 +116,7 @@ extern void InvalidateCatalogSnapshot(void);
 extern void InvalidateCatalogSnapshotConditionally(void);
 
 extern void PushActiveSnapshot(Snapshot snapshot);
+extern void PushActiveSnapshotWithLevel(Snapshot snapshot, int snap_level);
 extern void PushCopiedSnapshot(Snapshot snapshot);
 extern void UpdateActiveSnapshotCommandId(void);
 extern void PopActiveSnapshot(void);
@@ -135,6 +138,7 @@ extern bool XactHasExportedSnapshots(void);
 extern void DeleteAllExportedSnapshotFiles(void);
 extern void WaitForOlderSnapshots(TransactionId limitXmin, bool progress);
 extern bool ThereAreNoPriorRegisteredSnapshots(void);
+extern bool HaveRegisteredOrActiveSnapshot(void);
 extern bool TransactionIdLimitedForOldSnapshots(TransactionId recentXmin,
 												Relation relation,
 												TransactionId *limit_xid,

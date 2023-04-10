@@ -3,7 +3,7 @@
  * wparser_def.c
  *		Default text search parser
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
@@ -1856,7 +1856,7 @@ TParserGet(TParser *prs)
 		}
 	}
 
-	return (item && (item->flags & A_BINGO)) ? true : false;
+	return (item && (item->flags & A_BINGO));
 }
 
 Datum
@@ -1914,10 +1914,6 @@ prsd_end(PG_FUNCTION_ARGS)
  */
 
 /* token type classification macros */
-#define LEAVETOKEN(x)	( (x)==SPACE )
-#define COMPLEXTOKEN(x) ( (x)==URL_T || (x)==NUMHWORD || (x)==ASCIIHWORD || (x)==HWORD )
-#define ENDPUNCTOKEN(x) ( (x)==SPACE )
-
 #define TS_IDIGNORE(x)	( (x)==TAG_T || (x)==PROTOCOL || (x)==SPACE || (x)==XMLENTITY )
 #define HLIDREPLACE(x)	( (x)==TAG_T )
 #define HLIDSKIP(x)		( (x)==URL_T || (x)==NUMHWORD || (x)==ASCIIHWORD || (x)==HWORD )

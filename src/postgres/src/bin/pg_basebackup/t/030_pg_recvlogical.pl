@@ -1,17 +1,17 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
-use TestLib;
-use PostgresNode;
-use Test::More tests => 20;
+use PostgreSQL::Test::Utils;
+use PostgreSQL::Test::Cluster;
+use Test::More;
 
 program_help_ok('pg_recvlogical');
 program_version_ok('pg_recvlogical');
 program_options_handling_ok('pg_recvlogical');
 
-my $node = PostgresNode->new('main');
+my $node = PostgreSQL::Test::Cluster->new('main');
 
 # Initialize node without replication settings
 $node->init(allows_streaming => 1, has_archiving => 1);
@@ -78,7 +78,8 @@ $node->command_ok(
 	[
 		'pg_recvlogical',           '-S',
 		'test',                     '-d',
-		$node->connstr('postgres'), '--create-slot', '--two-phase'
+		$node->connstr('postgres'), '--create-slot',
+		'--two-phase'
 	],
 	'slot with two-phase created');
 
@@ -87,16 +88,18 @@ isnt($slot->{'restart_lsn'}, '', 'restart lsn is defined for new slot');
 
 $node->safe_psql('postgres',
 	"BEGIN; INSERT INTO test_table values (11); PREPARE TRANSACTION 'test'");
-$node->safe_psql('postgres',
-	"COMMIT PREPARED 'test'");
-$nextlsn =
-  $node->safe_psql('postgres', 'SELECT pg_current_wal_insert_lsn()');
+$node->safe_psql('postgres', "COMMIT PREPARED 'test'");
+$nextlsn = $node->safe_psql('postgres', 'SELECT pg_current_wal_insert_lsn()');
 chomp($nextlsn);
 
 $node->command_fails(
 	[
-		'pg_recvlogical', '-S', 'test', '-d', $node->connstr('postgres'),
-		'--start', '--endpos', "$nextlsn", '--two-phase', '--no-loop', '-f', '-'
+		'pg_recvlogical',           '-S',
+		'test',                     '-d',
+		$node->connstr('postgres'), '--start',
+		'--endpos',                 "$nextlsn",
+		'--two-phase',              '--no-loop',
+		'-f',                       '-'
 	],
 	'incorrect usage');
 
@@ -106,3 +109,5 @@ $node->command_ok(
 		'--start', '--endpos', "$nextlsn", '--no-loop', '-f', '-'
 	],
 	'replayed a two-phase transaction');
+
+done_testing();

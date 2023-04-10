@@ -567,3 +567,8 @@ SELECT * FROM brintest_3 WHERE b < '0';
 
 DROP TABLE brintest_3;
 RESET enable_seqscan;
+-- test an unlogged table, mostly to get coverage of brinbuildempty
+CREATE UNLOGGED TABLE brintest_unlogged (n numrange);
+CREATE INDEX brinidx_unlogged ON brintest_unlogged USING brin (n);
+INSERT INTO brintest_unlogged VALUES (numrange(0, 2^1000::numeric));
+DROP TABLE brintest_unlogged;

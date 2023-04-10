@@ -3,7 +3,7 @@
  * fe-secure-gssapi.c
  *   The front-end (client) encryption support for GSSAPI
  *
- * Portions Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *  src/interfaces/libpq/fe-secure-gssapi.c
@@ -578,6 +578,8 @@ pqsecure_open_gss(PGconn *conn)
 
 			PqGSSRecvLength += ret;
 
+			Assert(PqGSSRecvLength < PQ_GSS_RECV_BUFFER_SIZE);
+			PqGSSRecvBuffer[PqGSSRecvLength] = '\0';
 			appendPQExpBuffer(&conn->errorMessage, "%s\n", PqGSSRecvBuffer + 1);
 
 			return PGRES_POLLING_FAILED;

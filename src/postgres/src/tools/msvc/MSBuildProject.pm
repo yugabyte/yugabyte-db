@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 package MSBuildProject;
 
@@ -313,7 +313,7 @@ sub WriteItemDefinitionGroup
 	my $targetmachine =
 	  $self->{platform} eq 'Win32' ? 'MachineX86' : 'MachineX64';
 
-	my $includes = join ';', @{$self->{includes}}, "";
+	my $includes = join ';', @{ $self->{includes} }, "";
 
 	print $f <<EOF;
   <ItemDefinitionGroup Condition="'\$(Configuration)|\$(Platform)'=='$cfgname|$self->{platform}'">
@@ -501,6 +501,31 @@ sub new
 	$self->{vcver}           = '16.00';
 	$self->{PlatformToolset} = 'v142';
 	$self->{ToolsVersion}    = '16.0';
+
+	return $self;
+}
+
+package VC2022Project;
+
+#
+# Package that encapsulates a Visual C++ 2022 project file
+#
+
+use strict;
+use warnings;
+use base qw(MSBuildProject);
+
+no warnings qw(redefine);    ## no critic
+
+sub new
+{
+	my $classname = shift;
+	my $self      = $classname->SUPER::_new(@_);
+	bless($self, $classname);
+
+	$self->{vcver}           = '17.00';
+	$self->{PlatformToolset} = 'v143';
+	$self->{ToolsVersion}    = '17.0';
 
 	return $self;
 }

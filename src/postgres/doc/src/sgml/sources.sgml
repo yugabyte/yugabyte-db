@@ -13,9 +13,9 @@
    </para>
 
    <para>
-    Layout rules (brace positioning, etc) follow BSD conventions.  In
+    Layout rules (brace positioning, etc.) follow BSD conventions.  In
     particular, curly braces for the controlled blocks of <literal>if</literal>,
-    <literal>while</literal>, <literal>switch</literal>, etc go on their own lines.
+    <literal>while</literal>, <literal>switch</literal>, etc. go on their own lines.
    </para>
 
    <para>
@@ -63,7 +63,7 @@
 
    <para>
     The <filename>src/tools/editors</filename> directory contains sample settings
-    files that can be used with the <productname>emacs</productname>,
+    files that can be used with the <productname>Emacs</productname>,
     <productname>xemacs</productname> or <productname>vim</productname>
     editors to help ensure that they format code according to these
     conventions.
@@ -935,8 +935,8 @@ BETTER: unrecognized node type: 42
    <simplesect>
     <title>Function-Like Macros and Inline Functions</title>
     <para>
-     Both, macros with arguments and <literal>static inline</literal>
-     functions, may be used. The latter are preferable if there are
+     Both macros with arguments and <literal>static inline</literal>
+     functions may be used. The latter are preferable if there are
      multiple-evaluation hazards when written as a macro, as e.g., the
      case with
 <programlisting>

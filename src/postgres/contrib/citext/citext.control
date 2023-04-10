@@ -1,6 +1,0 @@
-# citext extension
-comment = 'data type for case-insensitive character strings'
-default_version = '1.6'
-module_pathname = '$libdir/citext'
-relocatable = true
-trusted = true

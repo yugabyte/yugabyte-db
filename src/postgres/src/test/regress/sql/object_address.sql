@@ -48,6 +48,7 @@ CREATE TRANSFORM FOR int LANGUAGE SQL (
 -- suppress warning that depends on wal_level
 SET client_min_messages = 'ERROR';
 CREATE PUBLICATION addr_pub FOR TABLE addr_nsp.gentable;
+CREATE PUBLICATION addr_pub_schema FOR TABLES IN SCHEMA addr_nsp;
 RESET client_min_messages;
 CREATE SUBSCRIPTION regress_addr_sub CONNECTION '' PUBLICATION bar WITH (connect = false, slot_name = NONE);
 CREATE STATISTICS addr_nsp.gentable_stat ON a, b FROM addr_nsp.gentable;
@@ -97,7 +98,7 @@ BEGIN
 		('text search template'), ('text search configuration'),
 		('policy'), ('user mapping'), ('default acl'), ('transform'),
 		('operator of access method'), ('function of access method'),
-		('publication relation')
+		('publication namespace'), ('publication relation')
 	LOOP
 		FOR names IN VALUES ('{eins}'), ('{addr_nsp, zwei}'), ('{eins, zwei, drei}')
 		LOOP
@@ -197,6 +198,7 @@ WITH objects (type, name, args) AS (VALUES
 				('transform', '{int}', '{sql}'),
 				('access method', '{btree}', '{}'),
 				('publication', '{addr_pub}', '{}'),
+				('publication namespace', '{addr_nsp}', '{addr_pub_schema}'),
 				('publication relation', '{addr_nsp, gentable}', '{addr_pub}'),
 				('subscription', '{regress_addr_sub}', '{}'),
 				('statistics object', '{addr_nsp, gentable_stat}', '{}')
@@ -215,6 +217,7 @@ SELECT (pg_identify_object(addr1.classid, addr1.objid, addr1.objsubid)).*,
 ---
 DROP FOREIGN DATA WRAPPER addr_fdw CASCADE;
 DROP PUBLICATION addr_pub;
+DROP PUBLICATION addr_pub_schema;
 DROP SUBSCRIPTION regress_addr_sub;
 
 DROP SCHEMA addr_nsp CASCADE;
@@ -256,7 +259,7 @@ WITH objects (classid, objid, objsubid) AS (VALUES
     ('pg_namespace'::regclass, 0, 0), -- no schema
     ('pg_statistic_ext'::regclass, 0, 0), -- no statistics
     ('pg_ts_parser'::regclass, 0, 0), -- no TS parser
-    ('pg_ts_dict'::regclass, 0, 0), -- no TS dictionnary
+    ('pg_ts_dict'::regclass, 0, 0), -- no TS dictionary
     ('pg_ts_template'::regclass, 0, 0), -- no TS template
     ('pg_ts_config'::regclass, 0, 0), -- no TS configuration
     ('pg_authid'::regclass, 0, 0), -- no role

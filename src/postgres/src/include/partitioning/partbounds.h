@@ -2,7 +2,7 @@
  *
  * partbounds.h
  *
- * Copyright (c) 2007-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2007-2022, PostgreSQL Global Development Group
  *
  * src/include/partitioning/partbounds.h
  *
@@ -72,7 +72,9 @@ struct RelOptInfo;				/* avoid including pathnodes.h here */
  * contain any value that does not belong in another partition.  This field
  * only serves as proof that a particular partition is not interleaved, not
  * proof that it is interleaved.  When we're uncertain, we marked the
- * partition as interleaved.
+ * partition as interleaved.  The interleaved_parts field is only ever set for
+ * RELOPT_BASEREL and RELOPT_OTHER_MEMBER_REL, it is always left NULL for join
+ * relations.
  */
 typedef struct PartitionBoundInfoData
 {

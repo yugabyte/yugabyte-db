@@ -1388,15 +1388,6 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
       </listitem>
      </varlistentry>
 
-     <varlistentry id="libpq-connect-tty" xreflabel="tty">
-      <term><literal>tty</literal></term>
-      <listitem>
-      <para>
-       Ignored (formerly, this specified where to send server debug output).
-      </para>
-      </listitem>
-     </varlistentry>
-
      <varlistentry id="libpq-connect-replication" xreflabel="replication">
       <term><literal>replication</literal></term>
       <listitem>
@@ -1742,7 +1733,7 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
       <term><literal>sslcrl</literal></term>
       <listitem>
        <para>
-        This parameter specifies the file name of the SSL certificate
+        This parameter specifies the file name of the SSL server certificate
         revocation list (CRL).  Certificates listed in this file, if it
         exists, will be rejected while attempting to authenticate the
         server's certificate.  If neither
@@ -1758,7 +1749,7 @@ postgresql://%2Fvar%2Flib%2Fpostgresql/dbname
       <term><literal>sslcrldir</literal></term>
       <listitem>
        <para>
-        This parameter specifies the directory name of the SSL certificate
+        This parameter specifies the directory name of the SSL server certificate
         revocation list (CRL).  Certificates listed in the files in this
         directory, if it exists, will be rejected while attempting to
         authenticate the server's certificate.
@@ -2524,8 +2515,9 @@ const char *PQsslAttribute(const PGconn *conn, const char *attribute_name);
 
       <para>
        The list of available attributes varies depending on the SSL library
-       being used, and the type of connection. If an attribute is not
-       available, returns NULL.
+       being used and the type of connection.  Returns NULL if the connection
+       does not use SSL or the specified attribute name is not defined for the
+       library in use.
       </para>
 
       <para>
@@ -2573,13 +2565,24 @@ const char *PQsslAttribute(const PGconn *conn, const char *attribute_name);
          <term><literal>compression</literal></term>
           <listitem>
            <para>
-            If SSL compression is in use, returns the name of the compression
-            algorithm, or "on" if compression is used but the algorithm is
-            not known. If compression is not in use, returns "off".
+            Returns "on" if SSL compression is in use, else it returns "off".
            </para>
           </listitem>
          </varlistentry>
        </variablelist>
+      </para>
+
+      <para>
+       As a special case, the <literal>library</literal> attribute may be
+       queried without a connection by passing NULL as
+       the <literal>conn</literal> argument.  The result will be the default
+       SSL library name, or NULL if <application>libpq</application> was
+       compiled without any SSL support.  (Prior
+       to <productname>PostgreSQL</productname> version 15, passing NULL as
+       the <literal>conn</literal> argument always resulted in NULL.
+       Client programs needing to differentiate between the newer and older
+       implementations of this case may check the
+       <literal>LIBPQ_HAS_SSL_LIBRARY_DETECTION</literal> feature macro.)
       </para>
      </listitem>
     </varlistentry>
@@ -2588,7 +2591,8 @@ const char *PQsslAttribute(const PGconn *conn, const char *attribute_name);
      <term><function>PQsslAttributeNames</function><indexterm><primary>PQsslAttributeNames</primary></indexterm></term>
      <listitem>
       <para>
-       Return an array of SSL attribute names available. The array is terminated by a NULL pointer.
+       Returns an array of SSL attribute names available.
+       The array is terminated by a NULL pointer.
 <synopsis>
 const char * const * PQsslAttributeNames(const PGconn *conn);
 </synopsis>
@@ -2600,8 +2604,10 @@ const char * const * PQsslAttributeNames(const PGconn *conn);
      <term><function>PQsslStruct</function><indexterm><primary>PQsslStruct</primary></indexterm></term>
      <listitem>
       <para>
-       Return a pointer to an SSL-implementation-specific object describing
-       the connection.
+       Returns a pointer to an SSL-implementation-specific object describing
+       the connection.  Returns NULL if the connection is not encrypted
+       or the requested type of object is not available from the connection's
+       SSL implementation.
 <synopsis>
 void *PQsslStruct(const PGconn *conn, const char *struct_name);
 </synopsis>
@@ -2609,8 +2615,9 @@ void *PQsslStruct(const PGconn *conn, const char *struct_name);
       <para>
        The struct(s) available depend on the SSL implementation in use.
        For <productname>OpenSSL</productname>, there is one struct,
-       available under the name "OpenSSL", and it returns a pointer to the
-       <productname>OpenSSL</productname> <literal>SSL</literal> struct.
+       available under the name <literal>OpenSSL</literal>,
+       and it returns a pointer to
+       <productname>OpenSSL</productname>'s <literal>SSL</literal> struct.
        To use this function, code along the following lines could be used:
 <programlisting><![CDATA[
 #include <libpq-fe.h>
@@ -2643,7 +2650,7 @@ void *PQsslStruct(const PGconn *conn, const char *struct_name);
      <listitem>
       <para>
        <indexterm><primary>SSL</primary><secondary sortas="libpq">in libpq</secondary></indexterm>
-       Returns the SSL structure used in the connection, or null
+       Returns the SSL structure used in the connection, or NULL
        if SSL is not in use.
 
 <synopsis>
@@ -3039,7 +3046,7 @@ PGresult *PQdescribePrepared(PGconn *conn, const char *stmtName);
         <structname>PGresult</structname> to obtain information about the parameters
         of the prepared statement, and the functions
         <xref linkend="libpq-PQnfields"/>, <xref linkend="libpq-PQfname"/>,
-        <xref linkend="libpq-PQftype"/>, etc provide information about the
+        <xref linkend="libpq-PQftype"/>, etc. provide information about the
         result columns (if any) of the statement.
        </para>
       </listitem>
@@ -3071,7 +3078,7 @@ PGresult *PQdescribePortal(PGconn *conn, const char *portalName);
         portal.  On success, a <structname>PGresult</structname> with status
         <literal>PGRES_COMMAND_OK</literal> is returned.  The functions
         <xref linkend="libpq-PQnfields"/>, <xref linkend="libpq-PQfname"/>,
-        <xref linkend="libpq-PQftype"/>, etc can be applied to the
+        <xref linkend="libpq-PQftype"/>, etc. can be applied to the
         <structname>PGresult</structname> to obtain information about the result
         columns (if any) of the portal.
        </para>
@@ -4125,9 +4132,11 @@ char *PQcmdTuples(PGresult *res);
        <structname>PGresult</structname>. This function can only be used following
        the execution of a <command>SELECT</command>, <command>CREATE TABLE AS</command>,
        <command>INSERT</command>, <command>UPDATE</command>, <command>DELETE</command>,
-       <command>MOVE</command>, <command>FETCH</command>, or <command>COPY</command> statement,
-       or an <command>EXECUTE</command> of a prepared query that contains an
-       <command>INSERT</command>, <command>UPDATE</command>, or <command>DELETE</command> statement.
+       <command>MERGE</command>, <command>MOVE</command>, <command>FETCH</command>,
+       or <command>COPY</command> statement, or an <command>EXECUTE</command> of a
+       prepared query that contains an <command>INSERT</command>,
+       <command>UPDATE</command>, <command>DELETE</command>,
+       or <command>MERGE</command> statement.
        If the command that generated the <structname>PGresult</structname> was anything
        else, <xref linkend="libpq-PQcmdTuples"/> returns an empty string. The caller
        should not free the return value directly. It will be freed when
@@ -4594,6 +4603,10 @@ int PQsendQuery(PGconn *conn, const char *command);
        (on the same connection) until <xref linkend="libpq-PQgetResult"/>
        has returned a null pointer, indicating that the command is done.
       </para>
+
+      <para>
+       In pipeline mode, this function is disallowed.
+      </para>
      </listitem>
     </varlistentry>
 
@@ -5030,10 +5043,11 @@ int PQflush(PGconn *conn);
   </para>
 
   <para>
-   While the pipeline API was introduced in
+   While <application>libpq</application>'s pipeline API was introduced in
    <productname>PostgreSQL</productname> 14, it is a client-side feature
    which doesn't require special server support and works on any server
-   that supports the v3 extended query protocol.
+   that supports the v3 extended query protocol.  For more information see
+   <xref linkend="protocol-flow-pipelining"/>.
   </para>
 
   <sect2 id="libpq-pipeline-using">
@@ -5046,7 +5060,9 @@ int PQflush(PGconn *conn);
     <xref linkend="libpq-PQpipelineStatus"/> can be used
     to test whether pipeline mode is active.
     In pipeline mode, only <link linkend="libpq-async">asynchronous operations</link>
-    are permitted, and <literal>COPY</literal> is disallowed.
+    that utilize the extended query protocol
+    are permitted, command strings containing multiple SQL commands are
+    disallowed, and so is <literal>COPY</literal>.
     Using synchronous command execution functions
     such as <function>PQfn</function>,
     <function>PQexec</function>,
@@ -5056,6 +5072,8 @@ int PQflush(PGconn *conn);
     <function>PQdescribePrepared</function>,
     <function>PQdescribePortal</function>,
     is an error condition.
+    <function>PQsendQuery</function> is
+    also disallowed, because it uses the simple query protocol.
     Once all dispatched commands have had their results processed, and
     the end pipeline result has been consumed, the application may return
     to non-pipelined mode with <xref linkend="libpq-PQexitPipelineMode"/>.
@@ -5084,8 +5102,7 @@ int PQflush(PGconn *conn);
 
     <para>
      After entering pipeline mode, the application dispatches requests using
-     <xref linkend="libpq-PQsendQuery"/>,
-     <xref linkend="libpq-PQsendQueryParams"/>,
+     <xref linkend="libpq-PQsendQueryParams"/>
      or its prepared-query sibling
      <xref linkend="libpq-PQsendQueryPrepared"/>.
      These requests are queued on the client-side until flushed to the server;
@@ -5526,7 +5543,7 @@ UPDATE mytable SET x = x + 1 WHERE id = 42;
    more rows will arrive.  (But note that it is still necessary to continue
    calling <xref linkend="libpq-PQgetResult"/> until it returns null.)  All of
    these <structname>PGresult</structname> objects will contain the same row
-   description data (column names, types, etc) that an ordinary
+   description data (column names, types, etc.) that an ordinary
    <structname>PGresult</structname> object for the query would have.
    Each object should be freed with <xref linkend="libpq-PQclear"/> as usual.
   </para>
@@ -5701,8 +5718,8 @@ int PQrequestCancel(PGconn *conn);
        <structname>PGconn</structname> object, and in case of failure stores the
        error message in the <structname>PGconn</structname> object (whence it can
        be retrieved by <xref linkend="libpq-PQerrorMessage"/>).  Although
-       the functionality is the same, this approach creates hazards for
-       multiple-thread programs and signal handlers, since it is possible
+       the functionality is the same, this approach is not safe within
+       multiple-thread programs or signal handlers, since it is possible
        that overwriting the <structname>PGconn</structname>'s error message will
        mess up the operation currently in progress on the connection.
       </para>
@@ -5992,7 +6009,7 @@ typedef struct pgNotify
      <listitem>
       <para>
        0 indicates the overall copy format is textual (rows separated by
-       newlines, columns separated by separator characters, etc).  1
+       newlines, columns separated by separator characters, etc.).  1
        indicates the overall copy format is binary.  See <xref
        linkend="sql-copy"/> for more information.
       </para>
@@ -6825,6 +6842,7 @@ PGresult *PQcopyResult(const PGresult *src, int flags);
       <literal>PG_COPYRES_EVENTS</literal> specifies copying the source
       result's events.  (But any instance data associated with the source
       is not copied.)
+      The event procedures receive <literal>PGEVT_RESULTCOPY</literal> events.
      </para>
     </listitem>
    </varlistentry>
@@ -7120,7 +7138,7 @@ defaultNoticeProcessor(void *arg, const char *message)
    <xref linkend="libpq-PQinstanceData"/>,
    <xref linkend="libpq-PQsetInstanceData"/>,
    <xref linkend="libpq-PQresultInstanceData"/> and
-   <function>PQsetResultInstanceData</function> functions.  Note that
+   <xref linkend="libpq-PQresultSetInstanceData"/> functions.  Note that
    unlike the pass-through pointer, instance data of a <structname>PGconn</structname>
    is not automatically inherited by <structname>PGresult</structname>s created from
    it.  <application>libpq</application> does not know what pass-through
@@ -7148,7 +7166,7 @@ defaultNoticeProcessor(void *arg, const char *message)
        is called.  It is the ideal time to initialize any
        <literal>instanceData</literal> an event procedure may need.  Only one
        register event will be fired per event handler per connection.  If the
-       event procedure fails, the registration is aborted.
+       event procedure fails (returns zero), the registration is cancelled.
 
 <synopsis>
 typedef struct
@@ -7176,12 +7194,11 @@ typedef struct
       <para>
        The connection reset event is fired on completion of
        <xref linkend="libpq-PQreset"/> or <function>PQresetPoll</function>.  In
-       both cases, the event is only fired if the reset was successful.  If
-       the event procedure fails, the entire connection reset will fail; the
-       <structname>PGconn</structname> is put into
-       <literal>CONNECTION_BAD</literal> status and
-       <function>PQresetPoll</function> will return
-       <literal>PGRES_POLLING_FAILED</literal>.
+       both cases, the event is only fired if the reset was successful.
+       The return value of the event procedure is ignored
+       in <productname>PostgreSQL</productname> v15 and later.
+       With earlier versions, however, it's important to return success
+       (nonzero) or the connection will be aborted.
 
 <synopsis>
 typedef struct
@@ -7255,11 +7272,11 @@ typedef struct
        <parameter>conn</parameter> is the connection used to generate the
        result.  This is the ideal place to initialize any
        <literal>instanceData</literal> that needs to be associated with the
-       result.  If the event procedure fails, the result will be cleared and
-       the failure will be propagated.  The event procedure must not try to
-       <xref linkend="libpq-PQclear"/> the result object for itself.  When returning a
-       failure code, all cleanup must be performed as no
-       <literal>PGEVT_RESULTDESTROY</literal> event will be sent.
+       result.  If an event procedure fails (returns zero), that event
+       procedure will be ignored for the remaining lifetime of the result;
+       that is, it will not receive <literal>PGEVT_RESULTCOPY</literal>
+       or <literal>PGEVT_RESULTDESTROY</literal> events for this result or
+       results copied from it.
       </para>
      </listitem>
     </varlistentry>
@@ -7289,12 +7306,12 @@ typedef struct
        <parameter>src</parameter> result is what was copied while the
        <parameter>dest</parameter> result is the copy destination.  This event
        can be used to provide a deep copy of <literal>instanceData</literal>,
-       since <literal>PQcopyResult</literal> cannot do that.  If the event
-       procedure fails, the entire copy operation will fail and the
-       <parameter>dest</parameter> result will be cleared.   When returning a
-       failure code, all cleanup must be performed as no
-       <literal>PGEVT_RESULTDESTROY</literal> event will be sent for the
-       destination result.
+       since <literal>PQcopyResult</literal> cannot do that.  If an event
+       procedure fails (returns zero), that event procedure will be
+       ignored for the remaining lifetime of the new result; that is, it
+       will not receive <literal>PGEVT_RESULTCOPY</literal>
+       or <literal>PGEVT_RESULTDESTROY</literal> events for that result or
+       results copied from it.
       </para>
      </listitem>
     </varlistentry>
@@ -7612,7 +7629,7 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
             mydata *res_data = dup_mydata(conn_data);
 
             /* associate app specific data with result (copy it from conn) */
-            PQsetResultInstanceData(e->result, myEventProc, res_data);
+            PQresultSetInstanceData(e->result, myEventProc, res_data);
             break;
         }
 
@@ -7623,7 +7640,7 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
             mydata *dest_data = dup_mydata(src_data);
 
             /* associate app specific data with result (copy it from a result) */
-            PQsetResultInstanceData(e->dest, myEventProc, dest_data);
+            PQresultSetInstanceData(e->dest, myEventProc, dest_data);
             break;
         }
 
@@ -7769,9 +7786,11 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
        <primary><envar>PGSERVICEFILE</envar></primary>
       </indexterm>
       <envar>PGSERVICEFILE</envar> specifies the name of the per-user
-      connection service file.  If not set, it defaults
-      to <filename>~/.pg_service.conf</filename>
+      connection service file
       (see <xref linkend="libpq-pgservice"/>).
+      Defaults to <filename>~/.pg_service.conf</filename>, or
+      <filename>%APPDATA%\postgresql\.pg_service.conf</filename> on
+      Microsoft Windows.
      </para>
     </listitem>
 
@@ -8071,11 +8090,11 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
    The file <filename>.pgpass</filename> in a user's home directory can
    contain passwords to
    be used if the connection requires a password (and no password has been
-   specified  otherwise). On Microsoft Windows the file is named
+   specified otherwise). On Microsoft Windows the file is named
    <filename>%APPDATA%\postgresql\pgpass.conf</filename> (where
    <filename>%APPDATA%</filename> refers to the Application Data subdirectory in
    the user's profile).
-   Alternatively, a password file can be specified
+   Alternatively, the password file to use can be specified
    using the connection parameter <xref linkend="libpq-connect-passfile"/>
    or the environment variable <envar>PGPASSFILE</envar>.
   </para>
@@ -8144,8 +8163,12 @@ myEventProc(PGEventId evtId, void *evtInfo, void *passThrough)
    Service names can be defined in either a per-user service file or a
    system-wide file.  If the same service name exists in both the user
    and the system file, the user file takes precedence.
-   By default, the per-user service file is located
-   at <filename>~/.pg_service.conf</filename>; this can be overridden by
+   By default, the per-user service file is named
+   <filename>~/.pg_service.conf</filename>.
+   On Microsoft Windows, it is named
+   <filename>%APPDATA%\postgresql\.pg_service.conf</filename> (where
+   <filename>%APPDATA%</filename> refers to the Application Data subdirectory
+   in the user's profile).  A different file name can be specified by
    setting the environment variable <envar>PGSERVICEFILE</envar>.
    The system-wide file is named <filename>pg_service.conf</filename>.
    By default it is sought in the <filename>etc</filename> directory
@@ -8274,12 +8297,14 @@ ldap://ldap.acme.com/cn=dbserver,cn=hosts?pgconnectinfo?base?(objectclass=*)
 
   <indexterm zone="libpq-ssl">
    <primary>SSL</primary>
+   <secondary>TLS</secondary>
   </indexterm>
 
   <para>
    <productname>PostgreSQL</productname> has native support for using <acronym>SSL</acronym>
-   connections to encrypt client/server communications for increased
-   security. See <xref linkend="ssl-tcp"/> for details about the server-side
+   connections to encrypt client/server communications using
+   <acronym>TLS</acronym> protocols for increased security.
+   See <xref linkend="ssl-tcp"/> for details about the server-side
    <acronym>SSL</acronym> functionality.
   </para>
 
@@ -8336,15 +8361,30 @@ ldap://ldap.acme.com/cn=dbserver,cn=hosts?pgconnectinfo?base?(objectclass=*)
 
   <para>
    In <literal>verify-full</literal> mode, the host name is matched against the
-   certificate's Subject Alternative Name attribute(s), or against the
-   Common Name attribute if no Subject Alternative Name of type <literal>dNSName</literal> is
+   certificate's Subject Alternative Name attribute(s) (SAN), or against the
+   Common Name attribute if no SAN of type <literal>dNSName</literal> is
    present.  If the certificate's name attribute starts with an asterisk
    (<literal>*</literal>), the asterisk will be treated as
    a wildcard, which will match all characters <emphasis>except</emphasis> a dot
    (<literal>.</literal>). This means the certificate will not match subdomains.
    If the connection is made using an IP address instead of a host name, the
-   IP address will be matched (without doing any DNS lookups).
+   IP address will be matched (without doing any DNS lookups) against SANs of
+   type <literal>iPAddress</literal> or <literal>dNSName</literal>.  If no
+   <literal>iPAddress</literal> SAN is present and no
+   matching <literal>dNSName</literal> SAN is present, the host IP address is
+   matched against the Common Name attribute.
   </para>
+
+  <note>
+   <para>
+    For backward compatibility with earlier versions of PostgreSQL, the host
+    IP address is verified in a manner different
+    from <ulink url="https://tools.ietf.org/html/rfc6125">RFC 6125</ulink>.
+    The host IP address is always matched against <literal>dNSName</literal>
+    SANs as well as <literal>iPAddress</literal> SANs, and can be matched
+    against the Common Name attribute if no relevant SANs exist.
+   </para>
+  </note>
 
   <para>
    To allow server certificate verification, one or more root certificates
@@ -8368,6 +8408,8 @@ ldap://ldap.acme.com/cn=dbserver,cn=hosts?pgconnectinfo?base?(objectclass=*)
    setting
    the connection parameters <literal>sslrootcert</literal> and <literal>sslcrl</literal>
    or the environment variables <envar>PGSSLROOTCERT</envar> and <envar>PGSSLCRL</envar>.
+   <literal>sslcrldir</literal> or the environment variable <envar>PGSSLCRLDIR</envar>
+   can also be used to specify a directory containing CRL files.
   </para>
 
   <note>
@@ -8389,21 +8431,33 @@ ldap://ldap.acme.com/cn=dbserver,cn=hosts?pgconnectinfo?base?(objectclass=*)
   <para>
    If the server attempts to verify the identity of the
    client by requesting the client's leaf certificate,
-   <application>libpq</application> will send the certificates stored in
+   <application>libpq</application> will send the certificate(s) stored in
    file <filename>~/.postgresql/postgresql.crt</filename> in the user's home
    directory.  The certificates must chain to the root certificate trusted
    by the server.  A matching
    private key file <filename>~/.postgresql/postgresql.key</filename> must also
-   be present. The private
-   key file must not allow any access to world or group; achieve this by the
-   command <command>chmod 0600 ~/.postgresql/postgresql.key</command>.
+   be present.
    On Microsoft Windows these files are named
    <filename>%APPDATA%\postgresql\postgresql.crt</filename> and
-   <filename>%APPDATA%\postgresql\postgresql.key</filename>, and there
-   is no special permissions check since the directory is presumed secure.
+   <filename>%APPDATA%\postgresql\postgresql.key</filename>.
    The location of the certificate and key files can be overridden by the
-   connection parameters <literal>sslcert</literal> and <literal>sslkey</literal> or the
+   connection parameters <literal>sslcert</literal>
+   and <literal>sslkey</literal>, or by the
    environment variables <envar>PGSSLCERT</envar> and <envar>PGSSLKEY</envar>.
+  </para>
+
+  <para>
+   On Unix systems, the permissions on the private key file must disallow
+   any access to world or group; achieve this by a command such as
+   <command>chmod 0600 ~/.postgresql/postgresql.key</command>.
+   Alternatively, the file can be owned by root and have group read access
+   (that is, <literal>0640</literal> permissions).  That setup is intended
+   for installations where certificate and key files are managed by the
+   operating system.  The user of <application>libpq</application> should
+   then be made a member of the group that has access to those certificate
+   and key files.  (On Microsoft Windows, there is no file permissions
+   check, since the <filename>%APPDATA%\postgresql</filename> directory is
+   presumed secure.)
   </para>
 
   <para>

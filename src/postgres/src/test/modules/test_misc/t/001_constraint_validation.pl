@@ -1,16 +1,16 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Verify that ALTER TABLE optimizes certain operations as expected
 
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 42;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Initialize a test cluster
-my $node = PostgresNode->new('primary');
+my $node = PostgreSQL::Test::Cluster->new('primary');
 $node->init();
 # Turn message level up to DEBUG1 so that we get the messages we want to see
 $node->append_conf('postgresql.conf', 'client_min_messages = DEBUG1');
@@ -311,3 +311,5 @@ ok( $output =~
 run_sql_command('DROP TABLE quuux;');
 
 $node->stop('fast');
+
+done_testing();

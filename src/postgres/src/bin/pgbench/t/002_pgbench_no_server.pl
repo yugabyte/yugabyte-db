@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 #
 # pgbench tests which do not need a server
@@ -8,7 +8,7 @@
 use strict;
 use warnings;
 
-use TestLib;
+use PostgreSQL::Test::Utils;
 use Test::More;
 
 # create a directory for scripts
@@ -16,7 +16,7 @@ my $testname = $0;
 $testname =~ s,.*/,,;
 $testname =~ s/\.pl$//;
 
-my $testdir = "$TestLib::tmp_check/t_${testname}_stuff";
+my $testdir = "$PostgreSQL::Test::Utils::tmp_check/t_${testname}_stuff";
 mkdir $testdir
   or BAIL_OUT("could not create test directory \"${testdir}\": $!");
 
@@ -37,7 +37,7 @@ sub pgbench_scripts
 	local $Test::Builder::Level = $Test::Builder::Level + 1;
 
 	my ($opts, $stat, $out, $err, $name, $files) = @_;
-	my @cmd       = ('pgbench', split /\s+/, $opts);
+	my @cmd = ('pgbench', split /\s+/, $opts);
 	my @filenames = ();
 	if (defined $files)
 	{
@@ -191,8 +191,16 @@ my @options = (
 	[
 		'bad maximum number of tries',
 		'--max-tries -10',
-		[ qr{invalid number of maximum tries: "-10"} ]
+		[qr{invalid number of maximum tries: "-10"}]
 	],
+	[
+		'an infinite number of tries',
+		'--max-tries 0',
+		[
+			qr{an unlimited number of transaction tries can only be used with --latency-limit or a duration}
+		]
+	],
+
 	# logging sub-options
 	[
 		'sampling => log', '--sampling-rate=0.01',

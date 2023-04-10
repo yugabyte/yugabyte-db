@@ -6,7 +6,7 @@
 #    headers from specially formatted header files and data files.
 #    postgres.bki is used to initialize the postgres template database.
 #
-# Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 # src/backend/catalog/genbki.pl
@@ -447,7 +447,7 @@ foreach my $catname (@catnames)
  * %s_d.h
  *    Macro definitions for %s
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -472,11 +472,27 @@ EOM
 	  $catalog->{rowtype_oid_macro}, $catalog->{rowtype_oid}
 	  if $catalog->{rowtype_oid_macro};
 
+	# Likewise for macros for toast, index, and other OIDs
+	foreach my $toast (@{ $catalog->{toasting} })
+	{
+		printf $def "#define %s %s\n",
+		  $toast->{toast_oid_macro}, $toast->{toast_oid}
+		  if $toast->{toast_oid_macro};
+		printf $def "#define %s %s\n",
+		  $toast->{toast_index_oid_macro}, $toast->{toast_index_oid}
+		  if $toast->{toast_index_oid_macro};
+	}
 	foreach my $index (@{ $catalog->{indexing} })
 	{
 		printf $def "#define %s %s\n",
 		  $index->{index_oid_macro}, $index->{index_oid}
 		  if $index->{index_oid_macro};
+	}
+	foreach my $other (@{ $catalog->{other_oids} })
+	{
+		printf $def "#define %s %s\n",
+		  $other->{other_name}, $other->{other_oid}
+		  if $other->{other_name};
 	}
 
 	print $def "\n";
@@ -697,7 +713,7 @@ print $schemapg <<EOM;
  * schemapg.h
  *    Schema_pg_xxx macros for use by relcache.c
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -733,7 +749,7 @@ print $fk_info <<EOM;
  * system_fk_info.h
  *    Data about the foreign-key relationships in the system catalogs
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -798,7 +814,7 @@ Catalog::RenameTempFile($schemafile,       $tmpext);
 Catalog::RenameTempFile($fk_info_file,     $tmpext);
 Catalog::RenameTempFile($constraints_file, $tmpext);
 
-exit ($num_errors != 0 ? 1 : 0);
+exit($num_errors != 0 ? 1 : 0);
 
 #################### Subroutines ########################
 
@@ -900,11 +916,11 @@ sub morph_row_for_pgattr
 	# Copy the type data from pg_type, and add some type-dependent items
 	my $type = $types{$atttype};
 
-	$row->{atttypid}       = $type->{oid};
-	$row->{attlen}         = $type->{typlen};
-	$row->{attbyval}       = $type->{typbyval};
-	$row->{attalign}       = $type->{typalign};
-	$row->{attstorage}     = $type->{typstorage};
+	$row->{atttypid}   = $type->{oid};
+	$row->{attlen}     = $type->{typlen};
+	$row->{attbyval}   = $type->{typbyval};
+	$row->{attalign}   = $type->{typalign};
+	$row->{attstorage} = $type->{typstorage};
 
 	# set attndims if it's an array type
 	$row->{attndims} = $type->{typcategory} eq 'A' ? '1' : '0';

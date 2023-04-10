@@ -4,7 +4,7 @@
  *	  prototypes for costsize.c and clausesel.c.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/optimizer/cost.h
@@ -37,6 +37,8 @@
 #define DEFAULT_PARALLEL_TUPLE_COST 0.1
 #define DEFAULT_PARALLEL_SETUP_COST  1000.0
 
+/* defaults for non-Cost parameters */
+#define DEFAULT_RECURSIVE_WORKTABLE_FACTOR  10.0
 #define DEFAULT_EFFECTIVE_CACHE_SIZE  524288	/* measured in pages */
 
 typedef enum

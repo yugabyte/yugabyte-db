@@ -3,7 +3,7 @@
  *
  *	file system operations
  *
- *	Copyright (c) 2010-2021, PostgreSQL Global Development Group
+ *	Copyright (c) 2010-2022, PostgreSQL Global Development Group
  *	src/bin/pg_upgrade/file.c
  */
 
@@ -19,7 +19,7 @@
 #include <linux/fs.h>
 #endif
 
-#include "access/visibilitymap.h"
+#include "access/visibilitymapdefs.h"
 #include "common/file_perm.h"
 #include "pg_upgrade.h"
 #include "storage/bufpage.h"
@@ -57,9 +57,11 @@ cloneFile(const char *src, const char *dst,
 
 	if (ioctl(dest_fd, FICLONE, src_fd) < 0)
 	{
+		int			save_errno = errno;
+
 		unlink(dst);
 		pg_fatal("error while cloning relation \"%s.%s\" (\"%s\" to \"%s\"): %s\n",
-				 schemaName, relName, src, dst, strerror(errno));
+				 schemaName, relName, src, dst, strerror(save_errno));
 	}
 
 	close(src_fd);

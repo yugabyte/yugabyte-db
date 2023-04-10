@@ -232,6 +232,54 @@ SET ROLE regress_alter_table_user1;
 ALTER INDEX onek_unique1 RENAME TO fail;  -- permission denied
 ERROR:  must be owner of index onek_unique1
 RESET ROLE;
+-- rename statements with mismatching statement and object types
+CREATE TABLE alter_idx_rename_test (a INT);
+CREATE INDEX alter_idx_rename_test_idx ON alter_idx_rename_test (a);
+CREATE TABLE alter_idx_rename_test_parted (a INT) PARTITION BY LIST (a);
+CREATE INDEX alter_idx_rename_test_parted_idx ON alter_idx_rename_test_parted (a);
+BEGIN;
+ALTER INDEX alter_idx_rename_test RENAME TO alter_idx_rename_test_2;
+ALTER INDEX alter_idx_rename_test_parted RENAME TO alter_idx_rename_test_parted_2;
+SELECT relation::regclass, mode FROM pg_locks
+WHERE pid = pg_backend_pid() AND locktype = 'relation'
+  AND relation::regclass::text LIKE 'alter\_idx%'
+ORDER BY relation::regclass::text COLLATE "C";
+            relation            |        mode         
+--------------------------------+---------------------
+ alter_idx_rename_test_2        | AccessExclusiveLock
+ alter_idx_rename_test_parted_2 | AccessExclusiveLock
+(2 rows)
+
+COMMIT;
+BEGIN;
+ALTER INDEX alter_idx_rename_test_idx RENAME TO alter_idx_rename_test_idx_2;
+ALTER INDEX alter_idx_rename_test_parted_idx RENAME TO alter_idx_rename_test_parted_idx_2;
+SELECT relation::regclass, mode FROM pg_locks
+WHERE pid = pg_backend_pid() AND locktype = 'relation'
+  AND relation::regclass::text LIKE 'alter\_idx%'
+ORDER BY relation::regclass::text COLLATE "C";
+              relation              |           mode           
+------------------------------------+--------------------------
+ alter_idx_rename_test_idx_2        | ShareUpdateExclusiveLock
+ alter_idx_rename_test_parted_idx_2 | ShareUpdateExclusiveLock
+(2 rows)
+
+COMMIT;
+BEGIN;
+ALTER TABLE alter_idx_rename_test_idx_2 RENAME TO alter_idx_rename_test_idx_3;
+ALTER TABLE alter_idx_rename_test_parted_idx_2 RENAME TO alter_idx_rename_test_parted_idx_3;
+SELECT relation::regclass, mode FROM pg_locks
+WHERE pid = pg_backend_pid() AND locktype = 'relation'
+  AND relation::regclass::text LIKE 'alter\_idx%'
+ORDER BY relation::regclass::text COLLATE "C";
+              relation              |        mode         
+------------------------------------+---------------------
+ alter_idx_rename_test_idx_3        | AccessExclusiveLock
+ alter_idx_rename_test_parted_idx_3 | AccessExclusiveLock
+(2 rows)
+
+COMMIT;
+DROP TABLE alter_idx_rename_test_2;
 -- renaming views
 CREATE VIEW attmp_view (unique1) AS SELECT unique1 FROM tenk1;
 ALTER TABLE attmp_view RENAME TO attmp_view_new;
@@ -2013,11 +2061,24 @@ begin;
 create table skip_wal_skip_rewrite_index (c varchar(10) primary key);
 alter table skip_wal_skip_rewrite_index alter c type varchar(20);
 commit;
--- table's row type
-create table tab1 (a int, b text);
-create table tab2 (x int, y tab1);
-alter table tab1 alter column b type varchar; -- fails
-ERROR:  cannot alter table "tab1" because column "tab2.y" uses its row type
+-- We disallow changing table's row type if it's used for storage
+create table at_tab1 (a int, b text);
+create table at_tab2 (x int, y at_tab1);
+alter table at_tab1 alter column b type varchar; -- fails
+ERROR:  cannot alter table "at_tab1" because column "at_tab2.y" uses its row type
+drop table at_tab2;
+-- Use of row type in an expression is defended differently
+create table at_tab2 (x int, y text, check((x,y)::at_tab1 = (1,'42')::at_tab1));
+alter table at_tab1 alter column b type varchar; -- allowed, but ...
+insert into at_tab2 values(1,'42'); -- ... this will fail
+ERROR:  ROW() column has type text instead of type character varying
+drop table at_tab1, at_tab2;
+-- Check it for a partitioned table, too
+create table at_tab1 (a int, b text) partition by list(a);
+create table at_tab2 (x int, y at_tab1);
+alter table at_tab1 alter column b type varchar; -- fails
+ERROR:  cannot alter table "at_tab1" because column "at_tab2.y" uses its row type
+drop table at_tab1, at_tab2;
 -- Alter column type that's part of a partitioned index
 create table at_partitioned (a int, b text) partition by range (a);
 create table at_part_1 partition of at_partitioned for values from (0) to (1000);
@@ -2184,12 +2245,26 @@ alter table recur1 alter column f2 type recur2; -- fails
 ERROR:  composite type recur1 cannot be made a member of itself
 -- SET STORAGE may need to add a TOAST table
 create table test_storage (a text);
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+ has_toast_table 
+-----------------
+ t
+(1 row)
+
 alter table test_storage alter a set storage plain;
-alter table test_storage add b int default 0; -- rewrite table to remove its TOAST table
+-- rewrite table to remove its TOAST table; need a non-constant column default
+alter table test_storage add b int default random()::int;
+select reltoastrelid <> 0 as has_toast_table
+  from pg_class where oid = 'test_storage'::regclass;
+ has_toast_table 
+-----------------
+ f
+(1 row)
+
 alter table test_storage alter a set storage extended; -- re-add TOAST table
 select reltoastrelid <> 0 as has_toast_table
-from pg_class
-where oid = 'test_storage'::regclass;
+  from pg_class where oid = 'test_storage'::regclass;
  has_toast_table 
 -----------------
  t
@@ -2199,11 +2274,11 @@ where oid = 'test_storage'::regclass;
 create index test_storage_idx on test_storage (b, a);
 alter table test_storage alter column a set storage external;
 \d+ test_storage
-                                Table "public.test_storage"
- Column |  Type   | Collation | Nullable | Default | Storage  | Stats target | Description 
---------+---------+-----------+----------+---------+----------+--------------+-------------
- a      | text    |           |          |         | external |              | 
- b      | integer |           |          | 0       | plain    |              | 
+                                     Table "public.test_storage"
+ Column |  Type   | Collation | Nullable |      Default      | Storage  | Stats target | Description 
+--------+---------+-----------+----------+-------------------+----------+--------------+-------------
+ a      | text    |           |          |                   | external |              | 
+ b      | integer |           |          | random()::integer | plain    |              | 
 Indexes:
     "test_storage_idx" btree (b, a)
 
@@ -3387,21 +3462,21 @@ ALTER TABLE old_system_table DROP CONSTRAINT new_system_table_pkey;
 ALTER TABLE old_system_table DROP COLUMN othercol;
 DROP TABLE old_system_table;
 -- set logged
-CREATE UNLOGGED TABLE unlogged1(f1 SERIAL PRIMARY KEY, f2 TEXT);
+CREATE UNLOGGED TABLE unlogged1(f1 SERIAL PRIMARY KEY, f2 TEXT); -- has sequence, toast
 -- check relpersistence of an unlogged table
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged1'
 UNION ALL
-SELECT 'toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
 UNION ALL
-SELECT 'toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
 ORDER BY relname;
-     relname      | relkind | relpersistence 
-------------------+---------+----------------
- toast index      | i       | u
- toast table      | t       | u
- unlogged1        | r       | u
- unlogged1_f1_seq | S       | p
- unlogged1_pkey   | i       | u
+        relname        | relkind | relpersistence 
+-----------------------+---------+----------------
+ unlogged1             | r       | u
+ unlogged1 toast index | i       | u
+ unlogged1 toast table | t       | u
+ unlogged1_f1_seq      | S       | u
+ unlogged1_pkey        | i       | u
 (5 rows)
 
 CREATE UNLOGGED TABLE unlogged2(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES unlogged1); -- foreign key
@@ -3413,17 +3488,17 @@ ALTER TABLE unlogged1 SET LOGGED;
 -- check relpersistence of an unlogged table after changing to permanent
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^unlogged1'
 UNION ALL
-SELECT 'toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^unlogged1'
 UNION ALL
-SELECT 'toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^unlogged1'
 ORDER BY relname;
-     relname      | relkind | relpersistence 
-------------------+---------+----------------
- toast index      | i       | p
- toast table      | t       | p
- unlogged1        | r       | p
- unlogged1_f1_seq | S       | p
- unlogged1_pkey   | i       | p
+        relname        | relkind | relpersistence 
+-----------------------+---------+----------------
+ unlogged1             | r       | p
+ unlogged1 toast index | i       | p
+ unlogged1 toast table | t       | p
+ unlogged1_f1_seq      | S       | p
+ unlogged1_pkey        | i       | p
 (5 rows)
 
 ALTER TABLE unlogged1 SET LOGGED; -- silently do nothing
@@ -3431,21 +3506,21 @@ DROP TABLE unlogged3;
 DROP TABLE unlogged2;
 DROP TABLE unlogged1;
 -- set unlogged
-CREATE TABLE logged1(f1 SERIAL PRIMARY KEY, f2 TEXT);
+CREATE TABLE logged1(f1 SERIAL PRIMARY KEY, f2 TEXT); -- has sequence, toast
 -- check relpersistence of a permanent table
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^logged1'
 UNION ALL
-SELECT 'toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
 UNION ALL
-SELECT 'toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
+SELECT r.relname ||' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
 ORDER BY relname;
-    relname     | relkind | relpersistence 
-----------------+---------+----------------
- logged1        | r       | p
- logged1_f1_seq | S       | p
- logged1_pkey   | i       | p
- toast index    | i       | p
- toast table    | t       | p
+       relname       | relkind | relpersistence 
+---------------------+---------+----------------
+ logged1             | r       | p
+ logged1 toast index | i       | p
+ logged1 toast table | t       | p
+ logged1_f1_seq      | S       | p
+ logged1_pkey        | i       | p
 (5 rows)
 
 CREATE TABLE logged2(f1 SERIAL PRIMARY KEY, f2 INTEGER REFERENCES logged1); -- foreign key
@@ -3458,17 +3533,17 @@ ALTER TABLE logged1 SET UNLOGGED;
 -- check relpersistence of a permanent table after changing to unlogged
 SELECT relname, relkind, relpersistence FROM pg_class WHERE relname ~ '^logged1'
 UNION ALL
-SELECT 'toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
+SELECT r.relname || ' toast table', t.relkind, t.relpersistence FROM pg_class r JOIN pg_class t ON t.oid = r.reltoastrelid WHERE r.relname ~ '^logged1'
 UNION ALL
-SELECT 'toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
+SELECT r.relname || ' toast index', ri.relkind, ri.relpersistence FROM pg_class r join pg_class t ON t.oid = r.reltoastrelid JOIN pg_index i ON i.indrelid = t.oid JOIN pg_class ri ON ri.oid = i.indexrelid WHERE r.relname ~ '^logged1'
 ORDER BY relname;
-    relname     | relkind | relpersistence 
-----------------+---------+----------------
- logged1        | r       | u
- logged1_f1_seq | S       | p
- logged1_pkey   | i       | u
- toast index    | i       | u
- toast table    | t       | u
+       relname       | relkind | relpersistence 
+---------------------+---------+----------------
+ logged1             | r       | u
+ logged1 toast index | i       | u
+ logged1 toast table | t       | u
+ logged1_f1_seq      | S       | u
+ logged1_pkey        | i       | u
 (5 rows)
 
 ALTER TABLE logged1 SET UNLOGGED; -- silently do nothing
@@ -4441,6 +4516,20 @@ create trigger xtrig
 update bar1 set a = a + 1;
 INFO:  a=1, b=1
 /* End test case for bug #16242 */
+/* Test case for bug #17409 */
+create table attbl (p1 int constraint pk_attbl primary key);
+create table atref (c1 int references attbl(p1));
+cluster attbl using pk_attbl;
+alter table attbl alter column p1 set data type bigint;
+alter table atref alter column c1 set data type bigint;
+drop table attbl, atref;
+create table attbl (p1 int constraint pk_attbl primary key);
+alter table attbl replica identity using index pk_attbl;
+create table atref (c1 int references attbl(p1));
+alter table attbl alter column p1 set data type bigint;
+alter table atref alter column c1 set data type bigint;
+drop table attbl, atref;
+/* End test case for bug #17409 */
 -- Test that ALTER TABLE rewrite preserves a clustered index
 -- for normal indexes and indexes on constraints.
 create table alttype_cluster (a int);
@@ -4509,3 +4598,23 @@ DETAIL:  Failing row contains (2, 1).
 -- ...and doesn't when the partition is detached along with its own partition
 alter table target_parted detach partition attach_parted;
 insert into attach_parted_part1 values (2, 1);
+-- Test altering table having publication
+create schema alter1;
+create schema alter2;
+create table alter1.t1 (a int);
+set client_min_messages = 'ERROR';
+create publication pub1 for table alter1.t1, tables in schema alter2;
+reset client_min_messages;
+alter table alter1.t1 set schema alter2;
+\d+ alter2.t1
+                                    Table "alter2.t1"
+ Column |  Type   | Collation | Nullable | Default | Storage | Stats target | Description 
+--------+---------+-----------+----------+---------+---------+--------------+-------------
+ a      | integer |           |          |         | plain   |              | 
+Publications:
+    "pub1"
+
+drop publication pub1;
+drop schema alter1 cascade;
+drop schema alter2 cascade;
+NOTICE:  drop cascades to table alter2.t1
