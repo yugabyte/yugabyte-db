@@ -884,6 +884,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.commandType = commandType;
       params.universeUUID = taskParams().universeUUID;
       params.ybcServerName = node.nodeName;
+      params.isReadOnlyCluster = isReadOnlyCluster;
       params.providerUUID =
           isReadOnlyCluster
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)

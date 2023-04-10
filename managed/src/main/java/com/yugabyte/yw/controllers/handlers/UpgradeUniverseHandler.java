@@ -114,12 +114,15 @@ public class UpgradeUniverseHandler {
       Provider p = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
       if (confGetter.getConfForScope(p, ProviderConfKeys.enableYbcOnK8s)
           && Util.compareYbVersions(
-                  userIntent.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
-              < 0
+                  requestParams.ybSoftwareVersion, Util.K8S_YBC_COMPATIBLE_DB_VERSION, true)
+              >= 0
           && !universe.isYbcEnabled()
           && requestParams.enableYbc) {
         requestParams.ybcSoftwareVersion = ybcManager.getStableYbcVersion();
         requestParams.installYbc = true;
+      } else {
+        requestParams.enableYbc = false;
+        requestParams.installYbc = false;
       }
     } else if (Util.compareYbVersions(
                 requestParams.ybSoftwareVersion, Util.YBC_COMPATIBLE_DB_VERSION, true)
