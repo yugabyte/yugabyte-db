@@ -573,3 +573,8 @@ message TServerDBCatalogVersionInfo {
   optional uint32 db_oid = 1;
   optional int32 shm_index = 2;
 }
+
+message TraceContext {
+	required string trace_id = 1;
+	required string span_id = 2;
+}

@@ -47,7 +47,6 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
-namespace trace = opentelemetry::trace;
 namespace nostd = opentelemetry::nostd;
 
 namespace yb {
@@ -194,7 +193,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // Operations for a query
   //------------------------------------------------------------------------------------------------
 
-  Status StartTraceForQuery(int pid, const char* query_string);
+  Status StartTraceForQuery(const char* query_string);
   Status StopTraceForQuery();
 
   Status StartQueryEvent(const char*);
@@ -365,10 +364,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   void GetAndResetOperationFlushRpcStats(uint64_t* count, uint64_t* wait_time);
 
-  void InitTracer(int pid);
-  void CleanupTracer();
-  std::string GetTraceFileName();
-
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
   Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
@@ -441,9 +436,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   std::stack<nostd::shared_ptr<opentelemetry::trace::Span>> spans_;
   std::stack<nostd::unique_ptr<opentelemetry::context::Token>> tokens_;
 
-  std::string trace_file_name_base_ = FLAGS_log_dir + "/";
-  std::string trace_file_name_;
-  std::shared_ptr<std::ofstream> trace_file_handle_ = nullptr;
 };
 
 }  // namespace pggate

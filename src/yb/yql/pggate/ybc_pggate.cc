@@ -31,6 +31,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
+#include "yb/util/otel_trace.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
@@ -1435,8 +1436,18 @@ void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t
   pgapi->GetAndResetReadRpcStats(handle, reads, read_wait, tbl_reads, tbl_read_wait);
 }
 
-YBCStatus YBCStartTraceForQuery(int pid, const char* query_string) {
-  return ToYBCStatus(pgapi->StartTraceForQuery(pid, query_string));
+YBCStatus YBCInitTracer(int pid) {
+  InitPgTracer(pid);
+  return YBCStatusOK();
+}
+
+YBCStatus YBCCleanupTracer() {
+  CleanupTracer();
+  return YBCStatusOK();
+}
+
+YBCStatus YBCStartTraceForQuery(const char* query_string) {
+  return ToYBCStatus(pgapi->StartTraceForQuery(query_string));
 }
 
 YBCStatus YBCStopTraceForQuery() {

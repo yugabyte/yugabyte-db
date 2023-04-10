@@ -527,7 +527,7 @@ void YBCGetAndResetReadRpcStats(YBCPgStatement handle, uint64_t* reads, uint64_t
                                 uint64_t* tbl_reads, uint64_t* tbl_read_wait);
 
 // Trace Functions
-YBCStatus YBCStartTraceForQuery(int pid, const char* query_string);
+YBCStatus YBCStartTraceForQuery(const char* query_string);
 YBCStatus YBCStopTraceForQuery();
 
 YBCStatus YBCStartQueryEvent(const char* event_name);
@@ -675,6 +675,9 @@ void YBCRegisterSysTableForPrefetching(
 YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
+
+YBCStatus YBCInitTracer(int pid);
+YBCStatus YBCCleanupTracer();
 
 #ifdef __cplusplus
 }  // extern "C"

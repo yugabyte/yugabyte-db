@@ -1099,7 +1099,7 @@ exec_simple_query(const char *query_string)
 
 		if (IsYugaByteEnabled() && pg_atomic_read_u32(&MyProc->is_yb_tracing_enabled))
 		{
-			YBCStartTraceForQuery(MyProc->pid, query_string);
+			YBCStartTraceForQuery(query_string);
 			trace_vars.is_tracing_enabled = true;
 		}
 
@@ -1128,7 +1128,7 @@ exec_simple_query(const char *query_string)
 
 			if (found)
 			{
-				YBCStartTraceForQuery(MyProc->pid, query_string);
+				YBCStartTraceForQuery(query_string);
 				trace_vars.is_tracing_enabled = true;
 			}
 		}

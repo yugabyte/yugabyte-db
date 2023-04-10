@@ -52,6 +52,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
+#include "yb/util/otel_trace.h"
 #include "yb/util/write_buffer.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -931,6 +932,13 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 
   if (context) {
     if (options.trace_requested()) {
+      if (options.has_trace_context()) {
+        LOG_WITH_PREFIX_AND_FUNC(INFO)
+            << options.trace_context().trace_id() << ":" << options.trace_context().span_id();
+        auto span =
+            GetParentSpan(options.trace_context().trace_id(), options.trace_context().span_id());
+        span->End();
+      }
       context->EnsureTraceCreated();
       if (transaction) {
         transaction->EnsureTraceCreated();

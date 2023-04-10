@@ -26,14 +26,10 @@
 
 #include <boost/functional/hash.hpp>
 
-#include "opentelemetry/sdk/version/version.h"
-#include "opentelemetry/exporters/ostream/span_exporter_factory.h"
-#include "opentelemetry/exporters/ostream/span_exporter.h"
-#include "opentelemetry/sdk/trace/simple_processor_factory.h"
-#include "opentelemetry/sdk/trace/tracer_provider_factory.h"
-#include "opentelemetry/trace/provider.h"
+#include "opentelemetry/trace/context.h"
 #include "opentelemetry/trace/span_metadata.h"
-#include "opentelemetry/sdk/resource/semantic_conventions.h"
+#include "opentelemetry/trace/span_id.h"
+#include "opentelemetry/trace/trace_id.h"
 #include "opentelemetry/trace/semantic_conventions.h"
 
 #include "yb/client/table_info.h"
@@ -57,6 +53,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
+#include "yb/util/trace.h"
+#include "yb/util/otel_trace.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"
@@ -66,8 +64,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
-namespace sdktrace = opentelemetry::sdk::trace;
-namespace trace_exporter = opentelemetry::exporter::trace;
 
 DEPRECATE_FLAG(int32, ysql_wait_until_index_permissions_timeout_ms, "11_2022");
 DECLARE_int32(TEST_user_ddl_operation_timeout_sec);
@@ -448,10 +444,9 @@ Status PgSession::DeleteDBSequences(int64_t db_oid) {
 
 //--------------------------------------------------------------------------------------------------
 
-Status PgSession::StartTraceForQuery(int pid, const char* query_string) {
-  InitTracer(pid);
+Status PgSession::StartTraceForQuery(const char* query_string) {
   auto provider = opentelemetry::trace::Provider::GetTracerProvider();
-  this->query_tracer_ = provider->GetTracer("pg_session", OPENTELEMETRY_SDK_VERSION);
+  this->query_tracer_ = get_tracer("pg_session");
   auto span = this->query_tracer_->StartSpan(
       "Statement",
       {
@@ -472,7 +467,7 @@ Status PgSession::StopTraceForQuery() {
   span->End();
   this->tokens_.pop();
   this->spans_.pop();
-  CleanupTracer();
+  this->query_tracer_ = nullptr;
   return Status::OK();
 }
 
@@ -730,6 +725,25 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
   options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
 
+  if (pg_txn_manager_->ShouldEnableTracing()) {
+    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
+    opentelemetry::trace::SpanContext span_context = opentelemetry::trace::GetSpan(current_ctx)->GetContext();
+    if (span_context.IsValid()) {
+      auto& trace_context = *options.mutable_trace_context();
+      char trace_id[kTraceIdSize];
+      span_context.trace_id().ToLowerBase16(
+          nostd::span<char, 2 * opentelemetry::trace::TraceId::kSize>{trace_id, kTraceIdSize});
+      char span_id[kSpanIdSize];
+      span_context.span_id().ToLowerBase16(nostd::span<char, 2 * opentelemetry::trace::SpanId::kSize>{span_id, kSpanIdSize});
+
+      trace_context.set_trace_id(trace_id, kTraceIdSize);
+      trace_context.set_span_id(span_id, kSpanIdSize);
+      LOG(INFO) << "Set trace context. Trace ID: "
+                << std::string_view(trace_id, kTraceIdSize)
+                << ", Span ID:" << std::string_view(span_id, kSpanIdSize);
+    }
+  }
+
   if (ops_options.cache_options) {
     auto& cache_options = *ops_options.cache_options;
     auto& caching_info = *options.mutable_caching_info();
@@ -917,34 +931,6 @@ Status PgSession::ValidatePlacement(const std::string& placement_info) {
   req.set_num_replicas(placement.num_replicas);
 
   return pg_client_.ValidatePlacement(&req);
-}
-
-std::string PgSession::GetTraceFileName() {
-  return trace_file_name_base_ + "trace_" + std::to_string(rand()) + ".log";
-}
-
-void PgSession::InitTracer(int pid) {
-  trace_file_name_ = GetTraceFileName();
-  std::cout << "Starting tracing log file at: " << trace_file_name_ << std::endl;
-  trace_file_handle_ = std::make_shared<std::ofstream>(std::ofstream(trace_file_name_.c_str()));
-  auto exporter = trace_exporter::OStreamSpanExporterFactory::Create(*trace_file_handle_.get());
-  auto processor = sdktrace::SimpleSpanProcessorFactory::Create(std::move(exporter));
-  auto resource = opentelemetry::sdk::resource::Resource::Create(
-    {{opentelemetry::sdk::resource::SemanticConventions::kServiceName, "PG_SERVICE"},
-     {opentelemetry::sdk::resource::SemanticConventions::kProcessPid, std::to_string(pid)}});
-  std::shared_ptr<opentelemetry::trace::TracerProvider> provider_ =
-      sdktrace::TracerProviderFactory::Create(std::move(processor), resource);
-  trace::Provider::SetTracerProvider(provider_);
-}
-
-void PgSession::CleanupTracer() {
-  if (trace_file_handle_ != nullptr) {
-    std::cout << "Closing tracing log file at: " << trace_file_name_ << std::endl;
-    trace_file_handle_.get()->close();
-    trace_file_handle_.reset();
-    trace_file_handle_ = nullptr;
-  }
-  this->query_tracer_ = nullptr;
 }
 
 template<class Generator>

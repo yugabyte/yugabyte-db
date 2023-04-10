@@ -68,6 +68,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/main_util.h"
 #include "yb/util/mem_tracker.h"
+#include "yb/util/otel_trace.h"
 #include "yb/util/result.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/size_literals.h"
@@ -319,7 +320,11 @@ int TabletServerMain(int argc, char** argv) {
   auto llvm_profile_dumper_result = std::make_unique<LlvmProfileDumper>();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(llvm_profile_dumper_result->Start());
 
+  InitTserverTracer(host_name);
+
   termination_monitor->WaitForTermination();
+
+  CleanupTracer();
 
   llvm_profile_dumper_result.reset();
 

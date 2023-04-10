@@ -209,6 +209,8 @@ set(UTIL_SRCS
   operation_counter.cc
   opid.cc
   os-util.cc
+  otel_trace.cc
+  otel_ostream_exporter.cc
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
@@ -283,7 +285,15 @@ set(UTIL_LIBS
   version_info_proto
   zlib
   ${OPENSSL_CRYPTO_LIBRARY}
-  ${OPENSSL_SSL_LIBRARY})
+  ${OPENSSL_SSL_LIBRARY}
+  opentelemetry_exporter_ostream_span
+  opentelemetry_trace
+  opentelemetry_exporter_in_memory
+  opentelemetry_exporter_ostream_metrics
+  opentelemetry_common
+  opentelemetry_metrics
+  opentelemetry_resources
+  opentelemetry_version)
 
 if(NOT APPLE)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DROCKSDB_FALLOCATE_PRESENT")
