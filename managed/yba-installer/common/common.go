@@ -223,7 +223,7 @@ func createYugabyteUser() {
 	}
 
 	if HasSudoAccess() {
-		if out := shell.Run("useradd", userName, "-U"); !out.Succeeded() {
+		if out := shell.Run("useradd", "-m", userName, "-U"); !out.Succeeded() {
 			log.Fatal("failed to create user " + userName + ": " + out.Error.Error())
 		}
 	} else {
