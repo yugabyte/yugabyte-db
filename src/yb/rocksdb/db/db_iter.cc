@@ -44,15 +44,21 @@
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
 
-// TODO(#16651): enable for debug builds.
 #ifndef NDEBUG
-#undef ROCKSDB_CATCH_MISSING_STATUS_CHECK
+
+// Catch missing status check after Valid() returned false.
+#define ROCKSDB_CATCH_MISSING_STATUS_CHECK
+
 #endif // NDEBUG
 
+
 #ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
+
 // Helps to find missing iterator status checks when enabled.
-#undef DEBUG_ROCKSDB_INVALID_ITER_STACK
+#undef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+
 #endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
+
 
 namespace rocksdb {
 
@@ -91,7 +97,7 @@ class DBIter: public Iterator {
          InternalIterator* iter, SequenceNumber s, bool arena_mode,
          uint64_t max_sequential_skip_in_iterations, uint64_t version_number,
          const Slice* iterate_upper_bound = nullptr,
-         bool prefix_same_as_start = false)
+         bool prefix_same_as_start = false, Statistics* statistics = nullptr)
       : arena_mode_(arena_mode),
         env_(env),
         logger_(ioptions.info_log),
@@ -101,11 +107,8 @@ class DBIter: public Iterator {
         sequence_(s),
         direction_(kForward),
         valid_(false),
-#ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
-        status_check_required_(false),
-#endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
         current_entry_is_merged_(false),
-        statistics_(ioptions.statistics),
+        statistics_(statistics ? statistics : ioptions.statistics),
         version_number_(version_number),
         iterate_upper_bound_(iterate_upper_bound),
         prefix_same_as_start_(prefix_same_as_start),
@@ -138,14 +141,14 @@ class DBIter: public Iterator {
 #ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
     if (status_check_required_) {
       YB_LOG_EVERY_N_SECS(DFATAL, 300)
-          << "Tried to destruct iterator " << this
-          << " which status hasn't been checked after being invalid, current status: "
-          << status().ToString() << ", valid: " << valid_
-#ifdef DEBUG_ROCKSDB_INVALID_ITER_STACK
-          << ". Not checked invalid set by:\n"
-          << invalid_set_stack_trace_.Symbolize()
+          << "Iterator " << this << " status() hasn't been checked after Valid() returned false, "
+          << "current status: " << status().ToString() << ", valid: " << valid_
+#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+          << ". Not checked valid_ = false set by:\n" << set_valid_false_stack_trace_.Symbolize()
+          << "--------\n"
+          << "Valid() returned false at:\n" << valid_returned_false_stack_trace_.Symbolize()
           << "--------"
-#endif // DEBUG_ROCKSDB_INVALID_ITER_STACK
+#endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
           << "";
     }
 #endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
@@ -155,12 +158,13 @@ class DBIter: public Iterator {
   inline void SetValid(const bool valid) {
     EnsureStatusIsChecked();
     valid_ = valid;
+    valid_set_and_not_checked_ = true;
+
+#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
     if (!valid_) {
-#ifdef DEBUG_ROCKSDB_INVALID_ITER_STACK
-        invalid_set_stack_trace_.Collect(/* skip_frames = */ 1);
-#endif // DEBUG_ROCKSDB_INVALID_ITER_STACK
-      status_check_required_ = true;
+      set_valid_false_stack_trace_.Collect(/* skip_frames = */ 1);
     }
+#endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
   }
 #else // ROCKSDB_CATCH_MISSING_STATUS_CHECK
   inline void SetValid(const bool valid) { valid_ = valid; }
@@ -175,6 +179,18 @@ class DBIter: public Iterator {
   }
 
   bool Valid() const override {
+#ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
+    if (!valid_) {
+      if (valid_set_and_not_checked_) {
+        status_check_required_ = true;
+      }
+#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+      valid_returned_false_stack_trace_.Collect(/* skip_frames = */ 1);
+#endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+    }
+    valid_set_and_not_checked_ = false;
+#endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
+
     return valid_;
   }
 
@@ -299,12 +315,16 @@ class DBIter: public Iterator {
   std::string saved_value_;
   Direction direction_;
   bool valid_;
+
 #ifdef ROCKSDB_CATCH_MISSING_STATUS_CHECK
-  mutable bool status_check_required_;
-#ifdef DEBUG_ROCKSDB_INVALID_ITER_STACK
-  mutable yb::StackTrace invalid_set_stack_trace_;
-#endif // DEBUG_ROCKSDB_INVALID_ITER_STACK
+  mutable bool status_check_required_ = false;
+  mutable bool valid_set_and_not_checked_ = false;
+#ifdef DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
+  mutable yb::StackTrace set_valid_false_stack_trace_;
+  mutable yb::StackTrace valid_returned_false_stack_trace_;
+#endif // DEBUG_ROCKSDB_CAPTURE_ITER_INVALID_STACK
 #endif // ROCKSDB_CATCH_MISSING_STATUS_CHECK
+
   bool current_entry_is_merged_;
   Statistics* statistics_;
   uint64_t max_skip_;
@@ -1009,11 +1029,12 @@ Iterator* NewDBIterator(Env* env, const ImmutableCFOptions& ioptions,
                         uint64_t max_sequential_skip_in_iterations,
                         uint64_t version_number,
                         const Slice* iterate_upper_bound,
-                        bool prefix_same_as_start, bool pin_data) {
+                        bool prefix_same_as_start, bool pin_data,
+                        Statistics* statistics) {
   DBIter* db_iter =
       new DBIter(env, ioptions, user_key_comparator, internal_iter, sequence,
                  false, max_sequential_skip_in_iterations, version_number,
-                 iterate_upper_bound, prefix_same_as_start);
+                 iterate_upper_bound, prefix_same_as_start, statistics);
   if (pin_data) {
     CHECK_OK(db_iter->PinData());
   }
@@ -1071,14 +1092,14 @@ ArenaWrappedDBIter* NewArenaWrappedDbIterator(
     const Comparator* user_key_comparator, const SequenceNumber& sequence,
     uint64_t max_sequential_skip_in_iterations, uint64_t version_number,
     const Slice* iterate_upper_bound, bool prefix_same_as_start,
-    bool pin_data) {
+    bool pin_data, Statistics* statistics) {
   ArenaWrappedDBIter* iter = new ArenaWrappedDBIter();
   Arena* arena = iter->GetArena();
   auto mem = arena->AllocateAligned(sizeof(DBIter));
   DBIter* db_iter =
       new (mem) DBIter(env, ioptions, user_key_comparator, nullptr, sequence,
                        true, max_sequential_skip_in_iterations, version_number,
-                       iterate_upper_bound, prefix_same_as_start);
+                       iterate_upper_bound, prefix_same_as_start, statistics);
 
   iter->SetDBIter(db_iter);
   if (pin_data) {

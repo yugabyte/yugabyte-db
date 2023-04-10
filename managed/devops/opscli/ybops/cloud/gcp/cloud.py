@@ -12,7 +12,7 @@ import json
 import logging
 import time
 
-from ybops.cloud.common.cloud import AbstractCloud
+from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.gcp.command import (GcpAccessCommand, GcpInstanceCommand, GcpNetworkCommand,
                                      GcpQueryCommand)
 from ybops.cloud.gcp.utils import (GCP_SCRATCH, GcpMetadata, GoogleCloudAdmin)
@@ -368,3 +368,16 @@ class GcpCloud(AbstractCloud):
     def modify_tags(self, args):
         instance = self.get_host_info(args)
         self.get_admin().modify_tags(args, instance['id'], args.instance_tags, args.remove_tags)
+
+    def normalize_instance_state(self, instance_state):
+        if instance_state:
+            instance_state = instance_state.lower()
+            if instance_state in ("provisioning", "staging", "repairing"):
+                return InstanceState.STARTING
+            if instance_state in ("running"):
+                return InstanceState.RUNNING
+            if instance_state in ("suspending", "suspended", "stopping"):
+                return InstanceState.STOPPING
+            if instance_state in ("terminated"):
+                return InstanceState.STOPPED
+        return InstanceState.UNKNOWN

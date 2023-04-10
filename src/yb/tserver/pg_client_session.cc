@@ -1098,10 +1098,13 @@ PgClientSession::SetupSession(
   }
 
   session->SetDeadline(deadline);
-
   if (transaction) {
-    DCHECK_GE(options.active_sub_transaction_id(), 0);
-    transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+    const auto active_subtxn_id = options.active_sub_transaction_id();
+    RSTATUS_DCHECK_GE(
+        active_subtxn_id, kMinSubTransactionId, InvalidArgument,
+        Format("Expected active_sub_transaction_id ($0) to be greater than ($1)",
+               active_subtxn_id, kMinSubTransactionId));
+    transaction->SetActiveSubTransaction(active_subtxn_id);
   }
 
   return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
@@ -1170,7 +1173,6 @@ Status PgClientSession::BeginTransactionIfNecessary(
   }
   txn->SetPriority(priority);
   session->SetTransaction(txn);
-
   return Status::OK();
 }
 

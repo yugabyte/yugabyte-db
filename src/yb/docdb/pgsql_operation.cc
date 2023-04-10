@@ -225,6 +225,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     bool is_explicit_request_read_time,
+    const DocDBStatistics* statistics,
     boost::optional<size_t> end_referenced_key_column_index = boost::none) {
   VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << yb::ToString(request);
 
@@ -239,7 +240,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     RETURN_NOT_OK(ql_storage.GetIterator(
         request.stmt_id(), projection, doc_read_context, txn_op_context,
         deadline, read_time, request.ybctid_column_value().value(),
-        request.ybctid_column_value().value(), &result));
+        request.ybctid_column_value().value(), &result, statistics));
   } else {
     SubDocKey start_sub_doc_key;
     auto actual_read_time = read_time;
@@ -269,7 +270,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     }
     RETURN_NOT_OK(ql_storage.GetIterator(
         request, projection, doc_read_context, txn_op_context, deadline, read_time,
-        start_sub_doc_key.doc_key(), &result, end_referenced_key_column_index));
+        start_sub_doc_key.doc_key(), &result, end_referenced_key_column_index, statistics));
   }
   return std::move(result);
 }
@@ -1097,8 +1098,9 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
                                            bool is_explicit_request_read_time,
                                            const DocReadContext& doc_read_context,
                                            const DocReadContext* index_doc_read_context,
-                                           WriteBuffer *result_buffer,
-                                           HybridTime *restart_read_ht) {
+                                           WriteBuffer* result_buffer,
+                                           HybridTime* restart_read_ht,
+                                           const DocDBStatistics* statistics) {
   size_t fetched_rows = 0;
   auto num_rows_pos = result_buffer->Position();
   // Reserve space for fetched rows count.
@@ -1112,15 +1114,16 @@ Result<size_t> PgsqlReadOperation::Execute(const YQLStorageIf& ql_storage,
   bool has_paging_state = false;
   if (request_.batch_arguments_size() > 0) {
     fetched_rows = VERIFY_RESULT(ExecuteBatchYbctid(
-        ql_storage, deadline, read_time, doc_read_context, result_buffer, restart_read_ht));
+        ql_storage, deadline, read_time, doc_read_context, result_buffer, restart_read_ht,
+        statistics));
   } else if (request_.has_sampling_state()) {
     fetched_rows = VERIFY_RESULT(ExecuteSample(
         ql_storage, deadline, read_time, is_explicit_request_read_time, doc_read_context,
-        result_buffer, restart_read_ht, &has_paging_state));
+        result_buffer, restart_read_ht, &has_paging_state, statistics));
   } else {
     fetched_rows = VERIFY_RESULT(ExecuteScalar(
         ql_storage, deadline, read_time, is_explicit_request_read_time, doc_read_context,
-        index_doc_read_context, result_buffer, restart_read_ht, &has_paging_state));
+        index_doc_read_context, result_buffer, restart_read_ht, &has_paging_state, statistics));
   }
 
   VTRACE(1, "Fetched $0 rows. $1 paging state", fetched_rows, (has_paging_state ? "No" : "Has"));
@@ -1138,9 +1141,10 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
                                                  const ReadHybridTime& read_time,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
-                                                 WriteBuffer *result_buffer,
-                                                 HybridTime *restart_read_ht,
-                                                 bool *has_paging_state) {
+                                                 WriteBuffer* result_buffer,
+                                                 HybridTime* restart_read_ht,
+                                                 bool* has_paging_state,
+                                                 const DocDBStatistics* statistics) {
   *has_paging_state = false;
   size_t scanned_rows = 0;
   PgsqlSamplingStatePB sampling_state = request_.sampling_state();
@@ -1175,7 +1179,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
   // Request may carry paging state, CreateIterator takes care of positioning
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, projection, doc_read_context, txn_op_context_,
-      deadline, read_time, is_explicit_request_read_time));
+      deadline, read_time, is_explicit_request_read_time, statistics));
   bool scan_time_exceeded = false;
   CoarseTimePoint stop_scan = deadline - FLAGS_ysql_scan_deadline_margin_ms * 1ms;
   while (VERIFY_RESULT(table_iter_->FetchNext(nullptr))) {
@@ -1263,10 +1267,11 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
                                                  const ReadHybridTime& read_time,
                                                  bool is_explicit_request_read_time,
                                                  const DocReadContext& doc_read_context,
-                                                 const DocReadContext *index_doc_read_context,
-                                                 WriteBuffer *result_buffer,
-                                                 HybridTime *restart_read_ht,
-                                                 bool *has_paging_state) {
+                                                 const DocReadContext* index_doc_read_context,
+                                                 WriteBuffer* result_buffer,
+                                                 HybridTime* restart_read_ht,
+                                                 bool* has_paging_state,
+                                                 const DocDBStatistics* statistics) {
   // Retrieve target table schema from the context, as well as the pointer to optional index schema
   // Index schema is only available if queried table is colocated. Indexes on colocated table
   // columns are stored on the same tablet/node as their table, while indexes on regular tables are
@@ -1325,7 +1330,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   // Create iterator over the target table
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, doc_projection, doc_read_context, txn_op_context_, deadline, read_time,
-      is_explicit_request_read_time, end_referenced_key_column_index));
+      is_explicit_request_read_time, statistics, end_referenced_key_column_index));
 
   ColumnId ybbasectid_id;
   std::optional<QLTableRow> index_row;
@@ -1354,7 +1359,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     // Create iterator over the index
     index_iter_ = VERIFY_RESULT(CreateIterator(
         ql_storage, index_request, index_projection, *index_doc_read_context, txn_op_context_,
-        deadline, read_time, is_explicit_request_read_time,
+        deadline, read_time, is_explicit_request_read_time, statistics,
         index_iter_end_referenced_key_column_index));
     // The index iterator is to be looped over, main table rows are to be retrieved by their ybctids
     iter = index_iter_.get();
@@ -1469,8 +1474,9 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
                                                       CoarseTimePoint deadline,
                                                       const ReadHybridTime& read_time,
                                                       const DocReadContext& doc_read_context,
-                                                      WriteBuffer *result_buffer,
-                                                      HybridTime *restart_read_ht) {
+                                                      WriteBuffer* result_buffer,
+                                                      HybridTime* restart_read_ht,
+                                                      const DocDBStatistics* statistics) {
   const auto& schema = doc_read_context.schema;
   Schema projection;
   RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
@@ -1486,7 +1492,6 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
     RETURN_NOT_OK(expr_exec.AddWhereExpression(expr));
     VLOG(1) << "Added where expression to the executor";
   }
-
 
   const auto &batch_args = request_.batch_arguments();
   auto min_arg = batch_args.begin();
@@ -1511,7 +1516,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
       RETURN_NOT_OK(ql_storage.GetIterator(
           request_.stmt_id(), projection, doc_read_context, txn_op_context_,
           deadline, read_time, min_arg->ybctid().value(),
-          max_arg->ybctid().value(), &table_iter_));
+          max_arg->ybctid().value(), &table_iter_, statistics));
     }
     // Get the row.
     auto &tuple_id = batch_argument.ybctid().value();

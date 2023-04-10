@@ -7,15 +7,13 @@ import { createGlobalState } from 'react-use';
 import { browserStorage } from '@app/helpers';
 
 import YBLogo from '@app/assets/yb-logo-dark.svg';
-import ClusterIcon from '@app/assets/cluster.svg';
+import RocketIcon from '@app/assets/rocket.svg';
 import SettingsIcon from '@app/assets/cog.svg';
 import DbSecurityIcon from '@app/assets/database-security.svg';
 import MetricsIcon from '@app/assets/stats.svg';
 import DoubleArrowIcon from '@app/assets/double-arrow-left.svg';
 import AlertsIcon from '@app/assets/bell.svg';
-import PerformanceIcon from '@app/assets/rocket.svg'
 import DatabaseIcon from '@app/assets/database.svg'
-import OverviewIcon from '@app/assets/Dashboard.svg'
 import { themeVariables } from '@app/theme/variables';
 
 // Global state for setting and getting new alert flag that can be used on alerts list page
@@ -207,7 +205,7 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
     <>
       <div className={clsx(classes.filler, isCollapsed && classes.collapsed)} />
       <div className={clsx(classes.sidebar, isCollapsed && classes.collapsed)}>
-        <Link to="/cluster/tabOverview" className={classes.linkRow}>
+        <Link to="/" className={classes.linkRow}>
           <YBLogo className={classes.logoIcon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
             {t('common.appTitle')}
@@ -229,20 +227,20 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         )} */}
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/overview`}
-          isActive={(_, location) => /^\/overview/.test(location.pathname)}
+          to={`/`}
+          isActive={(_, location) => /^\/$/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
-          data-testid="SidebarLinkOverview"
+          data-testid="SidebarLinkCluster"
         >
-          <OverviewIcon className={classes.icon} />
+          <RocketIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
-            {t('common.overview')}
+            {t('common.cluster')}
           </Typography>
         </NavLinkWithDisable>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/databases`}
+          to={`/databases/tabYsql`}
           isActive={(_, location) => /^\/databases/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
@@ -255,26 +253,13 @@ export const Sidebar: FC<{ projectId: string }> = ({ projectId }) => {
         </NavLinkWithDisable>
         <NavLinkWithDisable
           disabled={isDisabled}
-          to={`/cluster/tabNodes`}
-          isActive={(_, location) => /^\/cluster/.test(location.pathname)}
-          className={classes.link}
-          activeClassName={classes.linkActive}
-          data-testid="SidebarLinkCluster"
-        >
-          <ClusterIcon className={classes.icon} />
-          <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
-            {t('common.cluster')}
-          </Typography>
-        </NavLinkWithDisable>
-        <NavLinkWithDisable
-          disabled={isDisabled}
           to={`/performance/metrics`}
           isActive={(_, location) => /^\/performance/.test(location.pathname)}
           className={classes.link}
           activeClassName={classes.linkActive}
           data-testid="SidebarLinkPerformance"
         >
-          <PerformanceIcon className={classes.icon} />
+          <MetricsIcon className={classes.icon} />
           <Typography variant="body2" noWrap className={clsx(isCollapsed && classes.fadeOut)}>
             {t('clusterDetail.tabPerformance')}
           </Typography>

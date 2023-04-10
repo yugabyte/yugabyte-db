@@ -968,7 +968,9 @@ T ExternalMiniCluster::GetProxy(const ExternalDaemon* daemon) {
 
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
-Status CompactTablets(ExternalMiniCluster* cluster);
+Status CompactTablets(
+    ExternalMiniCluster* cluster,
+    const yb::MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
 
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,

@@ -18,6 +18,7 @@ import tempfile
 import time
 
 import yaml
+from enum import Enum
 from ybops.cloud.common.ansible import AnsibleProcess
 from ybops.cloud.common.base import AbstractCommandParser
 from ybops.utils import (YB_HOME_DIR, YBOpsRuntimeError, get_datafile_path,
@@ -26,6 +27,16 @@ from ybops.utils.remote_shell import (copy_to_tmp, wait_for_server, get_host_por
                                       RemoteShell)
 from ybops.common.exceptions import YBOpsRecoverableError
 from ybops.utils import remote_exec_command
+
+
+class InstanceState(str, Enum):
+    STARTING = "starting",
+    RUNNING = "running",
+    STOPPING = "stopping",
+    STOPPED = "stopped",
+    TERMINATING = "terminating",
+    TERMINATED = "terminated",
+    UNKNOWN = "unknown"
 
 
 class AbstractCloud(AbstractCommandParser):
@@ -711,3 +722,8 @@ class AbstractCloud(AbstractCommandParser):
 
     def hard_reboot_instance(self, args, server_ports):
         pass
+
+    def normalize_instance_state(self, instance_state):
+        """Map the cloud specific instance state to the generic normalized instance state.
+        """
+        return InstanceState.UNKNOWN

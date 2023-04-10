@@ -107,7 +107,8 @@ IntentAwareIterator::IntentAwareIterator(
     const rocksdb::ReadOptions& read_opts,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const TransactionOperationContext& txn_op_context)
+    const TransactionOperationContext& txn_op_context,
+    rocksdb::Statistics* intentsdb_statistics)
     : read_time_(read_time),
       encoded_read_time_(read_time),
       txn_op_context_(txn_op_context),
@@ -124,7 +125,8 @@ IntentAwareIterator::IntentAwareIterator(
                                                   boost::none,
                                                   rocksdb::kDefaultQueryId,
                                                   nullptr /* file_filter */,
-                                                  &intent_upperbound_);
+                                                  &intent_upperbound_,
+                                                  intentsdb_statistics);
     } else {
       VLOG(4) << "No transactions running";
     }
@@ -913,6 +915,7 @@ void IntentAwareIterator::PopPrefix() {
   prefix_stack_.pop_back();
   skip_future_records_needed_ = true;
   skip_future_intents_needed_ = true;
+  reset_intent_upperbound_during_skip_ = true;
   VLOG(4) << "PopPrefix: "
           << (prefix_stack_.empty() ? std::string()
               : SubDocKey::DebugSliceToString(prefix_stack_.back()));
@@ -1043,6 +1046,12 @@ void IntentAwareIterator::SkipFutureIntents() {
   if (!intent_iter_.Initialized() || !status_.ok()) {
     return;
   }
+  if (reset_intent_upperbound_during_skip_) {
+    status_ = SetIntentUpperbound();
+    if (!status_.ok()) {
+      return;
+    }
+  }
   auto prefix = CurrentPrefix();
   if (resolved_intent_state_ != ResolvedIntentState::kNoIntent) {
     auto compare_result = resolved_intent_key_prefix_.AsSlice().compare_prefix(prefix);
@@ -1066,6 +1075,7 @@ void IntentAwareIterator::SkipFutureIntents() {
 }
 
 Status IntentAwareIterator::SetIntentUpperbound() {
+  reset_intent_upperbound_during_skip_ = false;
   if (iter_.Valid()) {
     intent_upperbound_keybytes_.Clear();
     // Strip ValueType::kHybridTime + DocHybridTime at the end of SubDocKey in iter_ and append

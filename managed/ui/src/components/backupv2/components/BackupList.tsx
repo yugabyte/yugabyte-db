@@ -623,6 +623,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setSelectedBackups([showDetails] as IBackup[]);
           setShowEditBackupModal(true);
         }}
+        tablesInUniverse={tablesInUniverse?.data}
       />
       <BackupDeleteModal
         backupsList={selectedBackups}

@@ -22,9 +22,10 @@ import styles from './RegionList.module.scss';
 
 interface RegionListCommmonProps {
   showAddRegionFormModal: () => void;
-  showEditRegionFormModal: () => void;
+  showEditRegionFormModal: (options?: { isExistingRegion: boolean }) => void;
   showDeleteRegionModal: () => void;
 
+  existingRegions?: string[];
   disabled?: boolean;
   isError?: boolean;
 }
@@ -80,6 +81,7 @@ export const RegionList = (props: RegionListProps) => {
 
 const contextualHelpers = ({
   disabled,
+  existingRegions,
   providerCode,
   regions,
   setRegionSelection,
@@ -136,7 +138,9 @@ const contextualHelpers = ({
     case ProviderCode.KUBERNETES: {
       const handleEditRegion = (regionField: K8sRegionField) => {
         setRegionSelection(regionField);
-        showEditRegionFormModal();
+        showEditRegionFormModal({
+          isExistingRegion: existingRegions?.includes(regionField.code) ?? false
+        });
       };
       const handleDeleteRegion = (regionField: K8sRegionField) => {
         setRegionSelection(regionField);

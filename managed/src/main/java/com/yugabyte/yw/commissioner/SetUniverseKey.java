@@ -76,10 +76,21 @@ public class SetUniverseKey {
     String hostPorts = u.getMasterAddresses();
     String certificate = u.getCertificateNodetoNode();
     try {
+      String dbKeyId = EncryptionAtRestUtil.getKmsHistory(u.getUniverseUUID(), keyRef).dbKeyId;
       client = ybService.getClient(hostPorts, certificate);
-      String encodedKeyRef = Base64.getEncoder().encodeToString(keyRef);
-      if (!client.hasUniverseKeyInMemory(encodedKeyRef, masterAddr)) {
-        client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, keyVal), masterAddr);
+      if (!client.hasUniverseKeyInMemory(dbKeyId, masterAddr)) {
+        client.addUniverseKeys(ImmutableMap.of(dbKeyId, keyVal), masterAddr);
+        log.info(
+            "Sent universe key to universe '{}' and DB node '{}' with key ID: '{}'.",
+            u.getUniverseUUID(),
+            masterAddr,
+            dbKeyId);
+      } else {
+        log.info(
+            "DB node '{}' from universe '{}' already has universe key in memory with key ID: '{}'.",
+            masterAddr,
+            u.getUniverseUUID(),
+            dbKeyId);
       }
     } catch (Exception e) {
       String errMsg =
