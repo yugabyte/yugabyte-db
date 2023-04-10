@@ -37,8 +37,6 @@ Although these attributes are present in all `handler_latency` metrics, they may
 
 YSQL query processing metrics represent the total inclusive time it takes YugabyteDB to process a YSQL statement after the query processing layer begins execution. These metrics include the time taken to parse and execute the SQL statement, replicate over the network, the time spent in the storage layer, and so on. The preceding metrics do not capture the time to deserialize the network bytes and parse the query.
 
-All handler latency metrics include additional attributes. Refer to [Latency metric attributes](#latency-metric-attributes).
-
 The following are key metrics for evaluating YSQL query processing.
 
 | Metric | Unit | Type | Description |
@@ -67,9 +65,7 @@ The YSQL throughput can be viewed as an aggregate across the whole cluster, per 
 
 ## Database IOPS (reads and writes)
 
-The [YB-TServer](../../../architecture/concepts/yb-tserver/) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each hosts one or more tablet peers.
-
-All handler latency metrics include additional attributes. Refer to [Latency metric attributes](#latency-metric-attributes).
+The [YB-TServer](../../../../architecture/concepts/yb-tserver/) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each hosts one or more tablet peers.
 
 The following are key metrics for evaluating database IOPS.
 
