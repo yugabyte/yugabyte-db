@@ -445,7 +445,7 @@ $$ LANGUAGE SQL;
 
     <para>
      If the final <literal>SELECT</literal> or <literal>RETURNING</literal>
-     clause in a <acronym>SQL</acronym> function does not return exactly
+     clause in an <acronym>SQL</acronym> function does not return exactly
      the function's declared result
      type, <productname>PostgreSQL</productname> will automatically cast
      the value to the required type, if that is possible with an implicit
@@ -836,7 +836,7 @@ CREATE FUNCTION mleast(VARIADIC arr numeric[]) RETURNS numeric AS $$
 $$ LANGUAGE SQL;
 
 SELECT mleast(10, -1, 5, 4.4);
- mleast 
+ mleast
 --------
      -1
 (1 row)
@@ -942,19 +942,19 @@ AS $$
 $$;
 
 SELECT foo(10, 20, 30);
- foo 
+ foo
 -----
   60
 (1 row)
 
 SELECT foo(10, 20);
- foo 
+ foo
 -----
   33
 (1 row)
 
 SELECT foo(10);
- foo 
+ foo
 -----
   15
 (1 row)
@@ -1256,7 +1256,7 @@ SELECT x, CASE WHEN x &gt; 0 THEN generate_series(1, 5) ELSE 0 END FROM tab;
       described above; instead, a set-returning function could have at most
       one set-returning argument, and each nest of set-returning functions
       was run independently.  Also, conditional execution (set-returning
-      functions inside <literal>CASE</literal> etc) was previously allowed,
+      functions inside <literal>CASE</literal> etc.) was previously allowed,
       complicating things even more.
       Use of the <literal>LATERAL</literal> syntax is recommended when writing
       queries that need to work in older <productname>PostgreSQL</productname> versions,
@@ -1387,7 +1387,7 @@ SELECT make_array2(1, 2.5) AS numericarray;
      also works:
 <screen>
 SELECT make_array2('a', 'b') AS textarray;
- textarray 
+ textarray
 -----------
  {a,b}
 (1 row)
@@ -1440,13 +1440,13 @@ CREATE FUNCTION anyleast (VARIADIC anyarray) RETURNS anyelement AS $$
 $$ LANGUAGE SQL;
 
 SELECT anyleast(10, -1, 5, 4);
- anyleast 
+ anyleast
 ----------
        -1
 (1 row)
 
 SELECT anyleast('abc'::text, 'def');
- anyleast 
+ anyleast
 ----------
  abc
 (1 row)
@@ -1456,7 +1456,7 @@ CREATE FUNCTION concat_values(text, VARIADIC anyarray) RETURNS text AS $$
 $$ LANGUAGE SQL;
 
 SELECT concat_values('|', 1, 4, 2);
- concat_values 
+ concat_values
 ---------------
  1|4|2
 (1 row)
@@ -1979,27 +1979,15 @@ PG_MODULE_MAGIC;
     <primary>_PG_init</primary>
    </indexterm>
    <indexterm zone="xfunc-c-dynload">
-    <primary>_PG_fini</primary>
-   </indexterm>
-   <indexterm zone="xfunc-c-dynload">
     <primary>library initialization function</primary>
-   </indexterm>
-   <indexterm zone="xfunc-c-dynload">
-    <primary>library finalization function</primary>
    </indexterm>
 
    <para>
-    Optionally, a dynamically loaded file can contain initialization and
-    finalization functions.  If the file includes a function named
+    Optionally, a dynamically loaded file can contain an initialization
+    function.  If the file includes a function named
     <function>_PG_init</function>, that function will be called immediately after
     loading the file.  The function receives no parameters and should
-    return void.  If the file includes a function named
-    <function>_PG_fini</function>, that function will be called immediately before
-    unloading the file.  Likewise, the function receives no parameters and
-    should return void.  Note that <function>_PG_fini</function> will only be called
-    during an unload of the file, not during process termination.
-    (Presently, unloads are disabled and will never occur, but this may
-    change in the future.)
+    return void.  There is presently no way to unload a dynamically loaded file.
    </para>
 
   </sect2>
@@ -2166,16 +2154,18 @@ memcpy(destination->data, buffer, 40);
     </para>
 
     <para>
-     <xref linkend="xfunc-c-type-table"/> specifies which C type
-     corresponds to which SQL type when writing a C-language function
-     that uses a built-in type of <productname>PostgreSQL</productname>.
+     <xref linkend="xfunc-c-type-table"/> shows the C types
+     corresponding to many of the built-in SQL data types
+     of <productname>PostgreSQL</productname>.
      The <quote>Defined In</quote> column gives the header file that
      needs to be included to get the type definition.  (The actual
      definition might be in a different file that is included by the
      listed file.  It is recommended that users stick to the defined
      interface.)  Note that you should always include
-     <filename>postgres.h</filename> first in any source file, because
-     it declares a number of things that you will need anyway.
+     <filename>postgres.h</filename> first in any source file of server
+     code, because it declares a number of things that you will need
+     anyway, and because including other headers first can cause
+     portability issues.
     </para>
 
      <table tocentry="1" id="xfunc-c-type-table">
@@ -2234,28 +2224,28 @@ memcpy(destination->data, buffer, 40);
          <entry><filename>utils/date.h</filename></entry>
         </row>
         <row>
-         <entry><type>smallint</type> (<type>int2</type>)</entry>
+         <entry><type>float4</type> (<type>real</type>)</entry>
+         <entry><type>float4</type></entry>
+        <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>float8</type> (<type>double precision</type>)</entry>
+         <entry><type>float8</type></entry>
+         <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>int2</type> (<type>smallint</type>)</entry>
          <entry><type>int16</type></entry>
          <entry><filename>postgres.h</filename></entry>
         </row>
         <row>
-         <entry><type>int2vector</type></entry>
-         <entry><type>int2vector*</type></entry>
-         <entry><filename>postgres.h</filename></entry>
-        </row>
-        <row>
-         <entry><type>integer</type> (<type>int4</type>)</entry>
+         <entry><type>int4</type> (<type>integer</type>)</entry>
          <entry><type>int32</type></entry>
          <entry><filename>postgres.h</filename></entry>
         </row>
         <row>
-         <entry><type>real</type> (<type>float4</type>)</entry>
-         <entry><type>float4*</type></entry>
-        <entry><filename>postgres.h</filename></entry>
-        </row>
-        <row>
-         <entry><type>double precision</type> (<type>float8</type>)</entry>
-         <entry><type>float8*</type></entry>
+         <entry><type>int8</type> (<type>bigint</type>)</entry>
+         <entry><type>int64</type></entry>
          <entry><filename>postgres.h</filename></entry>
         </row>
         <row>
@@ -2272,6 +2262,11 @@ memcpy(destination->data, buffer, 40);
          <entry><type>name</type></entry>
          <entry><type>Name</type></entry>
          <entry><filename>postgres.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>numeric</type></entry>
+         <entry><type>Numeric</type></entry>
+         <entry><filename>utils/numeric.h</filename></entry>
         </row>
         <row>
          <entry><type>oid</type></entry>
@@ -2295,7 +2290,7 @@ memcpy(destination->data, buffer, 40);
         </row>
         <row>
          <entry><type>regproc</type></entry>
-         <entry><type>regproc</type></entry>
+         <entry><type>RegProcedure</type></entry>
          <entry><filename>postgres.h</filename></entry>
         </row>
         <row>
@@ -2321,6 +2316,11 @@ memcpy(destination->data, buffer, 40);
         <row>
          <entry><type>timestamp</type></entry>
          <entry><type>Timestamp</type></entry>
+         <entry><filename>datatype/timestamp.h</filename></entry>
+        </row>
+        <row>
+         <entry><type>timestamp with time zone</type></entry>
+         <entry><type>TimestampTz</type></entry>
          <entry><filename>datatype/timestamp.h</filename></entry>
         </row>
         <row>
@@ -3193,7 +3193,7 @@ retcomposite(PG_FUNCTION_ARGS)
         oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
         /* total number of tuples to be returned */
-        funcctx->max_calls = PG_GETARG_UINT32(0);
+        funcctx->max_calls = PG_GETARG_INT32(0);
 
         /* Build a tuple descriptor for our result type */
         if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
@@ -3402,21 +3402,29 @@ CREATE FUNCTION make_array(anyelement) RETURNS anyarray
      startup.  The add-in's shared library must be preloaded by specifying
      it in
      <xref linkend="guc-shared-preload-libraries"/><indexterm><primary>shared_preload_libraries</primary></indexterm>.
+     The shared library should register a <literal>shmem_request_hook</literal>
+     in its <function>_PG_init</function> function.  This
+     <literal>shmem_request_hook</literal> can reserve LWLocks or shared memory.
      Shared memory is reserved by calling:
 <programlisting>
 void RequestAddinShmemSpace(int size)
 </programlisting>
-     from your <function>_PG_init</function> function.
+     from your <literal>shmem_request_hook</literal>.
     </para>
     <para>
      LWLocks are reserved by calling:
 <programlisting>
 void RequestNamedLWLockTranche(const char *tranche_name, int num_lwlocks)
 </programlisting>
-     from <function>_PG_init</function>.  This will ensure that an array of
+     from your <literal>shmem_request_hook</literal>.  This will ensure that an array of
      <literal>num_lwlocks</literal> LWLocks is available under the name
      <literal>tranche_name</literal>.  Use <function>GetNamedLWLockTranche</function>
      to get a pointer to this array.
+    </para>
+    <para>
+     An example of a <literal>shmem_request_hook</literal> can be found in
+     <filename>contrib/pg_stat_statements/pg_stat_statements.c</filename> in the
+     <productname>PostgreSQL</productname> source tree.
     </para>
     <para>
      To avoid possible race-conditions, each backend should use the LWLock

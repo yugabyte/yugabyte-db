@@ -1,17 +1,17 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test simple scenario involving a standby
 
 use strict;
 use warnings;
 
-use TestLib;
-use Test::More tests => 4;
-use PostgresNode;
+use PostgreSQL::Test::Utils;
+use Test::More;
+use PostgreSQL::Test::Cluster;
 
 my $bkplabel = 'backup';
-my $primary  = PostgresNode->new('primary');
+my $primary  = PostgreSQL::Test::Cluster->new('primary');
 $primary->init(allows_streaming => 1);
 
 $primary->append_conf(
@@ -22,7 +22,7 @@ $primary->append_conf(
 $primary->start;
 $primary->backup($bkplabel);
 
-my $standby = PostgresNode->new('standby');
+my $standby = PostgreSQL::Test::Cluster->new('standby');
 $standby->init_from_backup($primary, $bkplabel, has_streaming => 1);
 $standby->start;
 
@@ -64,3 +64,5 @@ like(
 	$standby_ts_stderr,
 	qr/could not get commit timestamp data/,
 	'expected error when primary turned feature off');
+
+done_testing();

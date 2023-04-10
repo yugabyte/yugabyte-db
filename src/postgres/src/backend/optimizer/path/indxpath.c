@@ -4,7 +4,7 @@
  *	  Routines to determine which indexes are usable for scanning a
  *	  given relation, and create Paths accordingly.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -2002,7 +2002,6 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 	bool		result;
 	Bitmapset  *attrs_used = NULL;
 	Bitmapset  *index_canreturn_attrs = NULL;
-	Bitmapset  *index_cannotreturn_attrs = NULL;
 	ListCell   *lc;
 	int			i;
 
@@ -2042,11 +2041,7 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 
 	/*
 	 * Construct a bitmapset of columns that the index can return back in an
-	 * index-only scan.  If there are multiple index columns containing the
-	 * same attribute, all of them must be capable of returning the value,
-	 * since we might recheck operators on any of them.  (Potentially we could
-	 * be smarter about that, but it's such a weird situation that it doesn't
-	 * seem worth spending a lot of sweat on.)
+	 * index-only scan.
 	 */
 	for (i = 0; i < index->ncolumns; i++)
 	{
@@ -2063,21 +2058,13 @@ check_index_only(RelOptInfo *rel, IndexOptInfo *index)
 			index_canreturn_attrs =
 				bms_add_member(index_canreturn_attrs,
 							   attno - FirstLowInvalidHeapAttributeNumber);
-		else
-			index_cannotreturn_attrs =
-				bms_add_member(index_cannotreturn_attrs,
-							   attno - FirstLowInvalidHeapAttributeNumber);
 	}
-
-	index_canreturn_attrs = bms_del_members(index_canreturn_attrs,
-											index_cannotreturn_attrs);
 
 	/* Do we have all the necessary attributes? */
 	result = bms_is_subset(attrs_used, index_canreturn_attrs);
 
 	bms_free(attrs_used);
 	bms_free(index_canreturn_attrs);
-	bms_free(index_cannotreturn_attrs);
 
 	return result;
 }
@@ -3632,12 +3619,13 @@ check_index_predicates(PlannerInfo *root, RelOptInfo *rel)
 	 * Normally we remove quals that are implied by a partial index's
 	 * predicate from indrestrictinfo, indicating that they need not be
 	 * checked explicitly by an indexscan plan using this index.  However, if
-	 * the rel is a target relation of UPDATE/DELETE/SELECT FOR UPDATE, we
-	 * cannot remove such quals from the plan, because they need to be in the
-	 * plan so that they will be properly rechecked by EvalPlanQual testing.
-	 * Some day we might want to remove such quals from the main plan anyway
-	 * and pass them through to EvalPlanQual via a side channel; but for now,
-	 * we just don't remove implied quals at all for target relations.
+	 * the rel is a target relation of UPDATE/DELETE/MERGE/SELECT FOR UPDATE,
+	 * we cannot remove such quals from the plan, because they need to be in
+	 * the plan so that they will be properly rechecked by EvalPlanQual
+	 * testing.  Some day we might want to remove such quals from the main
+	 * plan anyway and pass them through to EvalPlanQual via a side channel;
+	 * but for now, we just don't remove implied quals at all for target
+	 * relations.
 	 */
 	is_target_rel = (bms_is_member(rel->relid, root->all_result_relids) ||
 					 get_plan_rowmark(root->rowMarks, rel->relid) != NULL);

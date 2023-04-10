@@ -18,7 +18,7 @@
  * "x" to be considered equal() to another reference to "x" in the query.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -1018,6 +1018,8 @@ _equalQuery(const Query *a, const Query *b)
 	COMPARE_NODE_FIELD(setOperations);
 	COMPARE_NODE_FIELD(constraintDeps);
 	COMPARE_NODE_FIELD(withCheckOptions);
+	COMPARE_NODE_FIELD(mergeActionList);
+	COMPARE_SCALAR_FIELD(mergeUseOuterJoin);
 	COMPARE_LOCATION_FIELD(stmt_location);
 	COMPARE_SCALAR_FIELD(stmt_len);
 
@@ -1068,6 +1070,18 @@ _equalUpdateStmt(const UpdateStmt *a, const UpdateStmt *b)
 	COMPARE_NODE_FIELD(whereClause);
 	COMPARE_NODE_FIELD(fromClause);
 	COMPARE_NODE_FIELD(returningList);
+	COMPARE_NODE_FIELD(withClause);
+
+	return true;
+}
+
+static bool
+_equalMergeStmt(const MergeStmt *a, const MergeStmt *b)
+{
+	COMPARE_NODE_FIELD(relation);
+	COMPARE_NODE_FIELD(sourceRelation);
+	COMPARE_NODE_FIELD(joinCondition);
+	COMPARE_NODE_FIELD(mergeWhenClauses);
 	COMPARE_NODE_FIELD(withClause);
 
 	return true;
@@ -1156,6 +1170,7 @@ _equalAlterTableCmd(const AlterTableCmd *a, const AlterTableCmd *b)
 	COMPARE_NODE_FIELD(def);
 	COMPARE_SCALAR_FIELD(behavior);
 	COMPARE_SCALAR_FIELD(missing_ok);
+	COMPARE_SCALAR_FIELD(recurse);
 
 	return true;
 }
@@ -1409,6 +1424,7 @@ _equalIndexStmt(const IndexStmt *a, const IndexStmt *b)
 	COMPARE_SCALAR_FIELD(oldCreateSubid);
 	COMPARE_SCALAR_FIELD(oldFirstRelfilenodeSubid);
 	COMPARE_SCALAR_FIELD(unique);
+	COMPARE_SCALAR_FIELD(nulls_not_distinct);
 	COMPARE_SCALAR_FIELD(primary);
 	COMPARE_SCALAR_FIELD(isconstraint);
 	COMPARE_SCALAR_FIELD(deferrable);
@@ -1739,6 +1755,14 @@ _equalAlterDatabaseStmt(const AlterDatabaseStmt *a, const AlterDatabaseStmt *b)
 {
 	COMPARE_STRING_FIELD(dbname);
 	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
+static bool
+_equalAlterDatabaseRefreshCollStmt(const AlterDatabaseRefreshCollStmt *a, const AlterDatabaseRefreshCollStmt *b)
+{
+	COMPARE_STRING_FIELD(dbname);
 
 	return true;
 }
@@ -2316,12 +2340,34 @@ _equalAlterTSConfigurationStmt(const AlterTSConfigurationStmt *a,
 }
 
 static bool
+_equalPublicationObject(const PublicationObjSpec *a,
+						const PublicationObjSpec *b)
+{
+	COMPARE_SCALAR_FIELD(pubobjtype);
+	COMPARE_STRING_FIELD(name);
+	COMPARE_NODE_FIELD(pubtable);
+	COMPARE_LOCATION_FIELD(location);
+
+	return true;
+}
+
+static bool
+_equalPublicationTable(const PublicationTable *a, const PublicationTable *b)
+{
+	COMPARE_NODE_FIELD(relation);
+	COMPARE_NODE_FIELD(whereClause);
+	COMPARE_NODE_FIELD(columns);
+
+	return true;
+}
+
+static bool
 _equalCreatePublicationStmt(const CreatePublicationStmt *a,
 							const CreatePublicationStmt *b)
 {
 	COMPARE_STRING_FIELD(pubname);
 	COMPARE_NODE_FIELD(options);
-	COMPARE_NODE_FIELD(tables);
+	COMPARE_NODE_FIELD(pubobjects);
 	COMPARE_SCALAR_FIELD(for_all_tables);
 
 	return true;
@@ -2333,9 +2379,9 @@ _equalAlterPublicationStmt(const AlterPublicationStmt *a,
 {
 	COMPARE_STRING_FIELD(pubname);
 	COMPARE_NODE_FIELD(options);
-	COMPARE_NODE_FIELD(tables);
+	COMPARE_NODE_FIELD(pubobjects);
 	COMPARE_SCALAR_FIELD(for_all_tables);
-	COMPARE_SCALAR_FIELD(tableAction);
+	COMPARE_SCALAR_FIELD(action);
 
 	return true;
 }
@@ -2436,8 +2482,7 @@ static bool
 _equalA_Const(const A_Const *a, const A_Const *b)
 {
 	/*
-	 * Hack for in-line val field.  Also val is not valid is isnull is
-	 * true.
+	 * Hack for in-line val field.  Also val is not valid is isnull is true.
 	 */
 	if (!a->isnull && !b->isnull &&
 		!equal(&a->val, &b->val))
@@ -2709,6 +2754,7 @@ _equalConstraint(const Constraint *a, const Constraint *b)
 	COMPARE_NODE_FIELD(raw_expr);
 	COMPARE_STRING_FIELD(cooked_expr);
 	COMPARE_SCALAR_FIELD(generated_when);
+	COMPARE_SCALAR_FIELD(nulls_not_distinct);
 	COMPARE_NODE_FIELD(keys);
 	COMPARE_NODE_FIELD(including);
 	COMPARE_NODE_FIELD(exclusions);
@@ -2724,6 +2770,7 @@ _equalConstraint(const Constraint *a, const Constraint *b)
 	COMPARE_SCALAR_FIELD(fk_matchtype);
 	COMPARE_SCALAR_FIELD(fk_upd_action);
 	COMPARE_SCALAR_FIELD(fk_del_action);
+	COMPARE_NODE_FIELD(fk_del_set_cols);
 	COMPARE_NODE_FIELD(old_conpfeqop);
 	COMPARE_SCALAR_FIELD(old_pktable_oid);
 	COMPARE_SCALAR_FIELD(skip_validation);
@@ -2867,6 +2914,7 @@ _equalWindowClause(const WindowClause *a, const WindowClause *b)
 	COMPARE_SCALAR_FIELD(frameOptions);
 	COMPARE_NODE_FIELD(startOffset);
 	COMPARE_NODE_FIELD(endOffset);
+	COMPARE_NODE_FIELD(runCondition);
 	COMPARE_SCALAR_FIELD(startInRangeFunc);
 	COMPARE_SCALAR_FIELD(endInRangeFunc);
 	COMPARE_SCALAR_FIELD(inRangeColl);
@@ -2966,6 +3014,32 @@ _equalCommonTableExpr(const CommonTableExpr *a, const CommonTableExpr *b)
 	COMPARE_NODE_FIELD(ctecoltypes);
 	COMPARE_NODE_FIELD(ctecoltypmods);
 	COMPARE_NODE_FIELD(ctecolcollations);
+
+	return true;
+}
+
+static bool
+_equalMergeWhenClause(const MergeWhenClause *a, const MergeWhenClause *b)
+{
+	COMPARE_SCALAR_FIELD(matched);
+	COMPARE_SCALAR_FIELD(commandType);
+	COMPARE_SCALAR_FIELD(override);
+	COMPARE_NODE_FIELD(condition);
+	COMPARE_NODE_FIELD(targetList);
+	COMPARE_NODE_FIELD(values);
+
+	return true;
+}
+
+static bool
+_equalMergeAction(const MergeAction *a, const MergeAction *b)
+{
+	COMPARE_SCALAR_FIELD(matched);
+	COMPARE_SCALAR_FIELD(commandType);
+	COMPARE_SCALAR_FIELD(override);
+	COMPARE_NODE_FIELD(qual);
+	COMPARE_NODE_FIELD(targetList);
+	COMPARE_NODE_FIELD(updateColnos);
 
 	return true;
 }
@@ -3124,7 +3198,7 @@ _equalList(const List *a, const List *b)
 static bool
 _equalInteger(const Integer *a, const Integer *b)
 {
-	COMPARE_SCALAR_FIELD(val);
+	COMPARE_SCALAR_FIELD(ival);
 
 	return true;
 }
@@ -3132,7 +3206,15 @@ _equalInteger(const Integer *a, const Integer *b)
 static bool
 _equalFloat(const Float *a, const Float *b)
 {
-	COMPARE_STRING_FIELD(val);
+	COMPARE_STRING_FIELD(fval);
+
+	return true;
+}
+
+static bool
+_equalBoolean(const Boolean *a, const Boolean *b)
+{
+	COMPARE_SCALAR_FIELD(boolval);
 
 	return true;
 }
@@ -3140,7 +3222,7 @@ _equalFloat(const Float *a, const Float *b)
 static bool
 _equalString(const String *a, const String *b)
 {
-	COMPARE_STRING_FIELD(val);
+	COMPARE_STRING_FIELD(sval);
 
 	return true;
 }
@@ -3148,15 +3230,7 @@ _equalString(const String *a, const String *b)
 static bool
 _equalBitString(const BitString *a, const BitString *b)
 {
-	COMPARE_STRING_FIELD(val);
-
-	return true;
-}
-
-static bool
-_equalPublicationTable(const PublicationTable *a, const PublicationTable *b)
-{
-	COMPARE_NODE_FIELD(relation);
+	COMPARE_STRING_FIELD(bsval);
 
 	return true;
 }
@@ -3420,6 +3494,9 @@ equal(const void *a, const void *b)
 		case T_Float:
 			retval = _equalFloat(a, b);
 			break;
+		case T_Boolean:
+			retval = _equalBoolean(a, b);
+			break;
 		case T_String:
 			retval = _equalString(a, b);
 			break;
@@ -3451,6 +3528,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_UpdateStmt:
 			retval = _equalUpdateStmt(a, b);
+			break;
+		case T_MergeStmt:
+			retval = _equalMergeStmt(a, b);
 			break;
 		case T_SelectStmt:
 			retval = _equalSelectStmt(a, b);
@@ -3616,6 +3696,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_AlterDatabaseStmt:
 			retval = _equalAlterDatabaseStmt(a, b);
+			break;
+		case T_AlterDatabaseRefreshCollStmt:
+			retval = _equalAlterDatabaseRefreshCollStmt(a, b);
 			break;
 		case T_AlterDatabaseSetStmt:
 			retval = _equalAlterDatabaseSetStmt(a, b);
@@ -3926,6 +4009,12 @@ equal(const void *a, const void *b)
 		case T_CommonTableExpr:
 			retval = _equalCommonTableExpr(a, b);
 			break;
+		case T_MergeWhenClause:
+			retval = _equalMergeWhenClause(a, b);
+			break;
+		case T_MergeAction:
+			retval = _equalMergeAction(a, b);
+			break;
 		case T_ObjectWithArgs:
 			retval = _equalObjectWithArgs(a, b);
 			break;
@@ -3955,6 +4044,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_PartitionCmd:
 			retval = _equalPartitionCmd(a, b);
+			break;
+		case T_PublicationObjSpec:
+			retval = _equalPublicationObject(a, b);
 			break;
 		case T_PublicationTable:
 			retval = _equalPublicationTable(a, b);

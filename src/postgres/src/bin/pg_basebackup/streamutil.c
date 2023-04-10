@@ -5,7 +5,7 @@
  *
  * Author: Magnus Hagander <magnus@hagander.net>
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/streamutil.c
@@ -88,10 +88,7 @@ GetConnection(void)
 	{
 		conn_opts = PQconninfoParse(connection_string, &err_msg);
 		if (conn_opts == NULL)
-		{
-			pg_log_error("%s", err_msg);
-			exit(1);
-		}
+			pg_fatal("%s", err_msg);
 
 		for (conn_opt = conn_opts; conn_opt->keyword != NULL; conn_opt++)
 		{
@@ -182,10 +179,7 @@ GetConnection(void)
 		 * and PQconnectdbParams returns NULL, we call exit(1) directly.
 		 */
 		if (!tmpconn)
-		{
-			pg_log_error("could not connect to server");
-			exit(1);
-		}
+			pg_fatal("could not connect to server");
 
 		/* If we need a password and -w wasn't given, loop back and get one */
 		if (PQstatus(tmpconn) == CONNECTION_BAD &&
@@ -310,7 +304,7 @@ RetrieveWalSegSize(PGconn *conn)
 	}
 
 	/* fetch xlog value and unit from the result */
-	if (sscanf(PQgetvalue(res, 0, 0), "%d%s", &xlog_val, xlog_unit) != 2)
+	if (sscanf(PQgetvalue(res, 0, 0), "%d%2s", &xlog_val, xlog_unit) != 2)
 	{
 		pg_log_error("WAL segment size could not be parsed");
 		PQclear(res);
@@ -480,6 +474,103 @@ RunIdentifySystem(PGconn *conn, char **sysid, TimeLineID *starttli,
 }
 
 /*
+ * Run READ_REPLICATION_SLOT through a given connection and give back to
+ * caller some result information if requested for this slot:
+ * - Start LSN position, InvalidXLogRecPtr if unknown.
+ * - Current timeline ID, 0 if unknown.
+ * Returns false on failure, and true otherwise.
+ */
+bool
+GetSlotInformation(PGconn *conn, const char *slot_name,
+				   XLogRecPtr *restart_lsn, TimeLineID *restart_tli)
+{
+	PGresult   *res;
+	PQExpBuffer query;
+	XLogRecPtr	lsn_loc = InvalidXLogRecPtr;
+	TimeLineID	tli_loc = 0;
+
+	if (restart_lsn)
+		*restart_lsn = lsn_loc;
+	if (restart_tli)
+		*restart_tli = tli_loc;
+
+	query = createPQExpBuffer();
+	appendPQExpBuffer(query, "READ_REPLICATION_SLOT %s", slot_name);
+	res = PQexec(conn, query->data);
+	destroyPQExpBuffer(query);
+
+	if (PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		pg_log_error("could not send replication command \"%s\": %s",
+					 "READ_REPLICATION_SLOT", PQerrorMessage(conn));
+		PQclear(res);
+		return false;
+	}
+
+	/* The command should always return precisely one tuple and three fields */
+	if (PQntuples(res) != 1 || PQnfields(res) != 3)
+	{
+		pg_log_error("could not read replication slot \"%s\": got %d rows and %d fields, expected %d rows and %d fields",
+					 slot_name, PQntuples(res), PQnfields(res), 1, 3);
+		PQclear(res);
+		return false;
+	}
+
+	/*
+	 * When the slot doesn't exist, the command returns a tuple with NULL
+	 * values.  This checks only the slot type field.
+	 */
+	if (PQgetisnull(res, 0, 0))
+	{
+		pg_log_error("replication slot \"%s\" does not exist", slot_name);
+		PQclear(res);
+		return false;
+	}
+
+	/*
+	 * Note that this cannot happen as READ_REPLICATION_SLOT supports only
+	 * physical slots, but play it safe.
+	 */
+	if (strcmp(PQgetvalue(res, 0, 0), "physical") != 0)
+	{
+		pg_log_error("expected a physical replication slot, got type \"%s\" instead",
+					 PQgetvalue(res, 0, 0));
+		PQclear(res);
+		return false;
+	}
+
+	/* restart LSN */
+	if (!PQgetisnull(res, 0, 1))
+	{
+		uint32		hi,
+					lo;
+
+		if (sscanf(PQgetvalue(res, 0, 1), "%X/%X", &hi, &lo) != 2)
+		{
+			pg_log_error("could not parse restart_lsn \"%s\" for replication slot \"%s\"",
+						 PQgetvalue(res, 0, 1), slot_name);
+			PQclear(res);
+			return false;
+		}
+		lsn_loc = ((uint64) hi) << 32 | lo;
+	}
+
+	/* current TLI */
+	if (!PQgetisnull(res, 0, 2))
+		tli_loc = (TimeLineID) atol(PQgetvalue(res, 0, 2));
+
+	PQclear(res);
+
+	/* Assign results if requested */
+	if (restart_lsn)
+		*restart_lsn = lsn_loc;
+	if (restart_tli)
+		*restart_tli = tli_loc;
+
+	return true;
+}
+
+/*
  * Create a replication slot for the given connection. This function
  * returns true in case of success.
  */
@@ -490,6 +581,7 @@ CreateReplicationSlot(PGconn *conn, const char *slot_name, const char *plugin,
 {
 	PQExpBuffer query;
 	PGresult   *res;
+	bool		use_new_option_syntax = (PQserverVersion(conn) >= 150000);
 
 	query = createPQExpBuffer();
 
@@ -498,27 +590,54 @@ CreateReplicationSlot(PGconn *conn, const char *slot_name, const char *plugin,
 	Assert(!(two_phase && is_physical));
 	Assert(slot_name != NULL);
 
-	/* Build query */
+	/* Build base portion of query */
 	appendPQExpBuffer(query, "CREATE_REPLICATION_SLOT \"%s\"", slot_name);
 	if (is_temporary)
 		appendPQExpBufferStr(query, " TEMPORARY");
 	if (is_physical)
-	{
 		appendPQExpBufferStr(query, " PHYSICAL");
+	else
+		appendPQExpBuffer(query, " LOGICAL \"%s\"", plugin);
+
+	/* Add any requested options */
+	if (use_new_option_syntax)
+		appendPQExpBufferStr(query, " (");
+	if (is_physical)
+	{
 		if (reserve_wal)
-			appendPQExpBufferStr(query, " RESERVE_WAL");
+			AppendPlainCommandOption(query, use_new_option_syntax,
+									 "RESERVE_WAL");
 	}
 	else
 	{
-		appendPQExpBuffer(query, " LOGICAL \"%s\"", plugin);
 		if (two_phase && PQserverVersion(conn) >= 150000)
-			appendPQExpBufferStr(query, " TWO_PHASE");
+			AppendPlainCommandOption(query, use_new_option_syntax,
+									 "TWO_PHASE");
 
 		if (PQserverVersion(conn) >= 100000)
+		{
 			/* pg_recvlogical doesn't use an exported snapshot, so suppress */
-			appendPQExpBufferStr(query, " NOEXPORT_SNAPSHOT");
+			if (use_new_option_syntax)
+				AppendStringCommandOption(query, use_new_option_syntax,
+										  "SNAPSHOT", "nothing");
+			else
+				AppendPlainCommandOption(query, use_new_option_syntax,
+										 "NOEXPORT_SNAPSHOT");
+		}
+	}
+	if (use_new_option_syntax)
+	{
+		/* Suppress option list if it would be empty, otherwise terminate */
+		if (query->data[query->len - 1] == '(')
+		{
+			query->len -= 2;
+			query->data[query->len] = '\0';
+		}
+		else
+			appendPQExpBufferChar(query, ')');
 	}
 
+	/* Now run the query */
 	res = PQexec(conn, query->data);
 	if (PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -603,6 +722,67 @@ DropReplicationSlot(PGconn *conn, const char *slot_name)
 	return true;
 }
 
+/*
+ * Append a "plain" option - one with no value - to a server command that
+ * is being constructed.
+ *
+ * In the old syntax, all options were parser keywords, so you could just
+ * write things like SOME_COMMAND OPTION1 OPTION2 'opt2value' OPTION3 42. The
+ * new syntax uses a comma-separated list surrounded by parentheses, so the
+ * equivalent is SOME_COMMAND (OPTION1, OPTION2 'optvalue', OPTION3 42).
+ */
+void
+AppendPlainCommandOption(PQExpBuffer buf, bool use_new_option_syntax,
+						 char *option_name)
+{
+	if (buf->len > 0 && buf->data[buf->len - 1] != '(')
+	{
+		if (use_new_option_syntax)
+			appendPQExpBufferStr(buf, ", ");
+		else
+			appendPQExpBufferChar(buf, ' ');
+	}
+
+	appendPQExpBuffer(buf, " %s", option_name);
+}
+
+/*
+ * Append an option with an associated string value to a server command that
+ * is being constructed.
+ *
+ * See comments for AppendPlainCommandOption, above.
+ */
+void
+AppendStringCommandOption(PQExpBuffer buf, bool use_new_option_syntax,
+						  char *option_name, char *option_value)
+{
+	AppendPlainCommandOption(buf, use_new_option_syntax, option_name);
+
+	if (option_value != NULL)
+	{
+		size_t		length = strlen(option_value);
+		char	   *escaped_value = palloc(1 + 2 * length);
+
+		PQescapeStringConn(conn, escaped_value, option_value, length, NULL);
+		appendPQExpBuffer(buf, " '%s'", escaped_value);
+		pfree(escaped_value);
+	}
+}
+
+/*
+ * Append an option with an associated integer value to a server command
+ * is being constructed.
+ *
+ * See comments for AppendPlainCommandOption, above.
+ */
+void
+AppendIntegerCommandOption(PQExpBuffer buf, bool use_new_option_syntax,
+						   char *option_name, int32 option_value)
+{
+	AppendPlainCommandOption(buf, use_new_option_syntax, option_name);
+
+	appendPQExpBuffer(buf, " %d", option_value);
+}
 
 /*
  * Frontend version of GetCurrentTimestamp(), since we are not linked with

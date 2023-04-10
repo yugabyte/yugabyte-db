@@ -15,7 +15,7 @@
  * users.  The txid_XXX variants should eventually be dropped.
  *
  *
- *	Copyright (c) 2003-2021, PostgreSQL Global Development Group
+ *	Copyright (c) 2003-2022, PostgreSQL Global Development Group
  *	Author: Jan Wieck, Afilias USA INC.
  *	64-bit txids: Marko Kreen, Skype Technologies
  *
@@ -36,6 +36,7 @@
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 #include "storage/lwlock.h"
+#include "storage/procarray.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
@@ -113,9 +114,8 @@ TransactionIdInRecentPast(FullTransactionId fxid, TransactionId *extracted_xid)
 	if (!FullTransactionIdPrecedes(fxid, now_fullxid))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("transaction ID %s is in the future",
-						psprintf(UINT64_FORMAT,
-								 U64FromFullTransactionId(fxid)))));
+				 errmsg("transaction ID %llu is in the future",
+						(unsigned long long) U64FromFullTransactionId(fxid))));
 
 	/*
 	 * ShmemVariableCache->oldestClogXid is protected by XactTruncationLock,
@@ -295,12 +295,12 @@ parse_snapshot(const char *str)
 	char	   *endp;
 	StringInfo	buf;
 
-	xmin = FullTransactionIdFromU64(pg_strtouint64(str, &endp, 10));
+	xmin = FullTransactionIdFromU64(strtou64(str, &endp, 10));
 	if (*endp != ':')
 		goto bad_format;
 	str = endp + 1;
 
-	xmax = FullTransactionIdFromU64(pg_strtouint64(str, &endp, 10));
+	xmax = FullTransactionIdFromU64(strtou64(str, &endp, 10));
 	if (*endp != ':')
 		goto bad_format;
 	str = endp + 1;
@@ -318,7 +318,7 @@ parse_snapshot(const char *str)
 	while (*str != '\0')
 	{
 		/* read next value */
-		val = FullTransactionIdFromU64(pg_strtouint64(str, &endp, 10));
+		val = FullTransactionIdFromU64(strtou64(str, &endp, 10));
 		str = endp;
 
 		/* require the input to be in order */
@@ -677,29 +677,22 @@ pg_xact_status(PG_FUNCTION_ARGS)
 	{
 		Assert(TransactionIdIsValid(xid));
 
-		if (TransactionIdIsCurrentTransactionId(xid))
+		/*
+		 * Like when doing visiblity checks on a row, check whether the
+		 * transaction is still in progress before looking into the CLOG.
+		 * Otherwise we would incorrectly return "committed" for a transaction
+		 * that is committing and has already updated the CLOG, but hasn't
+		 * removed its XID from the proc array yet. (See comment on that race
+		 * condition at the top of heapam_visibility.c)
+		 */
+		if (TransactionIdIsInProgress(xid))
 			status = "in progress";
 		else if (TransactionIdDidCommit(xid))
 			status = "committed";
-		else if (TransactionIdDidAbort(xid))
-			status = "aborted";
 		else
 		{
-			/*
-			 * The xact is not marked as either committed or aborted in clog.
-			 *
-			 * It could be a transaction that ended without updating clog or
-			 * writing an abort record due to a crash. We can safely assume
-			 * it's aborted if it isn't committed and is older than our
-			 * snapshot xmin.
-			 *
-			 * Otherwise it must be in-progress (or have been at the time we
-			 * checked commit/abort status).
-			 */
-			if (TransactionIdPrecedes(xid, GetActiveSnapshot()->xmin))
-				status = "aborted";
-			else
-				status = "in progress";
+			/* it must have aborted or crashed */
+			status = "aborted";
 		}
 	}
 	else

@@ -1,14 +1,14 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 use strict;
 use warnings;
 
-use PostgresNode;
-use TestLib;
-use Test::More tests => 2;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
-my $node = PostgresNode->new('main');
+my $node = PostgreSQL::Test::Cluster->new('main');
 $node->init;
 $node->start;
 
@@ -20,3 +20,5 @@ $node->issues_sql_like(
 	[ 'clusterdb', '-a' ],
 	qr/statement: CLUSTER.*statement: CLUSTER/s,
 	'cluster all databases');
+
+done_testing();

@@ -2,7 +2,7 @@
 -- expression evaluation tests that don't fit into a more specific file
 --
 --
--- Tests for SQLVAlueFunction
+-- Tests for SQLValueFunction
 --
 -- current_date  (always matches because of transactional behaviour)
 SELECT date(now())::text = current_date::text;
@@ -57,7 +57,7 @@ SELECT now()::timestamp::text = localtimestamp::text;
  t
 (1 row)
 
--- current_role/user/user is tested in rolnames.sql
+-- current_role/user/user is tested in rolenames.sql
 -- current database / catalog
 SELECT current_catalog = current_database();
  ?column? 
@@ -87,77 +87,6 @@ SELECT current_schema;
 (1 row)
 
 RESET search_path;
---
--- Tests for BETWEEN
---
-explain (costs off)
-select count(*) from date_tbl
-  where f1 between '1997-01-01' and '1998-01-01';
-                                 QUERY PLAN                                  
------------------------------------------------------------------------------
- Aggregate
-   ->  Seq Scan on date_tbl
-         Filter: ((f1 >= '01-01-1997'::date) AND (f1 <= '01-01-1998'::date))
-(3 rows)
-
-select count(*) from date_tbl
-  where f1 between '1997-01-01' and '1998-01-01';
- count 
--------
-     3
-(1 row)
-
-explain (costs off)
-select count(*) from date_tbl
-  where f1 not between '1997-01-01' and '1998-01-01';
-                                QUERY PLAN                                
---------------------------------------------------------------------------
- Aggregate
-   ->  Seq Scan on date_tbl
-         Filter: ((f1 < '01-01-1997'::date) OR (f1 > '01-01-1998'::date))
-(3 rows)
-
-select count(*) from date_tbl
-  where f1 not between '1997-01-01' and '1998-01-01';
- count 
--------
-    13
-(1 row)
-
-explain (costs off)
-select count(*) from date_tbl
-  where f1 between symmetric '1997-01-01' and '1998-01-01';
-                                                                  QUERY PLAN                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate
-   ->  Seq Scan on date_tbl
-         Filter: (((f1 >= '01-01-1997'::date) AND (f1 <= '01-01-1998'::date)) OR ((f1 >= '01-01-1998'::date) AND (f1 <= '01-01-1997'::date)))
-(3 rows)
-
-select count(*) from date_tbl
-  where f1 between symmetric '1997-01-01' and '1998-01-01';
- count 
--------
-     3
-(1 row)
-
-explain (costs off)
-select count(*) from date_tbl
-  where f1 not between symmetric '1997-01-01' and '1998-01-01';
-                                                               QUERY PLAN                                                                
------------------------------------------------------------------------------------------------------------------------------------------
- Aggregate
-   ->  Seq Scan on date_tbl
-         Filter: (((f1 < '01-01-1997'::date) OR (f1 > '01-01-1998'::date)) AND ((f1 < '01-01-1998'::date) OR (f1 > '01-01-1997'::date)))
-(3 rows)
-
-select count(*) from date_tbl
-  where f1 not between symmetric '1997-01-01' and '1998-01-01';
- count 
--------
-    13
-(1 row)
-
 --
 -- Test parsing of a no-op cast to a type with unspecified typmod
 --
@@ -194,7 +123,73 @@ explain (verbose, costs off) select * from numeric_view;
    Output: numeric_tbl.f1, (numeric_tbl.f1)::numeric(16,4), (numeric_tbl.f1)::numeric, numeric_tbl.f2, (numeric_tbl.f2)::numeric(16,4), numeric_tbl.f2
 (2 rows)
 
+-- bpchar, lacking planner support for its length coercion function,
+-- could behave differently
+create table bpchar_tbl (f1 character(16) unique, f2 bpchar);
+create view bpchar_view as
+  select
+    f1, f1::character(14) as f114, f1::bpchar as f1n,
+    f2, f2::character(14) as f214, f2::bpchar as f2n
+  from bpchar_tbl;
+\d+ bpchar_view
+                            View "public.bpchar_view"
+ Column |     Type      | Collation | Nullable | Default | Storage  | Description 
+--------+---------------+-----------+----------+---------+----------+-------------
+ f1     | character(16) |           |          |         | extended | 
+ f114   | character(14) |           |          |         | extended | 
+ f1n    | bpchar        |           |          |         | extended | 
+ f2     | bpchar        |           |          |         | extended | 
+ f214   | character(14) |           |          |         | extended | 
+ f2n    | bpchar        |           |          |         | extended | 
+View definition:
+ SELECT bpchar_tbl.f1,
+    bpchar_tbl.f1::character(14) AS f114,
+    bpchar_tbl.f1::bpchar AS f1n,
+    bpchar_tbl.f2,
+    bpchar_tbl.f2::character(14) AS f214,
+    bpchar_tbl.f2 AS f2n
+   FROM bpchar_tbl;
+
+explain (verbose, costs off) select * from bpchar_view
+  where f1::bpchar = 'foo';
+                                                                   QUERY PLAN                                                                   
+------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using bpchar_tbl_f1_key on public.bpchar_tbl
+   Output: bpchar_tbl.f1, (bpchar_tbl.f1)::character(14), (bpchar_tbl.f1)::bpchar, bpchar_tbl.f2, (bpchar_tbl.f2)::character(14), bpchar_tbl.f2
+   Index Cond: ((bpchar_tbl.f1)::bpchar = 'foo'::bpchar)
+(3 rows)
+
 rollback;
+--
+-- Ordinarily, IN/NOT IN can be converted to a ScalarArrayOpExpr
+-- with a suitably-chosen array type.
+--
+explain (verbose, costs off)
+select random() IN (1, 4, 8.0);
+                         QUERY PLAN                         
+------------------------------------------------------------
+ Result
+   Output: (random() = ANY ('{1,4,8}'::double precision[]))
+(2 rows)
+
+explain (verbose, costs off)
+select random()::int IN (1, 4, 8.0);
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Result
+   Output: (((random())::integer)::numeric = ANY ('{1,4,8.0}'::numeric[]))
+(2 rows)
+
+-- However, if there's not a common supertype for the IN elements,
+-- we should instead try to produce "x = v1 OR x = v2 OR ...".
+-- In most cases that'll fail for lack of all the requisite = operators,
+-- but it can succeed sometimes.  So this should complain about lack of
+-- an = operator, not about cast failure.
+select '(0,0)'::point in ('(0,0,0,0)'::box, point(0,0));
+ERROR:  operator does not exist: point = box
+LINE 1: select '(0,0)'::point in ('(0,0,0,0)'::box, point(0,0));
+                              ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
 --
 -- Tests for ScalarArrayOpExpr with a hashfn
 --

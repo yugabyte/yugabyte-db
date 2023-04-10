@@ -3,7 +3,7 @@
  * oid.c
  *	  Functions for the built-in type Oid ... also oidvector.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -195,24 +195,27 @@ oidvectorin(PG_FUNCTION_ARGS)
 {
 	char	   *oidString = PG_GETARG_CSTRING(0);
 	oidvector  *result;
+	int			nalloc;
 	int			n;
 
-	result = (oidvector *) palloc0(OidVectorSize(FUNC_MAX_ARGS));
+	nalloc = 32;				/* arbitrary initial size guess */
+	result = (oidvector *) palloc0(OidVectorSize(nalloc));
 
-	for (n = 0; n < FUNC_MAX_ARGS; n++)
+	for (n = 0;; n++)
 	{
 		while (*oidString && isspace((unsigned char) *oidString))
 			oidString++;
 		if (*oidString == '\0')
 			break;
+
+		if (n >= nalloc)
+		{
+			nalloc *= 2;
+			result = (oidvector *) repalloc(result, OidVectorSize(nalloc));
+		}
+
 		result->values[n] = oidin_subr(oidString, &oidString);
 	}
-	while (*oidString && isspace((unsigned char) *oidString))
-		oidString++;
-	if (*oidString)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("oidvector has too many elements")));
 
 	SET_VARSIZE(result, OidVectorSize(n));
 	result->ndim = 1;
@@ -289,12 +292,6 @@ oidvectorrecv(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 				 errmsg("invalid oidvector data")));
 
-	/* check length for consistency with oidvectorin() */
-	if (ARR_DIMS(result)[0] > FUNC_MAX_ARGS)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("oidvector has too many elements")));
-
 	PG_RETURN_POINTER(result);
 }
 
@@ -324,7 +321,7 @@ oidparse(Node *node)
 			 * constants by the lexer.  Accept these if they are valid OID
 			 * strings.
 			 */
-			return oidin_subr(castNode(Float, node)->val, NULL);
+			return oidin_subr(castNode(Float, node)->fval, NULL);
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 	}

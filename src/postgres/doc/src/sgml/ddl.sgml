@@ -557,7 +557,7 @@ CREATE TABLE products (
      tests, it cannot guarantee that the database will not reach a state
      in which the constraint condition is false (due to subsequent changes
      of the other row(s) involved).  This would cause a database dump and
-     reload to fail.  The reload could fail even when the complete
+     restore to fail.  The restore could fail even when the complete
      database state is consistent with the constraint, due to rows not
      being loaded in an order that will satisfy the constraint.  If
      possible, use <literal>UNIQUE</literal>, <literal>EXCLUDE</literal>,
@@ -569,10 +569,10 @@ CREATE TABLE products (
      If what you desire is a one-time check against other rows at row
      insertion, rather than a continuously-maintained consistency
      guarantee, a custom <link linkend="triggers">trigger</link> can be used
-     to implement that.  (This approach avoids the dump/reload problem because
+     to implement that.  (This approach avoids the dump/restore problem because
      <application>pg_dump</application> does not reinstall triggers until after
-     reloading data, so that the check will not be enforced during a
-     dump/reload.)
+     restoring data, so that the check will not be enforced during a
+     dump/restore.)
     </para>
    </note>
 
@@ -594,7 +594,7 @@ CREATE TABLE products (
      function.  <productname>PostgreSQL</productname> does not disallow
      that, but it will not notice if there are rows in the table that now
      violate the <literal>CHECK</literal> constraint. That would cause a
-     subsequent database dump and reload to fail.
+     subsequent database dump and restore to fail.
      The recommended way to handle such a change is to drop the constraint
      (using <command>ALTER TABLE</command>), adjust the function definition,
      and re-add the constraint, thereby rechecking it against all table rows.
@@ -759,14 +759,33 @@ CREATE TABLE products (
     In general, a unique constraint is violated if there is more than
     one row in the table where the values of all of the
     columns included in the constraint are equal.
-    However, two null values are never considered equal in this
+    By default, two null values are not considered equal in this
     comparison.  That means even in the presence of a
     unique constraint it is possible to store duplicate
     rows that contain a null value in at least one of the constrained
-    columns.  This behavior conforms to the SQL standard, but we have
-    heard that other SQL databases might not follow this rule.  So be
-    careful when developing applications that are intended to be
-    portable.
+    columns.  This behavior can be changed by adding the clause <literal>NULLS
+    NOT DISTINCT</literal>, like
+<programlisting>
+CREATE TABLE products (
+    product_no integer UNIQUE <emphasis>NULLS NOT DISTINCT</emphasis>,
+    name text,
+    price numeric
+);
+</programlisting>
+    or
+<programlisting>
+CREATE TABLE products (
+    product_no integer,
+    name text,
+    price numeric,
+    UNIQUE <emphasis>NULLS NOT DISTINCT</emphasis> (product_no)
+);
+</programlisting>
+    The default behavior can be specified explicitly using <literal>NULLS
+    DISTINCT</literal>.  The default null treatment in unique constraints is
+    implementation-defined according to the SQL standard, and other
+    implementations have a different behavior.  So be careful when developing
+    applications that are intended to be portable.
    </para>
   </sect2>
 
@@ -1063,9 +1082,61 @@ CREATE TABLE order_items (
    </para>
 
    <para>
+    The appropriate choice of <literal>ON DELETE</literal> action depends on
+    what kinds of objects the related tables represent.  When the referencing
+    table represents something that is a component of what is represented by
+    the referenced table and cannot exist independently, then
+    <literal>CASCADE</literal> could be appropriate.  If the two tables
+    represent independent objects, then <literal>RESTRICT</literal> or
+    <literal>NO ACTION</literal> is more appropriate; an application that
+    actually wants to delete both objects would then have to be explicit about
+    this and run two delete commands.  In the above example, order items are
+    part of an order, and it is convenient if they are deleted automatically
+    if an order is deleted.  But products and orders are different things, and
+    so making a deletion of a product automatically cause the deletion of some
+    order items could be considered problematic.  The actions <literal>SET
+    NULL</literal> or <literal>SET DEFAULT</literal> can be appropriate if a
+    foreign-key relationship represents optional information.  For example, if
+    the products table contained a reference to a product manager, and the
+    product manager entry gets deleted, then setting the product's product
+    manager to null or a default might be useful.
+   </para>
+
+   <para>
+    The actions <literal>SET NULL</literal> and <literal>SET DEFAULT</literal>
+    can take a column list to specify which columns to set.  Normally, all
+    columns of the foreign-key constraint are set; setting only a subset is
+    useful in some special cases.  Consider the following example:
+<programlisting>
+CREATE TABLE tenants (
+    tenant_id integer PRIMARY KEY
+);
+
+CREATE TABLE users (
+    tenant_id integer REFERENCES tenants ON DELETE CASCADE,
+    user_id integer NOT NULL,
+    PRIMARY KEY (tenant_id, user_id)
+);
+
+CREATE TABLE posts (
+    tenant_id integer REFERENCES tenants ON DELETE CASCADE,
+    post_id integer NOT NULL,
+    author_id integer,
+    PRIMARY KEY (tenant_id, post_id),
+    FOREIGN KEY (tenant_id, author_id) REFERENCES users ON DELETE SET NULL <emphasis>(author_id)</emphasis>
+);
+</programlisting>
+    Without the specification of the column, the foreign key would also set
+    the column <literal>tenant_id</literal> to null, but that column is still
+    required as part of the primary key.
+   </para>
+
+   <para>
     Analogous to <literal>ON DELETE</literal> there is also
     <literal>ON UPDATE</literal> which is invoked when a referenced
-    column is changed (updated).  The possible actions are the same.
+    column is changed (updated).  The possible actions are the same,
+    except that column lists cannot be specified for <literal>SET
+    NULL</literal> and <literal>SET DEFAULT</literal>.
     In this case, <literal>CASCADE</literal> means that the updated values of the
     referenced column(s) should be copied into the referencing row(s).
    </para>
@@ -1620,9 +1691,10 @@ ALTER TABLE products RENAME TO items;
    <literal>INSERT</literal>, <literal>UPDATE</literal>, <literal>DELETE</literal>,
    <literal>TRUNCATE</literal>, <literal>REFERENCES</literal>, <literal>TRIGGER</literal>,
    <literal>CREATE</literal>, <literal>CONNECT</literal>, <literal>TEMPORARY</literal>,
-   <literal>EXECUTE</literal>, and <literal>USAGE</literal>.
+   <literal>EXECUTE</literal>, <literal>USAGE</literal>, <literal>SET</literal>
+   and <literal>ALTER SYSTEM</literal>.
    The privileges applicable to a particular
-   object vary depending on the object's type (table, function, etc).
+   object vary depending on the object's type (table, function, etc.).
    More detail about the meanings of these privileges appears below.
    The following sections and chapters will also show you how
    these privileges are used.
@@ -1888,6 +1960,28 @@ REVOKE ALL ON accounts FROM PUBLIC;
       </para>
      </listitem>
     </varlistentry>
+
+    <varlistentry>
+     <term><literal>SET</literal></term>
+     <listitem>
+      <para>
+       Allows a server configuration parameter to be set to a new value
+       within the current session.  (While this privilege can be granted
+       on any parameter, it is meaningless except for parameters that would
+       normally require superuser privilege to set.)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>ALTER SYSTEM</literal></term>
+     <listitem>
+      <para>
+       Allows a server configuration parameter to be configured to a new
+       value using the <xref linkend="sql-altersystem"/> command.
+      </para>
+     </listitem>
+    </varlistentry>
    </variablelist>
 
    The privileges required by other commands are listed on the
@@ -1905,7 +1999,8 @@ REVOKE ALL ON accounts FROM PUBLIC;
    foreign servers,
    large objects,
    schemas,
-   or tablespaces.
+   tablespaces,
+   or configuration parameters.
    For other types of objects, the default privileges
    granted to <literal>PUBLIC</literal> are as follows:
    <literal>CONNECT</literal> and <literal>TEMPORARY</literal> (create
@@ -2026,6 +2121,16 @@ REVOKE ALL ON accounts FROM PUBLIC;
        <literal>TYPE</literal>
       </entry>
      </row>
+     <row>
+      <entry><literal>SET</literal></entry>
+      <entry><literal>s</literal></entry>
+      <entry><literal>PARAMETER</literal></entry>
+     </row>
+     <row>
+      <entry><literal>ALTER SYSTEM</literal></entry>
+      <entry><literal>A</literal></entry>
+      <entry><literal>PARAMETER</literal></entry>
+     </row>
      </tbody>
    </tgroup>
   </table>
@@ -2094,7 +2199,13 @@ REVOKE ALL ON accounts FROM PUBLIC;
       <entry><literal>LARGE OBJECT</literal></entry>
       <entry><literal>rw</literal></entry>
       <entry>none</entry>
-      <entry></entry>
+      <entry><literal>\dl+</literal></entry>
+     </row>
+     <row>
+      <entry><literal>PARAMETER</literal></entry>
+      <entry><literal>sA</literal></entry>
+      <entry>none</entry>
+      <entry><literal>\dconfig+</literal></entry>
      </row>
      <row>
       <entry><literal>SCHEMA</literal></entry>
@@ -2508,13 +2619,13 @@ CREATE POLICY admin_local_only ON passwd AS RESTRICTIVE TO admin
 
 <programlisting>
 =&gt; SELECT current_user;
- current_user 
+ current_user
 --------------
  admin
 (1 row)
 
 =&gt; select inet_client_addr();
- inet_client_addr 
+ inet_client_addr
 ------------------
  127.0.0.1
 (1 row)
@@ -3071,40 +3182,43 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
     query that database would take protective action at the beginning of each
     session.  Specifically, they would begin each session by
     setting <varname>search_path</varname> to the empty string or otherwise
-    removing non-superuser-writable schemas
+    removing schemas that are writable by non-superusers
     from <varname>search_path</varname>.  There are a few usage patterns
     easily supported by the default configuration:
     <itemizedlist>
      <listitem>
-      <!-- "DROP SCHEMA public" is inferior to this REVOKE, because pg_dump
-           doesn't preserve that DROP.
-
-           A database owner can attack the database's users via "CREATE SCHEMA
+      <para>
+       Constrain ordinary users to user-private schemas.
+       To implement this pattern, first ensure that no schemas have
+       public <literal>CREATE</literal> privileges.  Then, for every user
+       needing to create non-temporary objects, create a schema with the
+       same name as that user, for example
+       <literal>CREATE SCHEMA alice AUTHORIZATION alice</literal>.
+       (Recall that the default search path starts
+       with <literal>$user</literal>, which resolves to the user
+       name. Therefore, if each user has a separate schema, they access
+       their own schemas by default.)  This pattern is a secure schema
+       usage pattern unless an untrusted user is the database owner or
+       holds the <literal>CREATEROLE</literal> privilege, in which case no
+       secure schema usage pattern exists.
+      </para>
+      <!-- A database owner can attack the database's users via "CREATE SCHEMA
            trojan; ALTER DATABASE $mydb SET search_path = trojan, public;".  A
            CREATEROLE user can issue "GRANT $dbowner TO $me" and then use the
            database owner attack. -->
+
       <para>
-       Constrain ordinary users to user-private schemas.  To implement this,
-       first issue <literal>REVOKE CREATE ON SCHEMA public FROM
-       PUBLIC</literal>.  Then, for every user needing to create non-temporary
-       objects, create a schema with the same name as that user.  Recall that
-       the default search path starts with <literal>$user</literal>, which
-       resolves to the user name.  Therefore, if each user has a separate
-       schema, they access their own schemas by default.  After adopting this
-       pattern in a database where untrusted users had already logged in,
-       consider auditing the public schema for objects named like objects in
-       schema <literal>pg_catalog</literal>.  This pattern is a secure schema
-       usage pattern unless an untrusted user is the database owner or holds
-       the <literal>CREATEROLE</literal> privilege, in which case no secure
-       schema usage pattern exists.
+       In <productname>PostgreSQL</productname> 15 and later, the default
+       configuration supports this usage pattern.  In prior versions, or
+       when using a database that has been upgraded from a prior version,
+       you will need to remove the public <literal>CREATE</literal>
+       privilege from the <literal>public</literal> schema (issue
+       <literal>REVOKE CREATE ON SCHEMA public FROM PUBLIC</literal>).
+       Then consider auditing the <literal>public</literal> schema for
+       objects named like objects in schema <literal>pg_catalog</literal>.
       </para>
-      <para>
-       If the database originated in an upgrade
-       from <productname>PostgreSQL</productname> 14 or earlier,
-       the <literal>REVOKE</literal> is essential.  Otherwise, the default
-       configuration follows this pattern; ordinary users can create only
-       temporary objects until a privileged user furnishes a schema.
-      </para>
+      <!-- "DROP SCHEMA public" is inferior to this REVOKE, because pg_dump
+           doesn't preserve that DROP. -->
      </listitem>
 
      <listitem>
@@ -3720,9 +3834,12 @@ VALUES ('Albany', NULL, NULL, 'NY');
    </para>
 
    <para>
-    Partitions can also be foreign tables, although they have some limitations
-    that normal tables do not; see <xref linkend="sql-createforeigntable"/> for
-    more information.
+    Partitions can also be <link linkend="ddl-foreign-data">foreign
+    tables</link>, although considerable care is needed because it is then
+    the user's responsibility that the contents of the foreign table
+    satisfy the partitioning rule.  There are some other restrictions as
+    well.  See <xref linkend="sql-createforeigntable"/> for more
+    information.
    </para>
 
    <sect3 id="ddl-partitioning-declarative-example">
@@ -3992,7 +4109,7 @@ ALTER TABLE measurement ATTACH PARTITION measurement_y2008m02
      holding an <literal>ACCESS EXCLUSIVE</literal> lock on that partition.
      It is recommended to drop the now-redundant <literal>CHECK</literal>
      constraint after the <command>ATTACH PARTITION</command> is complete.  If
-     the table being attached is itself a partitioned table then each of its
+     the table being attached is itself a partitioned table, then each of its
      sub-partitions will be recursively locked and scanned until either a
      suitable <literal>CHECK</literal> constraint is encountered or the leaf
      partitions are reached.
@@ -4007,7 +4124,7 @@ ALTER TABLE measurement ATTACH PARTITION measurement_y2008m02
      the partition being attached.  This operation will be performed whilst
      holding an <literal>ACCESS EXCLUSIVE</literal> lock on the <literal>
      DEFAULT</literal> partition.  If the <literal>DEFAULT</literal> partition
-     is itself a partitioned table then each of its partitions will be
+     is itself a partitioned table, then each of its partitions will be
      recursively checked in the same way as the table being attached, as
      mentioned above.
     </para>
@@ -4060,12 +4177,13 @@ ALTER INDEX measurement_city_id_logdate_key
     <itemizedlist>
      <listitem>
       <para>
-       Unique constraints (and hence primary keys) on partitioned tables must
-       include all the partition key columns.  This limitation exists because
-       the individual indexes making up the constraint can only directly
-       enforce uniqueness within their own partitions; therefore, the
-       partition structure itself must guarantee that there are not
-       duplicates in different partitions.
+       To create a unique or primary key constraint on a partitioned table,
+       the partition keys must not include any expressions or function calls
+       and the constraint's columns must include all of the partition key
+       columns.  This limitation exists because the individual indexes making
+       up the constraint can only directly enforce uniqueness within their own
+       partitions; therefore, the partition structure itself must guarantee
+       that there are not duplicates in different partitions.
       </para>
      </listitem>
 

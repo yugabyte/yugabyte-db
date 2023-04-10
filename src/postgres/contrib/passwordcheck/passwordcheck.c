@@ -49,7 +49,6 @@ static char *password_special_chars = "!@#$%^&*()_+{}|<>?=";
 static check_password_hook_type prev_check_password_hook = NULL;
 
 extern void _PG_init(void);
-extern void _PG_fini(void);
 
 /*
  * check_password
@@ -311,14 +310,4 @@ _PG_init(void)
 	/* activate password checks when the module is loaded */
 	prev_check_password_hook = check_password_hook;
 	check_password_hook = check_password;
-}
-
-/*
- * Module unload function
- */
-void
-_PG_fini(void)
-{
-	/* uninstall hook */
-	check_password_hook = prev_check_password_hook;
 }

@@ -9,7 +9,7 @@
  *	  polluting the namespace with lots of stuff...
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/c.h
@@ -364,6 +364,34 @@ typedef void (*pg_funcptr_t) (void);
 #else
 #define PG_FUNCNAME_MACRO	NULL
 #endif
+#endif
+
+/*
+ * Does the compiler support #pragma GCC system_header? We optionally use it
+ * to avoid warnings that we can't fix (e.g. in the perl headers).
+ * See https://gcc.gnu.org/onlinedocs/cpp/System-Headers.html
+ *
+ * Headers for which we do not want to show compiler warnings can,
+ * conditionally, use #pragma GCC system_header to avoid warnings. Obviously
+ * this should only be used for external headers over which we do not have
+ * control.
+ *
+ * Support for the pragma is tested here, instead of during configure, as gcc
+ * also warns about the pragma being used in a .c file. It's surprisingly hard
+ * to get autoconf to use .h as the file-ending. Looks like gcc has
+ * implemented the pragma since the 2000, so this test should suffice.
+ *
+ *
+ * Alternatively, we could add the include paths for problematic headers with
+ * -isystem, but that is a larger hammer and is harder to search for.
+ *
+ * A more granular alternative would be to use #pragma GCC diagnostic
+ * push/ignored/pop, but gcc warns about unknown warnings being ignored, so
+ * every to-be-ignored-temporarily compiler warning would require its own
+ * pg_config.h symbol and #ifdef.
+ */
+#ifdef __GNUC__
+#define HAVE_PRAGMA_GCC_SYSTEM_HEADER	1
 #endif
 
 
@@ -1318,10 +1346,35 @@ extern long long strtoll(const char *str, char **endptr, int base);
 extern unsigned long long strtoull(const char *str, char **endptr, int base);
 #endif
 
-/* no special DLL markers on most ports */
+/*
+ * Thin wrappers that convert strings to exactly 64-bit integers, matching our
+ * definition of int64.  (For the naming, compare that POSIX has
+ * strtoimax()/strtoumax() which return intmax_t/uintmax_t.)
+ */
+#ifdef HAVE_LONG_INT_64
+#define strtoi64(str, endptr, base) ((int64) strtol(str, endptr, base))
+#define strtou64(str, endptr, base) ((uint64) strtoul(str, endptr, base))
+#else
+#define strtoi64(str, endptr, base) ((int64) strtoll(str, endptr, base))
+#define strtou64(str, endptr, base) ((uint64) strtoull(str, endptr, base))
+#endif
+
+/*
+ * Use "extern PGDLLIMPORT ..." to declare variables that are defined
+ * in the core backend and need to be accessible by loadable modules.
+ * No special marking is required on most ports.
+ */
 #ifndef PGDLLIMPORT
 #define PGDLLIMPORT
 #endif
+
+/*
+ * Use "extern PGDLLEXPORT ..." to declare functions that are defined in
+ * loadable modules and need to be callable by the core backend.  (Usually,
+ * this is not necessary because our build process automatically exports
+ * such symbols, but sometimes manual marking is required.)
+ * No special marking is required on most ports.
+ */
 #ifndef PGDLLEXPORT
 #define PGDLLEXPORT
 #endif

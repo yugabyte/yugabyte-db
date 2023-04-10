@@ -4,7 +4,7 @@
  *	  definition of the "tablespace" system catalog (pg_tablespace)
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_tablespace.h
@@ -47,9 +47,7 @@ CATALOG(pg_tablespace,1213,TableSpaceRelationId) BKI_SHARED_RELATION
  */
 typedef FormData_pg_tablespace *Form_pg_tablespace;
 
-DECLARE_TOAST(pg_tablespace, 4185, 4186);
-#define PgTablespaceToastTable 4185
-#define PgTablespaceToastIndex 4186
+DECLARE_TOAST_WITH_MACRO(pg_tablespace, 4185, 4186, PgTablespaceToastTable, PgTablespaceToastIndex);
 
 DECLARE_UNIQUE_INDEX_PKEY(pg_tablespace_oid_index, 2697, TablespaceOidIndexId, on pg_tablespace using btree(oid oid_ops));
 DECLARE_UNIQUE_INDEX(pg_tablespace_spcname_index, 2698, TablespaceNameIndexId, on pg_tablespace using btree(spcname name_ops));

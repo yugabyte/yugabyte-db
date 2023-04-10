@@ -3,7 +3,7 @@
  * worker_internal.h
  *	  Internal headers shared by logical replication workers.
  *
- * Portions Copyright (c) 2016-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2016-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/worker_internal.h
  *
@@ -17,6 +17,7 @@
 #include "access/xlogdefs.h"
 #include "catalog/pg_subscription.h"
 #include "datatype/timestamp.h"
+#include "storage/fileset.h"
 #include "storage/lock.h"
 #include "storage/spin.h"
 
@@ -68,16 +69,16 @@ typedef struct LogicalRepWorker
 } LogicalRepWorker;
 
 /* Main memory context for apply worker. Permanent during worker lifetime. */
-extern MemoryContext ApplyContext;
+extern PGDLLIMPORT MemoryContext ApplyContext;
 
 /* libpqreceiver connection */
-extern struct WalReceiverConn *LogRepWorkerWalRcvConn;
+extern PGDLLIMPORT struct WalReceiverConn *LogRepWorkerWalRcvConn;
 
 /* Worker and subscription objects. */
-extern Subscription *MySubscription;
-extern LogicalRepWorker *MyLogicalRepWorker;
+extern PGDLLIMPORT Subscription *MySubscription;
+extern PGDLLIMPORT LogicalRepWorker *MyLogicalRepWorker;
 
-extern bool in_remote_transaction;
+extern PGDLLIMPORT bool in_remote_transaction;
 
 extern void logicalrep_worker_attach(int slot);
 extern LogicalRepWorker *logicalrep_worker_find(Oid subid, Oid relid,
@@ -98,8 +99,8 @@ extern char *LogicalRepSyncTableStart(XLogRecPtr *origin_startpos);
 extern bool AllTablesyncsReady(void);
 extern void UpdateTwoPhaseState(Oid suboid, char new_state);
 
-void		process_syncing_tables(XLogRecPtr current_lsn);
-void		invalidate_syncing_table_states(Datum arg, int cacheid,
+extern void process_syncing_tables(XLogRecPtr current_lsn);
+extern void invalidate_syncing_table_states(Datum arg, int cacheid,
 											uint32 hashvalue);
 
 static inline bool

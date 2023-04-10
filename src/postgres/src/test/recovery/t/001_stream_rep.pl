@@ -1,15 +1,15 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Minimal test testing streaming replication
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 49;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
 # Initialize primary node
-my $node_primary = PostgresNode->new('primary');
+my $node_primary = PostgreSQL::Test::Cluster->new('primary');
 # A specific role is created to perform some tests related to replication,
 # and it needs proper authentication configuration.
 $node_primary->init(
@@ -22,7 +22,7 @@ my $backup_name = 'my_backup';
 $node_primary->backup($backup_name);
 
 # Create streaming standby linking to primary
-my $node_standby_1 = PostgresNode->new('standby_1');
+my $node_standby_1 = PostgreSQL::Test::Cluster->new('standby_1');
 $node_standby_1->init_from_backup($node_primary, $backup_name,
 	has_streaming => 1);
 $node_standby_1->start;
@@ -37,20 +37,19 @@ $node_standby_1->backup('my_backup_2');
 $node_primary->start;
 
 # Create second standby node linking to standby 1
-my $node_standby_2 = PostgresNode->new('standby_2');
+my $node_standby_2 = PostgreSQL::Test::Cluster->new('standby_2');
 $node_standby_2->init_from_backup($node_standby_1, $backup_name,
 	has_streaming => 1);
 $node_standby_2->start;
 
-# Create some content on primary and check its presence in standby 1
+# Create some content on primary and check its presence in standby nodes
 $node_primary->safe_psql('postgres',
 	"CREATE TABLE tab_int AS SELECT generate_series(1,1002) AS a");
 
 # Wait for standbys to catch up
-$node_primary->wait_for_catchup($node_standby_1, 'replay',
-	$node_primary->lsn('insert'));
-$node_standby_1->wait_for_catchup($node_standby_2, 'replay',
-	$node_standby_1->lsn('replay'));
+my $primary_lsn = $node_primary->lsn('write');
+$node_primary->wait_for_catchup($node_standby_1, 'replay', $primary_lsn);
+$node_standby_1->wait_for_catchup($node_standby_2, 'replay', $primary_lsn);
 
 my $result =
   $node_standby_1->safe_psql('postgres', "SELECT count(*) FROM tab_int");
@@ -61,6 +60,23 @@ $result =
   $node_standby_2->safe_psql('postgres', "SELECT count(*) FROM tab_int");
 print "standby 2: $result\n";
 is($result, qq(1002), 'check streamed content on standby 2');
+
+# Likewise, but for a sequence
+$node_primary->safe_psql('postgres',
+	"CREATE SEQUENCE seq1; SELECT nextval('seq1')");
+
+# Wait for standbys to catch up
+$primary_lsn = $node_primary->lsn('write');
+$node_primary->wait_for_catchup($node_standby_1, 'replay', $primary_lsn);
+$node_standby_1->wait_for_catchup($node_standby_2, 'replay', $primary_lsn);
+
+$result = $node_standby_1->safe_psql('postgres', "SELECT * FROM seq1");
+print "standby 1: $result\n";
+is($result, qq(33|0|t), 'check streamed sequence content on standby 1');
+
+$result = $node_standby_2->safe_psql('postgres', "SELECT * FROM seq1");
+print "standby 2: $result\n";
+is($result, qq(33|0|t), 'check streamed sequence content on standby 2');
 
 # Check that only READ-only queries can run on standbys
 is($node_standby_1->psql('postgres', 'INSERT INTO tab_int VALUES (1)'),
@@ -75,6 +91,8 @@ note "testing connection parameter \"target_session_attrs\"";
 # Expect to connect to $target_node (undef for failure) with given $status.
 sub test_target_session_attrs
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my $node1       = shift;
 	my $node2       = shift;
 	my $target_node = shift;
@@ -252,6 +270,36 @@ ok( $ret == 0,
 	"SHOW with superuser-settable parameter, replication role and logical replication"
 );
 
+note "testing READ_REPLICATION_SLOT command for replication connection";
+
+my $slotname = 'test_read_replication_slot_physical';
+
+($ret, $stdout, $stderr) = $node_primary->psql(
+	'postgres',
+	'READ_REPLICATION_SLOT non_existent_slot;',
+	extra_params => [ '-d', $connstr_rep ]);
+ok($ret == 0, "READ_REPLICATION_SLOT exit code 0 on success");
+like($stdout, qr/^\|\|$/,
+	"READ_REPLICATION_SLOT returns NULL values if slot does not exist");
+
+$node_primary->psql(
+	'postgres',
+	"CREATE_REPLICATION_SLOT $slotname PHYSICAL RESERVE_WAL;",
+	extra_params => [ '-d', $connstr_rep ]);
+
+($ret, $stdout, $stderr) = $node_primary->psql(
+	'postgres',
+	"READ_REPLICATION_SLOT $slotname;",
+	extra_params => [ '-d', $connstr_rep ]);
+ok($ret == 0, "READ_REPLICATION_SLOT success with existing slot");
+like($stdout, qr/^physical\|[^|]*\|1$/,
+	"READ_REPLICATION_SLOT returns tuple with slot information");
+
+$node_primary->psql(
+	'postgres',
+	"DROP_REPLICATION_SLOT $slotname;",
+	extra_params => [ '-d', $connstr_rep ]);
+
 note "switching to physical replication slot";
 
 # Switch to using a physical replication slot. We can do this without a new
@@ -324,10 +372,11 @@ sub replay_check
 	my $newval = $node_primary->safe_psql('postgres',
 		'INSERT INTO replayed(val) SELECT coalesce(max(val),0) + 1 AS newval FROM replayed RETURNING val'
 	);
-	$node_primary->wait_for_catchup($node_standby_1, 'replay',
-		$node_primary->lsn('insert'));
+	my $primary_lsn = $node_primary->lsn('write');
+	$node_primary->wait_for_catchup($node_standby_1, 'replay', $primary_lsn);
 	$node_standby_1->wait_for_catchup($node_standby_2, 'replay',
-		$node_standby_1->lsn('replay'));
+		$primary_lsn);
+
 	$node_standby_1->safe_psql('postgres',
 		qq[SELECT 1 FROM replayed WHERE val = $newval])
 	  or die "standby_1 didn't replay primary value $newval";
@@ -431,8 +480,7 @@ $node_standby_1->stop;
 my $newval = $node_primary->safe_psql('postgres',
 	'INSERT INTO replayed(val) SELECT coalesce(max(val),0) + 1 AS newval FROM replayed RETURNING val'
 );
-$node_primary->wait_for_catchup($node_standby_2, 'replay',
-	$node_primary->lsn('insert'));
+$node_primary->wait_for_catchup($node_standby_2);
 my $is_replayed = $node_standby_2->safe_psql('postgres',
 	qq[SELECT 1 FROM replayed WHERE val = $newval]);
 is($is_replayed, qq(1), "standby_2 didn't replay primary value $newval");
@@ -482,3 +530,5 @@ ok( ($phys_restart_lsn_pre cmp $phys_restart_lsn_post) == 0,
 my $primary_data = $node_primary->data_dir;
 ok(!-f "$primary_data/pg_wal/$segment_removed",
 	"WAL segment $segment_removed recycled after physical slot advancing");
+
+done_testing();

@@ -2,7 +2,7 @@
  * origin.h
  *	   Exports from replication/logical/origin.c
  *
- * Copyright (c) 2013-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/origin.h
  *-------------------------------------------------------------------------
@@ -62,9 +62,9 @@ extern void CheckPointReplicationOrigin(void);
 extern void StartupReplicationOrigin(void);
 
 /* WAL logging */
-void		replorigin_redo(XLogReaderState *record);
-void		replorigin_desc(StringInfo buf, XLogReaderState *record);
-const char *replorigin_identify(uint8 info);
+extern void replorigin_redo(XLogReaderState *record);
+extern void replorigin_desc(StringInfo buf, XLogReaderState *record);
+extern const char *replorigin_identify(uint8 info);
 
 /* shared memory allocation */
 extern Size ReplicationOriginShmemSize(void);

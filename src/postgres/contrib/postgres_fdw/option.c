@@ -3,7 +3,7 @@
  * option.c
  *		  FDW and GUC option handling for postgres_fdw
  *
- * Portions Copyright (c) 2012-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  contrib/postgres_fdw/option.c
@@ -18,6 +18,7 @@
 #include "catalog/pg_user_mapping.h"
 #include "commands/defrem.h"
 #include "commands/extension.h"
+#include "libpq/libpq-be.h"
 #include "postgres_fdw.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
@@ -107,8 +108,10 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_FDW_INVALID_OPTION_NAME),
 					 errmsg("invalid option \"%s\"", def->defname),
-					 errhint("Valid options in this context are: %s",
-							 buf.data)));
+					 buf.len > 0
+					 ? errhint("Valid options in this context are: %s",
+							   buf.data)
+					 : errhint("There are no valid options in this context.")));
 		}
 
 		/*
@@ -118,6 +121,7 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 			strcmp(def->defname, "updatable") == 0 ||
 			strcmp(def->defname, "truncatable") == 0 ||
 			strcmp(def->defname, "async_capable") == 0 ||
+			strcmp(def->defname, "parallel_commit") == 0 ||
 			strcmp(def->defname, "keep_connections") == 0)
 		{
 			/* these accept only boolean values */
@@ -191,7 +195,7 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("password_required=false is superuser-only"),
-						 errhint("User mappings with the password_required option set to false may only be created or modified by the superuser")));
+						 errhint("User mappings with the password_required option set to false may only be created or modified by the superuser.")));
 		}
 		else if (strcmp(def->defname, "sslcert") == 0 ||
 				 strcmp(def->defname, "sslkey") == 0)
@@ -201,7 +205,7 @@ postgres_fdw_validator(PG_FUNCTION_ARGS)
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("sslcert and sslkey are superuser-only"),
-						 errhint("User mappings with the sslcert or sslkey options set may only be created or modified by the superuser")));
+						 errhint("User mappings with the sslcert or sslkey options set may only be created or modified by the superuser.")));
 		}
 	}
 
@@ -246,6 +250,7 @@ InitPgFdwOptions(void)
 		/* async_capable is available on both server and table */
 		{"async_capable", ForeignServerRelationId, false},
 		{"async_capable", ForeignTableRelationId, false},
+		{"parallel_commit", ForeignServerRelationId, false},
 		{"keep_connections", ForeignServerRelationId, false},
 		{"password_required", UserMappingRelationId, false},
 
@@ -444,6 +449,73 @@ ExtractExtensionList(const char *extensionsString, bool warnOnMissing)
 }
 
 /*
+ * Replace escape sequences beginning with % character in the given
+ * application_name with status information, and return it.
+ *
+ * This function always returns a palloc'd string, so the caller is
+ * responsible for pfreeing it.
+ */
+char *
+process_pgfdw_appname(const char *appname)
+{
+	const char *p;
+	StringInfoData buf;
+
+	Assert(MyProcPort != NULL);
+
+	initStringInfo(&buf);
+
+	for (p = appname; *p != '\0'; p++)
+	{
+		if (*p != '%')
+		{
+			/* literal char, just copy */
+			appendStringInfoChar(&buf, *p);
+			continue;
+		}
+
+		/* must be a '%', so skip to the next char */
+		p++;
+		if (*p == '\0')
+			break;				/* format error - ignore it */
+		else if (*p == '%')
+		{
+			/* string contains %% */
+			appendStringInfoChar(&buf, '%');
+			continue;
+		}
+
+		/* process the option */
+		switch (*p)
+		{
+			case 'a':
+				appendStringInfoString(&buf, application_name);
+				break;
+			case 'c':
+				appendStringInfo(&buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
+				break;
+			case 'C':
+				appendStringInfoString(&buf, cluster_name);
+				break;
+			case 'd':
+				appendStringInfoString(&buf, MyProcPort->database_name);
+				break;
+			case 'p':
+				appendStringInfo(&buf, "%d", MyProcPid);
+				break;
+			case 'u':
+				appendStringInfoString(&buf, MyProcPort->user_name);
+				break;
+			default:
+				/* format error - ignore it */
+				break;
+		}
+	}
+
+	return buf.data;
+}
+
+/*
  * Module load callback
  */
 void
@@ -467,4 +539,6 @@ _PG_init(void)
 							   NULL,
 							   NULL,
 							   NULL);
+
+	MarkGUCPrefixReserved("postgres_fdw");
 }

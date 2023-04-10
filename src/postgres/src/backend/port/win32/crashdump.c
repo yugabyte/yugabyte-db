@@ -28,7 +28,7 @@
  * be added, though at the cost of a greater chance of the crash dump failing.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/port/win32/crashdump.c
@@ -37,8 +37,6 @@
  */
 
 #include "postgres.h"
-
-#define WIN32_LEAN_AND_MEAN
 
 /*
  * Some versions of the MS SDK contain "typedef enum { ... } ;" which the MS

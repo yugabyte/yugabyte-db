@@ -3,7 +3,7 @@
  * planner.c
  *	  The query optimizer external interface.
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -654,6 +654,11 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 		SS_process_ctes(root);
 
 	/*
+	 * If it's a MERGE command, transform the joinlist as appropriate.
+	 */
+	transform_MERGE_to_join(parse);
+
+	/*
 	 * If the FROM clause is empty, replace it with a dummy RTE_RESULT RTE, so
 	 * that we don't need so many special cases to deal with that situation.
 	 */
@@ -825,6 +830,9 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 												EXPRKIND_LIMIT);
 		wc->endOffset = preprocess_expression(root, wc->endOffset,
 											  EXPRKIND_LIMIT);
+		wc->runCondition = (List *) preprocess_expression(root,
+														  (Node *) wc->runCondition,
+														  EXPRKIND_TARGET);
 	}
 
 	parse->limitOffset = preprocess_expression(root, parse->limitOffset,
@@ -851,6 +859,20 @@ subquery_planner(PlannerGlobal *glob, Query *parse,
 								  parse->onConflict->onConflictWhere,
 								  EXPRKIND_QUAL);
 		/* exclRelTlist contains only Vars, so no preprocessing needed */
+	}
+
+	foreach(l, parse->mergeActionList)
+	{
+		MergeAction *action = (MergeAction *) lfirst(l);
+
+		action->targetList = (List *)
+			preprocess_expression(root,
+								  (Node *) action->targetList,
+								  EXPRKIND_TARGET);
+		action->qual =
+			preprocess_expression(root,
+								  (Node *) action->qual,
+								  EXPRKIND_QUAL);
 	}
 
 	root->append_rel_list = (List *)
@@ -1096,8 +1118,10 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 
 	/*
 	 * Simplify constant expressions.  For function RTEs, this was already
-	 * done by preprocess_function_rtes ... but we have to do it again if the
-	 * RTE is LATERAL and might have contained join alias variables.
+	 * done by preprocess_function_rtes.  (But note we must do it again for
+	 * EXPRKIND_RTFUNC_LATERAL, because those might by now contain
+	 * un-simplified subexpressions inserted by flattening of subqueries or
+	 * join alias variables.)
 	 *
 	 * Note: an essential effect of this is to convert named-argument function
 	 * calls to positional notation and insert the current actual values of
@@ -1111,8 +1135,7 @@ preprocess_expression(PlannerInfo *root, Node *expr, int kind)
 	 * careful to maintain AND/OR flatness --- that is, do not generate a tree
 	 * with AND directly under AND, nor OR directly under OR.
 	 */
-	if (!(kind == EXPRKIND_RTFUNC ||
-		  (kind == EXPRKIND_RTFUNC_LATERAL && !root->hasJoinRTEs)))
+	if (kind != EXPRKIND_RTFUNC)
 		expr = eval_const_expressions(root, expr);
 
 	/*
@@ -1730,7 +1753,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		}
 
 		/*
-		 * If this is an INSERT/UPDATE/DELETE, add the ModifyTable node.
+		 * If this is an INSERT/UPDATE/DELETE/MERGE, add the ModifyTable node.
 		 */
 		if (parse->commandType != CMD_SELECT)
 		{
@@ -1739,11 +1762,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			List	   *updateColnosLists = NIL;
 			List	   *withCheckOptionLists = NIL;
 			List	   *returningLists = NIL;
+			List	   *mergeActionLists = NIL;
 			List	   *rowMarks;
 
 			if (bms_membership(root->all_result_relids) == BMS_MULTIPLE)
 			{
-				/* Inherited UPDATE/DELETE */
+				/* Inherited UPDATE/DELETE/MERGE */
 				RelOptInfo *top_result_rel = find_base_rel(root,
 														   parse->resultRelation);
 				int			resultRelation = -1;
@@ -1805,6 +1829,43 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						returningLists = lappend(returningLists,
 												 returningList);
 					}
+					if (parse->mergeActionList)
+					{
+						ListCell   *l;
+						List	   *mergeActionList = NIL;
+
+						/*
+						 * Copy MergeActions and translate stuff that
+						 * references attribute numbers.
+						 */
+						foreach(l, parse->mergeActionList)
+						{
+							MergeAction *action = lfirst(l),
+									   *leaf_action = copyObject(action);
+
+							leaf_action->qual =
+								adjust_appendrel_attrs_multilevel(root,
+																  (Node *) action->qual,
+																  this_result_rel->relids,
+																  top_result_rel->relids);
+							leaf_action->targetList = (List *)
+								adjust_appendrel_attrs_multilevel(root,
+																  (Node *) action->targetList,
+																  this_result_rel->relids,
+																  top_result_rel->relids);
+							if (leaf_action->commandType == CMD_UPDATE)
+								leaf_action->updateColnos =
+									adjust_inherited_attnums_multilevel(root,
+																		action->updateColnos,
+																		this_result_rel->relid,
+																		top_result_rel->relid);
+							mergeActionList = lappend(mergeActionList,
+													  leaf_action);
+						}
+
+						mergeActionLists = lappend(mergeActionLists,
+												   mergeActionList);
+					}
 				}
 
 				if (resultRelations == NIL)
@@ -1827,11 +1888,13 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						withCheckOptionLists = list_make1(parse->withCheckOptions);
 					if (parse->returningList)
 						returningLists = list_make1(parse->returningList);
+					if (parse->mergeActionList)
+						mergeActionLists = list_make1(parse->mergeActionList);
 				}
 			}
 			else
 			{
-				/* Single-relation INSERT/UPDATE/DELETE. */
+				/* Single-relation INSERT/UPDATE/DELETE/MERGE. */
 				resultRelations = list_make1_int(parse->resultRelation);
 				if (parse->commandType == CMD_UPDATE)
 					updateColnosLists = list_make1(root->update_colnos);
@@ -1839,6 +1902,8 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 					withCheckOptionLists = list_make1(parse->withCheckOptions);
 				if (parse->returningList)
 					returningLists = list_make1(parse->returningList);
+				if (parse->mergeActionList)
+					mergeActionLists = list_make1(parse->mergeActionList);
 			}
 
 			/*
@@ -1875,6 +1940,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										returningLists,
 										rowMarks,
 										parse->onConflict,
+										mergeActionLists,
 										assign_special_exec_param(root));
 		}
 
@@ -4144,6 +4210,7 @@ create_one_window_path(PlannerInfo *root,
 {
 	PathTarget *window_target;
 	ListCell   *l;
+	List	   *topqual = NIL;
 
 	/*
 	 * Since each window clause could require a different sort order, we stack
@@ -4168,6 +4235,7 @@ create_one_window_path(PlannerInfo *root,
 		List	   *window_pathkeys;
 		int			presorted_keys;
 		bool		is_sorted;
+		bool		topwindow;
 
 		window_pathkeys = make_pathkeys_for_window(root,
 												   wc,
@@ -4231,10 +4299,21 @@ create_one_window_path(PlannerInfo *root,
 			window_target = output_target;
 		}
 
+		/* mark the final item in the list as the top-level window */
+		topwindow = foreach_current_index(l) == list_length(activeWindows) - 1;
+
+		/*
+		 * Accumulate all of the runConditions from each intermediate
+		 * WindowClause.  The top-level WindowAgg must pass these as a qual so
+		 * that it filters out unwanted tuples correctly.
+		 */
+		if (!topwindow)
+			topqual = list_concat(topqual, wc->runCondition);
+
 		path = (Path *)
 			create_windowagg_path(root, window_rel, path, window_target,
 								  wflists->windowFuncs[wc->winref],
-								  wc);
+								  wc, topwindow ? topqual : NIL, topwindow);
 	}
 
 	add_path(window_rel, path);
@@ -6709,7 +6788,6 @@ create_partial_grouping_paths(PlannerInfo *root,
 											   dNumPartialGroups));
 			}
 		}
-
 	}
 
 	if (can_sort && cheapest_partial_path != NULL)

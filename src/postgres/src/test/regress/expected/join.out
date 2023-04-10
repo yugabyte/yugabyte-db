@@ -2261,7 +2261,7 @@ rollback;
 --
 explain (costs off)
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
         QUERY PLAN        
 --------------------------
@@ -2270,7 +2270,7 @@ select aa, bb, unique1, unique1
 (2 rows)
 
 select aa, bb, unique1, unique1
-  from tenk1 right join b on aa = unique1
+  from tenk1 right join b_star on aa = unique1
   where bb < bb and bb is null;
  aa | bb | unique1 | unique1 
 ----+----+---------+---------
@@ -2501,6 +2501,39 @@ ERROR:  column t1.x does not exist
 LINE 1: select t1.x from t1 join t3 on (t1.a = t3.x);
                ^
 HINT:  Perhaps you meant to reference the column "t3.x".
+-- Test matching of locking clause with wrong alias
+select t1.*, t2.*, unnamed_join.* from
+  t1 join t2 on (t1.a = t2.a), t3 as unnamed_join
+  for update of unnamed_join;
+ a | b | a | b | x | y 
+---+---+---+---+---+---
+(0 rows)
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of unnamed_join;
+ a | x | y 
+---+---+---
+(0 rows)
+
+select foo.*, unnamed_join.* from
+  t1 join t2 using (a) as foo, t3 as unnamed_join
+  for update of foo;
+ERROR:  FOR UPDATE cannot be applied to a join
+LINE 3:   for update of foo;
+                        ^
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of foo;
+ERROR:  relation "foo" in FOR UPDATE clause not found in FROM clause
+LINE 3:   for update of foo;
+                        ^
+select bar.*, unnamed_join.* from
+  (t1 join t2 using (a) as foo) as bar, t3 as unnamed_join
+  for update of bar;
+ERROR:  FOR UPDATE cannot be applied to a join
+LINE 3:   for update of bar;
+                        ^
 --
 -- regression test for 8.1 merge right join bug
 --
@@ -3423,6 +3456,26 @@ where b;
  0 | t | t
 (2 rows)
 
+-- Test PHV in a semijoin qual, which confused useless-RTE removal (bug #17700)
+explain (verbose, costs off)
+with ctetable as not materialized ( select 1 as f1 )
+select * from ctetable c1
+where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+         QUERY PLAN         
+----------------------------
+ Result
+   Output: 1
+   One-Time Filter: (1 = 1)
+(3 rows)
+
+with ctetable as not materialized ( select 1 as f1 )
+select * from ctetable c1
+where f1 in ( select c3.f1 from ctetable c2 full join ctetable c3 on true );
+ f1 
+----
+  1
+(1 row)
+
 --
 -- test inlining of immutable functions
 --
@@ -3673,8 +3726,8 @@ select * from tenk1 t1 left join
   (tenk1 t2 join tenk1 t3 on t2.thousand = t3.unique2)
   on t1.hundred = t2.hundred and t1.ten = t3.ten
 where t1.unique1 = 1;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Nested Loop Left Join
    ->  Index Scan using tenk1_unique1 on tenk1 t1
          Index Cond: (unique1 = 1)
@@ -3684,19 +3737,17 @@ where t1.unique1 = 1;
                Recheck Cond: (t1.hundred = hundred)
                ->  Bitmap Index Scan on tenk1_hundred
                      Index Cond: (hundred = t1.hundred)
-         ->  Memoize
-               Cache Key: t2.thousand
-               ->  Index Scan using tenk1_unique2 on tenk1 t3
-                     Index Cond: (unique2 = t2.thousand)
-(13 rows)
+         ->  Index Scan using tenk1_unique2 on tenk1 t3
+               Index Cond: (unique2 = t2.thousand)
+(11 rows)
 
 explain (costs off)
 select * from tenk1 t1 left join
   (tenk1 t2 join tenk1 t3 on t2.thousand = t3.unique2)
   on t1.hundred = t2.hundred and t1.ten + t2.ten = t3.ten
 where t1.unique1 = 1;
-                          QUERY PLAN                          
---------------------------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Nested Loop Left Join
    ->  Index Scan using tenk1_unique1 on tenk1 t1
          Index Cond: (unique1 = 1)
@@ -3706,11 +3757,9 @@ where t1.unique1 = 1;
                Recheck Cond: (t1.hundred = hundred)
                ->  Bitmap Index Scan on tenk1_hundred
                      Index Cond: (hundred = t1.hundred)
-         ->  Memoize
-               Cache Key: t2.thousand
-               ->  Index Scan using tenk1_unique2 on tenk1 t3
-                     Index Cond: (unique2 = t2.thousand)
-(13 rows)
+         ->  Index Scan using tenk1_unique2 on tenk1 t3
+               Index Cond: (unique2 = t2.thousand)
+(11 rows)
 
 explain (costs off)
 select count(*) from
@@ -4238,11 +4287,12 @@ where t1.f1 = ss.f1;
    ->  Memoize
          Output: (i8.q1), t2.f1
          Cache Key: i8.q1
+         Cache Mode: binary
          ->  Limit
                Output: (i8.q1), t2.f1
                ->  Seq Scan on public.text_tbl t2
                      Output: i8.q1, t2.f1
-(19 rows)
+(20 rows)
 
 select * from
   text_tbl t1
@@ -4282,6 +4332,7 @@ where t1.f1 = ss2.f1;
          ->  Memoize
                Output: (i8.q1), t2.f1
                Cache Key: i8.q1
+               Cache Mode: binary
                ->  Limit
                      Output: (i8.q1), t2.f1
                      ->  Seq Scan on public.text_tbl t2
@@ -4289,11 +4340,12 @@ where t1.f1 = ss2.f1;
    ->  Memoize
          Output: ((i8.q1)), (t2.f1)
          Cache Key: (i8.q1), t2.f1
+         Cache Mode: binary
          ->  Limit
                Output: ((i8.q1)), (t2.f1)
                ->  Seq Scan on public.text_tbl t3
                      Output: (i8.q1), t2.f1
-(28 rows)
+(30 rows)
 
 select * from
   text_tbl t1
@@ -4342,6 +4394,7 @@ where tt1.f1 = ss1.c0;
    ->  Memoize
          Output: ss1.c0
          Cache Key: tt4.f1
+         Cache Mode: binary
          ->  Subquery Scan on ss1
                Output: ss1.c0
                Filter: (ss1.c0 = 'foo'::text)
@@ -4349,7 +4402,7 @@ where tt1.f1 = ss1.c0;
                      Output: (tt4.f1)
                      ->  Seq Scan on public.text_tbl tt5
                            Output: tt4.f1
-(32 rows)
+(33 rows)
 
 select 1 from
   text_tbl as tt1
@@ -5058,8 +5111,9 @@ explain (costs off)
          ->  Seq Scan on tenk1 a
          ->  Memoize
                Cache Key: a.two
+               Cache Mode: binary
                ->  Function Scan on generate_series g
-(6 rows)
+(7 rows)
 
 explain (costs off)
   select count(*) from tenk1 a cross join lateral generate_series(1,two) g;
@@ -5070,8 +5124,9 @@ explain (costs off)
          ->  Seq Scan on tenk1 a
          ->  Memoize
                Cache Key: a.two
+               Cache Mode: binary
                ->  Function Scan on generate_series g
-(6 rows)
+(7 rows)
 
 -- don't need the explicit LATERAL keyword for functions
 explain (costs off)
@@ -5083,8 +5138,9 @@ explain (costs off)
          ->  Seq Scan on tenk1 a
          ->  Memoize
                Cache Key: a.two
+               Cache Mode: binary
                ->  Function Scan on generate_series g
-(6 rows)
+(7 rows)
 
 -- lateral with UNION ALL subselect
 explain (costs off)
@@ -5145,9 +5201,10 @@ explain (costs off)
                ->  Values Scan on "*VALUES*"
          ->  Memoize
                Cache Key: "*VALUES*".column1
+               Cache Mode: logical
                ->  Index Only Scan using tenk1_unique2 on tenk1 b
                      Index Cond: (unique2 = "*VALUES*".column1)
-(9 rows)
+(10 rows)
 
 select count(*) from tenk1 a,
   tenk1 b join lateral (values(a.unique1),(-1)) ss(x) on b.unique2 = ss.x;
@@ -5866,6 +5923,9 @@ select * from
  3 | 3
 (6 rows)
 
+-- check the number of columns specified
+SELECT * FROM (int8_tbl i cross join int4_tbl j) ss(a,b,c,d);
+ERROR:  join expression "ss" has 3 columns available but 4 columns specified
 -- check we don't try to do a unique-ified semijoin with LATERAL
 explain (verbose, costs off)
 select * from

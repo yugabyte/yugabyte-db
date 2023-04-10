@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Sets up a KDC and then runs a variety of tests to make sure that the
 # GSSAPI/Kerberos authentication and encryption are working properly,
@@ -16,24 +16,27 @@
 
 use strict;
 use warnings;
-use TestLib;
-use PostgresNode;
+use PostgreSQL::Test::Utils;
+use PostgreSQL::Test::Cluster;
 use Test::More;
 use Time::HiRes qw(usleep);
 
-if ($ENV{with_gssapi} eq 'yes')
-{
-	plan tests => 44;
-}
-else
+if ($ENV{with_gssapi} ne 'yes')
 {
 	plan skip_all => 'GSSAPI/Kerberos not supported by this build';
 }
 
 my ($krb5_bin_dir, $krb5_sbin_dir);
 
-if ($^O eq 'darwin')
+if ($^O eq 'darwin' && -d "/opt/homebrew" )
 {
+	# typical paths for Homebrew on ARM
+	$krb5_bin_dir  = '/opt/homebrew/opt/krb5/bin';
+	$krb5_sbin_dir = '/opt/homebrew/opt/krb5/sbin';
+}
+elsif ($^O eq 'darwin')
+{
+	# typical paths for Homebrew on Intel
 	$krb5_bin_dir  = '/usr/local/opt/krb5/bin';
 	$krb5_sbin_dir = '/usr/local/opt/krb5/sbin';
 }
@@ -69,15 +72,15 @@ my $host     = 'auth-test-localhost.postgresql.example.com';
 my $hostaddr = '127.0.0.1';
 my $realm    = 'EXAMPLE.COM';
 
-my $krb5_conf   = "${TestLib::tmp_check}/krb5.conf";
-my $kdc_conf    = "${TestLib::tmp_check}/kdc.conf";
-my $krb5_cache  = "${TestLib::tmp_check}/krb5cc";
-my $krb5_log    = "${TestLib::log_path}/krb5libs.log";
-my $kdc_log     = "${TestLib::log_path}/krb5kdc.log";
-my $kdc_port    = PostgresNode::get_free_port();
-my $kdc_datadir = "${TestLib::tmp_check}/krb5kdc";
-my $kdc_pidfile = "${TestLib::tmp_check}/krb5kdc.pid";
-my $keytab      = "${TestLib::tmp_check}/krb5.keytab";
+my $krb5_conf   = "${PostgreSQL::Test::Utils::tmp_check}/krb5.conf";
+my $kdc_conf    = "${PostgreSQL::Test::Utils::tmp_check}/kdc.conf";
+my $krb5_cache  = "${PostgreSQL::Test::Utils::tmp_check}/krb5cc";
+my $krb5_log    = "${PostgreSQL::Test::Utils::log_path}/krb5libs.log";
+my $kdc_log     = "${PostgreSQL::Test::Utils::log_path}/krb5kdc.log";
+my $kdc_port    = PostgreSQL::Test::Cluster::get_free_port();
+my $kdc_datadir = "${PostgreSQL::Test::Utils::tmp_check}/krb5kdc";
+my $kdc_pidfile = "${PostgreSQL::Test::Utils::tmp_check}/krb5kdc.pid";
+my $keytab      = "${PostgreSQL::Test::Utils::tmp_check}/krb5.keytab";
 
 my $dbname      = 'postgres';
 my $username    = 'test1';
@@ -167,7 +170,7 @@ END
 
 note "setting up PostgreSQL instance";
 
-my $node = PostgresNode->new('node');
+my $node = PostgreSQL::Test::Cluster->new('node');
 $node->init;
 $node->append_conf(
 	'postgresql.conf', qq{
@@ -185,6 +188,8 @@ note "running tests";
 # Test connection success or failure, and if success, that query returns true.
 sub test_access
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my ($node, $role, $query, $expected_res, $gssencmode, $test_name,
 		@expect_log_msgs)
 	  = @_;
@@ -219,6 +224,8 @@ sub test_access
 # As above, but test for an arbitrary query result.
 sub test_query
 {
+	local $Test::Builder::Level = $Test::Builder::Level + 1;
+
 	my ($node, $role, $query, $expected, $gssencmode, $test_name) = @_;
 
 	# need to connect over TCP/IP for Kerberos
@@ -395,3 +402,5 @@ test_access(
 	'',
 	'fails with wrong krb_realm, but still authenticates',
 	"connection authenticated: identity=\"test1\@$realm\" method=gss");
+
+done_testing();

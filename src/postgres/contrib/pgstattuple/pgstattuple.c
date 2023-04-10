@@ -252,50 +252,49 @@ pgstat_relation(Relation rel, FunctionCallInfo fcinfo)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot access temporary tables of other sessions")));
 
-	switch (rel->rd_rel->relkind)
+	if (RELKIND_HAS_TABLE_AM(rel->rd_rel->relkind) ||
+		rel->rd_rel->relkind == RELKIND_SEQUENCE)
 	{
-		case RELKIND_RELATION:
-		case RELKIND_MATVIEW:
-		case RELKIND_TOASTVALUE:
-		case RELKIND_SEQUENCE:
-			return pgstat_heap(rel, fcinfo);
-		case RELKIND_INDEX:
-			switch (rel->rd_rel->relam)
-			{
-				case BTREE_AM_OID:
-					return pgstat_index(rel, BTREE_METAPAGE + 1,
-										pgstat_btree_page, fcinfo);
-				case HASH_AM_OID:
-					return pgstat_index(rel, HASH_METAPAGE + 1,
-										pgstat_hash_page, fcinfo);
-				case GIST_AM_OID:
-					return pgstat_index(rel, GIST_ROOT_BLKNO + 1,
-										pgstat_gist_page, fcinfo);
-				case GIN_AM_OID:
-					err = "gin index";
-					break;
-				case SPGIST_AM_OID:
-					err = "spgist index";
-					break;
-				case BRIN_AM_OID:
-					err = "brin index";
-					break;
-				default:
-					err = "unknown index";
-					break;
-			}
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("index \"%s\" (%s) is not supported",
-							RelationGetRelationName(rel), err)));
-			break;
-
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot get tuple-level statistics for relation \"%s\"",
-							RelationGetRelationName(rel)),
-					 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
+		return pgstat_heap(rel, fcinfo);
+	}
+	else if (rel->rd_rel->relkind == RELKIND_INDEX)
+	{
+		switch (rel->rd_rel->relam)
+		{
+			case BTREE_AM_OID:
+				return pgstat_index(rel, BTREE_METAPAGE + 1,
+									pgstat_btree_page, fcinfo);
+			case HASH_AM_OID:
+				return pgstat_index(rel, HASH_METAPAGE + 1,
+									pgstat_hash_page, fcinfo);
+			case GIST_AM_OID:
+				return pgstat_index(rel, GIST_ROOT_BLKNO + 1,
+									pgstat_gist_page, fcinfo);
+			case GIN_AM_OID:
+				err = "gin index";
+				break;
+			case SPGIST_AM_OID:
+				err = "spgist index";
+				break;
+			case BRIN_AM_OID:
+				err = "brin index";
+				break;
+			default:
+				err = "unknown index";
+				break;
+		}
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("index \"%s\" (%s) is not supported",
+						RelationGetRelationName(rel), err)));
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot get tuple-level statistics for relation \"%s\"",
+						RelationGetRelationName(rel)),
+				 errdetail_relkind_not_supported(rel->rd_rel->relkind)));
 	}
 
 	return 0;					/* should not happen */
@@ -416,7 +415,7 @@ pgstat_btree_page(pgstattuple_type *stat, Relation rel, BlockNumber blkno,
 	{
 		BTPageOpaque opaque;
 
-		opaque = (BTPageOpaque) PageGetSpecialPointer(page);
+		opaque = BTPageGetOpaque(page);
 		if (P_IGNORE(opaque))
 		{
 			/* deleted or half-dead page */
@@ -453,7 +452,7 @@ pgstat_hash_page(pgstattuple_type *stat, Relation rel, BlockNumber blkno,
 	{
 		HashPageOpaque opaque;
 
-		opaque = (HashPageOpaque) PageGetSpecialPointer(page);
+		opaque = HashPageGetOpaque(page);
 		switch (opaque->hasho_flag & LH_PAGE_TYPE)
 		{
 			case LH_UNUSED_PAGE:

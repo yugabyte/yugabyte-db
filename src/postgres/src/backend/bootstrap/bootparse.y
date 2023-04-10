@@ -4,7 +4,7 @@
  * bootparse.y
  *	  yacc grammar for the "bootstrap" mode (BKI file format)
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -211,9 +211,9 @@ Boot_CreateStmt:
 				}
 		  RPAREN Boot_YBIndex
 				{
-					TupleDesc tupdesc;
-					bool	shared_relation;
-					bool	mapped_relation;
+					TupleDesc	tupdesc;
+					bool		shared_relation;
+					bool		mapped_relation;
 
 					do_start();
 
@@ -257,12 +257,13 @@ Boot_CreateStmt:
 												   mapped_relation,
 												   true,
 												   &relfrozenxid,
-												   &relminmxid);
+												   &relminmxid,
+												   true);
 						elog(DEBUG4, "bootstrap relation created");
 					}
 					else
 					{
-						Oid id;
+						Oid			id;
 
 						id = heap_create_with_catalog($2,
 													  PG_CATALOG_NAMESPACE,
@@ -321,8 +322,8 @@ Boot_InsertStmt:
 Boot_DeclareIndexStmt:
 		  XDECLARE INDEX boot_ident oidspec ON boot_ident USING boot_ident LPAREN boot_index_params RPAREN
 				{
-					IndexStmt *stmt = makeNode(IndexStmt);
-					Oid		relationId;
+					IndexStmt  *stmt = makeNode(IndexStmt);
+					Oid			relationId;
 
 					elog(DEBUG4, "creating index \"%s\"", $3);
 
@@ -373,8 +374,8 @@ Boot_DeclareIndexStmt:
 Boot_DeclareUniqueIndexStmt:
 		  XDECLARE UNIQUE INDEX boot_ident oidspec ON boot_ident USING boot_ident LPAREN boot_index_params RPAREN
 				{
-					IndexStmt *stmt = makeNode(IndexStmt);
-					Oid		relationId;
+					IndexStmt  *stmt = makeNode(IndexStmt);
+					Oid			relationId;
 
 					elog(DEBUG4, "creating unique index \"%s\"", $4);
 
@@ -498,7 +499,8 @@ boot_index_params:
 boot_index_param:
 		boot_ident boot_ident
 				{
-					IndexElem *n = makeNode(IndexElem);
+					IndexElem  *n = makeNode(IndexElem);
+
 					n->name = $1;
 					n->expr = NULL;
 					n->indexcolname = NULL;

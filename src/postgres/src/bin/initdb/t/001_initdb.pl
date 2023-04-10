@@ -1,5 +1,5 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # To test successful data directory creation with an additional feature, first
 # try to elaborate the "successful creation" test instead of adding a test.
@@ -9,11 +9,11 @@ use strict;
 use warnings;
 use Fcntl ':mode';
 use File::stat qw{lstat};
-use PostgresNode;
-use TestLib;
-use Test::More tests => 22;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 
-my $tempdir = TestLib::tempdir;
+my $tempdir = PostgreSQL::Test::Utils::tempdir;
 my $xlogdir = "$tempdir/pgxlog";
 my $datadir = "$tempdir/data";
 
@@ -92,3 +92,59 @@ SKIP:
 	ok(check_mode_recursive($datadir_group, 0750, 0640),
 		'check PGDATA permissions');
 }
+
+# Locale provider tests
+
+if ($ENV{with_icu} eq 'yes')
+{
+	command_fails_like(
+		[ 'initdb', '--no-sync', '--locale-provider=icu', "$tempdir/data2" ],
+		qr/initdb: error: ICU locale must be specified/,
+		'locale provider ICU requires --icu-locale');
+
+	command_ok(
+		[
+			'initdb',                '--no-sync',
+			'--locale-provider=icu', '--icu-locale=en',
+			"$tempdir/data3"
+		],
+		'option --icu-locale');
+
+	command_fails_like(
+		[
+			'initdb',                '--no-sync',
+			'--locale-provider=icu', '--icu-locale=@colNumeric=lower',
+			"$tempdir/dataX"
+		],
+		qr/FATAL:  could not open collator for locale/,
+		'fails for invalid ICU locale');
+
+	command_fails_like(
+		[
+			'initdb',                '--no-sync',
+			'--locale-provider=icu', '--encoding=SQL_ASCII',
+			'--icu-locale=en', "$tempdir/dataX"
+		],
+		qr/error: encoding mismatch/,
+		'fails for encoding not supported by ICU');
+}
+else
+{
+	command_fails(
+		[ 'initdb', '--no-sync', '--locale-provider=icu', "$tempdir/data2" ],
+		'locale provider ICU fails since no ICU support');
+}
+
+command_fails(
+	[ 'initdb', '--no-sync', '--locale-provider=xyz', "$tempdir/dataX" ],
+	'fails for invalid locale provider');
+
+command_fails(
+	[
+		'initdb',                 '--no-sync',
+		'--locale-provider=libc', '--icu-locale=en',
+		"$tempdir/dataX"
+	],
+	'fails for invalid option combination');
+
+done_testing();

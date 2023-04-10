@@ -4,7 +4,7 @@
  *	  prototypes for the creator functions of various nodes
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/makefuncs.h
@@ -96,7 +96,7 @@ extern List *make_ands_implicit(Expr *clause);
 
 extern IndexInfo *makeIndexInfo(int numattrs, int numkeyattrs, Oid amoid,
 								List *expressions, List *predicates,
-								bool unique, bool isready, bool concurrent);
+								bool unique, bool nulls_not_distinct, bool isready, bool concurrent);
 
 extern DefElem *makeDefElem(char *name, Node *arg, int location);
 extern DefElem *makeDefElemExtended(char *nameSpace, char *name, Node *arg,

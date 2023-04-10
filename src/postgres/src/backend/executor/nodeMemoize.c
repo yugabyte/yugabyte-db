@@ -3,7 +3,7 @@
  * nodeMemoize.c
  *	  Routines to handle caching of results from parameterized nodes
  *
- * Portions Copyright (c) 2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2021-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -71,6 +71,7 @@
 #include "executor/nodeMemoize.h"
 #include "lib/ilist.h"
 #include "miscadmin.h"
+#include "utils/datum.h"
 #include "utils/lsyscache.h"
 
 /* States of the ExecMemoize state machine */
@@ -131,7 +132,7 @@ typedef struct MemoizeEntry
 
 static uint32 MemoizeHash_hash(struct memoize_hash *tb,
 							   const MemoizeKey *key);
-static int	MemoizeHash_equal(struct memoize_hash *tb,
+static bool MemoizeHash_equal(struct memoize_hash *tb,
 							  const MemoizeKey *params1,
 							  const MemoizeKey *params2);
 
@@ -140,7 +141,7 @@ static int	MemoizeHash_equal(struct memoize_hash *tb,
 #define SH_KEY_TYPE MemoizeKey *
 #define SH_KEY key
 #define SH_HASH_KEY(tb, key) MemoizeHash_hash(tb, key)
-#define SH_EQUAL(tb, a, b) (MemoizeHash_equal(tb, a, b) == 0)
+#define SH_EQUAL(tb, a, b) MemoizeHash_equal(tb, a, b)
 #define SH_SCOPE static inline
 #define SH_STORE_HASH
 #define SH_GET_HASH(tb, a) a->hash
@@ -160,21 +161,45 @@ MemoizeHash_hash(struct memoize_hash *tb, const MemoizeKey *key)
 	TupleTableSlot *pslot = mstate->probeslot;
 	uint32		hashkey = 0;
 	int			numkeys = mstate->nkeys;
-	FmgrInfo   *hashfunctions = mstate->hashfunctions;
-	Oid		   *collations = mstate->collations;
 
-	for (int i = 0; i < numkeys; i++)
+	if (mstate->binary_mode)
 	{
-		/* rotate hashkey left 1 bit at each step */
-		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
-
-		if (!pslot->tts_isnull[i])	/* treat nulls as having hash key 0 */
+		for (int i = 0; i < numkeys; i++)
 		{
-			uint32		hkey;
+			/* combine successive hashkeys by rotating */
+			hashkey = pg_rotate_left32(hashkey, 1);
 
-			hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
-													collations[i], pslot->tts_values[i]));
-			hashkey ^= hkey;
+			if (!pslot->tts_isnull[i])	/* treat nulls as having hash key 0 */
+			{
+				FormData_pg_attribute *attr;
+				uint32		hkey;
+
+				attr = &pslot->tts_tupleDescriptor->attrs[i];
+
+				hkey = datum_image_hash(pslot->tts_values[i], attr->attbyval, attr->attlen);
+
+				hashkey ^= hkey;
+			}
+		}
+	}
+	else
+	{
+		FmgrInfo   *hashfunctions = mstate->hashfunctions;
+		Oid		   *collations = mstate->collations;
+
+		for (int i = 0; i < numkeys; i++)
+		{
+			/* combine successive hashkeys by rotating */
+			hashkey = pg_rotate_left32(hashkey, 1);
+
+			if (!pslot->tts_isnull[i])	/* treat nulls as having hash key 0 */
+			{
+				uint32		hkey;
+
+				hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
+														collations[i], pslot->tts_values[i]));
+				hashkey ^= hkey;
+			}
 		}
 	}
 
@@ -187,7 +212,7 @@ MemoizeHash_hash(struct memoize_hash *tb, const MemoizeKey *key)
  *		table lookup.  'key2' is never used.  Instead the MemoizeState's
  *		probeslot is always populated with details of what's being looked up.
  */
-static int
+static bool
 MemoizeHash_equal(struct memoize_hash *tb, const MemoizeKey *key1,
 				  const MemoizeKey *key2)
 {
@@ -199,9 +224,38 @@ MemoizeHash_equal(struct memoize_hash *tb, const MemoizeKey *key1,
 	/* probeslot should have already been prepared by prepare_probe_slot() */
 	ExecStoreMinimalTuple(key1->params, tslot, false);
 
-	econtext->ecxt_innertuple = tslot;
-	econtext->ecxt_outertuple = pslot;
-	return !ExecQualAndReset(mstate->cache_eq_expr, econtext);
+	if (mstate->binary_mode)
+	{
+		int			numkeys = mstate->nkeys;
+
+		slot_getallattrs(tslot);
+		slot_getallattrs(pslot);
+
+		for (int i = 0; i < numkeys; i++)
+		{
+			FormData_pg_attribute *attr;
+
+			if (tslot->tts_isnull[i] != pslot->tts_isnull[i])
+				return false;
+
+			/* both NULL? they're equal */
+			if (tslot->tts_isnull[i])
+				continue;
+
+			/* perform binary comparison on the two datums */
+			attr = &tslot->tts_tupleDescriptor->attrs[i];
+			if (!datum_image_eq(tslot->tts_values[i], pslot->tts_values[i],
+								attr->attbyval, attr->attlen))
+				return false;
+		}
+		return true;
+	}
+	else
+	{
+		econtext->ecxt_innertuple = tslot;
+		econtext->ecxt_outertuple = pslot;
+		return ExecQualAndReset(mstate->cache_eq_expr, econtext);
+	}
 }
 
 /*
@@ -314,6 +368,37 @@ remove_cache_entry(MemoizeState *mstate, MemoizeEntry *entry)
 }
 
 /*
+ * cache_purge_all
+ *		Remove all items from the cache
+ */
+static void
+cache_purge_all(MemoizeState *mstate)
+{
+	uint64		evictions = mstate->hashtable->members;
+	PlanState  *pstate = (PlanState *) mstate;
+
+	/*
+	 * Likely the most efficient way to remove all items is to just reset the
+	 * memory context for the cache and then rebuild a fresh hash table.  This
+	 * saves having to remove each item one by one and pfree each cached tuple
+	 */
+	MemoryContextReset(mstate->tableContext);
+
+	/* Make the hash table the same size as the original size */
+	build_hash_table(mstate, ((Memoize *) pstate->plan)->est_entries);
+
+	/* reset the LRU list */
+	dlist_init(&mstate->lru_list);
+	mstate->last_tuple = NULL;
+	mstate->entry = NULL;
+
+	mstate->mem_used = 0;
+
+	/* XXX should we add something new to track these purges? */
+	mstate->stats.cache_evictions += evictions; /* Update Stats */
+}
+
+/*
  * cache_reduce_memory
  *		Evict older and less recently used items from the cache in order to
  *		reduce the memory consumption back to something below the
@@ -361,9 +446,13 @@ cache_reduce_memory(MemoizeState *mstate, MemoizeKey *specialkey)
 		 */
 		entry = memoize_lookup(mstate->hashtable, NULL);
 
-		/* A good spot to check for corruption of the table and LRU list. */
-		Assert(entry != NULL);
-		Assert(entry->key == key);
+		/*
+		 * Sanity check that we found the entry belonging to the LRU list
+		 * item.  A misbehaving hash or equality function could cause the
+		 * entry not to be found or the wrong entry to be found.
+		 */
+		if (unlikely(entry == NULL || entry->key != key))
+			elog(ERROR, "could not find memoization table entry");
 
 		/*
 		 * If we're being called to free memory while the cache is being
@@ -925,6 +1014,13 @@ ExecInitMemoize(Memoize *node, EState *estate, int eflags)
 	 * getting the first tuple.  This allows us to mark it as so.
 	 */
 	mstate->singlerow = node->singlerow;
+	mstate->keyparamids = node->keyparamids;
+
+	/*
+	 * Record if the cache keys should be compared bit by bit, or logically
+	 * using the type's hash equality operator
+	 */
+	mstate->binary_mode = node->binary_mode;
 
 	/* Zero the statistics counters */
 	memset(&mstate->stats, 0, sizeof(MemoizeInstrumentation));
@@ -1022,6 +1118,12 @@ ExecReScanMemoize(MemoizeState *node)
 	if (outerPlan->chgParam == NULL)
 		ExecReScan(outerPlan);
 
+	/*
+	 * Purge the entire cache if a parameter changed that is not part of the
+	 * cache key.
+	 */
+	if (bms_nonempty_difference(outerPlan->chgParam, node->keyparamids))
+		cache_purge_all(node);
 }
 
 /*

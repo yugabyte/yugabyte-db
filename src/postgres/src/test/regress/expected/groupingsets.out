@@ -466,6 +466,70 @@ where x = 1 and q1 = 123;
 ---+----+-----
 (0 rows)
 
+-- check handling of pulled-up SubPlan in GROUPING() argument (bug #17479)
+explain (verbose, costs off)
+select grouping(ss.x)
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+                   QUERY PLAN                   
+------------------------------------------------
+ GroupAggregate
+   Output: GROUPING((SubPlan 1)), ((SubPlan 2))
+   Group Key: ((SubPlan 2))
+   ->  Sort
+         Output: ((SubPlan 2)), i1.q1
+         Sort Key: ((SubPlan 2))
+         ->  Seq Scan on public.int8_tbl i1
+               Output: (SubPlan 2), i1.q1
+               SubPlan 2
+                 ->  Result
+                       Output: i1.q1
+(11 rows)
+
+select grouping(ss.x)
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+ grouping 
+----------
+        0
+        0
+(2 rows)
+
+explain (verbose, costs off)
+select (select grouping(ss.x))
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+                 QUERY PLAN                 
+--------------------------------------------
+ GroupAggregate
+   Output: (SubPlan 2), ((SubPlan 3))
+   Group Key: ((SubPlan 3))
+   ->  Sort
+         Output: ((SubPlan 3)), i1.q1
+         Sort Key: ((SubPlan 3))
+         ->  Seq Scan on public.int8_tbl i1
+               Output: (SubPlan 3), i1.q1
+               SubPlan 3
+                 ->  Result
+                       Output: i1.q1
+   SubPlan 2
+     ->  Result
+           Output: GROUPING((SubPlan 1))
+(14 rows)
+
+select (select grouping(ss.x))
+from int8_tbl i1
+cross join lateral (select (select i1.q1) as x) ss
+group by ss.x;
+ grouping 
+----------
+        0
+        0
+(2 rows)
+
 -- simple rescan tests
 select a, b, sum(v.x)
   from (values (1),(2)) v(x), gstest_data(v.x)
@@ -1574,6 +1638,7 @@ select array(select row(v.a,s1.*) from (select two,four, count(*) from onek grou
 
 -- test the knapsack
 set enable_indexscan = false;
+set hash_mem_multiplier = 1.0;
 set work_mem = '64kB';
 explain (costs off)
   select unique1,
@@ -1919,6 +1984,7 @@ select g100, g10, sum(g::numeric), count(*), max(g::text)
 from gs_data_1 group by cube (g1000, g100,g10);
 set enable_sort = true;
 set work_mem to default;
+set hash_mem_multiplier to default;
 -- Compare results
 (select * from gs_hash_1 except select * from gs_group_1)
   union all
@@ -2051,6 +2117,8 @@ explain (costs off)
 select (select grouping(v1)) from (values ((select 1))) v(v1) group by cube(v1);
         QUERY PLAN         
 ---------------------------
+ MixedAggregate
+   Hash Key: $2
  GroupAggregate
    Group Key: $2
    Group Key: ()

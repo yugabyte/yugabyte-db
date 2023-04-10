@@ -32,10 +32,6 @@
 
 #define LOBBUFSIZE 16384
 
-/*
- * Note: zlib.h must be included *after* libpq-fe.h, because the latter may
- * include ssl.h, which has a naming conflict with zlib.h.
- */
 #ifdef HAVE_LIBZ
 #include <zlib.h>
 #define GZCLOSE(fh) gzclose(fh)
@@ -125,14 +121,14 @@ struct ParallelState;
 #define READ_ERROR_EXIT(fd) \
 	do { \
 		if (feof(fd)) \
-			fatal("could not read from input file: end of file"); \
+			pg_fatal("could not read from input file: end of file"); \
 		else \
-			fatal("could not read from input file: %m"); \
+			pg_fatal("could not read from input file: %m"); \
 	} while (0)
 
 #define WRITE_ERROR_EXIT \
 	do { \
-		fatal("could not write to output file: %m"); \
+		pg_fatal("could not write to output file: %m"); \
 	} while (0)
 
 typedef enum T_Action

@@ -5,7 +5,7 @@
  *
  * Author: Magnus Hagander <magnus@hagander.net>
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *		  src/bin/pg_basebackup/receivelog.c
@@ -70,7 +70,12 @@ mark_file_as_archived(StreamCtl *stream, const char *fname)
 		return false;
 	}
 
-	stream->walmethod->close(f, CLOSE_NORMAL);
+	if (stream->walmethod->close(f, CLOSE_NORMAL) != 0)
+	{
+		pg_log_error("could not close archive status file \"%s\": %s",
+					 tmppath, stream->walmethod->getlasterror());
+		return false;
+	}
 
 	return true;
 }
@@ -109,7 +114,7 @@ open_walfile(StreamCtl *stream, XLogRecPtr startpoint)
 	 * When streaming to tar, no file with this name will exist before, so we
 	 * never have to verify a size.
 	 */
-	if (stream->walmethod->compression() == 0 &&
+	if (stream->walmethod->compression_algorithm() == PG_COMPRESSION_NONE &&
 		stream->walmethod->existsfile(fn))
 	{
 		size = stream->walmethod->get_file_size(fn);
@@ -135,7 +140,7 @@ open_walfile(StreamCtl *stream, XLogRecPtr startpoint)
 			/* fsync file in case of a previous crash */
 			if (stream->walmethod->sync(f) != 0)
 			{
-				pg_log_fatal("could not fsync existing write-ahead log file \"%s\": %s",
+				pg_log_error("could not fsync existing write-ahead log file \"%s\": %s",
 							 fn, stream->walmethod->getlasterror());
 				stream->walmethod->close(f, CLOSE_UNLINK);
 				exit(1);
@@ -773,11 +778,8 @@ HandleCopyStream(PGconn *conn, StreamCtl *stream,
 		if (stream->synchronous && lastFlushPosition < blockpos && walfile != NULL)
 		{
 			if (stream->walmethod->sync(walfile) != 0)
-			{
-				pg_log_fatal("could not fsync file \"%s\": %s",
-							 current_walfile_name, stream->walmethod->getlasterror());
-				exit(1);
-			}
+				pg_fatal("could not fsync file \"%s\": %s",
+						 current_walfile_name, stream->walmethod->getlasterror());
 			lastFlushPosition = blockpos;
 
 			/*
@@ -1025,11 +1027,8 @@ ProcessKeepaliveMsg(PGconn *conn, StreamCtl *stream, char *copybuf, int len,
 			 * shutdown of the server.
 			 */
 			if (stream->walmethod->sync(walfile) != 0)
-			{
-				pg_log_fatal("could not fsync file \"%s\": %s",
-							 current_walfile_name, stream->walmethod->getlasterror());
-				exit(1);
-			}
+				pg_fatal("could not fsync file \"%s\": %s",
+						 current_walfile_name, stream->walmethod->getlasterror());
 			lastFlushPosition = blockpos;
 		}
 
@@ -1133,7 +1132,7 @@ ProcessXLogDataMsg(PGconn *conn, StreamCtl *stream, char *copybuf, int len,
 		if (stream->walmethod->write(walfile, copybuf + hdr_len + bytes_written,
 									 bytes_to_write) != bytes_to_write)
 		{
-			pg_log_error("could not write %u bytes to WAL file \"%s\": %s",
+			pg_log_error("could not write %d bytes to WAL file \"%s\": %s",
 						 bytes_to_write, current_walfile_name,
 						 stream->walmethod->getlasterror());
 			return false;

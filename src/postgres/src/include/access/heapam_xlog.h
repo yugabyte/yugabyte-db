@@ -4,7 +4,7 @@
  *	  POSTGRES heap access XLOG definitions.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/heapam_xlog.h
@@ -238,7 +238,7 @@ typedef struct xl_heap_update
  * Note that nunused is not explicitly stored, but may be found by reference
  * to the total record length.
  *
- * Requires a super-exclusive lock.
+ * Acquires a full cleanup lock.
  */
 typedef struct xl_heap_prune
 {
@@ -252,9 +252,9 @@ typedef struct xl_heap_prune
 
 /*
  * The vacuum page record is similar to the prune record, but can only mark
- * already dead items as unused
+ * already LP_DEAD items LP_UNUSED (during VACUUM's second heap pass)
  *
- * Used by heap vacuuming only.  Does not require a super-exclusive lock.
+ * Acquires an ordinary exclusive lock only.
  */
 typedef struct xl_heap_vacuum
 {
@@ -410,7 +410,9 @@ extern bool heap_prepare_freeze_tuple(HeapTupleHeader tuple,
 									  TransactionId cutoff_xid,
 									  TransactionId cutoff_multi,
 									  xl_heap_freeze_tuple *frz,
-									  bool *totally_frozen);
+									  bool *totally_frozen,
+									  TransactionId *relfrozenxid_out,
+									  MultiXactId *relminmxid_out);
 extern void heap_execute_freeze_tuple(HeapTupleHeader tuple,
 									  xl_heap_freeze_tuple *xlrec_tp);
 extern XLogRecPtr log_heap_visible(RelFileNode rnode, Buffer heap_buffer,

@@ -3,7 +3,7 @@
  * snapbuild.h
  *	  Exports from replication/logical/snapbuild.c.
  *
- * Copyright (c) 2012-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2012-2022, PostgreSQL Global Development Group
  *
  * src/include/replication/snapbuild.h
  *
@@ -70,6 +70,7 @@ extern void SnapBuildSnapDecRefcount(Snapshot snap);
 extern Snapshot SnapBuildInitialSnapshot(SnapBuild *builder);
 extern const char *SnapBuildExportSnapshot(SnapBuild *snapstate);
 extern void SnapBuildClearExportedSnapshot(void);
+extern void SnapBuildResetExportedSnapshotState(void);
 
 extern SnapBuildState SnapBuildCurrentState(SnapBuild *snapstate);
 extern Snapshot SnapBuildGetOrBuildSnapshot(SnapBuild *builder,
@@ -90,4 +91,7 @@ extern void SnapBuildProcessRunningXacts(SnapBuild *builder, XLogRecPtr lsn,
 										 struct xl_running_xacts *running);
 extern void SnapBuildSerializationPoint(SnapBuild *builder, XLogRecPtr lsn);
 
+extern void SnapBuildXidSetCatalogChanges(SnapBuild *builder, TransactionId xid,
+										  int subxcnt, TransactionId *subxacts,
+										  XLogRecPtr lsn);
 #endif							/* SNAPBUILD_H */

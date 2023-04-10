@@ -1,17 +1,17 @@
 
-# Copyright (c) 2021, PostgreSQL Global Development Group
+# Copyright (c) 2021-2022, PostgreSQL Global Development Group
 
 # Test for archive recovery of WAL generated with wal_level=minimal
 use strict;
 use warnings;
-use PostgresNode;
-use TestLib;
-use Test::More tests => 2;
+use PostgreSQL::Test::Cluster;
+use PostgreSQL::Test::Utils;
+use Test::More;
 use Time::HiRes qw(usleep);
 
 # Initialize and start node with wal_level = replica and WAL archiving
 # enabled.
-my $node = PostgresNode->new('orig');
+my $node = PostgreSQL::Test::Cluster->new('orig');
 $node->init(has_archiving => 1, allows_streaming => 1);
 my $replica_config = q[
 wal_level = replica
@@ -66,7 +66,7 @@ sub test_recovery_wal_level_minimal
 {
 	my ($node_name, $node_text, $standby_setting) = @_;
 
-	my $recovery_node = PostgresNode->new($node_name);
+	my $recovery_node = PostgreSQL::Test::Cluster->new($node_name);
 	$recovery_node->init_from_backup(
 		$node, $backup_name,
 		has_restoring => 1,
@@ -81,8 +81,8 @@ sub test_recovery_wal_level_minimal
 			$recovery_node->logfile,  'start'
 		]);
 
-	# Wait up to 180s for postgres to terminate
-	foreach my $i (0 .. 1800)
+	# wait for postgres to terminate
+	foreach my $i (0 .. 10 * $PostgreSQL::Test::Utils::timeout_default)
 	{
 		last if !-f $recovery_node->data_dir . '/postmaster.pid';
 		usleep(100_000);
@@ -101,3 +101,5 @@ test_recovery_wal_level_minimal('archive_recovery', 'archive recovery', 0);
 
 # Test for standby server
 test_recovery_wal_level_minimal('standby', 'standby', 1);
+
+done_testing();

@@ -91,10 +91,9 @@ ALTER TABLE ab1 ALTER a SET STATISTICS -1;
 ALTER STATISTICS ab1_a_b_stats SET STATISTICS 0;
 \d ab1
 ANALYZE ab1;
-SELECT stxname, stxdndistinct, stxddependencies, stxdmcv
-  FROM pg_statistic_ext s, pg_statistic_ext_data d
- WHERE s.stxname = 'ab1_a_b_stats'
-   AND d.stxoid = s.oid;
+SELECT stxname, stxdndistinct, stxddependencies, stxdmcv, stxdinherit
+  FROM pg_statistic_ext s LEFT JOIN pg_statistic_ext_data d ON (d.stxoid = s.oid)
+ WHERE s.stxname = 'ab1_a_b_stats';
 ALTER STATISTICS ab1_a_b_stats SET STATISTICS -1;
 \d+ ab1
 -- partial analyze doesn't build stats either
@@ -111,6 +110,41 @@ INSERT INTO ab1 VALUES (1,1);
 CREATE STATISTICS ab1_a_b_stats ON a, b FROM ab1;
 ANALYZE ab1;
 DROP TABLE ab1 CASCADE;
+
+-- Tests for stats with inheritance
+CREATE TABLE stxdinh(a int, b int);
+CREATE TABLE stxdinh1() INHERITS(stxdinh);
+CREATE TABLE stxdinh2() INHERITS(stxdinh);
+INSERT INTO stxdinh SELECT mod(a,50), mod(a,100) FROM generate_series(0, 1999) a;
+INSERT INTO stxdinh1 SELECT mod(a,100), mod(a,100) FROM generate_series(0, 999) a;
+INSERT INTO stxdinh2 SELECT mod(a,100), mod(a,100) FROM generate_series(0, 999) a;
+VACUUM ANALYZE stxdinh, stxdinh1, stxdinh2;
+-- Ensure non-inherited stats are not applied to inherited query
+-- Without stats object, it looks like this
+SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinh* GROUP BY 1, 2');
+SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinh* WHERE a = 0 AND b = 0');
+CREATE STATISTICS stxdinh ON a, b FROM stxdinh;
+VACUUM ANALYZE stxdinh, stxdinh1, stxdinh2;
+-- See if the extended stats affect the estimates
+SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinh* GROUP BY 1, 2');
+-- Dependencies are applied at individual relations (within append), so
+-- this estimate changes a bit because we improve estimates for the parent
+SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinh* WHERE a = 0 AND b = 0');
+-- Ensure correct (non-inherited) stats are applied to inherited query
+SELECT * FROM check_estimated_rows('SELECT a, b FROM ONLY stxdinh GROUP BY 1, 2');
+SELECT * FROM check_estimated_rows('SELECT a, b FROM ONLY stxdinh WHERE a = 0 AND b = 0');
+DROP TABLE stxdinh, stxdinh1, stxdinh2;
+
+-- Ensure inherited stats ARE applied to inherited query in partitioned table
+CREATE TABLE stxdinp(i int, a int, b int) PARTITION BY RANGE (i);
+CREATE TABLE stxdinp1 PARTITION OF stxdinp FOR VALUES FROM (1) TO (100);
+INSERT INTO stxdinp SELECT 1, a/100, a/100 FROM generate_series(1, 999) a;
+CREATE STATISTICS stxdinp ON (a + 1), a, b FROM stxdinp;
+VACUUM ANALYZE stxdinp; -- partitions are processed recursively
+SELECT 1 FROM pg_statistic_ext WHERE stxrelid = 'stxdinp'::regclass;
+SELECT * FROM check_estimated_rows('SELECT a, b FROM stxdinp GROUP BY 1, 2');
+SELECT * FROM check_estimated_rows('SELECT a + 1, b FROM ONLY stxdinp GROUP BY 1, 2');
+DROP TABLE stxdinp;
 
 -- basic test for statistics on expressions
 CREATE TABLE ab1 (a INTEGER, b INTEGER, c TIMESTAMP, d TIMESTAMPTZ);
@@ -132,14 +166,21 @@ CREATE STATISTICS ab1_exprstat_4 ON date_trunc('day', d) FROM ab1;
 -- date_trunc on timestamp is immutable
 CREATE STATISTICS ab1_exprstat_5 ON date_trunc('day', c) FROM ab1;
 
+-- check use of a boolean-returning expression
+CREATE STATISTICS ab1_exprstat_6 ON
+  (case a when 1 then true else false end), b FROM ab1;
+
 -- insert some data and run analyze, to test that these cases build properly
 INSERT INTO ab1
-SELECT
-    generate_series(1,10),
-    generate_series(1,10),
-    generate_series('2020-10-01'::timestamp, '2020-10-10'::timestamp, interval '1 day'),
-    generate_series('2020-10-01'::timestamptz, '2020-10-10'::timestamptz, interval '1 day');
+SELECT x / 10, x / 3,
+    '2020-10-01'::timestamp + x * interval '1 day',
+    '2020-10-01'::timestamptz + x * interval '1 day'
+FROM generate_series(1, 100) x;
 ANALYZE ab1;
+
+-- apply some stats
+SELECT * FROM check_estimated_rows('SELECT * FROM ab1 WHERE (case a when 1 then true else false end) AND b=2');
+
 DROP TABLE ab1;
 
 -- Verify supported object types for extended statistics
@@ -876,7 +917,8 @@ CREATE TABLE mcv_lists (
     b VARCHAR,
     filler3 DATE,
     c INT,
-    d TEXT
+    d TEXT,
+    ia INT[]
 )
 WITH (autovacuum_enabled = off);
 
@@ -925,8 +967,9 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE mod(a,7) = 1 A
 TRUNCATE mcv_lists;
 DROP STATISTICS mcv_lists_stats;
 
-INSERT INTO mcv_lists (a, b, c, filler1)
-     SELECT mod(i,100), mod(i,50), mod(i,25), i FROM generate_series(1,5000) s(i);
+INSERT INTO mcv_lists (a, b, c, ia, filler1)
+     SELECT mod(i,100), mod(i,50), mod(i,25), array[mod(i,25)], i
+       FROM generate_series(1,5000) s(i);
 
 ANALYZE mcv_lists;
 
@@ -975,9 +1018,11 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', ''3'') AND c > ANY (ARRAY[1, 2, 3])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', NULL, ''3'') AND c > ANY (ARRAY[1, 2, NULL, 3])');
+
+SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[4,5]) AND 4 = ANY(ia)');
 
 -- create statistics
-CREATE STATISTICS mcv_lists_stats (mcv) ON a, b, c FROM mcv_lists;
+CREATE STATISTICS mcv_lists_stats (mcv) ON a, b, c, ia FROM mcv_lists;
 
 ANALYZE mcv_lists;
 
@@ -1028,6 +1073,8 @@ SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', ''3'') AND c > ANY (ARRAY[1, 2, 3])');
 
 SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a < ALL (ARRAY[4, 5]) AND b IN (''1'', ''2'', NULL, ''3'') AND c > ANY (ARRAY[1, 2, NULL, 3])');
+
+SELECT * FROM check_estimated_rows('SELECT * FROM mcv_lists WHERE a = ANY (ARRAY[4,5]) AND 4 = ANY(ia)');
 
 -- check change of unrelated column type does not reset the MCV statistics
 ALTER TABLE mcv_lists ALTER COLUMN d TYPE VARCHAR(64);
@@ -1567,6 +1614,10 @@ CREATE USER regress_stats_user1;
 GRANT USAGE ON SCHEMA tststats TO regress_stats_user1;
 SET SESSION AUTHORIZATION regress_stats_user1;
 SELECT * FROM tststats.priv_test_tbl; -- Permission denied
+
+-- Check individual columns if we don't have table privilege
+SELECT * FROM tststats.priv_test_tbl
+  WHERE a = 1 and tststats.priv_test_tbl.* > (1, 1) is not null;
 
 -- Attempt to gain access using a leaky operator
 CREATE FUNCTION op_leak(int, int) RETURNS bool

@@ -1,6 +1,14 @@
 --
 -- Test foreign-data wrapper and server management.
 --
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv libdir PG_LIBDIR
+\getenv dlsuffix PG_DLSUFFIX
+\set regresslib :libdir '/regress' :dlsuffix
+CREATE FUNCTION test_fdw_handler()
+    RETURNS fdw_handler
+    AS :'regresslib', 'test_fdw_handler'
+    LANGUAGE C;
 -- Clean up in case a prior regression run failed
 -- Suppress NOTICE messages when roles don't exist
 SET client_min_messages TO 'warning';
@@ -100,6 +108,9 @@ LINE 1: ...GN DATA WRAPPER test_fdw HANDLER test_fdw_handler HANDLER in...
 CREATE FOREIGN DATA WRAPPER test_fdw HANDLER test_fdw_handler;
 DROP FOREIGN DATA WRAPPER test_fdw;
 -- ALTER FOREIGN DATA WRAPPER
+ALTER FOREIGN DATA WRAPPER foo OPTIONS (nonexistent 'fdw');         -- ERROR
+ERROR:  invalid option "nonexistent"
+HINT:  There are no valid options in this context.
 ALTER FOREIGN DATA WRAPPER foo;                             -- ERROR
 ERROR:  syntax error at or near ";"
 LINE 1: ALTER FOREIGN DATA WRAPPER foo;
@@ -1811,11 +1822,6 @@ Server: s0
 FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 Inherits: fd_pt1
 
--- TRUNCATE doesn't work on foreign tables, either directly or recursively
-TRUNCATE ft2;  -- ERROR
-ERROR:  foreign-data wrapper "dummy" has no handler
-TRUNCATE fd_pt1;  -- ERROR
-ERROR:  foreign-data wrapper "dummy" has no handler
 DROP TABLE fd_pt1 CASCADE;
 NOTICE:  drop cascades to foreign table ft2
 -- IMPORT FOREIGN SCHEMA
@@ -2036,11 +2042,6 @@ ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);       -- ERROR
 ERROR:  child table is missing constraint "fd_pt2chk1"
 ALTER FOREIGN TABLE fd_pt2_1 ADD CONSTRAINT fd_pt2chk1 CHECK (c1 > 0);
 ALTER TABLE fd_pt2 ATTACH PARTITION fd_pt2_1 FOR VALUES IN (1);
--- TRUNCATE doesn't work on foreign tables, either directly or recursively
-TRUNCATE fd_pt2_1;  -- ERROR
-ERROR:  foreign-data wrapper "dummy" has no handler
-TRUNCATE fd_pt2;  -- ERROR
-ERROR:  foreign-data wrapper "dummy" has no handler
 DROP FOREIGN TABLE fd_pt2_1;
 DROP TABLE fd_pt2;
 -- foreign table cannot be part of partition tree made of temporary

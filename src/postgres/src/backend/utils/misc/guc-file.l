@@ -2,7 +2,7 @@
 /*
  * Scanner for the configuration file
  *
- * Copyright (c) 2000-2021, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2022, PostgreSQL Global Development Group
  *
  * src/backend/utils/misc/guc-file.l
  */
@@ -49,10 +49,10 @@ static sigjmp_buf *GUC_flex_fatal_jmp;
 static void FreeConfigVariable(ConfigVariable *item);
 
 static void record_config_file_error(const char *errmsg,
-						 const char *config_file,
-						 int lineno,
-						 ConfigVariable **head_p,
-						 ConfigVariable **tail_p);
+									 const char *config_file,
+									 int lineno,
+									 ConfigVariable **head_p,
+									 ConfigVariable **tail_p);
 
 static int	GUC_flex_fatal(const char *msg);
 
@@ -401,9 +401,8 @@ ProcessConfigFileInternal(GucContext context, bool applySettings, int elevel)
 	 * be run only after initialization is complete.
 	 *
 	 * XXX this is an unmaintainable crock, because we have to know how to set
-	 * (or at least what to call to set) every variable that could potentially
-	 * have PGC_S_DYNAMIC_DEFAULT or PGC_S_ENV_VAR source. However, there's no
-	 * time to redesign it for 9.1.
+	 * (or at least what to call to set) every non-PGC_INTERNAL variable that
+	 * could potentially have PGC_S_DYNAMIC_DEFAULT or PGC_S_ENV_VAR source.
 	 */
 	if (context == PGC_SIGHUP && applySettings)
 	{

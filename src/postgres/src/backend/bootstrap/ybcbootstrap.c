@@ -136,7 +136,7 @@ void YBCCreateSysCatalogTable(const char *table_name,
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 	                                   schema_name,
 	                                   table_name,
-	                                   TemplateDbOid,
+	                                   Template1DbOid,
 	                                   table_oid,
 	                                   is_shared_relation,
 	                                   false, /* if_not_exists */

@@ -3,7 +3,7 @@
  * bufmgr.c
  *	  buffer manager interface routines
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -34,9 +34,11 @@
 #include <unistd.h>
 
 #include "access/tableam.h"
+#include "access/xloginsert.h"
 #include "access/xlogutils.h"
 #include "catalog/catalog.h"
 #include "catalog/storage.h"
+#include "catalog/storage_xlog.h"
 #include "executor/instrument.h"
 #include "lib/binaryheap.h"
 #include "miscadmin.h"
@@ -486,6 +488,9 @@ static void FindAndDropRelFileNodeBuffers(RelFileNode rnode,
 										  ForkNumber forkNum,
 										  BlockNumber nForkBlock,
 										  BlockNumber firstDelBlock);
+static void RelationCopyStorageUsingBuffer(RelFileNode srcnode,
+										   RelFileNode dstnode,
+										   ForkNumber forkNum, bool permanent);
 static void AtProcExit_Buffers(int code, Datum arg);
 static void CheckForBufferLeaks(void);
 static int	rnode_comparator(const void *p1, const void *p2);
@@ -632,18 +637,30 @@ ReadRecentBuffer(RelFileNode rnode, ForkNumber forkNum, BlockNumber blockNum,
 
 	if (BufferIsLocal(recent_buffer))
 	{
-		bufHdr = GetBufferDescriptor(-recent_buffer - 1);
+		int			b = -recent_buffer - 1;
+
+		bufHdr = GetLocalBufferDescriptor(b);
 		buf_state = pg_atomic_read_u32(&bufHdr->state);
 
 		/* Is it still valid and holding the right tag? */
 		if ((buf_state & BM_VALID) && BUFFERTAGS_EQUAL(tag, bufHdr->tag))
 		{
-			/* Bump local buffer's ref and usage counts. */
+			/*
+			 * Bump buffer's ref and usage counts. This is equivalent of
+			 * PinBuffer for a shared buffer.
+			 */
+			if (LocalRefCount[b] == 0)
+			{
+				if (BUF_STATE_GET_USAGECOUNT(buf_state) < BM_MAX_USAGE_COUNT)
+				{
+					buf_state += BUF_USAGECOUNT_ONE;
+					pg_atomic_unlocked_write_u32(&bufHdr->state, buf_state);
+				}
+			}
+			LocalRefCount[b]++;
 			ResourceOwnerRememberBuffer(CurrentResourceOwner, recent_buffer);
-			LocalRefCount[-recent_buffer - 1]++;
-			if (BUF_STATE_GET_USAGECOUNT(buf_state) < BM_MAX_USAGE_COUNT)
-				pg_atomic_write_u32(&bufHdr->state,
-									buf_state + BUF_USAGECOUNT_ONE);
+
+			pgBufferUsage.local_blks_hit++;
 
 			return true;
 		}
@@ -667,14 +684,15 @@ ReadRecentBuffer(RelFileNode rnode, ForkNumber forkNum, BlockNumber blockNum,
 		{
 			/*
 			 * It's now safe to pin the buffer.  We can't pin first and ask
-			 * questions later, because because it might confuse code paths
-			 * like InvalidateBuffer() if we pinned a random non-matching
-			 * buffer.
+			 * questions later, because it might confuse code paths like
+			 * InvalidateBuffer() if we pinned a random non-matching buffer.
 			 */
 			if (have_private_ref)
 				PinBuffer(bufHdr, NULL);	/* bump pin count */
 			else
 				PinBuffer_Locked(bufHdr);	/* pin for first time */
+
+			pgBufferUsage.shared_blks_hit++;
 
 			return true;
 		}
@@ -803,23 +821,23 @@ ReadBufferExtended(Relation reln, ForkNumber forkNum, BlockNumber blockNum,
  * ReadBufferWithoutRelcache -- like ReadBufferExtended, but doesn't require
  *		a relcache entry for the relation.
  *
- * NB: At present, this function may only be used on permanent relations, which
- * is OK, because we only use it during XLOG replay.  If in the future we
- * want to use it on temporary or unlogged relations, we could pass additional
- * parameters.
+ * Pass permanent = true for a RELPERSISTENCE_PERMANENT relation, and
+ * permanent = false for a RELPERSISTENCE_UNLOGGED relation. This function
+ * cannot be used for temporary relations (and making that work might be
+ * difficult, unless we only want to read temporary relations for our own
+ * BackendId).
  */
 Buffer
 ReadBufferWithoutRelcache(RelFileNode rnode, ForkNumber forkNum,
 						  BlockNumber blockNum, ReadBufferMode mode,
-						  BufferAccessStrategy strategy)
+						  BufferAccessStrategy strategy, bool permanent)
 {
 	bool		hit;
 
 	SMgrRelation smgr = smgropen(rnode, InvalidBackendId);
 
-	Assert(InRecovery);
-
-	return ReadBuffer_common(smgr, RELPERSISTENCE_PERMANENT, forkNum, blockNum,
+	return ReadBuffer_common(smgr, permanent ? RELPERSISTENCE_PERMANENT :
+							 RELPERSISTENCE_UNLOGGED, forkNum, blockNum,
 							 mode, strategy, &hit);
 }
 
@@ -1931,11 +1949,11 @@ UnpinBuffer(BufferDesc *buf, bool fixOwner)
 				BUF_STATE_GET_REFCOUNT(buf_state) == 1)
 			{
 				/* we just released the last pin other than the waiter's */
-				int			wait_backend_pid = buf->wait_backend_pid;
+				int			wait_backend_pgprocno = buf->wait_backend_pgprocno;
 
 				buf_state &= ~BM_PIN_COUNT_WAITER;
 				UnlockBufHdr(buf, buf_state);
-				ProcSendSignal(wait_backend_pid);
+				ProcSendSignal(wait_backend_pgprocno);
 			}
 			else
 				UnlockBufHdr(buf, buf_state);
@@ -2178,7 +2196,7 @@ BufferSync(int flags)
 			if (SyncOneBuffer(buf_id, false, &wb_context) & BUF_WRITTEN)
 			{
 				TRACE_POSTGRESQL_BUFFER_SYNC_WRITTEN(buf_id);
-				PendingCheckpointerStats.m_buf_written_checkpoints++;
+				PendingCheckpointerStats.buf_written_checkpoints++;
 				num_written++;
 			}
 		}
@@ -2288,7 +2306,7 @@ BgBufferSync(WritebackContext *wb_context)
 	strategy_buf_id = StrategySyncStart(&strategy_passes, &recent_alloc);
 
 	/* Report buffer alloc counts to pgstat */
-	PendingBgWriterStats.m_buf_alloc += recent_alloc;
+	PendingBgWriterStats.buf_alloc += recent_alloc;
 
 	/*
 	 * If we're not running the LRU scan, just stop after doing the stats
@@ -2478,7 +2496,7 @@ BgBufferSync(WritebackContext *wb_context)
 			reusable_buffers++;
 			if (++num_written >= bgwriter_lru_maxpages)
 			{
-				PendingBgWriterStats.m_maxwritten_clean++;
+				PendingBgWriterStats.maxwritten_clean++;
 				break;
 			}
 		}
@@ -2486,7 +2504,7 @@ BgBufferSync(WritebackContext *wb_context)
 			reusable_buffers++;
 	}
 
-	PendingBgWriterStats.m_buf_written_clean += num_written;
+	PendingBgWriterStats.buf_written_clean += num_written;
 
 #ifdef BGW_DEBUG
 	elog(DEBUG1, "bgwriter: recent_alloc=%u smoothed=%.2f delta=%ld ahead=%d density=%.2f reusable_est=%d upcoming_est=%d scanned=%d wrote=%d reusable=%d",
@@ -2699,7 +2717,6 @@ CheckForBufferLeaks(void)
 			PrintBufferLeakWarning(res->buffer);
 			RefCountErrors++;
 		}
-
 	}
 
 	Assert(RefCountErrors == 0);
@@ -2971,37 +2988,26 @@ RelationGetNumberOfBlocksInFork(Relation relation, ForkNumber forkNum)
 		return 0;
 	}
 
-	switch (relation->rd_rel->relkind)
+	if (RELKIND_HAS_TABLE_AM(relation->rd_rel->relkind))
 	{
-		case RELKIND_SEQUENCE:
-		case RELKIND_INDEX:
-			return smgrnblocks(RelationGetSmgr(relation), forkNum);
+		/*
+		 * Not every table AM uses BLCKSZ wide fixed size blocks. Therefore
+		 * tableam returns the size in bytes - but for the purpose of this
+		 * routine, we want the number of blocks. Therefore divide, rounding
+		 * up.
+		 */
+		uint64		szbytes;
 
-		case RELKIND_RELATION:
-		case RELKIND_TOASTVALUE:
-		case RELKIND_MATVIEW:
-			{
-				/*
-				 * Not every table AM uses BLCKSZ wide fixed size blocks.
-				 * Therefore tableam returns the size in bytes - but for the
-				 * purpose of this routine, we want the number of blocks.
-				 * Therefore divide, rounding up.
-				 */
-				uint64		szbytes;
+		szbytes = table_relation_size(relation, forkNum);
 
-				szbytes = table_relation_size(relation, forkNum);
-
-				return (szbytes + (BLCKSZ - 1)) / BLCKSZ;
-			}
-		case RELKIND_VIEW:
-		case RELKIND_COMPOSITE_TYPE:
-		case RELKIND_FOREIGN_TABLE:
-		case RELKIND_PARTITIONED_INDEX:
-		case RELKIND_PARTITIONED_TABLE:
-		default:
-			Assert(false);
-			break;
+		return (szbytes + (BLCKSZ - 1)) / BLCKSZ;
 	}
+	else if (RELKIND_HAS_STORAGE(relation->rd_rel->relkind))
+	{
+		return smgrnblocks(RelationGetSmgr(relation), forkNum);
+	}
+	else
+		Assert(false);
 
 	return 0;					/* keep compiler quiet */
 }
@@ -3691,7 +3697,6 @@ FlushRelationsAllBuffers(SMgrRelation *smgrs, int nrels)
 					break;
 				}
 			}
-
 		}
 		else
 		{
@@ -3721,6 +3726,160 @@ FlushRelationsAllBuffers(SMgrRelation *smgrs, int nrels)
 	}
 
 	pfree(srels);
+}
+
+/* ---------------------------------------------------------------------
+ *		RelationCopyStorageUsingBuffer
+ *
+ *		Copy fork's data using bufmgr.  Same as RelationCopyStorage but instead
+ *		of using smgrread and smgrextend this will copy using bufmgr APIs.
+ *
+ *		Refer comments atop CreateAndCopyRelationData() for details about
+ *		'permanent' parameter.
+ * --------------------------------------------------------------------
+ */
+static void
+RelationCopyStorageUsingBuffer(RelFileNode srcnode,
+							   RelFileNode dstnode,
+							   ForkNumber forkNum, bool permanent)
+{
+	Buffer		srcBuf;
+	Buffer		dstBuf;
+	Page		srcPage;
+	Page		dstPage;
+	bool		use_wal;
+	BlockNumber nblocks;
+	BlockNumber blkno;
+	PGAlignedBlock buf;
+	BufferAccessStrategy bstrategy_src;
+	BufferAccessStrategy bstrategy_dst;
+
+	/*
+	 * In general, we want to write WAL whenever wal_level > 'minimal', but we
+	 * can skip it when copying any fork of an unlogged relation other than
+	 * the init fork.
+	 */
+	use_wal = XLogIsNeeded() && (permanent || forkNum == INIT_FORKNUM);
+
+	/* Get number of blocks in the source relation. */
+	nblocks = smgrnblocks(smgropen(srcnode, InvalidBackendId),
+						  forkNum);
+
+	/* Nothing to copy; just return. */
+	if (nblocks == 0)
+		return;
+
+	/*
+	 * Bulk extend the destination relation of the same size as the source
+	 * relation before starting to copy block by block.
+	 */
+	memset(buf.data, 0, BLCKSZ);
+	smgrextend(smgropen(dstnode, InvalidBackendId), forkNum, nblocks - 1,
+			   buf.data, true);
+
+	/* This is a bulk operation, so use buffer access strategies. */
+	bstrategy_src = GetAccessStrategy(BAS_BULKREAD);
+	bstrategy_dst = GetAccessStrategy(BAS_BULKWRITE);
+
+	/* Iterate over each block of the source relation file. */
+	for (blkno = 0; blkno < nblocks; blkno++)
+	{
+		CHECK_FOR_INTERRUPTS();
+
+		/* Read block from source relation. */
+		srcBuf = ReadBufferWithoutRelcache(srcnode, forkNum, blkno,
+										   RBM_NORMAL, bstrategy_src,
+										   permanent);
+		LockBuffer(srcBuf, BUFFER_LOCK_SHARE);
+		srcPage = BufferGetPage(srcBuf);
+
+		/* Use P_NEW to extend the destination relation. */
+		dstBuf = ReadBufferWithoutRelcache(dstnode, forkNum, blkno,
+										   RBM_NORMAL, bstrategy_dst,
+										   permanent);
+		LockBuffer(dstBuf, BUFFER_LOCK_EXCLUSIVE);
+		dstPage = BufferGetPage(dstBuf);
+
+		START_CRIT_SECTION();
+
+		/* Copy page data from the source to the destination. */
+		memcpy(dstPage, srcPage, BLCKSZ);
+		MarkBufferDirty(dstBuf);
+
+		/* WAL-log the copied page. */
+		if (use_wal)
+			log_newpage_buffer(dstBuf, true);
+
+		END_CRIT_SECTION();
+
+		UnlockReleaseBuffer(dstBuf);
+		UnlockReleaseBuffer(srcBuf);
+	}
+}
+
+/* ---------------------------------------------------------------------
+ *		CreateAndCopyRelationData
+ *
+ *		Create destination relation storage and copy all forks from the
+ *		source relation to the destination.
+ *
+ *		Pass permanent as true for permanent relations and false for
+ *		unlogged relations.  Currently this API is not supported for
+ *		temporary relations.
+ * --------------------------------------------------------------------
+ */
+void
+CreateAndCopyRelationData(RelFileNode src_rnode, RelFileNode dst_rnode,
+						  bool permanent)
+{
+	RelFileNodeBackend rnode;
+	char		relpersistence;
+
+	/* Set the relpersistence. */
+	relpersistence = permanent ?
+		RELPERSISTENCE_PERMANENT : RELPERSISTENCE_UNLOGGED;
+
+	/*
+	 * Create and copy all forks of the relation.  During create database we
+	 * have a separate cleanup mechanism which deletes complete database
+	 * directory.  Therefore, each individual relation doesn't need to be
+	 * registered for cleanup.
+	 */
+	RelationCreateStorage(dst_rnode, relpersistence, false);
+
+	/* copy main fork. */
+	RelationCopyStorageUsingBuffer(src_rnode, dst_rnode, MAIN_FORKNUM,
+								   permanent);
+
+	/* copy those extra forks that exist */
+	for (ForkNumber forkNum = MAIN_FORKNUM + 1;
+		 forkNum <= MAX_FORKNUM; forkNum++)
+	{
+		if (smgrexists(smgropen(src_rnode, InvalidBackendId), forkNum))
+		{
+			smgrcreate(smgropen(dst_rnode, InvalidBackendId), forkNum, false);
+
+			/*
+			 * WAL log creation if the relation is persistent, or this is the
+			 * init fork of an unlogged relation.
+			 */
+			if (permanent || forkNum == INIT_FORKNUM)
+				log_smgrcreate(&dst_rnode, forkNum);
+
+			/* Copy a fork's data, block by block. */
+			RelationCopyStorageUsingBuffer(src_rnode, dst_rnode, forkNum,
+										   permanent);
+		}
+	}
+
+	/* close source and destination smgr if exists. */
+	rnode.backend = InvalidBackendId;
+
+	rnode.node = src_rnode;
+	smgrclosenode(rnode);
+
+	rnode.node = dst_rnode;
+	smgrclosenode(rnode);
 }
 
 /* ---------------------------------------------------------------------
@@ -3908,7 +4067,7 @@ MarkBufferDirtyHint(Buffer buffer, bool buffer_std)
 	{
 		XLogRecPtr	lsn = InvalidXLogRecPtr;
 		bool		dirtied = false;
-		bool		delayChkpt = false;
+		bool		delayChkptFlags = false;
 		uint32		buf_state;
 
 		/*
@@ -3955,10 +4114,12 @@ MarkBufferDirtyHint(Buffer buffer, bool buffer_std)
 			 * never gets written, so crash recovery will fix.
 			 *
 			 * It's possible we may enter here without an xid, so it is
-			 * essential that CreateCheckpoint waits for virtual transactions
+			 * essential that CreateCheckPoint waits for virtual transactions
 			 * rather than full transactionids.
 			 */
-			MyProc->delayChkpt = delayChkpt = true;
+			Assert((MyProc->delayChkptFlags & DELAY_CHKPT_START) == 0);
+			MyProc->delayChkptFlags |= DELAY_CHKPT_START;
+			delayChkptFlags = true;
 			lsn = XLogSaveBufferForHint(buffer, buffer_std);
 		}
 
@@ -3990,8 +4151,8 @@ MarkBufferDirtyHint(Buffer buffer, bool buffer_std)
 		buf_state |= BM_DIRTY | BM_JUST_DIRTIED;
 		UnlockBufHdr(bufHdr, buf_state);
 
-		if (delayChkpt)
-			MyProc->delayChkpt = false;
+		if (delayChkptFlags)
+			MyProc->delayChkptFlags &= ~DELAY_CHKPT_START;
 
 		if (dirtied)
 		{
@@ -4028,7 +4189,7 @@ UnlockBuffers(void)
 		 * got a cancel/die interrupt before getting the signal.
 		 */
 		if ((buf_state & BM_PIN_COUNT_WAITER) != 0 &&
-			buf->wait_backend_pid == MyProcPid)
+			buf->wait_backend_pgprocno == MyProc->pgprocno)
 			buf_state &= ~BM_PIN_COUNT_WAITER;
 
 		UnlockBufHdr(buf, buf_state);
@@ -4164,7 +4325,7 @@ LockBufferForCleanup(Buffer buffer)
 			LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 			elog(ERROR, "multiple backends attempting to wait for pincount 1");
 		}
-		bufHdr->wait_backend_pid = MyProcPid;
+		bufHdr->wait_backend_pgprocno = MyProc->pgprocno;
 		PinCountWaitBuf = bufHdr;
 		buf_state |= BM_PIN_COUNT_WAITER;
 		UnlockBufHdr(bufHdr, buf_state);
@@ -4235,7 +4396,7 @@ LockBufferForCleanup(Buffer buffer)
 		 */
 		buf_state = LockBufHdr(bufHdr);
 		if ((buf_state & BM_PIN_COUNT_WAITER) != 0 &&
-			bufHdr->wait_backend_pid == MyProcPid)
+			bufHdr->wait_backend_pgprocno == MyProc->pgprocno)
 			buf_state &= ~BM_PIN_COUNT_WAITER;
 		UnlockBufHdr(bufHdr, buf_state);
 

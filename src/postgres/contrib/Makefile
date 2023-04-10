@@ -9,6 +9,8 @@ SUBDIRS = \
 		amcheck		\
 		auth_delay	\
 		auto_explain	\
+		basic_archive	\
+		basebackup_to_shell	\
 		bloom		\
 		btree_gin	\
 		btree_gist	\
@@ -39,10 +41,10 @@ SUBDIRS = \
 		pgaudit 	\
 		pg_stat_monitor  \
 		pg_trgm		\
-		pgcrypto	\
 		pgrowlocks	\
 		pgstattuple	\
 		pg_visibility	\
+		pg_walinspect	\
 		postgres_fdw	\
 		seg		\
 		spi		\
@@ -57,9 +59,9 @@ SUBDIRS = \
 		yb_test_extension
 
 ifeq ($(with_ssl),openssl)
-SUBDIRS += sslinfo
+SUBDIRS += pgcrypto sslinfo
 else
-ALWAYS_SUBDIRS += sslinfo
+ALWAYS_SUBDIRS += pgcrypto sslinfo
 endif
 
 ifneq ($(with_uuid),no)

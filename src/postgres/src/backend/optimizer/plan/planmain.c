@@ -9,7 +9,7 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -264,7 +264,7 @@ query_planner(PlannerInfo *root,
 	add_other_rels_to_query(root);
 
 	/*
-	 * Distribute any UPDATE/DELETE row identity variables to the target
+	 * Distribute any UPDATE/DELETE/MERGE row identity variables to the target
 	 * relations.  This can't be done till we've finished expansion of
 	 * appendrels.
 	 */

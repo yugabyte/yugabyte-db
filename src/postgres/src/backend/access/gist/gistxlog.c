@@ -4,7 +4,7 @@
  *	  WAL replay logic for GiST.
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -81,7 +81,7 @@ gistRedoPageUpdateRecord(XLogReaderState *record)
 		char	   *begin;
 		char	   *data;
 		Size		datalen;
-		int			ninserted = 0;
+		int			ninserted PG_USED_FOR_ASSERTS_ONLY = 0;
 
 		data = begin = XLogRecGetBlockData(record, 0, &datalen);
 

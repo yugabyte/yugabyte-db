@@ -3,11 +3,11 @@
  * subscriptioncmds.c
  *		subscription catalog manipulation functions
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *		subscriptioncmds.c
+ *		src/backend/commands/subscriptioncmds.c
  *
  *-------------------------------------------------------------------------
  */
@@ -32,6 +32,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "pgstat.h"
 #include "replication/logicallauncher.h"
 #include "replication/origin.h"
 #include "replication/slot.h"
@@ -44,6 +45,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/pg_lsn.h"
 #include "utils/syscache.h"
 
 /*
@@ -60,6 +62,8 @@
 #define SUBOPT_BINARY				0x00000080
 #define SUBOPT_STREAMING			0x00000100
 #define SUBOPT_TWOPHASE_COMMIT		0x00000200
+#define SUBOPT_DISABLE_ON_ERR		0x00000400
+#define SUBOPT_LSN					0x00000800
 
 /* check if the 'val' has 'bits' set */
 #define IsSet(val, bits)  (((val) & (bits)) == (bits))
@@ -81,6 +85,8 @@ typedef struct SubOpts
 	bool		binary;
 	bool		streaming;
 	bool		twophase;
+	bool		disableonerr;
+	XLogRecPtr	lsn;
 } SubOpts;
 
 static List *fetch_table_list(WalReceiverConn *wrconn, List *publications);
@@ -94,14 +100,15 @@ static void ReportSlotConnectionError(List *rstates, Oid subid, char *slotname, 
  *
  * Since not all options can be specified in both commands, this function
  * will report an error if mutually exclusive options are specified.
- *
- * Caller is expected to have cleared 'opts'.
  */
 static void
 parse_subscription_options(ParseState *pstate, List *stmt_options,
 						   bits32 supported_opts, SubOpts *opts)
 {
 	ListCell   *lc;
+
+	/* Start out with cleared opts. */
+	memset(opts, 0, sizeof(SubOpts));
 
 	/* caller must expect some option */
 	Assert(supported_opts != 0);
@@ -128,6 +135,8 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 		opts->streaming = false;
 	if (IsSet(supported_opts, SUBOPT_TWOPHASE_COMMIT))
 		opts->twophase = false;
+	if (IsSet(supported_opts, SUBOPT_DISABLE_ON_ERR))
+		opts->disableonerr = false;
 
 	/* Parse options */
 	foreach(lc, stmt_options)
@@ -247,6 +256,42 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 			opts->specified_opts |= SUBOPT_TWOPHASE_COMMIT;
 			opts->twophase = defGetBoolean(defel);
 		}
+		else if (IsSet(supported_opts, SUBOPT_DISABLE_ON_ERR) &&
+				 strcmp(defel->defname, "disable_on_error") == 0)
+		{
+			if (IsSet(opts->specified_opts, SUBOPT_DISABLE_ON_ERR))
+				errorConflictingDefElem(defel, pstate);
+
+			opts->specified_opts |= SUBOPT_DISABLE_ON_ERR;
+			opts->disableonerr = defGetBoolean(defel);
+		}
+		else if (IsSet(supported_opts, SUBOPT_LSN) &&
+				 strcmp(defel->defname, "lsn") == 0)
+		{
+			char	   *lsn_str = defGetString(defel);
+			XLogRecPtr	lsn;
+
+			if (IsSet(opts->specified_opts, SUBOPT_LSN))
+				errorConflictingDefElem(defel, pstate);
+
+			/* Setting lsn = NONE is treated as resetting LSN */
+			if (strcmp(lsn_str, "none") == 0)
+				lsn = InvalidXLogRecPtr;
+			else
+			{
+				/* Parse the argument as LSN */
+				lsn = DatumGetLSN(DirectFunctionCall1(pg_lsn_in,
+													  CStringGetDatum(lsn_str)));
+
+				if (XLogRecPtrIsInvalid(lsn))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							 errmsg("invalid WAL location (LSN): %s", lsn_str)));
+			}
+
+			opts->specified_opts |= SUBOPT_LSN;
+			opts->lsn = lsn;
+		}
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -261,7 +306,6 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 	{
 		/* Check for incompatible options from the user. */
 		if (opts->enabled &&
-			IsSet(supported_opts, SUBOPT_ENABLED) &&
 			IsSet(opts->specified_opts, SUBOPT_ENABLED))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -270,7 +314,6 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 							"connect = false", "enabled = true")));
 
 		if (opts->create_slot &&
-			IsSet(supported_opts, SUBOPT_CREATE_SLOT) &&
 			IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -278,7 +321,6 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 							"connect = false", "create_slot = true")));
 
 		if (opts->copy_data &&
-			IsSet(supported_opts, SUBOPT_COPY_DATA) &&
 			IsSet(opts->specified_opts, SUBOPT_COPY_DATA))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -296,44 +338,134 @@ parse_subscription_options(ParseState *pstate, List *stmt_options,
 	 * was used.
 	 */
 	if (!opts->slot_name &&
-		IsSet(supported_opts, SUBOPT_SLOT_NAME) &&
 		IsSet(opts->specified_opts, SUBOPT_SLOT_NAME))
 	{
-		if (opts->enabled &&
-			IsSet(supported_opts, SUBOPT_ENABLED) &&
-			IsSet(opts->specified_opts, SUBOPT_ENABLED))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("%s and %s are mutually exclusive options",
-							"slot_name = NONE", "enabled = true")));
+		if (opts->enabled)
+		{
+			if (IsSet(opts->specified_opts, SUBOPT_ENABLED))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("%s and %s are mutually exclusive options",
+								"slot_name = NONE", "enabled = true")));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("subscription with %s must also set %s",
+								"slot_name = NONE", "enabled = false")));
+		}
 
-		if (opts->create_slot &&
-			IsSet(supported_opts, SUBOPT_CREATE_SLOT) &&
-			IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("%s and %s are mutually exclusive options",
-							"slot_name = NONE", "create_slot = true")));
+		if (opts->create_slot)
+		{
+			if (IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("%s and %s are mutually exclusive options",
+								"slot_name = NONE", "create_slot = true")));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+				/*- translator: both %s are strings of the form "option = value" */
+						 errmsg("subscription with %s must also set %s",
+								"slot_name = NONE", "create_slot = false")));
+		}
+	}
+}
 
-		if (opts->enabled &&
-			IsSet(supported_opts, SUBOPT_ENABLED) &&
-			!IsSet(opts->specified_opts, SUBOPT_ENABLED))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("subscription with %s must also set %s",
-							"slot_name = NONE", "enabled = false")));
+/*
+ * Add publication names from the list to a string.
+ */
+static void
+get_publications_str(List *publications, StringInfo dest, bool quote_literal)
+{
+	ListCell   *lc;
+	bool		first = true;
 
-		if (opts->create_slot &&
-			IsSet(supported_opts, SUBOPT_CREATE_SLOT) &&
-			!IsSet(opts->specified_opts, SUBOPT_CREATE_SLOT))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-			/*- translator: both %s are strings of the form "option = value" */
-					 errmsg("subscription with %s must also set %s",
-							"slot_name = NONE", "create_slot = false")));
+	Assert(list_length(publications) > 0);
+
+	foreach(lc, publications)
+	{
+		char	   *pubname = strVal(lfirst(lc));
+
+		if (first)
+			first = false;
+		else
+			appendStringInfoString(dest, ", ");
+
+		if (quote_literal)
+			appendStringInfoString(dest, quote_literal_cstr(pubname));
+		else
+		{
+			appendStringInfoChar(dest, '"');
+			appendStringInfoString(dest, pubname);
+			appendStringInfoChar(dest, '"');
+		}
+	}
+}
+
+/*
+ * Check that the specified publications are present on the publisher.
+ */
+static void
+check_publications(WalReceiverConn *wrconn, List *publications)
+{
+	WalRcvExecResult *res;
+	StringInfo	cmd;
+	TupleTableSlot *slot;
+	List	   *publicationsCopy = NIL;
+	Oid			tableRow[1] = {TEXTOID};
+
+	cmd = makeStringInfo();
+	appendStringInfoString(cmd, "SELECT t.pubname FROM\n"
+						   " pg_catalog.pg_publication t WHERE\n"
+						   " t.pubname IN (");
+	get_publications_str(publications, cmd, true);
+	appendStringInfoChar(cmd, ')');
+
+	res = walrcv_exec(wrconn, cmd->data, 1, tableRow);
+	pfree(cmd->data);
+	pfree(cmd);
+
+	if (res->status != WALRCV_OK_TUPLES)
+		ereport(ERROR,
+				errmsg("could not receive list of publications from the publisher: %s",
+					   res->err));
+
+	publicationsCopy = list_copy(publications);
+
+	/* Process publication(s). */
+	slot = MakeSingleTupleTableSlot(res->tupledesc, &TTSOpsMinimalTuple);
+	while (tuplestore_gettupleslot(res->tuplestore, true, false, slot))
+	{
+		char	   *pubname;
+		bool		isnull;
+
+		pubname = TextDatumGetCString(slot_getattr(slot, 1, &isnull));
+		Assert(!isnull);
+
+		/* Delete the publication present in publisher from the list. */
+		publicationsCopy = list_delete(publicationsCopy, makeString(pubname));
+		ExecClearTuple(slot);
+	}
+
+	ExecDropSingleTupleTableSlot(slot);
+
+	walrcv_clear_result(res);
+
+	if (list_length(publicationsCopy))
+	{
+		/* Prepare the list of non-existent publication(s) for error message. */
+		StringInfo	pubnames = makeStringInfo();
+
+		get_publications_str(publicationsCopy, pubnames, false);
+		ereport(WARNING,
+				errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg_plural("publication %s does not exist on the publisher",
+							  "publications %s do not exist on the publisher",
+							  list_length(publicationsCopy),
+							  pubnames->data));
 	}
 }
 
@@ -396,7 +528,8 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 	supported_opts = (SUBOPT_CONNECT | SUBOPT_ENABLED | SUBOPT_CREATE_SLOT |
 					  SUBOPT_SLOT_NAME | SUBOPT_COPY_DATA |
 					  SUBOPT_SYNCHRONOUS_COMMIT | SUBOPT_BINARY |
-					  SUBOPT_STREAMING | SUBOPT_TWOPHASE_COMMIT);
+					  SUBOPT_STREAMING | SUBOPT_TWOPHASE_COMMIT |
+					  SUBOPT_DISABLE_ON_ERR);
 	parse_subscription_options(pstate, stmt->options, supported_opts, &opts);
 
 	/*
@@ -460,6 +593,7 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 							   Anum_pg_subscription_oid);
 	values[Anum_pg_subscription_oid - 1] = ObjectIdGetDatum(subid);
 	values[Anum_pg_subscription_subdbid - 1] = ObjectIdGetDatum(MyDatabaseId);
+	values[Anum_pg_subscription_subskiplsn - 1] = LSNGetDatum(InvalidXLogRecPtr);
 	values[Anum_pg_subscription_subname - 1] =
 		DirectFunctionCall1(namein, CStringGetDatum(stmt->subname));
 	values[Anum_pg_subscription_subowner - 1] = ObjectIdGetDatum(owner);
@@ -470,6 +604,7 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 		CharGetDatum(opts.twophase ?
 					 LOGICALREP_TWOPHASE_STATE_PENDING :
 					 LOGICALREP_TWOPHASE_STATE_DISABLED);
+	values[Anum_pg_subscription_subdisableonerr - 1] = BoolGetDatum(opts.disableonerr);
 	values[Anum_pg_subscription_subconninfo - 1] =
 		CStringGetTextDatum(conninfo);
 	if (opts.slot_name)
@@ -514,6 +649,8 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 
 		PG_TRY();
 		{
+			check_publications(wrconn, publications);
+
 			/*
 			 * Set sync state based on if we were asked to do data copy or
 			 * not.
@@ -595,6 +732,8 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 
 	table_close(rel, RowExclusiveLock);
 
+	pgstat_create_subscription(subid);
+
 	if (opts.enabled)
 		ApplyLauncherWakeupAtCommit();
 
@@ -606,7 +745,8 @@ CreateSubscription(ParseState *pstate, CreateSubscriptionStmt *stmt,
 }
 
 static void
-AlterSubscription_refresh(Subscription *sub, bool copy_data)
+AlterSubscription_refresh(Subscription *sub, bool copy_data,
+						  List *validate_publications)
 {
 	char	   *err;
 	List	   *pubrel_names;
@@ -637,6 +777,9 @@ AlterSubscription_refresh(Subscription *sub, bool copy_data)
 
 	PG_TRY();
 	{
+		if (validate_publications)
+			check_publications(wrconn, validate_publications);
+
 		/* Get the table list from publisher. */
 		pubrel_names = fetch_table_list(wrconn, sub->publications);
 
@@ -870,7 +1013,7 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 			{
 				supported_opts = (SUBOPT_SLOT_NAME |
 								  SUBOPT_SYNCHRONOUS_COMMIT | SUBOPT_BINARY |
-								  SUBOPT_STREAMING);
+								  SUBOPT_STREAMING | SUBOPT_DISABLE_ON_ERR);
 
 				parse_subscription_options(pstate, stmt->options,
 										   supported_opts, &opts);
@@ -917,6 +1060,14 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 					values[Anum_pg_subscription_substream - 1] =
 						BoolGetDatum(opts.streaming);
 					replaces[Anum_pg_subscription_substream - 1] = true;
+				}
+
+				if (IsSet(opts.specified_opts, SUBOPT_DISABLE_ON_ERR))
+				{
+					values[Anum_pg_subscription_subdisableonerr - 1]
+						= BoolGetDatum(opts.disableonerr);
+					replaces[Anum_pg_subscription_subdisableonerr - 1]
+						= true;
 				}
 
 				update_tuple = true;
@@ -984,17 +1135,17 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 					 */
 					if (sub->twophasestate == LOGICALREP_TWOPHASE_STATE_ENABLED && opts.copy_data)
 						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
+								(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 								 errmsg("ALTER SUBSCRIPTION with refresh and copy_data is not allowed when two_phase is enabled"),
-								 errhint("Use ALTER SUBSCRIPTION ...SET PUBLICATION with refresh = false, or with copy_data = false"
-										 ", or use DROP/CREATE SUBSCRIPTION.")));
+								 errhint("Use ALTER SUBSCRIPTION ... SET PUBLICATION with refresh = false, or with copy_data = false, or use DROP/CREATE SUBSCRIPTION.")));
 
 					PreventInTransactionBlock(isTopLevel, "ALTER SUBSCRIPTION with refresh");
 
 					/* Make sure refresh sees the new list of publications. */
 					sub->publications = stmt->publication;
 
-					AlterSubscription_refresh(sub, opts.copy_data);
+					AlterSubscription_refresh(sub, opts.copy_data,
+											  stmt->publication);
 				}
 
 				break;
@@ -1020,11 +1171,18 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 				/* Refresh if user asked us to. */
 				if (opts.refresh)
 				{
+					/* We only need to validate user specified publications. */
+					List	   *validate_publications = (isadd) ? stmt->publication : NULL;
+
 					if (!sub->enabled)
 						ereport(ERROR,
 								(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 								 errmsg("ALTER SUBSCRIPTION with refresh is not allowed for disabled subscriptions"),
-								 errhint("Use ALTER SUBSCRIPTION ... SET PUBLICATION ... WITH (refresh = false).")));
+						/* translator: %s is an SQL ALTER command */
+								 errhint("Use %s instead.",
+										 isadd ?
+										 "ALTER SUBSCRIPTION ... ADD PUBLICATION ... WITH (refresh = false)" :
+										 "ALTER SUBSCRIPTION ... DROP PUBLICATION ... WITH (refresh = false)")));
 
 					/*
 					 * See ALTER_SUBSCRIPTION_REFRESH for details why this is
@@ -1032,17 +1190,21 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 					 */
 					if (sub->twophasestate == LOGICALREP_TWOPHASE_STATE_ENABLED && opts.copy_data)
 						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
+								(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 								 errmsg("ALTER SUBSCRIPTION with refresh and copy_data is not allowed when two_phase is enabled"),
-								 errhint("Use ALTER SUBSCRIPTION ...SET PUBLICATION with refresh = false, or with copy_data = false"
-										 ", or use DROP/CREATE SUBSCRIPTION.")));
+						/* translator: %s is an SQL ALTER command */
+								 errhint("Use %s with refresh = false, or with copy_data = false, or use DROP/CREATE SUBSCRIPTION.",
+										 isadd ?
+										 "ALTER SUBSCRIPTION ... ADD PUBLICATION" :
+										 "ALTER SUBSCRIPTION ... DROP PUBLICATION")));
 
 					PreventInTransactionBlock(isTopLevel, "ALTER SUBSCRIPTION with refresh");
 
 					/* Refresh the new list of publications. */
 					sub->publications = publist;
 
-					AlterSubscription_refresh(sub, opts.copy_data);
+					AlterSubscription_refresh(sub, opts.copy_data,
+											  validate_publications);
 				}
 
 				break;
@@ -1079,13 +1241,54 @@ AlterSubscription(ParseState *pstate, AlterSubscriptionStmt *stmt,
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("ALTER SUBSCRIPTION ... REFRESH with copy_data is not allowed when two_phase is enabled"),
-							 errhint("Use ALTER SUBSCRIPTION ... REFRESH with copy_data = false"
-									 ", or use DROP/CREATE SUBSCRIPTION.")));
+							 errhint("Use ALTER SUBSCRIPTION ... REFRESH with copy_data = false, or use DROP/CREATE SUBSCRIPTION.")));
 
 				PreventInTransactionBlock(isTopLevel, "ALTER SUBSCRIPTION ... REFRESH");
 
-				AlterSubscription_refresh(sub, opts.copy_data);
+				AlterSubscription_refresh(sub, opts.copy_data, NULL);
 
+				break;
+			}
+
+		case ALTER_SUBSCRIPTION_SKIP:
+			{
+				parse_subscription_options(pstate, stmt->options, SUBOPT_LSN, &opts);
+
+				/* ALTER SUBSCRIPTION ... SKIP supports only LSN option */
+				Assert(IsSet(opts.specified_opts, SUBOPT_LSN));
+
+				if (!superuser())
+					ereport(ERROR,
+							(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+							 errmsg("must be superuser to skip transaction")));
+
+				/*
+				 * If the user sets subskiplsn, we do a sanity check to make
+				 * sure that the specified LSN is a probable value.
+				 */
+				if (!XLogRecPtrIsInvalid(opts.lsn))
+				{
+					RepOriginId originid;
+					char		originname[NAMEDATALEN];
+					XLogRecPtr	remote_lsn;
+
+					snprintf(originname, sizeof(originname), "pg_%u", subid);
+					originid = replorigin_by_name(originname, false);
+					remote_lsn = replorigin_get_progress(originid, false);
+
+					/* Check the given LSN is at least a future LSN */
+					if (!XLogRecPtrIsInvalid(remote_lsn) && opts.lsn < remote_lsn)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("skip WAL location (LSN %X/%X) must be greater than origin LSN %X/%X",
+										LSN_FORMAT_ARGS(opts.lsn),
+										LSN_FORMAT_ARGS(remote_lsn))));
+				}
+
+				values[Anum_pg_subscription_subskiplsn - 1] = LSNGetDatum(opts.lsn);
+				replaces[Anum_pg_subscription_subskiplsn - 1] = true;
+
+				update_tuple = true;
 				break;
 			}
 
@@ -1204,7 +1407,8 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 	 * Since dropping a replication slot is not transactional, the replication
 	 * slot stays dropped even if the transaction rolls back.  So we cannot
 	 * run DROP SUBSCRIPTION inside a transaction block if dropping the
-	 * replication slot.
+	 * replication slot.  Also, in this case, we report a message for dropping
+	 * the subscription to the cumulative stats system.
 	 *
 	 * XXX The command name should really be something like "DROP SUBSCRIPTION
 	 * of a subscription that is associated with a replication slot", but we
@@ -1369,13 +1573,18 @@ DropSubscription(DropSubscriptionStmt *stmt, bool isTopLevel)
 		 */
 		if (slotname)
 			ReplicationSlotDropAtPubNode(wrconn, slotname, false);
-
 	}
 	PG_FINALLY();
 	{
 		walrcv_disconnect(wrconn);
 	}
 	PG_END_TRY();
+
+	/*
+	 * Tell the cumulative stats system that the subscription is getting
+	 * dropped.
+	 */
+	pgstat_drop_subscription(subid);
 
 	table_close(rel, NoLock);
 }
@@ -1474,6 +1683,8 @@ AlterSubscriptionOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 
 	InvokeObjectPostAlterHook(SubscriptionRelationId,
 							  form->oid, 0);
+
+	ApplyLauncherWakeupAtCommit();
 }
 
 /*
@@ -1540,6 +1751,11 @@ AlterSubscriptionOwner_oid(Oid subid, Oid newOwnerId)
 /*
  * Get the list of tables which belong to specified publications on the
  * publisher connection.
+ *
+ * Note that we don't support the case where the column list is different for
+ * the same table in different publications to avoid sending unwanted column
+ * information for some of the rows. This can happen when both the column
+ * list and row filter are specified for different publications.
  */
 static List *
 fetch_table_list(WalReceiverConn *wrconn, List *publications)
@@ -1547,32 +1763,23 @@ fetch_table_list(WalReceiverConn *wrconn, List *publications)
 	WalRcvExecResult *res;
 	StringInfoData cmd;
 	TupleTableSlot *slot;
-	Oid			tableRow[2] = {TEXTOID, TEXTOID};
-	ListCell   *lc;
-	bool		first;
+	Oid			tableRow[3] = {TEXTOID, TEXTOID, NAMEARRAYOID};
 	List	   *tablelist = NIL;
-
-	Assert(list_length(publications) > 0);
+	bool		check_columnlist = (walrcv_server_version(wrconn) >= 150000);
 
 	initStringInfo(&cmd);
-	appendStringInfoString(&cmd, "SELECT DISTINCT t.schemaname, t.tablename\n"
-						   "  FROM pg_catalog.pg_publication_tables t\n"
+	appendStringInfoString(&cmd, "SELECT DISTINCT t.schemaname, t.tablename \n");
+
+	/* Get column lists for each relation if the publisher supports it */
+	if (check_columnlist)
+		appendStringInfoString(&cmd, ", t.attnames\n");
+
+	appendStringInfoString(&cmd, "FROM pg_catalog.pg_publication_tables t\n"
 						   " WHERE t.pubname IN (");
-	first = true;
-	foreach(lc, publications)
-	{
-		char	   *pubname = strVal(lfirst(lc));
-
-		if (first)
-			first = false;
-		else
-			appendStringInfoString(&cmd, ", ");
-
-		appendStringInfoString(&cmd, quote_literal_cstr(pubname));
-	}
+	get_publications_str(publications, &cmd, true);
 	appendStringInfoChar(&cmd, ')');
 
-	res = walrcv_exec(wrconn, cmd.data, 2, tableRow);
+	res = walrcv_exec(wrconn, cmd.data, check_columnlist ? 3 : 2, tableRow);
 	pfree(cmd.data);
 
 	if (res->status != WALRCV_OK_TUPLES)
@@ -1596,7 +1803,14 @@ fetch_table_list(WalReceiverConn *wrconn, List *publications)
 		Assert(!isnull);
 
 		rv = makeRangeVar(nspname, relname, -1);
-		tablelist = lappend(tablelist, rv);
+
+		if (check_columnlist && list_member(tablelist, rv))
+			ereport(ERROR,
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("cannot use different column lists for table \"%s.%s\" in different publications",
+						   nspname, relname));
+		else
+			tablelist = lappend(tablelist, rv);
 
 		ExecClearTuple(slot);
 	}
@@ -1643,8 +1857,8 @@ ReportSlotConnectionError(List *rstates, Oid subid, char *slotname, char *err)
 
 	ereport(ERROR,
 			(errcode(ERRCODE_CONNECTION_FAILURE),
-			 errmsg("could not connect to publisher when attempting to "
-					"drop replication slot \"%s\": %s", slotname, err),
+			 errmsg("could not connect to publisher when attempting to drop replication slot \"%s\": %s",
+					slotname, err),
 	/* translator: %s is an SQL ALTER command */
 			 errhint("Use %s to disassociate the subscription from the slot.",
 					 "ALTER SUBSCRIPTION ... SET (slot_name = NONE)")));

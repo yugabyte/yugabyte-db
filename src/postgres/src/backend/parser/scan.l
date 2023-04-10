@@ -22,7 +22,7 @@
  * Postgres 9.2, this check is made automatically by the Makefile.)
  *
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -174,7 +174,7 @@ extern void core_yyset_column(int column_no, yyscan_t yyscanner);
  *  <xb> bit string literal
  *  <xc> extended C-style comments
  *  <xd> delimited identifiers (double-quoted identifiers)
- *  <xh> hexadecimal numeric string
+ *  <xh> hexadecimal byte string
  *  <xq> standard quoted strings
  *  <xqs> quote stop (detect continued strings)
  *  <xe> extended quoted strings (support backslash escape sequences)
@@ -262,7 +262,7 @@ quotecontinuefail	{whitespace}*"-"?
 xbstart			[bB]{quote}
 xbinside		[^']*
 
-/* Hexadecimal number */
+/* Hexadecimal byte string */
 xhstart			[xX]{quote}
 xhinside		[^']*
 
@@ -341,7 +341,6 @@ xcstart			\/\*{op_chars}*
 xcstop			\*+\/
 xcinside		[^*/]+
 
-digit			[0-9]
 ident_start		[A-Za-z\200-\377_]
 ident_cont		[A-Za-z\200-\377_0-9\$]
 
@@ -380,24 +379,31 @@ self			[,()\[\].;\:\+\-\*\/\%\^\<\>\=]
 op_chars		[\~\!\@\#\^\&\|\`\?\+\-\*\/\%\<\>\=]
 operator		{op_chars}+
 
-/* we no longer allow unary minus in numbers.
- * instead we pass it separately to parser. there it gets
- * coerced via doNegate() -- Leon aug 20 1999
+/*
+ * Numbers
+ *
+ * Unary minus is not part of a number here.  Instead we pass it separately to
+ * the parser, and there it gets coerced via doNegate().
  *
  * {decimalfail} is used because we would like "1..10" to lex as 1, dot_dot, 10.
  *
- * {realfail1} and {realfail2} are added to prevent the need for scanner
+ * {realfail} is added to prevent the need for scanner
  * backup when the {real} rule fails to match completely.
  */
+digit			[0-9]
 
 integer			{digit}+
 decimal			(({digit}*\.{digit}+)|({digit}+\.{digit}*))
 decimalfail		{digit}+\.\.
 real			({integer}|{decimal})[Ee][-+]?{digit}+
-realfail1		({integer}|{decimal})[Ee]
-realfail2		({integer}|{decimal})[Ee][-+]
+realfail		({integer}|{decimal})[Ee][-+]
+
+integer_junk	{integer}{ident_start}
+decimal_junk	{decimal}{ident_start}
+real_junk		{real}{ident_start}
 
 param			\${integer}
+param_junk		\${integer}{ident_start}
 
 other			.
 
@@ -972,6 +978,10 @@ other			.
 					yylval->ival = atol(yytext + 1);
 					return PARAM;
 				}
+{param_junk}	{
+					SET_YYLLOC();
+					yyerror("trailing junk after parameter");
+				}
 
 {integer}		{
 					SET_YYLLOC();
@@ -993,20 +1003,21 @@ other			.
 					yylval->str = pstrdup(yytext);
 					return FCONST;
 				}
-{realfail1}		{
-					/*
-					 * throw back the [Ee], and figure out whether what
-					 * remains is an {integer} or {decimal}.
-					 */
-					yyless(yyleng - 1);
+{realfail}		{
 					SET_YYLLOC();
-					return process_integer_literal(yytext, yylval);
+					yyerror("trailing junk after numeric literal");
 				}
-{realfail2}		{
-					/* throw back the [Ee][+-], and proceed as above */
-					yyless(yyleng - 2);
+{integer_junk}	{
 					SET_YYLLOC();
-					return process_integer_literal(yytext, yylval);
+					yyerror("trailing junk after numeric literal");
+				}
+{decimal_junk}	{
+					SET_YYLLOC();
+					yyerror("trailing junk after numeric literal");
+				}
+{real_junk}		{
+					SET_YYLLOC();
+					yyerror("trailing junk after numeric literal");
 				}
 
 

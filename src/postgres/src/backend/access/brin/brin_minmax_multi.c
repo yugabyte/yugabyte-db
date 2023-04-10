@@ -2,7 +2,7 @@
  * brin_minmax_multi.c
  *		Implementation of Multi Min/Max opclass for BRIN
  *
- * Portions Copyright (c) 1996-2021, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -73,6 +73,7 @@
 #include "utils/builtins.h"
 #include "utils/date.h"
 #include "utils/datum.h"
+#include "utils/float.h"
 #include "utils/inet.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -141,19 +142,23 @@ typedef struct MinMaxMultiOptions
  * The Ranges struct stores the boundary values in a single array, but we
  * treat regular and single-point ranges differently to save space. For
  * regular ranges (with different boundary values) we have to store both
- * values, while for "single-point ranges" we only need to save one value.
+ * the lower and upper bound of the range, while for "single-point ranges"
+ * we only need to store a single value.
  *
  * The 'values' array stores boundary values for regular ranges first (there
  * are 2*nranges values to store), and then the nvalues boundary values for
  * single-point ranges. That is, we have (2*nranges + nvalues) boundary
  * values in the array.
  *
- * +---------------------------------+-------------------------------+
- * | ranges (sorted pairs of values) | sorted values (single points) |
- * +---------------------------------+-------------------------------+
+ * +-------------------------+----------------------------------+
+ * | ranges (2 * nranges of) | single point values (nvalues of) |
+ * +-------------------------+----------------------------------+
  *
  * This allows us to quickly add new values, and store outliers without
- * making the other ranges very wide.
+ * having to widen any of the existing range values.
+ *
+ * 'nsorted' denotes how many of 'nvalues' in the values[] array are sorted.
+ * When nsorted == nvalues, all single point values are sorted.
  *
  * We never store more than maxvalues values (as set by values_per_range
  * reloption). If needed we merge some of the ranges.
@@ -172,10 +177,10 @@ typedef struct Ranges
 	FmgrInfo   *cmp;
 
 	/* (2*nranges + nvalues) <= maxvalues */
-	int			nranges;		/* number of ranges in the array (stored) */
-	int			nsorted;		/* number of sorted values (ranges + points) */
-	int			nvalues;		/* number of values in the data array (all) */
-	int			maxvalues;		/* maximum number of values (reloption) */
+	int			nranges;		/* number of ranges in the values[] array */
+	int			nsorted;		/* number of nvalues which are sorted */
+	int			nvalues;		/* number of point values in values[] array */
+	int			maxvalues;		/* number of elements in the values[] array */
 
 	/*
 	 * We simply add the values into a large buffer, without any expensive
@@ -197,7 +202,7 @@ typedef struct Ranges
  * with basic metadata, followed by the boundary values. It has a varlena
  * header, so can be treated as varlena directly.
  *
- * See range_serialize/range_deserialize for serialization details.
+ * See brin_range_serialize/brin_range_deserialize for serialization details.
  */
 typedef struct SerializedRanges
 {
@@ -216,9 +221,9 @@ typedef struct SerializedRanges
 	char		data[FLEXIBLE_ARRAY_MEMBER];
 } SerializedRanges;
 
-static SerializedRanges *range_serialize(Ranges *range);
+static SerializedRanges *brin_range_serialize(Ranges *range);
 
-static Ranges *range_deserialize(int maxvalues, SerializedRanges *range);
+static Ranges *brin_range_deserialize(int maxvalues, SerializedRanges *range);
 
 
 /*
@@ -309,7 +314,7 @@ AssertCheckRanges(Ranges *ranges, FmgrInfo *cmpFn, Oid colloid)
 	 */
 	AssertArrayOrder(cmpFn, colloid, ranges->values, 2 * ranges->nranges);
 
-	/* then the single-point ranges (with nvalues boundar values ) */
+	/* then the single-point ranges (with nvalues boundary values ) */
 	AssertArrayOrder(cmpFn, colloid, &ranges->values[2 * ranges->nranges],
 					 ranges->nsorted);
 
@@ -317,102 +322,99 @@ AssertCheckRanges(Ranges *ranges, FmgrInfo *cmpFn, Oid colloid)
 	 * Check that none of the values are not covered by ranges (both sorted
 	 * and unsorted)
 	 */
-	for (i = 0; i < ranges->nvalues; i++)
+	if (ranges->nranges > 0)
 	{
-		Datum		compar;
-		int			start,
-					end;
-		Datum		minvalue,
-					maxvalue;
-
-		Datum		value = ranges->values[2 * ranges->nranges + i];
-
-		if (ranges->nranges == 0)
-			break;
-
-		minvalue = ranges->values[0];
-		maxvalue = ranges->values[2 * ranges->nranges - 1];
-
-		/*
-		 * Is the value smaller than the minval? If yes, we'll recurse to the
-		 * left side of range array.
-		 */
-		compar = FunctionCall2Coll(cmpFn, colloid, value, minvalue);
-
-		/* smaller than the smallest value in the first range */
-		if (DatumGetBool(compar))
-			continue;
-
-		/*
-		 * Is the value greater than the maxval? If yes, we'll recurse to the
-		 * right side of range array.
-		 */
-		compar = FunctionCall2Coll(cmpFn, colloid, maxvalue, value);
-
-		/* larger than the largest value in the last range */
-		if (DatumGetBool(compar))
-			continue;
-
-		start = 0;				/* first range */
-		end = ranges->nranges - 1;	/* last range */
-		while (true)
+		for (i = 0; i < ranges->nvalues; i++)
 		{
-			int			midpoint = (start + end) / 2;
+			Datum		compar;
+			int			start,
+						end;
+			Datum		minvalue = ranges->values[0];
+			Datum		maxvalue = ranges->values[2 * ranges->nranges - 1];
+			Datum		value = ranges->values[2 * ranges->nranges + i];
 
-			/* this means we ran out of ranges in the last step */
-			if (start > end)
-				break;
-
-			/* copy the min/max values from the ranges */
-			minvalue = ranges->values[2 * midpoint];
-			maxvalue = ranges->values[2 * midpoint + 1];
-
-			/*
-			 * Is the value smaller than the minval? If yes, we'll recurse to
-			 * the left side of range array.
-			 */
 			compar = FunctionCall2Coll(cmpFn, colloid, value, minvalue);
 
-			/* smaller than the smallest value in this range */
-			if (DatumGetBool(compar))
-			{
-				end = (midpoint - 1);
-				continue;
-			}
-
 			/*
-			 * Is the value greater than the minval? If yes, we'll recurse to
-			 * the right side of range array.
+			 * If the value is smaller than the lower bound in the first range
+			 * then it cannot possibly be in any of the ranges.
 			 */
+			if (DatumGetBool(compar))
+				continue;
+
 			compar = FunctionCall2Coll(cmpFn, colloid, maxvalue, value);
 
-			/* larger than the largest value in this range */
+			/*
+			 * Likewise, if the value is larger than the upper bound of the
+			 * final range, then it cannot possibly be inside any of the
+			 * ranges.
+			 */
 			if (DatumGetBool(compar))
-			{
-				start = (midpoint + 1);
 				continue;
-			}
 
-			/* hey, we found a matching range */
-			Assert(false);
+			/* bsearch the ranges to see if 'value' fits within any of them */
+			start = 0;			/* first range */
+			end = ranges->nranges - 1;	/* last range */
+			while (true)
+			{
+				int			midpoint = (start + end) / 2;
+
+				/* this means we ran out of ranges in the last step */
+				if (start > end)
+					break;
+
+				/* copy the min/max values from the ranges */
+				minvalue = ranges->values[2 * midpoint];
+				maxvalue = ranges->values[2 * midpoint + 1];
+
+				/*
+				 * Is the value smaller than the minval? If yes, we'll recurse
+				 * to the left side of range array.
+				 */
+				compar = FunctionCall2Coll(cmpFn, colloid, value, minvalue);
+
+				/* smaller than the smallest value in this range */
+				if (DatumGetBool(compar))
+				{
+					end = (midpoint - 1);
+					continue;
+				}
+
+				/*
+				 * Is the value greater than the minval? If yes, we'll recurse
+				 * to the right side of range array.
+				 */
+				compar = FunctionCall2Coll(cmpFn, colloid, maxvalue, value);
+
+				/* larger than the largest value in this range */
+				if (DatumGetBool(compar))
+				{
+					start = (midpoint + 1);
+					continue;
+				}
+
+				/* hey, we found a matching range */
+				Assert(false);
+			}
 		}
 	}
 
-	/* and values in the unsorted part must not be in sorted part */
-	for (i = ranges->nsorted; i < ranges->nvalues; i++)
+	/* and values in the unsorted part must not be in the sorted part */
+	if (ranges->nsorted > 0)
 	{
 		compare_context cxt;
-		Datum		value = ranges->values[2 * ranges->nranges + i];
-
-		if (ranges->nsorted == 0)
-			break;
 
 		cxt.colloid = ranges->colloid;
 		cxt.cmpFn = ranges->cmp;
 
-		Assert(bsearch_arg(&value, &ranges->values[2 * ranges->nranges],
-						   ranges->nsorted, sizeof(Datum),
-						   compare_values, (void *) &cxt) == NULL);
+		for (i = ranges->nsorted; i < ranges->nvalues; i++)
+		{
+			Datum		value = ranges->values[2 * ranges->nranges + i];
+
+			Assert(bsearch_arg(&value, &ranges->values[2 * ranges->nranges],
+							   ranges->nsorted, sizeof(Datum),
+							   compare_values, (void *) &cxt) == NULL);
+		}
 	}
 #endif
 }
@@ -565,14 +567,14 @@ range_deduplicate_values(Ranges *range)
 
 
 /*
- * range_serialize
+ * brin_range_serialize
  *	  Serialize the in-memory representation into a compact varlena value.
  *
  * Simply copy the header and then also the individual values, as stored
  * in the in-memory value array.
  */
 static SerializedRanges *
-range_serialize(Ranges *range)
+brin_range_serialize(Ranges *range)
 {
 	Size		len;
 	int			nvalues;
@@ -711,14 +713,14 @@ range_serialize(Ranges *range)
 }
 
 /*
- * range_deserialize
+ * brin_range_deserialize
  *	  Serialize the in-memory representation into a compact varlena value.
  *
  * Simply copy the header and then also the individual values, as stored
  * in the in-memory value array.
  */
 static Ranges *
-range_deserialize(int maxvalues, SerializedRanges *serialized)
+brin_range_deserialize(int maxvalues, SerializedRanges *serialized)
 {
 	int			i,
 				nvalues;
@@ -923,8 +925,8 @@ has_matching_range(BrinDesc *bdesc, Oid colloid, Ranges *ranges,
 {
 	Datum		compar;
 
-	Datum		minvalue = ranges->values[0];
-	Datum		maxvalue = ranges->values[2 * ranges->nranges - 1];
+	Datum		minvalue;
+	Datum		maxvalue;
 
 	FmgrInfo   *cmpLessFn;
 	FmgrInfo   *cmpGreaterFn;
@@ -935,6 +937,9 @@ has_matching_range(BrinDesc *bdesc, Oid colloid, Ranges *ranges,
 
 	if (ranges->nranges == 0)
 		return false;
+
+	minvalue = ranges->values[0];
+	maxvalue = ranges->values[2 * ranges->nranges - 1];
 
 	/*
 	 * Otherwise, need to compare the new value with boundaries of all the
@@ -1330,7 +1335,11 @@ build_distances(FmgrInfo *distanceFn, Oid colloid,
 	int			ndistances;
 	DistanceValue *distances;
 
-	Assert(neranges >= 2);
+	Assert(neranges > 0);
+
+	/* If there's only a single range, there's no distance to calculate. */
+	if (neranges == 1)
+		return NULL;
 
 	ndistances = (neranges - 1);
 	distances = (DistanceValue *) palloc0(sizeof(DistanceValue) * ndistances);
@@ -1872,6 +1881,14 @@ brin_minmax_multi_distance_float4(PG_FUNCTION_ARGS)
 	float		a1 = PG_GETARG_FLOAT4(0);
 	float		a2 = PG_GETARG_FLOAT4(1);
 
+	/* if both values are NaN, then we consider them the same */
+	if (isnan(a1) && isnan(a2))
+		PG_RETURN_FLOAT8(0.0);
+
+	/* if one value is NaN, use infinite distance */
+	if (isnan(a1) || isnan(a2))
+		PG_RETURN_FLOAT8(get_float8_infinity());
+
 	/*
 	 * We know the values are range boundaries, but the range may be collapsed
 	 * (i.e. single points), with equal values.
@@ -1889,6 +1906,14 @@ brin_minmax_multi_distance_float8(PG_FUNCTION_ARGS)
 {
 	double		a1 = PG_GETARG_FLOAT8(0);
 	double		a2 = PG_GETARG_FLOAT8(1);
+
+	/* if both values are NaN, then we consider them the same */
+	if (isnan(a1) && isnan(a2))
+		PG_RETURN_FLOAT8(0.0);
+
+	/* if one value is NaN, use infinite distance */
+	if (isnan(a1) || isnan(a2))
+		PG_RETURN_FLOAT8(get_float8_infinity());
 
 	/*
 	 * We know the values are range boundaries, but the range may be collapsed
@@ -2388,7 +2413,7 @@ brin_minmax_multi_serialize(BrinDesc *bdesc, Datum src, Datum *dst)
 	/* At this point everything has to be fully sorted. */
 	Assert(ranges->nsorted == ranges->nvalues);
 
-	s = range_serialize(ranges);
+	s = brin_range_serialize(ranges);
 	dst[0] = PointerGetDatum(s);
 }
 
@@ -2511,7 +2536,7 @@ brin_minmax_multi_add_value(PG_FUNCTION_ARGS)
 		maxvalues = Max(maxvalues, MINMAX_BUFFER_MIN);
 		maxvalues = Min(maxvalues, MINMAX_BUFFER_MAX);
 
-		ranges = range_deserialize(maxvalues, serialized);
+		ranges = brin_range_deserialize(maxvalues, serialized);
 
 		ranges->attno = attno;
 		ranges->colloid = colloid;
@@ -2564,7 +2589,7 @@ brin_minmax_multi_consistent(PG_FUNCTION_ARGS)
 	attno = column->bv_attno;
 
 	serialized = (SerializedRanges *) PG_DETOAST_DATUM(column->bv_values[0]);
-	ranges = range_deserialize(serialized->maxvalues, serialized);
+	ranges = brin_range_deserialize(serialized->maxvalues, serialized);
 
 	/* inspect the ranges, and for each one evaluate the scan keys */
 	for (rangeno = 0; rangeno < ranges->nranges; rangeno++)
@@ -2759,8 +2784,8 @@ brin_minmax_multi_union(PG_FUNCTION_ARGS)
 	serialized_a = (SerializedRanges *) PG_DETOAST_DATUM(col_a->bv_values[0]);
 	serialized_b = (SerializedRanges *) PG_DETOAST_DATUM(col_b->bv_values[0]);
 
-	ranges_a = range_deserialize(serialized_a->maxvalues, serialized_a);
-	ranges_b = range_deserialize(serialized_b->maxvalues, serialized_b);
+	ranges_a = brin_range_deserialize(serialized_a->maxvalues, serialized_a);
+	ranges_b = brin_range_deserialize(serialized_b->maxvalues, serialized_b);
 
 	/* make sure neither of the ranges is NULL */
 	Assert(ranges_a && ranges_b);
@@ -2842,7 +2867,7 @@ brin_minmax_multi_union(PG_FUNCTION_ARGS)
 
 	/* cleanup and update the serialized value */
 	pfree(serialized_a);
-	col_a->bv_values[0] = PointerGetDatum(range_serialize(ranges_a));
+	col_a->bv_values[0] = PointerGetDatum(brin_range_serialize(ranges_a));
 
 	PG_RETURN_VOID();
 }
@@ -3024,7 +3049,7 @@ brin_minmax_multi_summary_out(PG_FUNCTION_ARGS)
 	fmgr_info(outfunc, &fmgrinfo);
 
 	/* deserialize the range info easy-to-process pieces */
-	ranges_deserialized = range_deserialize(ranges->maxvalues, ranges);
+	ranges_deserialized = brin_range_deserialize(ranges->maxvalues, ranges);
 
 	appendStringInfo(&str, "nranges: %d  nvalues: %d  maxvalues: %d",
 					 ranges_deserialized->nranges,
