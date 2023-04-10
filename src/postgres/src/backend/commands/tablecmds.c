@@ -885,11 +885,11 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 			{
 				AclResult	aclresult;
 
-				aclresult = pg_database_aclcheck(TemplateDbOid, GetUserId(), ACL_CREATE);
+				aclresult = pg_database_aclcheck(Template1DbOid, GetUserId(), ACL_CREATE);
 
 				if (aclresult != ACLCHECK_OK)
 					aclcheck_error(aclresult, OBJECT_DATABASE,
-								   get_database_name(TemplateDbOid));
+								   get_database_name(Template1DbOid));
 			}
 
 			/*

@@ -2413,7 +2413,7 @@ index_drop(Oid indexId, bool concurrent, bool concurrent_lock_mode)
 	 * remove.
 	 */
 	if (RELKIND_HAS_STORAGE(userIndexRelation->rd_rel->relkind) &&
-		!IsYBRelation(userIndexRelation)
+		!IsYBRelation(userIndexRelation))
 		RelationDropStorage(userIndexRelation);
 
 	/* ensure that stats are dropped if transaction commits */

@@ -968,7 +968,7 @@ YBCGetDatabaseName(Oid relid)
 	 * TODO Eventually YB should switch to using oid's everywhere so
 	 * that dbname and schemaname should not be needed at all.
 	 */
-	if (MyDatabaseId == TemplateDbOid || IsSharedRelation(relid))
+	if (MyDatabaseId == Template1DbOid || IsSharedRelation(relid))
 		return "template1";
 	else
 		return get_database_name(MyDatabaseId);
@@ -1009,7 +1009,7 @@ YBCGetDatabaseOidByRelid(Oid relid)
 Oid
 YBCGetDatabaseOidFromShared(bool relisshared)
 {
-	return relisshared ? TemplateDbOid : MyDatabaseId;
+	return relisshared ? Template1DbOid : MyDatabaseId;
 }
 
 void
@@ -2889,19 +2889,19 @@ void YbRegisterSysTableForPrefetching(int sys_table_id) {
 		// TemplateDb tables
 		case AuthMemRelationId:                           // pg_auth_members
 			sys_table_index_id = AuthMemMemRoleIndexId;
-			db_id = TemplateDbOid;
+			db_id = Template1DbOid;
 			break;
 		case AuthIdRelationId:                            // pg_authid
-			db_id = TemplateDbOid;
+			db_id = Template1DbOid;
 			sys_table_index_id = AuthIdRolnameIndexId;
 			break;
 		case DatabaseRelationId:                          // pg_database
-			db_id = TemplateDbOid;
+			db_id = Template1DbOid;
 			sys_table_index_id = DatabaseNameIndexId;
 			break;
 
 		case DbRoleSettingRelationId:                     // pg_db_role_setting
-			db_id = TemplateDbOid;
+			db_id = Template1DbOid;
 			break;
 
 		// MyDb tables

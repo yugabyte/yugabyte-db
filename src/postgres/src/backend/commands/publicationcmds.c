@@ -1539,7 +1539,7 @@ RemovePublicationSchemaById(Oid psoid)
 											   PUBLICATION_PART_ALL);
 	InvalidatePublicationRels(schemaRels);
 
-	CatalogTupleDelete(rel, &tup->t_self);
+	CatalogTupleDelete(rel, tup);
 
 	ReleaseSysCache(tup);
 

@@ -557,10 +557,8 @@ extern PgStat_StatDBEntry *pgstat_fetch_stat_dbentry(Oid dbid);
 extern void pgstat_create_function(Oid proid);
 extern void pgstat_drop_function(Oid proid);
 
-#ifdef YB_TODO
 /* YB_TODO(ted@yugabyte) Need to look at all related code every time we merge. */
 struct FunctionCallInfoBaseData;
-#endif
 struct FunctionCallInfoData;
 
 extern void pgstat_init_function_usage(struct FunctionCallInfoBaseData *fcinfo,
@@ -652,8 +650,10 @@ extern PgStat_StatTabEntry *pgstat_fetch_stat_tabentry_ext(bool shared,
 														   Oid relid);
 extern PgStat_TableStatus *find_tabstat_entry(Oid rel_id);
 
-
+#ifdef YB_TODO
+/* YB_TODO This function need new implementation to match with Postgres 15. */
 extern PgStat_YBStatQueryEntry *pgstat_fetch_ybstat_queries(Oid db_oid, size_t* num_queries);
+#endif
 
 /*
  * Functions in pgstat_replslot.c

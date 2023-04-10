@@ -2453,7 +2453,7 @@ pltcl_process_SPI_result(Tcl_Interp *interp,
 				break;
 			}
 			/* fall through for utility returning tuples */
-			/* FALLTHROUGH */
+                        switch_fallthrough();
 
 		case SPI_OK_SELECT:
 		case SPI_OK_INSERT_RETURNING:

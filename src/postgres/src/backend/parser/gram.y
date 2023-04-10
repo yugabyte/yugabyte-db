@@ -4376,7 +4376,7 @@ ConstraintElem:
 
 					/* Make column list available as index params also */
 					ListCell *lc;
-					foreach(lc, $3)
+					foreach(lc, $4)
 					{
 						IndexElem *index_elem = makeNode(IndexElem);
 						index_elem->name = pstrdup(strVal(lfirst(lc)));

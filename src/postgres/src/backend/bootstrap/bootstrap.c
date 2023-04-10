@@ -377,7 +377,7 @@ BootstrapModeMain(int argc, char *argv[], bool check_only)
 	 */
 	if (IsYugaByteEnabled())
 	{
-		YBCCreateDatabase(TemplateDbOid,
+		YBCCreateDatabase(Template1DbOid,
 		                  "template1",
 		                  InvalidOid,
 		                  YbFirstBootstrapObjectId,

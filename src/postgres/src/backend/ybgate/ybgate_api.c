@@ -764,7 +764,10 @@ YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirStat
 	PG_SETUP_ERROR_REPORTING();
 	YbgReservoirState rstate = (YbgReservoirState) palloc0(sizeof(struct YbgReservoirStateData));
 	rstate->rs.W = rstate_w;
+#ifdef YB_TODO
+	/* YB_TODO(neil) Random state is no longer an array */
 	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
+#endif
 	*yb_rs = rstate;
 	return PG_STATUS_OK;
 }
@@ -773,7 +776,10 @@ YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t
 {
 	PG_SETUP_ERROR_REPORTING();
 	*rstate_w = yb_rs->rs.W;
+#ifdef YB_TODO
+	/* YB_TODO(neil) Random state is no longer an array */
 	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
+#endif
 	return PG_STATUS_OK;
 }
 

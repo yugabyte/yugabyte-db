@@ -3728,7 +3728,7 @@ ExecGrant_Parameter(InternalGrant *istmt)
 		 */
 		if (aclequal(new_acl, acldefault(istmt->objtype, ownerId)))
 		{
-			CatalogTupleDelete(relation, &tuple->t_self);
+			CatalogTupleDelete(relation, tuple);
 		}
 		else
 		{
