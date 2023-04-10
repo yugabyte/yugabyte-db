@@ -13,6 +13,7 @@
 #pragma once
 
 #include <memory>
+#include <shared_mutex>
 #include <string>
 
 #include <boost/functional/hash.hpp>
@@ -28,6 +29,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/master/master_replication.pb.h"
+#include "yb/gutil/thread_annotations.h"
 
 namespace yb {
 
@@ -57,12 +59,14 @@ struct StreamMetadata {
   CDCRequestSource source_type;
   CDCCheckpointType checkpoint_type;
 
-  struct ApplySafeTimeInfo {
-    int64_t apply_safe_time_checkpoint_op_id_ = 0;
-    HybridTime last_apply_safe_time_;
-    MonoTime last_apply_safe_time_update_time_;
+  struct StreamTabletMetadata {
+    std::mutex mutex_;
+    int64_t apply_safe_time_checkpoint_op_id_ GUARDED_BY(mutex_) = 0;
+    HybridTime last_apply_safe_time_ GUARDED_BY(mutex_);
+    MonoTime last_apply_safe_time_update_time_ GUARDED_BY(mutex_);
+    // TODO(hari): #16774 Move last_readable_index and last sent opid here, and use it to make
+    // UpdateCDCTabletMetrics run asynchronously.
   };
-  std::unordered_map<TableId, ApplySafeTimeInfo> apply_safe_time_info_map_;
 
   StreamMetadata() = default;
 
@@ -79,6 +83,14 @@ struct StreamMetadata {
         source_type(source_type),
         checkpoint_type(checkpoint_type) {
   }
+
+  std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
+      EXCLUDES(tablet_metadata_map_mutex_);
+
+ private:
+  std::shared_mutex tablet_metadata_map_mutex_;
+  std::unordered_map<TableId, std::shared_ptr<StreamTabletMetadata>> tablet_metadata_map_
+      GUARDED_BY(tablet_metadata_map_mutex_);
 };
 
 Status GetChangesForCDCSDK(
