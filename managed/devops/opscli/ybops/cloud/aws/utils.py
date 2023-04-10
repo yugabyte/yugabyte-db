@@ -17,7 +17,7 @@ import time
 
 from ipaddress import ip_network
 from ybops.utils import get_or_create, get_and_cleanup, DNS_RECORD_SET_TTL
-from ybops.common.exceptions import YBOpsRuntimeError
+from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 from ybops.cloud.common.utils import request_retry_decorator
 from ybops.cloud.common.cloud import AbstractCloud
 
@@ -1142,7 +1142,7 @@ def modify_tags(region, instance_id, tags_to_set_str, tags_to_remove_str):
     # Remove all the tags we were asked to, except the internal ones.
     tags_to_remove = set(tags_to_remove_str.split(",") if tags_to_remove_str else [])
     # TODO: combine these with the above instance creation function.
-    internal_tags = set(["Name", "launched-by", "yb-server-type"])
+    internal_tags = {"Name", "launched-by", "yb-server-type"}
     if tags_to_remove & internal_tags:
         raise YBOpsRuntimeError(
             "Was asked to remove tags: {}, which contain internal tags: {}".format(
@@ -1261,6 +1261,8 @@ def _wait_for_disk_modifications(ec2_client, vol_ids):
     # It should retry for a 1 hour time limit.
     retry_num = int((1 * 3600) / AbstractCloud.SERVER_WAIT_SECONDS) + 1
     # Loop till all volumes are modified or the limit is reached.
+    num_vols_failed = 0
+
     while retry_num > 0:
         num_vols_modified = 0
         response = ec2_client.describe_volumes_modifications(VolumeIds=vol_ids)
@@ -1268,20 +1270,23 @@ def _wait_for_disk_modifications(ec2_client, vol_ids):
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_volumes_modifications
         for entry in response["VolumesModifications"]:
             if entry["ModificationState"] == "failed":
-                raise YBOpsRuntimeError(("Mofication of disk {} failed.").format(
-                    entry['VolumeId']))
-
-            if entry["ModificationState"] == "optimizing" or \
-                    entry["ModificationState"] == "completed":
+                logging.error(
+                    f"Modification of {entry['VolumeId']} failed: {entry['StatusMessage']}")
+                num_vols_failed += 1
+            elif entry["ModificationState"] in {"optimizing", "completed"}:
                 # Modifying completed.
                 num_vols_modified += 1
 
-        # This means all volumes have completed modification.
-        if num_vols_modified == num_vols_to_modify:
+        # This means all volume modifications have succeeded/failed.
+        if num_vols_modified + num_vols_failed == num_vols_to_modify:
             break
 
+        num_vols_failed = 0
         time.sleep(AbstractCloud.SERVER_WAIT_SECONDS)
         retry_num -= 1
+
+    if num_vols_failed:
+        raise YBOpsRecoverableError(f"Failed to modify {num_vols_failed} volumes")
 
     if retry_num <= 0:
         raise YBOpsRuntimeError("wait_for_disk_modifications failed. Retry limit reached.")
