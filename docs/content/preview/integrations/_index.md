@@ -29,7 +29,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="atlas-ycql/">
-      <img src="/images/develop/ecosystem-integrations/atlas-icon.png">
+      <img src="/images/section_icons/develop/ecosystem/atlas-icon.png">
       Apache Atlas
     </a>
   </li>
@@ -43,7 +43,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="apache-spark/">
-      <img src="/images/develop/ecosystem-integrations/apache-spark.png">
+      <img src="/images/section_icons/develop/ecosystem/apache-spark.png">
       Apache Spark
     </a>
   </li>
@@ -90,6 +90,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     </a>
   </li>
 
+  <li>
+    <a href="jaeger/">
+      <img src="/images/section_icons/develop/ecosystem/jaeger.png">
+      Jaeger
+    </a>
+  </li>
   <li>
     <a href="janusgraph/">
       <img src="/images/section_icons/develop/ecosystem/janusgraph.png">
