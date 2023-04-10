@@ -1,6 +1,0 @@
-src/backend/bootstrap/bootstrap.c
-src/backend/bootstrap/ybcbootstrap.c
-src/backend/catalog/yb_catalog/yb_catalog_version.c
-src/backend/commands/indexcmds.c
-src/backend/commands/tablecmds.c
-src/backend/utils/misc/pg_yb_utils.c

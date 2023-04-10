@@ -2823,6 +2823,7 @@ alter_table_cmd:
 			| ENABLE_P ALWAYS RULE name
 				{
 					parser_ybc_signal_unsupported(@1, "ALTER TABLE ENABLE RULE", 1124);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
 
 					n->subtype = AT_EnableAlwaysRule;
 					n->name = $4;
