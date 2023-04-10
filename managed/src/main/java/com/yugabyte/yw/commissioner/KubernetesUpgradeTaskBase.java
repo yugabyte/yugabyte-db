@@ -177,7 +177,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           isTServerChanged,
           newNamingStyle,
           /*isReadOnlyCluster*/ false,
-          commandType);
+          commandType,
+          enableYbc,
+          ybcSoftwareVersion);
     }
 
     if (isTServerChanged) {

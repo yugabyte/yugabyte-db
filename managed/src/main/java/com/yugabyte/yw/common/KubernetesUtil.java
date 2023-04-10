@@ -182,6 +182,31 @@ public class KubernetesUtil {
     return podToConfig;
   }
 
+  public static Map<String, Map<String, String>> getKubernetesConfigPerPodName(
+      PlacementInfo pi, Set<NodeDetails> nodeDetailsSet) {
+    Map<String, Map<String, String>> podToConfig = new HashMap<>();
+    Map<UUID, String> azToKubeconfig = new HashMap<>();
+    Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
+    for (Map.Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      String kubeconfig = entry.getValue().get("KUBECONFIG");
+      if (kubeconfig == null) {
+        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + entry.getKey());
+      }
+      azToKubeconfig.put(entry.getKey(), kubeconfig);
+    }
+
+    for (NodeDetails nd : nodeDetailsSet) {
+      String kubeconfig = azToKubeconfig.get(nd.azUuid);
+      if (kubeconfig == null) {
+        // Ignore such a node because its corresponding AZ is removed from the PlacementInfo and the
+        // node will be removed too.
+        continue;
+      }
+      podToConfig.put(nd.nodeName, ImmutableMap.of("KUBECONFIG", kubeconfig));
+    }
+    return podToConfig;
+  }
+
   // Compute the master addresses of the pods in the deployment if multiAZ.
   public static String computeMasterAddresses(
       PlacementInfo pi,
