@@ -577,4 +577,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "YBA version is allowed on universe nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> pgDumpPath =
+      new ConfKeyInfo<>(
+          "db.default.pg_dump_path",
+          ScopeType.GLOBAL,
+          "Path to pg_dump on the YBA node",
+          "Set during yba-installer for both custom postgres and version specific postgres "
+              + "installation",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> pgRestorePath =
+      new ConfKeyInfo<>(
+          "db.default.pg_restore_path",
+          ScopeType.GLOBAL,
+          "Path to pg_restore on the YBA node",
+          "Set during yba-installer for both custom postgres and version specific postgres "
+              + "installation",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }
