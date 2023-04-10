@@ -30,7 +30,7 @@ func CreateBackupScript(outputPath string, dataDir string,
 	}
 
 	args := []string{"create", "--output", outputPath, "--data_dir", dataDir,
-		"--yba_installer", "--yba_version", common.GetVersion()}
+		"--yba_installer"}
 	if excludePrometheus {
 		args = append(args, "--exclude-prometheus")
 	}
@@ -46,13 +46,10 @@ func CreateBackupScript(outputPath string, dataDir string,
 			createPgPass()
 			args = append(args, "--pgpass_path", common.PgpassPath())
 		} else {
-			if !common.UserConfirm("It seems a custom postgres is being used, but "+
-				"'postgres.useExisting.pg_dump_path' was not provided in the config. Backup may fail if "+
-				"'pg_dump' provided by yba-installer is not compatible with the postgres version. "+
-				"Continue?", common.DefaultYes) {
-				log.Fatal("Stopping backup process")
-			}
+			log.Fatal("pg_dump path must be set. Stopping backup process")
 		}
+	} else {
+		args = append(args, "--pg_dump_path", plat.PgBin + "/pg_dump")
 	}
 
 	args = addPostgresArgs(args)
@@ -79,7 +76,7 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 
 	args := []string{"restore", "--input", inputPath,
 		"--destination", destination, "--data_dir", destination, "--disable_version_check",
-		"--yba_installer", "--yba_version", common.GetVersion()}
+		"--yba_installer"}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
@@ -102,13 +99,10 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 				args = append(args, "--pgpass_path", common.PgpassPath())
 			}
 		} else {
-			if !common.UserConfirm("It seems a custom postgres is being used, but "+
-				"'postgres.useExisting.pg_restore_path' was not provided in the config. Restore may fail "+
-				"if 'pg_restore'  provided by yba-installer is not compatible with the postgres version. "+
-				"Continue?", common.DefaultYes) {
-				log.Fatal("Stopping restore process")
-			}
+			log.Fatal("pg_restore path must be set. Stopping restore process.")
 		}
+	} else {
+		args = append(args, "--pg_restore_path", plat.PgBin + "/pg_restore")
 	}
 	args = addPostgresArgs(args)
 	log.Info("Restoring a backup of your YugabyteDB Anywhere Installation.")

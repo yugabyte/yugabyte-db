@@ -29,6 +29,7 @@ type platformDirectories struct {
 	templateFileName    string
 	DataDir             string
 	cronScript          string
+	PgBin								string
 }
 
 func newPlatDirectories() platformDirectories {
@@ -39,6 +40,7 @@ func newPlatDirectories() platformDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/yb-platform",
 		cronScript: filepath.Join(
 			common.GetInstallerSoftwareDir(), common.CronDir, "managePlatform.sh"),
+		PgBin: 							 common.GetSoftwareRoot() + "/pgsql/bin",
 	}
 }
 
