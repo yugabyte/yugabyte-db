@@ -70,6 +70,9 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
   @Mock private play.Configuration appConfig;
 
   private static final String STORAGE_PATH = "yb.storage.path";
+  private static final String PG_DUMP_PATH = "/tmp/pg_dump";
+  private static final String PG_RESTORE_PATH = "/tmp/pg_restore";
+  private static final String BASE_INSTALL = "/tmp/yugabyte";
 
   @Before
   public void setUp() {
@@ -78,7 +81,12 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
   }
 
   private void setupConfig(
-      String prometheusHost, String dbUsername, String dbPassword, String dbHost, int dbPort) {
+      String prometheusHost,
+      String dbUsername,
+      String dbPassword,
+      String dbHost,
+      int dbPort,
+      boolean isYbaInstaller) {
     when(mockReplicationUtil.getBackupDir()).thenReturn(new File("/tmp/foo.bar").toPath());
     when(mockReplicationUtil.getPrometheusHost()).thenReturn(prometheusHost);
     when(mockReplicationUtil.getPrometheusPort()).thenReturn(9090);
@@ -87,6 +95,14 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     when(mockReplicationUtil.getDBUser()).thenReturn(dbUsername);
     when(mockReplicationUtil.getDBPassword()).thenReturn(dbPassword);
     when(mockReplicationUtil.isBackupScriptOutputEnabled()).thenReturn(false);
+    if (isYbaInstaller) {
+      when(mockReplicationUtil.getInstallationType()).thenReturn("yba-installer");
+    } else {
+      when(mockReplicationUtil.getInstallationType()).thenReturn("");
+    }
+    when(mockReplicationUtil.getPGDumpPath()).thenReturn(PG_DUMP_PATH);
+    when(mockReplicationUtil.getPGRestorePath()).thenReturn(PG_RESTORE_PATH);
+    when(mockReplicationUtil.getBaseInstall()).thenReturn(BASE_INSTALL);
   }
 
   private List<String> getExpectedPlatformBackupCommandArgs(
@@ -96,13 +112,21 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       int dbPort,
       String inputPath,
       boolean isCreate,
-      String backupDir) {
+      String backupDir,
+      boolean isYbaInstaller) {
     List<String> expectedCommandArgs = new ArrayList<>();
     expectedCommandArgs.add("bin/yb_platform_backup.sh");
     if (isCreate) {
       expectedCommandArgs.add("create");
       expectedCommandArgs.add("--exclude_prometheus");
       expectedCommandArgs.add("--exclude_releases");
+      if (isYbaInstaller) {
+        expectedCommandArgs.add("--pg_dump_path");
+        expectedCommandArgs.add(PG_DUMP_PATH);
+        expectedCommandArgs.add("--yba_installer");
+        expectedCommandArgs.add("--data_dir");
+        expectedCommandArgs.add(BASE_INSTALL);
+      }
       expectedCommandArgs.add("--output");
       expectedCommandArgs.add(backupDir);
     } else {
@@ -110,6 +134,15 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       expectedCommandArgs.add("--input");
       expectedCommandArgs.add(inputPath);
       expectedCommandArgs.add("--disable_version_check");
+      if (isYbaInstaller) {
+        expectedCommandArgs.add("--pg_restore_path");
+        expectedCommandArgs.add(PG_RESTORE_PATH);
+        expectedCommandArgs.add("--yba_installer");
+        expectedCommandArgs.add("--data_dir");
+        expectedCommandArgs.add(BASE_INSTALL);
+        expectedCommandArgs.add("--destination");
+        expectedCommandArgs.add(BASE_INSTALL);
+      }
     }
 
     expectedCommandArgs.add("--db_username");
@@ -131,10 +164,14 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
   @SuppressWarnings("unused")
   private Object[] parametersToTestCreatePlatformBackupParams() {
     return new Object[][] {
-      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true},
-      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false},
-      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false},
+      {"1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), true, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, false},
+      {
+        "1.2.3.4", "postgres", "password", "localhost", 5432, new File("/tmp/foo.bar"), false, false
+      },
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, false},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), true, true},
+      {"1.2.3.4", "yugabyte", "", "5.6.7.8", 5433, new File("/tmp/foo.bar"), false, true}
     };
   }
 
@@ -147,7 +184,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
       String dbHost,
       int dbPort,
       File inputPath,
-      boolean isCreate) {
+      boolean isCreate,
+      boolean isYbaInstaller) {
     Map<String, String> expectedEnvVars = new HashMap<>();
     if (!dbPassword.isEmpty()) {
       expectedEnvVars.put(PlatformReplicationManager.DB_PASSWORD_ENV_VAR_KEY, dbPassword);
@@ -161,7 +199,7 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
     doCallRealMethod()
         .when(mockReplicationUtil)
         .runCommand(any(PlatformReplicationManager.PlatformBackupParams.class));
-    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort);
+    setupConfig(prometheusHost, dbUsername, dbPassword, dbHost, dbPort, isYbaInstaller);
     PlatformReplicationManager backupManager =
         new PlatformReplicationManager(
             mockPlatformScheduler, mockReplicationUtil, mockConfigHelper, appConfig);
@@ -174,7 +212,8 @@ public class PlatformReplicationManagerTest extends FakeDBApplication {
             dbPort,
             inputPath.getAbsolutePath(),
             isCreate,
-            "/tmp/foo.bar");
+            "/tmp/foo.bar",
+            isYbaInstaller);
 
     if (isCreate) {
       backupManager.createBackup();
