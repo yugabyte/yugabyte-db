@@ -1166,6 +1166,10 @@
    from = "/preview/explore/observability/prometheus-integration/*"
    to = "/preview/explore/observability/prometheus-integration/macos/"
 
+[[redirects]]
+   from = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/"
+   to = "/preview/yugabyte-platform/install-yugabyte-platform/prerequisites/default/"
+
 ##########################################################
 # Catch-all for old links to /latest (now called /preview)
 #

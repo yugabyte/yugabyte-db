@@ -358,7 +358,7 @@ export const YBTable = ({
             setSubColumnSortIndex,
             classes,
             col.options?.setCellHeaderProps,
-            options?.sort ?? true
+            col.options?.sort ?? true
         );
         col.options.customBodyRender = (
             value: any,
@@ -405,7 +405,7 @@ export const YBTable = ({
             updateDirection,
             sortOrder,
             col.options?.setCellHeaderProps,
-            options?.sort ?? true
+            col.options?.sort ?? true
         );
         if (col.customColumnSort) {
             col.options.sortCompare = col.customColumnSort;

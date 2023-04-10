@@ -26,9 +26,9 @@ Create a global VPC on GCP:
 
 ```sh
 ybm vpc create \
-    --name=demo-vpc \
-    --cloud-provider=GCP \
-    --global-cidr=10.0.0.0/18
+    --name demo-vpc \
+    --cloud-provider GCP \
+    --global-cidr 10.0.0.0/18
 ```
 
 ## Commands

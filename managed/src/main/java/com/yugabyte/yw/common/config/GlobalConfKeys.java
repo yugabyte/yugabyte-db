@@ -208,6 +208,22 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "This config lets you enable support bundle creation for onprem universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
+      new ConfKeyInfo<>(
+          "yb.snapshot_creation.max_attempts",
+          ScopeType.GLOBAL,
+          "Snapshot creation max attempts",
+          "Max attempts while waiting for AWS Snapshot Creation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Integer> snapshotCreationDelay =
+      new ConfKeyInfo<>(
+          "yb.snapshot_creation.delay",
+          ScopeType.GLOBAL,
+          "Snapshot creation delay",
+          "Delay per attempt while waiting for AWS Snapshot Creation",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> runtimeConfigUiEnableForAll =
       new ConfKeyInfo<>(
           "yb.runtime_conf_ui.enable_for_all",
@@ -550,6 +566,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
+      new ConfKeyInfo<>(
+          "yb.allow_db_version_more_than_yba_version",
+          ScopeType.GLOBAL,
+          "Whether installation of YugabyteDB version higher than YBA version is allowed",
+          "It indicates whether the installation of YugabyteDB with a version higher than "
+              + "YBA version is allowed on universe nodes",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

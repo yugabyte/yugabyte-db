@@ -119,8 +119,8 @@ message TablePropertiesPB {
   optional bool contain_counters = 2;
   optional bool is_transactional = 3 [default = false];
 
-  // The table id of the table that this table is co-partitioned with.
-  optional bytes copartition_table_id = 4;
+  // Reserved for deprecated copartition_table_id for abandoned copartitioning feature.
+  reserved 4;
 
   // For index table only: consistency with respect to the indexed table.
   optional YBConsistencyLevel consistency_level = 5 [ default = STRONG ];

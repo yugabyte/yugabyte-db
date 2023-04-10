@@ -18,7 +18,6 @@ import java.util.Set;
 import java.util.UUID;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import javax.persistence.Transient;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 import lombok.Data;
@@ -70,7 +69,6 @@ public class AlertTemplateVariable extends Model {
     return uuid == null;
   }
 
-  @Transient
   @JsonIgnore
   @EqualsAndHashCode.Include
   /*

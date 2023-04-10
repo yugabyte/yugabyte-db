@@ -16,6 +16,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -93,7 +94,8 @@ BoundedRocksDbIterator CreateRocksDBIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
-    const Slice* iterate_upper_bound = nullptr);
+    const Slice* iterate_upper_bound = nullptr,
+    rocksdb::Statistics* statistics = nullptr);
 
 // Values and transactions committed later than high_ht can be skipped, so we won't spend time
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
@@ -106,7 +108,8 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
-    const Slice* iterate_upper_bound = nullptr);
+    const Slice* iterate_upper_bound = nullptr,
+    const DocDBStatistics* statistics = nullptr);
 
 std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
     scoped_refptr<yb::MetricEntity> entity);

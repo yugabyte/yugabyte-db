@@ -289,6 +289,8 @@ extern ParamPathInfo *get_joinrel_parampathinfo(PlannerInfo *root,
 						  SpecialJoinInfo *sjinfo,
 						  Relids required_outer,
 						  List **restrict_clauses);
+extern void yb_accumulate_batching_info(List *paths, 
+						  Relids *batchedrelids, Relids *unbatchedrelids);
 extern ParamPathInfo *get_appendrel_parampathinfo(RelOptInfo *appendrel,
 							Relids required_outer);
 extern ParamPathInfo *find_param_path_info(RelOptInfo *rel,

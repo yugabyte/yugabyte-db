@@ -21,12 +21,16 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -64,18 +68,20 @@ public class RegionController extends AuthenticatedController {
       responseContainer = "List")
   // todo: include provider field in response
   public Result listAllRegions(UUID customerUUID) {
-    List<Provider> providerList = Provider.getAll(customerUUID);
+    Map<UUID, Provider> providers =
+        Provider.getAll(customerUUID)
+            .stream()
+            .collect(Collectors.toMap(Provider::getUuid, Function.identity()));
+    providers.values().forEach(CloudInfoInterface::mayBeMassageResponse);
     ArrayNode resultArray = Json.newArray();
-    for (Provider provider : providerList) {
-      CloudInfoInterface.mayBeMassageResponse(provider);
-      List<Region> regionList = Region.fetchValidRegions(customerUUID, provider.getUuid(), 1);
-      for (Region region : regionList) {
-        ObjectNode regionNode = (ObjectNode) Json.toJson(region);
-        ObjectNode providerForRegion = (ObjectNode) Json.toJson(provider);
-        providerForRegion.remove("regions"); // to Avoid recursion
-        regionNode.set("provider", providerForRegion);
-        resultArray.add(regionNode);
-      }
+    List<Region> regionList = Region.fetchValidRegions(customerUUID, providers.keySet(), 1);
+    for (Region region : regionList) {
+      ObjectNode regionNode = (ObjectNode) Json.toJson(region);
+      Provider enhancedProvider = providers.get(region.getProvider().getUuid());
+      ObjectNode providerForRegion = (ObjectNode) Json.toJson(enhancedProvider);
+      providerForRegion.remove("regions"); // to Avoid recursion
+      regionNode.set("provider", providerForRegion);
+      resultArray.add(regionNode);
     }
     return ok(resultArray);
   }
@@ -93,18 +99,18 @@ public class RegionController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RegionFormData",
           required = true))
-  public Result create(UUID customerUUID, UUID providerUUID) {
-    Form<RegionFormData> formData = formFactory.getFormDataOrBadRequest(RegionFormData.class);
+  public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Form<RegionFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, RegionFormData.class);
     RegionFormData form = formData.get();
     Region region = regionHandler.createRegion(customerUUID, providerUUID, form);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Region,
             Objects.toString(region.getUuid(), null),
-            Audit.ActionType.Create,
-            Json.toJson(formData.rawData()));
+            Audit.ActionType.Create);
     return PlatformResults.withData(region);
   }
 
@@ -124,13 +130,14 @@ public class RegionController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RegionEditFormData",
           required = true))
-  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
-    RegionEditFormData form = formFactory.getFormDataOrBadRequest(RegionEditFormData.class).get();
+  public Result edit(UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
+    RegionEditFormData form =
+        formFactory.getFormDataOrBadRequest(request, RegionEditFormData.class).get();
     Region region = regionHandler.editRegion(customerUUID, providerUUID, regionUUID, form);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Edit);
+        .createAuditEntry(
+            request, Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Edit);
     return PlatformResults.withData(region);
   }
 
@@ -143,12 +150,13 @@ public class RegionController extends AuthenticatedController {
    * @return JSON response on whether the region was successfully deleted.
    */
   @ApiOperation(value = "Delete a region", response = Object.class, nickname = "deleteRegion")
-  public Result delete(UUID customerUUID, UUID providerUUID, UUID regionUUID) {
+  public Result delete(
+      UUID customerUUID, UUID providerUUID, UUID regionUUID, Http.Request request) {
     Region region = regionHandler.deleteRegion(customerUUID, providerUUID, regionUUID);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request, Audit.TargetType.Region, regionUUID.toString(), Audit.ActionType.Delete);
     return PlatformResults.withData(region);
   }
 }

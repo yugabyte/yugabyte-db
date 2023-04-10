@@ -46,15 +46,15 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import play.api.libs.Files.TemporaryFile;
+import play.libs.Files.TemporaryFile;
 import play.mvc.Http;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Slf4j
@@ -74,8 +74,9 @@ public class AttachDetachController extends AuthenticatedController {
   private static final String YBC_RELEASE_PATH = "ybc.docker.release";
   private static final String YBC_RELEASES_PATH = "ybc.releases.path";
 
-  public Result exportUniverse(UUID customerUUID, UUID universeUUID) throws IOException {
-    JsonNode requestBody = request().body().asJson();
+  public Result exportUniverse(UUID customerUUID, UUID universeUUID, Request request)
+      throws IOException {
+    JsonNode requestBody = request.body().asJson();
     checkAttachDetachEnabled();
 
     DetachUniverseFormData detachUniverseFormData =
@@ -202,20 +203,21 @@ public class AttachDetachController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universe.getUniverseUUID().toString(),
             Audit.ActionType.Export,
             universeSpec.generateUniverseSpecObj());
-    response().setHeader("Content-Disposition", "attachment; filename=universeSpec.tar.gz");
-    return ok(is).as("application/gzip");
+    return ok(is)
+        .withHeader("Content-Disposition", "attachment; filename=universeSpec.tar.gz")
+        .as("application/gzip");
   }
 
-  public Result importUniverse(UUID customerUUID, UUID universeUUID) throws IOException {
+  public Result importUniverse(UUID customerUUID, UUID universeUUID, Http.Request request)
+      throws IOException {
     checkAttachDetachEnabled();
-
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Http.MultipartFormData<TemporaryFile> body = request().body().asMultipartFormData();
+    Http.MultipartFormData<TemporaryFile> body = request.body().asMultipartFormData();
     Http.MultipartFormData.FilePart<TemporaryFile> tempSpecFile = body.getFile("spec");
 
     if (Universe.maybeGet(universeUUID).isPresent()) {
@@ -241,13 +243,13 @@ public class AttachDetachController extends AuthenticatedController {
             .ybcReleasesPath(ybcReleasesPath)
             .build();
 
-    File tempFile = (File) tempSpecFile.getFile();
-    UniverseSpec universeSpec = UniverseSpec.importSpec(tempFile, platformPaths, customer);
+    UniverseSpec universeSpec =
+        UniverseSpec.importSpec(tempSpecFile.getRef().path(), platformPaths, customer);
     universeSpec.save(platformPaths, releaseManager, swamperHelper);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeSpec.universe.getUniverseUUID().toString(),
             Audit.ActionType.Import);
@@ -255,7 +257,8 @@ public class AttachDetachController extends AuthenticatedController {
   }
 
   @Transactional
-  public Result deleteUniverseMetadata(UUID customerUUID, UUID universeUUID) throws IOException {
+  public Result deleteUniverseMetadata(UUID customerUUID, UUID universeUUID, Request request)
+      throws IOException {
     checkAttachDetachEnabled();
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -288,7 +291,7 @@ public class AttachDetachController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universe.getUniverseUUID().toString(),
             Audit.ActionType.DeleteMetadata);

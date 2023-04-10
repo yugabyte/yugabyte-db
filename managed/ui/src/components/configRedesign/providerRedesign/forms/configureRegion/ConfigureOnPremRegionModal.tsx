@@ -17,6 +17,8 @@ import { OnPremRegionFieldLabel } from './constants';
 import { ConfigureOnPremAvailabilityZoneField } from './ConfigureOnPremAvailabilityZoneField';
 import { generateLowerCaseAlphanumericId } from '../utils';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
+import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
+import { ON_PREM_LOCATIONS } from '../../providerRegionsData';
 
 interface ConfigureOnPremRegionModalProps extends YBModalProps {
   configuredRegions: ConfigureOnPremRegionFormValues[];
@@ -26,10 +28,15 @@ interface ConfigureOnPremRegionModalProps extends YBModalProps {
   regionSelection?: ConfigureOnPremRegionFormValues;
 }
 
+export interface OnPremAvailabilityZoneFormValues {
+  code: string;
+}
+
 export interface ConfigureOnPremRegionFormValues {
   fieldId: string;
   code: string;
-  zones: { code: string }[];
+  location: { value: { latitude: number; longitude: number }; label: string };
+  zones: OnPremAvailabilityZoneFormValues[];
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -46,6 +53,13 @@ const useStyles = makeStyles((theme) => ({
     marginTop: theme.spacing(1)
   }
 }));
+
+const ON_PREM_LOCATION_OPTIONS = Object.entries(ON_PREM_LOCATIONS).map(
+  ([locationName, location]) => ({
+    value: location,
+    label: locationName
+  })
+);
 
 export const ConfigureOnPremRegionModal = ({
   configuredRegions,
@@ -65,6 +79,7 @@ export const ConfigureOnPremRegionModal = ({
         (code) =>
           code ? regionSelection?.code === code || !configuredRegionCodes.includes(code) : false
       ),
+    location: object().required(`${OnPremRegionFieldLabel.LOCATION} is required.`),
     zones: array().of(
       object().shape({
         code: string()
@@ -119,6 +134,14 @@ export const ConfigureOnPremRegionModal = ({
             name="code"
             placeholder="Enter..."
             fullWidth
+          />
+        </div>
+        <div className={classes.formField}>
+          <div>{OnPremRegionFieldLabel.LOCATION}</div>
+          <YBReactSelectField
+            control={formMethods.control}
+            name="location"
+            options={ON_PREM_LOCATION_OPTIONS}
           />
         </div>
         <div>

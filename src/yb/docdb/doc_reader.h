@@ -41,6 +41,8 @@ YB_STRONGLY_TYPED_BOOL(IsFlatDoc);
 
 class IntentAwareIterator;
 
+YB_DEFINE_ENUM(DocReaderResult, (kNotFound)(kFoundAndFinished)(kFoundNotFinished));
+
 // Get table tombstone time from doc_db. If the table is not a colocated table as indicated
 // by the provided root_doc_key, this method returns DocHybridTime::kInvalid.
 Result<DocHybridTime> GetTableTombstoneTime(
@@ -108,13 +110,13 @@ class DocDBTableReader {
 
   // Read value (i.e. row), identified by root_doc_key to result.
   // Returns true if value was found, false otherwise.
-  Result<bool> Get(const Slice& root_doc_key, SubDocument* result);
+  Result<DocReaderResult> Get(const Slice& root_doc_key, SubDocument* result);
 
   // Same as get, but for rows that have doc keys with only one subkey.
   // This is always true for YSQL.
   // result shouldn't be nullptr and will be filled with the same number of primitives as number of
   // columns passed to ctor in projection and in the same order.
-  Result<bool> GetFlat(const Slice& root_doc_key, std::vector<QLValuePB>* result);
+  Result<DocReaderResult> GetFlat(const Slice& root_doc_key, QLTableRow* result);
 
  private:
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info

@@ -87,6 +87,11 @@
     recurse: yes
   with_items: "{{ mount_points.split(',') }}"
 
+- name: setup-postgres-cgroups
+  include_role:
+    name: setup-cgroup
+  when: not systemd_option
+
 # Give yugabyte user sudo access to start/stop/restart master and tserver
 - name: Add yugabyte sudo user without password for metric collection operations
   lineinfile:

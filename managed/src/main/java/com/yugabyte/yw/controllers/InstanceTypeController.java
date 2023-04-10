@@ -43,7 +43,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
-import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -182,8 +182,8 @@ public class InstanceTypeController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.InstanceType",
           required = true))
-  public Result create(UUID customerUUID, UUID providerUUID) {
-    Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(InstanceType.class);
+  public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
+    Form<InstanceType> formData = formFactory.getFormDataOrBadRequest(request, InstanceType.class);
 
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     InstanceType it =
@@ -195,11 +195,10 @@ public class InstanceTypeController extends AuthenticatedController {
             formData.get().getInstanceTypeDetails());
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
-            Audit.ActionType.CreateInstanceType,
-            Json.toJson(formData.rawData()));
+            Audit.ActionType.CreateInstanceType);
     return PlatformResults.withData(convert(it, provider));
   }
 
@@ -215,18 +214,18 @@ public class InstanceTypeController extends AuthenticatedController {
       value = "Delete an instance type",
       response = YBPSuccess.class,
       nickname = "deleteInstanceType")
-  public Result delete(UUID customerUUID, UUID providerUUID, String instanceTypeCode) {
+  public Result delete(
+      UUID customerUUID, UUID providerUUID, String instanceTypeCode, Http.Request request) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     InstanceType instanceType = InstanceType.getOrBadRequest(provider.getUuid(), instanceTypeCode);
     instanceType.setActive(false);
     instanceType.save();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.CloudProvider,
             providerUUID.toString(),
-            Audit.ActionType.DeleteInstanceType,
-            request().body().asJson());
+            Audit.ActionType.DeleteInstanceType);
     return YBPSuccess.empty();
   }
 

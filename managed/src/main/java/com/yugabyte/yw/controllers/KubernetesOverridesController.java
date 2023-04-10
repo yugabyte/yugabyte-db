@@ -35,6 +35,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -57,10 +58,10 @@ public class KubernetesOverridesController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true))
-  public Result validateKubernetesOverrides(UUID customerUUID) {
+  public Result validateKubernetesOverrides(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     UniverseConfigureTaskParams taskParams =
-        parseJsonAndValidate(UniverseConfigureTaskParams.class);
+        parseJsonAndValidate(request, UniverseConfigureTaskParams.class);
     return PlatformResults.withData(validateKubernetesOverrides(taskParams));
   }
 

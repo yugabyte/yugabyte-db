@@ -9,7 +9,9 @@ import {
   AWS_REGIONS,
   AZURE_REGIONS,
   GCP_REGIONS,
-  KUBERNETES_REGIONS
+  KUBERNETES_REGIONS,
+  ON_PREM_LOCATIONS,
+  ON_PREM_UNLISTED_LOCATION
 } from '../../providerRegionsData';
 
 export const getRegionOptions = (providerCode: ProviderCode) => {
@@ -65,4 +67,14 @@ export const getZoneOptions = (providerCode: ProviderCode, regionCode: string) =
     default:
       return [];
   }
+};
+
+export const getOnPremLocationOption = (latitude: number, longitude: number) => {
+  const locationName =
+    Object.keys(ON_PREM_LOCATIONS).find(
+      (name) =>
+        ON_PREM_LOCATIONS[name].latitude === latitude &&
+        ON_PREM_LOCATIONS[name].longitude === longitude
+    ) ?? ON_PREM_UNLISTED_LOCATION;
+  return { label: locationName, value: ON_PREM_LOCATIONS[locationName] };
 };

@@ -2,32 +2,29 @@
 
 package db.migration.default_.common;
 
-import java.sql.Connection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import io.ebean.Ebean;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
-import org.flywaydb.core.api.migration.jdbc.BaseJdbcMigration;
-
-public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
+public class V231__ProviderDetailsPersist extends BaseJavaMigration {
 
   @Override
-  public void migrate(Connection connection) throws Exception {
+  public void migrate(Context context) {
     Ebean.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
   }
 
@@ -65,8 +62,8 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
   }
 
   private static void migrateRegionDetails(Region region) {
-    if (region.getYbImage() != null) {
-      region.setYbImage(region.getYbImage());
+    if (region.getYbImageDeprecated() != null) {
+      region.setYbImage(region.getYbImageDeprecated());
     }
     if (region.getDetails() != null) {
       if (region.getDetails().sg_id != null) {

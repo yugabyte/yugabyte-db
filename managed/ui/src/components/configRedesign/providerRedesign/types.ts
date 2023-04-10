@@ -4,7 +4,13 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import { ArchitectureType, KeyPairManagement, ProviderCode, VPCSetupType } from './constants';
+import {
+  ArchitectureType,
+  KeyPairManagement,
+  KubernetesProvider,
+  ProviderCode,
+  VPCSetupType
+} from './constants';
 
 // ---------------------------------------------------------------------------
 // Each data type is exported as <typeName>Mutation and <typeName>.
@@ -264,6 +270,7 @@ interface K8sCloudInfoMutation extends K8sCloudInfoBase {
   kubeConfigContent?: string; // Kube Config can be specified at the Provider, Region and Zone level
 }
 interface K8sCloudInfo extends K8sCloudInfoBase {
+  kubernetesProvider: KubernetesProvider;
   kubernetesPullSecret: string; // filepath
 
   kubeConfig?: string; // filepath
@@ -361,7 +368,9 @@ export interface GCPRegion extends Region {
 
 export interface K8sRegionMutation extends RegionMutation {
   name: string; // This is required because the `name` field is not derived on the backend before inserting into the db
-  details: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sRegionCloudInfoMutation } };
+  latitude: number;
+  longitude: number;
+  details?: { cloudInfo: { [ProviderCode.KUBERNETES]: K8sRegionCloudInfoMutation } };
   zones: K8sAvailabilityZoneMutation[];
 }
 export interface K8sRegion extends Region {
@@ -427,7 +436,7 @@ interface K8sRegionCloudInfoMutation
   extends Partial<K8sCloudInfoMutation>,
     K8sRegionCloudInfoBase {}
 // TODO: Check whether the following fields are guaranteed from GET API.
-interface K8sRegionCloudInfo extends K8sCloudInfo, K8sRegionCloudInfoBase {
+export interface K8sRegionCloudInfo extends K8sCloudInfo, K8sRegionCloudInfoBase {
   kubeDomain: string;
   kubeNamespace: string;
   kubePodAddressTemplate: string;

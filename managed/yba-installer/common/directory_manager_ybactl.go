@@ -34,6 +34,11 @@ func YbaInstalledMarker() string {
 	return ycp.YbaInstalledMarker()
 }
 
+// PgpassPath is the location of the .pgpass file
+func PgpassPath() string {
+	return filepath.Join(ycp.InstallDir(), ".pgpass")
+}
+
 type ybaCtlPaths struct {
 	installBase string
 }

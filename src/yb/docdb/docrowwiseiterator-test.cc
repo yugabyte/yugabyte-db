@@ -393,8 +393,7 @@ Result<std::string> ConvertIteratorRowsToString(
     const Schema *projection = nullptr) {
   std::stringstream buffer;
   QLTableRow row;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&row));
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
     buffer << "\n";
   }
@@ -1101,10 +1100,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
     QLTableRow row;
     QLValue value;
 
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    // Ensure calling HasNext() again doesn't mess up anything.
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
-    ASSERT_OK(iter->NextRow(&row));
+    ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));
 
     // ColumnId 40 should be deleted whereas ColumnId 50 should be visible.
     ASSERT_OK(row.GetValue(projection.column_id(0), &value));
@@ -1183,7 +1179,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(1500),
         nullptr));
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
+    ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(nullptr)));
   }
   // ...but there should be no results after delete.
   {
@@ -1191,7 +1187,7 @@ SubDocKey(DocKey(ColocationId=16385, [], ["row1", 11111]), [SystemColumnId(0); \
         projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::Max(),
         nullptr));
-    ASSERT_FALSE(ASSERT_RESULT(iter->HasNext()));
+    ASSERT_FALSE(ASSERT_RESULT(iter->FetchNext(nullptr)));
   }
 }
 
@@ -1564,7 +1560,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1000), TransactionOperationContext());
   iter.Seek(DocKey());
-  ASSERT_TRUE(iter.valid());
+  ASSERT_FALSE(iter.IsOutOfRecords());
   auto key_data = ASSERT_RESULT(iter.FetchKey());
   SubDocKey subdoc_key;
   ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
@@ -1612,7 +1608,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       ReadHybridTime::FromMicros(1000), TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
-    ASSERT_TRUE(iter.valid()) << "Seek #" << i << " failed";
+    ASSERT_FALSE(iter.IsOutOfRecords()) << "Seek #" << i << " failed";
   }
 }
 
@@ -1870,9 +1866,8 @@ void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
         doc_db(), CoarseTimePoint::max(), ReadHybridTime::FromMicros(1000),
         /*pending_op_counter = */ nullptr, /* liveness_column_expected = */ false, key_index));
 
-    ASSERT_TRUE(ASSERT_RESULT(iter->HasNext()));
     QLTableRow row;
-    ASSERT_OK(iter->NextRow(&row));
+    ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));
     // Expected count is non-key column (1) + num of key columns.
     ASSERT_EQ(key_index + 1, row.ColumnCount());
   }

@@ -369,6 +369,40 @@ Result<rapidjson::Document> ListSnapshotRestorations(
   return result;
 }
 
+Status ImportSnapshot(ClusterAdminClient* client, const ClusterAdminCli::CLIArguments& args,
+    bool selective) {
+  if (args.size() < 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  string filename = args[0];
+  size_t num_tables = 0;
+  TypedNamespaceName keyspace;
+  vector<YBTableName> tables;
+
+  if (args.size() >= 2) {
+    keyspace = VERIFY_RESULT(ParseNamespaceName(args[1]));
+    num_tables = args.size() - 2;
+
+    if (num_tables > 0) {
+      LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
+      tables.reserve(num_tables);
+
+      for (size_t i = 0; i < num_tables; ++i) {
+        tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
+      }
+    }
+  }
+
+  string msg = num_tables > 0 ?
+    Substitute("Unable to import tables $0 from snapshot meta file $1",
+        yb::ToString(tables), filename) :
+    Substitute("Unable to import snapshot meta file $0", filename);
+
+  RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(filename, keyspace, tables, selective), msg);
+  return Status::OK();
+}
+
 } // namespace
 
 std::string ClusterAdminCli::GetArgumentExpressions(const std::string& usage_arguments) {
@@ -1473,37 +1507,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
   Register(
       "import_snapshot", " <file_name> [<namespace> <table_name> [<table_name>]...]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 1) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
+        return ImportSnapshot(client, args, false);
+      });
 
-        const string file_name = args[0];
-        TypedNamespaceName keyspace;
-        size_t num_tables = 0;
-        vector<YBTableName> tables;
 
-        if (args.size() >= 2) {
-          keyspace = VERIFY_RESULT(ParseNamespaceName(args[1]));
-          num_tables = args.size() - 2;
-
-          if (num_tables > 0) {
-            LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
-            tables.reserve(num_tables);
-
-            for (size_t i = 0; i < num_tables; ++i) {
-              tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
-            }
-          }
-        }
-
-        const string msg = num_tables > 0
-                               ? Substitute(
-                                     "Unable to import tables $0 from snapshot meta file $1",
-                                     yb::ToString(tables), file_name)
-                               : Substitute("Unable to import snapshot meta file $0", file_name);
-
-        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name, keyspace, tables), msg);
-        return Status::OK();
+  Register(
+      "import_snapshot_selective", " <file_name> [<namespace> <table_name> [<table_name>]...]",
+      [client](const CLIArguments& args) -> Status {
+        return ImportSnapshot(client, args, true);
       });
 
   Register("delete_snapshot", " <snapshot_id>", [client](const CLIArguments& args) -> Status {

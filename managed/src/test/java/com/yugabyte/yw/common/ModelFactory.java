@@ -66,6 +66,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TaskType;
+import io.ebean.DB;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.time.temporal.ChronoUnit;
@@ -529,7 +530,7 @@ public class ModelFactory {
       definition = createAlertDefinition(customer, universe, configuration);
     }
     AlertConfiguration configuration =
-        AlertConfiguration.db().find(AlertConfiguration.class, definition.getConfigurationUUID());
+        DB.getDefault().find(AlertConfiguration.class, definition.getConfigurationUUID());
     alert.setConfigurationUuid(definition.getConfigurationUUID());
     alert.setConfigurationType(configuration.getTargetType());
     alert.setDefinitionUuid(definition.getUuid());

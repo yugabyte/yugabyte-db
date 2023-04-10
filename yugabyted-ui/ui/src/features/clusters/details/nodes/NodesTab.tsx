@@ -21,10 +21,7 @@ import type { MUISortOptions } from 'mui-datatables';
 import EditIcon from '@app/assets/edit.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { StateEnum, StatusEntity, YBSmartStatus } from '@app/components/YBStatus/YBSmartStatus';
-
-// TODO: We will need to use query params later for filtering so that we can navigate to this page
-// with preset filters
-// import { StringParam, useQueryParams, withDefault } from 'use-query-params';
+import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
 const useStyles = makeStyles((theme) => ({
     loadingCount: {
@@ -141,30 +138,28 @@ export const NodesTab: FC = () => {
 
   const [showEditColumns, setShowEditColumns] = useState(false);
 
-  const ALL_STATUSES = { label: t('clusterDetail.nodes.allNodeStatuses'), value: '' };
-//   const [queryParams, setQueryParams] = useQueryParams({
-//     filter: withDefault(StringParam, ALL_STATUSES.value)
-//   });
-  const [filter, setFilter] = useState<string | undefined>(ALL_STATUSES.value);
-  //(queryParams.filter);
+  const [queryParams, setQueryParams] = useQueryParams({
+    filter: withDefault(StringParam, '')
+  });
+  const [filter, setFilter] = useState<string | undefined>(queryParams.filter);
 
   const handleChangeFilter = (
     newFilter: string,
   ) => {
     setFilter(newFilter);
-    // setQueryParams({
-    //   filter: newFilter
-    // });
+    setQueryParams({
+      filter: newFilter || undefined
+    });
   };
   // Get nodes
-  const { data: nodesResponse, isLoading: fetchingNodes, refetch: refetchNodes } =
+  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } =
     useGetClusterNodesQuery();
 
   // We get load balancer separately for now since we rely on yb-admin which is slow
   const {
     data: isLoadBalancerIdleResponse,
-    isLoading: fetchingIsLoadBalancerIdle,
-    refetch: refetchIsLoadBalancerIdle
+    isFetching: fetchingIsLoadBalancerIdle,
+    refetch: refetchIsLoadBalancerIdle,
   } = useGetIsLoadBalancerIdleQuery();
 
   // These define which checkboxes are checked by default in the Edit Columns modal
@@ -302,7 +297,7 @@ export const NodesTab: FC = () => {
       <>
         <Box mt={3} mb={2.5}>
           <LinearProgress />
-          <div className={classes.loadingCount} />
+          {/* <div className={classes.loadingCount} /> */}
         </Box>
         <div className={classes.loadingBox} />
       </>

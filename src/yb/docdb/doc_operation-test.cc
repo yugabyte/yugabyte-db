@@ -383,7 +383,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   rocksdb::ReadOptions read_opts;
   auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
   ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
   // Verify correct ttl.
   auto value = iter->value();
@@ -593,7 +593,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
   iter.Init(YQL_TABLE_TYPE);
-  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_FALSE(ASSERT_RESULT(iter.FetchNext(nullptr)));
 
   // Now verify row exists even with one valid column.
   doc_key = DocKey(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
@@ -625,9 +625,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
-  ASSERT_TRUE(ASSERT_RESULT(ql_iter.HasNext()));
   QLTableRow value_map;
-  ASSERT_OK(ql_iter.NextRow(&value_map));
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter.FetchNext(&value_map)));
   ASSERT_EQ(4, value_map.ColumnCount());
   EXPECT_EQ(100, value_map.TestValue(0).value.int32_value());
   EXPECT_TRUE(IsNull(value_map.TestValue(1).value));
@@ -673,9 +672,8 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
-  ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.HasNext()));
   QLTableRow value_map_system;
-  ASSERT_OK(ql_iter_system.NextRow(&value_map_system));
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.FetchNext(&value_map_system)));
   ASSERT_EQ(4, value_map_system.ColumnCount());
   EXPECT_EQ(101, value_map_system.TestValue(0).value.int32_value());
   EXPECT_TRUE(IsNull(value_map_system.TestValue(1).value));
@@ -846,9 +844,11 @@ class DocOperationScanTest : public DocOperationTest {
             ResetCurrentTransactionId();
           }
         }
+        auto row_values = { row_data.k, row_data.r, row_data.v };
+        LOG(INFO) << "Writing row: " << AsString(row_values) << ", ht: " << ht;
         WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
                    doc_read_context().schema,
-                   { row_data.k, row_data.r, row_data.v },
+                   row_values,
                    1000,
                    ht,
                    txn_op_context ? *txn_op_context : kNonTransactionalOperationContext);
@@ -929,9 +929,8 @@ class DocOperationScanTest : public DocOperationTest {
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << AsString(expected_rows);
           it = expected_rows.begin();
-          while (ASSERT_RESULT(ql_iter.HasNext())) {
-            QLTableRow value_map;
-            ASSERT_OK(ql_iter.NextRow(&value_map));
+          QLTableRow value_map;
+          while (ASSERT_RESULT(ql_iter.FetchNext(&value_map))) {
             ASSERT_EQ(3, value_map.ColumnCount());
 
             RowData fetched_row = {value_map.TestValue(0_ColId).value.int32_value(),
@@ -942,7 +941,7 @@ class DocOperationScanTest : public DocOperationTest {
             ASSERT_EQ(fetched_row, it->data);
             it++;
           }
-          ASSERT_EQ(expected_rows.end(), it);
+          ASSERT_EQ(expected_rows.end(), it) << "Missing row: " << AsString(*it);
 
           after_scan_callback(keys_in_range);
         }

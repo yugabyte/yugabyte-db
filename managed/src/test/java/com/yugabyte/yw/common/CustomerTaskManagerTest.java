@@ -6,7 +6,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -47,13 +46,13 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Before
   public void setup() {
     customer = ModelFactory.testCustomer();
+    taskManager = app.injector().instanceOf(CustomerTaskManager.class);
   }
 
   @Test
   @Ignore
   public void testFailPendingTasksNoneExist() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
       if (targetType.equals(CustomerTask.TargetType.Universe))
@@ -74,7 +73,6 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testHandlePendingTasksForCompletedCustomerTask() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
@@ -104,7 +102,6 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForRunningTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();
@@ -137,7 +134,6 @@ public class CustomerTaskManagerTest extends FakeDBApplication {
   @Ignore
   public void testFailPendingTasksForCompletedTaskInfo() throws Exception {
     universe = ModelFactory.createUniverse(customer.getId());
-    taskManager = spy(app.injector().instanceOf(CustomerTaskManager.class));
     mockClient = mock(YBClient.class);
     for (CustomerTask.TargetType targetType : CustomerTask.TargetType.values()) {
       UUID targetUUID = UUID.randomUUID();

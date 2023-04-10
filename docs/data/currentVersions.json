@@ -28,9 +28,9 @@
     {
       "series": "v2.14",
       "display": "v2.14 (LTS)",
-      "version": "2.14.7.0",
-      "versionShort": "2.14.7",
-      "appVersion": "2.14.7.0-b51",
+      "version": "2.14.8.0",
+      "versionShort": "2.14.8",
+      "appVersion": "2.14.8.0-b17",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2022-07-14",

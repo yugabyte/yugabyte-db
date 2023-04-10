@@ -60,6 +60,12 @@ const BOOTSTRAPPING_LABEL = (
     <i className="fa fa-spinner fa-spin" />
   </span>
 );
+const UNABLE_TO_FETCH_LABEL = (
+  <span className={clsx(styles.label, styles.warning)}>
+    Unable To Fetch
+    <i className="fa fa-exclamation-triangle" />
+  </span>
+);
 
 export const XClusterTableStatusLabel = ({
   status,
@@ -114,6 +120,8 @@ export const XClusterTableStatusLabel = ({
       return VALIDATED_LABEL;
     case XClusterTableStatus.BOOTSTRAPPING:
       return BOOTSTRAPPING_LABEL;
+    case XClusterTableStatus.UNABLE_TO_FETCH:
+      return UNABLE_TO_FETCH_LABEL;
     default:
       return assertUnreachableCase(status);
   }

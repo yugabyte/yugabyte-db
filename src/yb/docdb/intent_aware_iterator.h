@@ -60,7 +60,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
       const rocksdb::ReadOptions& read_opts,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const TransactionOperationContext& txn_op_context);
+      const TransactionOperationContext& txn_op_context,
+      rocksdb::Statistics* intentsdb_statistics = nullptr);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
@@ -107,7 +108,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // contain the DocHybridTime but is returned separately and optionally.
   Result<FetchKeyResult> FetchKey() override;
 
-  bool valid() override;
+  bool IsOutOfRecords() override;
   Slice value() override;
   const ReadHybridTime& read_time() const override { return read_time_; }
   Result<HybridTime> RestartReadHt() const override;
@@ -269,6 +270,8 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   bool NextRegular(Direction direction);
 
+  void HandleStatus(const Status& status);
+
   const ReadHybridTime read_time_;
   const EncodedReadHybridTime encoded_read_time_;
 
@@ -307,6 +310,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
 
   bool skip_future_records_needed_ = false;
   bool skip_future_intents_needed_ = false;
+  bool reset_intent_upperbound_during_skip_ = false;
   SeekIntentIterNeeded seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.

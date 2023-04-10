@@ -28,11 +28,16 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.swagger.PlatformModelConverter;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.modules.CustomObjectMapperModule;
+import io.swagger.jackson.mixin.ResponseSchemaMixin;
+import io.swagger.models.Response;
+import io.swagger.util.ReferenceSerializationConfigurer;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -82,7 +87,7 @@ public class SwaggerGenTest extends FakeDBApplication {
   }
 
   @Test
-  public void genJson() throws IOException {
+  public void genJson() throws IOException, NoSuchFieldException, IllegalAccessException {
     String resourceName = "swagger.json";
     System.err.println(app.classloader().getResource(resourceName).getFile());
     try (InputStream is = app.classloader().getResourceAsStream(resourceName)) {
@@ -119,7 +124,8 @@ public class SwaggerGenTest extends FakeDBApplication {
   // Any newly introduced date type of field in the YBA API should be in the RFC3339 format.
   // This unit test fails if there this is not conformed to.
   @Test
-  public void checkDateFormats() throws JsonProcessingException {
+  public void checkDateFormats()
+      throws JsonProcessingException, NoSuchFieldException, IllegalAccessException {
     String actualSwaggerSpec = getSwaggerSpec();
     JsonNode root = Json.parse(actualSwaggerSpec);
     JsonNode defs = root.get("definitions");
@@ -234,7 +240,32 @@ public class SwaggerGenTest extends FakeDBApplication {
     return "";
   }
 
-private String getSwaggerSpec() throws JsonProcessingException {
+  private String getSwaggerSpec()
+      throws NoSuchFieldException, IllegalAccessException, JsonProcessingException {
+    // So, this one is really tricky. The only play2.8 compatible swagger library I've found,
+    // with the same functionality as our previous library, is
+    // https://github.com/dwickern/swagger-play. It works fine, except that readOnly fields are
+    // not serialized in the resulting swagger.json.
+    // The reason is in this "workaround" for the issue with readOnly field they faced:
+    // https://github.com/dwickern/swagger-play/commit/b04e4a2e145a277592d29c09d482ccb92138fa14#diff-a74181fef5ee291b8ecaf4773e3e4df1e335e0f0f3640b51f60298e00a143ba2
+    // Basically, in marks AbstractProperty.readOnly() method with @JsonIgnore annotation.
+    // At the same time - jackson-module-scala adds ScalaAnnotationIntrospector
+    // to Swagger ObjectMapper, which makes it treat readOnly() method as getter for readOnly field.
+    // As a result - jackson finds all getters/setters for readOnly field across the whole type
+    // hierarchy, and treats this field as @JsonIgnore as a result of that.
+    //
+    // Tried to undo the above "workaround" - but this really causes InvalidDefinitionException
+    // during serialization. Decided to not dig into it further to find a better fix for this
+    // serialization cycle issue and instead replaced Swagger ObjectMapper with our default mapper
+    // with ReferenceSerializationConfigurer.serializeAsComputedRef and ResponseSchemaMixin,
+    // which swagger itself adds by default (see ObjectMapperFactory).
+    ObjectMapper mapper = CustomObjectMapperModule.createDefaultMapper();
+    mapper.addMixIn(Response.class, ResponseSchemaMixin.class);
+    ReferenceSerializationConfigurer.serializeAsComputedRef(mapper);
+    Field mapperField = io.swagger.util.Json.class.getDeclaredField("mapper");
+    mapperField.setAccessible(true);
+    mapperField.set(null, mapper);
+
     Result result = route(Helpers.fakeRequest("GET", "/docs/dynamic_swagger.json"));
     return sort(contentAsString(result, mat));
   }
@@ -305,7 +336,8 @@ private String getSwaggerSpec() throws JsonProcessingException {
     specJsonNode.set("tags", sortedTagsArrayNode);
   }
 
-  public static void main(String[] args) throws IOException {
+  public static void main(String[] args)
+      throws IOException, NoSuchFieldException, IllegalAccessException {
     String expectedSwagger = getCurrentSpec(args[0]);
     excludeDeprecated(args);
     SwaggerGenTest swaggerGenTest = new SwaggerGenTest();

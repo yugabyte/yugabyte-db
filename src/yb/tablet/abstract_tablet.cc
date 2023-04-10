@@ -94,6 +94,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
                                                const PgsqlReadRequestPB& pgsql_read_request,
                                                const std::shared_ptr<TableInfo>& table_info,
                                                const TransactionOperationContext& txn_op_context,
+                                               const docdb::DocDBStatistics* statistics,
                                                PgsqlReadRequestResult* result) {
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
@@ -105,7 +106,7 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(
       QLStorage(), deadline, read_time, is_explicit_request_read_time, *doc_read_context,
-      index_doc_read_context.get(), result->rows_data, &result->restart_read_ht);
+      index_doc_read_context.get(), result->rows_data, &result->restart_read_ht, statistics);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);

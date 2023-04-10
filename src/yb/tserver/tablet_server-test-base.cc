@@ -351,8 +351,7 @@ void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValu
 
   int count = 0;
   QLTableRow row;
-  while (ASSERT_RESULT((**iter).HasNext())) {
-    ASSERT_OK_FAST((**iter).NextRow(&row));
+  while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     ++count;
   }
   ASSERT_EQ(count, expected.size());

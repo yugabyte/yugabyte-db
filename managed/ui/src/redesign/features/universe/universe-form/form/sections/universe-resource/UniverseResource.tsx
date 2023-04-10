@@ -74,7 +74,7 @@ export const UniverseResourceContainer: FC<UniverseResourceProps> = ({ data }) =
   const { numCores, memSizeGB, volumeSizeGB, volumeCount, pricePerHour, pricingKnown } = data || {};
   const classes = useStyles();
   const renderCost = () => {
-    if (Number(pricePerHour > 0)) {
+    if (Number(pricePerHour) > 0) {
       const costPerDay = (
         <YBCost value={pricePerHour} multiplier={Multiplier.DAY} isPricingKnown={pricingKnown} />
       );

@@ -192,6 +192,9 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   const TabletId& split_parent_tablet_id() const override;
 
+  LeaderLeaseStatus GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const;
+  LeaderLeaseStatus GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const;
+
   ConsensusStatePB ConsensusState(
       ConsensusConfigType type,
       LeaderLeaseStatus* leader_lease_status) const override;

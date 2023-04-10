@@ -82,7 +82,9 @@ class IntentAwareIteratorIf {
   // contain the DocHybridTime but is returned separately and optionally.
   virtual Result<FetchKeyResult> FetchKey() = 0;
 
-  virtual bool valid() = 0;
+  // Returns whether we out of records (reached end of data or upper bound).
+  // Returns false in case of error, caller will get specific error on subsequent FetchKey call.
+  virtual bool IsOutOfRecords() = 0;
   virtual Slice value() = 0;
 
   virtual void SetUpperbound(const Slice& upperbound) = 0;

@@ -20,6 +20,7 @@ import io.swagger.annotations.Authorization;
 import java.text.SimpleDateFormat;
 import org.slf4j.LoggerFactory;
 import play.mvc.Controller;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -47,9 +48,9 @@ public class LoggingConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.PlatformLoggingConfig",
         paramType = "body")
   })
-  public Result setLoggingSettings() throws JoranException {
+  public Result setLoggingSettings(Http.Request request) throws JoranException {
     PlatformLoggingConfig data =
-        formFactory.getFormDataOrBadRequest(PlatformLoggingConfig.class).get();
+        formFactory.getFormDataOrBadRequest(request, PlatformLoggingConfig.class).get();
     String newLevel = data.getLevel().toString();
     String newRolloverPattern = data.getRolloverPattern();
     if (newRolloverPattern != null) {
@@ -78,8 +79,9 @@ public class LoggingConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.AuditLoggingConfig",
         paramType = "body")
   })
-  public Result setAuditLoggingSettings() throws JoranException {
-    AuditLoggingConfig data = formFactory.getFormDataOrBadRequest(AuditLoggingConfig.class).get();
+  public Result setAuditLoggingSettings(Http.Request request) throws JoranException {
+    AuditLoggingConfig data =
+        formFactory.getFormDataOrBadRequest(request, AuditLoggingConfig.class).get();
     data.validate(validator);
     LogUtil.updateAuditLoggingContext(data);
     LogUtil.updateAuditLoggingConfig(sConfigFactory, data);

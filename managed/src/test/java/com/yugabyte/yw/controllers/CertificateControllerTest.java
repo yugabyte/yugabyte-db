@@ -6,6 +6,7 @@ import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -16,6 +17,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
@@ -25,17 +27,19 @@ import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.CertificateInfoExt;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
@@ -120,24 +124,45 @@ public class CertificateControllerTest extends FakeDBApplication {
     Result result = listCertificates(customer.getUuid());
     JsonNode json = Json.parse(contentAsString(result));
     assertEquals(OK, result.status());
-    List<LinkedHashMap> certs = Json.fromJson(json, List.class);
     List<UUID> result_uuids = new ArrayList<>();
     List<String> result_labels = new ArrayList<>();
-    for (LinkedHashMap e : certs) {
-      if (e.get("uuid").toString().equals(test_certs_uuids.get(0).toString())) {
-        assertEquals(e.get("inUse"), true);
-        assertNotEquals(e.get("universeDetails"), new ArrayList<>());
+    List<CertificateInfoExt> certs =
+        Json.mapper().convertValue(json, new TypeReference<List<CertificateInfoExt>>() {});
+    for (CertificateInfoExt cert : certs) {
+      CertificateInfo info = cert.getCertificateInfo();
+      if (info.getUuid().toString().equals(test_certs_uuids.get(0).toString())) {
+        assertTrue(info.getInUse());
+        assertNotEquals(info.getUniverseDetails(), new ArrayList<>());
       } else {
-        assertEquals(e.get("inUse"), false);
-        assertEquals(e.get("universeDetails"), new ArrayList<>());
+        assertFalse(info.getInUse());
+        assertEquals(info.getUniverseDetails(), new ArrayList<>());
       }
-      result_uuids.add(UUID.fromString(e.get("uuid").toString()));
-      result_labels.add(e.get("label").toString());
-      assertEquals(e.get("certType"), "SelfSigned");
+      result_uuids.add(info.getUuid());
+      result_labels.add(info.getLabel());
+      assertEquals(info.getCertType(), CertConfigType.SelfSigned);
     }
     assertEquals(test_certs, result_labels);
     assertEquals(test_certs_uuids, result_uuids);
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testListCertificatesBackwardCompatible() {
+    SettableRuntimeConfigFactory configFactory =
+        app.injector().instanceOf(SettableRuntimeConfigFactory.class);
+    configFactory
+        .globalRuntimeConf()
+        .setValue(GlobalConfKeys.backwardCompatibleDate.getKey(), "true");
+
+    ModelFactory.createUniverse(customer.getId(), test_certs_uuids.get(0));
+    Result result = listCertificates(customer.getUuid());
+    JsonNode json = Json.parse(contentAsString(result));
+    List<CertificateInfoExt> certs =
+        Json.mapper().convertValue(json, new TypeReference<List<CertificateInfoExt>>() {});
+    for (CertificateInfoExt cert : certs) {
+      assertNotNull(cert.getStartDate());
+      assertNotNull(cert.getExpiryDate());
+    }
   }
 
   @Test

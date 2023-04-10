@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "yb/rpc/service_if.h"
 
 #include "yb/yql/cql/cqlserver/cqlserver_fwd.h"

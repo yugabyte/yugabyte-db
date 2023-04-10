@@ -140,6 +140,8 @@ Expect the following output:
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
 
+The kubeconfig needs to be generated for each OpenShift cluster if you are doing a multi-cluster setup.
+
 ## Create a provider in YugabyteDB Anywhere
 
 Because YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.

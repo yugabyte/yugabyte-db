@@ -338,13 +338,13 @@ public class PlatformReplicationManager {
     replicationHelper.cleanupReceivedBackups(leader, replicationHelper.getNumBackupsRetention());
   }
 
-  public boolean saveReplicationData(String fileName, File uploadedFile, URL leader, URL sender) {
+  public boolean saveReplicationData(String fileName, Path uploadedFile, URL leader, URL sender) {
     Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName).normalize();
     if ((replicationDir.toFile().exists() || replicationDir.toFile().mkdirs())
         && saveAsFile.toString().startsWith(replicationDir.toString())) {
       try {
-        FileUtils.moveFile(uploadedFile.toPath(), saveAsFile);
+        FileUtils.moveFile(uploadedFile, saveAsFile);
         log.debug(
             "Store platform backup received from leader {} via {} as {}.",
             leader.toString(),
@@ -353,7 +353,7 @@ public class PlatformReplicationManager {
 
         return true;
       } catch (IOException ioException) {
-        log.error("File move failed from {} as {}", uploadedFile.toPath(), saveAsFile, ioException);
+        log.error("File move failed from {} as {}", uploadedFile, saveAsFile, ioException);
       }
     } else {
       log.error(

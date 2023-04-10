@@ -48,6 +48,8 @@
 
 using namespace std::placeholders;
 
+DECLARE_bool(TEST_enable_db_catalog_version_mode);
+
 namespace yb {
 namespace master {
 
@@ -187,32 +189,30 @@ class PgCatalogRestorePatch : public RestorePatch {
  public:
   PgCatalogRestorePatch(
       FetchState* existing_state, FetchState* restoring_state, docdb::DocWriteBatch* doc_batch,
-      const PgCatalogTableData& table, tablet::TableInfo* table_info)
-      : RestorePatch(existing_state, restoring_state, doc_batch, table_info), table_(table) {}
+      const PgCatalogTableData& table, tablet::TableInfo* table_info, int64_t db_oid)
+      : RestorePatch(existing_state, restoring_state, doc_batch, table_info), table_(table),
+        db_oid_(db_oid) {}
 
   Status Finish() override {
-    if (doc_key_catalog_version_map_.empty()) {
+    if (!table_.IsPgYbCatalogMeta()) {
       return Status::OK();
     }
-    SCHECK_EQ(table_.IsPgYbCatalogMeta(), true, Corruption, "Expected Pg Yb catalog version");
     auto column_id = VERIFY_RESULT(
         table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
-    for (const auto& it : doc_key_catalog_version_map_) {
-      QLValuePB value_pb;
-      value_pb.set_int64_value(it.second);
-      auto doc_path = docdb::DocPath(
-          it.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
-      LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
-                << doc_path.ToString() << " to " << it.second;
-      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+    QLValuePB value_pb;
+    value_pb.set_int64_value(catalog_version_);
+    auto doc_path = docdb::DocPath(
+        catalog_version_key_.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+    LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
+              << doc_path.ToString() << " to " << catalog_version_;
+    RETURN_NOT_OK(DocBatch()->SetPrimitive(
         doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
-      IncrementTicker(RestoreTicker::kInserts);
-    }
+    IncrementTicker(RestoreTicker::kInserts);
     return Status::OK();
   }
 
  private:
-  Status UpdateCatalogVersionInMap(const Slice& key, const Slice& value) {
+  Status UpdateCatalogVersion(const Slice& key, const Slice& value) {
     docdb::SubDocKey decoded_key;
     RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
 
@@ -223,10 +223,11 @@ class PgCatalogRestorePatch : public RestorePatch {
       const auto& doc_key = decoded_key.doc_key();
       int64_t version = *version_opt;
       version++;
-      auto& existing_version = doc_key_catalog_version_map_[doc_key];
-      if (existing_version < version) {
-        existing_version = version;
-        VLOG_WITH_FUNC(3) << "Inserted in map " << doc_key.ToString() << ": " << version;
+      VLOG_WITH_FUNC(3) << "Got Version " << version;
+      if (catalog_version_ < version) {
+        catalog_version_ = version;
+        catalog_version_key_ = doc_key;
+        VLOG_WITH_FUNC(3) << "Updated catalog version " << doc_key.ToString() << ": " << version;
       }
     }
     return Status::OK();
@@ -237,7 +238,7 @@ class PgCatalogRestorePatch : public RestorePatch {
     if (!table_.IsPgYbCatalogMeta()) {
       return RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value);
     }
-    return UpdateCatalogVersionInMap(key, existing_value);
+    return UpdateCatalogVersion(key, existing_value);
   }
 
   Status ProcessExistingOnlyEntry(
@@ -245,16 +246,23 @@ class PgCatalogRestorePatch : public RestorePatch {
     if (!table_.IsPgYbCatalogMeta()) {
       return RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value);
     }
-    return UpdateCatalogVersionInMap(existing_key, existing_value);
+    return UpdateCatalogVersion(existing_key, existing_value);
   }
 
   Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override {
-    return false;
+    if (!table_.IsPgYbCatalogMeta() || !FLAGS_TEST_enable_db_catalog_version_mode) {
+      return false;
+    }
+    docdb::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    return sub_doc_key.doc_key().range_group()[0].GetUInt32() != db_oid_;
   }
 
   // Should be alive while this object is alive.
   const PgCatalogTableData& table_;
-  std::map<docdb::DocKey, int64_t> doc_key_catalog_version_map_;
+  docdb::DocKey catalog_version_key_;
+  int64_t catalog_version_ = 0;
+  int64_t db_oid_;
 };
 
 } // namespace
@@ -363,6 +371,12 @@ void RestoreSysCatalogState::FillHideInformation(
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysNamespaceEntryPB* pb) {
+  if (IsYsqlRestoration()) {
+    SCHECK(restoration_.db_oid, Corruption, "Namespace entry not found in existing state");
+    SCHECK(*(restoration_.db_oid) ==
+        VERIFY_RESULT(GetPgsqlDatabaseOid(id)), Corruption,
+        "Namespace entry in restoring and existing state are different");
+  }
   return true;
 }
 
@@ -808,6 +822,10 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 // We don't delete newly created namespaces, because our filters namespace based.
 Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysNamespaceEntryPB& pb) {
+  if (IsYsqlRestoration()) {
+    SCHECK(!restoration_.db_oid, NotSupported, "Only one database at a time can be restored");
+    restoration_.db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(id));
+  }
   return Status::OK();
 }
 
@@ -971,10 +989,10 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
 
     RETURN_NOT_OK(restoring_state.SetPrefix(prefix));
     RETURN_NOT_OK(existing_state.SetPrefix(prefix));
-
+    SCHECK(restoration_.db_oid, Corruption, "Db Oid of the database should have been set by now");
     PgCatalogRestorePatch restore_patch(
         &existing_state, &restoring_state, write_batch, table,
-        VERIFY_RESULT(metadata->GetTableInfo(*(table.id))).get());
+        VERIFY_RESULT(metadata->GetTableInfo(*(table.id))).get(), *(restoration_.db_oid));
 
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
 

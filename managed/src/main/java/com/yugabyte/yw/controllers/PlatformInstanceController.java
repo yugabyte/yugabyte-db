@@ -29,6 +29,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
+import play.mvc.Http;
 import play.mvc.Result;
 
 public class PlatformInstanceController extends AuthenticatedController {
@@ -39,11 +40,11 @@ public class PlatformInstanceController extends AuthenticatedController {
 
   @Inject CustomerTaskManager taskManager;
 
-  public Result createInstance(UUID configUUID) {
+  public Result createInstance(UUID configUUID, Http.Request request) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
     Form<PlatformInstanceFormData> formData =
-        formFactory.getFormDataOrBadRequest(PlatformInstanceFormData.class);
+        formFactory.getFormDataOrBadRequest(request, PlatformInstanceFormData.class);
 
     // Cannot create a remote instance before creating a local instance.
     if (!formData.get().is_local && !config.get().getLocal().isPresent()) {
@@ -74,15 +75,15 @@ public class PlatformInstanceController extends AuthenticatedController {
       config.get().updateLastFailover();
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.PlatformInstance,
             Objects.toString(instance.getUuid(), null),
             Audit.ActionType.Create);
     return PlatformResults.withData(instance);
   }
 
-  public Result deleteInstance(UUID configUUID, UUID instanceUUID) {
+  public Result deleteInstance(UUID configUUID, UUID instanceUUID, Http.Request request) {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
     Optional<PlatformInstance> instanceToDelete = PlatformInstance.get(instanceUUID);
@@ -105,8 +106,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     }
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Delete);
@@ -126,7 +127,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     return PlatformResults.withData(localInstance.get());
   }
 
-  public Result promoteInstance(UUID configUUID, UUID instanceUUID, String curLeaderAddr)
+  public Result promoteInstance(
+      UUID configUUID, UUID instanceUUID, String curLeaderAddr, Http.Request request)
       throws java.net.MalformedURLException {
     Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.getOrBadRequest(configUUID);
 
@@ -149,7 +151,7 @@ public class PlatformInstanceController extends AuthenticatedController {
     }
 
     Form<RestorePlatformBackupFormData> formData =
-        formFactory.getFormDataOrBadRequest(RestorePlatformBackupFormData.class);
+        formFactory.getFormDataOrBadRequest(request, RestorePlatformBackupFormData.class);
 
     if (StringUtils.isBlank(curLeaderAddr)) {
       Optional<PlatformInstance> leaderInstance = config.get().getLeader();
@@ -190,8 +192,8 @@ public class PlatformInstanceController extends AuthenticatedController {
     // Finally, switch the prometheus configuration to read from swamper targets directly.
     replicationManager.switchPrometheusToStandalone();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.PlatformInstance,
             instanceUUID.toString(),
             Audit.ActionType.Promote);

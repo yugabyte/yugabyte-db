@@ -15,6 +15,7 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.Security;
+import static com.yugabyte.yw.common.audit.AuditService.IS_AUDITED;
 import static com.yugabyte.yw.forms.PlatformResults.withData;
 
 import com.cronutils.utils.StringUtils;
@@ -51,7 +52,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -106,7 +107,7 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private ValidatingFormFactory formFactory;
 
-  @Inject private Config appConfig;
+  @Inject private Config config;
 
   @Inject private ConfigHelper configHelper;
 
@@ -135,7 +136,7 @@ public class SessionController extends AbstractPlatformController {
   public static final String AUTH_TOKEN = "authToken";
   public static final String API_TOKEN = "apiToken";
   public static final String CUSTOMER_UUID = "customerUUID";
-  private static final Integer FOREVER = 2147483647;
+  private static final Duration FOREVER = Duration.ofSeconds(2147483647);
   public static final String FILTERED_LOGS_SCRIPT = "bin/filtered_logs.sh";
 
   @Inject
@@ -171,10 +172,10 @@ public class SessionController extends AbstractPlatformController {
       authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH),
       response = SessionInfo.class)
   @With(TokenAuthenticator.class)
-  public Result getSessionInfo() {
-    Users user = getCurrentUser();
+  public Result getSessionInfo(Http.Request request) {
+    Users user = CommonUtils.getUserFromContext();
     Customer cust = Customer.get(user.getCustomerUUID());
-    Cookie authCookie = request().cookie(AUTH_TOKEN);
+    Cookie authCookie = request.cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
         new SessionInfo(
             authCookie == null ? null : authCookie.value(),
@@ -208,7 +209,8 @@ public class SessionController extends AbstractPlatformController {
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
   public Result getLogs(Integer maxLines) {
-    String logDir = appConfig.getString("log.override.path");
+    String appHomeDir = config.getString("application.home");
+    String logDir = config.getString("log.override.path");
     File file = new File(String.format("%s/application.log", logDir));
     // TODO(bogdan): This is not really pagination friendly as it re-reads everything all the time.
     // TODO(bogdan): Need to figure out if there's a rotation-friendly log-reader..
@@ -295,45 +297,41 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
-  public Result login() {
+  public Result login(Http.Request request) {
     Users user =
-        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
+        loginHandler.login(
+            formFactory.getFormDataOrBadRequest(request, CustomerLoginFormData.class).get());
 
     Customer cust = Customer.get(user.getCustomerUUID());
 
     String authToken = user.createAuthToken();
     SessionInfo sessionInfo = new SessionInfo(authToken, null, cust.getUuid(), user.getUuid());
-    response()
-        .setCookie(
-            Http.Cookie.builder(AUTH_TOKEN, authToken)
-                .withSecure(ctx().request().secure())
-                .withHttpOnly(false)
-                .build());
-    response()
-        .setCookie(
-            Http.Cookie.builder("customerId", cust.getUuid().toString())
-                .withSecure(ctx().request().secure())
-                .withHttpOnly(false)
-                .build());
-    response()
-        .setCookie(
-            Http.Cookie.builder("userId", user.getUuid().toString())
-                .withSecure(ctx().request().secure())
-                .withHttpOnly(false)
-                .build());
-    ctx().args.put("isAudited", true);
+    RequestContext.put(IS_AUDITED, true);
     Audit.create(
         user,
-        request().path(),
-        request().method(),
+        request.path(),
+        request.method(),
         Audit.TargetType.User,
         user.getUuid().toString(),
         Audit.ActionType.Login,
         null,
         null,
         null,
-        request().remoteAddress());
-    return withData(sessionInfo);
+        request.remoteAddress());
+    return withData(sessionInfo)
+        .withCookies(
+            Http.Cookie.builder(AUTH_TOKEN, authToken)
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .build(),
+            Http.Cookie.builder("customerId", cust.getUuid().toString())
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .build(),
+            Http.Cookie.builder("userId", user.getUuid().toString())
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .build());
   }
 
   @ApiOperation(value = "Authenticate user and return api token", response = SessionInfo.class)
@@ -343,25 +341,26 @@ public class SessionController extends AbstractPlatformController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.CustomerLoginFormData",
           required = true))
-  public Result apiLogin() {
+  public Result apiLogin(Http.Request request) {
     Users user =
-        loginHandler.login(formFactory.getFormDataOrBadRequest(CustomerLoginFormData.class).get());
+        loginHandler.login(
+            formFactory.getFormDataOrBadRequest(request, CustomerLoginFormData.class).get());
     Customer cust = Customer.get(user.getCustomerUUID());
 
     SessionInfo sessionInfo =
         new SessionInfo(null, user.getApiToken(), cust.getUuid(), user.getUuid());
-    ctx().args.put("isAudited", true);
+    RequestContext.put(IS_AUDITED, true);
     Audit.create(
         user,
-        request().path(),
-        request().method(),
+        request.path(),
+        request.method(),
         Audit.TargetType.User,
         user.getUuid().toString(),
         ActionType.ApiLogin,
         null,
         null,
         null,
-        request().remoteAddress());
+        request.remoteAddress());
     return withData(sessionInfo);
   }
 
@@ -377,29 +376,40 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @Secure(clients = "OidcClient")
-  public Result thirdPartyLogin() {
-    String email = thirdPartyLoginHandler.getEmailFromCtx(ctx());
-    Users user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(ctx(), email);
-    thirdPartyLoginHandler.onLoginSuccess(ctx(), user);
+  public Result thirdPartyLogin(Http.Request request) {
+    String email = thirdPartyLoginHandler.getEmailFromCtx(request);
+    Users user = thirdPartyLoginHandler.findUserByEmailOrUnauthorizedErr(request, email);
 
-    ctx().args.put("isAudited", true);
+    Customer cust = Customer.get(user.getCustomerUUID());
+
+    RequestContext.put(IS_AUDITED, true);
     Audit.create(
         user,
-        request().path(),
-        request().method(),
+        request.path(),
+        request.method(),
         Audit.TargetType.User,
         user.getUuid().toString(),
         Audit.ActionType.Login,
         null,
         null,
         null,
-        request().remoteAddress());
+        request.remoteAddress());
 
-    return thirdPartyLoginHandler.redirectTo(request().getQueryString("orig_url"));
+    return thirdPartyLoginHandler
+        .redirectTo(request.queryString("orig_url").orElse(null))
+        .withCookies(
+            Cookie.builder("customerId", cust.getUuid().toString())
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .build(),
+            Cookie.builder("userId", user.getUuid().toString())
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .build());
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
-  public Result insecure_login() {
+  public Result insecure_login(Http.Request request) {
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
       throw new PlatformServiceException(
@@ -423,25 +433,24 @@ public class SessionController extends AbstractPlatformController {
 
       SessionInfo sessionInfo =
           new SessionInfo(null, apiToken, user.getCustomerUUID(), user.getUuid());
-      response()
-          .setCookie(
-              Http.Cookie.builder(API_TOKEN, apiToken)
-                  .withSecure(ctx().request().secure())
-                  .withHttpOnly(false)
-                  .build());
-      ctx().args.put("isAudited", true);
+      RequestContext.put(IS_AUDITED, true);
       Audit.create(
           user,
-          request().path(),
-          request().method(),
+          request.path(),
+          request.method(),
           Audit.TargetType.User,
           user.getUuid().toString(),
           Audit.ActionType.Login,
           null,
           null,
           null,
-          request().remoteAddress());
-      return withData(sessionInfo);
+          request.remoteAddress());
+      return withData(sessionInfo)
+          .withCookies(
+              Http.Cookie.builder(API_TOKEN, apiToken)
+                  .withSecure(request.secure())
+                  .withHttpOnly(false)
+                  .build());
     }
     throw new PlatformServiceException(UNAUTHORIZED, "Insecure login unavailable.");
   }
@@ -449,9 +458,9 @@ public class SessionController extends AbstractPlatformController {
   // Any changes to security should be authenticated.
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
-  public Result set_security(UUID customerUUID) {
+  public Result set_security(UUID customerUUID, Http.Request request) {
     Form<SetSecurityFormData> formData =
-        formFactory.getFormDataOrBadRequest(SetSecurityFormData.class);
+        formFactory.getFormDataOrBadRequest(request, SetSecurityFormData.class);
     List<Customer> allCustomers = Customer.getAll();
     if (allCustomers.size() != 1) {
       throw new PlatformServiceException(
@@ -461,7 +470,7 @@ public class SessionController extends AbstractPlatformController {
     SetSecurityFormData data = formData.get();
     configHelper.loadConfigToDB(Security, ImmutableMap.of("level", data.level));
     if (data.level.equals("insecure")) {
-      Users user = getCurrentUser();
+      Users user = CommonUtils.getUserFromContext();
       String apiToken = user.getApiToken();
       if (apiToken == null || apiToken.isEmpty()) {
         user.upsertApiToken();
@@ -477,8 +486,8 @@ public class SessionController extends AbstractPlatformController {
       }
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Customer,
             customerUUID.toString(),
             Audit.ActionType.SetSecurity);
@@ -487,8 +496,8 @@ public class SessionController extends AbstractPlatformController {
 
   @With(TokenAuthenticator.class)
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
-  public Result api_token(UUID customerUUID) {
-    Users user = getCurrentUser();
+  public Result api_token(UUID customerUUID, Http.Request request) {
+    Users user = CommonUtils.getUserFromContext();
 
     if (user == null) {
       throw new PlatformServiceException(
@@ -497,21 +506,19 @@ public class SessionController extends AbstractPlatformController {
 
     String apiToken = user.upsertApiToken();
     SessionInfo sessionInfo = new SessionInfo(null, apiToken, customerUUID, user.getUuid());
-    response()
-        .setCookie(
-            Http.Cookie.builder(API_TOKEN, apiToken)
-                .withSecure(ctx().request().secure())
-                .withMaxAge(Duration.ofHours(FOREVER))
-                .withHttpOnly(false)
-                .build());
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Customer,
             customerUUID.toString(),
-            Audit.ActionType.GenerateApiToken,
-            request().body().asJson());
-    return withData(sessionInfo);
+            Audit.ActionType.GenerateApiToken);
+    return withData(sessionInfo)
+        .withCookies(
+            Http.Cookie.builder(API_TOKEN, apiToken)
+                .withSecure(request.secure())
+                .withMaxAge(FOREVER)
+                .withHttpOnly(false)
+                .build());
   }
 
   @ApiOperation(
@@ -526,10 +533,10 @@ public class SessionController extends AbstractPlatformController {
           dataType = "com.yugabyte.yw.forms.CustomerRegisterFormData",
           required = true))
   @Transactional
-  public Result register(Boolean generateApiToken) {
+  public Result register(Boolean generateApiToken, Http.Request request) {
     CustomerRegisterFormData data =
-        formFactory.getFormDataOrBadRequest(CustomerRegisterFormData.class).get();
-    boolean multiTenant = appConfig.getBoolean("yb.multiTenant");
+        formFactory.getFormDataOrBadRequest(request, CustomerRegisterFormData.class).get();
+    boolean multiTenant = config.getBoolean("yb.multiTenant");
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
     int customerCount = Customer.getAll().size();
     if (!multiTenant && customerCount >= 1) {
@@ -541,10 +548,10 @@ public class SessionController extends AbstractPlatformController {
           BAD_REQUEST, "Cannot register multiple accounts with SSO enabled platform.");
     }
     if (customerCount == 0) {
-      return withData(registerCustomer(data, true, generateApiToken));
+      return registerCustomer(data, true, generateApiToken, request);
     } else {
-      if (tokenAuthenticator.superAdminAuthentication(ctx())) {
-        return withData(registerCustomer(data, false, generateApiToken));
+      if (tokenAuthenticator.superAdminAuthentication(request)) {
+        return registerCustomer(data, false, generateApiToken, request);
       } else {
         throw new PlatformServiceException(BAD_REQUEST, "Only Super Admins can register tenant.");
       }
@@ -561,8 +568,11 @@ public class SessionController extends AbstractPlatformController {
     throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
   }
 
-  private SessionInfo registerCustomer(
-      CustomerRegisterFormData data, boolean isSuper, boolean generateApiToken) {
+  private Result registerCustomer(
+      CustomerRegisterFormData data,
+      boolean isSuper,
+      boolean generateApiToken,
+      Http.Request request) {
     Customer cust = Customer.create(data.getCode(), data.getName());
     Role role = Role.Admin;
     if (isSuper) {
@@ -578,35 +588,32 @@ public class SessionController extends AbstractPlatformController {
     String apiToken = generateApiToken ? user.upsertApiToken() : null;
     SessionInfo sessionInfo =
         new SessionInfo(authToken, apiToken, user.getCustomerUUID(), user.getUuid());
-    response()
-        .setCookie(
-            Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
-                .withSecure(ctx().request().secure())
-                .withHttpOnly(false)
-                .build());
     // When there is no authenticated user in context; we just pretend that the user
     // created himself for auditing purpose.
     RequestContext.putIfAbsent(
         TokenAuthenticator.USER, userService.getUserWithFeatures(cust, user));
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Customer,
             cust.getUuid().toString(),
-            Audit.ActionType.Register,
-            request().body().asJson());
-    return sessionInfo;
+            Audit.ActionType.Register);
+    return withData(sessionInfo)
+        .withCookies(
+            Http.Cookie.builder(AUTH_TOKEN, sessionInfo.authToken)
+                .withSecure(request.secure())
+                .withHttpOnly(false)
+                .build());
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
   public Result logout() {
-    response().discardCookie(AUTH_TOKEN);
-    Users user = getCurrentUser();
+    Users user = CommonUtils.getUserFromContext();
     if (user != null) {
       user.deleteAuthToken();
     }
-    return YBPSuccess.empty();
+    return YBPSuccess.empty().discardingCookie(AUTH_TOKEN);
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
@@ -620,7 +627,8 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
-  public CompletionStage<Result> proxyRequest(UUID universeUUID, String requestUrl) {
+  public CompletionStage<Result> proxyRequest(
+      UUID universeUUID, String requestUrl, Http.Request request) {
 
     LOG.trace("proxyRequest for universe {} : {}", universeUUID, requestUrl);
 
@@ -644,7 +652,7 @@ public class SessionController extends AbstractPlatformController {
     }
 
     // Add query params to proxied request
-    final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request().queryString());
+    final String finalRequestUrl = apiHelper.buildUrl(requestUrl, request.queryString());
 
     // Make the request
     String url = "http://" + finalRequestUrl;
@@ -735,10 +743,5 @@ public class SessionController extends AbstractPlatformController {
                 + "alert email notifications. Please visit "
                 + "<a href=\"/admin/alertConfig/health-alerting?hide-notifications=true\">"
                 + "this page</a> to configure them."));
-  }
-
-  private Users getCurrentUser() {
-    UserWithFeatures userWithFeatures = RequestContext.get(TokenAuthenticator.USER);
-    return userWithFeatures.getUser();
   }
 }

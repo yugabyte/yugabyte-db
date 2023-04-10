@@ -1,4 +1,5 @@
 import React, { FC, ChangeEvent } from 'react';
+import _ from 'lodash';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Controller, useFormContext, useWatch } from 'react-hook-form';
@@ -33,7 +34,7 @@ export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
 
   //fetch data
   const { data, isLoading } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
-  let kmsConfigs: KmsConfig[] = data || [];
+  let kmsConfigs: KmsConfig[] = data ? _.sortBy(data, 'metadata.provider', 'metadata.name') : [];
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     setValue(KMS_CONFIG_FIELD, option?.metadata?.configUUID ?? DEFAULT_INSTANCE_CONFIG.kmsConfig, {
@@ -65,6 +66,7 @@ export const KMSConfigField: FC<KMSConfigFieldProps> = ({ disabled }) => {
                 disabled={disabled}
                 loading={isLoading}
                 options={(kmsConfigs as unknown) as Record<string, string>[]}
+                groupBy={(option: Record<string, any>) => option?.metadata?.provider} //group by provider
                 ybInputProps={{
                   placeholder: t('universeForm.instanceConfig.kmsConfigPlaceHolder'),
                   error: !!fieldState.error,

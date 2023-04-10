@@ -607,7 +607,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Dumps DocDB contents to log, every record as a separate log message, with the given prefix.
   void TEST_DocDBDumpToLog(IncludeIntents include_intents);
 
-  size_t TEST_CountRegularDBRecords();
+  Result<size_t> TEST_CountRegularDBRecords();
 
   Status CreateReadIntents(
       const TransactionMetadataPB& transaction_metadata,

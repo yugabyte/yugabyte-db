@@ -462,9 +462,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
         *static_projection, *doc_read_context_, txn_op_context_,
         data.doc_write_batch->doc_db(), data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (VERIFY_RESULT(iterator.HasNext())) {
-      RETURN_NOT_OK(iterator.NextRow(table_row));
-    }
+    RETURN_NOT_OK(iterator.FetchNext(table_row));
     data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
   if (pk_doc_key_) {
@@ -473,8 +471,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
         *non_static_projection, *doc_read_context_, txn_op_context_,
         data.doc_write_batch->doc_db(), data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (VERIFY_RESULT(iterator.HasNext())) {
-      RETURN_NOT_OK(iterator.NextRow(table_row));
+    if (VERIFY_RESULT(iterator.FetchNext(table_row))) {
       // If there are indexes to update, check if liveness column exists for update/delete because
       // that will affect whether the row will still exist after the DML and whether we need to
       // remove the key from the indexes.
@@ -623,12 +620,11 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
 
   // It is a duplicate value if the index key exists already and the index value (corresponding to
   // the indexed table's primary key) is not the same.
-  if (!VERIFY_RESULT(iterator.HasNext())) {
+  QLTableRow table_row;
+  if (!VERIFY_RESULT(iterator.FetchNext(&table_row))) {
     VLOG(2) << "No collision found while checking at " << yb::ToString(read_time);
     return false;
   }
-  QLTableRow table_row;
-  RETURN_NOT_OK(iterator.NextRow(&table_row));
   std::unordered_set<ColumnId> key_column_ids(unique_index_key_schema_->column_ids().begin(),
                                               unique_index_key_schema_->column_ids().end());
   for (const auto& column_value : request_.column_values()) {
@@ -659,7 +655,7 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
   HybridTime result;
   VLOG(3) << "Doing iter->Seek " << *pk_doc_key_;
   iter->Seek(*pk_doc_key_);
-  if (iter->valid()) {
+  if (!iter->IsOutOfRecords()) {
     const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(
@@ -667,7 +663,7 @@ Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
     VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
             << SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
-    VLOG(3) << "iter->Seek " << *pk_doc_key_ << " turned out to be invalid";
+    VLOG(3) << "iter->Seek " << *pk_doc_key_ << " turned out to be out of records";
   }
   return result;
 }
@@ -1174,10 +1170,7 @@ Status QLWriteOperation::ApplyDelete(
     // Iterate through rows and delete those that match the condition.
     // TODO(mihnea): We do not lock here, so other write transactions coming in might appear
     // partially applied if they happen in the middle of a ranged delete.
-    while (VERIFY_RESULT(iterator.HasNext())) {
-      existing_row->Clear();
-      RETURN_NOT_OK(iterator.NextRow(existing_row));
-
+    while (VERIFY_RESULT(iterator.FetchNext(existing_row))) {
       // Match the row with the where condition before deleting it.
       bool match = false;
       RETURN_NOT_OK(spec.Match(*existing_row, &match));
@@ -1638,6 +1631,8 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
   return nullptr; // The index updating was skipped.
 }
 
+YB_DEFINE_ENUM(NextRowState, (kNone)(kFound)(kNotFound));
+
 Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
@@ -1690,6 +1685,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
+  QLTableRow next_static_row;
   QLTableRow non_static_row;
   QLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
 
@@ -1701,32 +1697,31 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, doc_read_context, txn_op_context_, deadline,
         read_time, *static_row_spec, &static_row_iter));
-    if (VERIFY_RESULT(static_row_iter->HasNext())) {
-      RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
-    }
+    RETURN_NOT_OK(static_row_iter->FetchNext(&static_row));
   }
 
   // Begin the normal fetch.
   int match_count = 0;
   bool static_dealt_with = true;
-  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
-    const bool last_read_static = iter->IsNextStaticColumn();
+  NextRowState next_row_state = NextRowState::kNone;
+  while (resultset->rsrow_count() < row_count_limit) {
+    if (next_row_state == NextRowState::kNone) {
+      if (!VERIFY_RESULT(iter->FetchNext(
+             &non_static_row, &non_static_projection, &static_row, &static_projection))) {
+        break;
+      }
+    } else if (next_row_state == NextRowState::kNotFound) {
+      break;
+    } else {
+      next_row_state = NextRowState::kNone;
+    }
+    const bool last_read_static = iter->IsFetchedRowStatic();
 
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is
     // because "<empty_range_components>" is empty and terminated by kGroupEnd which sorts before
     // all other ValueType characters in a non-empty range component.
     //   <hash_code><hash_components><empty_range_components><static_column_id> -> value;
     //   <hash_code><hash_components><range_components><non_static_column_id> -> value;
-    if (last_read_static) {
-      static_row.Clear();
-      RETURN_NOT_OK(iter->NextRow(static_projection, &static_row));
-    } else { // Reading a regular row that contains non-static columns.
-      // Read this regular row.
-      // TODO(omer): this is quite inefficient if read_distinct_column. A better way to do this
-      // would be to only read the first non-static column for each hash key, and skip the rest
-      non_static_row.Clear();
-      RETURN_NOT_OK(iter->NextRow(non_static_projection, &non_static_row));
-    }
 
     // We have two possible cases: whether we use distinct or not
     // If we use distinct, then in general we only need to add the static rows
@@ -1752,14 +1747,19 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
         // the non-static row corresponds to this static row; if the non-static row doesn't
         // correspond to this static row, we will have to add it later, so set static_dealt_with to
         // false
-        if (VERIFY_RESULT(iter->HasNext()) && !iter->IsNextStaticColumn()) {
+        next_row_state = VERIFY_RESULT(iter->FetchNext(
+                &non_static_row, &non_static_projection, &next_static_row, &static_projection))
+            ? NextRowState::kFound : NextRowState::kNotFound;
+        if (next_row_state == NextRowState::kFound && !iter->IsFetchedRowStatic()) {
           static_dealt_with = false;
           continue;
         }
-
         AddProjection(non_static_projection, &static_row);
         RETURN_NOT_OK(AddRowToResult(spec, static_row, row_count_limit, offset, resultset,
                                      &match_count, &num_rows_skipped));
+        if (next_row_state == NextRowState::kFound) {
+          static_row = next_static_row;
+        }
       } else {
         // We also have to do the join if we are not reading any static columns, as Cassandra
         // reports nulls for static rows with no corresponding non-static row

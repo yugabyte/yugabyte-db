@@ -16,10 +16,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.kms.algorithms.SupportedAlgorithmInterface;
 import com.yugabyte.yw.common.kms.services.EncryptionAtRestService;
@@ -27,6 +28,7 @@ import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.KmsHistoryId;
 import com.yugabyte.yw.models.Universe;
+import io.ebean.annotation.EnumValue;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.util.Arrays;
@@ -38,9 +40,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
-import play.api.Play;
 import play.libs.Json;
-import io.ebean.annotation.EnumValue;
 
 public class EncryptionAtRestUtil {
   protected static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestUtil.class);
@@ -300,6 +300,13 @@ public class EncryptionAtRestUtil {
     return KmsHistory.getKeyRefConfig(
         targetUUID,
         configUUID,
+        Base64.getEncoder().encodeToString(keyRef),
+        KmsHistoryId.TargetType.UNIVERSE_KEY);
+  }
+
+  public static KmsHistory getKmsHistory(UUID targetUUID, byte[] keyRef) {
+    return KmsHistory.getKmsHistory(
+        targetUUID,
         Base64.getEncoder().encodeToString(keyRef),
         KmsHistoryId.TargetType.UNIVERSE_KEY);
   }

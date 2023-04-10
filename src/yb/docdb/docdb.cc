@@ -408,6 +408,7 @@ Status PrepareApplyExternalIntents(
 
       iter.Next();
     }
+    RETURN_NOT_OK(iter.status());
   }
 
   return Status::OK();
@@ -809,7 +810,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
         }
         {
           intent_iter.Seek(reverse_index_value);
-          if (!intent_iter.Valid() || intent_iter.key() != reverse_index_value) {
+          if (!VERIFY_RESULT(intent_iter.CheckedValid()) ||
+              intent_iter.key() != reverse_index_value) {
             LOG(WARNING) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
                          << " for " << key_slice.ToDebugHexString()
                          << ", transactionId: " << transaction_id;
@@ -862,6 +864,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     }
     reverse_index_iter.Next();
   }
+  RETURN_NOT_OK(reverse_index_iter.status());
 
   return ApplyTransactionState{};
 }

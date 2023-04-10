@@ -266,7 +266,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
                 {titleIcon ? (
                   <div className={classes.modalTitle}>
                     {titleIcon}
-                    <span className={classes.text}>{title}</span>
+                    <span className={classes.text} data-testid="YBModal-Title">
+                      {title}
+                    </span>
                   </div>
                 ) : (
                   <div className={classes.modalTitle}>{title}</div>

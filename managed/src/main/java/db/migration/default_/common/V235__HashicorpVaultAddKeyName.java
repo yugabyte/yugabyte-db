@@ -2,23 +2,22 @@
 
 package db.migration.default_.common;
 
-import java.sql.Connection;
-import java.util.List;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.KmsConfig;
 import io.ebean.Ebean;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
-
-import org.flywaydb.core.api.migration.jdbc.BaseJdbcMigration;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
 
 @Slf4j
-public class V235__HashicorpVaultAddKeyName extends BaseJdbcMigration {
+public class V235__HashicorpVaultAddKeyName extends BaseJavaMigration {
 
   @Override
-  public void migrate(Connection connection) throws Exception {
+  public void migrate(Context context) {
     Ebean.execute(V235__HashicorpVaultAddKeyName::addKeyNameToAuthConfig);
   }
 

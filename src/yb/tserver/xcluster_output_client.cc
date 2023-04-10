@@ -301,7 +301,7 @@ void XClusterOutputClient::UpdateSchemaVersionMappings(
     schema_versions_[producer_version] = consumer_version;
   }
 
-  for(const auto& [colocationid, schema_versions] : colocated_schema_version_map_) {
+  for(const auto& [colocationid, schema_versions] : colocated_schema_version_map) {
     for(const auto& [producer_version, consumer_version] : schema_versions) {
       colocated_schema_version_map_[colocationid][producer_version] = consumer_version;
     }
@@ -525,7 +525,7 @@ Status XClusterOutputClient::SendUserTableWrites() {
   std::unique_ptr<WriteRequestPB> write_request;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
-    write_request = write_strategy_->GetNextWriteRequest();
+    write_request = write_strategy_->FetchNextRequest();
   }
   if (!write_request) {
     LOG(WARNING) << "Expected to find a write_request but were unable to";
@@ -698,6 +698,26 @@ Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordP
                 record.change_metadata_request().schema();
   {
     std::lock_guard l(lock_);
+
+    // If this is a request to add a table and we have already have a mapping for the producer
+    // schema version, we can safely ignore the add table as the table and mapping was present at
+    // setup_replication and we are just receiving the change metadata op for the new table
+    if (record.change_metadata_request().has_add_table()) {
+      cdc::XClusterSchemaVersionMap* cached_schema_versions = &schema_versions_;
+      if (schema.has_colocated_table_id()) {
+        cached_schema_versions =
+            FindOrNull(colocated_schema_version_map_, schema.colocated_table_id().colocation_id());
+      }
+
+      if (cached_schema_versions &&
+          cached_schema_versions->contains(record.change_metadata_request().schema_version())) {
+        LOG(INFO) << Format(
+            "Ignoring change metadata request with schema $0 for tablet $1 as mapping from"
+            "producer-consumer schema version already exists",
+            schema.DebugString(), producer_tablet_info_.tablet_id);
+        return true;
+      }
+    }
 
     // Cache the producer schema version and colocation id if present
     producer_schema_version_ = record.change_metadata_request().schema_version();
@@ -879,7 +899,9 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
       schema_version_map = &schema_versions_;
     }
     // Log the response from master.
-    LOG_WITH_FUNC(INFO) << "UpdateConsumerOnProducerMetadataResponsePB :" << response.DebugString();
+    LOG_WITH_FUNC(INFO) << Format(
+        "Received response: $0 for schema: $1 on producer tablet $2",
+        response.DebugString(), req.schema().DebugString(), producer_tablet_info_.tablet_id);
     DCHECK(schema_version_map);
     auto resp_schema_versions = response.schema_versions();
     (*schema_version_map)[resp_schema_versions.current_producer_schema_version()]
@@ -931,7 +953,7 @@ void XClusterOutputClient::DoWriteCDCRecordDone(
   std::unique_ptr<WriteRequestPB> write_request;
   {
     std::lock_guard<decltype(lock_)> l(lock_);
-    write_request = write_strategy_->GetNextWriteRequest();
+    write_request = write_strategy_->FetchNextRequest();
   }
 
   if (write_request) {

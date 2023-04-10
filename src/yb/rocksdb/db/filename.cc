@@ -100,6 +100,10 @@ std::string MakeTableFileName(const std::string& path, uint64_t number) {
   return MakeFileName(path, number, kRocksDbTFileExt);
 }
 
+std::string MakeTableDataFilePath(const std::string& path, uint64_t number) {
+  return MakeFileName(path, number, kRocksDbTSBlockFileExt);
+}
+
 std::string Rocks2LevelTableFileName(const std::string& fullname) {
   assert(fullname.size() > sizeof(kRocksDbTFileExt));
   if (fullname.size() <= sizeof(kRocksDbTFileExt)) {

@@ -12,19 +12,15 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.Util.UniverseDetailSubset;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.common.YBADeprecated;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -61,8 +57,6 @@ import play.libs.Json;
 @Getter
 @Setter
 public class CertificateInfo extends Model {
-
-  @Inject static RuntimeConfGetter confGetter;
 
   /**
    * This is the custom certificatePath information certificates received in param are converted to
@@ -104,21 +98,8 @@ public class CertificateInfo extends Model {
   private String label;
 
   @Column(nullable = false)
+  @JsonIgnore
   private Date startDate;
-
-  @ApiModelProperty(
-      value = "The certificate's creation date. Deprecated: use stateDateIso instead",
-      accessMode = READ_WRITE)
-  // @Constraints.Required
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @YBADeprecated(sinceDate = "2023-02-17", sinceYBAVersion = "2.17.2.0")
-  public Date getStartDate() {
-    boolean compatDate = confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
-    if (compatDate) {
-      return startDate;
-    }
-    return null;
-  }
 
   @ApiModelProperty(
       value = "The certificate's creation date",
@@ -134,23 +115,9 @@ public class CertificateInfo extends Model {
     this.setStartDate(startDate);
   }
 
+  @JsonIgnore
   @Column(nullable = false)
   private Date expiryDate;
-
-  @ApiModelProperty(
-      value = "The certificate's expiry date. Deprecated: Use expirtyDateIso instead",
-      accessMode = READ_WRITE)
-  // @Constraints.Required
-  @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @YBADeprecated(sinceDate = "2023-02-17", sinceYBAVersion = "2.17.2.0")
-  public Date getExpiryDate() {
-    boolean compatDate = confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
-    if (compatDate) {
-      return expiryDate;
-    }
-    return null;
-  }
 
   @ApiModelProperty(
       value = "The certificate's expiry date",

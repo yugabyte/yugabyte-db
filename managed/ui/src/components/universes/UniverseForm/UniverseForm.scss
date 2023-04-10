@@ -589,6 +589,15 @@
   display: none;
 }
 
+.empty-cell {
+  background-color: colors.$YB_BG_WHITE_3;
+  border: 1px dashed #e3e3e5;
+}
+
+.no-boder {
+  border: none !important;
+}
+
 .flag-icon-button {
   background-color: inherit;
   padding: 0px !important;

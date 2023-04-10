@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <array>
 #include <string>
 
 #include "yb/common/hybrid_time.h"

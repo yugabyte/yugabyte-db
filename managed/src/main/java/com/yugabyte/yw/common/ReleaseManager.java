@@ -12,6 +12,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
@@ -54,6 +56,7 @@ import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
 import play.libs.Json;
 import play.mvc.Http.Status;
+import play.Environment;
 
 @Slf4j
 @Singleton
@@ -72,6 +75,8 @@ public class ReleaseManager {
   private final Commissioner commissioner;
   private final AWSUtil awsUtil;
   private final GCPUtil gcpUtil;
+  private final RuntimeConfGetter confGetter;
+  private final Environment environment;
 
   @Inject
   public ReleaseManager(
@@ -80,13 +85,17 @@ public class ReleaseManager {
       GFlagsValidation gFlagsValidation,
       Commissioner commissioner,
       AWSUtil awsUtil,
-      GCPUtil gcpUtil) {
+      GCPUtil gcpUtil,
+      RuntimeConfGetter confGetter,
+      Environment environment) {
     this.configHelper = configHelper;
     this.appConfig = appConfig;
     this.gFlagsValidation = gFlagsValidation;
     this.commissioner = commissioner;
     this.awsUtil = awsUtil;
     this.gcpUtil = gcpUtil;
+    this.confGetter = confGetter;
+    this.environment = environment;
   }
 
   public enum ReleaseState {
@@ -580,6 +589,7 @@ public class ReleaseManager {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, String.format("Release already exists for version %s", version));
     }
+    validateSoftwareVersionOnCurrentYbaVersion(version);
     log.info("Adding release version {} with metadata {}", version, metadata.toString());
     downloadYbHelmChart(version, metadata);
     currentReleases.put(version, metadata);
@@ -715,6 +725,9 @@ public class ReleaseManager {
                         + "name matches the DB version in the folder name.");
               }
             }
+
+            validateSoftwareVersionOnCurrentYbaVersion(version);
+
           } catch (RuntimeException e) {
             log.error(
                 "Error verifying file and directory names for local release, "
@@ -940,6 +953,7 @@ public class ReleaseManager {
 
   // Adds metadata to releases is version does not exist. Updates existing value if key present.
   public synchronized void updateReleaseMetadata(String version, ReleaseMetadata newData) {
+    validateSoftwareVersionOnCurrentYbaVersion(version);
     Map<String, Object> currentReleases = getReleaseMetadata();
     currentReleases.put(version, newData);
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
@@ -1022,5 +1036,33 @@ public class ReleaseManager {
 
   public boolean getInUse(String version) {
     return Universe.existsRelease(version);
+  }
+
+  private void validateSoftwareVersionOnCurrentYbaVersion(String ybSoftwareVersion) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion)) {
+      return;
+    }
+
+    String currentYbaVersion = ConfigHelper.getCurrentVersion(environment);
+
+    int cmpValue;
+    String msg;
+    try {
+      cmpValue = Util.compareYbVersions(ybSoftwareVersion, currentYbaVersion);
+    } catch (RuntimeException e) {
+      msg =
+          String.format(
+              "There was a problem while comparing requested DB version "
+                  + "%s with YBA version %s, not proceeding.",
+              ybSoftwareVersion, currentYbaVersion);
+      throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+    }
+    if (cmpValue > 0) {
+      msg =
+          String.format(
+              "DB version %s, a version higher than current YBA Version %s is not supported",
+              ybSoftwareVersion, currentYbaVersion);
+      throw new PlatformServiceException(Status.BAD_REQUEST, msg);
+    }
   }
 }

@@ -1014,7 +1014,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int tablet_idx = 0, int64 index = 0, int64 term = 0, std::string key = "",
-      int32_t write_id = 0, int64 snapshot_time = 0, const TableId table_id = "") {
+      int32_t write_id = 0, int64 snapshot_time = 0, const TableId table_id = "",
+      int64 safe_hybrid_time = -1) {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
@@ -1025,6 +1026,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     if (!table_id.empty()) {
       change_req->set_table_id(table_id);
     }
+    change_req->set_safe_hybrid_time(safe_hybrid_time);
   }
 
   void PrepareChangeRequest(
@@ -1043,13 +1045,18 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void PrepareChangeRequest(
       GetChangesRequestPB* change_req, const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const CDCSDKCheckpointPB& cp, const int tablet_idx = 0) {
+      const CDCSDKCheckpointPB& cp, const int tablet_idx = 0, const TableId table_id = "",
+      int64 safe_hybrid_time = -1) {
     change_req->set_stream_id(stream_id);
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_term(cp.term());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_index(cp.index());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_key(cp.key());
     change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(cp.write_id());
+    if (!table_id.empty()) {
+      change_req->set_table_id(table_id);
+    }
+    change_req->set_safe_hybrid_time(safe_hybrid_time);
   }
 
   void PrepareChangeRequest(
@@ -1450,14 +1457,16 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const CDCStreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const CDCSDKCheckpointPB* cp = nullptr,
-      int tablet_idx = 0) {
+      int tablet_idx = 0,
+      int64 safe_hybrid_time = -1) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
 
     if (cp == nullptr) {
-      PrepareChangeRequest(&change_req, stream_id, tablets, tablet_idx);
+      PrepareChangeRequest(
+          &change_req, stream_id, tablets, tablet_idx, 0, 0, "", 0, 0, "", safe_hybrid_time);
     } else {
-      PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx);
+      PrepareChangeRequest(&change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time);
     }
 
     // Retry only on LeaderNotReadyToServe errors
@@ -1888,7 +1897,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
       std::unordered_map<std::string, std::string> keys;
 
-      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      for (iter->SeekToFirst(); EXPECT_RESULT(iter->CheckedValid()); iter->Next()) {
         Slice key = iter->key();
         EXPECT_OK(DocHybridTime::DecodeFromEnd(&key));
         LOG(INFO) << "key: " << iter->key().ToDebugString()
@@ -2062,6 +2071,38 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     }
 
     return std::make_pair(snapshot_time, snapshot_key);
+  }
+
+  Result<int64_t> GetSafeHybridTimeFromCdcStateTable(
+      const CDCStreamId& stream_id, const TabletId& tablet_id, client::YBClient* client) {
+    auto session = client->NewSession();
+    client::TableHandle table;
+    const client::YBTableName cdc_state_table(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
+    RETURN_NOT_OK(table.Open(cdc_state_table, client));
+
+    auto read_op = table.NewReadOp();
+    auto* read_req = read_op->mutable_request();
+    QLAddStringHashValue(read_req, tablet_id);
+    auto cond = read_req->mutable_where_expr()->mutable_condition();
+    cond->set_op(QLOperator::QL_OP_AND);
+    QLAddStringCondition(
+        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
+    table.AddColumns({master::kCdcData}, read_req);
+    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+    RETURN_NOT_OK(session->TEST_ReadSync(read_op));
+
+    auto row_block = ql::RowsResult(read_op.get()).GetRowBlock();
+    if (row_block->row_count() != 1) {
+      return STATUS(
+          InvalidArgument, "Did not find a row in the cdc_state table for the tablet and stream.");
+    }
+
+    const auto& safe_hybrid_time_string =
+        row_block->row(0).column(0).map_value().values().Get(1).string_value();
+
+    auto safe_hybrid_time = VERIFY_RESULT(CheckedStoInt<int64_t>(safe_hybrid_time_string));
+    return safe_hybrid_time;
   }
 
   void ValidateColumnCounts(const GetChangesResponsePB& resp, uint32_t excepted_column_counts) {
@@ -2319,6 +2360,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   }
 
   void CDCSDKDropColumnsWithRestartTServer(bool packed_row) {
+    FLAGS_enable_load_balancing = false;
     const int num_tservers = 3;
     ASSERT_OK(SET_FLAG(ysql_enable_packed_row, packed_row));
     ASSERT_OK(SetUpWithParams(num_tservers, 1, false));

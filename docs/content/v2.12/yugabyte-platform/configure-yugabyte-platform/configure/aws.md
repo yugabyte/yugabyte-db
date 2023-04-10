@@ -54,14 +54,15 @@ Select your cloud provider to see the steps for configuration of database nodes.
 
 </ul>
 
+The following diagram depicts the configuration process for AWS.
+
 <div class="image-with-map">
 <img src="/images/ee/flowchart/yb-configure-aws.png" usemap="#image-map">
 
 <map name="image-map">
-    <area alt="Configure platform" title="Configure platform" href="/preview/yugabyte-platform/configure-yugabyte-platform/" coords="387,68,517,200" shape="rect" style="width:18%;height:17%;top:5%;left:41%;">
-    <area alt="Admin user" title="Admin user" href="/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/" coords="290,262,609,317" shape="rect" style=" width: 38%; height: 6%; top: 27%; left: 31%; ">
-    <area alt="AWS provider" title="AWS provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/" coords="275,370,635,424" shape="rect" style=" width: 42%; height: 6%; top: 38.3%; left: 29%; ">
-    <area alt="AWS provider - pre reqs" title="AWS provider - pre reqs" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#prerequisites" coords="224,474,674,649" shape="rect" style=" width: 50%; height: 19%; top: 49.3%; left: 25%; ">
-    <area alt="AWS provider - configure cloud provider" title="AWS provider - configure cloud provider" href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/#configure-aws" coords="302,703,602,793" shape="rect" style=" width: 34%; height: 10%; top: 73%; left: 33%; ">
+    <area alt="Admin user" title="Admin user" href="../../create-admin-user/" coords="290,262,609,317" shape="rect" style=" width: 38%; height: 6%; top: 27%; left: 31%; ">
+    <area alt="AWS provider" title="AWS provider" href="../../set-up-cloud-provider/aws/" coords="275,370,635,424" shape="rect" style=" width: 42%; height: 6%; top: 38.3%; left: 29%; ">
+    <area alt="AWS provider - pre reqs" title="AWS provider - pre reqs" href="../../set-up-cloud-provider/aws/#prerequisites" coords="224,474,674,649" shape="rect" style=" width: 50%; height: 19%; top: 49.3%; left: 25%; ">
+    <area alt="AWS provider - configure cloud provider" title="AWS provider - configure cloud provider" href="../../set-up-cloud-provider/aws/#configure-aws" coords="302,703,602,793" shape="rect" style=" width: 34%; height: 10%; top: 73%; left: 33%; ">
 </map>
 </div>

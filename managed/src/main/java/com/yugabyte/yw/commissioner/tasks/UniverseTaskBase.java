@@ -118,6 +118,7 @@ import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupRequestParams.ParallelBackupState;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
+import com.yugabyte.yw.forms.CreatePitrConfigParams;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig.OpType;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -2386,6 +2387,37 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return restore;
   }
 
+  protected SubTaskGroup createCreatePitrConfigTask(
+      String keyspaceName, TableType tableType, long retentionPeriodSeconds) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreatePitrConfig");
+    CreatePitrConfigParams createPitrConfigParams = new CreatePitrConfigParams();
+    createPitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
+    createPitrConfigParams.customerUUID = Customer.get(getUniverse().getCustomerId()).getUuid();
+    createPitrConfigParams.name = null;
+    createPitrConfigParams.keyspaceName = keyspaceName;
+    createPitrConfigParams.tableType = tableType;
+    createPitrConfigParams.retentionPeriodInSeconds = retentionPeriodSeconds;
+
+    CreatePitrConfig task = createTask(CreatePitrConfig.class);
+    task.initialize(createPitrConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createDeletePitrConfigTask(UUID pitrConfigUuid) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeletePitrConfig");
+    DeletePitrConfig.Params deletePitrConfigParams = new DeletePitrConfig.Params();
+    deletePitrConfigParams.setUniverseUUID(taskParams().getUniverseUUID());
+    deletePitrConfigParams.pitrConfigUuid = pitrConfigUuid;
+
+    DeletePitrConfig task = createTask(DeletePitrConfig.class);
+    task.initialize(deletePitrConfigParams);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   public SubTaskGroup installThirdPartyPackagesTaskK8s(Universe universe) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstallingThirdPartySoftware");
     InstallThirdPartySoftwareK8s task = createTask(InstallThirdPartySoftwareK8s.class);
@@ -2417,6 +2449,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     YbcBackupNodeRetriever nodeRetriever =
         new YbcBackupNodeRetriever(backupParams.getUniverseUUID(), parallelDBBackups);
     nodeRetriever.initializeNodePoolForBackups(backupStates);
+    Backup previousBackup =
+        (!backupParams.baseBackupUUID.equals(backupParams.backupUuid))
+            ? Backup.getLastSuccessfulBackupInChain(
+                backupParams.customerUuid, backupParams.baseBackupUUID)
+            : null;
     backupParams
         .backupList
         .stream()
@@ -2425,6 +2462,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             bTP -> {
               BackupTableYbc task = createTask(BackupTableYbc.class);
               BackupTableYbc.Params backupYbcParams = new BackupTableYbc.Params(bTP, nodeRetriever);
+              backupYbcParams.previousBackup = previousBackup;
               backupYbcParams.nodeIp = backupStates.get(bTP.getKeyspace()).nodeIp;
               backupYbcParams.taskID = backupStates.get(bTP.getKeyspace()).currentYbcTaskId;
               task.initialize(backupYbcParams);
@@ -2558,7 +2596,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * Creates a task to upgrade desired ybc version on a k8s universe.
    *
    * @param universeUUID universe on which ybc need to be upgraded
-   * @param ybcVersion desired ybc version
+   * @param ybcSoftwareVersion desired ybc version not
    */
   public SubTaskGroup createUpgradeYbcTaskOnK8s(UUID universeUUID, String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpgradeYbc");

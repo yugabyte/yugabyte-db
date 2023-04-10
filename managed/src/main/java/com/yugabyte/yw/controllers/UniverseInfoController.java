@@ -17,6 +17,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -27,7 +28,10 @@ import com.yugabyte.yw.forms.TriggerHealthCheckResult;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.extended.DetailsExt;
+import com.yugabyte.yw.models.extended.NodeDataExt;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -43,9 +47,11 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -181,7 +187,7 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Reset slow queries for a universe",
       nickname = "resetSlowQueries",
       response = Object.class)
-  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID) {
+  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID, Http.Request request) {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
@@ -190,8 +196,8 @@ public class UniverseInfoController extends AuthenticatedController {
           BAD_REQUEST, "Can't reset slow queries for a paused universe");
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.ResetSlowQueries);
@@ -216,7 +222,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
-    return PlatformResults.withData(detailsList);
+    return PlatformResults.withData(convertDetails(detailsList));
   }
 
   @ApiOperation(
@@ -274,9 +280,40 @@ public class UniverseInfoController extends AuthenticatedController {
           File file =
               universeInfoHandler.downloadNodeLogs(customer, universe, node, targetFile).toFile();
           InputStream is = FileUtils.getInputStreamOrFail(file, true /* deleteOnClose */);
-          response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());
-          return ok(is).as("application/x-compressed");
+          return ok(is)
+              .as("application/x-compressed")
+              .withHeader("Content-Disposition", "attachment; filename=" + file.getName());
         },
         ec.current());
+  }
+
+  private List<DetailsExt> convertDetails(List<Details> details) {
+    boolean backwardCompatibleDate =
+        confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
+    return convertDetails(details, backwardCompatibleDate);
+  }
+
+  private List<DetailsExt> convertDetails(List<Details> details, boolean backwardCompatibleDate) {
+    return details
+        .stream()
+        .map(
+            d ->
+                new DetailsExt()
+                    .setDetails(d)
+                    .setTimestamp(backwardCompatibleDate ? d.getTimestampIso() : null)
+                    .setData(convertNodeData(d.getData(), backwardCompatibleDate)))
+        .collect(Collectors.toList());
+  }
+
+  private List<NodeDataExt> convertNodeData(
+      List<NodeData> nodeDataList, boolean backwardCompatibleDate) {
+    return nodeDataList
+        .stream()
+        .map(
+            data ->
+                new NodeDataExt()
+                    .setNodeData(data)
+                    .setTimestamp(backwardCompatibleDate ? data.getTimestampIso() : null))
+        .collect(Collectors.toList());
   }
 }

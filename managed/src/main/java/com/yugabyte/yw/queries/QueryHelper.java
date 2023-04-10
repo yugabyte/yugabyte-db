@@ -222,15 +222,15 @@ public class QueryHelper {
           }
         } else {
           if (queryAction == QueryAction.FETCH_SLOW_QUERIES) {
-            // TODO: PLAT-3977 group by queryid instead of query
             // TODO: PLAT-3986 Sort and limit the merged data
             JsonNode ysqlResponse = response.get("result");
             for (JsonNode queryObject : ysqlResponse) {
+              String queryID = queryObject.get("queryid").asText();
               String queryStatement = queryObject.get("query").asText();
               if (!isExcluded(queryStatement, config)) {
-                if (queryMap.containsKey(queryStatement)) {
+                if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats
-                  ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryStatement);
+                  ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryID);
                   // Defining values to reuse
                   double X_a = previousQueryObj.get("mean_time").asDouble();
                   double X_b = queryObject.get("mean_time").asDouble();
@@ -283,7 +283,7 @@ public class QueryHelper {
                   previousQueryObj.put("local_blks_written", tmpTables);
                   previousQueryObj.put("stddev_time", stdDevTime);
                 } else {
-                  queryMap.put(queryStatement, queryObject);
+                  queryMap.put(queryID, queryObject);
                 }
               }
             }

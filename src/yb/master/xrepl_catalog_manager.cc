@@ -112,6 +112,7 @@ DEFINE_test_flag(bool, exit_unfinished_merging, false,
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
+DECLARE_bool(xcluster_consistent_wal);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -3312,7 +3313,8 @@ Status CatalogManager::ChangeXClusterRole(
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
   if (new_role == cdc::XClusterRole::STANDBY) {
-    if (!consumer_registry->enable_replicate_transaction_status_table()) {
+    if (!FLAGS_xcluster_consistent_wal &&
+        !consumer_registry->enable_replicate_transaction_status_table()) {
       return STATUS(
           InvalidArgument,
           "This universe replication does not support xCluster roles. "

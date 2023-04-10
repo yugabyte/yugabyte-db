@@ -34,6 +34,7 @@
 #include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
@@ -541,12 +542,13 @@ extern const char* YbBitmapsetToString(Bitmapset *bms);
 bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
-void YBIncrementDdlNestingLevel();
-void YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
+void YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
 								bool is_breaking_catalog_change);
+void YBDecrementDdlNestingLevel();
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 								 bool *is_catalog_version_increment,
-								 bool *is_breaking_catalog_change);
+								 bool *is_breaking_catalog_change,
+								 ProcessUtilityContext context);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();

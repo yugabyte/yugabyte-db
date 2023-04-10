@@ -43,7 +43,7 @@ The following diagram depicts the YugabyteDB Anywhere installation process in a 
 <img src="/images/ee/flowchart/yb-install-private-cloud.png" usemap="#image-map">
 
 <map name="image-map">
-    <area alt="Pre reqs" title="Pre reqs" href="../../prerequisites/" coords="323,255,572,412" shape="rect" style="top: 14%;height: 8.6%;left: 36%;width: 28%;">
+    <area alt="Pre reqs" title="Pre reqs" href="../../prerequisites/default/" coords="323,255,572,412" shape="rect" style="top: 14%;height: 8.6%;left: 36%;width: 28%;">
     <area alt="Online installation" title="Online installation" href="../../install-software/default/" coords="239,907,396,970" shape="rect" style="top: 48.7%;height: 3.5%;left: 25%;width: 20%;">
     <area alt="Airgapped installation" title="Airgapped installation" href="../../install-software/airgapped/" coords="512,909,663,967" shape="rect" style="top: 48.7%;height: 3.5%;left: 55%;width: 20%;">
     <area alt="Airgapped installation - pre reqs" title="Airgapped installation - pre reqs" href="../../install-software/airgapped/" coords="482,1008,688,1141" shape="rect" style="top: 54%;height: 8%;left: 53%;width: 24%;">

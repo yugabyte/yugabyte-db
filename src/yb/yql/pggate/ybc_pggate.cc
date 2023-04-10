@@ -83,8 +83,6 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "File access can be re-enabled if set to false.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
-TAG_FLAG(ysql_enable_profile, advanced);
-TAG_FLAG(ysql_enable_profile, hidden);
 
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
             "If true, YB catalog preloads additional tables upon "
@@ -291,7 +289,7 @@ YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc) {
   memset(desc, 0x0, sizeof(YbTcmallocStats));
 #ifdef YB_TCMALLOC_ENABLED
   using mt = yb::MemTracker;
-  desc->total_physical_bytes = mt::GetTCMallocProperty("generic.total_physical_bytes");
+  desc->total_physical_bytes = mt::GetTCMallocPhysicalBytesUsed();
   desc->heap_size_bytes = mt::GetTCMallocCurrentHeapSizeBytes();
   desc->current_allocated_bytes = mt::GetTCMallocCurrentAllocatedBytes();
   desc->pageheap_free_bytes = mt::GetTCMallocProperty("tcmalloc.pageheap_free_bytes");

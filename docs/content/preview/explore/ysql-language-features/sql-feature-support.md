@@ -70,8 +70,8 @@ To understand which standard SQL features we support, refer to the following tab
 | Not Null | ✓ | [Not Null constraint](../../indexes-constraints/other-constraints/#not-null-constraint) |
 | Primary Key | ✓ | [Primary keys](../../indexes-constraints/primary-key-ysql/) |
 | Foreign Key | ✓ | [Foreign keys](../../indexes-constraints/foreign-key-ysql/) |
-| Default Value | ✓ | |
-| Deferrable Foreign Key constraints | ✓ | |
+| Default Value | ✓ (Partial)| |
+| Deferrable Foreign Key constraints | ✓ (Partial) | |
 | Deferrable Primary Key and Unique constraints | ✗ | |
 | Exclusion constraints| ✗ | |
 

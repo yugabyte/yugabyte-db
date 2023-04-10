@@ -11,16 +11,16 @@ menu:
 type: docs
 ---
 
-  <ul class="nav nav-tabs-alt nav-tabs-yb">
+<ul class="nav nav-tabs-alt nav-tabs-yb">
 
 <li>
-    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone" class="nav-link">
+    <a href="../create-universe-multi-zone" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>
 Generic</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/create-deployments/create-universe-multi-zone-kubernetes" class="nav-link active">
+    <a href="../create-universe-multi-zone-kubernetes" class="nav-link active">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
@@ -86,9 +86,9 @@ Complete the **Advanced** section as follows:
 
 - In the **DB Version** field, specify the YugabyteDB version. The default is either the same as the Yugabyte Platform version or the latest YugabyteDB version available for Yugabyte Platform.
 
-- Use the **Enable IPV6** to enable the use of IPV6 networking for connections between the database servers. This setting is enbled by default.
+- Use the **Enable IPV6** to enable the use of IPV6 networking for connections between the database servers. This setting is enabled by default.
 
-- Use the **Enable Public Network Access** field to assign a load balancer or nodePort for connecting to the database endpoints over the internet. This setting is enbled by default.
+- Use the **Enable Public Network Access** field to assign a load balancer or nodePort for connecting to the database endpoints over the internet. This setting is enabled by default.
 
   ![img](/images/yb-platform/kubernetes-config7.png)
 
@@ -128,13 +128,15 @@ You can create a connection to a pod as follows:
 
 - Click **Connect** to access the universe's endpoints to connect, as shown in the following illustration:
 
-![img](/images/yb-platform/kubernetes-config13.png)
+    ![img](/images/yb-platform/kubernetes-config13.png)
+
 - Click **Actions** on a specific pod, as per the following illustration:
 
-![img](/images/yb-platform/kubernetes-config14.png)
+    ![img](/images/yb-platform/kubernetes-config14.png)
+
 - Click **Actions > Connect** to access the `kubectl` commands that allow you to connect to the pods, as shown in the following illustration:
 
-![img](/images/yb-platform/kubernetes-config15.png)
+    ![img](/images/yb-platform/kubernetes-config15.png)
 
 ## Connect to the universe
 
