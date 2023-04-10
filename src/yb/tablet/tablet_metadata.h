@@ -76,6 +76,8 @@ extern const std::string kSnapshotsDirSuffix;
 const uint64_t kNoLastFullCompactionTime = HybridTime::kMin.ToUint64();
 
 YB_STRONGLY_TYPED_BOOL(Primary);
+YB_STRONGLY_TYPED_BOOL(OnlyIfDirty);
+YB_STRONGLY_TYPED_BOOL(LazySuperblockFlushEnabled);
 
 struct TableInfo {
  private:
@@ -483,7 +485,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   void SetRestorationHybridTime(HybridTime value);
   HybridTime restoration_hybrid_time() const;
 
-  Status Flush();
+  // Flushes the superblock to disk.
+  // If only_if_dirty is true, flushes only if there are metadata updates that have been applied but
+  // not flushed to disk. This is checked by comparing last_applied_change_metadata_op_id_ and
+  // last_flushed_change_metadata_op_id_.
+  Status Flush(OnlyIfDirty only_if_dirty = OnlyIfDirty::kFalse);
 
   Status SaveTo(const std::string& path);
 
@@ -558,7 +564,11 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return primary_table_info_unlocked();
   }
 
+  bool IsSysCatalog() const;
+
   bool colocated() const;
+
+  LazySuperblockFlushEnabled IsLazySuperblockFlushEnabled() const;
 
   Result<std::string> TopSnapshotsDir() const;
 
@@ -606,11 +616,16 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     return kv_store_;
   }
 
-  OpId LastChangeMetadataOperationOpId() const;
+  OpId LastFlushedChangeMetadataOperationOpId() const;
 
-  void SetLastChangeMetadataOperationOpIdUnlocked(const OpId& op_id) REQUIRES(data_mutex_);
+  OpId TEST_LastAppliedChangeMetadataOperationOpId() const;
 
-  void SetLastChangeMetadataOperationOpId(const OpId& op_id);
+  void SetLastAppliedChangeMetadataOperationOpId(const OpId& op_id);
+
+  // Takes OpId of the change metadata operation applied as argument.
+  void OnChangeMetadataOperationApplied(const OpId& applied_opid);
+
+  OpId MinUnflushedChangeMetadataOpId() const;
 
  private:
   typedef simple_spinlock MutexType;
@@ -651,6 +666,12 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
     CHECK(itr != tables.end());
     return itr->second;
   }
+
+  void ResetMinUnflushedChangeMetadataOpIdUnlocked() REQUIRES(data_mutex_);
+
+  void SetLastAppliedChangeMetadataOperationOpIdUnlocked(const OpId& op_id) REQUIRES(data_mutex_);
+
+  void OnChangeMetadataOperationAppliedUnlocked(const OpId& applied_op_id) REQUIRES(data_mutex_);
 
   enum State {
     kNotLoadedYet,
@@ -720,9 +741,17 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   std::unordered_set<StatefulServiceKind> hosted_services_;
 
-  // OpId of the last change metadata operation. Used to determine if at the time
+  // OpId of the last applied change metadata operation. Used to determine if the in-memory metadata
+  // state is dirty and set last_flushed_change_metadata_op_id_ on flush.
+  OpId last_applied_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Invalid();
+
+  // OpId of the last flushed change metadata operation. Used to determine if at the time
   // of local tablet bootstrap we should replay a particular change_metadata op.
-  OpId last_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Invalid();
+  OpId last_flushed_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Invalid();
+
+  // OpId of the earliest applied change metadata operation that has not been flushed to disk. Used
+  // to prevent WAL GC of such operations.
+  OpId min_unflushed_change_metadata_op_id_ GUARDED_BY(data_mutex_) = OpId::Max();
 
   DISALLOW_COPY_AND_ASSIGN(RaftGroupMetadata);
 };
