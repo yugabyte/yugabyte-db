@@ -89,7 +89,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               taskParams().useNewHelmNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      createPodsTask(universe.getName(), placement, masterAddresses, true);
+      createPodsTask(universe.getName(), placement, masterAddresses, true, universe.isYbcEnabled());
 
       // Following method assumes primary cluster.
       createSingleKubernetesExecutorTask(
@@ -102,6 +102,16 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
+      // Install YBC on the RR tservers and wait for its completion
+      if (universe.isYbcEnabled()) {
+        installYbcOnThePods(
+            universe.getName(),
+            tserversAdded,
+            true,
+            universe.getUniverseDetails().getYbcSoftwareVersion());
+        createWaitForYbcServerTask(tserversAdded);
+      }
+
       // Persist the placement info into the YB master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -110,6 +120,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       createSwamperTargetUpdateTask(false);
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

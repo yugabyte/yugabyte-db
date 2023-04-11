@@ -87,13 +87,9 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
     return projection_;
   }
 
-  // Is the next row to read a row with a static column?
-  bool IsNextStaticColumn() const override;
+  bool IsFetchedRowStatic() const override;
 
   const Slice& row_key() const { return row_key_; }
-
-  // Skip the current row.
-  void SkipRow() override;
 
   // Returns the tuple id of the current tuple. The tuple id returned is the serialized DocKey
   // and without the cotable id.
@@ -101,7 +97,10 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   // Seeks to the given tuple by its id. The tuple id should be the serialized DocKey and without
   // the cotable id.
-  Result<bool> SeekTuple(const Slice& tuple_id) override;
+  void SeekTuple(const Slice& tuple_id) override;
+
+  // Returns true if tuple was fetched, false otherwise.
+  Result<bool> FetchTuple(const Slice& tuple_id, QLTableRow* row) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
@@ -200,11 +199,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   // The current row's iterator key.
   KeyBytes iter_key_;
-
-  // When HasNext constructs a row, row_ready_ is set to true.
-  // When NextRow consumes the row, this variable is set to false.
-  // It is initialized to false, to make sure first HasNext constructs a new row.
-  bool row_ready_;
 
   ReaderProjection reader_projection_;
 

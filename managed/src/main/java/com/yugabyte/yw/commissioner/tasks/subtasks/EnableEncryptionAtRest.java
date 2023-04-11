@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.KmsHistory;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
@@ -99,6 +100,11 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
                 .collect(Collectors.toList());
         for (HostAndPort hp : masterAddrs) {
           client.addUniverseKeys(ImmutableMap.of(encodedKeyRef, universeKeyVal), hp);
+          log.info(
+              "Sent universe key to universe '{}' and DB node '{}' with key ID: '{}'.",
+              universe.getUniverseUUID(),
+              hp,
+              encodedKeyRef);
         }
         for (HostAndPort hp : masterAddrs) {
           if (!client.waitForMasterHasUniverseKeyInMemory(
@@ -127,9 +133,11 @@ public class EnableEncryptionAtRest extends AbstractTaskBase {
         // Master key rotation case, when the given KMS config differs from the active one.
         log.info(
             String.format(
-                "Rotating master key for universe '%s' from '%s' to '%s'.",
+                "Rotating master key for universe '%s' from ('%s':'%s') to ('%s':'%s').",
                 taskParams().getUniverseUUID().toString(),
+                activeKmsHistory.getAssociatedKmsConfig().getName(),
                 activeKmsHistory.getConfigUuid().toString(),
+                KmsConfig.getOrBadRequest(kmsConfigUUID).getName(),
                 kmsConfigUUID.toString()));
         keyManager.reEncryptActiveUniverseKeys(taskParams().getUniverseUUID(), kmsConfigUUID);
 

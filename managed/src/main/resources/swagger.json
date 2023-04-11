@@ -2915,6 +2915,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -4436,6 +4439,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -5090,6 +5096,9 @@
           "type" : "string"
         },
         "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -7567,6 +7576,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -7801,6 +7813,9 @@
           "type" : "string"
         },
         "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -8838,6 +8853,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -9265,6 +9283,9 @@
           "type" : "string"
         },
         "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -9723,6 +9744,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -9940,6 +9964,9 @@
           "type" : "string"
         },
         "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -10191,6 +10218,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -10400,6 +10430,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -10604,6 +10637,9 @@
           "type" : "string"
         },
         "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "itestS3PackagePath" : {
@@ -11001,6 +11037,9 @@
         "installYbc" : {
           "type" : "boolean"
         },
+        "isKubernetesOperatorControlled" : {
+          "type" : "boolean"
+        },
         "itestS3PackagePath" : {
           "type" : "string"
         },
@@ -11216,6 +11255,10 @@
         },
         "instanceType" : {
           "type" : "string"
+        },
+        "kubernetesOperatorVersion" : {
+          "format" : "int64",
+          "type" : "integer"
         },
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
@@ -11560,6 +11603,9 @@
           "type" : "string"
         },
         "installYbc" : {
+          "type" : "boolean"
+        },
+        "isKubernetesOperatorControlled" : {
           "type" : "boolean"
         },
         "itestS3PackagePath" : {

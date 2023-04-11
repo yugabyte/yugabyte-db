@@ -33,6 +33,9 @@
 
 #include "yb/util/trace.h"
 
+DEFINE_test_flag(bool, xcluster_print_write_request, false,
+    "When enabled the write request will be printed to the log.");
+
 using namespace std::literals;
 
 using yb::tserver::TabletServerErrorPB;
@@ -42,6 +45,16 @@ using yb::tserver::WriteResponsePB;
 
 namespace yb {
 namespace cdc {
+
+namespace {
+std::string WriteRequestPBToString(const WriteRequestPB &req) {
+  if (FLAGS_TEST_xcluster_print_write_request) {
+    return req.ShortDebugString();
+  }
+
+  return "WriteRequestPB";
+}
+}  // namespace
 
 class GetCompatibleSchemaVersionRpc : public rpc::Rpc, public client::internal::TabletRpc {
  public:
@@ -208,7 +221,7 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
   }
 
   std::string ToString() const override {
-    return Format("CDCWriteRpc: $0, retrier: $1", req_, retrier());
+    return Format("CDCWriteRpc: $0, retrier: $1", WriteRequestPBToString(req_), retrier());
   }
 
   void InvokeCallback(const Status &status) {
@@ -216,8 +229,8 @@ class CDCWriteRpc : public rpc::Rpc, public client::internal::TabletRpc {
       called_ = true;
       callback_(status, std::move(resp_));
     } else {
-      LOG(WARNING) << "Multiple invocation of CDCWriteRpc: "
-                   << status.ToString() << " : " << resp_.DebugString();
+      LOG(WARNING) << "Multiple invocation of CDCWriteRpc: " << status.ToString() << " : "
+                   << WriteRequestPBToString(req_);
     }
   }
 

@@ -196,7 +196,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // add the ysql sys table into the raft metadata but adds it in the request
   // pb. The caller is then responsible for performing the ChangeMetadataOperation.
   Status CreateYsqlSysTable(
-      const CreateTableRequestPB* req, CreateTableResponsePB* resp,
+      const CreateTableRequestPB* req, CreateTableResponsePB* resp, int64_t term,
       tablet::ChangeMetadataRequestPB* change_meta_req = nullptr,
       SysCatalogWriter* writer = nullptr);
 
@@ -214,7 +214,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Copy Postgres sys catalog tables into a new namespace.
   Status CopyPgsqlSysTables(const NamespaceId& namespace_id,
-                            const std::vector<scoped_refptr<TableInfo>>& tables);
+                            const std::vector<scoped_refptr<TableInfo>>& tables, int64_t term);
 
   // Create a new Table with the specified attributes.
   //
@@ -1001,9 +1001,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
 
-  void ProcessTabletStorageMetadata(
+  void ProcessTabletMetadata(
       const std::string& ts_uuid,
-      const TabletDriveStorageMetadataPB& storage_metadata);
+      const TabletDriveStorageMetadataPB& storage_metadata,
+      const std::optional<TabletLeaderMetricsPB>& leader_metrics);
 
   Status ProcessTabletReplicationStatus(const TabletReplicationStatusPB& replication_state)
       EXCLUDES(mutex_);

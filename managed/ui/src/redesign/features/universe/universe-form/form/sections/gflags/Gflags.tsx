@@ -28,7 +28,7 @@ export const GFlags: FC = () => {
   return (
     <Box className={classes.sectionContainer} flexDirection="column" data-testid="Gflags-Section">
       <Typography variant="h4">{t('universeForm.gFlags.title')}</Typography>
-      <Box display="flex" width="1200px" mt={4}>
+      <Box display="flex" width="100%" mt={4}>
         <GFlagsField
           control={control}
           dbVersion={dbVersion}

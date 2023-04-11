@@ -180,12 +180,18 @@ class TabletPeerTest : public YBTabletTest {
                  .unlimited_threads()
                  .Build(&log_thread_pool_));
     scoped_refptr<Log> log;
-    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
-                        tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
-                        *tablet()->schema(), tablet()->metadata()->schema_version(),
-                        table_metric_entity_.get(), tablet_metric_entity_.get(),
-                        log_thread_pool_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
-                        tablet()->metadata()->cdc_min_replicated_index(), &log));
+    auto metadata = tablet()->metadata();
+    log::NewSegmentAllocationCallback noop = {};
+    auto new_segment_allocation_callback =
+        metadata->IsLazySuperblockFlushEnabled()
+            ? std::bind(&RaftGroupMetadata::Flush, metadata, OnlyIfDirty::kTrue)
+            : noop;
+    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(), metadata->wal_dir(),
+                        metadata->fs_manager()->uuid(), *tablet()->schema(),
+                        metadata->schema_version(), table_metric_entity_.get(),
+                        tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
+                        log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
+                        new_segment_allocation_callback));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
@@ -477,7 +483,7 @@ TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
   SchemaToPB(schema, table_info.mutable_schema());
   OpId op_id(100, 5);
   ASSERT_OK(tablet->AddTable(table_info, op_id));
-  ASSERT_EQ(tablet->metadata()->LastChangeMetadataOperationOpId(), op_id);
+  ASSERT_EQ(tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(), op_id);
 }
 
 class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {

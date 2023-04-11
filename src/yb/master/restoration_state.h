@@ -136,8 +136,7 @@ class RestorationState : public StateWithTablets {
   Status StoreToKeyValuePair(docdb::KeyValuePairPB* pair);
 
  private:
-  bool IsTerminalFailure(const Status& status) override;
-
+  std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status ToEntryPB(ForClient for_client, SysRestorationEntryPB* out);
 
   SysSnapshotEntryPB::State MigrateInitialStateIfNeeded(SysSnapshotEntryPB::State initial_state);

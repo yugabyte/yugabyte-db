@@ -79,7 +79,7 @@ const VALIDATION_SCHEMA = object().shape({
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
 
-const FORM_NAME = 'OnPremProviderForm';
+const FORM_NAME = 'OnPremProviderCreateForm';
 
 export const OnPremProviderCreateForm = ({
   onBack,
@@ -123,8 +123,8 @@ export const OnPremProviderCreateForm = ({
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
-    } catch (error) {
-      toast.error(error);
+    } catch (error: any) {
+      toast.error(error.message ?? error);
     }
   };
 
@@ -134,7 +134,7 @@ export const OnPremProviderCreateForm = ({
     setIsRegionFormModalOpen(true);
   };
   const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT);
+    setRegionOperation(RegionOperation.EDIT_NEW);
     setIsRegionFormModalOpen(true);
   };
   const hideRegionFormModal = () => {
@@ -182,14 +182,17 @@ export const OnPremProviderCreateForm = ({
             <FieldGroup
               heading="Regions"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <RegionList
@@ -252,7 +255,10 @@ export const OnPremProviderCreateForm = ({
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
-                <FieldLabel infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance.">
+                <FieldLabel
+                  infoTitle="DB Nodes have public internet access?"
+                  infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance."
+                >
                   DB Nodes have public internet access?
                 </FieldLabel>
                 <YBToggleField
@@ -262,7 +268,10 @@ export const OnPremProviderCreateForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel infoContent="If enabled, node provisioning will not be done when the universe is created. A pre-provision script will be provided to be run manually instead.">
+                <FieldLabel
+                  infoTitle="Manually Provision Nodes"
+                  infoContent="If enabled, node provisioning will not be done when the universe is created. A pre-provision script will be provided to be run manually instead."
+                >
                   Manually Provision Nodes
                 </FieldLabel>
                 <YBToggleField
@@ -398,6 +407,8 @@ const constructProviderPayload = async (
     regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
       name: regionFormValues.code,
+      latitude: regionFormValues.location.value.latitude,
+      longitude: regionFormValues.location.value.longitude,
       zones: regionFormValues.zones.map((zone) => ({ code: zone.code, name: zone.code }))
     }))
   };

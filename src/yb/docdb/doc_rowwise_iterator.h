@@ -28,6 +28,7 @@
 
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_ql_scanspec.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 #include "yb/docdb/subdocument.h"
@@ -54,7 +55,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     const DocDBStatistics* statistics = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
@@ -63,7 +65,8 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     const DocDBStatistics* statistics = nullptr);
 
   DocRowwiseIterator(std::unique_ptr<Schema> projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
@@ -72,14 +75,10 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none);
+                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
+                     const DocDBStatistics* statistics = nullptr);
 
   ~DocRowwiseIterator() override;
-
-  // This must always be called before NextRow. The implementation actually finds the
-  // first row to scan, and NextRow expects the RocksDB iterator to already be properly
-  // positioned.
-  Result<bool> HasNext() override;
 
   std::string ToString() const override;
 
@@ -98,32 +97,38 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
       const rocksdb::QueryId query_id = rocksdb::kDefaultQueryId,
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) override;
 
+  Result<bool> DoFetchNext(
+      QLTableRow* table_row,
+      const Schema* projection,
+      QLTableRow* static_row,
+      const Schema* static_projection) override;
+
   void Seek(const Slice& key) override;
   void PrevDocKey(const Slice& key) override;
 
- private:
   void ConfigureForYsql();
   void InitResult();
 
   // For reverse scans, moves the iterator to the first kv-pair of the previous row after having
   // constructed the current row. For forward scans nothing is necessary because GetSubDocument
   // ensures that the iterator will be positioned on the first kv-pair of the next row.
-  Status AdvanceIteratorToNextDesiredRow() const;
+  // row_finished - true when current row was fully iterated. So we would not have to perform
+  // extra Seek in case of full scan.
+  Status AdvanceIteratorToNextDesiredRow(bool row_finished) const;
 
   // Read next row into a value map using the specified projection.
-  Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
+  Status FillRow(QLTableRow* table_row, const Schema* projection);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
 
   IsFlatDoc is_flat_doc_ = IsFlatDoc::kFalse;
 
-  // HasNext constructs the whole row's SubDocument or vector of values.
-  std::variant<std::monostate, SubDocument, std::vector<QLValuePB>> result_;
   // Points to appropriate alternative owned by result_ field.
-  SubDocument* row_;
-  std::vector<QLValuePB>* values_;
+  std::optional<SubDocument> row_;
 
   std::unique_ptr<DocDBTableReader> doc_reader_;
+
+  const DocDBStatistics* statistics_;
 };
 
 }  // namespace docdb

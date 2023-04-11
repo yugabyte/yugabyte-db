@@ -110,9 +110,12 @@ Status QLRocksDBStorage::CreateIterator(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    YQLRowwiseIteratorIf::UniPtr* iter) const {
+    YQLRowwiseIteratorIf::UniPtr* iter,
+    const docdb::DocDBStatistics* statistics) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
+      nullptr /* pending_op_counter */, boost::none /* end_referenced_key_column_index */,
+      statistics);
   *iter = std::move(doc_iter);
   return Status::OK();
 }
@@ -136,7 +139,8 @@ Status QLRocksDBStorage::GetIterator(
     const ReadHybridTime& read_time,
     const QLValuePB& min_ybctid,
     const QLValuePB& max_ybctid,
-    YQLRowwiseIteratorIf::UniPtr* iter) const {
+    YQLRowwiseIteratorIf::UniPtr* iter,
+    const docdb::DocDBStatistics* statistics) const {
   DocKey lower_doc_key(doc_read_context.get().schema);
   RETURN_NOT_OK(lower_doc_key.DecodeFrom(min_ybctid.binary_value()));
 
@@ -144,7 +148,9 @@ Status QLRocksDBStorage::GetIterator(
   RETURN_NOT_OK(upper_doc_key.DecodeFrom(max_ybctid.binary_value()));
   upper_doc_key.AddRangeComponent(KeyEntryValue(KeyEntryType::kHighest));
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
-      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
+      projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
+      nullptr /* pending_op_counter */, boost::none /* end_referenced_key_column_index */,
+      statistics);
 
   std::vector<KeyEntryValue> empty_vec;
   RETURN_NOT_OK(doc_iter->Init(
@@ -172,7 +178,8 @@ Status QLRocksDBStorage::GetIterator(
     const ReadHybridTime& read_time,
     const DocKey& start_doc_key,
     YQLRowwiseIteratorIf::UniPtr* iter,
-    boost::optional<size_t> end_referenced_key_column_index) const {
+    boost::optional<size_t> end_referenced_key_column_index,
+    const docdb::DocDBStatistics* statistics) const {
   const auto& schema = doc_read_context.get().schema;
   // Populate dockey from QL key columns.
   auto hashed_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
@@ -183,7 +190,7 @@ Status QLRocksDBStorage::GetIterator(
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time,
-      /*pending_op_counter=*/nullptr, end_referenced_key_column_index);
+      /*pending_op_counter=*/nullptr, end_referenced_key_column_index, statistics);
 
   if (range_components.size() == schema.num_range_key_columns() &&
       hashed_components.size() == schema.num_hash_key_columns()) {

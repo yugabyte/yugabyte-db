@@ -198,8 +198,8 @@ class PackedRowData {
   // lazy_ht - in/out parameter to access entry hybrid time.
   Result<bool> ProcessColumn(
       ColumnId column_id, const Slice& value, const EncodedDocHybridTime& column_doc_ht,
-      const ValueControlFields& control_fields, size_t encoded_control_fields_size,
-      LazyHybridTime* lazy_ht) {
+      const ValueControlFields& control_fields, bool has_intent_doc_ht,
+      size_t encoded_control_fields_size, LazyHybridTime* lazy_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
@@ -238,9 +238,8 @@ class PackedRowData {
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
     std::optional<ValueControlFields> control_fields_copy;
-    if (control_fields.intent_doc_ht.is_valid()) {
+    if (has_intent_doc_ht) {
       control_fields_copy = control_fields;
-      control_fields_copy->intent_doc_ht = DocHybridTime::kInvalid;
     }
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
       if (!control_fields_copy) {
@@ -832,7 +831,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   }
 
   Slice value_slice = value;
-  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+  Slice intent_doc_ht;
+  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::DecodeWithIntentDocHt(
+      &value_slice, &intent_doc_ht));
   LazyHybridTime lazy_ht(encoded_doc_ht);
 
   // Check for columns deleted from the schema. This is done regardless of whether this is a
@@ -884,8 +885,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         // Return if column was processed by packed row.
         auto encoded_control_fields_size = value_slice.data() - value.data();
         if (VERIFY_RESULT(packed_row_.ProcessColumn(
-                column_id, value, encoded_doc_ht, control_fields, encoded_control_fields_size,
-                &lazy_ht))) {
+                column_id, value, encoded_doc_ht, control_fields, !intent_doc_ht.empty(),
+                encoded_control_fields_size, &lazy_ht))) {
           return Status::OK();
         }
       }
@@ -976,11 +977,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     return packed_row_.ProcessPackedRow(
         internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
         encoded_doc_ht, doc_key_serial_);
-  } else if (control_fields.intent_doc_ht.is_valid()) {
+  } else if (!intent_doc_ht.empty()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
-    control_fields.intent_doc_ht = DocHybridTime::kInvalid;
-
     new_value_buffer_.Clear();
 
     // We are reusing the existing encoded value without decoding/encoding it.

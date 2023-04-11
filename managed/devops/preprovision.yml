@@ -36,7 +36,9 @@
         (test -e /usr/bin/dnf && ! test -e /usr/bin/python) &&
         (dnf install -y python36 && alternatives --set python /usr/bin/python3) ||
         (echo "Python already installed or not CentOS 8")
-      when: not air_gapped
+      when: >
+        not air_gapped and ansible_os_family == 'RedHat' and
+        ansible_distribution_major_version == '8'
       tags: yb-prebuilt-ami
 
 - name: "Pre-provisioning tasks"

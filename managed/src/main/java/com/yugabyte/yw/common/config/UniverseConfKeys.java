@@ -628,4 +628,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Promote AutoFlags Forcefully during software upgrade",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> minIncrementalScheduleFrequencyInSecs =
+      new ConfKeyInfo<>(
+          "yb.backup.minIncrementalScheduleFrequencyInSecs",
+          ScopeType.UNIVERSE,
+          "Minimum Incremental backup schedule frequency",
+          "Minimum Incremental backup schedule frequency in seconds",
+          ConfDataType.LongType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

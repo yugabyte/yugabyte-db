@@ -35,10 +35,6 @@ struct ValueControlFields {
   // 0x3 = Value-only entry (potentially)
   uint64_t merge_flags = 0;
 
-  // If this value was written using a transaction,
-  // this field stores the original intent doc hybrid time.
-  DocHybridTime intent_doc_ht = DocHybridTime();
-
   // The ttl of the Value. kMaxTtl is the default value. TTL is not included in encoded
   // form if it is equal to kMax.
   // The unit is milliseconds.
@@ -53,6 +49,7 @@ struct ValueControlFields {
 
   // Decode value control fields, w/o decrypting actual value.
   static Result<ValueControlFields> Decode(Slice* slice);
+  static Result<ValueControlFields> DecodeWithIntentDocHt(Slice* slice, Slice* intent_doc_ht);
 
   bool has_ttl() const {
     return !ttl.Equals(kMaxTtl);
@@ -97,12 +94,6 @@ class Value {
   const PrimitiveValue& primitive_value() const { return primitive_value_; }
 
   uint64_t merge_flags() const { return control_fields_.merge_flags; }
-
-  const DocHybridTime& intent_doc_ht() const { return control_fields_.intent_doc_ht; }
-
-  void set_intent_doc_ht(DocHybridTime intent_doc_ht) {
-    control_fields_.intent_doc_ht = intent_doc_ht;
-  }
 
   // Decode the entire value
   Status Decode(const Slice& rocksdb_value);

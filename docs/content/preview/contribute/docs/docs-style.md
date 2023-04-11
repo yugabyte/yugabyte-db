@@ -48,6 +48,12 @@ Prefer markdown-style `[link text](link-target)` links over HTML tags. Markdown'
 
 **Prompts may be necessary.** In a given procedure, the first code block should show the prompt; subsequent blocks can omit it, provided it doesn't impact clarity. Don't omit prompts (particularly shell prompts) if a procedure takes input in more than one way, such as an operation in ysqlsh followed by one in bash.
 
+**Badcode highlight** Make wrong coding practices stand out than regular code. Add attribute `{.badcode}` to the code block.
+
+```sql{.badcode}
+ysqlsh> CREATE TABLE $$__banking__$$;
+```
+
 #### YSQL and YCQL code blocks
 
 Tag YSQL code blocks as `sql`, and YCQL code blocks as `cql`. The source highlighting differs slightly between the two.

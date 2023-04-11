@@ -95,7 +95,7 @@ export const useSectionStyles = makeStyles((theme) => ({
   sectionContainer: {
     display: 'flex',
     padding: theme.spacing(5, 0),
-    borderBottom: `1px solid ${theme.palette.ybacolors.ybGrayHover}`
+    borderBottom: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
   },
   sectionHeaderFont: {
     fontFamily: 'Inter',

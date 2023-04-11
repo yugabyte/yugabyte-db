@@ -43,6 +43,7 @@
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/gutil/map-util.h"
 
 #include "yb/yql/cql/ql/util/statement_result.h"
 
@@ -59,13 +60,40 @@ DEFINE_test_flag(bool, xcluster_simulate_have_more_records, false,
 DEFINE_test_flag(bool, xcluster_skip_meta_ops, false,
                  "Whether GetChanges should skip processing meta operations ");
 
+DEFINE_RUNTIME_bool(xcluster_consistent_wal, false,
+                    "Replicates a WAL that is safe_time consistent.");
+
+DEFINE_RUNTIME_uint32(xcluster_consistent_wal_safe_time_frequency_ms, 250,
+                      "Frequency in milliseconds at which apply safe time is computed.");
+
 namespace yb {
 namespace cdc {
 
+using namespace std::chrono_literals;
 using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
 using docdb::PrimitiveValue;
 using tablet::TransactionParticipant;
+
+std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletMetadata(
+    const TabletId& tablet_id) {
+  {
+    std::shared_lock l(tablet_metadata_map_mutex_);
+    auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
+    if (metadata) {
+      return metadata;
+    }
+  }
+
+  std::lock_guard l(tablet_metadata_map_mutex_);
+  auto metadata = FindPtrOrNull(tablet_metadata_map_, tablet_id);
+  if (!metadata) {
+    metadata = std::make_shared<StreamTabletMetadata>();
+    EmplaceOrDie(&tablet_metadata_map_, tablet_id, metadata);
+  }
+
+  return metadata;
+}
 
 void AddColumnToMap(const ColumnSchema& col_schema,
                     const docdb::KeyEntryValue& col,
@@ -504,31 +532,81 @@ HybridTime GetSafeTimeForTarget(
   return leader_safe_time;
 }
 
-Status GetChangesForXCluster(const std::string& stream_id,
-                             const std::string& tablet_id,
-                             const OpId& from_op_id,
-                             const StreamMetadata& stream_metadata,
-                             const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-                             const client::YBSessionPtr& session,
-                             UpdateOnSplitOpFunc update_on_split_op_func,
-                             const MemTrackerPtr& mem_tracker,
-                             consensus::ReplicateMsgsHolder* msgs_holder,
-                             GetChangesResponsePB* resp,
-                             int64_t* last_readable_opid_index,
-                             const CoarseTimePoint deadline) {
+Status GetChangesForXCluster(
+    const std::string& stream_id,
+    const std::string& tablet_id,
+    const OpId& from_op_id,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+    const client::YBSessionPtr& session,
+    UpdateOnSplitOpFunc update_on_split_op_func,
+    const MemTrackerPtr& mem_tracker,
+    StreamMetadata* stream_metadata,
+    consensus::ReplicateMsgsHolder* msgs_holder,
+    GetChangesResponsePB* resp,
+    int64_t* last_readable_opid_index,
+    const CoarseTimePoint deadline) {
   auto replicate_intents = ReplicateIntents(GetAtomicFlag(&FLAGS_cdc_enable_replicate_intents));
   // Request scope on transaction participant so that transactions are not removed from participant
   // while RequestScope is active.
   RequestScope request_scope;
   consensus::ReadOpsResult read_ops;
 
+  SCHECK(tablet_peer, NotFound, Format("Tablet id $0 not found", tablet_id));
+
+  auto leader_safe_time = VERIFY_RESULT(tablet_peer->LeaderSafeTime());
+  SCHECK(
+      !leader_safe_time.is_special(), IllegalState, "Leader safe time for tablet $0 is not valid",
+      tablet_id);
+
+  auto stream_tablet_metadata = stream_metadata->GetTabletMetadata(tablet_id);
+  // There should only be one thread at a time calling GetChanges per tablet. But we cannot trust
+  // calls we get over the network so we lock here.
+  std::lock_guard l(stream_tablet_metadata->mutex_);
+
+  bool update_apply_safe_time = false;
+  auto now = MonoTime::Now();
+  auto tablet = tablet_peer->shared_tablet();
+
+  // In order to provide a transactionally consistent WAL, we need to perform the below steps:
+  // If last_apply_safe_time is kInvalid
+  //  1. last_apply_safe_time = Tablet Safe time
+  //  2. Resolve all intents and apply all the committed intents
+  //  3. Set apply_safe_time_checkpoint_op_id = max raft-replicated opId
+  //  4. If we send all records including apply_safe_time_checkpoint_op_id in the
+  //     GetChangesResponsePB
+  //    a. Set response.safe_time to last_apply_safe_time
+  //    b. Reset last_apply_safe_time and apply_safe_time_checkpoint_op_id
+  //  5. Else don't set any response.apply_safe_time. The next GetChanges RPC will reuse the
+  //     computed last_apply_safe_time and apply_safe_time_checkpoint_op_id
+  if (FLAGS_xcluster_consistent_wal && tablet && tablet->transaction_participant() &&
+      !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
+    // See if its time to update the apply safe time.
+    if (!stream_tablet_metadata->last_apply_safe_time_update_time_ ||
+        stream_tablet_metadata->last_apply_safe_time_update_time_ +
+                (FLAGS_xcluster_consistent_wal_safe_time_frequency_ms * 1ms) <
+            now) {
+      update_apply_safe_time = true;
+      // Resolve and apply intents to make the leader_safe_time a valid apply_safe_time candidate.
+      RETURN_NOT_OK(tablet->transaction_participant()->ResolveIntents(leader_safe_time, deadline));
+    }
+  }
+
   {
-    auto consensus = tablet_peer ? tablet_peer->shared_consensus() : nullptr;
-    SCHECK(
-        consensus != nullptr, NotFound, Format("Tablet id $0 not found", tablet_peer->tablet_id()));
+    auto consensus = tablet_peer->shared_consensus();
+    SCHECK(consensus, NotFound, Format("Tablet id $0 not found", tablet_id));
 
     read_ops = VERIFY_RESULT(
         consensus->ReadReplicatedMessagesForCDC(from_op_id, last_readable_opid_index, deadline));
+  }
+
+  if (update_apply_safe_time) {
+    DCHECK(!stream_tablet_metadata->last_apply_safe_time_.is_valid());
+    stream_tablet_metadata->last_apply_safe_time_ = leader_safe_time;
+
+    DCHECK_EQ(stream_tablet_metadata->apply_safe_time_checkpoint_op_id_, 0);
+    stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = *last_readable_opid_index;
+
+    stream_tablet_metadata->last_apply_safe_time_update_time_ = now;
   }
 
   ScopedTrackedConsumption consumption;
@@ -547,13 +625,6 @@ Status GetChangesForXCluster(const std::string& stream_id,
     txn_map = TxnStatusMap(VERIFY_RESULT(BuildTxnStatusMap(
       read_ops.messages, read_ops.have_more_messages, tablet_peer->Now(), txn_participant)));
   }
-  auto leader_safe_time = tablet_peer->LeaderSafeTime();
-  if (!leader_safe_time.ok()) {
-    YB_LOG_EVERY_N_SECS(WARNING, 10)
-        << "Could not compute safe time: " << leader_safe_time.status();
-    leader_safe_time = HybridTime::kInvalid;
-  }
-
   ReplicateMsgs messages = VERIFY_RESULT(FilterAndSortWrites(
       read_ops.messages, txn_map, replicate_intents, &checkpoint));
 
@@ -570,8 +641,8 @@ Status GetChangesForXCluster(const std::string& stream_id,
         RETURN_NOT_OK(PopulateTransactionRecord(msg, tablet_peer, replicate_intents, resp));
         break;
       case consensus::OperationType::WRITE_OP:
-        RETURN_NOT_OK(PopulateWriteRecord(msg, txn_map, stream_metadata, tablet_peer,
-                                          replicate_intents, resp));
+        RETURN_NOT_OK(PopulateWriteRecord(
+            msg, txn_map, *stream_metadata, tablet_peer, replicate_intents, resp));
         break;
       case consensus::OperationType::SPLIT_OP:
         SCHECK(msg->has_split_request(), InvalidArgument,
@@ -625,9 +696,22 @@ Status GetChangesForXCluster(const std::string& stream_id,
     consumption.Add(resp->SpaceUsedLong());
   }
 
-  auto safe_time =
-      GetSafeTimeForTarget(leader_safe_time.get(), ht_of_last_returned_message, have_more_messages);
-  resp->set_safe_hybrid_time(safe_time.ToUint64());
+  if (FLAGS_xcluster_consistent_wal) {
+    // We can set the apply_safe_time if no messages were read from the WAL and there is nothing to
+    // send. Or, the apply_safe_time_checkpoint_op_id_ was included in the response.
+    if ((checkpoint.index == 0 && !read_ops.have_more_messages) ||
+        checkpoint.index >= stream_tablet_metadata->apply_safe_time_checkpoint_op_id_) {
+      resp->set_safe_hybrid_time(stream_tablet_metadata->last_apply_safe_time_.ToUint64());
+      // Clear out the checkpoint and recompute it on next call.
+      stream_tablet_metadata->apply_safe_time_checkpoint_op_id_ = 0;
+      stream_tablet_metadata->last_apply_safe_time_ = HybridTime::kInvalid;
+    }
+  } else {
+    // This is used for enable_replicate_transaction_status_table.
+    auto safe_time =
+        GetSafeTimeForTarget(leader_safe_time, ht_of_last_returned_message, have_more_messages);
+    resp->set_safe_hybrid_time(safe_time.ToUint64());
+  }
 
   *msgs_holder = consensus::ReplicateMsgsHolder(
       nullptr, std::move(messages), std::move(consumption));

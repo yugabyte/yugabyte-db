@@ -84,6 +84,7 @@ set(DOCDB_SRCS
         docdb_debug.cc
         docdb_filter_policy.cc
         docdb_pgapi.cc
+        docdb_statistics.cc
         docdb_util.cc
         doc_ttl_util.cc
         docdb_compaction_context.cc

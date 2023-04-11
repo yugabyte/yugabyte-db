@@ -30,9 +30,11 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
   virtual ~YQLVTableIterator();
 
-  void SkipRow() override;
-
-  Result<bool> HasNext() override;
+  Result<bool> DoFetchNext(
+      QLTableRow* table_row,
+      const Schema* projection,
+      QLTableRow* static_row,
+      const Schema* static_projection) override;
 
   std::string ToString() const override;
 
@@ -41,8 +43,6 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
   Result<HybridTime> RestartReadHt() override;
 
  private:
-  Status DoNextRow(boost::optional<const Schema&> projection, QLTableRow* table_row) override;
-
   void Advance(bool increment);
 
   std::shared_ptr<QLRowBlock> vtable_;
