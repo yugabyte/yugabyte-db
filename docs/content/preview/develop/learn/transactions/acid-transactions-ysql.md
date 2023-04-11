@@ -49,7 +49,7 @@ For an example of how a transaction is run, see [Distributed transactions](../..
 The following commands are typically involved in a transaction flow:
 
 | Command | Description | Example |
-| ------: | :---------- | :------ |
+| :------ | :---------- | :------ |
 |[BEGIN](../../../../api/ysql/the-sql-language/statements/txn_begin/) | Start a transaction. This is the first statement in a transaction. | *BEGIN TRANSACTION* |
 |[SET](../../../../api/ysql/the-sql-language/statements/cmd_set/) | Set session-level transaction settings | SET idle_in_transaction_session_timeout = 10000 |
 |[SHOW](../../../../api/ysql/the-sql-language/statements/cmd_show/) | Display session-level transaction settings | SHOW idle_in_transaction_session_timeout |
@@ -73,7 +73,7 @@ The isolation level defines the level of data visibility to the transaction. Yug
 YugabyteDB supports three kinds of isolation levels to support different application needs.
 
 | Level | Description |
-| ----- | ----------- |
+| :---- | :---------- |
 | [Repeatable&nbsp;Read (Snapshot)](../../../../explore/transactions/isolation-levels/#snapshot-isolation) | Only the data that is committed before the transaction began is visible to the transaction. Effectively, the transaction sees the snapshot of the database as of the start of the transaction. {{<note>}}Applications using this isolation level should be designed to [retry](../transactions-retries-ysql#client-side-retry) on serialization failures.{{</note>}} |
 | [Read Committed (beta)](../../../../explore/transactions/isolation-levels/#read-committed-isolation) | Each statement of the transaction sees the latest data committed by any concurrent transaction just before the execution of the statement. If another transaction has modified a row related to the current transaction, the current transaction waits for the other transaction to commit or rollback its changes. {{<note>}} The server internally waits and retries on conflicts, so applications [need not retry](../transactions-retries-ysql#automatic-retries) on serialization failures.{{</note>}} |
 | [Serializable](../../../../explore/transactions/isolation-levels/#serializable-isolation) | This is the strictest isolation level and has the effect of all transactions being executed in a serial manner, one after the other rather than in parallel. {{<note>}} Applications using this isolation level should be designed to [retry](../transactions-retries-ysql/#client-side-retry) on serialization failures.{{</note>}} |
@@ -94,7 +94,7 @@ SELECT * FROM txndemo WHERE k=1 FOR UPDATE;
 
 YugabyteDB supports the following types of explicit row locks:
 | Lock | Description |
-| ---: | ----------- |
+| :--- | :---------- |
 | **FOR UPDATE** | Strongest and exclusive lock. Prevents all other locks on these rows till the transaction ends.|
 | **FOR&nbsp;NO&nbsp;KEY&nbsp;UPDATE** | Weaker than `FOR UPDATE` and exclusive. Will not block `FOR KEY SHARE` commands.|
 | **FOR SHARE** | Shared lock that does not block other `FOR SHARE` and `FOR KEY SHARE` commands.|
@@ -220,7 +220,7 @@ Set this to values in the range `[0.0 - 1.0]` to set the upper bound of the dyna
 ## Learn more
 
 - [Transaction error codes](../transactions-errorcodes-ysql/) - Various error codes returned during transaction processing.
-- [Transaction error handling](../transactions-high-availability-ysql/) - Methods to handle various error codes to design highly available applications.
+- [Transaction error handling](../transactions-retries-ysql/) - Methods to handle various error codes to design highly available applications.
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
