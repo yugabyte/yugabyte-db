@@ -156,16 +156,4 @@ type: indexpage
     </a>
   </div>
 
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="architecting-high-availability/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />
-        <div class="title">Architecting high availability</div>
-      </div>
-      <div class="body">
-        Architect highly available applications in YSQL.
-      </div>
-    </a>
-  </div>
-
 </div>

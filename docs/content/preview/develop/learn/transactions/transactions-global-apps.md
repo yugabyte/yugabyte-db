@@ -1,8 +1,8 @@
 ---
 title: Performance Tuning Transactions for Global Applications in YSQL
-headerTitle: Performance Tuning for Global Applications in YSQL
+headerTitle: Performance tuning for global applications in YSQL
 linkTitle: Global applications
-description: Learn how to speed up Transactions in YSQL on YugabyteDB.
+description: Learn how to speed up Transactions in multi-region deployments in YSQL.
 menu:
   preview:
     identifier: transactions-global-apps-ysql
@@ -11,16 +11,15 @@ menu:
 type: docs
 ---
 
-Let's see some best practices and tips that can hugely improve the performance of transactions in a YugabyteDB cluster when deployed in a multi-region configuration.
+The following best practices and tips can greatly improve the performance of transactions in [multi-region](../../../../explore/multi-region-deployments/) deployments.
 
 ## Place leaders in one region
 
-In a [multi-region](../../../../explore/multi-region-deployments/) setup, a transaction would have to reach out to the tablet leaders spread across multiple regions. In this scenario, the transaction can incur high inter-regional latencies that could multiply with the number of statements that have to travel cross-region.
+In a multi-region setup, a transaction would have to reach out to the tablet leaders spread across multiple regions. In this scenario, the transaction can incur high inter-regional latencies that could multiply with the number of statements that have to travel cross-region.
 
-Cross-region trips can be avoided by placing all the tablet leaders in one region using the [set_preferred_zones](../../../../admin/yb-admin/#set-preferred-zones) command in [yb-admin](../../../../admin/yb-admin).
+Cross-region trips can be avoided by placing all the tablet leaders in one region using the [set_preferred_zones](../../../../admin/yb-admin/#set-preferred-zones) command in [yb-admin](../../../../admin/yb-admin/).
 
 You can also do this by [marking the zones as Preferred](../../../../yugabyte-platform/manage-deployments/edit-universe/) on the **Edit Universe** page in [YugabyteDB Anywhere](../../../../yugabyte-platform/), or [setting the region as preferred](../../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/#preferred-region) in YugabyteDB Managed.
-
 
 ## Read from followers
 
@@ -52,8 +51,8 @@ Follower reads only affect reads. All writes are still handled by the leader.
 
 ## Learn more
 
-- [Transaction error codes](../transactions-errorcodes-ysql) - Various error codes returned during transaction processing.
-- [Transaction error handling](../transactions-high-availability-ysql) - Methods to handle various error codes to design highly available applications.
+- [Transaction error codes](../transactions-errorcodes-ysql/) - Various error codes returned during transaction processing.
+- [Transaction error handling](../transactions-retries-ysql/) - Methods to handle various error codes to design highly available applications.
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.

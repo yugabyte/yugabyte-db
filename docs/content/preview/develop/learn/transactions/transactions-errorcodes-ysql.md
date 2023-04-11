@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Due to the strong [ACID](../../../../architecture/transactions/transactions-overview/#acid-properties) properties guaranteed by YugabyteDB, failures during transactions are inevitable. You need to design your applications to take appropriate action on failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing.
+Due to the strong [ACID](../../../../architecture/transactions/transactions-overview/) properties guaranteed by YugabyteDB, failures during transactions are inevitable. You need to design your applications to take appropriate action on failed statements to ensure they are highly available. YugabyteDB returns various error codes for errors that occur during transaction processing.
 
 The following error codes typically occur during transaction processing.
 
@@ -38,10 +38,10 @@ ERROR:  25006: cannot execute UPDATE in a read-only transaction
 ```
 
 {{<note>}}
-**25006** errors are [Non-retriable](../transactions-retries-ysql#non-retriable-errors). Writes should be removed from the read-only transaction code.
+**25006** errors are [Non-retriable](../transactions-retries-ysql/#non-retriable-errors). Writes should be removed from the read-only transaction code.
 {{</note>}}
 
-## 25P01: No active SQL Transaction
+## 25P01: No active SQL transaction
 
 This error occurs when certain statements that should be executed in a transaction are executed outside of a transaction. For example, issuing a `ROLLBACK` outside a transaction.
 
@@ -62,7 +62,7 @@ ERROR:  25P02: current transaction is aborted, commands ignored until end of tra
 ```
 
 {{<note>}}
-**25P02** errors are [Non-retriable](../transactions-retries-ysql#non-retriable-errors). Proper error handling via a `try..catch` block and either `COMMIT` or `ROLLBACK` should be executed appropriately.
+**25P02** errors are [Non-retriable](../transactions-retries-ysql/#non-retriable-errors). Proper error handling via a `try..catch` block and either `COMMIT` or `ROLLBACK` should be executed appropriately.
 {{</note>}}
 
 ## 25P03: Idle in transaction session timeout
@@ -86,7 +86,7 @@ ERROR:  40001: Operation expired: Transaction XXXX expired or aborted by a confl
 ```
 
 {{<tip>}}
-Serialization failure errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql#client-side-retry)
+Serialization failure errors can be retried by the client. See [Client-side retry](../transactions-retries-ysql/#client-side-retry).
 {{</tip>}}
 
 ## 2D000: Invalid transaction termination
@@ -98,7 +98,7 @@ ERROR:  2D000: invalid transaction termination
 ```
 
 {{<note>}}
-**2D000** errors are [Non-retriable](../transactions-retries-ysql#non-retriable-errors). The transaction code needs to be fixed to get around this error.
+**2D000** errors are [Non-retriable](../transactions-retries-ysql/#non-retriable-errors). The transaction code needs to be fixed to get around this error.
 {{</note>}}
 
 ## 3B001: Invalid savepoint specification
@@ -110,12 +110,12 @@ ERROR:  3B001: savepoint "FIRST_SAVE" does not exist
 ```
 
 {{<note>}}
-**3B001** errors are [Non-retriable](../transactions-retries-ysql#non-retriable-errors). The transaction code needs to be fixed to specify the correct savepoint name to fix this error.
+**3B001** errors are [Non-retriable](../transactions-retries-ysql/#non-retriable-errors). The transaction code needs to be fixed to specify the correct savepoint name to fix this error.
 {{</note>}}
 
 ## Learn more
 
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels that are supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
-- [Transaction priorities](../../../../architecture/transactions/concurrency-control/) - Priority buckets for transactions.
+- [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
 - [Transaction options](../../../../explore/transactions/distributed-transactions-ysql/#transaction-options) - Options supported by transactions.

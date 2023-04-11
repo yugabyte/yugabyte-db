@@ -11,10 +11,10 @@ menu:
 type: docs
 ---
 
-As a versatile distributed database, YugabyteDB can be deployed in a variety of configurations for a variety of use cases. Let's see some best practices and tips that can hugely improve the performance of a YugabyteDB cluster.
+As a versatile distributed database, YugabyteDB can be deployed in a variety of configurations for a variety of use cases. The following best practices and tips can greatly improve the performance of a YugabyteDB cluster.
 
 {{<note title="Setup">}}
-To run the following examples, first set up a cluster and database schema as described in the [Prerequisites](../transactions-retries-ysql#prerequisites).
+To run the following examples, first set up a cluster and database schema as described in the [Prerequisites](../transactions-retries-ysql/#prerequisites).
 {{</note>}}
 
 ## Fast single-row transactions
@@ -135,7 +135,7 @@ SET yb_transaction_priority_upper_bound=1.0;
 
 This ensures that the priority assigned to your transaction is in the range `[0.9-1.0]` and thereby making it a high-priority transaction.
 
-## Stored Procedures: Minimize round trips
+## Stored procedures: minimize round trips
 
 A transaction block executed from the client that has multiple statements requires multiple round trips between the client and the server. Consider the following transaction:
 
@@ -157,8 +157,8 @@ Depending on the complexity of your transaction block, this can vastly improve t
 
 ## Learn more
 
-- [Transaction error codes](../transactions-errorcodes-ysql) - Various error codes returned during transaction processing.
-- [Transaction error handling](../transactions-high-availability-ysql) - Methods to handle various error codes to design highly available applications.
+- [Transaction error codes](../transactions-errorcodes-ysql/) - Various error codes returned during transaction processing.
+- [Transaction error handling](../transactions-retries-ysql/) - Methods to handle various error codes to design highly available applications.
 - [Transaction isolation levels](../../../../architecture/transactions/isolation-levels/) - Various isolation levels supported by YugabyteDB.
 - [Concurrency control](../../../../architecture/transactions/concurrency-control/) - Policies to handle conflicts between transactions.
 - [Transaction priorities](../../../../architecture/transactions/transaction-priorities/) - Priority buckets for transactions.
