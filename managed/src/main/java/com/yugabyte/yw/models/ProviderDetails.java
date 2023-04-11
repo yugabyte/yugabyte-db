@@ -10,9 +10,11 @@
 
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Objects;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -44,4 +46,9 @@ public class ProviderDetails extends MigratedKeyInfoFields {
   }
 
   @ApiModelProperty public CloudInfo cloudInfo;
+
+  @JsonIgnore
+  public boolean isUpdateNeeded(ProviderDetails details) {
+    return !Objects.equals(this.getCloudInfo(), details.getCloudInfo());
+  }
 }
