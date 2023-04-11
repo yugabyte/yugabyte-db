@@ -576,7 +576,6 @@ public interface CloudInfoInterface {
     if (p.getRegions() == null) {
       return;
     }
-
     for (Region region : p.getRegions()) {
       mayBeMassageResponse(cloudType, region);
     }
