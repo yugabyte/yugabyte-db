@@ -33,9 +33,6 @@ namespace docdb {
 
 namespace {
 
-// Used to mark column as skipped by packer. For instance in case of collection column.
-constexpr int64_t kSkippedColumnIdx = -1;
-
 bool IsVarlenColumn(TableType table_type, const ColumnSchema& column_schema) {
   // CQL columns could have individual TTL.
   return table_type == TableType::YQL_TABLE_TYPE ||
@@ -83,10 +80,10 @@ SchemaPacking::SchemaPacking(TableType table_type, const Schema& schema) {
     const auto& column_schema = schema.column(i);
     auto column_id = schema.column_id(i);
     if (column_schema.is_collection() || column_schema.is_static()) {
-      column_to_idx_.emplace(column_id, kSkippedColumnIdx);
+      column_to_idx_.set(column_id.rep(), kSkippedColumnIdx);
       continue;
     }
-    column_to_idx_.emplace(column_id, columns_.size());
+    column_to_idx_.set(column_id.rep(), narrow_cast<int>(columns_.size()));
     bool varlen = IsVarlenColumn(table_type, column_schema);
     columns_.emplace_back(ColumnPackingData {
       .id = schema.column_id(i),
@@ -109,13 +106,13 @@ SchemaPacking::SchemaPacking(const SchemaPackingPB& pb) : varlen_columns_count_(
   columns_.reserve(pb.columns().size());
   for (const auto& entry : pb.columns()) {
     columns_.push_back(ColumnPackingData::FromPB(entry));
-    column_to_idx_.emplace(columns_.back().id, columns_.size() - 1);
+    column_to_idx_.set(columns_.back().id.rep(), narrow_cast<int>(columns_.size()) - 1);
     if (columns_.back().varlen()) {
       ++varlen_columns_count_;
     }
   }
   for (auto skipped_column_id : pb.skipped_column_ids()) {
-    column_to_idx_.emplace(skipped_column_id, kSkippedColumnIdx);
+    column_to_idx_.set(skipped_column_id, kSkippedColumnIdx);
   }
 }
 
@@ -125,7 +122,26 @@ size_t LoadEnd(size_t idx, const Slice& packed) {
 
 bool SchemaPacking::SkippedColumn(ColumnId column_id) const {
   auto it = column_to_idx_.find(column_id);
-  return it != column_to_idx_.end() && it->second == kSkippedColumnIdx;
+  return it && *it == kSkippedColumnIdx;
+}
+
+void SchemaPacking::GetBounds(
+    const Slice& packed, boost::container::small_vector_base<const uint8_t*>* bounds) const {
+  bounds->clear();
+  bounds->reserve(columns_.size() + 1);
+  const auto prefix_len = this->prefix_len();
+  size_t offset = prefix_len;
+  bounds->push_back(packed.data() + offset);
+  const auto* end_ptr = packed.data();
+  for (const auto& column_data : columns_) {
+    if (column_data.varlen()) {
+      offset = prefix_len + LittleEndian::Load32(end_ptr);
+      end_ptr += sizeof(uint32_t);
+    } else {
+      offset += column_data.size;
+    }
+    bounds->push_back(packed.data() + offset);
+  }
 }
 
 Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
@@ -140,11 +156,15 @@ Slice SchemaPacking::GetValue(size_t idx, const Slice& packed) const {
 }
 
 std::optional<Slice> SchemaPacking::GetValue(ColumnId column_id, const Slice& packed) const {
-  auto it = column_to_idx_.find(column_id);
-  if (it == column_to_idx_.end() || it->second == kSkippedColumnIdx) {
+  auto index = column_to_idx_.get(column_id.rep());
+  if (index == kSkippedColumnIdx) {
     return {};
   }
-  return GetValue(it->second, packed);
+  return GetValue(index, packed);
+}
+
+int64_t SchemaPacking::GetIndex(ColumnId column_id) const {
+  return column_to_idx_.get(column_id.rep());
 }
 
 std::string SchemaPacking::ToString() const {
@@ -155,11 +175,11 @@ void SchemaPacking::ToPB(SchemaPackingPB* out) const {
   for (const auto& column : columns_) {
     column.ToPB(out->add_columns());
   }
-  for (const auto& [column_id, column_idx] : column_to_idx_) {
-    if (column_idx == kSkippedColumnIdx) {
-      out->add_skipped_column_ids(column_id);
+  column_to_idx_.ForEach([out](int key, int value) {
+    if (value == kSkippedColumnIdx) {
+      out->add_skipped_column_ids(key);
     }
-  }
+  });
 }
 
 bool SchemaPacking::CouldPack(
@@ -168,7 +188,7 @@ bool SchemaPacking::CouldPack(
     return false;
   }
   for (const auto& value : values) {
-    if (!column_to_idx_.contains(ColumnId(value.column_id()))) {
+    if (!column_to_idx_.find(value.column_id())) {
       return false;
     }
   }
