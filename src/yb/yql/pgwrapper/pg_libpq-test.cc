@@ -1608,7 +1608,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     ASSERT_EQ(res, 0);
   }
 
-  // Subsequent bootstraps should have the last_change_metadata_op_id set but
+  // Subsequent bootstraps should have the last_flushed_change_metadata_op_id set but
   // they should also not crash.
   if (test_backward_compatibility) {
     ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "false"));
