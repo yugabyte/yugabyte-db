@@ -230,7 +230,9 @@ public class AppInit {
 
       ybcUpgrade.start();
 
-      kubernetesOperator.init();
+      if (config.getBoolean("yb.kubernetesOperator.enabled")) {
+        kubernetesOperator.init();
+      }
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
