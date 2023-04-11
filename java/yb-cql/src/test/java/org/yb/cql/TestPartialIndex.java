@@ -2606,8 +2606,9 @@ public class TestPartialIndex extends BaseCQLTest {
     session.execute("drop table " + testTableName);
   }
 
-  @Test
-  public void testAlterCol() throws Exception {
+  private static enum RenameIndexedColAllowed { ON, OFF };
+
+  private void testAlterCol(RenameIndexedColAllowed renameIndexedColAllowed) throws Exception {
     createTable(String.format("create table %s (h1 int primary key, v1 int, v2 int)",
                               testTableName),
                 true /* strongConsistency */);
@@ -2628,13 +2629,30 @@ public class TestPartialIndex extends BaseCQLTest {
 
     runInvalidStmt(String.format("alter table %s drop v1", testTableName),
                    "Can't drop column used in an index. Remove 'idx' index first and try again");
-    session.execute(String.format("alter table %s rename v1 to v11", testTableName));
-    session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+    boolean renameAllowed = renameIndexedColAllowed == RenameIndexedColAllowed.ON;
+    if (renameAllowed) {
+      session.execute(String.format("alter table %s rename v1 to v11", testTableName));
+      session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+    } else {
+      runInvalidStmt(String.format("alter table %s rename v1 to v11", testTableName),
+          "Can't rename column used in an index. This column is used in 'idx' index");
+      // The above command will fail, so column v11 will not exist.
+      runInvalidStmt(String.format("alter table %s rename v11 to v1", testTableName),
+          "Undefined Column. Column doesn't exist");
+    }
 
     runInvalidStmt(String.format("alter table %s drop v2", testTableName),
                    "Can't drop column used in an index. Remove 'idx' index first and try again");
-    session.execute(String.format("alter table %s rename v2 to v22", testTableName));
-    session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+    if (renameAllowed) {
+      session.execute(String.format("alter table %s rename v2 to v22", testTableName));
+      session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+    } else {
+      runInvalidStmt(String.format("alter table %s rename v2 to v22", testTableName),
+          "Can't rename column used in an index. This column is used in 'idx' index");
+      // The above command will fail, so column v22 will not exist.
+      runInvalidStmt(String.format("alter table %s rename v22 to v2", testTableName),
+          "Undefined Column. Column doesn't exist");
+    }
 
     session.execute(String.format("alter table %s add v3 int", testTableName));
     session.execute(String.format("alter table %s rename v3 to v33", testTableName));
@@ -2652,13 +2670,37 @@ public class TestPartialIndex extends BaseCQLTest {
     waitForReadPermsOnAllIndexes(testTableName);
     runInvalidStmt(String.format("alter table %s drop v1", testTableName),
                    "Can't drop column used in an index. Remove 'idx' index first and try again");
-    session.execute(String.format("alter table %s rename v1 to v11", testTableName));
-    session.execute(String.format("alter table %s rename v11 to v1", testTableName));
-
+    if (renameAllowed) {
+      session.execute(String.format("alter table %s rename v1 to v11", testTableName));
+      session.execute(String.format("alter table %s rename v11 to v1", testTableName));
+    } else {
+      runInvalidStmt(String.format("alter table %s rename v1 to v11", testTableName),
+          "Can't rename column used in an index. This column is used in 'idx' index");
+      // The above command will fail, so column v11 will not exist.
+      runInvalidStmt(String.format("alter table %s rename v11 to v1", testTableName),
+          "Undefined Column. Column doesn't exist");
+    }
     session.execute(String.format("alter table %s rename v2 to v22", testTableName));
     session.execute(String.format("alter table %s rename v22 to v2", testTableName));
+
     session.execute(String.format("alter table %s drop v2", testTableName));
     session.execute(String.format("alter table %s add v2 int", testTableName));
+  }
+
+  @Test
+  public void testAlterCol() throws Exception {
+    testAlterCol(RenameIndexedColAllowed.OFF);
+  }
+
+  @Test
+  public void testAlterColRenameIndexedColAllowed() throws Exception {
+    try {
+      // By default: ycql_enable_alter_rename_column_with_index=false.
+      restartClusterWithFlag("ycql_enable_alter_rename_column_with_index", "true");
+      testAlterCol(RenameIndexedColAllowed.ON);
+    } finally {
+      destroyMiniCluster(); // Destroy the recreated cluster when done.
+    }
   }
 
   @Test
