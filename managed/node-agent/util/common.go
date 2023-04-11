@@ -14,6 +14,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -302,7 +304,13 @@ func ConvertType(from any, to any) error {
 	if kind != reflect.Pointer {
 		return fmt.Errorf("Target type (%v) is not a pointer", kind)
 	}
-	b, err := json.Marshal(from)
+	var b []byte
+	var err error
+	if msg, ok := from.(proto.Message); ok {
+		b, err = protojson.Marshal(msg)
+	} else {
+		b, err = json.Marshal(from)
+	}
 	if err != nil {
 		return err
 	}

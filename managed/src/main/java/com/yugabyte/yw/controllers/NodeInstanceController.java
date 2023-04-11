@@ -231,7 +231,7 @@ public class NodeInstanceController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUuid);
     AvailabilityZone az = AvailabilityZone.getOrBadRequest(zoneUuid);
     return PlatformResults.withData(
-        nodeConfigValidator.validateNodeConfigs(az.getProvider(), nodeData));
+        nodeConfigValidator.validateNodeConfigs(az.getProvider(), nodeData, true));
   }
 
   /**
@@ -271,7 +271,7 @@ public class NodeInstanceController extends AuthenticatedController {
           nodeAgent.ensureState(State.READY);
           List<ValidationResult> failedResults =
               nodeConfigValidator
-                  .validateNodeConfigs(provider, nodeData)
+                  .validateNodeConfigs(provider, nodeData, true)
                   .values()
                   .stream()
                   .filter(r -> r.isRequired())

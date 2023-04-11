@@ -193,14 +193,13 @@ func (server *RPCServer) SubmitTask(
 	preflightCheckInput := req.GetPreflightCheckInput()
 	if preflightCheckInput != nil {
 		preflightCheckParam := &model.PreflightCheckParam{}
-		preflightCheckParam.SkipProvisioning = preflightCheckInput.GetSkipProvisioning()
-		preflightCheckParam.AirGapInstall = preflightCheckInput.GetAirGapInstall()
-		preflightCheckParam.InstallNodeExporter = preflightCheckInput.GetInstallNodeExporter()
-		preflightCheckParam.YbHomeDir = preflightCheckInput.GetYbHomeDir()
-		preflightCheckParam.SshPort = int(preflightCheckInput.GetSshPort())
-		preflightCheckParam.MountPaths = preflightCheckInput.GetMountPaths()
+		err := util.ConvertType(preflightCheckInput, &preflightCheckParam)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in preflight input conversion - %s", err.Error())
+			return res, status.Errorf(codes.InvalidArgument, err.Error())
+		}
 		preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
-		err := task.GetTaskManager().
+		err = task.GetTaskManager().
 			Submit(ctx, taskID, preflightCheckHandler,
 				util.RPCResponseConverter(server.toPreflightCheckResponse))
 		if err != nil {
