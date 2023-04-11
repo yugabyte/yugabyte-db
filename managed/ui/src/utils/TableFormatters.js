@@ -6,6 +6,11 @@ import { YBFormattedNumber } from '../components/common/descriptors';
 import { YBLoadingCircleIcon } from '../components/common/indicators';
 import { TimestampWithTimezone } from '../components/common/timestampWithTimezone/TimestampWithTimezone';
 
+export const YBTimeFormats = {
+  YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY hh:mm:ss ZZ',
+  YB_DATE_ONLY_TIMESTAMP: 'MMM-DD-YYYY'
+};
+
 export function timeFormatter(cell) {
   if (!isValidObject(cell)) {
     return <span>-</span>;
@@ -13,6 +18,10 @@ export function timeFormatter(cell) {
     return <TimestampWithTimezone timeFormat={'YYYY/MM/DD H:mm [UTC]ZZ'} timestamp={cell} />;
   }
 }
+
+export const ybFormatDate = (d, timeFormat = YBTimeFormats.YB_DEFAULT_TIMESTAMP) => {
+  return moment(d).format(timeFormat);
+};
 
 export function timeFormatterISO8601(cell, _, timezone) {
   if (!isValidObject(cell)) {

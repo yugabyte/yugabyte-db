@@ -6,7 +6,11 @@ import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Link } from 'react-router';
 import { toast } from 'react-toastify';
 import { YBPanelItem } from '../../panels';
-import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
+import {
+  timeFormatter,
+  successStringFormatter,
+  ybFormatDate
+} from '../../../utils/TableFormatters';
 import { YBConfirmModal } from '../../modals';
 
 import './TasksList.scss';
@@ -38,7 +42,9 @@ export default class TaskListTable extends Component {
 
     function typeFormatter(cell, row) {
       return row.correlationId ? (
-        <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
+        <Link
+          to={`/logs/?queryRegex=${row.correlationId}&startDate=${ybFormatDate(row.createTime)}`}
+        >
           {row.typeName} {row.target}
         </Link>
       ) : (
