@@ -294,8 +294,8 @@ public class YbcUpgrade {
       setYBCUpgradeProcess(universeUUID);
     }
     InstallYbcSoftwareOnK8s.Params taskParams = new InstallYbcSoftwareOnK8s.Params();
-    taskParams.setUniverseUUID(universeUUID);
-    taskParams.setYbcSoftwareVersion(ybcVersion);
+    taskParams.universeUUID = universeUUID;
+    taskParams.ybcSoftwareVersion = ybcVersion;
     taskParams.lockUniverse = true;
     commissioner.submit(TaskType.InstallYbcSoftwareOnK8s, taskParams);
   }
