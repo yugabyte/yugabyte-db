@@ -65,7 +65,7 @@ public class AvailabilityZoneHandler {
           if (nodeCount > 0) {
             failDueToAZInUse(nodeCount, "delete");
           }
-          az.setActiveFlag(false);
+          az.setActive(false);
           az.update();
           return az;
         });

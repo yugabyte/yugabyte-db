@@ -62,7 +62,7 @@ public class AvailabilityZoneTest extends FakeDBApplication {
     assertEquals(az.getRegion().getCode(), "region-1");
     assertTrue(az.isActive());
 
-    az.setActiveFlag(false);
+    az.setActive(false);
     az.save();
 
     AvailabilityZone fetch = AvailabilityZone.find.byId(az.getUuid());
