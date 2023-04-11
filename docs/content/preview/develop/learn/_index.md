@@ -1,5 +1,5 @@
 ---
-title: Learn
+title: Learn application development
 linkTitle: Learn app development
 description: Learn to develop YugabyteDB applications
 image: /images/section_icons/develop/learn.png
@@ -12,6 +12,7 @@ menu:
     weight: 560
 type: indexpage
 ---
+
 <div class="row">
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="sql-nosql/">
@@ -39,7 +40,7 @@ type: indexpage
     </a>
   </div>
 
-    <!--
+<!--
     <a class="section-link icon-offset" href="conditional-updates/">
       <div class="icon">
         <i class="fa-brands fa-java"></i>
@@ -59,7 +60,7 @@ type: indexpage
         <div class="caption">How to perform conditional updates and achieve compare-and-swap operations.</div>
       </div>
     </a>
-    -->
+-->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="data-types-ycql/">
@@ -74,13 +75,13 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="acid-transactions-ycql/">
+    <a class="section-link icon-offset" href="transactions/acid-transactions-ysql/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/distributed_acid.png" aria-hidden="true" />
-        <div class="title">ACID transactions</div>
+        <div class="title">Transactions</div>
       </div>
       <div class="body">
-          Performing distributed ACID transactions.
+          Performing distributed transactions.
       </div>
     </a>
   </div>
