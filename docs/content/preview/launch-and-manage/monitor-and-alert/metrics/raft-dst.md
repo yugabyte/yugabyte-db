@@ -16,7 +16,7 @@ type: docs
 
 YugabyteDB implements the RAFT consensus protocol, with minor modifications. Replicas implement an RPC method called `UpdateConsensus` which allows a tablet leader to replicate a batch of log entries to the follower. Replicas also implement an RPC method called `RequestConsensusVote`, which candidates invoke to gather votes. The `ChangeConfig` RPC method indicates the number of times a peer was added or removed from the consensus group. An increase in change configuration typically happens when YugabyteDB needs to move data around. This may happen due to a planned server addition or decommission or a server crash looping. A high number for the request consensus indicates that many replicas are looking for a new election because they have yet to receive a heartbeat from the leader. This could happen due to high CPU or a network partition condition.
 
-All handler latency metrics include additional attributes. Refer to [Latency metric attributes](../throughput/#latency-metric-attributes).
+All handler latency metrics include additional attributes. Refer to [Throughput and latency](../throughput/).
 
 The following are key metrics for monitoring RAFT processing.
 
