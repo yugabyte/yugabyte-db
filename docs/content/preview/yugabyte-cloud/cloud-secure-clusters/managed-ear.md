@@ -32,25 +32,25 @@ You must be signed in as an Admin user to manage cluster EAR.
 
 ### AWS
 
-- Single-region symmetric encryption key created in AWS KMS. The key resource should have the following permissions:
+- Single-region [symmetric encryption key](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#symmetric-cmks) created in AWS KMS. The key resource should have the following permissions:
   - kms:Encrypt
   - kms:Decrypt
   - kms:GenerateDataKeyWithoutPlaintext
   - kms:DescribeKey
   - kms:ListAliases
-- Amazon Resource Name (ARN) of the CMK.
+- Amazon Resource Name (ARN) of the CMK. For more information, refer to [Amazon Resource Names](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference-arns.html) in the AWS documentation.
 - An access key for an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permission to encrypt and decrypt using the CMK. An access key consists of an access key ID and the secret access key. For more information, refer to [Managing access keys for IAM users](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html) in the AWS documentation.
 
 For more information on AWS KMS, refer to [AWS Key Management Service](https://docs.aws.amazon.com/kms/) in the AWS documentation.
 
 ## Encrypt a cluster
 
-You can enable EAR for clusters as follows:
+You can enable EAR for clusters in AWS as follows:
 
 1. On the cluster **Settings** tab, select **Encryption at rest**.
 1. Click **Enable Encryption**.
 1. Enter the ARN of the AWS CMK to use to encrypt the cluster.
-1. Enter the Access key of an IAM identity with permissions for the CMK. An access key consists of an access key ID and the secret access key.
+1. Enter the Access key of an IAM identity with permissions for the CMK. An access key consists of an **Access key ID** and the **Secret access key**. You would have saved the secret access key to a secure location when you created the access key in AWS.
 1. Click **Encrypt**.
 
 YugabyteDB Managed validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
