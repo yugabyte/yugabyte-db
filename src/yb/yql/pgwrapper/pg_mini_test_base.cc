@@ -31,8 +31,10 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pgsql_proxy_webserver_port);
+DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
 
 namespace yb {
@@ -164,6 +166,17 @@ Result<size_t> MetricWatcher::GetMetricCount() const {
 
 std::vector<tserver::TabletServerOptions> PgMiniTestBase::ExtraTServerOptions() {
   return std::vector<tserver::TabletServerOptions>();
+}
+
+void PgMiniTestBase::FlushAndCompactTablets() {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+  FLAGS_history_cutoff_propagation_interval_ms = 1;
+  ASSERT_OK(cluster_->FlushTablets(tablet::FlushMode::kSync));
+  const auto compaction_start = MonoTime::Now();
+  ASSERT_OK(cluster_->CompactTablets());
+  const auto compaction_finish = MonoTime::Now();
+  const double compaction_elapsed_time_sec = (compaction_finish - compaction_start).ToSeconds();
+  LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
 }
 
 } // namespace pgwrapper
