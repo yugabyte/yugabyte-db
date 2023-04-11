@@ -14,7 +14,6 @@ type: docs
 
 Connection metrics represent the cumulative number of connections to the YSQL backend per node. This includes various background connections, such as checkpointer, active connections count that only includes the client backend connections, newly established connections, and connections rejected over the maximum connection limit.
 
-
 Connection metrics are only available in Prometheus format.
 
 The following table describes key connection metrics.
