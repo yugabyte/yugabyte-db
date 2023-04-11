@@ -22,48 +22,48 @@ public class KubernetesInfo implements CloudInfoInterface {
 
   @JsonAlias("KUBECONFIG_PROVIDER")
   @ApiModelProperty
-  public String kubernetesProvider;
+  private String kubernetesProvider;
 
   @YBADeprecated(sinceDate = "2023-03-8", sinceYBAVersion = "2.17.3.0")
   @JsonAlias("KUBECONFIG_SERVICE_ACCOUNT")
   @ApiModelProperty(value = "DEPRECATED: kubernetes service account is not needed.")
-  public String kubernetesServiceAccount;
+  private String kubernetesServiceAccount;
 
   @JsonAlias("KUBECONFIG_IMAGE_REGISTRY")
   @ApiModelProperty
-  public String kubernetesImageRegistry;
+  private String kubernetesImageRegistry;
 
   @JsonAlias("KUBECONFIG_IMAGE_PULL_SECRET_NAME")
   @ApiModelProperty
-  public String kubernetesImagePullSecretName;
+  private String kubernetesImagePullSecretName;
 
   @JsonAlias("KUBECONFIG_PULL_SECRET")
   @ApiModelProperty
-  public String kubernetesPullSecret;
+  private String kubernetesPullSecret;
 
   @JsonAlias("KUBECONFIG_NAME")
   @ApiModelProperty
-  public String kubeConfigName;
+  private String kubeConfigName;
 
   @JsonAlias("KUBECONFIG_CONTENT")
   @ApiModelProperty
-  public String kubeConfigContent;
+  private String kubeConfigContent;
 
   @JsonAlias("KUBECONFIG")
   @ApiModelProperty
-  public String kubeConfig;
+  private String kubeConfig;
 
   @JsonAlias("STORAGE_CLASS")
   @ApiModelProperty
-  public String kubernetesStorageClass;
+  private String kubernetesStorageClass;
 
   @JsonAlias("KUBECONFIG_PULL_SECRET_CONTENT")
   @ApiModelProperty
-  public String kubernetesPullSecretContent;
+  private String kubernetesPullSecretContent;
 
   @JsonAlias("KUBECONFIG_PULL_SECRET_NAME")
   @ApiModelProperty
-  public String kubernetesPullSecretName;
+  private String kubernetesPullSecretName;
 
   @JsonIgnore
   public Map<String, String> getEnvVars() {
@@ -72,9 +72,10 @@ public class KubernetesInfo implements CloudInfoInterface {
     if (kubeConfig != null) {
       envVars.put("KUBECONFIG", kubeConfig);
     }
-
     if (kubeConfigName != null) {
       envVars.put("KUBECONFIG_NAME", kubeConfigName);
+    }
+    if (kubeConfigContent != null) {
       envVars.put("KUBECONFIG_CONTENT", kubeConfigContent);
     }
     if (kubernetesServiceAccount != null) {
@@ -88,6 +89,8 @@ public class KubernetesInfo implements CloudInfoInterface {
     }
     if (kubernetesPullSecretName != null) {
       envVars.put("KUBECONFIG_PULL_SECRET_NAME", kubernetesPullSecretName);
+    }
+    if (kubernetesPullSecretContent != null) {
       envVars.put("KUBECONFIG_PULL_SECRET_CONTENT", kubernetesPullSecretContent);
     }
     if (kubernetesPullSecret != null) {
