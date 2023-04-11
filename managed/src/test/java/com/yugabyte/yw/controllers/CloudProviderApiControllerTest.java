@@ -382,6 +382,62 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testFilteringRegion() {
+    Provider provider =
+        Provider.create(customer.getUuid(), Common.CloudType.aws, "test", new ProviderDetails());
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
+    Region region2 = Region.create(provider, "us-west-2", "us-west-2", "foo");
+    region2.setActive(false);
+    region2.save();
+    AvailabilityZone az1 =
+        AvailabilityZone.createOrThrow(
+            region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
+    AvailabilityZone az2 =
+        AvailabilityZone.createOrThrow(
+            region, "us-west-1b", "us-west-1b", "subnet-foo", "subnet-foo");
+    az2.setActive(false);
+    az2.save();
+    Result result = getProvider(provider.getUuid());
+    Provider resultProvider = Json.fromJson(Json.parse(contentAsString(result)), Provider.class);
+    assertEquals(1, resultProvider.getRegions().size());
+    assertEquals(1, resultProvider.getRegions().get(0).getZones().size());
+  }
+
+  @Test
+  public void testAddingAlreadyDeletedRegion() {
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    ProviderDetails providerDetails = new ProviderDetails();
+    Provider provider =
+        Provider.create(customer.getUuid(), Common.CloudType.aws, "test", providerDetails);
+    Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
+    region.setActive(false);
+    region.save();
+    AvailabilityZone.createOrThrow(region, "us-west-1a", "us-west-1a", "subnet-foo", "subnet-foo");
+    AccessKey.create(provider.getUuid(), "access-key-code", new AccessKey.KeyInfo());
+    String jsonString =
+        String.format(
+            "{\"code\":\"aws\",\"name\":\"test\",\"regions\":[{\"name\":\"us-west-1\""
+                + ",\"code\":\"us-west-1\", \"details\": {\"cloudInfo\": { \"aws\": {"
+                + "\"vnetName\":\"vpc-foo\", \"ybImage\":\"foo\", "
+                + "\"securityGroupId\":\"sg-foo\" }}}, "
+                + "\"zones\":[{\"code\":\"us-west-1a\",\"name\":\"us-west-1a\","
+                + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
+                + "\"version\": %d}",
+            provider.getVersion());
+    Image image = new Image();
+    image.setArchitecture("x86_64");
+    image.setRootDeviceType("ebs");
+    image.setPlatformDetails("linux/UNIX");
+    when(mockAWSCloudImpl.describeImageOrBadRequest(any(), any(), any())).thenReturn(image);
+    when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
+        .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
+    Result result = editProvider(Json.parse(jsonString), provider.getUuid());
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+  }
+
+  @Test
   public void testCreateMultiInstanceProvider() {
     ModelFactory.awsProvider(customer);
     createProviderTest(

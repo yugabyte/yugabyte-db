@@ -23,6 +23,7 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
+import io.ebean.annotation.Where;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.HashMap;
 import java.util.List;
@@ -103,6 +104,7 @@ public class Provider extends Model {
   private ProviderDetails details = new ProviderDetails();
 
   @OneToMany(cascade = CascadeType.ALL)
+  @Where(clause = "t0.active = true")
   @JsonManagedReference(value = "provider-regions")
   private List<Region> regions;
 
@@ -548,6 +550,16 @@ public class Provider extends Model {
   public String getHostedZoneName() {
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(this);
     return config.getOrDefault("HOSTED_ZONE_NAME", null);
+  }
+
+  /**
+   * Returns a complete list of Regions for provider (including inactive)
+   *
+   * @return list of regions
+   */
+  @JsonIgnore
+  public List<Region> getAllRegions() {
+    return Region.getByProvider(this.getUuid(), false);
   }
 
   /**

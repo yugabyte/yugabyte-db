@@ -67,15 +67,8 @@ public class AvailabilityZone extends Model {
       accessMode = READ_ONLY)
   private Boolean active = true;
 
-  public Boolean isActive() {
+  public boolean isActive() {
     return getActive();
-  }
-
-  public void setActiveFlag(Boolean active) {
-    if (active && !this.getActive()) {
-      throw new IllegalArgumentException("Cannot activate already inactive zone");
-    }
-    this.setActive(active);
   }
 
   @Column(length = 80)
