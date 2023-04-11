@@ -56,6 +56,8 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - Click **Create**.
 
+For specific scenarios such as creating large numbers of tables, high rates of DDL change, and so on, consider creating a universe with dedicated nodes for YB-Master processes. Refer to [Create a universe with dedicated nodes](../dedicated-master/) for more details.
+
 ## Examine the universe
 
 The **Universes** view allows you to examine various aspects of the universe:

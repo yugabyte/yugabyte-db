@@ -1,8 +1,8 @@
 ---
-title: Create a universe with dedicated node placement
-headerTitle: Create a universe with dedicated node placement
-linkTitle: Dedicated node placement
-description: Use YugabyteDB Anywhere to create a YugabyteDB universe with dedicated YB-Master nodes.
+title: Create a universe with dedicated nodes for YB-Master processes
+headerTitle: Create a universe with dedicated nodes
+linkTitle: Dedicated Master processes
+description: Use YugabyteDB Anywhere to create a universe with dedicated YB-Master nodes.
 menu:
   preview_yugabyte-platform:
     identifier: dedicated-master
@@ -11,13 +11,29 @@ menu:
 type: docs
 ---
 
-A YugabyteDB cluster requires a [replication factor](../../../architecture/docdb-replication/replication/#replication-factor)(RF) of the number of [YB-Master](../../../architecture/concepts/yb-master/) instances and at least the same RF of [YB-TServer](../../../architecture/concepts/yb-tserver/) instances for proper operation. For example, an RF-3 universe requires 3 YB-Master instances and 3 or more YB-TServer instances for proper operation.
+While the default behavior when creating a universe is to colocate [YB-Master](../../../architecture/concepts/yb-master/) and [YB-TServer](../../../architecture/concepts/yb-tserver/) processes on the same node, there are some situations when it's desirable to isolate the two processes on separate nodes, and dedicate additional resources to the YB-Master processes.
 
-By default, YugabyteDB Anywhere places YB-Master and YB-TServer instances on the same nodes in a universe. However, there are certain [use cases](#use-cases) where it is preferred to assign dedicated nodes for YB-Masters. To create a universe with this configuration, you can choose the number of YB-Master nodes based on the replication factor.
+The dedicated master nodes feature accomplishes this isolation, and is accessible via the [Place Masters on dedicated nodes](#colocated-to-dedicated-node-placement) option when creating a universe.
+
+## Use cases
+
+Following are some of the use cases where you may choose to place masters on dedicated nodes:
+
+- A multi-tenant cluster comprising thousands of databases.
+- A single database with 60000+ tables.
+- A TPC-C benchmark exercise with a large number of warehouses.
+
+YB-Master processes handle database metadata and coordinate operations across YB-TServers. For example, YB-Masters keep track of system metadata, coordinate DDL operations, handle tablet placement, coordinate data sharding and load balancing, and so on.
+
+While these are normally lightweight operations and by default operate on shared hardware with the data-intensive YB-TServer processes, the preceding use cases are situations when a YB-Master process needs more resources, and it's desirable to dedicate nodes to YB-Masters.
+
+### How many dedicated master nodes are required?
+
+The number dedicated master nodes is dependent on the universe's [replication factor](../../../architecture/docdb-replication/replication/#replication-factor) (RF). A YugabyteDB universe with an RF of `N` requires `N` YB-Master process instances, and therefore `N` dedicated nodes for YB Masters.
 
 ## Colocated to dedicated node placement
 
-Currently it is possible to select the Master placement mode at universe creation time, as well as switch between modes for existing universes. Following are the two modes:
+Currently at universe creation time, two options are available for Master process placement:
 
 - **Place Masters on the same nodes as T-Servers** (Colocated): In this mode, 15% of the total memory available on the node goes to YB-Master and 85% goes to YB-TServer. The memory allocation can be overridden using the `default_memory_limit_to_ram_ratio` flag.
 
@@ -28,19 +44,9 @@ For an existing universe, assigning new YB-Masters will start the new YB-master 
 {{< note >}}
 The dedicated master placement feature:
 
-- applies to all cloud providers, On-Premises, but not Kubernetes.
+- applies to universes created via most cloud providers (such as AWS, GCP, Azure, and On-Premises), except the Kubernetes cloud provider.
 - does not apply to Read Replica clusters as it can have only YB-TServers.
 {{< /note >}}
-
-### Use cases
-
-YB-Master instances keeps track of system metadata, coordinates DDL operations, handles tablet placement, coordinates data load balancing, and so on. While these are lightweight operations, there are use cases where YB-Master needs more resources, and placing YB-Masters on dedicated nodes is important for scalability reasons.
-
-Following are some of the use cases where you can create a universe with dedicated masters:
-
-- A Multi-tenant cluster comprising of thousands of databases.
-- A single database with 60000+ tables.
-- A TPC-C benchmark exercise with large number of warehouses.
 
 ## Create a dedicated nodes universe
 
