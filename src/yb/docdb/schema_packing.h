@@ -15,6 +15,7 @@
 
 #include <unordered_map>
 
+#include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 
 #include <google/protobuf/repeated_field.h>
@@ -22,6 +23,7 @@
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/column_id.h"
+#include "yb/common/id_mapping.h"
 
 #include "yb/docdb/docdb.fwd.h"
 
@@ -63,6 +65,9 @@ struct ColumnPackingData {
 
 class SchemaPacking {
  public:
+  // Used to mark column as skipped by packer. For instance in case of collection column.
+  static constexpr int64_t kSkippedColumnIdx = IdMapping::kNoEntry;
+
   SchemaPacking(TableType table_type, const Schema& schema);
   explicit SchemaPacking(const SchemaPackingPB& pb);
 
@@ -84,8 +89,13 @@ class SchemaPacking {
   }
 
   bool SkippedColumn(ColumnId column_id) const;
+  int64_t GetIndex(ColumnId column_id) const;
   Slice GetValue(size_t idx, const Slice& packed) const;
   std::optional<Slice> GetValue(ColumnId column_id, const Slice& packed) const;
+
+  // Fills `bounds` with pointers of all packed columns in row represented by `packed`.
+  void GetBounds(
+      const Slice& packed, boost::container::small_vector_base<const uint8_t*>* bounds) const;
   void ToPB(SchemaPackingPB* out) const;
 
   bool CouldPack(const google::protobuf::RepeatedPtrField<QLColumnValuePB>& values) const;
@@ -101,7 +111,7 @@ class SchemaPacking {
 
  private:
   std::vector<ColumnPackingData> columns_;
-  std::unordered_map<ColumnId, int64_t, boost::hash<ColumnId>> column_to_idx_;
+  IdMapping column_to_idx_;
   size_t varlen_columns_count_;
 };
 
