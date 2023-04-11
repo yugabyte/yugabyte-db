@@ -4,8 +4,8 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
-import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.cloud.PublicCloudConstants.OsType;
+import com.yugabyte.yw.commissioner.tasks.InstallYbcSoftwareOnK8s;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellProcessContext;
@@ -293,9 +293,10 @@ public class YbcUpgrade {
     } else {
       setYBCUpgradeProcess(universeUUID);
     }
-    UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = universeUUID;
-    taskParams.ybcSoftwareVersion = ybcVersion;
+    InstallYbcSoftwareOnK8s.Params taskParams = new InstallYbcSoftwareOnK8s.Params();
+    taskParams.setUniverseUUID(universeUUID);
+    taskParams.setYbcSoftwareVersion(ybcVersion);
+    taskParams.lockUniverse = true;
     commissioner.submit(TaskType.InstallYbcSoftwareOnK8s, taskParams);
   }
 
