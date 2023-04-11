@@ -83,6 +83,8 @@ class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
 
   Result<master::CatalogManagerIf*> catalog_manager() const;
 
+  void FlushAndCompactTablets();
+
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port);
 
