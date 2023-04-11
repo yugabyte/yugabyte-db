@@ -11,9 +11,9 @@ import React from 'react';
 
 import { Element as SlateElement, Text, Node as SlateNode } from 'slate';
 import { jsx } from 'slate-hyperscript';
-import { CustomElement, CustomText, DOMElement, TextDecorators } from './custom-types';
-import { IYBSlatePlugin, SlateRenderElementProps, SlateRenderLeafProps } from './IPlugin';
-import { nonActivePluginReturnType, toggleBlock, toggleMark } from './PluginUtils';
+import { CustomElement, CustomText, DOMElement, TextDecorators } from '../custom-types';
+import { IYBSlatePlugin, SlateRenderElementProps, SlateRenderLeafProps } from '../IPlugin';
+import { nonActivePluginReturnType, toggleBlock, toggleMark } from '../PluginUtils';
 
 const PLUGIN_NAME = 'Basic';
 /**
