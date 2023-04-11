@@ -1,35 +1,22 @@
 ---
-title: ACID transactions in YCQL
-headerTitle: ACID transactions
-linkTitle: 4. ACID transactions
+title: Transactions in YCQL
+headerTitle: Transactions
+linkTitle: 4. Transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
 menu:
   preview:
-    identifier: acid-transactions-1-ycql
+    identifier: acid-transactions-2-ycql
     parent: learn
     weight: 566
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+{{<tabs>}}
+{{<tabitem href="../acid-transactions-ysql/" text="YSQL" icon="postgres" >}}
+{{<tabitem href="../acid-transactions-ycql/" text="YCQL" icon="cassandra" active="true" >}}
+{{</tabs>}}
 
-  <li >
-    <a href="../acid-transactions-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../acid-transactions-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
-
-A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.
+A transaction is a sequence of operations performed as a single logical unit of work. A transaction has the following four key properties, commonly abbreviated as ACID:
 
 - **Atomicity** All the work in a transaction is treated as a single atomic unit - either all of it is performed or none of it is.
 

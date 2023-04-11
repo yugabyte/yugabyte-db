@@ -40,7 +40,7 @@ type: indexpage
     </a>
   </div>
 
-    <!--
+<!--
     <a class="section-link icon-offset" href="conditional-updates/">
       <div class="icon">
         <i class="fa-brands fa-java"></i>
@@ -60,7 +60,7 @@ type: indexpage
         <div class="caption">How to perform conditional updates and achieve compare-and-swap operations.</div>
       </div>
     </a>
-    -->
+-->
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="data-types-ycql/">
