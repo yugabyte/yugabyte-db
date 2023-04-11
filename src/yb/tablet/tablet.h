@@ -77,6 +77,8 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/threadpool.h"
 
+DECLARE_bool(TEST_docdb_log_write_batches);
+
 namespace yb {
 
 class FsManager;

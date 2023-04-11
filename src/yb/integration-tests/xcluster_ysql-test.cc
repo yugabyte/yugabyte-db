@@ -91,38 +91,42 @@
 
 using std::string;
 
-DECLARE_int32(replication_factor);
+DECLARE_bool(TEST_cdc_skip_replication_poll);
+DECLARE_bool(TEST_dcheck_for_missing_schema_packing);
+DECLARE_bool(TEST_disable_apply_committed_transactions);
+DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
+DECLARE_int32(TEST_xcluster_simulated_lag_ms);
+
+DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_int32(async_replication_polling_delay_ms);
 DECLARE_int32(cdc_max_apply_batch_num_records);
-DECLARE_int32(client_read_write_timeout_ms);
-DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
-DECLARE_int32(update_min_cdc_indices_interval_secs);
-DECLARE_int32(log_cache_size_limit_mb);
-DECLARE_int32(log_min_seconds_to_retain);
-DECLARE_uint64(log_segment_size_bytes);
-DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
-DECLARE_int32(log_max_seconds_to_retain);
-DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(check_bootstrap_required);
+DECLARE_int32(client_read_write_timeout_ms);
+DECLARE_uint64(consensus_max_batch_size_bytes);
+DECLARE_bool(enable_delete_truncate_xcluster_replicated_table);
 DECLARE_bool(enable_load_balancing);
+DECLARE_uint32(external_intent_cleanup_secs);
+DECLARE_uint32(external_transaction_retention_window_secs);
+DECLARE_int32(log_cache_size_limit_mb);
+DECLARE_int32(log_max_seconds_to_retain);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_uint64(log_segment_size_bytes);
 DECLARE_string(pgsql_proxy_bind_address);
+DECLARE_int64(remote_bootstrap_rate_limit_bytes_per_sec);
+DECLARE_int32(replication_factor);
+DECLARE_int32(rpc_workers_limit);
+DECLARE_int32(tablet_server_svc_queue_length);
+DECLARE_int32(update_min_cdc_indices_interval_secs);
+DECLARE_bool(use_libbacktrace);
+DECLARE_bool(xcluster_consistent_wal);
+DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_uint64(ysql_packed_row_size_limit);
-DECLARE_bool(xcluster_wait_on_ddl_alter);
-DECLARE_bool(TEST_disable_apply_committed_transactions);
-DECLARE_uint64(ysql_session_max_batch_size);
-DECLARE_bool(use_libbacktrace);
-DECLARE_uint64(consensus_max_batch_size_bytes);
-DECLARE_uint64(aborted_intent_cleanup_ms);
-DECLARE_uint32(external_intent_cleanup_secs);
-DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_bool(ysql_legacy_colocated_database_creation);
-DECLARE_bool(TEST_cdc_skip_replication_poll);
-DECLARE_int32(rpc_workers_limit);
-DECLARE_int32(tablet_server_svc_queue_length);
-DECLARE_uint32(external_transaction_retention_window_secs);
-DECLARE_bool(xcluster_consistent_wal);
+DECLARE_uint64(ysql_packed_row_size_limit);
+DECLARE_uint64(ysql_session_max_batch_size);
 
 namespace yb {
 
@@ -794,6 +798,91 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
       kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
       true /* commit_all_transactions */));
 
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+// TODO(mlillibridge): Temporarily disabled until #14308 is finished
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavepointsOpt) {
+  // Test that SAVEPOINTs work correctly with xCluster replication.
+  // Case I: skipping optimization pathway (see next test).
+
+  // This flag produces important information for interpreting the results of this test when it
+  // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
+  // crashes (this has happened before).
+  FLAGS_TEST_docdb_log_write_batches = true;
+  // Workaround for issue #16665
+  FLAGS_TEST_dcheck_for_missing_schema_packing = false;
+  const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name = GetCompleteTableName(producer_table->name());
+
+  // Attempt to get all of the changes from the transaction in a single CDC replication batch so the
+  // optimization will kick in:
+  SetAtomicFlag(-1, &FLAGS_TEST_xcluster_simulated_lag_ms);
+
+  // Create two SAVEPOINTs but abort only one of them; all the writes except the aborted one should
+  // be replicated and visible on the consumer side.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(1777777)", table_name));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(2777777)", table_name));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(3777777)", table_name));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(4777777)", table_name));
+  // No wait here; see next test for why this matters.
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+// TODO(mlillibridge): Temporarily disabled until #14308 is finished
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavepointsNoOpt) {
+  // Test that SAVEPOINTs work correctly with xCluster replication.
+  // Case II: using optimization pathway (see below).
+
+  // This flag produces important information for interpreting the results of this test when it
+  // fails.  It is also turned on here to make sure we don't have a regression where the flag causes
+  // crashes (this has happened before).
+  FLAGS_TEST_docdb_log_write_batches = true;
+  // Workaround for issue #16665
+  FLAGS_TEST_dcheck_for_missing_schema_packing = false;
+  const auto [producer_table, consumer_table] = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(producer_table->name().namespace_name()));
+  std::string table_name = GetCompleteTableName(producer_table->name());
+
+  // Create two SAVEPOINTs but abort only one of them; all the writes except the aborted one should
+  // be replicated and visible on the consumer side.
+  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(1777777)", table_name));
+  ASSERT_OK(conn.Execute("SAVEPOINT a"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(2777777)", table_name));
+  ASSERT_OK(conn.Execute("RELEASE SAVEPOINT a"));
+  ASSERT_OK(conn.Execute("SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(3777777)", table_name));
+  ASSERT_OK(conn.Execute("ROLLBACK TO SAVEPOINT b"));
+  ASSERT_OK(conn.ExecuteFormat("insert into $0 values(4777777)", table_name));
+
+  // There is an optimization pathway where we don't write to IntentsDB if we receive the APPLY and
+  // intents in the same CDC changes batch.  See PrepareExternalWriteBatch.
+  //
+  // Wait for the previous changes to be replicated to make sure that optimization doesn't kick in.
+  master::WaitForReplicationDrainRequestPB req;
+  PopulateWaitForReplicationDrainRequest({producer_table}, &req);
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
+
+  ASSERT_OK(conn.Execute("COMMIT"));
+
+  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
