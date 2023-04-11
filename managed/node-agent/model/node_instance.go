@@ -132,6 +132,16 @@ type NodeDetails struct {
 	NodeConfigs  []NodeConfig `json:"nodeConfigs"`
 }
 
+// PreflightCheckParam is the param for PreflightCheckHandler.
+type PreflightCheckParam struct {
+	SkipProvisioning    bool     `json:"skipProvisioning"`
+	AirGapInstall       bool     `json:"airGapInstall"`
+	InstallNodeExporter bool     `json:"installNodeExporter"`
+	YbHomeDir           string   `json:"ybHomeDir"`
+	SshPort             int      `json:"sshPort"`
+	MountPaths          []string `json:"mountPaths"`
+}
+
 type NodeConfig struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`

@@ -14,47 +14,47 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws" class="nav-link">
       <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link active">
+    <a href="../gcp" class="nav-link active">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
+    <a href="../kubernetes" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises" class="nav-link">
       <i class="fa-solid fa-building"></i>
       On-premises
     </a>
@@ -74,7 +74,7 @@ You can configure GCP as follows:
 
 - Navigate to **Configs > Google Cloud Platform**.
 
-- Click **Add Configuration** to open the **Cloud Provider Configuration** page shown in the following illustration:<br><br>
+- Click **Add Configuration** to open the **Cloud Provider Configuration** page shown in the following illustration:
 
   ![GCP Configuration empty](/images/ee/gcp-setup/gcp-configure-empty.png)
 
@@ -85,7 +85,7 @@ You can configure GCP as follows:
 
   - If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the Yugabyte Platform host machine can connect to your Google Cloud account where this new VPC will be created.
 
-    <br>Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following:
+    Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following:
 
     - A region name.
     - A subnet ID.

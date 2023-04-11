@@ -16,6 +16,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -388,6 +389,12 @@ public class BackupsControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateIncrementalScheduleBackupWithInvalidIncrementalFrequency() {
+    doThrow(
+            new PlatformServiceException(
+                BAD_REQUEST,
+                "Incremental backup frequency should be lower than full backup frequency."))
+        .when(mockBackupUtil)
+        .validateIncrementalScheduleFrequency(anyLong(), anyLong(), any());
     ObjectNode bodyJson = Json.newObject();
     Universe universe =
         ModelFactory.createUniverse(
@@ -423,14 +430,6 @@ public class BackupsControllerTest extends FakeDBApplication {
         "error",
         "Incremental backup frequency should be lower than full backup frequency.");
     assertEquals(BAD_REQUEST, r.status());
-    bodyJson.put("incrementalBackupFrequency", 100000L);
-    r = assertPlatformException(() -> createBackupSchedule(bodyJson, null));
-    resultJson = Json.parse(contentAsString(r));
-    assertValue(resultJson, "error", "Minimum incremental backup schedule duration is 30 mins");
-    assertEquals(BAD_REQUEST, r.status());
-    bodyJson.put("incrementalBackupFrequency", 1800000);
-    r = createBackupSchedule(bodyJson, null);
-    assertOk(r);
   }
 
   @Test

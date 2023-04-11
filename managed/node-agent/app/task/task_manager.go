@@ -9,6 +9,7 @@ import (
 	"io"
 	"node-agent/app/executor"
 	"node-agent/app/scheduler"
+	pb "node-agent/generated/service"
 	"node-agent/util"
 	"sync"
 	"time"
@@ -52,9 +53,11 @@ type ExitStatus struct {
 
 // TaskCallbackData contains the progress data for a command.
 type TaskCallbackData struct {
-	Info     string
-	Error    string
-	ExitCode int
+	Info        string
+	Error       string
+	ExitCode    int
+	State       executor.TaskState
+	RPCResponse *pb.DescribeTaskResponse
 }
 
 // TaskManager manages async tasks.
@@ -64,12 +67,13 @@ type TaskManager struct {
 }
 
 type taskInfo struct {
-	ctx       context.Context
-	cancel    context.CancelFunc
-	mutex     *sync.Mutex
-	asyncTask AsyncTask
-	future    *executor.Future
-	updatedAt time.Time
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	mutex                *sync.Mutex
+	asyncTask            AsyncTask
+	future               *executor.Future
+	rpcResponseConverter util.RPCResponseConverter
+	updatedAt            time.Time
 }
 
 // InitTaskManager initializes the task manager.
@@ -130,7 +134,12 @@ func (m *TaskManager) updateTime(taskID string) {
 }
 
 // SubmitTask submits a task for asynchronous execution.
-func (m *TaskManager) Submit(ctx context.Context, taskID string, asyncTask AsyncTask) error {
+func (m *TaskManager) Submit(
+	ctx context.Context,
+	taskID string,
+	asyncTask AsyncTask,
+	rpcResponseConverter util.RPCResponseConverter,
+) error {
 	if taskID == "" {
 		return errors.New("Task ID is not valid")
 	}
@@ -142,11 +151,12 @@ func (m *TaskManager) Submit(ctx context.Context, taskID string, asyncTask Async
 	i, ok := m.taskInfos.LoadOrStore(
 		taskID,
 		&taskInfo{
-			ctx:       bgCtx,
-			cancel:    cancel,
-			mutex:     &sync.Mutex{},
-			updatedAt: time.Now(),
-			asyncTask: asyncTask,
+			ctx:                  bgCtx,
+			cancel:               cancel,
+			mutex:                &sync.Mutex{},
+			updatedAt:            time.Now(),
+			asyncTask:            asyncTask,
+			rpcResponseConverter: rpcResponseConverter,
 		},
 	)
 	if ok {
@@ -171,7 +181,7 @@ func (m *TaskManager) Submit(ctx context.Context, taskID string, asyncTask Async
 func (m *TaskManager) Subscribe(
 	ctx context.Context,
 	taskID string,
-	callback func(executor.TaskState, *TaskCallbackData) error,
+	callback func(*TaskCallbackData) error,
 ) error {
 	if taskID == "" {
 		return errors.New("Task ID is not valid")
@@ -195,35 +205,46 @@ func (m *TaskManager) Subscribe(
 			// Task is completed.
 			size := 0
 			m.updateTime(taskID)
-			callbackData := &TaskCallbackData{}
 			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
+			callbackData := &TaskCallbackData{State: tInfo.future.State()}
 			callbackData.Info, size = taskStatus.Info.StringWithLen()
 			if size > 0 {
 				// Send the info messages first before any error.
-				err := callback(tInfo.future.State(), callbackData)
+				err := callback(callbackData)
 				if err != nil {
 					return err
 				}
 				taskStatus.Info.Consume(size)
-				if taskStatus.Info.Len() > 0 {
-					// Break from switch to continue because more info messages need to be sent.
-					break
-				}
 			}
+
 			size = 0
-			if taskStatus.ExitStatus.Code != 0 {
+			if taskStatus.ExitStatus.Code == 0 {
+				if tInfo.rpcResponseConverter != nil {
+					result, err := tInfo.future.Get()
+					if err != nil {
+						return err
+					}
+					response, err := tInfo.rpcResponseConverter(result)
+					if err != nil {
+						return err
+					}
+					callbackData := &TaskCallbackData{State: tInfo.future.State()}
+					callbackData.RPCResponse = response
+					err = callback(callbackData)
+					if err != nil {
+						return err
+					}
+				}
+			} else {
 				// Send the error messages.
 				callbackData.ExitCode = taskStatus.ExitStatus.Code
 				callbackData.Error, size = taskStatus.ExitStatus.Error.StringWithLen()
-				err := callback(tInfo.future.State(), callbackData)
+				err := callback(callbackData)
 				if err != nil {
 					return err
 				}
 				if size > 0 {
 					taskStatus.ExitStatus.Error.Consume(size)
-				}
-				if taskStatus.ExitStatus.Error.Len() > 0 {
-					break
 				}
 			}
 			util.FileLogger().Infof(ctx, "Task %s is completed.", taskID)
@@ -234,8 +255,8 @@ func (m *TaskManager) Subscribe(
 			taskStatus := tInfo.asyncTask.CurrentTaskStatus()
 			data, size := taskStatus.Info.StringWithLen()
 			if size > 0 {
-				callbackData := &TaskCallbackData{Info: data}
-				err := callback(tInfo.future.State(), callbackData)
+				callbackData := &TaskCallbackData{Info: data, State: tInfo.future.State()}
+				err := callback(callbackData)
 				if err != nil {
 					return err
 				}
@@ -246,8 +267,8 @@ func (m *TaskManager) Subscribe(
 	}
 }
 
-// AbortTask aborts a running task.
-func (m *TaskManager) AbortTask(ctx context.Context, taskID string) (string, error) {
+// Abort aborts a running task.
+func (m *TaskManager) Abort(ctx context.Context, taskID string) (string, error) {
 	i, ok := m.taskInfos.Load(taskID)
 	if !ok {
 		util.FileLogger().Infof(ctx, "Task %s is not found.", taskID)

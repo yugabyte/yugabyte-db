@@ -14,42 +14,42 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/aws" class="nav-link active">
+    <a href="../aws" class="nav-link active">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/gcp" class="nav-link">
+    <a href="../gcp" class="nav-link">
        <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/kubernetes" class="nav-link">
+    <a href="../kubernetes" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/openshift" class="nav-link">
+    <a href="../openshift" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/install-yugabyte-platform/prepare-environment/on-premises" class="nav-link">
+    <a href="../on-premises" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
@@ -59,7 +59,7 @@ type: docs
 
 ## Create a new security group (optional)
 
-In order to access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the Yugabyte Platform machine. You will at minimum need to:
+To access Yugabyte Platform from outside the AWS environment, you would need to enable access by assigning an appropriate security group to the Yugabyte Platform machine. You will at minimum need to:
 
 - Access the Yugabyte Platform instance over SSH (port `tcp:22`)
 - Check, manage, and upgrade Yugabyte Platform (port `tcp:8800`)
@@ -141,8 +141,9 @@ In order for Yugabyte Platform to manage YugabyteDB nodes, limited access to you
 
 Create an instance to run the Yugabyte Platform server. To do this, navigate to **EC2 > Instances**, click **Launch Instance**, and enter the following values:
 
-- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration: <br><br>
-![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
+- Change the boot disk image to Ubuntu Server 16.04, as shown in the following illustration:
+
+    ![Image](/images/ee/aws-setup/yugaware-create-instance-os.png)
 
 - Select c5.xlarge as the instance type (4 vCPUs are recommended for production).
 
@@ -164,7 +165,7 @@ Create an instance to run the Yugabyte Platform server. To do this, navigate to 
 
 - Click **Launch** to launch the Yugabyte Platform server.
 
-  You should see an instance being created, as shown in the following illustration:<br><br>
+  You should see an instance being created, as shown in the following illustration:
 
   ![Image](/images/ee/aws-setup/yugaware-machine-creation.png)
 

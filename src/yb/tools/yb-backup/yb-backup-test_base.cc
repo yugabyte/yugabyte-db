@@ -77,6 +77,9 @@ void YBBackupTest::SetUp() {
   pgwrapper::PgCommandTestBase::SetUp();
   ASSERT_OK(CreateClient());
   test_admin_client_ = std::make_unique<TestAdminClient>(cluster_.get(), client_.get());
+  snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util_->SetProxy(&client_->proxy_cache());
+  snapshot_util_->SetCluster(cluster_.get());
 }
 
 void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {

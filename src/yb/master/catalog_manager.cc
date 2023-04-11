@@ -561,6 +561,9 @@ DEFINE_test_flag(bool, create_table_in_running_state, false,
     "In master-only tests, create tables in the running state without waiting for tablet creation, "
     "as we will not have any tablet servers.");
 
+DEFINE_test_flag(bool, pause_before_upsert_ysql_sys_table, false,
+                 "Pause before upserting a table in CreateYsqlSysTable.");
+
 namespace yb {
 namespace master {
 
@@ -3170,7 +3173,7 @@ Result<ColocationId> ConceiveColocationId(const CreateTableRequestPB& req,
 }  // namespace
 
 Status CatalogManager::CreateYsqlSysTable(
-    const CreateTableRequestPB* req, CreateTableResponsePB* resp,
+    const CreateTableRequestPB* req, CreateTableResponsePB* resp, int64_t term,
     tablet::ChangeMetadataRequestPB* change_meta_req, SysCatalogWriter* writer) {
   LOG(INFO) << "CreateYsqlSysTable: " << req->name();
   // Lookup the namespace and verify if it exists.
@@ -3255,7 +3258,7 @@ Status CatalogManager::CreateYsqlSysTable(
     tablet_lock.mutable_data()->pb.add_table_ids(table->id());
     Status s;
     if (!writer) {
-      s = sys_catalog_->Upsert(leader_ready_term(), sys_catalog_tablet);
+      s = sys_catalog_->Upsert(term, sys_catalog_tablet);
     } else {
       s = writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, sys_catalog_tablet);
     }
@@ -3275,9 +3278,10 @@ Status CatalogManager::CreateYsqlSysTable(
   // Update the on-disk table state to "running".
   table->mutable_metadata()->mutable_dirty()->pb.set_state(SysTablesEntryPB::RUNNING);
 
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_upsert_ysql_sys_table);
   Status s;
   if (!writer) {
-    s = sys_catalog_->Upsert(leader_ready_term(), table);
+    s = sys_catalog_->Upsert(term, table);
   } else {
     s = writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, table);
   }
@@ -3325,7 +3329,7 @@ Status CatalogManager::CreateYsqlSysTable(
   // otherwise the caller is responsible for doing it.
   if (!batching) {
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
-        change_meta_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+        change_meta_req, sys_catalog_->tablet_peer().get(), term));
   }
 
   // No batching for serializing to initdb.
@@ -3399,13 +3403,14 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
 }
 
 Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
-                                          const std::vector<scoped_refptr<TableInfo>>& tables) {
+                                          const std::vector<scoped_refptr<TableInfo>>& tables,
+                                          int64_t term) {
   const uint32_t database_oid = CHECK_RESULT(GetPgsqlDatabaseOid(namespace_id));
   vector<TableId> source_table_ids;
   vector<TableId> target_table_ids;
   tablet::ChangeMetadataRequestPB change_meta_req;
   bool batching = false;
-  auto writer = sys_catalog_->NewWriter(leader_ready_term());
+  auto writer = sys_catalog_->NewWriter(term);
   for (const auto& table : tables) {
     CreateTableRequestPB table_req;
     CreateTableResponsePB table_resp;
@@ -3451,10 +3456,10 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
     Status s;
     // No batching for initdb or if flag is not set.
     if (initial_snapshot_writer_ || !FLAGS_batch_ysql_system_tables_metadata) {
-      s = CreateYsqlSysTable(&table_req, &table_resp, nullptr);
+      s = CreateYsqlSysTable(&table_req, &table_resp, term);
       batching = false;
     } else {
-      s = CreateYsqlSysTable(&table_req, &table_resp, &change_meta_req, writer.get());
+      s = CreateYsqlSysTable(&table_req, &table_resp, term, &change_meta_req, writer.get());
       batching = true;
     }
     if (!s.ok()) {
@@ -3469,13 +3474,13 @@ Status CatalogManager::CopyPgsqlSysTables(const NamespaceId& namespace_id,
   if (batching) {
     // Sync change metadata requests for the entire batch.
     RETURN_NOT_OK(tablet::SyncReplicateChangeMetadataOperation(
-        &change_meta_req, sys_catalog_->tablet_peer().get(), leader_ready_term()));
+        &change_meta_req, sys_catalog_->tablet_peer().get(), term));
     // Sync sys catalog table upserts for the entire batch.
     RETURN_NOT_OK(sys_catalog_->SyncWrite(writer.get()));
   }
 
   RETURN_NOT_OK(
-      sys_catalog_->CopyPgsqlTables(source_table_ids, target_table_ids, leader_ready_term()));
+      sys_catalog_->CopyPgsqlTables(source_table_ids, target_table_ids, term));
   return Status::OK();
 }
 
@@ -3563,7 +3568,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
 
   if (is_pg_catalog_table) {
     // No batching for migration.
-    return CreateYsqlSysTable(orig_req, resp, nullptr);
+    return CreateYsqlSysTable(orig_req, resp, leader_ready_term());
   }
 
   const char* const object_type = PROTO_PTR_IS_TABLE(orig_req) ? "table" : "index";
@@ -8597,15 +8602,15 @@ void CatalogManager::ProcessPendingNamespace(
     TransactionMetadata txn) {
   LOG(INFO) << "ProcessPendingNamespace started for " << id;
 
-  // Ensure that we are currently the Leader before handling DDL operations.
-  {
-    SCOPED_LEADER_SHARED_LOCK(l, this);
-    if (!l.IsInitializedAndIsLeader()) {
-      LOG(WARNING) << l.failed_status_string();
-      // Don't try again, we have to reset in-memory state after losing leader election.
-      return;
-    }
+  // Ensure that we are the leader and our view of the term does not change while handling DDL
+  // operations (to avoid losing and regaining leadership, and having the catalog loaders run).
+  SCOPED_LEADER_SHARED_LOCK(l, this);
+  if (!l.IsInitializedAndIsLeader()) {
+    LOG(WARNING) << l.failed_status_string();
+    // Don't try again, we have to reset in-memory state after losing leader election.
+    return;
   }
+  auto term = leader_ready_term();
 
   if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_hang_on_namespace_transition))) {
     LOG(INFO) << "Artificially waiting (" << FLAGS_catalog_manager_bg_task_wait_ms
@@ -8630,7 +8635,7 @@ void CatalogManager::ProcessPendingNamespace(
   // Copy the system tables necessary to create this namespace.  This can be time-intensive.
   bool success = true;
   if (!template_tables.empty()) {
-    auto s = CopyPgsqlSysTables(ns->id(), template_tables);
+    auto s = CopyPgsqlSysTables(ns->id(), template_tables, term);
     WARN_NOT_OK(s, "Error Copying PGSQL System Tables for Pending Namespace");
     success = s.ok();
   }
@@ -8641,7 +8646,7 @@ void CatalogManager::ProcessPendingNamespace(
     SysNamespaceEntryPB& metadata = ns->mutable_metadata()->mutable_dirty()->pb;
     if (metadata.state() == SysNamespaceEntryPB::PREPARING) {
       metadata.set_state(success ? SysNamespaceEntryPB::RUNNING : SysNamespaceEntryPB::FAILED);
-      auto s = sys_catalog_->Upsert(leader_ready_term(), ns);
+      auto s = sys_catalog_->Upsert(term, ns);
       if (s.ok()) {
         TRACE("Done processing keyspace");
         LOG(INFO) << (success ? "Processed" : "Failed") << " keyspace: " << ns->ToString();

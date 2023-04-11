@@ -568,4 +568,31 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
+      new ConfKeyInfo<>(
+          "yb.allow_db_version_more_than_yba_version",
+          ScopeType.GLOBAL,
+          "Whether installation of YugabyteDB version higher than YBA version is allowed",
+          "It indicates whether the installation of YugabyteDB with a version higher than "
+              + "YBA version is allowed on universe nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> pgDumpPath =
+      new ConfKeyInfo<>(
+          "db.default.pg_dump_path",
+          ScopeType.GLOBAL,
+          "Path to pg_dump on the YBA node",
+          "Set during yba-installer for both custom postgres and version specific postgres "
+              + "installation",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> pgRestorePath =
+      new ConfKeyInfo<>(
+          "db.default.pg_restore_path",
+          ScopeType.GLOBAL,
+          "Path to pg_restore on the YBA node",
+          "Set during yba-installer for both custom postgres and version specific postgres "
+              + "installation",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

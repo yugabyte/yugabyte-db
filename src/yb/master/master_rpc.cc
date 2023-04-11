@@ -54,7 +54,7 @@ using yb::rpc::Rpc;
 
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(master_leader_rpc_timeout_ms, 500,
+DEFINE_RUNTIME_int32(master_leader_rpc_timeout_ms, 500,
              "Number of milliseconds that the tserver will keep querying for master leader before"
              "selecting a follower.");
 TAG_FLAG(master_leader_rpc_timeout_ms, advanced);

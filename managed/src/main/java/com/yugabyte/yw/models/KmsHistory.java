@@ -255,6 +255,15 @@ public class KmsHistory extends Model {
         .findOne();
   }
 
+  public static KmsHistory getKmsHistory(
+      UUID targetUUID, String keyRef, KmsHistoryId.TargetType type) {
+    return KmsHistory.find
+        .query()
+        .where()
+        .idEq(new KmsHistoryId(keyRef, targetUUID, type, getLatestReEncryptionCount(targetUUID)))
+        .findOne();
+  }
+
   public static KmsHistory getActiveHistory(UUID targetUUID, KmsHistoryId.TargetType type) {
     return KmsHistory.find
         .query()
@@ -360,6 +369,10 @@ public class KmsHistory extends Model {
         .findList()
         .forEach(kh -> KmsConfigUUIDs.add(kh.getConfigUuid()));
     return KmsConfigUUIDs;
+  }
+
+  public KmsConfig getAssociatedKmsConfig() {
+    return KmsConfig.getOrBadRequest(this.configUuid);
   }
 
   @Override

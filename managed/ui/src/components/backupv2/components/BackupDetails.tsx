@@ -10,7 +10,7 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, Keyspace_Table } from '..';
+import { Backup_States, IBackup, ITable, Keyspace_Table } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
 import { RevealBadge, calculateDuration } from '../common/BackupUtils';
@@ -22,7 +22,7 @@ import {
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
-import { isFunction } from 'lodash';
+import { find, isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
@@ -46,6 +46,7 @@ interface BackupDetailsProps {
   hideRestore?: boolean;
   onAssignStorageConfig?: () => void;
   currentUniverseUUID?: string;
+  tablesInUniverse?: ITable[];
 }
 const SOURCE_UNIVERSE_DELETED_MSG = (
   <span className="alert-message warning">
@@ -68,7 +69,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   storageConfigs,
   hideRestore = false,
   onAssignStorageConfig,
-  currentUniverseUUID
+  currentUniverseUUID,
+  tablesInUniverse
 }) => {
   const [searchKeyspaceText, setSearchKeyspaceText] = useState('');
   const [showAddIncrementalBackupModal, setShowAddIncrementalBackupModal] = useState(false);
@@ -79,7 +81,37 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const doAddIncrementalBackup = useMutation(
     () => {
-      return addIncrementalBackup(backupDetails!);
+      let responseList: Keyspace_Table[] = [];
+
+      if (!backupDetails?.isFullBackup) {
+        responseList = backupDetails!.commonBackupInfo.responseList;
+      }
+
+      if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
+        responseList = responseList.map((r) => {
+          const backupTablesPresentInUniverse = r.tablesList.filter(
+            (tableName) => find(tablesInUniverse, { tableName })?.tableName
+          );
+
+          return {
+            ...r,
+            tablesList: r.allTables ? [] : backupTablesPresentInUniverse,
+            tableUUIDList: r.allTables
+              ? []
+              : backupTablesPresentInUniverse.map(
+                  (tableName) => find(tablesInUniverse, { tableName })?.tableUUID
+                )
+          };
+        });
+      }
+
+      return addIncrementalBackup({
+        ...backupDetails!,
+        commonBackupInfo: {
+          ...backupDetails!.commonBackupInfo,
+          responseList
+        }
+      });
     },
     {
       onSuccess: () => {
@@ -161,16 +193,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 }
               />
             )}
-            {onEdit &&
-            <YBButton 
-              btnText="Edit Backup"
-              btnIcon="fa fa-pencil"
-              onClick={() => onEdit()}
-              disabled={
-                backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
-                !backupDetails.isStorageConfigPresent
-              }
-            />}
+            {onEdit && (
+              <YBButton
+                btnText="Edit Backup"
+                btnIcon="fa fa-pencil"
+                onClick={() => onEdit()}
+                disabled={
+                  backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                  !backupDetails.isStorageConfigPresent
+                }
+              />
+            )}
           </Row>
           <Row className="backup-details-info">
             <div className="name-and-status">

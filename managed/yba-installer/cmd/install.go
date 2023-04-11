@@ -1,12 +1,11 @@
 package cmd
 
 import (
-	"errors"
+	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
@@ -21,9 +20,8 @@ var installCmd = &cobra.Command{
         `,
 	Args: cobra.NoArgs,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		_, err := yugaware.InstalledVersionFromMetadata()
-		if !errors.Is(err, yugaware.NotInstalledVersionError) {
-			log.Fatal("YugabyteDB Anywhere already installed, cannot install twice")
+		if _, err := os.Stat(common.YbaInstalledMarker()); err == nil {
+			log.Fatal("YugabyteDB Anywhere already installed, cannot install twice.")
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

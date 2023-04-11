@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/apex/log v1.9.0
+	github.com/creack/pty v1.1.18
 	github.com/golang-jwt/jwt/v4 v4.4.2
 	github.com/google/uuid v1.1.2
 	github.com/gorilla/mux v1.8.0
@@ -41,7 +42,7 @@ require (
 	golang.org/x/net v0.1.0 // indirect
 	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/text v0.4.0 // indirect
-	golang.org/x/tools v0.2.0 // indirect
+	golang.org/x/tools v0.1.12 // indirect
 	google.golang.org/genproto v0.0.0-20220519153652-3a47de7e79bd // indirect
 	gopkg.in/ini.v1 v1.66.4 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
