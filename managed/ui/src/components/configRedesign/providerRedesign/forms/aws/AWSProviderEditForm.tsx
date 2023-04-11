@@ -677,8 +677,8 @@ const constructDefaultFormValues = (
     zones: region.zones
   })),
   sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort,
-  sshUser: providerConfig.details.sshUser,
+  sshPort: providerConfig.details.sshPort ?? '',
+  sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
   vpcSetupType: providerConfig.details.cloudInfo.aws.vpcType
 });
