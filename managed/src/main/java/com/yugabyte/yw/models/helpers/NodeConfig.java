@@ -136,9 +136,9 @@ public class NodeConfig {
 
     REDIS_SERVER_RPC_PORT("Redis server rpc port is open"),
 
-    YQL_SERVER_HTTP_PORT("YCQL server http port is open"),
+    YCQL_SERVER_HTTP_PORT("YCQL server http port is open"),
 
-    YQL_SERVER_RPC_PORT("YCQL server rpc port is open"),
+    YCQL_SERVER_RPC_PORT("YCQL server rpc port is open"),
 
     YSQL_SERVER_HTTP_PORT("YSQL server http port is open"),
 

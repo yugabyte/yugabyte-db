@@ -15,7 +15,7 @@ import time
 
 from ybops.common.exceptions import YBOpsRecoverableError, YBOpsRuntimeError
 from ybops.utils.ssh import SSHClient
-from ybops.node_agent.shell_client import RpcShellClient
+from ybops.node_agent.rpc import RpcClient
 
 CONNECTION_ATTEMPTS = 5
 CONNECTION_ATTEMPT_DELAY_SEC = 3
@@ -185,6 +185,9 @@ class RemoteShell(object):
     def fetch_file(self, remote_file_name, local_file_name, **kwargs):
         self.delegate.fetch_file(remote_file_name, local_file_name, **kwargs)
 
+    def invoke_method(self, param, **kwargs):
+        return self.delegate.invoke_method(param, **kwargs)
+
 
 class _SshRemoteShell(object):
     """_SshRemoteShell class is used run remote shell commands against nodes using paramiko.
@@ -262,6 +265,9 @@ class _SshRemoteShell(object):
     def fetch_file(self, remote_file_name, local_file_name, **kwargs):
         self.ssh_conn.download_file_from_remote_server(remote_file_name, local_file_name, **kwargs)
 
+    def invoke_method(self, input, **kwargs):
+        raise NotImplementedError("SSH does not support method invocation")
+
 
 class _RpcRemoteShell(object):
     """_RpcRemoteShell class is used run remote shell commands against nodes using gRPC.
@@ -275,7 +281,7 @@ class _RpcRemoteShell(object):
             "cert_path": connect_options.get("node_agent_cert_path"),
             "auth_token": connect_options.get("node_agent_auth_token"),
         }
-        self.client = RpcShellClient(client_connect_options)
+        self.client = RpcClient(client_connect_options)
         self.client.connect()
 
     def get_host_port_user(self):
@@ -347,3 +353,13 @@ class _RpcRemoteShell(object):
 
     def fetch_file(self, remote_file_name, local_file_name, **kwargs):
         self.client.fetch_file(remote_file_name, local_file_name, **kwargs)
+
+    def invoke_method(self, param, **kwargs):
+        result = self.client.invoke_method_async(param, **kwargs)
+        if result.stderr != '' or result.rc != 0:
+            raise YBOpsRecoverableError(
+                "Remote method invocation failed with "
+                "return code '{}' and error '{}'".format(result.stderr,
+                                                         result.stderr)
+            )
+        return result.obj

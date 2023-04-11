@@ -274,7 +274,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
     createOnpremInstance(zone);
     createOnpremInstance(zone);
-
     Universe universe = onPremUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);

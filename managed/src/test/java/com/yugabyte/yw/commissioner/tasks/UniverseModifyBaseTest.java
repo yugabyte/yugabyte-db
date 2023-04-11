@@ -3,7 +3,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -196,9 +198,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     nodeData.region = zone.getRegion().getCode();
     nodeData.zone = zone.getCode();
     nodeData.instanceType = ApiUtils.UTIL_INST_TYPE;
-    NodeInstance node = NodeInstance.create(zone.getUuid(), nodeData);
-    node.save();
-    return node;
+    return NodeInstance.create(zone.getUuid(), nodeData);
   }
 
   protected Universe createUniverseForProviderWithReadReplica(

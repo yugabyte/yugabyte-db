@@ -15,11 +15,13 @@ import traceback
 import uuid
 
 from ansible.module_utils._text import to_native
+from google.protobuf.json_format import MessageToJson
+from google.protobuf.message import Message
 from grpc import secure_channel, ssl_channel_credentials, metadata_call_credentials, \
     composite_channel_credentials, AuthMetadataPlugin, RpcError, StatusCode
 from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandRequest, FileInfo, \
     PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest, \
-    CommandInput
+    CommandInput, Error
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 
 SERVER_READY_RETRY_LIMIT = 60
@@ -29,9 +31,9 @@ FILE_UPLOAD_DOWNLOAD_TIMEOUT_SEC = 1800
 FILE_UPLOAD_CHUNK_BYTES = 524288
 
 
-class RpcShellOutput(object):
+class RpcOutput(object):
     """
-    RpcShellOutput class converts the o/p in the standard format with o/p, err,
+    RpcOutput class converts the o/p in the standard format with o/p, err,
     rc status attached to it.
     """
 
@@ -39,6 +41,7 @@ class RpcShellOutput(object):
         self.rc = 0
         self.stdout = ''
         self.stderr = ''
+        self.obj = None
 
 
 class AuthTokenCallback(AuthMetadataPlugin):
@@ -49,9 +52,9 @@ class AuthTokenCallback(AuthMetadataPlugin):
         callback((("authorization", self.auth_token),), None)
 
 
-class RpcShellClient(object):
+class RpcClient(object):
     """
-    RpcShellClient class is used to run remote shell commands against a node agent using gRPC.
+    RpcClient class is used to run remote commands or methods against a node agent using gRPC.
     """
 
     def __init__(self, options):
@@ -106,7 +109,7 @@ class RpcShellClient(object):
         Run a sync short running command on the remote host.
         """
 
-        output = RpcShellOutput()
+        output = RpcOutput()
         try:
             timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
             bash = kwargs.get('bash', False)
@@ -145,7 +148,7 @@ class RpcShellClient(object):
         Run an async long running command on the remote host.
         """
 
-        output = RpcShellOutput()
+        output = RpcOutput()
         task_id = kwargs.get('task_id', str(uuid.uuid4()))
         try:
             timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
@@ -175,11 +178,54 @@ class RpcShellClient(object):
                             timeout=timeout_sec):
                         if response.HasField('error'):
                             output.rc = response.error.code
-                            output.stderr = response.error.message if output.stderr is None \
-                                else output.stderr + response.error.message
-                        else:
+                            output.stderr = response.error.message
+                            break
+                        output.stdout = response.output if output.stdout is None \
+                            else output.stdout + response.output
+                    break
+                except RpcError as e:
+                    if e.code() == StatusCode.DEADLINE_EXCEEDED:
+                        logging.info("Reconnecting for task {} as client timed out".format(task_id))
+                        continue
+                    raise e
+        except Exception as e:
+            traceback.print_exc()
+            self.abort_task(task_id, **kwargs)
+            output.rc = 1
+            output.stderr = str(e)
+        return output
+
+    def invoke_method_async(self, param, **kwargs):
+        """
+        Run an async method invocation on the remote host.
+        """
+
+        output = RpcOutput()
+        task_id = kwargs.get('task_id', str(uuid.uuid4()))
+        output_json = kwargs.get('output_json', True)
+        try:
+            timeout_sec = kwargs.get('timeout', COMMAND_EXECUTION_TIMEOUT_SEC)
+            request = SubmitTaskRequest(user=self.user, taskId=task_id)
+            self._set_request_oneof_field(request, param)
+            self.stub.SubmitTask(request, timeout=timeout_sec)
+            while True:
+                try:
+                    for response in self.stub.DescribeTask(
+                            DescribeTaskRequest(taskId=task_id),
+                            timeout=timeout_sec):
+                        if response.HasField('error'):
+                            output.rc = response.error.code
+                            output.stderr = response.error.message
+                            break
+                        if response.HasField('output'):
                             output.stdout = response.output if output.stdout is None \
                                 else output.stdout + response.output
+                        else:
+                            output.obj = self._get_response_oneof_field(response)
+                            if output_json:
+                                # JSON library of python cannot serialize this output.
+                                output.obj = MessageToJson(output.obj)
+                            break
                     break
                 except RpcError as e:
                     if e.code() == StatusCode.DEADLINE_EXCEEDED:
@@ -262,3 +308,26 @@ class RpcShellClient(object):
             return True
         except Exception as e:
             return False
+
+    def _set_request_oneof_field(self, request, field):
+        descriptor = getattr(field, 'DESCRIPTOR', None)
+        if descriptor and isinstance(field, Message):
+            for oneofs in request.DESCRIPTOR.oneofs:
+                for f in oneofs.fields:
+                    if f.message_type.full_name == descriptor.full_name:
+                        getattr(request, f.name).CopyFrom(field)
+                        return
+        raise TypeError("Unknown request type: " + str(type(field)))
+
+    def _get_response_oneof_field(self, response):
+        descriptor = getattr(response, 'DESCRIPTOR', None)
+        if descriptor:
+            for oneofs in descriptor.oneofs:
+                for f in oneofs.fields:
+                    obj = getattr(response, f.name, None)
+                    if obj is None:
+                        continue
+                    if not isinstance(obj, Message) or isinstance(obj, Error):
+                        continue
+                    return obj
+        raise TypeError("Unknown response type: " + str(type(response)))

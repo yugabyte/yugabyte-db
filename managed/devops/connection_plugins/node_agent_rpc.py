@@ -12,7 +12,7 @@ from ansible.errors import AnsibleConnectionFailure, AnsibleError
 from ansible.plugins.connection import ConnectionBase
 from ansible.utils.display import Display
 
-from ybops.node_agent.shell_client import RpcShellClient
+from ybops.node_agent.rpc import RpcClient
 
 display = Display()
 
@@ -92,7 +92,7 @@ class Connection(ConnectionBase):
                 "auth_token": self.auth_token
             }
             display.vvv("Connecting to node agent {}:{}".format(self.ip, self.port))
-            self.client = RpcShellClient(connect_params)
+            self.client = RpcClient(connect_params)
             self.client.connect()
             self._connected = True
         except Exception as e:
