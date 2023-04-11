@@ -11,7 +11,7 @@ name: "yugaware"
 properties:
   app_url: '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl else}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}'
   logo_url: https://s3-us-west-2.amazonaws.com/assets.yugabyte.com/yb-logo.png
-  console_title: YugaByte Platform Deployment Console
+  console_title: YugabyteDB Anywhere Deployment Console
 backup:
   enabled: false
 monitors:
@@ -33,28 +33,28 @@ custom_requirements:
             directory: '{{repl ConfigOption "storage_path"}}'
         condition:
           status_code: 0
-          bool_expr: '{{repl Trim .Result | ParseFloat | lt 40e9 }}'
+          bool_expr: "{{repl Trim .Result | ParseFloat | lt 40e9 }}"
       - status: error
         message:
           default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 40 GB
           args:
             directory: '{{repl ConfigOption "storage_path"}}'
-            bytes: '{{repl ParseFloat .Result | HumanSize }}'
+            bytes: "{{repl ParseFloat .Result | HumanSize }}"
         condition:
           status_code: 0
       - status: warn
         message:
-          default_message: 'Invalid status code {{.status}}. Error: {{.error}}'
+          default_message: "Invalid status code {{.status}}. Error: {{.error}}"
           args:
-            status: '{{repl .StatusCode }}'
-            error: '{{repl .Error }}'
+            status: "{{repl .StatusCode }}"
+            error: "{{repl .Error }}"
     command:
       id: disk_space_available
       data:
         cluster: false
         dir: '{{repl ConfigOption "storage_path"}}'
   - id: check_replicated_free_space
-    message: '/var/lib/replicated has enough total space'
+    message: "/var/lib/replicated has enough total space"
     details: Directory must have at least 15GB total space.
     results:
       - status: success
@@ -64,21 +64,21 @@ custom_requirements:
             directory: /var/lib/replicated
         condition:
           status_code: 0
-          bool_expr: '{{repl Trim .Result | ParseFloat | lt 15e9 }}'
+          bool_expr: "{{repl Trim .Result | ParseFloat | lt 15e9 }}"
       - status: error
         message:
           default_message: Directory {{.directory}} has {{.bytes}} space available. Please increase disk space to at least 15 GB
           args:
             directory: /var/lib/replicated
-            bytes: '{{repl ParseFloat .Result | HumanSize }}'
+            bytes: "{{repl ParseFloat .Result | HumanSize }}"
         condition:
           status_code: 0
       - status: warn
         message:
-          default_message: 'Invalid status code {{.status}}. Error: {{.error}}'
+          default_message: "Invalid status code {{.status}}. Error: {{.error}}"
           args:
-            status: '{{repl .StatusCode }}'
-            error: '{{repl .Error }}'
+            status: "{{repl .StatusCode }}"
+            error: "{{repl .Error }}"
     command:
       id: disk_space_available
       data:
@@ -109,30 +109,30 @@ cmds:
 components:
   - name: pg_upgrade
     containers:
-    - source: public
-      image_name: tianon/postgres-upgrade
-      name: postgres_upgrade
-      version: 9.6-to-14
-      volumes:
-        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/yugaware'
-          container_path: /var/lib/postgresql/9.6/data
-          owner: "999"
-        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/14/yugaware'
-          container_path: /var/lib/postgresql/14/data
-          owner: "999"
-        - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
-          container_path: /var/lib/postgresql/status
-          owner: "999"
-      publish_events:
-        - name: Postgres_Upgrade started
-          trigger: container-stop
-          subscriptions:
-            - component: db
-              container: postgres
-              action: start
-      config_files:
-        - filename: /home/entrypoint.sh
-          contents: |
+      - source: public
+        image_name: tianon/postgres-upgrade
+        name: postgres_upgrade
+        version: 9.6-to-14
+        volumes:
+          - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/yugaware'
+            container_path: /var/lib/postgresql/9.6/data
+            owner: "999"
+          - host_path: '{{repl ConfigOption "storage_path"}}/postgresql/14/yugaware'
+            container_path: /var/lib/postgresql/14/data
+            owner: "999"
+          - host_path: '{{repl ConfigOption "storage_path"}}/postgresql'
+            container_path: /var/lib/postgresql/status
+            owner: "999"
+        publish_events:
+          - name: Postgres_Upgrade started
+            trigger: container-stop
+            subscriptions:
+              - component: db
+                container: postgres
+                action: start
+        config_files:
+          - filename: /home/entrypoint.sh
+            contents: |
               #!/bin/bash
 
               if [ ! "$(ls -A /var/lib/postgresql/14/data)" ] && [ "$(ls -A /var/lib/postgresql/9.6/data)" ];
@@ -140,8 +140,8 @@ components:
                 docker-upgrade pg_upgrade;
                 echo "host all all all scram-sha-256" >> /var/lib/postgresql/14/data/pg_hba.conf;
               fi
-      ephemeral: true
-      entrypoint: ["sh", "/home/entrypoint.sh"]
+        ephemeral: true
+        entrypoint: ["sh", "/home/entrypoint.sh"]
 
   - name: db
     containers:
@@ -151,13 +151,13 @@ components:
         version: 14.7
         env_vars:
           - name: POSTGRES_DB
-            static_val: 'yugaware'
+            static_val: "yugaware"
           - name: POSTGRES_USER
             static_val: '{{repl ConfigOption "dbuser"}}'
           - name: POSTGRES_PASSWORD
             static_val: '{{repl ConfigOption "dbpass"}}'
           - name: PGDATA
-            static_val: '/var/lib/postgresql/data/yugaware'
+            static_val: "/var/lib/postgresql/data/yugaware"
         ports:
           - private_port: "5432"
             public_port: '{{repl ConfigOption "db_external_port"}}'
@@ -218,8 +218,8 @@ components:
               host    all             all             ::1/128                 trust
           - filename: /home/startup.sh
             contents: |
-                {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
-                {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
+              {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
+              {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
 
   - name: prometheus
     containers:
@@ -244,17 +244,21 @@ components:
           - private_port: "9090"
             public_port: "9190"
             interface: docker0
-        entrypoint: [ "/bin/sh", "-c", "rm -rf /prometheus/lock && \
-          cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && \
-          exec /bin/prometheus \
-          --config.file=/prometheus_configs/prometheus.yml \
-          --storage.tsdb.path=/prometheus \
-          --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} \
-          --query.max-concurrency={{repl ConfigOption \"prometheus_query_concurrency\"}} \
-          --query.max-samples={{repl ConfigOption \"prometheus_query_max_samples\"}} \
-          --query.timeout={{repl ConfigOption \"prometheus_query_timeout\"}} \
-          --web.enable-admin-api \
-          --web.enable-lifecycle"]
+        entrypoint: [
+            "/bin/sh",
+            "-c",
+            "rm -rf /prometheus/lock && \
+            cp /prometheus_configs/default_prometheus.yml /prometheus_configs/prometheus.yml && \
+            exec /bin/prometheus \
+            --config.file=/prometheus_configs/prometheus.yml \
+            --storage.tsdb.path=/prometheus \
+            --storage.tsdb.retention={{repl ConfigOption \"prometheus_retention\"}} \
+            --query.max-concurrency={{repl ConfigOption \"prometheus_query_concurrency\"}} \
+            --query.max-samples={{repl ConfigOption \"prometheus_query_max_samples\"}} \
+            --query.timeout={{repl ConfigOption \"prometheus_query_timeout\"}} \
+            --web.enable-admin-api \
+            --web.enable-lifecycle",
+          ]
         publish_events:
           - name: Prometheus started
             trigger: container-start
@@ -809,7 +813,7 @@ state:
   ready:
     command: http_status_code
     args:
-    - '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl else}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}'
-    - '200'
-    - '15'
+      - '{{repl if ConfigOptionEquals "https_enabled" "1"}}https://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_https_port"}}{{repl else}}http://{{repl ConfigOption "hostname"}}:{{repl ConfigOption "ui_http_port"}}{{repl end}}'
+      - "200"
+      - "15"
     timeout: 900
