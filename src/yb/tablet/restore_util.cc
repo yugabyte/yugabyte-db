@@ -108,7 +108,8 @@ Status RestorePatch::ProcessRestoringGreaterThanExisting(
 }
 
 Status RestorePatch::PatchCurrentStateFromRestoringState() {
-  while (!restoring_state_->finished() && !existing_state_->finished()) {
+  while (restoring_state_ && existing_state_ && !restoring_state_->finished() &&
+         !existing_state_->finished()) {
     if (VERIFY_RESULT(ShouldSkipEntry(restoring_state_->key(), restoring_state_->value()))) {
       RETURN_NOT_OK(restoring_state_->Next());
       continue;
@@ -136,7 +137,7 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
     }
   }
 
-  while (!restoring_state_->finished()) {
+  while (restoring_state_ && !restoring_state_->finished()) {
     if (VERIFY_RESULT(ShouldSkipEntry(restoring_state_->key(), restoring_state_->value()))) {
       RETURN_NOT_OK(restoring_state_->Next());
       continue;
@@ -146,7 +147,7 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
     RETURN_NOT_OK(restoring_state_->Next());
   }
 
-  while (!existing_state_->finished()) {
+  while (existing_state_ && !existing_state_->finished()) {
     if (VERIFY_RESULT(ShouldSkipEntry(existing_state_->key(), existing_state_->value()))) {
       RETURN_NOT_OK(existing_state_->Next());
       continue;
