@@ -1623,8 +1623,8 @@ ExecDelete(ModifyTableContext *context,
 	}
 	else if (IsYBRelation(resultRelationDesc))
 	{
-		bool row_found = YBCExecuteDelete(resultRelationDesc, planSlot, estate,
-										  mtstate, changingPart);
+		bool row_found = YBCExecuteDelete(resultRelationDesc, context->planSlot, estate,
+										  context->mtstate, changingPart);
 		if (!row_found)
 		{
 			/*
@@ -1636,7 +1636,7 @@ ExecDelete(ModifyTableContext *context,
 
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo))
 		{
-			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
+			Datum	ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
 
 			/* Delete index entries of the old tuple */
 			ExecDeleteIndexTuples(resultRelInfo, ybctid, oldtuple, estate);
@@ -1839,9 +1839,9 @@ ldelete:;
 		}
 		else if (IsYBRelation(resultRelationDesc))
 		{
-			if (mtstate->yb_mt_is_single_row_update_or_delete)
+			if (context->mtstate->yb_mt_is_single_row_update_or_delete)
 			{
-				slot = planSlot;
+				slot = context->planSlot;
 			}
 
 #ifdef YB_TODO
@@ -1851,7 +1851,7 @@ ldelete:;
 			 */
 			else
 			{
-				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, context->planSlot);
 			}
 #endif
 		}
@@ -2336,7 +2336,7 @@ lreplace:;
 	 * have it validate all remaining checks.
 	 */
 	if (resultRelationDesc->rd_att->constr)
-		ExecConstraints(resultRelInfo, slot, estate);
+		ExecConstraints(resultRelInfo, slot, estate, context->mtstate);
 
 	/*
 	 * replace the heap tuple
@@ -2379,7 +2379,8 @@ ExecUpdateEpilogue(ModifyTableContext *context, UpdateContext *updateCxt,
 		recheckIndexes = ExecInsertIndexTuples(resultRelInfo,
 											   slot, context->estate,
 											   true, false,
-											   NULL, NIL);
+											   NULL, NIL,
+											   NIL /* no_update_index_list */);
 
 	/* AFTER ROW UPDATE Triggers */
 	ExecARUpdateTriggers(context->estate, resultRelInfo,
@@ -2512,10 +2513,12 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	List	   *recheckIndexes = NIL;
 	TM_Result	result;
 
-	ModifyTable *node = (ModifyTable *)mtstate->ps.plan;
-	OnConflictAction onconflict = node->onConflictAction;
-
-	/* Yugabyte workaround variables */
+	/* Yugabyte variables
+	 * YB_TODO(neil) Reintro local variable if needed. Otherwise, remove them.
+	 */
+	ModifyTableState *mtstate = context->mtstate;
+	/* ModifyTable *node = (ModifyTable *)mtstate->ps.plan; */
+	/* OnConflictAction onconflict = node->onConflictAction; */
 	bool shouldFree = true;
 	HeapTuple tuple = NULL;
 
@@ -2589,7 +2592,9 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 	{
 		bool partition_constraint_failed;
 
+		/* YB_TODO(neil) Check this code.
 		yb_lreplace:;
+		*/
 		/*
 		 * Check the constraints of the tuple.
 		 */
@@ -2623,6 +2628,10 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		 */
 		if (partition_constraint_failed)
 		{
+#ifdef YB_TODO
+			/* YB_TODO(neil)
+			 * ExecCrossPartitionUpdate() is replaced by ExecUpdateAct()
+			 */
 			TupleTableSlot *inserted_tuple, *retry_slot;
 			bool            retry;
 
@@ -2636,7 +2645,7 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  			 */
 
 			retry = !ExecCrossPartitionUpdate(mtstate, resultRelInfo, tupleid,
-											  oldtuple, slot, planSlot,
+											  oldtuple, slot, context->planSlot,
 											  epqstate, canSetTag,
 											  &retry_slot, &inserted_tuple);
 			if (retry)
@@ -2646,6 +2655,8 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
  			}
 
 			return inserted_tuple;
+#endif
+			return NULL;
  		}
 
 		/*
@@ -2665,6 +2676,10 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 
 		Bitmapset *actualUpdatedCols = rte->updatedCols;
 		Bitmapset *extraUpdatedCols = NULL;
+#ifdef YB_TODO
+		/* YB_TODO(neil)
+		 * Looking at ExecUpdatePrologue() and work on beforeRowUpdateTriggerFired.
+		 */
 		if (beforeRowUpdateTriggerFired)
 		{
 			/* trigger might have changed tuple */
@@ -2676,19 +2691,20 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 				actualUpdatedCols = extraUpdatedCols;
 			}
 		}
+#endif
 		bool is_pk_updated =
 			bms_overlap(YBGetTablePrimaryKeyBms(resultRelationDesc), actualUpdatedCols);
 
 		if (is_pk_updated)
 		{
-			YBCExecuteUpdateReplace(resultRelationDesc, planSlot, tuple, estate, mtstate);
+			YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, tuple, estate, mtstate);
 			row_found = true;
 		}
 		else
 		{
 			row_found = YBCExecuteUpdate(resultRelationDesc,
 										 resultRelInfo,
-										 planSlot,
+										 context->planSlot,
 										 tuple,
 										 estate,
 										 mtstate,
@@ -2710,7 +2726,7 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		if (YBCRelInfoHasSecondaryIndices(resultRelInfo) &&
 		    !mtstate->yb_mt_is_single_row_update_or_delete)
 		{
-			Datum	ybctid = YBCGetYBTupleIdFromSlot(planSlot);
+			Datum	ybctid = YBCGetYBTupleIdFromSlot(context->planSlot);
 			List *no_update_index_list = ((ModifyTable *)mtstate->ps.plan)->no_update_index_list;
 
 			/* Delete index entries of the old tuple */
@@ -2906,7 +2922,7 @@ redo_act:
 		 * differently, so junkFilter is not needed.
 		 */
 		if (IsYBRelation(resultRelationDesc) && resultRelInfo->ri_junkFilter)
-			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
+			slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, context->planSlot);
 #endif
 		return ExecProcessReturning(resultRelInfo, slot, context->planSlot);
 	}
@@ -3099,8 +3115,8 @@ yb_skip_transaction_control_check:
 		 * - Pass slot to Yugabyte call once the API is fixed.
 		 */
 		bool shouldFree = true;
-		oldtuple = ExecFetchSlotHeapTuple(estate->yb_conflict_slot, true, &shouldFree);
-		TABLETUPLE_YBCTID(planSlot) = HEAPTUPLE_YBCTID(oldtuple);
+		oldtuple = ExecFetchSlotHeapTuple(context->estate->yb_conflict_slot, true, &shouldFree);
+		TABLETUPLE_YBCTID(context->planSlot) = HEAPTUPLE_YBCTID(oldtuple);
 	}
 
 	/*
@@ -3160,7 +3176,7 @@ yb_skip_transaction_control_check:
 	/* YB_TODO(neil) Postgres changes its function signature. Need fix while compiling */
 	*returning = ExecUpdate(mtstate, resultRelInfo, conflictTid, oldtuple,
 							resultRelInfo->ri_onConflict->oc_ProjSlot,
-							planSlot,
+							context->planSlot,
 							&mtstate->mt_epqstate, mtstate->ps.state,
 							canSetTag);
 #endif
@@ -4371,8 +4387,8 @@ ExecModifyTable(PlanState *pstate)
 								  node->canSetTag, NULL, NULL);
 
 				/* YB_TODO(neil) Fixed function signature
-				slot = ExecGetInsertNewTuple(resultRelInfo, planSlot);
-				slot = ExecInsert(node, resultRelInfo, slot, planSlot,
+				slot = ExecGetInsertNewTuple(resultRelInfo, context.planSlot);
+				slot = ExecInsert(node, resultRelInfo, slot, context.planSlot,
 								  estate, node->canSetTag);
 				*/
 
