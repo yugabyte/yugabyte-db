@@ -51,7 +51,7 @@ DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 1,
+DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
               "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
               "value is set to 0.");
 
