@@ -371,7 +371,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .colocated = colocated,
             .snapshot_schedules = {},
             .hosted_services = hosted_services,
-            .last_change_metadata_op_id = OpId::Min(),
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
@@ -387,7 +386,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       deleted_cols.push_back(col);
     }
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     meta_->SetSchema(schema,
                      IndexMap(table.indexes()),
                      deleted_cols,

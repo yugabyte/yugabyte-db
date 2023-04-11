@@ -393,7 +393,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version, op_id);
@@ -405,7 +405,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     LOG(INFO) << "Setting schema, index information and schema version for table "
               << colocated_table_metadata.table_id;
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,

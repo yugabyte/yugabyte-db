@@ -2186,7 +2186,7 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
     // still need to persist the op id corresponding to this operation
     // so as to avoid replaying during tablet bootstrap.
     // We don't update if the passed op id is invalid. One case when this will happen:
-    // If we are replaying during tablet bootstrap and last_change_metadata_op_id
+    // If we are replaying during tablet bootstrap and last_flushed_change_metadata_op_id
     // was invalid - For e.g. after upgrade when new code reads old data.
     // In such a case, we ensure that we are no worse than old code's behavior
     // which essentially implies that we mute this new logic for the entire
