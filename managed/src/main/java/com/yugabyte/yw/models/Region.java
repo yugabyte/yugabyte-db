@@ -35,6 +35,7 @@ import io.ebean.RawSqlBuilder;
 import io.ebean.SqlUpdate;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
+import io.ebean.annotation.Where;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
@@ -115,6 +116,7 @@ public class Region extends Model {
   private Provider provider;
 
   @OneToMany(cascade = CascadeType.ALL)
+  @Where(clause = "t0.active = true")
   @JsonManagedReference("region-zones")
   private List<AvailabilityZone> zones;
 
@@ -124,14 +126,6 @@ public class Region extends Model {
 
   public boolean isActive() {
     return getActive() == null || getActive();
-  }
-
-  @JsonIgnore
-  public void setActiveFlag(Boolean active) {
-    if (active && !this.getActive()) {
-      throw new IllegalStateException("Cannot activate already inactive region");
-    }
-    this.setActive(active);
   }
 
   @Transient
@@ -392,7 +386,15 @@ public class Region extends Model {
   }
 
   public static List<Region> getByProvider(UUID providerUUID) {
-    return find.query().where().eq("provider_UUID", providerUUID).findList();
+    return getByProvider(providerUUID, true);
+  }
+
+  public static List<Region> getByProvider(UUID providerUUID, boolean onlyActive) {
+    ExpressionList<Region> expr = find.query().where().eq("provider_UUID", providerUUID);
+    if (onlyActive) {
+      expr.eq("active", true);
+    }
+    return expr.findList();
   }
 
   public static List<Region> getFullByProviders(Collection<UUID> providers) {
@@ -509,7 +511,7 @@ public class Region extends Model {
   public void disableRegionAndZones() {
     beginTransaction();
     try {
-      setActiveFlag(false);
+      setActive(false);
       update();
       String s =
           "UPDATE availability_zone set active = :active_flag where region_uuid = :region_UUID";
@@ -523,6 +525,16 @@ public class Region extends Model {
     } finally {
       endTransaction();
     }
+  }
+
+  /**
+   * Returns a complete list of AZ's for region (including inactive)
+   *
+   * @return list of zones
+   */
+  @JsonIgnore
+  public List<AvailabilityZone> getAllZones() {
+    return AvailabilityZone.getAZsForRegion(this.getUuid(), false);
   }
 
   public String toString() {

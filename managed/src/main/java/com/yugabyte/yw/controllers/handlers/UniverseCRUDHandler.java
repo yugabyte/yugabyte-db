@@ -818,7 +818,8 @@ public class UniverseCRUDHandler {
 
   private static void validateRegionsAndZones(Provider provider, Cluster cluster) {
     Map<UUID, Region> regionMap =
-        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getUuid(), r -> r));
+        Region.getByProvider(provider.getUuid(), false).stream()
+            .collect(Collectors.toMap(r -> r.getUuid(), r -> r));
     if (cluster.placementInfo == null) {
       return; // Otherwise tests are failing
     }
