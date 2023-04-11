@@ -95,7 +95,7 @@ get_role_password(const char *role, const char **logdetail)
  * sent to the client, to avoid giving away user information!
  */
 uint64_t *
-yb_get_role_password(const char *role, char **logdetail)
+yb_get_role_password(const char *role, const char **logdetail)
 {
 	uint64_t   *auth_key = NULL;
 
@@ -330,7 +330,7 @@ int
 yb_plain_key_verify(const char *role,
 					const uint64_t server_auth_key,
 					const uint64_t client_auth_key,
-					char **logdetail)
+					const char **logdetail)
 {
 	/* Currently disallow any role but "postgres" */
 	if (strncmp(role, "postgres", 8))

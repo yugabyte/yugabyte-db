@@ -75,6 +75,8 @@ typedef struct check_network_data
 static List *parsed_hba_lines = NIL;
 static MemoryContext parsed_hba_context = NULL;
 
+#ifdef YB_TODO
+/* YB_TODO(neil) Need to redo JasonK code. It's not merge-able */
 /*
  * The following character array contains the additional hardcoded HBA config
  * lines that are set internally.  These lines take priority over user defined
@@ -84,6 +86,7 @@ static const char *const HardcodedHbaLines[] =
 {
 	"local all postgres yb-tserver-key",
 };
+#endif
 
 /*
  * pre-parsed content of ident mapping file: list of IdentLine structs.
@@ -126,9 +129,12 @@ static const char *const UserAuthName[] =
 static List *tokenize_inc_file(List *tokens, const char *outer_filename,
 							   const char *inc_filename, int elevel, char **err_msg);
 static void tokenize_hardcoded(List **tok_lines_all, int elevel);
+#ifdef YB_TODO
+/* YB_TODO(neil) Need to change JasonK code. It's not merge-able. */
 static TokenizedLine *tokenize_line(const char *filename, int elevel,
 									int line_number, char *rawline,
 									char *err_msg);
+#endif
 static bool parse_hba_auth_opt(char *name, char *val, HbaLine *hbaline,
 							   int elevel, char **err_msg);
 
@@ -577,7 +583,6 @@ tokenize_auth_file(const char *filename, FILE *file, List **tok_lines,
  * - Keep in mind that code-merging people are not supposed to review and learn your projects or
  *   entire team's projects line-by-line and logically resolve conflicts.
  */
-#endif
 static MemoryContext
 tokenize_file_jasonk_version(const char *filename, FILE *file, List **tok_lines, int elevel)
 {
@@ -758,6 +763,7 @@ tokenize_line(const char *filename,
 	return NULL;
 }
 
+#endif
 
 /*
  * Does user belong to role?
@@ -2501,7 +2507,10 @@ load_hba(void)
 	List	   *hba_lines_hardcoded = NIL;
 
 	oldcxt = MemoryContextSwitchTo(linecxt);
+#ifdef YB_TODO
+	/* YB_TODO(neil) Need to change JasonK code. It's not merge-able */
 	tokenize_hardcoded(&hba_lines_hardcoded, LOG);
+#endif
 	hba_lines = list_concat(hba_lines_hardcoded, hba_lines);
 	MemoryContextSwitchTo(oldcxt);
 

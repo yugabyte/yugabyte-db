@@ -65,7 +65,7 @@ static int	CheckPWChallengeAuth(Port *port, const char **logdetail);
 static int	CheckMD5Auth(Port *port, char *shadow_pass,
 						 const char **logdetail);
 
-static int	CheckYbTserverKeyAuth(Port *port, char **logdetail);
+static int	CheckYbTserverKeyAuth(Port *port, const char **logdetail);
 
 /*----------------------------------------------------------------
  * Ident authentication
@@ -930,7 +930,7 @@ CheckMD5Auth(Port *port, char *shadow_pass, const char **logdetail)
  * Yugabyte internal tserver to postgres key authentication.
  */
 static int
-CheckYbTserverKeyAuth(Port *port, char **logdetail)
+CheckYbTserverKeyAuth(Port *port, const char **logdetail)
 {
 	char	   *passwd;
 	int			result;
