@@ -7,21 +7,32 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useCallback, useRef } from 'react';
+import React, { FC, useRef } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from 'react-query';
+import { useMutation, useQuery } from 'react-query';
 import { Descendant, Editor, Element, Path, Transforms } from 'slate';
 import { Box, makeStyles, MenuItem, Typography } from '@material-ui/core';
-import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
-import { YBModal, YBSelect } from '../../../components';
-import { YBEditor } from '../../../components/YBEditor';
-import { ALERT_VARIABLE_ELEMENT_TYPE, IYBEditor } from '../../../components/YBEditor/plugins';
-import { AlertVariableElement } from '../../../components/YBEditor/plugins';
-import { ALERT_TEMPLATES_QUERY_KEY, fetchAlertConfigList } from './CustomVariablesAPI';
-import { useCommonStyles } from './CommonStyles';
+import { YBLoadingCircleIcon } from '../../../../../../components/common/indicators';
+import { YBModal, YBSelect } from '../../../../../components';
+import { YBEditor } from '../../../../../components/YBEditor';
+import {
+  ALERT_VARIABLE_ELEMENT_TYPE,
+  IYBEditor,
+  clearEditor
+} from '../../../../../components/YBEditor/plugins';
+import { AlertVariableElement } from '../../../../../components/YBEditor/plugins';
+import {
+  ALERT_TEMPLATES_QUERY_KEY,
+  fetchAlertConfigList,
+  previewAlertNotification
+} from '../../CustomVariablesAPI';
+import { useCommonStyles } from '../../CommonStyles';
+import { TextSerializer } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
+import { HTMLDeSerializer, HTMLSerializer } from '../../../../../components/YBEditor/serializers';
+import { TextDeserializer } from '../../../../../components/YBEditor/serializers/Text/TextDeSerializer';
 
-type AlertVariablesPreviewModalProps = {
+type EmailPreviewModalProps = {
   visible: boolean;
   bodyValue: Descendant[];
   subjectValue: Descendant[];
@@ -59,9 +70,9 @@ const useStyles = makeStyles((theme) => ({
 
 /**
  * preview editor contents with the variable values filled.
- * values are filled from alert configs
+ * values are filled from the api
  */
-const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
+const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
   bodyValue,
   subjectValue,
   visible,
@@ -81,39 +92,55 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
     })
   );
 
-  /**
-   * traverse through all the nodes and fill the alert variable with the value from alert configs
-   * if the value is found in alert config, fill the value and mark the view as 'PREVIEW'
-   * if the value is not found, mark the variable as 'NO_VALUE
-   */
-  const transformNodes = useCallback(
-    (editor: IYBEditor | null, alertConfig: string) => {
-      if (editor) {
-        const alertElements = Editor.nodes(editor, {
-          at: [],
-          match: (node) => Element.isElement(node) && node.type === ALERT_VARIABLE_ELEMENT_TYPE //get only ALERT_VARIABLE_ELEMENT
+  const fillTemplateWithValue = useMutation(
+    ({
+      textTemplate,
+      titleTemplate,
+      alertConfigUUID
+    }: {
+      textTemplate: string;
+      titleTemplate: string;
+      alertConfigUUID: string;
+    }) =>
+      previewAlertNotification(
+        {
+          type: 'Email',
+          textTemplate,
+          titleTemplate
+        },
+        alertConfigUUID
+      ),
+    {
+      onSuccess(data) {
+        const bodyNodes = new HTMLDeSerializer(
+          bodyEditorRef.current!,
+          data.data.text
+        ).deserialize();
+
+        clearEditor(bodyEditorRef.current!);
+        Transforms.insertNodes(bodyEditorRef.current!, bodyNodes);
+
+        const alertElements = Array.from(
+          Editor.nodes(bodyEditorRef.current!, {
+            at: [],
+            match: (node) => Element.isElement(node) && node.type === ALERT_VARIABLE_ELEMENT_TYPE //get only ALERT_VARIABLE_ELEMENT
+          })
+        );
+
+        alertElements.forEach((next) => {
+          const [_, path] = next as [AlertVariableElement, Path];
+          //set the mode to preview such that it display the value, instead of variable name
+          Transforms.setNodes(bodyEditorRef.current!, { view: 'PREVIEW' }, { at: path });
         });
 
-        let next = null;
-
-        while (!(next = alertElements.next()).done) {
-          const [node, path] = next.value as [AlertVariableElement, Path];
-
-          const labels = alertConfigurationsMap[alertConfig]; //get values from alertConfigs
-
-          if (labels && labels[node.variableName]) {
-            Transforms.setNodes(
-              editor,
-              { view: 'PREVIEW', variableValue: labels[node.variableName] },
-              { at: path }
-            );
-          } else {
-            Transforms.setNodes(editor, { view: 'NO_VALUE' }, { at: path });
-          }
-        }
+        const subjectNodes = new TextDeserializer(
+          bodyEditorRef.current!,
+          data.data.title
+        ).deserialize();
+        clearEditor(subjectEditorRef.current!);
+        Transforms.insertNodes(subjectEditorRef.current!, subjectNodes);
       }
-    },
-    [alertConfigurationsMap]
+    }
   );
 
   if (!visible) return null;
@@ -122,11 +149,19 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
     return <YBLoadingCircleIcon />;
   }
 
-  const alertConfigurations = data.data;
+  const alertConfigurations = data.data.sort((a, b) => a.name.localeCompare(b.name));
 
   alertConfigurations.forEach((alertConfig) => {
-    alertConfigurationsMap[alertConfig.name] = alertConfig.labels ?? {};
+    alertConfigurationsMap[alertConfig.uuid] = alertConfig.name;
   });
+
+  const previewTemplate = (alertConfigUUID: string) => {
+    const textTemplate = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
+    const titleTemplate = new TextSerializer(subjectEditorRef.current!).serlializeElements(
+      subjectValue
+    );
+    fillTemplateWithValue.mutate({ textTemplate, titleTemplate, alertConfigUUID });
+  };
 
   return (
     <YBModal
@@ -137,6 +172,7 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
       overrideWidth="740px"
       overrideHeight="540px"
       size="lg"
+      titleSeparator
     >
       <Box className={classes.defaultPadding}>
         <Typography variant="body2">
@@ -145,8 +181,7 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
         <YBSelect
           className={classes.select}
           onChange={(e) => {
-            transformNodes(subjectEditorRef.current, e.target.value);
-            transformNodes(bodyEditorRef.current, e.target.value);
+            previewTemplate(e.target.value);
           }}
           renderValue={(selectedAlertConfig) => {
             if (!selectedAlertConfig) {
@@ -154,15 +189,15 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
                 <em>{t('alertCustomTemplates.alertVariablesPreviewModal.selectPlaceholder')}</em>
               );
             }
-            return selectedAlertConfig;
+            return alertConfigurationsMap[selectedAlertConfig as string];
           }}
         >
           <MenuItem disabled value="">
             <em>{t('alertCustomTemplates.alertVariablesPreviewModal.selectPlaceholder')}</em>
           </MenuItem>
-          {alertConfigurations.map((alertConfig) => (
-            <MenuItem key={alertConfig.name} value={alertConfig.name}>
-              {alertConfig.name}
+          {Object.keys(alertConfigurationsMap).map((alertConfigUuid) => (
+            <MenuItem key={alertConfigurationsMap[alertConfigUuid]} value={alertConfigUuid}>
+              {alertConfigurationsMap[alertConfigUuid]}
             </MenuItem>
           ))}
         </YBSelect>
@@ -178,7 +213,12 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
         >
           <YBEditor
             editorProps={{ readOnly: true }}
-            loadPlugins={{ alertVariablesPlugin: true, singleLine: true }}
+            loadPlugins={{
+              alertVariablesPlugin: false,
+              singleLine: true,
+              defaultPlugin: true,
+              jsonPlugin: false
+            }}
             initialValue={subjectValue}
             ref={subjectEditorRef}
           />
@@ -197,4 +237,4 @@ const AlertVariablesPreviewModal: FC<AlertVariablesPreviewModalProps> = ({
   );
 };
 
-export default AlertVariablesPreviewModal;
+export default EmailPreviewModal;

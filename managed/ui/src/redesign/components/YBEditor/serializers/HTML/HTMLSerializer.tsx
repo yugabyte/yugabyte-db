@@ -7,8 +7,8 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { Text } from 'slate';
-import { CustomText, CustomElement, IYBSlatePluginReturnProps, IYBEditor } from '../plugins';
+import { Descendant, Text } from 'slate';
+import { CustomText, CustomElement, IYBSlatePluginReturnProps, IYBEditor } from '../../plugins';
 
 /**
  * Serializes editor contents to HTML
@@ -21,6 +21,10 @@ export class HTMLSerializer {
 
   serialize() {
     return this.editor.children.map((child) => this.serializeElementToHTML(child)).join('');
+  }
+
+  serializeElement (nodes: Descendant[]) {
+    return nodes.map((child) => this.serializeElementToHTML(child)).join('')
   }
 
   serializeElementToHTML(node: CustomText | CustomElement): string {

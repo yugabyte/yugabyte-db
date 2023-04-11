@@ -23,13 +23,13 @@ import {
   CustomText,
   DOMElement,
   IYBEditor
-} from './custom-types';
+} from '../custom-types';
 import {
   CustomVariable,
   SystemVariables
-} from '../../../features/alerts/TemplateComposer/ICustomVariables';
+} from '../../../../features/alerts/TemplateComposer/ICustomVariables';
 
-import { IYBSlatePlugin, SlateRenderElementProps, SlateRenderLeafProps } from './IPlugin';
+import { IYBSlatePlugin, SlateRenderElementProps, SlateRenderLeafProps } from '../IPlugin';
 
 import {
   deleteElement,
@@ -37,9 +37,9 @@ import {
   getBeforeNChars,
   nonActivePluginReturnType,
   Portal
-} from './PluginUtils';
+} from '../PluginUtils';
 
-import { AddAlertVariablesPopup } from '../../../features/alerts/TemplateComposer/AlertVariablesPopup';
+import { AddAlertVariablesPopup } from '../../../../features/alerts/TemplateComposer/AlertVariablesPopup';
 import { Close, Edit } from '@material-ui/icons';
 
 const PLUGIN_NAME = 'Custom Alert Variables Plugin';
@@ -446,7 +446,7 @@ const serialize = (node: CustomElement | CustomText, children: string) => {
   }
 
   if (node.type === ALERT_VARIABLE_ELEMENT_TYPE) {
-    return `<span type="${node.type}" variableType="${node.variableType}" variableName="${node.variableName}">${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}${children}</span>`;
+    return `<span type="${node.type}" variableType="${node.variableType}" variableName="${node.variableName}" variableValue="${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}">${ALERT_VARIABLE_START_TAG}${node.variableName}${ALERT_VARIABLE_END_TAG}${children}</span>`;
   }
 
   return undefined;
@@ -470,6 +470,7 @@ const deSerialize = (
         type: ALERT_VARIABLE_ELEMENT_TYPE,
         variableType: el.getAttribute('variableType'),
         variableName: el.getAttribute('variableName'),
+        variableValue: el.getAttribute('variableValue'),
         view: 'EDIT'
       },
       [{ text: '' }]

@@ -15,7 +15,7 @@ import {
   DOMElement,
   IYBEditor,
   IYBSlatePluginReturnProps
-} from '../plugins';
+} from '../../plugins';
 
 export class HTMLDeSerializer {
   HTMLDocument: Document;
