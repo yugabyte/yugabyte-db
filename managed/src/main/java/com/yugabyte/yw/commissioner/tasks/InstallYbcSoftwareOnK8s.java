@@ -20,14 +20,20 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
     super(baseTaskDependencies);
   }
 
-  protected UniverseDefinitionTaskParams taskParams() {
-    return (UniverseDefinitionTaskParams) taskParams;
+  public static class Params extends UniverseDefinitionTaskParams {
+    public boolean lockUniverse = false;
+  }
+
+  public Params taskParams() {
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
     try {
-      lockUniverse(-1 /* expectedUniverseVersion */);
+      if (taskParams().lockUniverse) {
+        lockUniverse(-1 /* expectedUniverseVersion */);
+      }
 
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
@@ -60,7 +66,9 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      unlockUniverseForUpdate();
+      if (taskParams().lockUniverse) {
+        unlockUniverseForUpdate();
+      }
     }
     log.info("Finished {} task.", getName());
   }
