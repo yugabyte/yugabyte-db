@@ -1,46 +1,33 @@
 ---
-title: ACID transactions in YCQL
-headerTitle: ACID transactions
-linkTitle: 4. ACID transactions
+title: Transactions in YCQL
+headerTitle: Transactions
+linkTitle: 4. Transactions
 description: Learn how ACID transactions work in YCQL on YugabyteDB.
 menu:
   preview:
-    identifier: acid-transactions-1-ycql
+    identifier: acid-transactions-2-ycql
     parent: learn
     weight: 566
 type: docs
 ---
 
-<ul class="nav nav-tabs-alt nav-tabs-yb">
+{{<tabs>}}
+{{<tabitem href="../acid-transactions-ysql/" text="YSQL" icon="postgres" >}}
+{{<tabitem href="../acid-transactions-ycql/" text="YCQL" icon="cassandra" active="true" >}}
+{{</tabs>}}
 
-  <li >
-    <a href="../acid-transactions-ysql/" class="nav-link">
-      <i class="icon-postgres" aria-hidden="true"></i>
-      YSQL
-    </a>
-  </li>
-
-  <li >
-    <a href="../acid-transactions-ycql/" class="nav-link active">
-      <i class="icon-cassandra" aria-hidden="true"></i>
-      YCQL
-    </a>
-  </li>
-
-</ul>
-
-A transaction is a sequence of operations performed as a single logical unit of work. A transaction has four key properties - **Atomicity**, **Consistency**, **Isolation** and **Durability** - commonly abbreviated as ACID.
+A transaction is a sequence of operations performed as a single logical unit of work. A transaction has the following four key properties, commonly abbreviated as ACID:
 
 - **Atomicity** All the work in a transaction is treated as a single atomic unit - either all of it is performed or none of it is.
 
 - **Consistency** A completed transaction leaves the database in a consistent internal state. This can either be all the operations in the transactions succeeding or none of them succeeding.
 
-- **Isolation** This property determines how and when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot* isolation level in the YCQL API. Read more about the different [levels of isolation](../../../architecture/transactions/isolation-levels/).
+- **Isolation** This property determines how and when changes made by one transaction become visible to the other. For example, a *serializable* isolation level guarantees that two concurrent transactions appear as if one executed after the other (that is, as if they occur in a completely isolated fashion). YugabyteDB supports *Snapshot* isolation level in the YCQL API. Read more about the different [levels of isolation](../../../../architecture/transactions/isolation-levels/).
 
 - **Durability** The results of the transaction are permanently stored in the system. The modifications must persist even in the instance of power loss or system failures.
 
 {{<note title="Note">}}
-Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it supports three levels of isolation in the [YSQL](../../../explore/transactions/isolation-levels) API: *Snapshot*, *Serializable*, and *Read Committed*.
+Although YugabyteDB supports only *Snapshot* isolation level in the YCQL API, it supports three levels of isolation in the [YSQL](../../../../explore/transactions/isolation-levels/) API: *Snapshot*, *Serializable*, and *Read Committed*.
 {{</note>}}
 
 ## Transactions property
@@ -55,13 +42,13 @@ CREATE TABLE IF NOT EXISTS <TABLE_NAME> (...) WITH transactions = { 'enabled' : 
 
 ##### Create keyspace and table
 
-Create a keyspace.
+Create a keyspace:
 
 ```sql
 ycqlsh> CREATE KEYSPACE banking;
 ```
 
-Create a table with the `transactions` property set enabled.
+Create a table with the `transactions` property set enabled as follows:
 
 ```sql
 ycqlsh> CREATE TABLE banking.accounts (
@@ -72,7 +59,7 @@ ycqlsh> CREATE TABLE banking.accounts (
 ) with transactions = { 'enabled' : true };
 ```
 
-You can verify that this table has transactions enabled on it by running the following query.
+You can verify that this table has transactions enabled on it by running the following query:
 
 ```sql
 ycqlsh> select keyspace_name, table_name, transactions from system_schema.tables
@@ -89,7 +76,7 @@ where keyspace_name='banking' AND table_name = 'accounts';
 
 ##### Insert sample data
 
-Let us seed this table with some sample data.
+Seed the table with some sample data as follows:
 
 ```sql
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('John', 'savings', 1000);
@@ -98,7 +85,7 @@ INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smit
 INSERT INTO banking.accounts (account_name, account_type, balance) VALUES ('Smith', 'checking', 50);
 ```
 
-Here are the balances for John and Smith.
+Show the balances for John and Smith:
 
 ```sql
 ycqlsh> select * from banking.accounts;
@@ -113,7 +100,7 @@ ycqlsh> select * from banking.accounts;
         Smith |      savings |    2000
 ```
 
-Check John's balance.
+Check John's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
@@ -125,7 +112,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
           1100
 ```
 
-Check Smith's balance.
+Check Smith's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
@@ -140,9 +127,7 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
 
 ##### Execute a transaction
 
-Here are a couple of examples of executing transactions.
-
-Let us say John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows.
+Suppose John transfers $200 from his savings account to his checking account. This has to be a transactional operation. This can be achieved as follows:
 
 ```sql
 BEGIN TRANSACTION
@@ -164,7 +149,7 @@ ycqlsh> select * from banking.accounts where account_name='John';
          John |      savings |     800
 ```
 
-Check John's balance.
+Check John's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
@@ -190,7 +175,7 @@ from banking.accounts where account_name='John';
          John |      savings |     800 |   1517898028890171
 ```
 
-Now let us say John transfers the $200 from his checking account to Smith's checking account. We can accomplish that with the following transaction.
+Now suppose John transfers the $200 from his checking account to Smith's checking account. You can accomplish this with the following transaction:
 
 ```sql
 BEGIN TRANSACTION
@@ -199,7 +184,7 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
-We can verify the transfer was made as we intended, and also verify that the time at which the two accounts were updated are identical by performing the following query.
+To verify the transfer was made as intended, and also verify that the time at which the two accounts were updated are identical, perform the following query:
 
 ```sql
 ycqlsh> select account_name, account_type, balance, writetime(balance) from banking.accounts;
@@ -214,7 +199,9 @@ ycqlsh> select account_name, account_type, balance, writetime(balance) from bank
         Smith |      savings |    2000 |   1517894361290020
 ```
 
-The net balance for John should have decreased by $200 which that of Smith should have increased by $200.
+The net balance for John should have decreased by $200, and that of Smith should have increased by $200.
+
+Check John's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account_name='John';
@@ -226,7 +213,7 @@ ycqlsh> SELECT SUM(balance) as Johns_balance FROM banking.accounts WHERE account
            900
 ```
 
-Check Smith's balance.
+Check Smith's balance as follows:
 
 ```sql
 ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE account_name='Smith';
@@ -238,12 +225,11 @@ ycqlsh> SELECT SUM(balance) as smiths_balance FROM banking.accounts WHERE accoun
            2250
 ```
 
-
 ## Example in Java
 
 ##### Create the table
 
-Here is an example of how to create a simple key-value table which has two columns with transactions enabled.
+The following example shows how to create a basic key-value table which has two columns with transactions enabled:
 
 ```java
 String create_stmt =
@@ -252,7 +238,7 @@ String create_stmt =
                 tablename);
 ```
 
-##### Inserting or updating data
+##### Insert or update data
 
 You can insert data by performing the sequence of commands inside a `BEGIN TRANSACTION` and `END TRANSACTION` block.
 
@@ -263,7 +249,7 @@ BEGIN TRANSACTION
 END TRANSACTION;
 ```
 
-Here is a code snippet of how you would insert data into this table.
+The following code snippet shows how you would insert data into this table:
 
 ```java
 // Insert two key values, (key1, value1) and (key2, value2) as a transaction.
@@ -300,13 +286,10 @@ BoundStatement txn1 = pstmt.bind().setString("k1", key1)
 ResultSet resultSet = client.execute(txn1);
 ```
 
-
 ## Note on linearizability
 
-By default, the original Cassandra Java driver and the YugabyteDB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy` which can retry requests upon timeout on client side.
+Automatic retries can break linearizability of operations from the client point of view.
 
-Automatic retries can break linearizability of operations from the client point of view. Therefore you have added `com.yugabyte.driver.core.policies.NoRetryOnClientTimeoutPolicy` which inherits behavior from DefaultRetryPolicy with one exception - it results in an error in case the operation times out (with the `OperationTimedOutException`).
+By default, the original Cassandra Java driver and the YugabyteDB Cassandra Java driver use `com.datastax.driver.core.policies.DefaultRetryPolicy`, which can retry requests upon timeout on the client side. Under network partitions, this can lead to the case where the client gets a successful response to a retried request and treats the operation as completed, but the value might get overwritten by an older operation due to retries.
 
-Under network partitions, this can lead to the case when client gets a successful response to retried request and treats the operation as completed, but the value might get overwritten by an older operation due to retries.
-
-To avoid such linearizability issues, use `com.yugabyte.driver.core.policies.NoRetryOnClientTimeoutPolicy` and handle client timeouts in the application layer.
+To avoid these linearizability issues, add `com.yugabyte.driver.core.policies.NoRetryOnClientTimeoutPolicy`, which inherits behavior from `DefaultRetryPolicy` with one exception - it results in an error in cases where the operation times out (with `OperationTimedOutException`). You can then handle client timeouts in the application layer.
