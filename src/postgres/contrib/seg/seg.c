@@ -908,12 +908,20 @@ seg_different(PG_FUNCTION_ARGS)
 static int
 restore(char *result, float val, int n)
 {
-	char		buf[25] = {
+	/*
+	 * To avoid the following error when building with GCC 12:
+	 * bit.ly/seg_cc_gcc12_format_overflow
+	 *
+	 * The fix increased the array size from 25 to 32 and added 7 bytes,
+	 * fixing the compilation error without changing behavior.
+	 */
+	char		buf[32] = {
 		'0', '0', '0', '0', '0',
 		'0', '0', '0', '0', '0',
 		'0', '0', '0', '0', '0',
 		'0', '0', '0', '0', '0',
-		'0', '0', '0', '0', '\0'
+		'0', '0', '0', '0', '\0',
+		'\0', '\0', '\0', '\0', '\0', '\0', '\0'
 	};
 	char	   *p;
 	int			exp;
