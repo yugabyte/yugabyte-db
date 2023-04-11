@@ -26,6 +26,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -121,8 +123,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     user = ModelFactory.testUser(customer);
     try {
       String kubeFile = createTempFile("test2.conf", "test5678");
-      //      when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
-      //          .thenReturn(kubeFile);
+      when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
+          .thenReturn(kubeFile);
     } catch (Exception e) {
       // Do nothing
     }
@@ -1065,12 +1067,12 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertNotNull(ybpTask.resourceUUID);
 
     Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.details.getCloudInfo().getKubernetes().setKubernetesProvider("GKE");
+    p.details.getCloudInfo().getKubernetes().setKubernetesProvider("GKE-2");
 
     result = editProvider(Json.toJson(p), p.uuid);
     assertOk(result);
-    p.refresh();
-    assertEquals(p.details.getCloudInfo().getKubernetes().getKubernetesProvider(), "GKE");
+    p = Provider.getOrBadRequest(ybpTask.resourceUUID);
+    assertEquals(p.details.getCloudInfo().getKubernetes().getKubernetesProvider(), "GKE-2");
   }
 
   @Test
@@ -1216,7 +1218,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
 
-    p.refresh();
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
     assertEquals(1, p.regions.size());
     assertEquals(
         "Updating storage class",
@@ -1268,10 +1272,15 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
-    p.refresh();
-    assertEquals(
-        "Test-2",
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    assertNull(
         p.regions.get(0).zones.get(0).details.getCloudInfo().getKubernetes().getKubeConfigName());
+
+    assertNotNull(
+        p.regions.get(0).zones.get(0).details.getCloudInfo().getKubernetes().getKubeConfig());
   }
 
   @Test
@@ -1288,9 +1297,13 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
-    p.refresh();
-    assertEquals(
-        "Test-2", p.regions.get(0).details.getCloudInfo().getKubernetes().getKubeConfigName());
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    p = Json.fromJson(bodyJson, Provider.class);
+
+    assertNull(p.regions.get(0).details.getCloudInfo().getKubernetes().getKubeConfigName());
+
+    assertNotNull(p.regions.get(0).details.getCloudInfo().getKubernetes().getKubeConfig());
   }
 
   @Test
@@ -1308,7 +1321,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
     p.refresh();
-    assertEquals("Test-2", p.details.getCloudInfo().getKubernetes().getKubeConfigName());
+    assertNotNull(p.details.getCloudInfo().getKubernetes().getKubeConfig());
   }
 
   private void assertBadRequestValidationResult(Result result, String errorCause, String errrMsg) {

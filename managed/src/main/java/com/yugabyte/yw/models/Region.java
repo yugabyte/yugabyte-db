@@ -281,7 +281,8 @@ public class Region extends Model {
   public boolean isUpdateNeeded(Region region) {
     return !Objects.equals(this.getSecurityGroupId(), region.getSecurityGroupId())
         || !Objects.equals(this.getVnetName(), region.getVnetName())
-        || !Objects.equals(this.getYbImage(), region.getYbImage());
+        || !Objects.equals(this.getYbImage(), region.getYbImage())
+        || !Objects.equals(this.details, region.details);
   }
 
   /** Query Helper for PlacementRegion with region code */

@@ -67,6 +67,8 @@ import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
+import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+
 import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -312,12 +314,17 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Need regions in provider");
     }
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
+    KubernetesInfo kubernetesInfo = CloudInfoInterface.get(reqProvider);
 
     boolean hasConfigInProvider = providerConfig.containsKey("KUBECONFIG_NAME");
+    if (kubernetesInfo.getKubeConfig() != null) {
+      hasConfigInProvider = true;
+    }
     for (Region rd : reqProvider.regions) {
       boolean hasConfig = hasConfigInProvider;
+      KubernetesRegionInfo k8sRegionInfo = CloudInfoInterface.get(rd);
       Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
-      if (regionConfig.containsKey("KUBECONFIG_NAME")) {
+      if (regionConfig.containsKey("KUBECONFIG_NAME") || k8sRegionInfo.getKubeConfig() != null) {
         if (hasConfig) {
           throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
         }
@@ -328,7 +335,8 @@ public class CloudProviderHandler {
       }
       for (AvailabilityZone zd : rd.zones) {
         Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(zd);
-        if (zoneConfig.containsKey("KUBECONFIG_NAME")) {
+        k8sRegionInfo = CloudInfoInterface.get(zd);
+        if (zoneConfig.containsKey("KUBECONFIG_NAME") || k8sRegionInfo.getKubeConfig() != null) {
           if (hasConfig) {
             throw new PlatformServiceException(BAD_REQUEST, "Kubeconfig can't be at two levels");
           }
@@ -422,6 +430,13 @@ public class CloudProviderHandler {
         path = path + "/" + zone.uuid.toString();
       }
     }
+    if (edit && k8sMetadata.getKubeConfigContent() != null) {
+      String kubeConfigPath = k8sMetadata.getKubeConfig();
+      if (kubeConfigPath != null) {
+        String[] paths = kubeConfigPath.split("/");
+        config.putIfAbsent("KUBECONFIG_NAME", paths[paths.length - 1]);
+      }
+    }
     boolean hasKubeConfig = config.containsKey("KUBECONFIG_NAME");
     if (hasKubeConfig) {
       kubeConfigFile = accessManager.createKubernetesConfig(path, config, edit);
@@ -433,10 +448,14 @@ public class CloudProviderHandler {
       }
     }
 
-    if (config.containsKey("STORAGE_CLASS") && k8sMetadata != null) {
-      k8sMetadata.setKubernetesStorageClass(config.get("STORAGE_CLASS"));
-    }
     if (region == null) {
+      if (edit && k8sMetadata.getKubernetesPullSecretContent() != null) {
+        String pullSecretPath = k8sMetadata.getKubernetesPullSecret();
+        if (pullSecretPath != null) {
+          String[] paths = pullSecretPath.split("/");
+          config.putIfAbsent("KUBECONFIG_PULL_SECRET_NAME", paths[paths.length - 1]);
+        }
+      }
       if (config.containsKey("KUBECONFIG_PULL_SECRET_NAME")) {
         if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
           pullSecretFile = accessManager.createPullSecret(provider.uuid, config, edit);
@@ -446,6 +465,9 @@ public class CloudProviderHandler {
         k8sMetadata.setKubernetesPullSecret(pullSecretFile);
         k8sMetadata.setKubernetesPullSecretName(null);
         k8sMetadata.setKubernetesPullSecretContent(null);
+
+        // In case the pull secret is specified.
+        return true;
       }
     }
     return hasKubeConfig;
@@ -889,7 +911,12 @@ public class CloudProviderHandler {
     }
     if (!existingConfigMap.equals(providerConfig)) {
       provider.details.cloudInfo = editProviderReq.details.cloudInfo;
-      updatedProviderConfig = maybeUpdateCloudProviderConfig(provider, providerConfig);
+      if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+        updateKubeConfig(provider, providerConfig, true);
+      } else {
+        maybeUpdateCloudProviderConfig(provider, providerConfig);
+      }
+      updatedProviderConfig = true;
     }
     boolean providerDataUpdated = updatedProviderConfig || updatedProviderDetails;
     if (providerDataUpdated) {
@@ -1003,27 +1030,44 @@ public class CloudProviderHandler {
       region =
           Region.create(provider, rd.code, rd.name, null, rd.latitude, rd.longitude, rd.details);
     }
+    boolean regionUpdateNeeded = region.isUpdateNeeded(rd);
+    if (regionUpdateNeeded) {
+      // Update the k8s region config.
+      region.details = rd.details;
+    }
     boolean isConfigInRegion = updateKubeConfigForRegion(provider, region, regionConfig, edit);
-    for (AvailabilityZone az : azList) {
-      Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
+    for (AvailabilityZone zone : azList) {
+      Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(zone);
+      AvailabilityZone az = null;
       try {
-        az = AvailabilityZone.getByCode(provider, az.code);
+        az = AvailabilityZone.getByCode(provider, zone.code);
       } catch (RuntimeException e) {
-        LOG.info("Availability Zone {} does not exists. Creating one...", az.name);
-        az = AvailabilityZone.createOrThrow(region, az.code, az.name, null, null, az.details);
+        LOG.info("Availability Zone {} does not exists. Creating one...", zone.name);
+        az = AvailabilityZone.createOrThrow(region, zone.code, zone.name, null, null, zone.details);
+      }
+      boolean zoneUpdateNeeded = az.shouldBeUpdated(zone);
+      if (zoneUpdateNeeded) {
+        // Update the k8s zone config.
+        az.details = zone.details;
       }
       boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, edit);
-      if (!(isConfigInProvider || isConfigInRegion || isConfigInZone)) {
+      if (!(isConfigInProvider || isConfigInRegion || isConfigInZone) && !edit) {
         // Use in-cluster ServiceAccount credentials
         KubernetesInfo k8sMetadata = CloudInfoInterface.get(az);
         k8sMetadata.setKubeConfig("");
       }
-      az.save();
+      if (zoneUpdateNeeded || isConfigInZone) {
+        az.save();
+      }
     }
-    if (isConfigInRegion) {
+    if (regionUpdateNeeded || isConfigInRegion) {
       region.save();
     }
-    provider.save();
+    if (isConfigInProvider) {
+      // Top level provider properties are handled in `updateProviderData` with other provider
+      // types.
+      provider.save();
+    }
     return provider;
   }
 
@@ -1059,7 +1103,7 @@ public class CloudProviderHandler {
             if (provider.getCloudCode().equals(kubernetes)) {
               List<AvailabilityZone> azList = new ArrayList<AvailabilityZone>();
               azList.add(zone);
-              bootstrapKubernetesProvider(provider, editProviderReq, region, azList, true);
+              bootstrapKubernetesProvider(provider, editProviderReq, currentState, azList, true);
             } else {
               availabilityZoneHandler.editZone(
                   currentAZ.uuid,

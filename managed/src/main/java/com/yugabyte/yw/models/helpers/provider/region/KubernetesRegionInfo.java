@@ -9,31 +9,38 @@ import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 
 import io.swagger.annotations.ApiModelProperty;
 
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
+
+@Data
+@EqualsAndHashCode(callSuper = true)
+@ToString(callSuper = true)
 public class KubernetesRegionInfo extends KubernetesInfo {
 
   @JsonAlias("KUBENAMESPACE")
   @ApiModelProperty
-  public String kubeNamespace;
+  private String kubeNamespace;
 
   @JsonAlias("OVERRIDES")
   @ApiModelProperty
-  public String overrides;
+  private String overrides;
 
   @JsonAlias("KUBE_POD_ADDRESS_TEMPLATE")
   @ApiModelProperty
-  public String kubePodAddressTemplate;
+  private String kubePodAddressTemplate;
 
   @JsonAlias("KUBE_DOMAIN")
   @ApiModelProperty
-  public String kubeDomain;
+  private String kubeDomain;
 
   @JsonAlias("CERT-MANAGER-CLUSTERISSUER")
   @ApiModelProperty
-  public String certManagerClusterIssuer;
+  private String certManagerClusterIssuer;
 
   @JsonAlias("CERT-MANAGER-ISSUER")
   @ApiModelProperty
-  public String certManagerIssuer;
+  private String certManagerIssuer;
 
   @Override
   @JsonIgnore
