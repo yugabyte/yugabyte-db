@@ -32,6 +32,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <memory>
 
 #include <glog/logging.h>
 

@@ -15,7 +15,7 @@ var (
 	preflightCheck = &cobra.Command{
 		Use:   "preflight-check",
 		Short: "Check Preflight steps in the node",
-		Run:   preFlightCheckHandler,
+		Run:   preflightCheckHandler,
 	}
 )
 
@@ -25,7 +25,7 @@ func SetupPreflightCheckCommand(parentCmd *cobra.Command) {
 	parentCmd.AddCommand(preflightCheck)
 }
 
-func preFlightCheckHandler(cmd *cobra.Command, args []string) {
+func preflightCheckHandler(cmd *cobra.Command, args []string) {
 	ctx := server.Context()
 	util.ConsoleLogger().Debug(ctx, "Starting Pre Flight Checks")
 	util.ConsoleLogger().Debug(ctx, "Fetching Config from the Platform")
@@ -60,18 +60,16 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 
 	// Prepare the preflight check input.
 	util.ConsoleLogger().Info(ctx, "Running Pre-flight checks")
-	preflightCheckHandler := task.NewPreflightCheckHandler(
-		provider,
-		instanceTypeData,
-		accessKeyData,
-	)
+	preflightCheckParam := task.CreatePreflightCheckParam(
+		provider, instanceTypeData, accessKeyData)
+	preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
 	err = executor.GetInstance().
 		ExecuteTask(ctx, preflightCheckHandler.Handle)
 	if err != nil {
 		util.ConsoleLogger().Fatalf(ctx, "Task execution failed - %s", err.Error())
 	}
-	preflightChecksData := *preflightCheckHandler.Result()
-	validationHandler := task.NewValidateNodeInstanceHandler(preflightChecksData)
+	preflightChecksOutput := *preflightCheckHandler.Result()
+	validationHandler := task.NewValidateNodeInstanceHandler(preflightChecksOutput)
 	util.ConsoleLogger().Info(ctx, "Evaluating the preflight checks")
 	err = executor.GetInstance().ExecuteTask(
 		ctx,
@@ -87,7 +85,7 @@ func preFlightCheckHandler(cmd *cobra.Command, args []string) {
 	}
 
 	if isAddNodeInstance {
-		nodeInstanceHandler := task.NewPostNodeInstanceHandler(preflightChecksData)
+		nodeInstanceHandler := task.NewPostNodeInstanceHandler(preflightChecksOutput)
 		err = executor.GetInstance().ExecuteTask(
 			ctx,
 			nodeInstanceHandler.Handle,

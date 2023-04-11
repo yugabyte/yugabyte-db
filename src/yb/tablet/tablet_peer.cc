@@ -1004,6 +1004,21 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
+  if (meta_->IsLazySuperblockFlushEnabled()) {
+    // Unapplied change metadata operations, if any, are taken into account above. The below
+    // takes into accounts any applied but unflushed change metadata operations.
+
+    // TODO(lazy_sb_flush): MinUnflushedChangeMetadataOpId() requires flush_lock_ which can be
+    // expensive to get during a superblock flush. Get rid of the below logic, if possible, post
+    // https://github.com/yugabyte/yugabyte-db/issues/16684.
+    auto min_unflushed_change_metadata_index = meta_->MinUnflushedChangeMetadataOpId().index;
+    min_index = std::min(min_index, min_unflushed_change_metadata_index);
+    if (details) {
+      *details += Format(
+          "Min unflushed CHANGE_METADATA_OP index: $0\n", min_unflushed_change_metadata_index);
+    }
+  }
+
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
   }

@@ -165,6 +165,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Place all masters into default region flag.
   @ApiModelProperty public boolean mastersInDefaultRegion = true;
 
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @ApiModelProperty public boolean isKubernetesOperatorControlled = false;
+
   @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
 
   // Override the default DB present in pre-built Ami
@@ -491,6 +495,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public String ycqlPassword;
 
+    @ApiModelProperty() public Long kubernetesOperatorVersion;
+
     @ApiModelProperty() public boolean enableYSQLAuth = false;
 
     @ApiModelProperty() public boolean enableYCQLAuth = false;
@@ -591,7 +597,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + ", tags="
           + instanceTags
           + ", masterInstanceType="
-          + masterInstanceType;
+          + masterInstanceType
+          + ", kubernetesOperatorVersion="
+          + kubernetesOperatorVersion;
     }
 
     @Override

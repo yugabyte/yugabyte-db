@@ -565,6 +565,7 @@ Status Log::Open(const LogOptions &options,
                  ThreadPool* background_sync_threadpool,
                  int64_t cdc_min_replicated_index,
                  scoped_refptr<Log>* log,
+                 NewSegmentAllocationCallback callback,
                  CreateNewSegment create_new_segment) {
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
@@ -584,6 +585,7 @@ Status Log::Open(const LogOptions &options,
                                      append_thread_pool,
                                      allocation_thread_pool,
                                      background_sync_threadpool,
+                                     callback,
                                      create_new_segment));
   RETURN_NOT_OK(new_log->Init());
   log->swap(new_log);
@@ -602,6 +604,7 @@ Log::Log(
     ThreadPool* append_thread_pool,
     ThreadPool* allocation_thread_pool,
     ThreadPool* background_sync_threadpool,
+    NewSegmentAllocationCallback callback,
     CreateNewSegment create_new_segment)
     : options_(std::move(options)),
       wal_dir_(std::move(wal_dir)),
@@ -628,7 +631,8 @@ Log::Log(
       tablet_metric_entity_(tablet_metric_entity),
       on_disk_size_(0),
       log_prefix_(consensus::MakeTabletLogPrefix(tablet_id_, peer_uuid_)),
-      create_new_segment_at_start_(create_new_segment) {
+      create_new_segment_at_start_(create_new_segment),
+      new_segment_allocation_callback_(callback) {
   set_wal_retention_secs(options.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
@@ -1263,8 +1267,8 @@ Status Log::GetSegmentsToGCUnlocked(int64_t min_op_idx, SegmentSequence* segment
   RETURN_NOT_OK(reader_->GetSegmentPrefixNotIncluding(
       min_op_idx, cdc_min_replicated_index_.load(std::memory_order_acquire), segments_to_gc));
 
-  auto max_to_delete = std::max<ssize_t>(
-      reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
+  const auto max_to_delete =
+      std::max<ssize_t>(reader_->num_segments() - FLAGS_log_min_segments_to_retain, 0);
   ssize_t segments_to_gc_size = segments_to_gc->size();
   if (segments_to_gc_size > max_to_delete) {
     VLOG_WITH_PREFIX(2)
@@ -1793,6 +1797,10 @@ Status Log::PreAllocateNewSegment() {
     // TODO (perf) zero the new segments -- this could result in additional performance
     // improvements.
     RETURN_NOT_OK(next_segment_file_->PreAllocate(next_segment_size));
+  }
+
+  if (new_segment_allocation_callback_) {
+    RETURN_NOT_OK(new_segment_allocation_callback_());
   }
 
   allocation_state_.store(SegmentAllocationState::kAllocationFinished, std::memory_order_release);

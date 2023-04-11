@@ -18,7 +18,8 @@ from ansible.module_utils._text import to_native
 from grpc import secure_channel, ssl_channel_credentials, metadata_call_credentials, \
     composite_channel_credentials, AuthMetadataPlugin, RpcError, StatusCode
 from ybops.node_agent.server_pb2 import DownloadFileRequest, ExecuteCommandRequest, FileInfo, \
-    PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest
+    PingRequest, UploadFileRequest, SubmitTaskRequest, DescribeTaskRequest, AbortTaskRequest, \
+    CommandInput
 from ybops.node_agent.server_pb2_grpc import NodeAgentStub
 
 SERVER_READY_RETRY_LIMIT = 60
@@ -163,8 +164,9 @@ class RpcShellClient(object):
                     cmd_args_list = ["/bin/bash", "-c", cmd_str]
                 else:
                     cmd_args_list = cmd
+            cmd_input = CommandInput(command=cmd_args_list)
             self.stub.SubmitTask(SubmitTaskRequest(user=self.user, taskId=task_id,
-                                                   command=cmd_args_list),
+                                                   commandInput=cmd_input),
                                  timeout=timeout_sec)
             while True:
                 try:
