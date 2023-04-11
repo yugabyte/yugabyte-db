@@ -561,7 +561,10 @@ extern void pgstat_drop_function(Oid proid);
 struct FunctionCallInfoBaseData;
 struct FunctionCallInfoData;
 
-extern void pgstat_init_function_usage(struct FunctionCallInfoBaseData *fcinfo,
+extern void pgstat_init_function_usage_org(struct FunctionCallInfoBaseData *fcinfo,
+										   PgStat_FunctionCallUsage *fcu);
+/* YB_TODO(neil) Need to remove Ted's call structure */
+extern void pgstat_init_function_usage(struct FunctionCallInfoData *fcinfo,
 									   PgStat_FunctionCallUsage *fcu);
 extern void pgstat_end_function_usage(PgStat_FunctionCallUsage *fcu,
 									  bool finalize);

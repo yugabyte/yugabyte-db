@@ -2303,6 +2303,7 @@ ExecuteCallStmt(CallStmt *stmt, ParamListInfo params, bool atomic, DestReceiver 
 		PopActiveSnapshot();
 
 	/* Here we actually call the procedure */
+	/* YB_TODO(neil) Remove ted' call structure */
 	pgstat_init_function_usage(&fcinfo, &fcusage);
 	retval = FunctionCallInvoke(&fcinfo);
 	pgstat_end_function_usage(&fcusage, true);

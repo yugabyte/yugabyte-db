@@ -96,6 +96,7 @@ typedef struct FunctionCallInfoBaseData
 	NullableDatum args[FLEXIBLE_ARRAY_MEMBER];
 } FunctionCallInfoBaseData;
 #endif
+typedef struct FunctionCallInfoData FunctionCallInfoBaseData;
 
 typedef struct FunctionCallInfoData
 {

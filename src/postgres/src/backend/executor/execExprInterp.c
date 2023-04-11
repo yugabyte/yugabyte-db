@@ -830,7 +830,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * same as EEOP_BOOL_AND_STEP - so fall through to that.
 			 */
 
-			switch_fallthrough();
+			/* FALL THROUGH */
 		}
 
 		EEO_CASE(EEOP_BOOL_AND_STEP)
@@ -897,7 +897,7 @@ ExecInterpExpr(ExprState *state, ExprContext *econtext, bool *isnull)
 			 * as EEOP_BOOL_OR_STEP - so fall through to that.
 			 */
 
-			switch_fallthrough();
+			/* FALL THROUGH */
 		}
 
 		EEO_CASE(EEOP_BOOL_OR_STEP)

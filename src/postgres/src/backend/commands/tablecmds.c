@@ -9143,6 +9143,8 @@ YBCreateSimilarForeignKey(HeapTuple tuple,
 	    numkeys,
 	    con_form->confupdtype,
 	    con_form->confdeltype,
+		NULL, /* fkDeleteSetCols - YB_TODO(neil) Needs appropriate value */
+		0, /* numFkDeleteSetCols - YB_TODO(neil) Needs appropriate value */
 	    con_form->confmatchtype,
 	    NULL /* exclOp - not an exclusion constraint */,
 	    NULL /* conExpr - not a check constraint */,
@@ -13068,13 +13070,25 @@ YbFKTriggerScanEnd(YbFKTriggerScanDesc descr)
 static HeapTuple
 YbFKTriggerScanGetNext(YbFKTriggerScanDesc descr)
 {
+#ifdef YB_TODO
+	/* prototype mismatch */
 	return descr->vptr->get_next(descr);
+#else
+	/* workaround */
+	return descr->vptr->get_next();
+#endif
 }
 
 static Buffer
 YbFKTriggerScanGetBuffer(YbFKTriggerScanDesc descr)
 {
+#ifdef YB_TODO
+	/* prototype mismatch */
 	return descr->vptr->get_buffer(descr);
+#else
+	/* workaround */
+	return descr->vptr->get_buffer();
+#endif
 }
 
 /*
