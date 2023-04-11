@@ -213,11 +213,7 @@ public class BackupGarbageCollector {
               break;
             case NFS:
               if (isUniversePresent(backup)) {
-                BackupTableParams backupParams = backup.getBackupInfo();
-                List<BackupTableParams> backupList =
-                    backupParams.backupList == null
-                        ? ImmutableList.of(backupParams)
-                        : backupParams.backupList;
+                List<BackupTableParams> backupList = backup.getBackupParamsCollection();
                 if (deleteScriptBackup(backupList)) {
                   backup.delete();
                   log.info("Backup {} is successfully deleted", backupUUID);

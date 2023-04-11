@@ -8,7 +8,8 @@ import static com.yugabyte.yw.models.helpers.CommonUtils.performPagedQuery;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
-
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -303,14 +304,15 @@ public class Backup extends Model {
       // In event of universe backup
       for (BackupTableParams childBackup : params.backupList) {
         childBackup.backupUuid = backup.backupUUID;
+        childBackup.backupParamsIdentifier = UUID.randomUUID();
         if (childBackup.storageLocation == null) {
-          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID);
+          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID, version);
         }
       }
     } else if (params.storageLocation == null) {
       params.backupUuid = backup.backupUUID;
       // We would derive the storage location based on the parameters
-      BackupUtil.updateDefaultStorageLocation(params, customerUUID);
+      BackupUtil.updateDefaultStorageLocation(params, customerUUID, version);
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
@@ -323,6 +325,16 @@ public class Backup extends Model {
 
   public static Backup create(UUID customerUUID, BackupTableParams params) {
     return create(customerUUID, params, BackupCategory.YB_BACKUP_SCRIPT, BackupVersion.V1);
+  }
+
+  @JsonIgnore
+  public List<BackupTableParams> getBackupParamsCollection() {
+    BackupTableParams backupParams = getBackupInfo();
+    if (CollectionUtils.isNotEmpty(backupParams.backupList)) {
+      return backupParams.backupList;
+    } else {
+      return ImmutableList.of(backupParams);
+    }
   }
 
   // We need to set the taskUUID right after commissioner task is submitted.

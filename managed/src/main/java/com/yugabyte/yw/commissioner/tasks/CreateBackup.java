@@ -46,6 +46,7 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -271,6 +272,24 @@ public class CreateBackup extends UniverseTaskBase {
           Throwables.propagate(e);
         } finally {
           ybService.closeClient(client, masterAddresses);
+        }
+
+        if (params().tableByTableBackup && params().backupType.equals(TableType.YQL_TABLE_TYPE)) {
+          List<BackupTableParams> flatParamsList = new ArrayList<>();
+          backupParamsList
+              .stream()
+              .forEach(
+                  bP -> {
+                    Iterator<UUID> tableUUIDIter = bP.tableUUIDList.iterator();
+                    Iterator<String> tableNameIter = bP.tableNameList.iterator();
+                    while (tableUUIDIter.hasNext()) {
+                      BackupTableParams perTableParam =
+                          new BackupTableParams(bP, tableUUIDIter.next(), tableNameIter.next());
+                      flatParamsList.add(perTableParam);
+                    }
+                  });
+          tableBackupParams.backupList = flatParamsList;
+          tableBackupParams.tableByTableBackup = true;
         }
 
         // Check if the storage config is in active state or not.

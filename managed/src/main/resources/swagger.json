@@ -1470,6 +1470,10 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "tableByTableBackup" : {
+          "description" : "Take table by table backups",
+          "type" : "boolean"
+        },
         "targetXClusterConfigs" : {
           "description" : "The target universe's xcluster replication relationships",
           "items" : {
@@ -1533,6 +1537,9 @@
         "isStorageConfigPresent" : {
           "type" : "boolean"
         },
+        "isTableByTableBackup" : {
+          "type" : "boolean"
+        },
         "isUniversePresent" : {
           "type" : "boolean"
         },
@@ -1589,7 +1596,7 @@
           "type" : "string"
         }
       },
-      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isFullBackup", "isStorageConfigPresent", "isUniversePresent", "kmsConfigUUID", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
+      "required" : [ "backupType", "backupUUID", "completionTime", "createTime", "customerUUID", "expiryTime", "isFullBackup", "isStorageConfigPresent", "isTableByTableBackup", "isUniversePresent", "kmsConfigUUID", "onDemand", "responseList", "scheduleUUID", "sse", "state", "storageConfigType", "storageConfigUUID", "taskUUID", "totalBackupSizeInBytes", "universeName", "universeUUID", "updateTime" ],
       "type" : "object"
     },
     "BackupStorageInfo" : {
@@ -1816,6 +1823,10 @@
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
+        },
+        "tableByTableBackup" : {
+          "description" : "Table by table backup",
+          "type" : "boolean"
         },
         "tableName" : {
           "description" : "Table name",
@@ -3570,15 +3581,13 @@
             "format" : "uuid",
             "type" : "string"
           },
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         },
         "tablesList" : {
           "items" : {
             "type" : "string"
           },
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         }
       },
       "required" : [ "backupSizeInBytes", "defaultLocation", "keyspace", "perRegionLocations", "tableUUIDList", "tablesList" ],
@@ -4069,6 +4078,10 @@
         "storageLocation" : {
           "description" : "Storage location",
           "type" : "string"
+        },
+        "tableByTableBackup" : {
+          "description" : "Table by table backup",
+          "type" : "boolean"
         },
         "tableName" : {
           "description" : "Table name",

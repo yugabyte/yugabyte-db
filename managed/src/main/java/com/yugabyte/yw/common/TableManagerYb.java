@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -177,7 +178,8 @@ public class TableManagerYb extends DevopsBase {
               commandArgs.add(regionLocation.REGION);
               commandArgs.add("--region_location");
               commandArgs.add(
-                  BackupUtil.getExactRegionLocation(backupTableParams, regionLocation.LOCATION));
+                  BackupUtil.getExactRegionLocation(
+                      backupTableParams, regionLocation.LOCATION, BackupVersion.V2));
             }
           }
         }

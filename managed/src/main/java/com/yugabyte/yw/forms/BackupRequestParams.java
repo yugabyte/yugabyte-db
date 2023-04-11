@@ -2,14 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
@@ -48,6 +46,9 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @ApiModelProperty(value = "Disable checksum")
   public Boolean disableChecksum = false;
+
+  @ApiModelProperty(value = "Take table by table backups")
+  public boolean tableByTableBackup = false;
 
   @ApiModelProperty(value = "Backup info")
   public List<KeyspaceTable> keyspaceTableList;
@@ -94,10 +95,10 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModel(description = "Keyspace and table info for backup")
   public static class KeyspaceTable {
     @ApiModelProperty(value = "Tables")
-    public List<String> tableNameList;
+    public List<String> tableNameList = new ArrayList<>();
 
     @ApiModelProperty(value = "Table UUIDs")
-    public List<UUID> tableUUIDList;
+    public List<UUID> tableUUIDList = new ArrayList<>();
 
     @ApiModelProperty(value = "keyspace")
     public String keyspace;

@@ -41,5 +41,6 @@ public class ScheduleResp {
     long timeBeforeDelete;
     boolean useTablespaces;
     TimeUnit expiryTimeUnit;
+    Boolean isTableByTableBackup;
   }
 }

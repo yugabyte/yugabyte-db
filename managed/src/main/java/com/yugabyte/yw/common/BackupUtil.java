@@ -8,16 +8,20 @@ import com.cronutils.model.time.ExecutionTime;
 import com.cronutils.parser.CronParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.Lists;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.BackupResp;
 import com.yugabyte.yw.models.BackupResp.BackupRespBuilder;
 import com.yugabyte.yw.models.CustomerConfig;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.helpers.CustomerConfigConsts;
 import com.yugabyte.yw.models.helpers.KeyspaceTablesList;
 import java.io.IOException;
@@ -29,6 +33,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -127,14 +133,13 @@ public class BackupUtil {
     Boolean isStorageConfigPresent = true;
     Boolean isUniversePresent = true;
     try {
-      CustomerConfig config =
-          customerConfigService.getOrBadRequest(
-              backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
+      customerConfigService.getOrBadRequest(
+          backup.customerUUID, backup.getBackupInfo().storageConfigUUID);
     } catch (PlatformServiceException e) {
       isStorageConfigPresent = false;
     }
     try {
-      Universe universe = Universe.getOrBadRequest(backup.universeUUID);
+      Universe.getOrBadRequest(backup.universeUUID);
     } catch (PlatformServiceException e) {
       isUniversePresent = false;
     }
@@ -158,39 +163,28 @@ public class BackupUtil {
             .storageConfigUUID(backup.storageConfigUUID)
             .isStorageConfigPresent(isStorageConfigPresent)
             .isUniversePresent(isUniversePresent)
+            .isTableByTableBackup(backup.getBackupInfo().tableByTableBackup)
             .totalBackupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
             .backupType(backup.getBackupInfo().backupType)
             .storageConfigType(backup.getBackupInfo().storageConfigType)
             .state(backup.state);
-    if (backup.getBackupInfo().backupList == null) {
-      KeyspaceTablesList kTList =
-          KeyspaceTablesList.builder()
-              .keyspace(backup.getBackupInfo().getKeyspace())
-              .tablesList(backup.getBackupInfo().getTableNames())
-              .backupSizeInBytes(Long.valueOf(backup.getBackupInfo().backupSizeInBytes))
-              .defaultLocation(backup.getBackupInfo().storageLocation)
-              .perRegionLocations(backup.getBackupInfo().regionLocations)
-              .build();
-      builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
-    } else {
-      Set<KeyspaceTablesList> kTLists =
-          backup
-              .getBackupInfo()
-              .backupList
-              .stream()
-              .map(
-                  b -> {
-                    return KeyspaceTablesList.builder()
-                        .keyspace(b.getKeyspace())
-                        .tablesList(b.getTableNames())
-                        .backupSizeInBytes(b.backupSizeInBytes)
-                        .defaultLocation(b.storageLocation)
-                        .perRegionLocations(b.regionLocations)
-                        .build();
-                  })
-              .collect(Collectors.toSet());
-      builder.responseList(kTLists);
-    }
+    List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
+    Set<KeyspaceTablesList> kTLists =
+        backupParams
+            .parallelStream()
+            .map(
+                b -> {
+                  return KeyspaceTablesList.builder()
+                      .keyspace(b.getKeyspace())
+                      .tablesList(b.getTableNameList())
+                      .tableUUIDList(b.getTableUUIDList())
+                      .backupSizeInBytes(b.backupSizeInBytes)
+                      .defaultLocation(b.storageLocation)
+                      .perRegionLocations(b.regionLocations)
+                      .build();
+                })
+            .collect(Collectors.toSet());
+    builder.responseList(kTLists);
     return builder.build();
   }
 
@@ -239,7 +233,7 @@ public class BackupUtil {
   // universe UUID and backup UUID.
   // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
   // .table_name.table_uuid
-  public static String formatStorageLocation(BackupTableParams params) {
+  public static String formatStorageLocation(BackupTableParams params, BackupVersion version) {
     SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
     String updatedLocation;
     if (params.tableUUIDList != null) {
@@ -272,6 +266,9 @@ public class BackupUtil {
             String.format("%s-%s", updatedLocation, params.tableUUID.toString().replace("-", ""));
       }
     }
+    if (version.equals(BackupVersion.V2)) {
+      updatedLocation = String.format("%s_%s", updatedLocation, params.backupParamsIdentifier);
+    }
     return updatedLocation;
   }
 
@@ -294,9 +291,10 @@ public class BackupUtil {
     return regionLocations;
   }
 
-  public static void updateDefaultStorageLocation(BackupTableParams params, UUID customerUUID) {
+  public static void updateDefaultStorageLocation(
+      BackupTableParams params, UUID customerUUID, BackupVersion version) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
-    params.storageLocation = formatStorageLocation(params);
+    params.storageLocation = formatStorageLocation(params, version);
     if (customerConfig != null) {
       // TODO: These values, S3 vs NFS / S3_BUCKET vs NFS_PATH come from UI right now...
       JsonNode storageNode =
@@ -344,8 +342,8 @@ public class BackupUtil {
   }
 
   public static String getExactRegionLocation(
-      BackupTableParams backupTableParams, String regionLocation) {
-    String locationSuffix = formatStorageLocation(backupTableParams);
+      BackupTableParams backupTableParams, String regionLocation, BackupVersion version) {
+    String locationSuffix = formatStorageLocation(backupTableParams, version);
     String location = String.format("%s/%s", regionLocation, locationSuffix);
     return location;
   }
@@ -356,7 +354,8 @@ public class BackupUtil {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
       if (!backupInfo.backupType.equals(TableType.REDIS_TABLE_TYPE)) {
-        if (CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
+        if (backupInfo.backupType.equals(TableType.YQL_TABLE_TYPE)
+            && CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()
@@ -372,7 +371,7 @@ public class BackupUtil {
                     "Keyspace %s contains tables with same names, overwriting data is not allowed",
                     backupInfo.keyspace));
           }
-        } else {
+        } else if (backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()
@@ -392,12 +391,54 @@ public class BackupUtil {
     }
   }
 
+  public void validateBackupRequest(
+      List<KeyspaceTable> keyspaceTableList, Universe universe, TableType tableType) {
+    if (CollectionUtils.isEmpty(keyspaceTableList)) {
+      validateTables(null, universe, null, tableType);
+    } else {
+      // Verify tables to be backed up are not repeated across parts of request.
+      Map<String, Set<UUID>> perKeyspaceTables = new HashMap<>();
+      keyspaceTableList
+          .stream()
+          .forEach(
+              kT -> {
+                if (perKeyspaceTables.containsKey(kT.keyspace)) {
+                  if (CollectionUtils.isEmpty(perKeyspaceTables.get(kT.keyspace))
+                      || CollectionUtils.containsAny(
+                          perKeyspaceTables.get(kT.keyspace), kT.tableUUIDList)
+                      || CollectionUtils.isEmpty(kT.tableUUIDList)) {
+                    throw new PlatformServiceException(
+                        BAD_REQUEST,
+                        String.format(
+                            "Repeated tables in backup request for keyspace %s", kT.keyspace));
+                  } else {
+                    perKeyspaceTables.computeIfPresent(
+                        kT.keyspace,
+                        (keyspace, tableSet) -> {
+                          tableSet.addAll(kT.tableUUIDList);
+                          return tableSet;
+                        });
+                  }
+                } else {
+                  perKeyspaceTables.put(kT.keyspace, new HashSet<>(kT.tableUUIDList));
+                }
+              });
+      perKeyspaceTables
+          .entrySet()
+          .stream()
+          .forEach(
+              entry ->
+                  validateTables(
+                      Lists.newArrayList(entry.getValue()), universe, entry.getKey(), tableType));
+    }
+  }
+
   public void validateTables(
       List<UUID> tableUuids, Universe universe, String keyspace, TableType tableType)
       throws PlatformServiceException {
 
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
-    if (keyspace != null && tableUuids.isEmpty()) {
+    if (keyspace != null && CollectionUtils.isEmpty(tableUuids)) {
       tableInfoList =
           tableInfoList
               .parallelStream()
@@ -417,7 +458,7 @@ public class BackupUtil {
               .parallelStream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
-      if (tableInfoList.isEmpty()) {
+      if (CollectionUtils.isEmpty(tableInfoList)) {
         throw new PlatformServiceException(
             BAD_REQUEST,
             "No tables to backup inside specified Universe "
@@ -465,21 +506,12 @@ public class BackupUtil {
   }
 
   public List<String> getBackupLocations(Backup backup) {
-    BackupTableParams backupParams = backup.getBackupInfo();
     List<String> backupLocations = new ArrayList<>();
-    if (backupParams.backupList != null) {
-      for (BackupTableParams params : backupParams.backupList) {
-        backupLocations.add(params.storageLocation);
-        if (CollectionUtils.isNotEmpty(params.regionLocations)) {
-          for (RegionLocations regionLocation : params.regionLocations) {
-            backupLocations.add(regionLocation.LOCATION);
-          }
-        }
-      }
-    } else {
-      backupLocations.add(backupParams.storageLocation);
-      if (CollectionUtils.isNotEmpty(backupParams.regionLocations)) {
-        for (RegionLocations regionLocation : backupParams.regionLocations) {
+    List<BackupTableParams> backupList = backup.getBackupParamsCollection();
+    for (BackupTableParams params : backupList) {
+      backupLocations.add(params.storageLocation);
+      if (CollectionUtils.isNotEmpty(params.regionLocations)) {
+        for (RegionLocations regionLocation : params.regionLocations) {
           backupLocations.add(regionLocation.LOCATION);
         }
       }

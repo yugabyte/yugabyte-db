@@ -36,4 +36,5 @@ public class BackupResp {
   Long totalBackupSizeInBytes;
   Set<KeyspaceTablesList> responseList;
   StorageConfigType storageConfigType;
+  Boolean isTableByTableBackup;
 }
