@@ -209,8 +209,8 @@ set(UTIL_SRCS
   operation_counter.cc
   opid.cc
   os-util.cc
-  otel_trace.cc
-  otel_ostream_exporter.cc
+  otel/trace.cc
+  otel/ostream_exporter.cc
   path_util.cc
   pb_util-internal.cc
   pb_util.cc
@@ -290,6 +290,8 @@ set(UTIL_LIBS
   opentelemetry_trace
   opentelemetry_exporter_in_memory
   opentelemetry_exporter_ostream_metrics
+  opentelemetry_exporter_otlp_http
+  opentelemetry_otlp_recordable
   opentelemetry_common
   opentelemetry_metrics
   opentelemetry_resources

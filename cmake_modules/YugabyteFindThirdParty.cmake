@@ -391,6 +391,8 @@ macro(yb_find_third_party_dependencies)
   set(OTEL_EXPORTER_MEMORY_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_exporter_in_memory.so")
   set(OTEL_EXPORTER_OSTREAM_METRICS_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_exporter_ostream_metrics.so")
   set(OTEL_EXPORTER_OSTREAM_SPAN_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_exporter_ostream_span.so")
+  set(OTEL_EXPORTER_OTLP_HTTP_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_exporter_otlp_http.so")
+  set(OTEL_OTLP_RECORDABLE_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_otlp_recordable.so")
   set(OTEL_COMMON_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_common.so")
   set(OTEL_METRICS_SHARED_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_metrics.so")
   set(OTEL_RESOURCES_LIB "${YB_THIRDPARTY_INSTALLED_DIR_BASE}/uninstrumented/lib/libopentelemetry_resources.so")
@@ -402,6 +404,8 @@ macro(yb_find_third_party_dependencies)
   ADD_THIRDPARTY_LIB(opentelemetry_trace SHARED_LIB "${OTEL_TRACE_SHARED_LIB}")
   ADD_THIRDPARTY_LIB(opentelemetry_exporter_in_memory SHARED_LIB "${OTEL_EXPORTER_MEMORY_SHARED_LIB}")
   ADD_THIRDPARTY_LIB(opentelemetry_exporter_ostream_metrics SHARED_LIB "${OTEL_EXPORTER_OSTREAM_METRICS_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_exporter_otlp_http SHARED_LIB "${OTEL_EXPORTER_OTLP_HTTP_SHARED_LIB}")
+  ADD_THIRDPARTY_LIB(opentelemetry_otlp_recordable SHARED_LIB "${OTEL_OTLP_RECORDABLE_SHARED_LIB}")
   ADD_THIRDPARTY_LIB(opentelemetry_exporter_ostream_span SHARED_LIB "${OTEL_EXPORTER_OSTREAM_SPAN_SHARED_LIB}")
   ADD_THIRDPARTY_LIB(opentelemetry_common SHARED_LIB "${OTEL_COMMON_SHARED_LIB}")
   ADD_THIRDPARTY_LIB(opentelemetry_metrics SHARED_LIB "${OTEL_METRICS_SHARED_LIB}")
@@ -412,6 +416,8 @@ macro(yb_find_third_party_dependencies)
     opentelemetry_trace
     opentelemetry_exporter_in_memory
     opentelemetry_exporter_ostream_metrics
+    opentelemetry_exporter_otlp_http
+    opentelemetry_otlp_recordable
     opentelemetry_exporter_ostream_span
     opentelemetry_common
     opentelemetry_metrics

@@ -30,8 +30,8 @@
 // under the License.
 //
 
-#include "yb/util/otel_trace.h"
-#include "yb/util/otel_ostream_exporter.h"
+#include "yb/util/otel/trace.h"
+#include "yb/util/otel/ostream_exporter.h"
 #include "opentelemetry/exporters/ostream/common_utils.h"
 
 #include <fstream>

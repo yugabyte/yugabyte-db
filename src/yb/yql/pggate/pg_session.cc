@@ -54,7 +54,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/trace.h"
-#include "yb/util/otel_trace.h"
+#include "yb/util/otel/trace.h"
 
 #include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_expr.h"

@@ -31,7 +31,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
-#include "yb/util/otel_trace.h"
+#include "yb/util/otel/trace.h"
 #include "yb/util/result.h"
 #include "yb/util/slice.h"
 #include "yb/util/status.h"

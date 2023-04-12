@@ -69,6 +69,8 @@ set(PGGATE_LIBS
     opentelemetry_trace
     opentelemetry_exporter_in_memory
     opentelemetry_exporter_ostream_metrics
+    opentelemetry_exporter_otlp_http
+    opentelemetry_otlp_recordable
     opentelemetry_common
     opentelemetry_metrics
     opentelemetry_resources
