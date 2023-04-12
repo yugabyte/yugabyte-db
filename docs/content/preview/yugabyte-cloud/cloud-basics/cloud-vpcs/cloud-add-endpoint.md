@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-A private service endpoint (PSE) can be used to connect a YugabyteDB Managed VPC with other services on the same cloud provider - typically one that hosts an application that you want to have access to your cluster. You must create a VPC and deploy your cluster before you can configure a PSE.
+A private service endpoint (PSE) can be used to connect a YugabyteDB Managed cluster that is deployed in a VPC with other services on the same cloud provider - typically one that hosts an application that you want to have access to your cluster. You must create a VPC and deploy your cluster before you can configure a PSE.
 
 ## Limitations
 
@@ -24,7 +24,7 @@ A private service endpoint (PSE) can be used to connect a YugabyteDB Managed VPC
 
 Before you can create a PSE, you need to do the following:
 
-- Create a VPC. Refer to [Create a VPC](../cloud-add-vpc/#create-a-vpc).
+- Create a VPC. Refer to [Create a VPC](../cloud-add-vpc/#create-a-vpc). Make sure your VPC is in the same region as the application VPC to which you will connect your endpoint.
 - Deploy a YugabyteDB cluster in the VPC. Refer to [Create a cluster](../../create-clusters/).
 
 To use ybm CLI, you need to do the following:
@@ -35,7 +35,9 @@ To use ybm CLI, you need to do the following:
 In addition, to use AWS PrivateLink, you need the following:
 
 - An AWS user account with an IAM user policy that grants permissions to create, modify, describe, and delete endpoints.
-- The Amazon resource names (ARN) of security [principals](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html) to which to grant access to the endpoint.
+- The Amazon resource names (ARN) of security [principals](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) to which to grant access to the endpoint.
+
+Make sure that default security group in your application VPC allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
 ## Create a PSE for AWS PrivateLink using ybm CLI
 
@@ -56,7 +58,7 @@ To create a PSE, do the following:
     Replace values as follows:
 
     - `yugabytedb_cluster` - name of your cluster.
-    - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed. For example, `us-west-2`.
+    - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), as well as the region where your application is deployed.
     - `amazon_resource_names` - comma-separated list of the ARNs of security principals that you want to grant access.
 
 1. Note the endpoint ID in the response.
@@ -110,12 +112,12 @@ Enter the following command:
 ```sh
 aws ec2 create-vpc-endpoint --vpc-id <application_vpc_id> \
   --region <region> --service-name <pse_service_name> \
-  --vpc-endpoint-type Interface --subnet-ids subnet_ids
+  --vpc-endpoint-type Interface --subnet-ids <subnet_ids>
 ```
 
 Replace values as follows:
 
 - `application_vpc_id` - ID of the AWS VPC. Find this value on the VPC dashboard in your AWS account.
-- `region` - region where you want the VPC endpoint.
+- `region` - region where you want the VPC endpoint. The region needs to be the same as a region where your cluster is deployed.
 - `pse_service_name` - service name of your PSE.
 - `subnet_ids` - string that identifies the [subnets](https://docs.aws.amazon.com/vpc/latest/userguide/modify-subnets.html) that your AWS VPC uses. Find these values under **Subnets** in your AWS VPC console.
