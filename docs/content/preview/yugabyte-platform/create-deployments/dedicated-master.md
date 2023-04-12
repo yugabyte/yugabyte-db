@@ -1,6 +1,6 @@
 ---
 title: Create a universe with dedicated nodes for YB-Master processes
-headerTitle: Create a universe with dedicated nodes
+headerTitle: Place YB-Masters on dedicated nodes
 linkTitle: Dedicated YB-Masters
 description: Use YugabyteDB Anywhere to create a universe with dedicated YB-Master nodes.
 menu:
