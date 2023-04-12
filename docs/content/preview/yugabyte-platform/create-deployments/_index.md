@@ -97,7 +97,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
         <div class="title">Place YB-Masters on dedicated nodes</div>
       </div>
       <div class="body">
-        Enable YB-Master and YB-TServer placement on dedicated nodes to improve performance.
+        Create a universe with YB-Master and YB-TServer processes on dedicated nodes.
       </div>
     </a>
   </div>
