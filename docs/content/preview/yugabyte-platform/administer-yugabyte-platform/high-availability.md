@@ -49,21 +49,19 @@ You can configure the active instance as follows:
 
     In most cases, you do not need to replicate very often. A replication interval of 5-10 minutes is recommended. For testing purposes, a 1-minute interval is more convenient.
 
-1. Click **Create**.
+1. HTTPS connections require a CA certificate. If the active instance is using the HTTPS protocol, click on **Add Peer Certificates** to add the root certificate of the **active** instance to the YugabyteDB Anywhere trust store.
 
-1. If the HTTPS protocol is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of other instances.
+    This is needed so that the standby can talk to the active instance if the standby is promoted to active status.
+
+    For information on how to obtain the root certificate of the active instance using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
+
+1. Click **Create**.
 
 1. Switch to **Instance Configuration**.
 
-    The address for this instance should be the only information under **Instances**.
+    The address for this active instance should be the only information under **Instances**.
 
 Your active instance is now configured.
-
-Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured active instance and clicking **Add a peer certificate**, as per the following illustration:
-
-![High availability active instance](/images/yp/high-availability/ha-configured.png)
-
-For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
 ## Configure standby instances
 
@@ -79,19 +77,19 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Click **Create**.
 
-1. Switch to the active instance, and then switch to **Instance Configuration**. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443. If the HTTPS protocol is enabled, you can use the **Manage Peer Certificates** dialog to set up a root certificate of other instances.
+1. Switch to the active instance, and then select **Instance Configuration**.
+
+1. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
+
+1. HTTPS connections require a CA certificate. If the standby is using the HTTPS protocol, on the **Replication Configuration** tab, click **Manage Peer Certificates** to add the root CA certificate of the standby instance to the YugabyteDB Anywhere trust store.
+
+    For information on how to obtain the root certificate of an instance using Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
 1. Click **Continue** on the **Add Standby Instance** dialog.
 
 1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
 
 Your standby instances are now configured.
-
-Note that the HTTPS connection requires a peer certificate which you can add by navigating to **Replication Configuration > Overview** of the configured standby instance and clicking **Add a peer certificate**, as per the following illustration:
-
-![High availability standby instance](/images/yp/high-availability/ha-configured-standby.png)
-
-For information on how to export peer certificates on Google Chrome, see [Get CA certificates of any server](https://medium.com/@sanghviyash6/how-to-get-ca-certificate-of-any-server-using-google-chrome-e8db3e4d3fcf), or search the internet for instructions applicable to your browser of choice.
 
 ## Promote a standby instance to active
 
