@@ -22,6 +22,7 @@ import EditIcon from '@app/assets/edit.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
 import { StateEnum, StatusEntity, YBSmartStatus } from '@app/components/YBStatus/YBSmartStatus';
 import { StringParam, useQueryParams, withDefault } from 'use-query-params';
+import { BadgeVariant, YBBadge } from '@app/components/YBBadge/YBBadge';
 
 const useStyles = makeStyles((theme) => ({
     loadingCount: {
@@ -132,6 +133,26 @@ const RegionZoneComponent = (classes: ClassNameMap) => (
     );
 }
 
+const ReadReplicaComponent = (classes: ClassNameMap, readReplicaText: string) => (
+  read_replica: {
+      placement_uuid: string,
+      is_read_replica: boolean
+  }
+) => {
+  return (
+    <Box className={classes.regionZoneComponent}>
+        <Typography variant='body2'>
+            {read_replica.placement_uuid || '-'}
+        </Typography>
+        {read_replica.is_read_replica &&
+          <Box mt={0.5}>
+            <YBBadge text={readReplicaText} variant={BadgeVariant.Success} />
+          </Box>
+        }
+    </Box>
+  );
+}
+
 export const NodesTab: FC = () => {
   const classes = useStyles();
   const { t } = useTranslation();
@@ -175,6 +196,7 @@ export const NodesTab: FC = () => {
     // columns, including parent and subcolumns
       node_data: true,
       region_and_zone: true,
+      read_replica: false,
       read_write_ops: true,
       read_ops: true,
       write_ops: true,
@@ -245,6 +267,10 @@ export const NodesTab: FC = () => {
         region_and_zone: {
             region: node.cloud_info.region,
             zone: node.cloud_info.zone
+        },
+        read_replica: {
+          placement_uuid: node.placement_uuid,
+          is_read_replica: node.is_read_replica,
         },
         status: node.is_node_up,
         name: node.name,
@@ -360,6 +386,23 @@ export const NodesTab: FC = () => {
           customBodyRender: RegionZoneComponent(classes),
           setCellHeaderProps: () => ({style:{whiteSpace: 'nowrap', padding: '8px 8px 8px 16px'}}),
           display: columns.region_and_zone
+        }
+    },
+    {
+      name: 'read_replica',
+      label: t('clusterDetail.nodes.placementUUID'),
+      customColumnSort: (order: MUISortOptions['direction']) => {
+          return (obj1: { data: any }, obj2: { data: any }) => {
+            let val1: string = obj1.data.placement_uuid + obj1.data.is_read_replica;
+            let val2: string = obj2.data.placement_uuid + obj2.data.is_read_replica;
+            return val1.localeCompare(val2) * (order === 'asc' ? 1 : -1);
+          };
+        },
+        options: {
+          filter: true,
+          customBodyRender: ReadReplicaComponent(classes, t('clusterDetail.nodes.readReplica')),
+          setCellHeaderProps: () => ({style:{whiteSpace: 'nowrap', padding: '8px 8px 8px 16px'}}),
+          display: columns.read_replica
         }
     },
     {
@@ -657,6 +700,7 @@ export const NodesTab: FC = () => {
   const CHECKBOX_PARENTS = {
     node_data: 'general',
     region_and_zone: 'general',
+    read_replica: 'general',
     read_ops: 'performance',
     write_ops: 'performance',
     active_connections: 'performance',
@@ -686,6 +730,10 @@ export const NodesTab: FC = () => {
             {
                 name: 'region_and_zone',
                 label: t('clusterDetail.nodes.regionAndZone')
+            },
+            {
+                name: 'read_replica',
+                label: t('clusterDetail.nodes.placementUUID')
             }
         ]
     },

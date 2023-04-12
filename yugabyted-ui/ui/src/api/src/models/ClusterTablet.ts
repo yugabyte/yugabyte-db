@@ -21,33 +21,36 @@
  */
 export interface ClusterTablet  {
   /**
-   *
+   * 
    * @type {string}
    * @memberof ClusterTablet
    */
   namespace: string;
   /**
-   *
+   * 
    * @type {string}
    * @memberof ClusterTablet
    */
   table_name: string;
   /**
-   *
+   * 
    * @type {string}
    * @memberof ClusterTablet
    */
   table_uuid: string;
   /**
-   *
+   * 
    * @type {string}
    * @memberof ClusterTablet
    */
   tablet_id?: string;
   /**
-   *
+   * 
    * @type {boolean}
    * @memberof ClusterTablet
    */
   has_leader: boolean;
 }
+
+
+

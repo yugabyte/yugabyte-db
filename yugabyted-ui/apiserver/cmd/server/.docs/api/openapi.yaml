@@ -1201,9 +1201,11 @@ components:
     NodeData:
       description: Node data
       example:
+        placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
         is_master_up: true
         is_master: true
         is_tserver: true
+        is_read_replica: true
         is_node_up: true
         name: name
         host: host
@@ -1245,6 +1247,11 @@ components:
           type: boolean
         is_tserver:
           type: boolean
+        is_read_replica:
+          type: boolean
+        placement_uuid:
+          format: uuid
+          type: string
         is_master_up:
           type: boolean
         is_bootstrapping:
@@ -1262,9 +1269,11 @@ components:
       - is_master
       - is_master_up
       - is_node_up
+      - is_read_replica
       - is_tserver
       - metrics
       - name
+      - placement_uuid
       - software_version
       type: object
     MetricData:
@@ -1468,9 +1477,11 @@ components:
     Cluster_Nodes_Response:
       example:
         data:
-        - is_master_up: true
+        - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          is_master_up: true
           is_master: true
           is_tserver: true
+          is_read_replica: true
           is_node_up: true
           name: name
           host: host
@@ -1499,9 +1510,11 @@ components:
             disk_provisioned_bytes: 0
             master_uptime_us: 0
           software_version: software_version
-        - is_master_up: true
+        - placement_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          is_master_up: true
           is_master: true
           is_tserver: true
+          is_read_replica: true
           is_node_up: true
           name: name
           host: host

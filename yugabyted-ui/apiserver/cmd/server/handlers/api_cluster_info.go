@@ -626,7 +626,9 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 Data: []models.NodeData{},
         }
         tabletServersFuture := make(chan helpers.TabletServersFuture)
+        clusterConfigFuture := make(chan helpers.ClusterConfigFuture)
         go helpers.GetTabletServersFuture(helpers.HOST, tabletServersFuture)
+        go helpers.GetClusterConfigFuture(helpers.HOST, clusterConfigFuture)
         tabletServersResponse := <-tabletServersFuture
         if tabletServersResponse.Error != nil {
                 return ctx.String(http.StatusInternalServerError,
@@ -642,6 +644,23 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 versionInfoFuture := make(chan helpers.VersionInfoFuture)
                 versionInfoFutures[nodeHost] = versionInfoFuture
                 go helpers.GetVersionFuture(nodeHost, versionInfoFuture)
+        }
+        // We use cluster-config reaponse to get uuid for read replica cluster
+        // Assumptions:
+        // - The read replica placement uuid is different from the live replica placement uuid
+        // - There is only a live replica and read replica, so any node not part of the read replica is
+        //   part of the live replica
+        // In any case, we fall back to displaying nodes as part of the primary cluster (live) if
+        // we are not sure about a node
+        clusterConfigResponse := <-clusterConfigFuture
+        liveReplicaUuid := ""
+        readReplicaUuids := map[string]bool{}
+        if clusterConfigResponse.Error == nil {
+            liveReplicaUuid =
+                clusterConfigResponse.ClusterConfig.ReplicationInfo.LiveReplicas.PlacementUuid
+            for _, replica := range clusterConfigResponse.ClusterConfig.ReplicationInfo.ReadReplicas {
+                readReplicaUuids[replica.PlacementUuid] = true
+            }
         }
         activeYsqlConnectionsFutures := map[string]chan helpers.ActiveYsqlConnectionsFuture{}
         activeYcqlConnectionsFutures := map[string]chan helpers.ActiveYcqlConnectionsFuture{}
@@ -672,7 +691,13 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
         }
         currentTime := time.Now().UnixMicro()
         hostToUuid, errHostToUuidMap := helpers.GetHostToUuidMap(helpers.HOST)
-        for _, obj := range tabletServersResponse.Tablets {
+        for placementUuid, obj := range tabletServersResponse.Tablets {
+                // We check uuid against both liveReplicaUuid and readReplicaUuid in case they are the same.
+                // only display a node as read replica if we are sure it is not live replica
+                isReadReplica := false
+                if placementUuid != liveReplicaUuid && readReplicaUuids[placementUuid] {
+                    isReadReplica = true
+                }
                 for hostport, nodeData := range obj {
                         host, _, err := net.SplitHostPort(hostport)
                         // If we can split hostport, just use host as name.
@@ -761,6 +786,8 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                                 IsNodeUp:        nodeData.Status == "ALIVE",
                                 IsMaster:        true,
                                 IsTserver:       true,
+                                IsReadReplica: isReadReplica,
+                                PlacementUuid: placementUuid,
                                 IsMasterUp:      isMasterUp,
                                 IsBootstrapping: isBootstrapping,
                                 Metrics: models.NodeDataMetrics{

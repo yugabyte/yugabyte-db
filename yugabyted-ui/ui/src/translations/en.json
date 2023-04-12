@@ -1090,6 +1090,8 @@
         "general": "General",
         "nodeAndIpAddress": "Node & IP Address",
         "regionAndZone": "Region & Zone",
+        "placementUUID": "Placement UUID",
+        "readReplica": "Read Replica",
         "performance": "Performance",
         "readOpsPerSec": "Read Ops/sec",
         "writeOpsPerSec": "Write Ops/sec",

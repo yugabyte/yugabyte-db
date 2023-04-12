@@ -180,6 +180,11 @@ NodeData:
       type: boolean
     is_tserver:
       type: boolean
+    is_read_replica:
+      type: boolean
+    placement_uuid:
+      type: string
+      format: uuid
     is_master_up:
       type: boolean
     is_bootstrapping:
@@ -311,6 +316,8 @@ NodeData:
     - is_node_up
     - is_master
     - is_tserver
+    - is_read_replica
+    - placement_uuid
     - is_master_up
     - is_bootstrapping
     - cloud_info
