@@ -58,10 +58,12 @@ public class InstanceActions extends NodeTaskBase {
   }
 
   @Override
-  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+  public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
     // don't reboot if disk update failed
     if (taskParams().type != NodeManager.NodeCommandType.Disk_Update) {
-      super.onFailure(taskInfo, cause);
+      return super.onFailure(taskInfo, cause);
     }
+
+    return false;
   }
 }

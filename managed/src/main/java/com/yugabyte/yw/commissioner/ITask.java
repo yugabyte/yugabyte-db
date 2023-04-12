@@ -35,8 +35,16 @@ public interface ITask extends Runnable {
     return 1;
   }
 
-  /** Invoked when the current task fails. */
-  default void onFailure(TaskInfo taskInfo, Throwable cause) {}
+  /**
+   * Invoked when the current task fails.
+   *
+   * @param taskInfo details of the failed task
+   * @param cause exception that caused the failure
+   * @return true to retry, false to throw {@param cause} up the stack
+   */
+  default boolean onFailure(TaskInfo taskInfo, Throwable cause) {
+    return false;
+  }
 
   /** Invoked when the current task is cancelled/aborted. */
   default void onCancelled(TaskInfo taskInfo) {}
