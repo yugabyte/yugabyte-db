@@ -1,4 +1,4 @@
- /*-------------------------------------------------------------------------
+/*-------------------------------------------------------------------------
  *
  * postgres.c
  *	  POSTGRES C Backend Interface
@@ -4852,7 +4852,7 @@ yb_attempt_to_restart_on_error(int attempt,
 
 			if (YBCIsRestartReadError(edata->yb_txn_errcode))
 			{
-				YBCRestartTransaction(false /* force_restart */);
+				YBCRestartTransaction();
 			}
 			else if (YBCIsTxnConflictError(edata->yb_txn_errcode))
 			{

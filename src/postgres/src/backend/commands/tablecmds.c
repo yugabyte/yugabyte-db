@@ -8969,6 +8969,8 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 		result; \
 	});
 
+#ifdef YB_TODO
+/* YB_TODO(neil) Need to rework */
 /*
  * Copy all rows from one table to the other.
  * Does not perform any constraint checks.
@@ -9297,6 +9299,7 @@ YBMoveRelDependencies(Relation old_rel, Relation new_rel,
 		table_close(base_rel, ShareUpdateExclusiveLock);
 	}
 }
+#endif
 
 /*
  * Primary key is an inherent part of a DocDB table, we can't literally "add"
@@ -13079,17 +13082,15 @@ YbFKTriggerScanGetNext(YbFKTriggerScanDesc descr)
 #endif
 }
 
+#ifdef YB_TODO
+/* YB_TODO(neil) Need to rework */
 static Buffer
 YbFKTriggerScanGetBuffer(YbFKTriggerScanDesc descr)
 {
-#ifdef YB_TODO
 	/* prototype mismatch */
 	return descr->vptr->get_buffer(descr);
-#else
-	/* workaround */
-	return descr->vptr->get_buffer();
-#endif
 }
+#endif
 
 /*
  * Scan the existing rows in a table to verify they meet a proposed FK

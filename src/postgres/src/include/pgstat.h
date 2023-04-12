@@ -536,8 +536,11 @@ extern void pgstat_report_checksum_failures_in_db(Oid dboid, int failurecount);
 extern void pgstat_report_checksum_failure(void);
 extern void pgstat_report_connect(Oid dboid);
 extern void yb_pgstat_clear_entry_pid(int pid);
+#ifdef YB_TODO
+/* Postgres changed the implemenation for stats. Need to rework. */
 extern void pgstat_report_query_termination(const char *termination_reason,
 											int32 backend_pid);
+#endif
 
 #define pgstat_count_buffer_read_time(n)							\
 	(pgStatBlockReadTime += (n))

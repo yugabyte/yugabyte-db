@@ -3903,10 +3903,13 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 				 activity ? errdetail("Failed process was running: %s", activity) : 0));
 	else if (WIFSIGNALED(exitstatus))
 	{
+#ifdef YB_TODO
+		/* Postgres changed the implemenation for stats. Need new code. */
 		if (WTERMSIG(exitstatus) == SIGKILL)
 			pgstat_report_query_termination("Terminated by SIGKILL", pid);
 		else if (WTERMSIG(exitstatus) == SIGSEGV)
 			pgstat_report_query_termination("Terminated by SIGSEGV", pid);
+#endif
 
 #if defined(WIN32)
 		ereport(lev,

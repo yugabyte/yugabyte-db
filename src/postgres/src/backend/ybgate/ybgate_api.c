@@ -785,9 +785,12 @@ YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t
 
 YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
 {
+#ifdef YB_TODO
+	/* YB_TODO(neil) This function needs reimplementation */
 	PG_SETUP_ERROR_REPORTING();
 	ReservoirState rs = &yb_rs->rs;
 	*value = sampler_random_fract(rs->randstate);
+#endif
 	return PG_STATUS_OK;
 }
 
