@@ -46,9 +46,9 @@ static void expand_single_inheritance_child(PlannerInfo *root,
 											PlanRowMark *top_parentrc, Relation childrel,
 											RangeTblEntry **childrte_p,
 											Index *childRTindex_p);
-static Bitmapset *translate_col_privs(Relation parentrel,
-									  const Bitmapset *parent_privs,
-									  List *translated_vars);
+static Bitmapset *translate_col_privs(const Bitmapset *parent_privs,
+									  List *translated_vars,
+									  bool is_yb_relation);
 static Bitmapset *translate_col_privs_multilevel(PlannerInfo *root,
 												 RelOptInfo *rel,
 												 RelOptInfo *parent_rel,
@@ -551,15 +551,16 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 	 */
 	if (childOID != parentOID)
 	{
-		childrte->selectedCols = translate_col_privs(parentrel,
-													 parentrte->selectedCols,
-													 appinfo->translated_vars);
-		childrte->insertedCols = translate_col_privs(parentrel,
-													 parentrte->insertedCols,
-													 appinfo->translated_vars);
-		childrte->updatedCols = translate_col_privs(parentrel,
-													parentrte->updatedCols,
-													appinfo->translated_vars);
+		bool is_yb_relation = YBGetFirstLowInvalidAttributeNumber(parentrel);
+		childrte->selectedCols = translate_col_privs(parentrte->selectedCols,
+													 appinfo->translated_vars,
+													 is_yb_relation);
+		childrte->insertedCols = translate_col_privs(parentrte->insertedCols,
+													 appinfo->translated_vars,
+													 is_yb_relation);
+		childrte->updatedCols = translate_col_privs(parentrte->updatedCols,
+													appinfo->translated_vars,
+													is_yb_relation);
 	}
 	else
 	{
@@ -707,15 +708,15 @@ get_rel_all_updated_cols(PlannerInfo *root, RelOptInfo *rel)
  * we set the per-column bits for all inherited columns.
  */
 static Bitmapset *
-translate_col_privs(Relation parentrel,
-					const Bitmapset *parent_privs,
-					List *translated_vars)
+translate_col_privs(const Bitmapset *parent_privs,
+					List *translated_vars,
+					bool is_yb_relation)
 {
 	Bitmapset  *child_privs = NULL;
 	bool		whole_row;
 	int			attno;
 	ListCell   *lc;
-	const int firstLowInvalidAttrNumber = YBGetFirstLowInvalidAttributeNumber(parentrel);
+	const int firstLowInvalidAttrNumber = YBGetFirstLowInvalidAttrNumber(is_yb_relation);
 
 	/* System attributes have the same numbers in all tables */
 	for (attno = firstLowInvalidAttrNumber + 1; attno < 0; attno++)
@@ -784,7 +785,7 @@ translate_col_privs_multilevel(PlannerInfo *root, RelOptInfo *rel,
 	}
 
 	/* Now translate for this child. */
-	return translate_col_privs(parent_cols, appinfo->translated_vars);
+	return translate_col_privs(parent_cols, appinfo->translated_vars, parent_rel->is_yb_relation);
 }
 
 /*

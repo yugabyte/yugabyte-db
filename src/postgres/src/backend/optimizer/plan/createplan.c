@@ -2853,7 +2853,6 @@ static TargetEntry *make_dummy_tle(AttrNumber attr_num, bool is_null)
 
 	return dummy_tle;
 }
-#endif
 
 static bool has_applicable_indices(Relation relation,
                                    Bitmapset *updated_attrs,
@@ -2962,6 +2961,7 @@ static bool has_applicable_triggers(Relation rel, CmdType operation, Bitmapset *
 	// on non-updated attributes then it is safe skip triggers.
 	return false;
 }
+#endif
 
 /*
  * yb_single_row_update_or_delete_path

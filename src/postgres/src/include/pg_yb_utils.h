@@ -181,6 +181,8 @@ extern bool YBNeedRetryAfterCacheRefresh(ErrorData *edata);
 
 extern void YBReportFeatureUnsupported(const char *err_msg);
 
+extern AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation);
+
 extern AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation);
 
 extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);

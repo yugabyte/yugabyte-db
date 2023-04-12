@@ -218,6 +218,11 @@ YBNeedRetryAfterCacheRefresh(ErrorData *edata)
 	return true;
 }
 
+AttrNumber YBGetFirstLowInvalidAttrNumber(bool is_yb_relation)
+{
+	return is_yb_relation ? YBFirstLowInvalidAttributeNumber : FirstLowInvalidHeapAttributeNumber;
+}
+
 AttrNumber YBGetFirstLowInvalidAttributeNumber(Relation relation)
 {
 	return IsYBRelation(relation)
