@@ -15,6 +15,8 @@ import static org.mockito.Mockito.doThrow;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.test.Helpers.contentAsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -523,14 +525,15 @@ public class ScheduleControllerTest extends FakeDBApplication {
     assertEquals(schedule.getCronExpression(), "5 * * * *");
     assertAuditEntry(1, defaultCustomer.getUuid());
     // Schedule using V2 Api
-    ObjectNode bodyJson2 = Json.newObject();
-    bodyJson2.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
-    bodyJson2.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
-    bodyJson2.put("cronExpression", "0 */2 * * *");
-    bodyJson2.put("scheduleName", "schedule-1");
-    bodyJson2.put("backupType", "PGSQL_TABLE_TYPE");
-    Result r = createBackupSchedule(bodyJson2, null);
-    assertOk(r);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Schedule.create(
+        defaultCustomer.getUuid(),
+        backupTableParams,
+        TaskType.CreateBackup,
+        100000000L,
+        "0 */2 * * *",
+        TimeUnit.HOURS);
     ObjectNode bodyJson3 = Json.newObject();
     bodyJson3.put("direction", "ASC");
     bodyJson3.put("sortBy", "scheduleUUID");
@@ -545,6 +548,8 @@ public class ScheduleControllerTest extends FakeDBApplication {
 
   @Test
   public void testListIncrementScheduleBackup() {
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     ObjectNode bodyJson2 = Json.newObject();
     Universe universe =
         ModelFactory.createUniverse(
@@ -555,15 +560,16 @@ public class ScheduleControllerTest extends FakeDBApplication {
             null,
             null,
             true);
-    bodyJson2.put("universeUUID", universe.getUniverseUUID().toString());
-    bodyJson2.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
-    bodyJson2.put("cronExpression", "0 */2 * * *");
-    bodyJson2.put("scheduleName", "schedule-1");
-    bodyJson2.put("backupType", "PGSQL_TABLE_TYPE");
-    bodyJson2.put("incrementalBackupFrequency", 3600000L);
-    bodyJson2.put("incrementalBackupFrequencyTimeUnit", "HOURS");
-    Result r = createBackupSchedule(bodyJson2, null);
-    assertOk(r);
+    backupRequestParams = new BackupRequestParams();
+    backupRequestParams.incrementalBackupFrequency = 3600000L;
+    backupRequestParams.incrementalBackupFrequencyTimeUnit = TimeUnit.HOURS;
+    Schedule.create(
+        defaultCustomer.getUuid(),
+        backupRequestParams,
+        TaskType.CreateBackup,
+        100000000L,
+        "0 */2 * * *",
+        TimeUnit.HOURS);
     ObjectNode bodyJson3 = Json.newObject();
     bodyJson3.put("direction", "ASC");
     bodyJson3.put("sortBy", "scheduleUUID");
@@ -589,18 +595,26 @@ public class ScheduleControllerTest extends FakeDBApplication {
 
   @Test
   public void testGetPagedSchedulesListFilteredWithUniverseList() {
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("universeUUID", defaultUniverse.getUniverseUUID().toString());
-    bodyJson.put("storageConfigUUID", customerConfig.getConfigUUID().toString());
-    bodyJson.put("cronExpression", "0 */2 * * *");
-    bodyJson.put("scheduleName", "schedule-1");
-    bodyJson.put("backupType", "PGSQL_TABLE_TYPE");
-    Result r = createBackupSchedule(bodyJson, null);
-    assertOk(r);
+    UUID fakeTaskUUID = UUID.randomUUID();
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    backupRequestParams = new BackupRequestParams();
+    backupRequestParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    Schedule.create(
+        defaultCustomer.getUuid(),
+        backupRequestParams,
+        TaskType.CreateBackup,
+        100000000L,
+        "0 */2 * * *",
+        TimeUnit.HOURS);
     Universe universe2 = ModelFactory.createUniverse("universe-2", defaultCustomer.getId());
-    bodyJson.put("universeUUID", universe2.getUniverseUUID().toString());
-    r = createBackupSchedule(bodyJson, null);
-    assertOk(r);
+    backupRequestParams.setUniverseUUID(universe2.getUniverseUUID());
+    Schedule.create(
+        defaultCustomer.getUuid(),
+        backupRequestParams,
+        TaskType.CreateBackup,
+        100000000L,
+        "0 */2 * * *",
+        TimeUnit.HOURS);
     ObjectNode bodyJson2 = Json.newObject();
     bodyJson2.put("direction", "ASC");
     bodyJson2.put("sortBy", "scheduleUUID");

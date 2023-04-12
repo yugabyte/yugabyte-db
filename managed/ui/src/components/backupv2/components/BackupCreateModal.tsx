@@ -256,8 +256,16 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
       return createBackupSchedule(values);
     },
     {
-      onSuccess: () => {
-        toast.success('Schedule policy created');
+      onSuccess: (resp) => {
+        toast.success(
+          <span>
+            Creating schedule policy. Click &nbsp;
+            <a href={`/tasks/${resp.data.taskUUID}`} target="_blank" rel="noopener noreferrer">
+              here
+            </a>
+            &nbsp; for task details
+          </span>
+        );
         queryClient.invalidateQueries(['scheduled_backup_list']);
         onHide();
       },
