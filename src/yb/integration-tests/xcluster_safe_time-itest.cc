@@ -49,6 +49,8 @@ DECLARE_bool(enable_replicate_transaction_status_table);
 DECLARE_string(ysql_yb_xcluster_consistency_level);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_string(TEST_xcluster_simulated_lag_tablet_filter);
+DECLARE_uint32(xcluster_safe_time_log_outliers_interval_secs);
+DECLARE_uint32(xcluster_safe_time_slow_tablet_delta_secs);
 
 namespace yb {
 using client::YBSchema;
@@ -585,6 +587,8 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
 }
 
 TEST_F(XClusterConsistencyTest, LagInTransactionsTable) {
+  ASSERT_OK(SET_FLAG(xcluster_safe_time_log_outliers_interval_secs, (uint32)0));
+  ASSERT_OK(SET_FLAG(xcluster_safe_time_slow_tablet_delta_secs, (uint32)1));
 
   // Pause replication on global transactions table
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_xcluster_simulated_lag_tablet_filter) =
