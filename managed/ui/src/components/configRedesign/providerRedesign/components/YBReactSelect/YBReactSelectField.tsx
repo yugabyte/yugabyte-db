@@ -14,12 +14,14 @@ type YBReactSelectFieldProps<T extends FieldValues> = {
   options: readonly ReactSelectOption[] | undefined;
   isDisabled?: boolean;
   onChange?: (value: ReactSelectOption) => void;
+  placeholder?: string;
 } & UseControllerProps<T>;
 
 export const YBReactSelectField = <T extends FieldValues>({
   options,
   onChange,
   isDisabled = false,
+  placeholder,
   ...useControllerProps
 }: YBReactSelectFieldProps<T>) => {
   const { field, fieldState } = useController(useControllerProps);
@@ -38,6 +40,10 @@ export const YBReactSelectField = <T extends FieldValues>({
     menu: (baseStyles) => ({
       ...baseStyles,
       zIndex: 9999
+    }),
+    placeholder: (baseStyles) => ({
+      ...baseStyles,
+      color: theme.palette.grey[300]
     })
   };
 
@@ -56,6 +62,7 @@ export const YBReactSelectField = <T extends FieldValues>({
           value={field.value}
           options={options}
           isDisabled={isDisabled}
+          placeholder={placeholder}
         />
       </div>
       {fieldState.error?.message && (
