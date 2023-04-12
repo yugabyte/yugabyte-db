@@ -61,6 +61,15 @@ def add_run_command_subparser(subparsers, command, parent):
     parser.add_argument('--command', nargs=argparse.REMAINDER)
 
 
+def add_test_directory_subparser(subparsers, command, parent):
+    parser = subparsers.add_parser(command,
+                                   help='test directory (ends with \'/\') write permissions',
+                                   parents=[parent])
+    parser.add_argument('--test_directory', type=str, help='Path of directory to test',
+                        required=True)
+    return parser
+
+
 def handle_run_command(args, client):
     kwargs = {}
     if args.node_type == 'ssh' or args.node_type == 'rpc':
@@ -70,6 +79,18 @@ def handle_run_command(args, client):
     output = client.exec_command(args.command, **kwargs)
     print('Command output:')
     print(output)
+
+
+def handle_test_directory(args, client):
+    filename = args.test_directory + str(uuid.uuid4())
+    client.exec_command('touch ' + filename)
+    client.exec_command('echo "This is some text" > ' + filename)
+    output = client.exec_command('cat ' + filename)
+    client.exec_command('rm ' + filename)
+    if 'This is some text' in str(output):
+        print('Directory is writable')
+    else:
+        print('Directory is not writable')
 
 
 def add_run_script_subparser(subparsers, command, parent):
@@ -249,6 +270,7 @@ actions = {
     'download_logs': ActionHandler(handle_download_logs, add_download_logs_subparser),
     'download_file': ActionHandler(handle_download_file, add_download_file_subparser),
     'upload_file': ActionHandler(handle_upload_file, add_upload_file_subparser),
+    'test_directory': ActionHandler(handle_test_directory, add_test_directory_subparser)
 }
 
 
