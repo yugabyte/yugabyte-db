@@ -2,6 +2,7 @@ package handlers
 
 import (
         "apiserver/cmd/server/helpers"
+        "apiserver/cmd/server/logger"
         "apiserver/cmd/server/models"
         "context"
         "encoding/json"
@@ -324,7 +325,9 @@ func getRawMetricsForAllNodes(
                         }
                 }
                 if err := iter.Close(); err != nil {
-                        return nodeValues, err
+                    logger.Log.Errorf("[api_cluster_info] Error fetching " +
+                    "getRawMetricsForAllNodes", err)
+                    return nodeValues, err
                 }
                 sort.Slice(values, func(i, j int) bool {
                         return values[i][0] < values[j][0]
