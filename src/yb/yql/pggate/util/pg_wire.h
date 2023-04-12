@@ -98,6 +98,8 @@ class PgWire {
 //   ....
 class PgWireDataHeader {
  public:
+  static constexpr size_t kSerializedSize = sizeof(uint8_t);
+
   PgWireDataHeader() {
   }
 
@@ -105,10 +107,15 @@ class PgWireDataHeader {
   }
 
   void set_null() {
-    data_[0] = 1;
+    data_.set(0);
   }
+
   bool is_null() const {
-    return data_[0] == 1;
+    return data_[0];
+  }
+
+  void SerializeTo(char* out) {
+    *out = ToUint8();
   }
 
   uint8_t ToUint8() const {
