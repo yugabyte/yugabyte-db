@@ -924,7 +924,7 @@ public class TaskExecutor {
           TaskInfo.ERROR_STATES.contains(state),
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
-      ObjectNode taskDetails = CommonUtils.maskConfig(taskInfo.getDetails().deepCopy());
+      ObjectNode taskDetails = taskInfo.getDetails().deepCopy();
       String errorString;
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
         errorString = "Platform shutdown";
@@ -937,7 +937,7 @@ public class TaskExecutor {
         }
         errorString =
             "Failed to execute task "
-                + StringUtils.abbreviate(taskDetails.toString(), 500)
+                + StringUtils.abbreviate(CommonUtils.maskConfig(taskDetails).toString(), 500)
                 + ", hit error:\n\n"
                 + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
                 + ".";
@@ -946,7 +946,7 @@ public class TaskExecutor {
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
           taskInfo.getTaskUUID(),
-          taskDetails,
+          CommonUtils.maskConfig(taskDetails),
           t);
 
       if (log.isDebugEnabled()) {
