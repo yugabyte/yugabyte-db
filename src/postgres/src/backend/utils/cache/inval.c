@@ -706,12 +706,13 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
  *		since that tells us we've lost some shared-inval messages and hence
  *		don't know what needs to be invalidated.
  */
+void
 InvalidateSystemCaches(void)
 {
 	if (IsYugaByteEnabled()) {
 		// In case of YugaByte it is necessary to refresh YB caches by calling 'YBRefreshCache'.
-		// But it can't be done here as 'YBRefreshCache' can't be called from within the transaction.
-		// Resetting catalog version will force cache refresh as soon as possible.
+		// But it can't be done here as 'YBRefreshCache' can't be called from within the
+		// transaction. Resetting catalog version will force cache refresh as soon as possible.
 		YBResetCatalogVersion();
 		return;
 	}

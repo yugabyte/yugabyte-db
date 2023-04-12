@@ -269,7 +269,6 @@ static bool check_max_backoff(int *max_backoff_msecs, void **extra, GucSource so
 static bool check_min_backoff(int *min_backoff_msecs, void **extra, GucSource source);
 static bool check_backoff_multiplier(double *multiplier, void **extra, GucSource source);
 static void check_reserved_prefixes(const char *varName);
-static List *reserved_class_prefix = NIL;
 
 /* Private functions in guc-file.l that need to be called from guc.c */
 static ConfigVariable *ProcessConfigFileInternal(GucContext context,

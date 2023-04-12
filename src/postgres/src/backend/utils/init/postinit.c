@@ -105,6 +105,13 @@ static void process_settings(Oid databaseid, Oid roleid);
 
 static void YbReleaseTserverCatalogInfo();
 static void YbResolveDBTserverCatalogVersion(const char* dbname);
+static void InitPostgresImpl(const char *in_dbname, Oid dboid,
+							 const char *username, Oid useroid,
+							 bool load_session_libraries,
+							 bool override_allow_connections,
+							 char *out_dbname,
+							 bool* yb_sys_table_prefetching_started);
+static void YbEnsureSysTablePrefetchingStopped(bool sys_table_prefetching_started);
 
 /*** InitPostgres support ***/
 

@@ -1214,7 +1214,6 @@ Datum
 yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 {
 	#define PG_YBSTAT_TERMINATED_QUERIES_COLS 6
-	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
@@ -1244,6 +1243,9 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
+#ifdef YB_TODO
+	/* YB_TODO() Yugabyte needs new implementation for stats */
+	Oid			db_oid = PG_ARGISNULL(0) ? -1 : PG_GETARG_OID(0);
 	size_t num_queries = 0;
 	PgStat_YBStatQueryEntry *queries = pgstat_fetch_ybstat_queries(db_oid, &num_queries);
 	for (size_t i = 0; i < num_queries; i++)
@@ -1270,6 +1272,7 @@ yb_pg_stat_get_queries(PG_FUNCTION_ARGS)
 		else
 			continue;
 	}
+#endif
 
 	tuplestore_donestoring(tupstore);
 
