@@ -1149,6 +1149,20 @@
           "inProgress": "In Progress"
         }
       },
+      "alerts": {
+        "alert": "Alert",
+        "alerts": "Alerts",
+        "status": "Status",
+        "triggertime": "Trigger time",
+        "noalerts": "There are no alerts",
+        "details": {
+          "title": "Alert Details",
+          "name": "Alert Name",
+          "status": "Alert Status",
+          "id": "Alert ID",
+          "triggerTime": "Trigger Time"
+        }
+      },
       "settings": {
         "general": "General",
         "infrastructure": "Infrastructure",
