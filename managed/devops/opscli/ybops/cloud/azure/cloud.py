@@ -211,11 +211,12 @@ class AzureCloud(AbstractCloud):
             raise YBOpsRuntimeError("Host {} does not exist".format(args.search_pattern))
 
         vm_status = self.get_admin().get_vm_status(args.search_pattern)
-        if (vm_status != 'VM deallocated'):
-            raise YBOpsRuntimeError("Host {} is not stopped, VM status is {}".format(
+        if vm_status != 'VM deallocated':
+            logging.warning("Host {} is not stopped, VM status is {}".format(
                 args.search_pattern, vm_status))
+        else:
+            self.get_admin().start_instance(host_info['name'])
 
-        self.get_admin().start_instance(host_info['name'])
         # Refreshing private IP address.
         host_info = self.get_host_info(args)
         if not host_info:
