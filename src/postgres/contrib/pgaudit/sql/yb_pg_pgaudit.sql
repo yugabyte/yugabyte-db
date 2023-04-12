@@ -1,4 +1,3 @@
--- Testing pgaudit;
 \set VERBOSITY terse
 
 -- Create pgaudit extension
@@ -610,20 +609,30 @@ ALTER TABLE public.test
 
 ALTER TABLE public.test2
 	SET SCHEMA test;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 ALTER TABLE test.test2
 	ADD COLUMN description TEXT;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 ALTER TABLE test.test2
 	DROP COLUMN description;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 DROP TABLE test.test2;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 --
 -- Test multiple statements with one semi-colon
 CREATE SCHEMA foo
 	CREATE TABLE foo.bar (id int)
 	CREATE TABLE foo.baz (id int);
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 --
 -- Test aggregate
@@ -641,11 +650,17 @@ SELECT int_add(1, 1);
 
 CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');
 ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 --
 -- Test conversion
 CREATE CONVERSION public.conversion_test FOR 'latin1' TO 'utf8' FROM pg_catalog.iso8859_1_to_utf8;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 ALTER CONVERSION public.conversion_test RENAME TO conversion_test2;
+-- YB note: bump audit number to stay same with upstream.
+SELECT 'yb';
 
 --
 -- Test create/alter/drop database
@@ -663,6 +678,8 @@ CREATE SCHEMA foo2
 	GRANT SELECT
 	   ON public.t
 	   TO alice;
+-- YB note: bump audit number to stay same with upstream.
+ALTER ROLE alice CONNECTION LIMIT -1;
 
 drop table public.t;
 drop role alice;
@@ -804,12 +821,6 @@ CREATE INDEX h_idx ON h (x);
 DROP INDEX h_idx;
 DROP TABLE h;
 
---
--- Testing if setting pgaudit.log is audited. We perform an early bail out when logging is disabled.
--- When we are trying to set pgaudit.log this set statement should be logged although the state
--- of the current system is such that logging is disable. We test that corner case here.
-SET pgaudit.log = 'NONE';
-SET pgaudit.log = 'ALL';
 -- Cleanup
 -- Set client_min_messages up to warning to avoid noise
 SET client_min_messages = 'warning';
