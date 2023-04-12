@@ -100,29 +100,6 @@ To see a list of nodes that belong to this universe, select **Nodes**. You can a
 
 ![Dedicated universe nodes](/images/ee/dedicated-universe-nodes.png)
 
-## Run the TPC-C benchmark and verify metrics
-
-To run the TPC-C benchmark on your universe, use commands similar to the following (with your own IP addresses):
-
-```sh
-./tpccbenchmark -c config/workload_all.xml \
-    --create=true \
-    --nodes=10.9.4.142,10.14.16.8,10.9.13.138,10.14.16.9,10.152.0.14,10.152.0.32 \
-    --warehouses 50 \
-    --loaderthreads 10
-./tpccbenchmark -c config/workload_all.xml \
-    --load=true \
-    --nodes=10.9.4.142,10.14.16.8,10.9.13.138,10.14.16.9,10.152.0.14,10.152.0.32 \
-    --warehouses 50 \
-    --loaderthreads 10
-./tpccbenchmark -c config/workload_all.xml \
-    --load=true \
-    --nodes=10.9.4.142,10.14.16.8,10.9.13.138,10.14.16.9,10.152.0.14,10.152.0.32 \
-    --warehouses 50
-```
-
-Refer to [TPC-C](../../../benchmark/tpcc-ysql/) for details.
-
 You can verify the overall performance of the dedicated nodes universe by navigating to [Metrics](../../../yugabyte-platform/troubleshoot/universe-issues/#use-metrics).
 
 ![Dedicated universe metrics](/images/ee/dedicated-universe-metrics.png)
