@@ -422,8 +422,10 @@ public class CloudProviderHandler {
     }
     if (edit && k8sMetadata.getKubeConfigContent() != null) {
       String kubeConfigPath = k8sMetadata.getKubeConfig();
-      String[] paths = kubeConfigPath.split("/");
-      config.putIfAbsent("KUBECONFIG_NAME", paths[paths.length - 1]);
+      if (kubeConfigPath != null) {
+        String[] paths = kubeConfigPath.split("/");
+        config.putIfAbsent("KUBECONFIG_NAME", paths[paths.length - 1]);
+      }
     }
     boolean hasKubeConfig = config.containsKey("KUBECONFIG_NAME");
     if (hasKubeConfig) {
@@ -439,8 +441,10 @@ public class CloudProviderHandler {
     if (region == null) {
       if (edit && k8sMetadata.getKubernetesPullSecretContent() != null) {
         String pullSecretPath = k8sMetadata.getKubernetesPullSecret();
-        String[] paths = pullSecretPath.split("/");
-        config.putIfAbsent("KUBECONFIG_PULL_SECRET_NAME", paths[paths.length - 1]);
+        if (pullSecretPath != null) {
+          String[] paths = pullSecretPath.split("/");
+          config.putIfAbsent("KUBECONFIG_PULL_SECRET_NAME", paths[paths.length - 1]);
+        }
       }
       if (config.containsKey("KUBECONFIG_PULL_SECRET_NAME")) {
         if (config.get("KUBECONFIG_PULL_SECRET_NAME") != null) {
@@ -867,7 +871,6 @@ public class CloudProviderHandler {
   private boolean updateProviderData(
       Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(editProviderReq);
-    Map<String, String> existingConfigMap = CloudInfoInterface.fetchEnvVars(provider);
     boolean updatedProviderDetails = false;
     boolean updatedProviderConfig = false;
     // TODO: Remove this code once the validators are added for all cloud provider.
@@ -895,7 +898,8 @@ public class CloudProviderHandler {
       updatedProviderDetails = true;
       provider.setDetails(editProviderReq.getDetails());
     }
-    if (!existingConfigMap.equals(providerConfig)) {
+    // Compare the cloudInfo properties.
+    if (!provider.getDetails().getCloudInfo().equals(editProviderReq.getDetails().getCloudInfo())) {
       provider.getDetails().cloudInfo = editProviderReq.getDetails().cloudInfo;
       if (provider.getCloudCode().equals(CloudType.kubernetes)) {
         updateKubeConfig(provider, providerConfig, true);

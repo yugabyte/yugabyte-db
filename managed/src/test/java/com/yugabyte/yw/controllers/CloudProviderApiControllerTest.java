@@ -124,6 +124,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     } catch (Exception e) {
       // Do nothing
     }
+    String gcpCredentialFile = createTempFile("gcpCreds.json", "test5678");
+    when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn(gcpCredentialFile);
   }
 
   private Result listProviders() {
@@ -1056,6 +1058,48 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     result = createProvider(bodyJson);
     assertOk(result);
     assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testModifyGCPProviderCredentials() {
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "gcp");
+    bodyJson.put("name", "gcp-Provider");
+    ObjectNode detailsJson = Json.newObject();
+    ObjectNode cloudInfoJson = Json.newObject();
+    ObjectNode gcpCloudInfo = Json.newObject();
+    ObjectNode gcpCredentials = Json.newObject();
+    gcpCredentials.put("GCE_EMAIL", "test@yugabyte.com");
+    gcpCredentials.put("private_key", "Private key");
+
+    gcpCloudInfo.put("useHostCredentials", true);
+    gcpCloudInfo.put("destVpcId", "test");
+    gcpCloudInfo.put("gceProject", "yugabyte");
+    gcpCloudInfo.put("gceApplicationCredentials", gcpCredentials);
+    cloudInfoJson.put("gcp", gcpCloudInfo);
+    detailsJson.set("cloudInfo", cloudInfoJson);
+    bodyJson.set("details", detailsJson);
+
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+
+    Result result = createProvider(bodyJson);
+    assertOk(result);
+    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
+    Provider gcpProvider = Provider.getOrBadRequest(ybpTask.resourceUUID);
+
+    gcpCredentials.put("client_id", "Client ID");
+    gcpProvider.getDetails().getCloudInfo().getGcp().setGceApplicationCredentials(gcpCredentials);
+    result = editProvider(Json.toJson(gcpProvider), gcpProvider.getUuid());
+    assertOk(result);
+
+    gcpProvider = Provider.getOrBadRequest(gcpProvider.getUuid());
+    assertEquals(
+        "Client ID",
+        ((ObjectNode)
+                gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials())
+            .get("client_id")
+            .textValue());
   }
 
   @Test
