@@ -206,9 +206,9 @@ class MiniCluster : public MiniClusterBase {
   // Requires that the master has started;
   // Returns a bad Status if the tablet does not reach the required count
   // within kTabletReportWaitTimeSeconds.
-  Status WaitForReplicaCount(const std::string& tablet_id,
-                                     int expected_count,
-                                     master::TabletLocationsPB* locations);
+  Status WaitForReplicaCount(const TableId& tablet_id,
+                             int expected_count,
+                             master::TabletLocationsPB* locations);
 
   // Wait until the number of registered tablet servers reaches the given
   // count. Returns Status::TimedOut if the desired count is not achieved
@@ -381,6 +381,10 @@ Status WaitForAnySstFiles(
 Status WaitForPeersAreFullyCompacted(
     MiniCluster* cluster, const std::vector<TabletId>& tablet_ids,
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
+
+Status WaitForTableIntentsApplied(
+    MiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 }  // namespace yb
 
