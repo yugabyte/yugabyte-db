@@ -80,7 +80,7 @@ step "partiallock"	{
 }
 step "lockwithvalues"	{
 	SELECT * FROM accounts a1, (values('checking'),('savings')) v(id)
-	  WHERE a1.accountid = v.id
+	  WHERE a1.accountid = v.id ORDER BY a1.accountid
 	  FOR UPDATE OF a1;
 }
 step "partiallock_ext"	{

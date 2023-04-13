@@ -2,6 +2,7 @@
 
 SET client_min_messages = DEBUG1;
 \set YB_DISABLE_ERROR_PREFIX on
+SET yb_bnl_batch_size to 1;
 
 -- Should return empty results (actual rows=0)
 -- The plans should not show any "Recheck"
