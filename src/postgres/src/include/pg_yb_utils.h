@@ -470,6 +470,11 @@ extern bool yb_plpgsql_disable_prefetch_in_for_query;
  */
 extern bool yb_enable_sequence_pushdown;
 
+/*
+ * Disable waiting for backends to have up-to-date catalog version.
+ */
+extern bool yb_disable_wait_for_backends_catalog_version;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;

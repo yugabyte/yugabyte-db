@@ -1049,6 +1049,7 @@ bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
+bool yb_disable_wait_for_backends_catalog_version = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.

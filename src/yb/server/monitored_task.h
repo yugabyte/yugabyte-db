@@ -59,6 +59,8 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kAddServer)
   (kAddTableToTablet)
   (kAlterTable)
+  (kBackendsCatalogVersion)
+  (kBackendsCatalogVersionTs)
   (kBackfillDone)
   (kBackfillTable)
   (kBackfillTabletChunk)

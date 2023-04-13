@@ -1360,6 +1360,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackfillTable;
   friend class BackfillTablet;
   friend class XClusterConfigLoader;
+  friend class YsqlBackendsManager;
+  friend class BackendsCatalogVersionJob;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
