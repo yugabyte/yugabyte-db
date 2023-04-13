@@ -1056,7 +1056,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_prefer_bnl,
-		false,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -2381,7 +2381,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_bnl_batch_size,
-		1, 1, INT_MAX,
+		1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
