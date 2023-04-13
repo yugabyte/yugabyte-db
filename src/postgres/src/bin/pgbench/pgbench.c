@@ -532,6 +532,8 @@ static pg_prng_state base_random_sequence;
 /* Synchronization barrier for start and connection */
 static THREAD_BARRIER_T barrier;
 
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 /*
  * Data structure for client variables.
  */
@@ -541,6 +543,7 @@ typedef struct Variables
 	int			nvariables;		/* number of variables */
 	bool		vars_sorted;	/* are variables sorted by name? */
 } Variables;
+#endif
 
 /*
  * Data structure for repeating a transaction from the beginnning with the same
@@ -697,8 +700,10 @@ typedef struct
 	 * Separate randomness for each client. This is used for random functions
 	 * PGBENCH_RANDOM_* during the execution of the script.
 	 */
-	RandomState cs_func_rs;
+#ifdef YB_TODO
+	/* Need to replace this with Postgres's implementation. */
 	RandomState random_state;	/* separate randomness for each client */
+#endif
 	pg_prng_state cs_func_rs;
 
 	int			use_file;		/* index in sql_script for this client */
@@ -1946,7 +1951,9 @@ lookupVariable(Variables *variables, char *name)
 static Variable *
 YbLookupVariable(Variables *variables, char *name)
 {
-	Variable	key;
+#ifdef YB_TODO
+	/* Need to replace this with Postgres's implementation. */
+ 	Variable	key;
 
 	/* On some versions of Solaris, bsearch of zero items dumps core */
 	if (variables->nvariables <= 0)
@@ -1967,6 +1974,8 @@ YbLookupVariable(Variables *variables, char *name)
 								variables->nvariables,
 								sizeof(Variable),
 								compareVariableNames);
+#endif
+	return NULL;
 }
 
 /* Get the value of a variable, in string form; returns NULL if unknown */
@@ -2212,6 +2221,8 @@ static Variable *
 YbLookupCreateVariable(Variables *variables, const char *context, char *name,
 					   bool client)
 {
+#ifdef YB_TODO
+	/* Need to replace this with Postgres's implementation. */
 	Variable   *var;
 
 	var = YbLookupVariable(variables, name);
@@ -2257,6 +2268,8 @@ YbLookupCreateVariable(Variables *variables, const char *context, char *name,
 	}
 
 	return var;
+#endif
+	return NULL;
 }
 
 /* Assign a string value to a variable, creating it if need be */
@@ -3811,12 +3824,13 @@ commandError(CState *st, const char *message)
 static int
 chooseScript(TState *thread)
 {
+#ifdef YB_TODO
+	/* Need to replace Yugabyte's code with Postgres's implementation. */
 	int			i = 0;
 	int64		w;
 
 	if (num_scripts == 1)
 		return 0;
-
 	w = getrand(&thread->random_state, 0, total_weight - 1);
 	do
 	{
@@ -3824,6 +3838,8 @@ chooseScript(TState *thread)
 	} while (w >= 0);
 
 	return i - 1;
+#endif
+	return 0;
 }
 
 /* Send a SQL command, using the chosen querymode */
@@ -3991,6 +4007,8 @@ static bool
 readCommandResponse(CState *st, MetaCommand meta, char *varprefix,
 					FailureStatus *failure_status)
 {
+#ifdef YB_TODO
+	/* Need to replace Yugabyte'code with Postgres's implementation. */
 	PGresult   *res;
 	PGresult   *next_res;
 	int			qrynum = 0;
@@ -4134,6 +4152,8 @@ error:
 	} while (res);
 
 	return false;
+#endif
+	return false;
 }
 
 /*
@@ -4260,6 +4280,8 @@ copyRandomState(RandomState *destination, const RandomState *source)
 static void
 YbCopyVariables(Variables *destination_vars, const Variables *source_vars)
 {
+#ifdef YB_TODO
+    /* Need to replace Yugabyte's code with Postgres's implementation. */
 	Variable   *destination;
 	Variable   *current_destination;
 	const Variable *source;
@@ -4299,6 +4321,7 @@ YbCopyVariables(Variables *destination_vars, const Variables *source_vars)
 
 	destination_vars->nvariables = nvariables;
 	destination_vars->vars_sorted = source_vars->vars_sorted;
+#endif
 }
 
 /*
@@ -4512,6 +4535,8 @@ discardUntilSync(CState *st)
 static TStatus
 getTransactionStatus(PGconn *con)
 {
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 	PGTransactionStatusType tx_status;
 
 	tx_status = PQtransactionStatus(con);
@@ -4540,6 +4565,7 @@ getTransactionStatus(PGconn *con)
 
 	/* not reached */
 	Assert(false);
+#endif
 	return TSTATUS_OTHER_ERROR;
 }
 
@@ -4710,6 +4736,8 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 				 * Handle throttling once per transaction by sleeping.
 				 */
 			case CSTATE_PREPARE_THROTTLE:
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 
 				/*
 				 * Generate a delay such that the series of delays will
@@ -4769,6 +4797,7 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 				 */
 				st->state = end_time > 0 && st->txn_scheduled > end_time ?
 					CSTATE_FINISHED : CSTATE_THROTTLE;
+#endif
 				break;
 
 				/*
@@ -5452,6 +5481,8 @@ advanceConnectionState(TState *thread, CState *st, StatsData *agg)
 static ConnectionStateEnum
 executeMetaCommand(CState *st, pg_time_usec_t *now, FailureStatus *failure_status)
 {
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 	Command    *command = sql_script[st->use_file].commands[st->command];
 	int			argc;
 	char	  **argv;
@@ -5669,7 +5700,7 @@ executeMetaCommand(CState *st, pg_time_usec_t *now, FailureStatus *failure_statu
 	 * non-negligible amount of time, so reset 'now'
 	 */
 	*now = 0;
-
+#endif
 	return CSTATE_END_COMMAND;
 }
 
@@ -5806,8 +5837,11 @@ doLog(TState *thread, CState *st,
 			initStats(agg, next);
 		}
 
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 		/* accumulate the current transaction */
 		accumStats(agg, skipped, latency, lag, st->estatus, st->tries);
+#endif
 	}
 	else
 	{
@@ -5856,8 +5890,11 @@ processXactStats(TState *thread, CState *st, pg_time_usec_t *now,
 		lag = st->txn_begin - st->txn_scheduled;
 	}
 
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 	/* keep detailed thread stats */
 	accumStats(&thread->stats, skipped, latency, lag, st->estatus, st->tries);
+#endif
 
 	/* count transactions over the latency limit, if needed */
 	if (latency_limit && latency > latency_limit)
@@ -5880,10 +5917,13 @@ processXactStats(TState *thread, CState *st, pg_time_usec_t *now,
 	if (use_log)
 		doLog(thread, st, agg, skipped, latency, lag);
 
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 	/* XXX could use a mutex here, but we choose not to */
 	if (per_script_stats)
 		accumStats(&sql_script[st->use_file].stats, skipped, latency, lag,
 				   st->estatus, st->tries);
+#endif
 }
 
 
@@ -7438,6 +7478,8 @@ static void
 printProgressReport(TState *threads, int64 test_start, pg_time_usec_t now,
 					StatsData *last, int64 *last_report)
 {
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 	/* generate and show report */
 	pg_time_usec_t run = now - *last_report;
 	int64		ntx,
@@ -7530,6 +7572,7 @@ printProgressReport(TState *threads, int64 test_start, pg_time_usec_t now,
 
 	*last = cur;
 	*last_report = now;
+#endif
 }
 
 static void
@@ -7584,6 +7627,8 @@ printResults(StatsData *total,
 			 pg_time_usec_t conn_elapsed_duration,	/* !is_connect */
 			 int64 latency_late)
 {
+#ifdef YB_TODO
+/* Need to replace Yugabyte's code with Postgres's implementation. */
 	/* tps is about actually executed transactions during benchmarking */
 	int64		ntx = total->cnt - total->skipped,
 				total_ntx = total->cnt + total->errors;
@@ -7795,6 +7840,7 @@ printResults(StatsData *total,
 			}
 		}
 	}
+#endif
 }
 
 /*
@@ -8578,7 +8624,9 @@ main(int argc, char **argv)
 		initRandomState(&thread->ts_choose_rs);
 		initRandomState(&thread->ts_throttle_rs);
 		initRandomState(&thread->ts_sample_rs);
+#ifdef YB_TODO
 		initRandomState(&thread->random_state);
+#endif
 		thread->logfile = NULL; /* filled in later */
 		thread->latency_late = 0;
 		initStats(&thread->stats, 0);

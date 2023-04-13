@@ -82,7 +82,8 @@ usage(unsigned short int pager)
 	if (!env)
 		env = user;
 	HELP0("  -c, --command=COMMAND    run only single command (SQL or internal) and exit\n");
-	HELPN("  -d, --dbname=DBNAME      database name to connect to (default: \"yugabyte\")\n");
+	HELPN("  -d, --dbname=DBNAME      database name to connect to (default: \"%s\")\n",
+		"yugabyte");
 	HELP0("  -f, --file=FILENAME      execute commands from file, then exit\n");
 	HELP0("  -l, --list               list available databases, then exit\n");
 	HELP0("  -v, --set=, --variable=NAME=VALUE\n"
@@ -138,14 +139,15 @@ usage(unsigned short int pager)
 	HELPN("  -p, --port=PORT          database server port (default: \"%s\")\n",
 		  env ? env : DEF_YBPORT_STR);
 	/* Display default user */
-	HELPN("  -U, --username=USERNAME  database user name (default: \"yugabyte\")\n");
+	HELPN("  -U, --username=USERNAME  database user name (default: \"%s\")\n",
+		"yugabyte");
 	HELP0("  -w, --no-password        never prompt for password\n");
 	HELP0("  -W, --password           force password prompt (should happen automatically)\n");
 
 	HELP0("\nFor more information, type \"\\?\" (for internal commands) or \"\\help\" (for SQL\n"
 		  "commands) from within ysqlsh, or consult the ysqlsh section in YugabyteDB\n"
 		  "documentation.\n\n");
-	HELPN("Report bugs on GitHub at https://github.com/YugaByte/yugabyte-db/issues.\n");
+	HELPN("Report bugs to <%s>.\n", "https://github.com/YugaByte/yugabyte-db/issues");
 	HELPN("%s home page: <%s>\n", PACKAGE_NAME, PACKAGE_URL);
 
 	/* Now we can count the lines. */

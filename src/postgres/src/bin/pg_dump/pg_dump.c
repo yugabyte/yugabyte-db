@@ -249,7 +249,10 @@ static void dumpTrigger(Archive *fout, const TriggerInfo *tginfo);
 static void dumpEventTrigger(Archive *fout, const EventTriggerInfo *evtinfo);
 static void dumpTable(Archive *fout, const TableInfo *tbinfo);
 static void dumpTableSchema(Archive *fout, const TableInfo *tbinfo);
+#ifdef YB_TODO
+/* YB_TODO(neil) Need rework to match Pg15 */
 static void dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo);
+#endif
 static void dumpTableAttach(Archive *fout, const TableAttachInfo *tbinfo);
 static void dumpAttrDef(Archive *fout, const AttrDefInfo *adinfo);
 static void dumpSequence(Archive *fout, const TableInfo *tbinfo);
@@ -349,10 +352,19 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YbTableProperties properties,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
 static bool isDatabaseColocated(Archive *fout);
+#ifdef YB_TODO
+/* YB_TODO(neil) Need rework to match Pg15 */
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
+#endif
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
 static Oid getDatabaseOid(Archive *fout);
 static PGresult* queryDatabaseData(Archive *fout, PQExpBuffer dbQry);
+
+/* YB_TODO(neil) Need rework to match Pg15.
+ * This variable should be obsolete.
+ */
+/* subquery used to convert user ID (eg, datdba) to user name */
+static const char *username_subquery;
 
 int
 main(int argc, char **argv)
@@ -6680,6 +6692,8 @@ getTables(Archive *fout, int *numTables)
  *
  *	numTablegroups is set to the number of tablegroups read in
  */
+#ifdef YB_TODO
+/* YB_TODO(neil) Need rework to match Pg15 */
 TablegroupInfo *
 getTablegroups(Archive *fout, int *numTablegroups)
 {
@@ -6790,6 +6804,7 @@ getTablegroups(Archive *fout, int *numTablegroups)
 
 	return tbinfo;
 }
+#endif
 
 /*
  * getOwnedSeqs
@@ -10137,7 +10152,10 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			dumpTableAttach(fout, (const TableAttachInfo *) dobj);
 			break;
 		case DO_TABLEGROUP:
+#ifdef YB_TODO
+			/* YB_TODO(neil) Need rework to match Pg15 */
 			dumpTablegroup(fout, (TablegroupInfo *) dobj);
+#endif
 			break;
 		case DO_ATTRDEF:
 			dumpAttrDef(fout, (const AttrDefInfo *) dobj);
@@ -15368,6 +15386,8 @@ createDummyViewAsClause(Archive *fout, const TableInfo *tbinfo)
 	return result;
 }
 
+#ifdef YB_TODO
+/* YB_TODO(neil) Need rework to match Pg15 */
 /*
  * dumpTablegroup
  *    write the declaration of one user-defined tablegroup
@@ -15434,6 +15454,7 @@ dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo)
 	destroyPQExpBuffer(delq);
 	free(namecopy);
 }
+#endif
 
 /*
  * dumpTableSchema
@@ -15850,6 +15871,8 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 
 		destroyPQExpBuffer(yb_reloptions);
 
+#ifdef YB_TODO
+		/* YB_TODO(neil) Need rework to match Pg15 */
 		/* Additional properties for YB table or index. */
 		if (yb_properties != NULL)
 		{
@@ -15874,6 +15897,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nTABLEGROUP %s", tablegroup->dobj.name);
 			}
 		}
+#endif
 
 
 		/* Dump generic options if any */
@@ -16898,6 +16922,8 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			getYbTablePropertiesAndReloptions(fout, yb_index_properties, yb_index_reloptions,
 				indxinfo->dobj.catId.oid, indxinfo->dobj.name);
 
+#ifdef YB_TODO
+			/* YB_TODO(neil) Need rework to match Pg15 */
 			/*
 			 * Issue #11600: if tablegroups mismatch between the table and its
 			 * constraint, we cannot currently replicate that.
@@ -16913,6 +16939,7 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 					  tbinfo->dobj.name,
 					  coninfo->dobj.name);
 			}
+#endif
 
 			YbAppendReloptions2(q, false /* newline_before*/,
 				indxinfo->indreloptions, "",
@@ -18922,11 +18949,14 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		int	i_tablegroup_oid = PQfnumber(res, "tablegroup_oid");
 		int	i_colocation_id = PQfnumber(res, "colocation_id");
 
+#ifdef YB_TODO
+		/* YB_TODO(neil) Need rework to match Pg15 */
 		if (i_colocation_id == -1)
 			fatal("cannot create a dump with YSQL metadata included, "
 				  "please run YSQL upgrade first.\n"
 				  "DETAILS: yb_table_properties system function definition "
 				  "is out of date.\n");
+#endif
 
 		properties->num_tablets = atoi(PQgetvalue(res, 0, i_num_tablets));
 		properties->num_hash_key_columns = atoi(PQgetvalue(res, 0, i_num_hash_key_columns));
@@ -18939,9 +18969,12 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 		PQclear(res);
 		destroyPQExpBuffer(query);
 
+#ifdef YB_TODO
+		/* YB_TODO(neil) Need rework to match Pg15 */
 		if (properties->is_colocated && !OidIsValid(properties->colocation_id))
 			fatal("colocation ID is not defined for a colocated table \"%s\"\n",
 				  relname);
+#endif
 	}
 
 
@@ -18988,6 +19021,8 @@ isDatabaseColocated(Archive *fout)
 	return is_colocated;
 }
 
+#ifdef YB_TODO
+/* YB_TODO(neil) Need rework to match Pg15 */
 /*
  * Load the YB range-partitioned table SPLIT AT Clause from the YB server.
  * The table is identified by the Relation OID.
@@ -19010,6 +19045,7 @@ getYbSplitClause(Archive *fout, const TableInfo *tbinfo)
 	destroyPQExpBuffer(query);
 	return range_split_clause;
 }
+#endif
 
 /*
  * Update pg_extension catalog to record correct configuration relations' OID.
@@ -19028,9 +19064,12 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 	ExtensionInfo *extinfo;
 	PQExpBuffer	   update_query = createPQExpBuffer();
 	char		 **extconfigarray = NULL;
+#ifdef YB_TODO
+	/* YB_TODO(neil) Need rework to match Pg15 */
 	int			   nconfigitems;
 	Oid			   tbloid;
 	TableInfo	  *tblinfo;
+#endif
 
 	Assert(yb_dumpable_extensions_with_config_relations &&
 		   yb_num_dumpable_extensions_with_config_relations > 0);
@@ -19043,10 +19082,15 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 		appendPQExpBuffer(update_query,
 						  "UPDATE pg_extension SET extconfig = ARRAY[");
 		/* Shouldn't happen. */
+#ifdef YB_TODO
+		/* YB_TODO(neil) Need rework to match Pg15 */
 		if (!parsePGArray(extinfo->extconfig, &extconfigarray, &nconfigitems))
 			fatal("error parsing OIDs of configuration relations "
 				  "of extension with OID %u\n", extinfo->dobj.catId.oid);
+#endif
 
+#ifdef YB_TODO
+		/* YB_TODO(neil) Need rework to match Pg15 */
 		for (int j = 0; j < nconfigitems; ++j)
 		{
 			tbloid = atooid(extconfigarray[j]);
@@ -19059,6 +19103,7 @@ ybDumpUpdatePgExtensionCatalog(Archive *fout)
 			appendStringLiteralAH(update_query, fmtQualifiedDumpable(tblinfo), fout);
 			appendPQExpBuffer(update_query, "::regclass::oid");
 		}
+#endif
 		appendPQExpBuffer(update_query,
 						  "]::oid[] WHERE extname = ");
 		appendStringLiteralAH(update_query, fmtId(extinfo->dobj.name), fout);

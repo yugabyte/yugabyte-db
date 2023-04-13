@@ -5302,8 +5302,10 @@ listTablegroups(const char *pattern, bool verbose, bool showRelations)
 							 "ON c.tablegroup_oid = g.oid\n");
 	}
 
-	processSQLNamePattern(pset.db, &buf, pattern, false, false,
-						  					NULL, "grpname", NULL, NULL);
+	processSQLNamePattern(pset.db, &buf, pattern,
+						  false, false,
+						  NULL, "grpname", NULL,
+						  NULL, NULL, NULL);
 
 	appendPQExpBufferStr(&buf, "ORDER BY 1;");
 

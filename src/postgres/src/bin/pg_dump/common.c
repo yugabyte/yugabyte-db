@@ -135,7 +135,10 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	int			numDefaultACLs;
 	int			numEventTriggers;
 
+#ifdef YB_TODO
+	/* YB_TODO(neil) Need rework to match Pg15 */
 	TablegroupInfo *tblgrpinfo;
+#endif
 
 	/*
 	 * We must read extensions and extension membership info first, because
@@ -182,9 +185,12 @@ getSchemaData(Archive *fout, int *numTablesPtr)
 	pg_log_info("reading user-defined access methods");
 	getAccessMethods(fout, &numAccessMethods);
 
+#ifdef YB_TODO
+	/* YB_TODO(neil) Need rework to match Pg15 */
 	pg_log_info("reading user-defined tablegroups\n");
 	tblgrpinfo = getTablegroups(fout, &numTablegroups);
 	tblgrpinfoindex = buildIndexArray(tblgrpinfo, numTablegroups, sizeof(TablegroupInfo));
+#endif
 
 	pg_log_info("reading user-defined operator classes");
 	getOpclasses(fout, &numOpclasses);
@@ -926,7 +932,11 @@ findExtensionByOid(Oid oid)
 TablegroupInfo *
 findTablegroupByOid(Oid oid)
 {
+#ifdef YB_TODO
+	/* YB_TODO(neil) Need rework to match Pg15 */
 	return (TablegroupInfo *) findObjectByOid(oid, tblgrpinfoindex, numTablegroups);
+#endif
+	return NULL;
 }
 
 /*

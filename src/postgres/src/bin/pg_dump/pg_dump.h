@@ -731,7 +731,6 @@ extern OpfamilyInfo *getOpfamilies(Archive *fout, int *numOpfamilies);
 extern CollInfo *getCollations(Archive *fout, int *numCollations);
 extern ConvInfo *getConversions(Archive *fout, int *numConversions);
 extern TableInfo *getTables(Archive *fout, int *numTables);
-extern TablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
 extern void getOwnedSeqs(Archive *fout, TableInfo tblinfo[], int numTables);
 extern InhInfo *getInherits(Archive *fout, int *numInherits);
 extern void getIndexes(Archive *fout, TableInfo tblinfo[], int numTables);
@@ -765,5 +764,10 @@ extern void getPublicationNamespaces(Archive *fout);
 extern void getPublicationTables(Archive *fout, TableInfo tblinfo[],
 								 int numTables);
 extern void getSubscriptions(Archive *fout);
+
+#ifdef YB_TODO
+/* YB_TODO(neil) Need rework to match Pg15 */
+extern TablegroupInfo *getTablegroups(Archive *fout, int *numTablegroups);
+#endif
 
 #endif							/* PG_DUMP_H */
