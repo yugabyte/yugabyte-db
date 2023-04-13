@@ -122,6 +122,10 @@ public class UpgradeUniverseHandler {
           && requestParams.isEnableYbc()) {
         requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
         requestParams.installYbc = true;
+      } else if (universe.isYbcEnabled()) {
+        requestParams.setEnableYbc(true);
+        requestParams.installYbc = true;
+        requestParams.setYbcSoftwareVersion(ybcManager.getStableYbcVersion());
       } else {
         requestParams.setEnableYbc(false);
         requestParams.installYbc = false;
