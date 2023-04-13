@@ -90,7 +90,8 @@ public class AlertNotificationTemplateSubstitutor {
       String annotationName = key.replace(ANNOTATIONS_PREFIX, "");
       return processValue(alert.getAnnotationValue(annotationName), jsonString);
     }
-    throw new RuntimeException("Unexpected placeholder in alert notification template: " + key);
+    // Possibly some prometheus expression, which can also contain {{ something }} placeholders
+    return "{{ " + key + " }}";
   }
 
   public String replace(String templateStr) {
