@@ -156,6 +156,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.UpdateNodeProcess,
           TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> REMOVE_NODE_TASK_EXPECTED_RESULTS =
@@ -167,6 +168,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("state", "Removed")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
@@ -182,6 +184,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.UpdateNodeProcess,
           TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
@@ -197,6 +200,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("state", "Removed")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private static final List<TaskType> REMOVE_NOT_EXISTS_NODE_TASK_SEQUENCE =
@@ -206,6 +210,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.UpdateNodeProcess,
           TaskType.SetNodeState,
+          TaskType.SwamperTargetsFileUpdate,
           TaskType.UniverseUpdateSucceeded);
 
   private static final List<JsonNode> REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS =
@@ -215,6 +220,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("state", "Removed")),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
   private enum RemoveType {

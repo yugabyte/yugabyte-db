@@ -196,6 +196,9 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Removed)
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
       // Mark universe task state to success
       createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 

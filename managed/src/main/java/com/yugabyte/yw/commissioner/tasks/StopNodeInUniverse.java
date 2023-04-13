@@ -257,6 +257,9 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTask(currentNode, NodeState.Stopped)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
 
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
       // Update the DNS entry for this universe.
       UniverseDefinitionTaskParams.UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
