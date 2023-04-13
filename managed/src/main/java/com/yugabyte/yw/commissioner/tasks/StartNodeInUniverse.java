@@ -127,6 +127,10 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
         masterAdded = true;
       }
 
+      // Update master addresses for tservers to the current masters.
+      createConfigureServerTasks(
+          Arrays.asList(currentNode), params -> params.updateMasterAddrsOnly = true);
+
       // Start the tserver process
       createTServerTaskForNode(currentNode, "start")
           .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);

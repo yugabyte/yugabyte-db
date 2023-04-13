@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,6 +42,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
+import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import play.libs.Json;
@@ -89,11 +91,15 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
     GetLoadMovePercentResponse mockGetLoadMovePercentResponse =
         new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null);
 
+    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
     try {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
+      when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
       when(mockClient.getMasterClusterConfig()).thenReturn(mockConfigResponse);
       when(mockClient.changeMasterClusterConfig(any())).thenReturn(mockMasterChangeConfigResponse);
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
+      when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
     } catch (Exception e) {
     }
   }
@@ -144,10 +150,10 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
           TaskType.ModifyBlackList,
-          TaskType.AnsibleClusterServerCtl,
-          TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
           TaskType.ChangeMasterConfig,
+          TaskType.AnsibleClusterServerCtl,
+          TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
           TaskType.SetNodeState,
           TaskType.UniverseUpdateSucceeded,
@@ -161,9 +167,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("processType", "MASTER", "isAdd", false)),
           Json.toJson(ImmutableMap.of("state", "Stopped")),

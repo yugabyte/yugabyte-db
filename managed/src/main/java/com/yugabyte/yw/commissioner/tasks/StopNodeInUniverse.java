@@ -84,7 +84,8 @@ public class StopNodeInUniverse extends UniverseTaskBase {
 
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
-      if (instanceExists(taskParams())) {
+      boolean instanceExists = instanceExists(taskParams());
+      if (instanceExists) {
 
         // set leader blacklist and poll
         if (isBlacklistLeaders) {
@@ -105,14 +106,6 @@ public class StopNodeInUniverse extends UniverseTaskBase {
                   Arrays.asList(currentNode), false /* isAdd */, true /* isLeaderBlacklist */)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
-
-        // Stop the master process on this node.
-        if (currentNode.isMaster) {
-          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createWaitForMasterLeaderTask()
-              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        }
       }
 
       // Update the per process state in YW DB.
@@ -124,12 +117,23 @@ public class StopNodeInUniverse extends UniverseTaskBase {
             false /* isAdd */,
             SubTaskGroupType.ConfigureUniverse,
             true /* useHostPort */);
+
+        // Stop the master process on this node. Stop it only after master config change
+        // to give the process time to clean up master state.
+        if (instanceExists) {
+          createStopMasterTasks(new HashSet<NodeDetails>(Arrays.asList(currentNode)))
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          createWaitForMasterLeaderTask()
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+
         createUpdateNodeProcessTask(taskParams().nodeName, ServerType.MASTER, false)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-        // Update the master addresses on the target universes whose source universe belongs to
-        // this task.
-        createXClusterConfigUpdateMasterAddressesTask();
       }
+
+      // Always update the master addresses on the target universes whose source universe belongs to
+      // this task. Running the task again should update this correctly.
+      createXClusterConfigUpdateMasterAddressesTask();
 
       // Update Node State to Stopped
       createSetNodeStateTask(currentNode, NodeState.Stopped)
