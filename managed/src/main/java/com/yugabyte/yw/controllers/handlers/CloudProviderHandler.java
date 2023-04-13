@@ -881,7 +881,6 @@ public class CloudProviderHandler {
   private boolean updateProviderData(
       Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(editProviderReq);
-    Map<String, String> existingConfigMap = CloudInfoInterface.fetchEnvVars(provider);
     boolean updatedProviderDetails = false;
     boolean updatedProviderConfig = false;
     // TODO: Remove this code once the validators are added for all cloud provider.
@@ -909,7 +908,8 @@ public class CloudProviderHandler {
       updatedProviderDetails = true;
       provider.details = editProviderReq.details;
     }
-    if (!existingConfigMap.equals(providerConfig)) {
+    // Compare the cloudInfo properties.
+    if (!provider.details.getCloudInfo().equals(editProviderReq.details.getCloudInfo())) {
       provider.details.cloudInfo = editProviderReq.details.cloudInfo;
       if (provider.getCloudCode().equals(CloudType.kubernetes)) {
         updateKubeConfig(provider, providerConfig, true);
