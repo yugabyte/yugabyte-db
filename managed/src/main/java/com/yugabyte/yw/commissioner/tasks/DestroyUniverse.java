@@ -103,6 +103,10 @@ public class DestroyUniverse extends UniverseTaskBase {
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           createStopServerTasks(universe.getNodes(), ServerType.TSERVER, params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          if (universe.isYbcEnabled()) {
+            createStopYbControllerTasks(universe.getNodes(), params().isForceDelete)
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          }
         }
 
         // Set the node states to Removing.
