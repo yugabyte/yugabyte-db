@@ -61,7 +61,7 @@ You can configure the active instance as follows:
 
     The root certificate is required for HTTPS connections, and allows a standby to connect to the active instance if the standby is promoted to active status.
 
-1. Add the root certificate by clicking **Add Peer Certificates**, click **Add Certificate**, paste the root certificate of the **active** instance in the field, then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
+1. Add the root certificate by clicking **Add Peer Certificates**, click **Add Certificate**, paste the root certificate of the **active** instance in the field, and then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
 
 1. Click **Create**.
 
