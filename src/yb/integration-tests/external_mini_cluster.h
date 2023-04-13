@@ -956,4 +956,8 @@ Status RestartAllMasters(ExternalMiniCluster* cluster);
 
 Status CompactTablets(ExternalMiniCluster* cluster);
 
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
+
 }  // namespace yb

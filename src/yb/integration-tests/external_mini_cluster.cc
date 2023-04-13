@@ -2771,4 +2771,10 @@ Status CompactTablets(ExternalMiniCluster* cluster) {
   return Status::OK();
 }
 
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster *cluster, const TableId&, MonoDelta timeout) {
+  // TODO(jhe) - Check for just table_id, currently checking for all intents.
+  return CHECK_NOTNULL(cluster)->WaitForAllIntentsApplied(timeout);
+}
+
 }  // namespace yb

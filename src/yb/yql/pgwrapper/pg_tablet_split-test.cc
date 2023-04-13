@@ -50,6 +50,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(TEST_partitioning_version);
+DECLARE_bool(ysql_enable_packed_row);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -653,6 +654,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     // the row is being forwarded.
     ASSERT_OK(conn.Execute(Format("DELETE FROM $0 WHERE k > 0", table_name)));
     ASSERT_EQ(0, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
 
     // Keep current numbers of records persisted in tablets for further analyses.
     auto peers_info = GetTabletRecordsInfo(peers);
@@ -661,6 +663,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_OK(conn.Execute(Format(
         "INSERT INTO $0 VALUES($1, $1, $2)", table_name, idx1_i0, idx1_t0)));
     ASSERT_EQ(1, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
 
     // Validate insert operation is forwarded correctly (assuming NULL LAST approach is used):
     // - for partitioning_version > 0 all records should be persisted in the second tablet
@@ -673,6 +676,10 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     }
 
     ASSERT_EQ(diff.size(), 1);
+    const auto records_diff = std::get</* records diff */ 1>(diff.begin()->second);
+    const auto expected_records_diff =
+        ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_enable_packed_row) ? 1 : 2;
+    ASSERT_EQ(records_diff, expected_records_diff);
     bool is_correctly_forwarded =
         std::get</* key_bounds */ 0>(diff.begin()->second).IsWithinBounds(Slice(encoded_split_key));
     ASSERT_TRUE(is_correctly_forwarded) <<
