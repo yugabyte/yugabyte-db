@@ -19,7 +19,7 @@ You can install YugabyteDB Anywhere on the following Linux distributions:
 
 - CentOS (default)
 - Ubuntu 18 and 20, via Replicated
-- Other [operating systems supported by Replicated](https://www.replicated.com/docs/distributing-an-application/supported-operating-systems/).
+- Other [requirements for installation by Replicated](https://docs.replicated.com/enterprise/installing-general-requirements).
 
 ## Hardware requirements
 
@@ -36,7 +36,7 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 
 ### Kubernetes-based installations
 
-A Kubernetes node is expected to meet the following requirements: 
+A Kubernetes node is expected to meet the following requirements:
 
 - 5 cores (minimum) or 8 cores (recommended)
 
@@ -85,7 +85,6 @@ The YugabyteDB Anywhere Helm chart has been tested using the following software 
 - Kubernetes 1.22
 - Helm 3.10
 
-
 Before installing YugabyteDB Anywhere, verify that you have the following:
 
 - A Kubernetes cluster with nodes configured according to the [hardware requirements](#kubernetes-based-installations).
@@ -94,7 +93,7 @@ Before installing YugabyteDB Anywhere, verify that you have the following:
 
 In addition, ensure the following:
 
-- The host can pull container images from the [quay.io](https://quay.io/) container registry. If the host cannot do this, you need to prepare these images in your internal registry by following instructions provided in [Pull and push YugabyteDB Docker images to private container registry](../prepare-environment/kubernetes#pull-and-push-yugabytedb-docker-images-to-private-container-registry). 
+- The host can pull container images from the [quay.io](https://quay.io/) container registry. If the host cannot do this, you need to prepare these images in your internal registry by following instructions provided in [Pull and push YugabyteDB Docker images to private container registry](../prepare-environment/kubernetes#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 - Core dumps are enabled and configured on the underlying Kubernetes node. For details, see [Specify ulimit and remember the location of core dumps](../prepare-environment/kubernetes#specify-ulimit-and-remember-the-location-of-core-dumps).
 - You have the kube-state-metrics add-on version 1.9 in your Kubernetes cluster. For more information, see [Install kube-state-metrics](../prepare-environment/kubernetes#install-kube-state-metrics).
 - A load balancer controller is available in your Kubernetes cluster.
