@@ -53,7 +53,6 @@ class AddRegionList extends Component {
           storageClasses: '',
           namespace: '',
           kubeDomain: '',
-          zoneKubeConfig: formik.values.kubeConfig,
           zoneOverrides: '',
           zonePodAddressTemplate: '',
           issuerType: 'NONE'
@@ -138,7 +137,6 @@ class AddRegionList extends Component {
                 storageClasses: '',
                 namespace: '',
                 kubeDomain: '',
-                zoneKubeConfig: vals.kubeConfig,
                 zoneOverrides: '',
                 zonePodAddressTemplate: '',
                 issuerType: 'NONE'
@@ -156,13 +154,11 @@ class AddRegionList extends Component {
   };
 
   addZone = (arrayPush) => {
-    const { formik } = this.props;
     arrayPush({
       zoneLabel: '',
       storageClasses: '',
       namespace: '',
       kubeDomain: '',
-      zoneKubeConfig: formik.values.kubeConfig,
       zoneOverrides: '',
       zonePodAddressTemplate: '',
       issuerType: 'NONE'
@@ -179,10 +175,10 @@ class AddRegionList extends Component {
     const { regionIndex, showZoneForm } = this.state;
     const { regionList } = formik.values;
     const currentRegion = regionList[regionIndex];
-    const zoneIndex =
-      currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
-    const nonEditingZones =
-      currentRegion?.zoneList ? currentRegion.zoneList?.slice(0, zoneIndex) : [];
+    const zoneIndex = currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
+    const nonEditingZones = currentRegion?.zoneList
+      ? currentRegion.zoneList?.slice(0, zoneIndex)
+      : [];
     const regionOptions = REGION_METADATA.map((region) => ({
       value: region.code,
       label: region.name
