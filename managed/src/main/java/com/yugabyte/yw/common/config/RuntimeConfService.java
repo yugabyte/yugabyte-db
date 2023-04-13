@@ -10,6 +10,8 @@
 
 package com.yugabyte.yw.common.config;
 
+import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
+
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
@@ -59,11 +61,14 @@ public class RuntimeConfService extends AuthenticatedController {
 
   private final Map<String, ConfKeyInfo<?>> keyMetaData;
 
+  private final Config staticConfig;
+
   @Inject
   public RuntimeConfService(
       SettableRuntimeConfigFactory settableRuntimeConfigFactory,
       RuntimeConfigPreChangeNotifier preChangeNotifier,
       RuntimeConfigChangeNotifier changeNotifier,
+      Config config,
       Map<String, ConfKeyInfo<?>> keyMetaData) {
     this.settableRuntimeConfigFactory = settableRuntimeConfigFactory;
     this.mutableObjects =
@@ -74,6 +79,7 @@ public class RuntimeConfService extends AuthenticatedController {
     this.preChangeNotifier = preChangeNotifier;
     this.changeNotifier = changeNotifier;
     this.keyMetaData = keyMetaData;
+    this.staticConfig = config;
     this.mutableKeys = buildMutableKeysSet();
   }
 
@@ -142,12 +148,21 @@ public class RuntimeConfService extends AuthenticatedController {
 
   public String getKeyOrBadRequest(
       UUID customerUUID, UUID scopeUUID, String path, boolean isSuperAdmin) {
-    return maybeGetKey(customerUUID, scopeUUID, path, isSuperAdmin)
-        .orElseThrow(
-            () ->
-                new PlatformServiceException(
-                    NOT_FOUND,
-                    String.format("Key %s is not defined in scope %s", path, scopeUUID)));
+    Optional<String> value = maybeGetKey(customerUUID, scopeUUID, path, isSuperAdmin);
+    if (value.isPresent()) return value.get();
+    else {
+      // return default value if DB doesn't have value defined
+      if (isValidScope(path, scopeUUID)) return staticConfig.getString(path);
+      else {
+        throw new PlatformServiceException(
+            NOT_FOUND, String.format("Key %s is not defined in scope %s", path, scopeUUID));
+      }
+    }
+  }
+
+  private boolean isValidScope(String path, UUID scopeUUID) {
+    ScopeType scope = keyMetaData.get(path).getScope();
+    return scope.isValid(scopeUUID);
   }
 
   public String getKeyIfPresent(
