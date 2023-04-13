@@ -25,7 +25,8 @@ public class RedactingService {
           "$..ycqlNewPassword",
           "$..ysqlNewPassword",
           "$..ycqlCurrentPassword",
-          "$..ysqlCurrentPassword");
+          "$..ysqlCurrentPassword",
+          "$..sshPrivateKeyContent");
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
 
@@ -42,5 +43,12 @@ public class RedactingService {
     DocumentContext context = JsonPath.parse(input.deepCopy(), JSONPATH_CONFIG);
     SECRET_JSON_PATHS.forEach(path -> context.set(path, SECRET_REPLACEMENT));
     return context.json();
+  }
+
+  public static String redactString(String input) {
+    String length = ((Integer) input.length()).toString();
+    String regex = "(.)" + "{" + length + "}";
+    String output = input.replaceAll(regex, SECRET_REPLACEMENT);
+    return output;
   }
 }

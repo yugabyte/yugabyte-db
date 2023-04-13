@@ -56,10 +56,46 @@ public abstract class DevopsBase {
     return parseShellResponse(response, command);
   }
 
+  protected JsonNode execAndParseCommandCloud(
+      UUID providerUUID,
+      String command,
+      List<String> commandArgs,
+      Map<String, String> sensitiveData) {
+    ShellResponse response =
+        execCommand(
+            null,
+            providerUUID,
+            null,
+            command,
+            commandArgs,
+            Collections.emptyList(),
+            null,
+            sensitiveData);
+    return parseShellResponse(response, command);
+  }
+
   protected JsonNode execAndParseCommandRegion(
       UUID regionUUID, String command, List<String> commandArgs) {
     ShellResponse response =
         execCommand(regionUUID, null, null, command, commandArgs, Collections.emptyList());
+    return parseShellResponse(response, command);
+  }
+
+  protected JsonNode execAndParseCommandRegion(
+      UUID regionUUID,
+      String command,
+      List<String> commandArgs,
+      Map<String, String> sensitiveData) {
+    ShellResponse response =
+        execCommand(
+            regionUUID,
+            null,
+            null,
+            command,
+            commandArgs,
+            Collections.emptyList(),
+            null,
+            sensitiveData);
     return parseShellResponse(response, command);
   }
 
@@ -80,7 +116,8 @@ public abstract class DevopsBase {
       String command,
       List<String> commandArgs,
       List<String> cloudArgs) {
-    return execCommand(regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, null);
+    return execCommand(
+        regionUUID, providerUUID, cloudType, command, commandArgs, cloudArgs, null, null);
   }
 
   protected ShellResponse execCommand(
@@ -90,7 +127,8 @@ public abstract class DevopsBase {
       String command,
       List<String> commandArgs,
       List<String> cloudArgs,
-      Map<String, String> envVars) {
+      Map<String, String> envVars,
+      Map<String, String> sensitiveData) {
     List<String> commandList = new ArrayList<>();
     commandList.add(YBCLOUD_SCRIPT);
     Map<String, String> extraVars = new HashMap<>();
@@ -128,6 +166,8 @@ public abstract class DevopsBase {
     commandList.add(getCommandType().toLowerCase());
     commandList.add(command);
     commandList.addAll(commandArgs);
-    return shellProcessHandler.run(commandList, extraVars, description);
+    return (sensitiveData != null && !sensitiveData.isEmpty())
+        ? shellProcessHandler.run(commandList, extraVars, description, sensitiveData)
+        : shellProcessHandler.run(commandList, extraVars, description);
   }
 }

@@ -13,12 +13,16 @@ package com.yugabyte.yw.common;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.yugabyte.yw.common.password.RedactingService;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
+import play.libs.Json;
 
 @Singleton
 public class ShellProcessHandler {
@@ -66,7 +71,7 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description) {
-    return run(command, extraEnvVars, logCmdOutput, description, null);
+    return run(command, extraEnvVars, logCmdOutput, description, null, null);
   }
 
   public ShellResponse run(
@@ -74,7 +79,28 @@ public class ShellProcessHandler {
       Map<String, String> extraEnvVars,
       boolean logCmdOutput,
       String description,
-      UUID uuid) {
+      UUID uuid,
+      Map<String, String> sensitiveData) {
+    List<String> redactedCommand = new ArrayList<>(command);
+
+    // Redacting the sensitive data in the command which is used for logging.
+    if (sensitiveData != null) {
+      sensitiveData.forEach(
+          (key, value) -> {
+            redactedCommand.add(key);
+            command.add(key);
+            command.add(value);
+
+            try {
+              JsonNode valueJson = Json.mapper().readTree(value);
+              redactedCommand.add(RedactingService.filterSecretFields(valueJson).toString());
+
+            } catch (IOException e) {
+              redactedCommand.add(RedactingService.redactString(value));
+            }
+          });
+    }
+
     ProcessBuilder pb = new ProcessBuilder(command);
     Map envVars = pb.environment();
     if (extraEnvVars != null && !extraEnvVars.isEmpty()) {
@@ -228,7 +254,15 @@ public class ShellProcessHandler {
   }
 
   public ShellResponse run(List<String> command, Map<String, String> extraEnvVars, UUID uuid) {
-    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid);
+    return run(command, extraEnvVars, true /*logCommandOutput*/, null, uuid, null);
+  }
+
+  public ShellResponse run(
+      List<String> command,
+      Map<String, String> extraEnvVars,
+      String description,
+      Map<String, String> sensitiveData) {
+    return run(command, extraEnvVars, true /*logCommandOutput*/, description, null, sensitiveData);
   }
 
   public ShellResponse run(

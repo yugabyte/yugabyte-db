@@ -13,10 +13,11 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.CloudTaskBase;
-import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.NetworkManager;
 import javax.inject.Inject;
 import play.api.Play;
+import play.libs.Json;
 
 public class CloudSetup extends CloudTaskBase {
   @Inject
@@ -24,13 +25,9 @@ public class CloudSetup extends CloudTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends CloudTaskParams {
-    public String customPayload;
-  }
-
   @Override
-  protected Params taskParams() {
-    return (Params) taskParams;
+  protected CloudBootstrap.Params taskParams() {
+    return (CloudBootstrap.Params) taskParams;
   }
 
   @Override
@@ -39,7 +36,8 @@ public class CloudSetup extends CloudTaskBase {
     // TODO(bogdan): we do not actually do anything with this response, so can NOOP if not
     // creating any elements?
     JsonNode response =
-        networkManager.bootstrap(null, taskParams().providerUUID, taskParams().customPayload);
+        networkManager.bootstrap(
+            null, taskParams().providerUUID, Json.stringify(Json.toJson(taskParams())));
     if (response.has("error")) {
       throw new RuntimeException(response.get("error").asText());
     }

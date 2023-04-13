@@ -1015,7 +1015,8 @@ public class NodeManager extends DevopsBase {
         type.toString().toLowerCase(),
         commandArgs,
         cloudArgs,
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        null);
   }
 
   public ShellResponse nodeCommand(NodeCommandType type, NodeTaskParams nodeTaskParam) {
@@ -1414,7 +1415,8 @@ public class NodeManager extends DevopsBase {
           type.toString().toLowerCase(),
           commandArgs,
           getCloudArgs(nodeTaskParam),
-          getAnsibleEnvVars(nodeTaskParam.universeUUID));
+          getAnsibleEnvVars(nodeTaskParam.universeUUID),
+          null);
     } finally {
       if (bootScriptFile != null) {
         try {
