@@ -619,6 +619,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "installation",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> allowUsedProviderEdit =
+      new ConfKeyInfo<>(
+          "yb.provider.allow_used_provider_edit",
+          ScopeType.GLOBAL,
+          "Allow editing of used providers",
+          "Provider associated with universes can be edited",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<String> ybdbReleasePathRegex =
       new ConfKeyInfo<>(
           "yb.regex.release_pattern.ybdb",
