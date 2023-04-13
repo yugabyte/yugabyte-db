@@ -35,7 +35,7 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
         key -> {
           switch (key) {
             case DEFINITION_NAME:
-              return configuration.getName();
+              return escapeDoubleQuotes(configuration.getName());
             case DEFINITION_EXPR:
               return definition.getQueryWithThreshold(configuration.getThresholds().get(severity));
             case DURATION:
@@ -44,7 +44,13 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
               return definition
                   .getEffectiveLabels(configuration, templateSettings, severity)
                   .stream()
-                  .map(label -> LABEL_PREFIX + label.getName() + ": " + label.getValue())
+                  .map(
+                      label ->
+                          LABEL_PREFIX
+                              + label.getName()
+                              + ": \""
+                              + escapeDoubleQuotes(label.getValue())
+                              + "\"")
                   .collect(Collectors.joining("\n"));
             case SUMMARY_TEMPLATE:
               AlertConfigurationLabelProvider labelProvider =
@@ -58,6 +64,10 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
                   "Unexpected placeholder " + key + " in rule template file");
           }
         });
+  }
+
+  private static String escapeDoubleQuotes(String string) {
+    return string.replaceAll("\"", "\\\\\"");
   }
 
   @RequiredArgsConstructor
