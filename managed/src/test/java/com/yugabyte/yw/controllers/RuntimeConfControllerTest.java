@@ -17,6 +17,7 @@ import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_CON
 import static com.yugabyte.yw.models.helpers.ExternalScriptHelper.EXT_SCRIPT_PARAMS_CONF_PATH;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -176,9 +177,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   public void key() {
-    assertEquals(
-        NOT_FOUND,
-        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
+    String defaultInterval = "1 hour";
+    Result res = getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY);
+    assertEquals(OK, res.status());
+    assertEquals(defaultInterval, contentAsString(res));
+
     String newInterval = "2 days";
     assertEquals(OK, setGCInterval(newInterval, GLOBAL_SCOPE_UUID).status());
     RuntimeConfigFactory runtimeConfigFactory =
@@ -188,8 +191,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     assertEquals(newInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
     assertEquals(OK, deleteKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY).status());
     assertEquals(
-        NOT_FOUND,
-        assertPlatformException(() -> getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)).status());
+        defaultInterval, contentAsString(getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY)));
   }
 
   private Result setGCInterval(String interval, UUID scopeUUID) {
@@ -198,11 +200,11 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
 
   @Test
   public void keyObj() {
-    assertEquals(
-        NOT_FOUND,
-        assertPlatformException(
-                () -> getKey(defaultUniverse.getUniverseUUID(), GC_CHECK_INTERVAL_KEY))
-            .status());
+    String defaultInterval = "1 hour";
+    Result res = getKey(GLOBAL_SCOPE_UUID, GC_CHECK_INTERVAL_KEY);
+    assertEquals(OK, res.status());
+    assertEquals(defaultInterval, contentAsString(res));
+
     String newInterval = "2 days";
     String newRetention = "32 days";
     assertEquals(
@@ -248,11 +250,10 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
         OK,
         deleteKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY).status());
 
-    assertEquals(
-        "The object was deleted. So expecting NOT_FOUND status",
-        NOT_FOUND,
-        assertPlatformException(() -> getKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY))
-            .status());
+    // Expect NullPointerException since default value in reference.conf is null
+    assertThrows(
+        NullPointerException.class,
+        () -> getKey(defaultUniverse.getUniverseUUID(), EXT_SCRIPT_KEY));
   }
 
   private Result setExtScriptObject(String schedule, String content, UUID scopeUUID) {
