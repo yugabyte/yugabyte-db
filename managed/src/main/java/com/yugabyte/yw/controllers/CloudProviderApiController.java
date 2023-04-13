@@ -121,9 +121,11 @@ public class CloudProviderApiController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
-    if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
-      // Relaxing the edit provider call for used provider for YBM specific
-      // use case, as they already rely on edit provider flow.
+    if (!runtimeConfigFactory
+        .globalRuntimeConf()
+        .getBoolean("yb.provider.allow_used_provider_edit")) {
+      // Relaxing the edit provider call for used provider based on runtime flag
+      // If disabled we will not allow editing of used providers.
       long universeCount = provider.getUniverseCount();
       if (universeCount > 0) {
         throw new PlatformServiceException(
