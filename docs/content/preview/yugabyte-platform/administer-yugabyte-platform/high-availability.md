@@ -93,7 +93,7 @@ After the active instance has been configured, you can configure one or more sta
 
 1. Click **Add Instance**, enter the new standby instance's IP address or hostname, including the HTTP or HTTPS protocol prefix and port if you are not using the default of 80 or 443.
 
-1. If the standby is using the HTTPS protocol, click **Manage Peer Certificates**, click **Add Certificate**, paste the root certificate of the **standby** instance in the field, then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
+1. If the standby is using the HTTPS protocol, click **Manage Peer Certificates**, click **Add Certificate**, paste the root certificate of the **standby** instance in the field, and then click **Confirm**. This adds the certificate to the YugabyteDB Anywhere trust store.
 
 1. Click **Continue** on the **Add Standby Instance** dialog.
 
