@@ -605,7 +605,7 @@ std::vector<std::shared_ptr<tablet::TabletPeer>> MiniCluster::GetTabletPeers(siz
   return GetTabletManager(idx)->GetTabletPeers();
 }
 
-Status MiniCluster::WaitForReplicaCount(const string& tablet_id,
+Status MiniCluster::WaitForReplicaCount(const TableId& tablet_id,
                                         int expected_count,
                                         TabletLocationsPB* locations) {
   Stopwatch sw;
@@ -1169,6 +1169,7 @@ size_t CountIntents(MiniCluster* cluster, const TabletPeerFilter& filter) {
     if (filter && !filter(peer)) {
       continue;
     }
+    // TEST_CountIntent return non ok status also means shutdown has started.
     auto intents_count_result = participant->TEST_CountIntents();
     if (intents_count_result.ok() && intents_count_result->first) {
       result += intents_count_result->first;
@@ -1367,6 +1368,15 @@ Status WaitForPeersAreFullyCompacted(
       "Failed to wait for peers [" << CollectionToString(ids) << "] are fully compacted.";
   }
   return s;
+}
+
+Status WaitForTableIntentsApplied(
+    MiniCluster* cluster, const TableId& table_id, MonoDelta timeout) {
+  return WaitFor([cluster, &table_id]() {
+    return 0 == CountIntents(cluster, [&table_id](const tablet::TabletPeerPtr &peer) {
+      return IsActive(*peer) && IsForTable(*peer, table_id);
+    });
+  }, timeout, "Did not apply write transactions from intents db in time.");
 }
 
 void ActivateCompactionTimeLogging(MiniCluster* cluster) {

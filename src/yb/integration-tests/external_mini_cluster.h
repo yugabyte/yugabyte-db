@@ -978,4 +978,8 @@ void StartSecure(
   std::unique_ptr<rpc::Messenger>* messenger,
   const std::vector<std::string>& master_flags = std::vector<std::string>());
 
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
+
 }  // namespace yb
