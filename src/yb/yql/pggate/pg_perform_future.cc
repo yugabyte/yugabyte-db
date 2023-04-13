@@ -88,9 +88,7 @@ Result<PerformFuture::Data> PerformFuture::Get(MonoDelta* wait_time) {
   }
 
   auto start_time = CoarseMonoClock::Now();
-  RETURN_NOT_OK(this->session_->StartQueryEvent("RPC GET"));
   auto response = Get();
-  RETURN_NOT_OK(this->session_->StopQueryEvent("RPC GET"));
   *wait_time += CoarseMonoClock::Now() - start_time;
   return response;
 }

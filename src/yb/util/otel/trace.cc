@@ -56,8 +56,6 @@
 
 namespace context        = opentelemetry::context;
 namespace detail         = opentelemetry::trace::propagation::detail;
-namespace trace_api      = opentelemetry::trace;
-namespace nostd          = opentelemetry::nostd;
 namespace trace_sdk      = opentelemetry::sdk::trace;
 namespace trace_exporter = opentelemetry::exporter::trace;
 namespace otlp_exporter  = opentelemetry::exporter::otlp;
@@ -143,8 +141,8 @@ opentelemetry::trace::SpanId SpanIdFromHex(nostd::string_view span_id)
   return opentelemetry::trace::SpanId(buf);
 }
 
-nostd::shared_ptr<opentelemetry::trace::Span> GetParentSpan(
-    const std::string& trace_id, const std::string& span_id) {
+nostd::shared_ptr<trace_api::Span> CreateSpanWithParent(
+    const std::string& trace_id, const std::string& span_id, const std::string& span_name) {
 
   // Create a SpanOptions object and set the kind to Server to inform OpenTel.
   trace_api::StartSpanOptions options;
@@ -161,11 +159,11 @@ nostd::shared_ptr<opentelemetry::trace::Span> GetParentSpan(
 
   options.parent   = trace_api::GetSpan(new_context)->GetContext();
 
-  std::string span_name = "GreeterService/Greet";
-  auto span             = get_tracer("grpc")->StartSpan(span_name,
-                                            {},
-                                            options);
-  return span;
+  return get_tracer(kTserverServiceName)
+      ->StartSpan(
+          span_name,
+          {},
+          options);
 }
 
 void CleanupTracer() {

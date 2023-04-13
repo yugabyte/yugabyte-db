@@ -880,21 +880,32 @@ Status PgClientSession::FinishTransaction(
 
 struct RpcPerformQuery : public PerformData {
   rpc::RpcContext context;
+  nostd::shared_ptr<trace_api::Span> span;
 
   RpcPerformQuery(
       uint64_t session_id_, PgTableCache* table_cache_, PgPerformRequestPB* req,
-      PgPerformResponsePB* resp, rpc::RpcContext* context_)
+      PgPerformResponsePB* resp, rpc::RpcContext* context_, nostd::shared_ptr<trace_api::Span> span_)
       : PerformData(session_id_, table_cache_, req, resp, &context_->sidecars()),
-        context(std::move(*context_)) {}
+        context(std::move(*context_)), span(span_) {}
 
   void SendResponse() override {
     context.RespondSuccess();
+    if (span)
+      span->End();
   }
 };
 
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-  auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache_, req, resp, context);
+  auto& options = *req->mutable_options();
+  nostd::shared_ptr<trace_api::Span> span;
+  if (options.has_trace_context()) {
+    span = CreateSpanWithParent(
+        options.trace_context().trace_id(),
+        options.trace_context().span_id(),
+        "PerformRequest");
+  }
+  auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache_, req, resp, context, span);
   auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context);
   if (!status.ok()) {
     *context = std::move(data->context);
@@ -932,13 +943,6 @@ Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
 
   if (context) {
     if (options.trace_requested()) {
-      if (options.has_trace_context()) {
-        LOG_WITH_PREFIX_AND_FUNC(INFO)
-            << options.trace_context().trace_id() << ":" << options.trace_context().span_id();
-        auto span =
-            GetParentSpan(options.trace_context().trace_id(), options.trace_context().span_id());
-        span->End();
-      }
       context->EnsureTraceCreated();
       if (transaction) {
         transaction->EnsureTraceCreated();
