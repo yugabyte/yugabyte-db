@@ -28,6 +28,7 @@ namespace master {
 class Master;
 class CatalogManager;
 class FlushManager;
+class YsqlBackendsManager;
 class PermissionsManager;
 class EncryptionManager;
 
@@ -97,6 +98,7 @@ class MasterServiceBase {
 
   CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
+  YsqlBackendsManager* handler(YsqlBackendsManager*);
   PermissionsManager* handler(PermissionsManager*);
   EncryptionManager* handler(EncryptionManager*);
 

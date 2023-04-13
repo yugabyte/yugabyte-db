@@ -379,6 +379,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
 #endif
 
+#if !defined(NDEBUG) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) test_name
+#endif
+
 // Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.
 #define YB_SKIP_TEST_IN_TSAN() \
   do { \

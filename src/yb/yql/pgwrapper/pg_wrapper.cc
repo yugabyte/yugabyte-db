@@ -156,9 +156,8 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_hash_batch_in, kLocalVolatile, false
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_bypass_cond_recheck, kLocalVolatile, false, true,
     "Bypass index condition recheck at the YSQL layer if the condition was pushed down.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 1000,
-    "Delay in milliseconds between stages of online index build. Set high to give online "
-    "transactions more time to complete.");
+DEFINE_RUNTIME_PG_FLAG(int32, yb_index_state_flags_update_delay, 0,
+    "Delay in milliseconds between stages of online index build. For testing purposes.");
 
 DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
     "Batch size of nested loop joins.");
@@ -174,6 +173,12 @@ DEFINE_RUNTIME_PG_FLAG(string, yb_test_block_index_phase, "",
 DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_sequence_pushdown, kLocalVolatile, false, true,
     "Allow nextval() to fetch the value range and advance the sequence value "
     "in a single operation");
+
+DEFINE_RUNTIME_PG_FLAG(bool, yb_disable_wait_for_backends_catalog_version, false,
+    "Disable waiting for backends to have up-to-date pg_catalog. This could cause correctness"
+    " issues, which could be mitigated by setting high ysql_yb_index_state_flags_update_delay."
+    " Although it is runtime-settable, the effects won't take place for any in-progress"
+    " queries.");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {

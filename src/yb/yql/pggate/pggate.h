@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -381,6 +382,8 @@ class PgApiImpl {
   Status ExecPostponedDdlStmt(PgStatement *handle);
 
   Status ExecDropTable(PgStatement *handle);
+
+  Result<int> WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version);
 
   Status BackfillIndex(const PgObjectId& table_id);
 

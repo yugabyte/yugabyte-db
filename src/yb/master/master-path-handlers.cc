@@ -94,6 +94,9 @@ DEFINE_RUNTIME_bool(master_webserver_require_https, false,
 DEFINE_RUNTIME_uint64(master_maximum_heartbeats_without_lease, 10,
     "After this number of heartbeats without a valid lease for a tablet, treat it as leaderless.");
 
+DEFINE_test_flag(bool, master_ui_redirect_to_leader, true,
+                 "Redirect master UI requests to the master leader");
+
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 DECLARE_string(webserver_ca_certificate_file);
@@ -236,7 +239,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
     // If we are not the master leader, redirect the URL.
-    if (!l.IsInitializedAndIsLeader()) {
+    if (!l.IsInitializedAndIsLeader() && PREDICT_TRUE(FLAGS_TEST_master_ui_redirect_to_leader)) {
       RedirectToLeader(req, resp);
       return;
     }

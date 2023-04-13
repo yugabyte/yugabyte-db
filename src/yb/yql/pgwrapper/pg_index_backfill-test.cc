@@ -30,6 +30,7 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
@@ -126,6 +127,8 @@ class PgIndexBackfillTest : public LibPqTestBase {
   void TestSimpleBackfill(const std::string& table_create_suffix = "");
   void TestLargeBackfill(const int num_rows);
   void TestRetainDeleteMarkers(const std::string& db_name);
+  Status TestInsertsWhileCreatingIndex(bool expect_missing_row);
+
   const int kTabletsPerServer = 8;
 
   std::unique_ptr<PGConn> conn_;
@@ -513,6 +516,118 @@ TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(Large)) {
   auto expected_calls = cluster_->num_tablet_servers() * kTabletsPerServer;
   auto actual_calls = ASSERT_RESULT(TotalBackfillRpcCalls(cluster_.get()));
   ASSERT_GE(actual_calls, expected_calls);
+}
+
+// Cousin of TestIndexBackfill#insertsWhileCreatingIndex java test.
+Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_row) {
+  TestThreadHolder thread_holder;
+  const std::string kTableName = "fasttab";
+
+  RETURN_NOT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int)", kTableName));
+
+  constexpr int kNumThreads = 4;
+  std::array<int, kNumThreads> counts;
+  counts.fill(0);
+  CountDownLatch latch(kNumThreads);
+  // TODO(jason): no longer expect schema version mismatch errors after closing issue #3979.
+  const std::vector<std::string> allowed_msgs{
+    "expired or aborted by a conflict",
+    "Resource unavailable",
+    "schema version mismatch",
+    "Transaction aborted",
+    "Transaction was recently aborted",
+  };
+  for (int thread_idx = 0; thread_idx < kNumThreads; thread_idx++) {
+    thread_holder.AddThreadFunctor([this, thread_idx, kTableName, &latch, &counts, &allowed_msgs,
+                                    &stop = thread_holder.stop_flag()] {
+          LOG(INFO) << "Begin writer thread " << thread_idx;
+          auto conn = ASSERT_RESULT(Connect());
+          latch.CountDown();
+          while (!stop.load(std::memory_order_acquire)) {
+            const int i = counts[thread_idx] * kNumThreads + thread_idx;
+            Status s = conn.ExecuteFormat("INSERT INTO $0 VALUES ($1)", kTableName, i);
+            if (s.ok()) {
+              counts[thread_idx]++;
+            } else {
+              // Ignore transient errors that likely occur when changing index permissions.
+              ASSERT_TRUE(s.IsNetworkError()) << s;
+              std::string msg = s.message().ToBuffer();
+              ASSERT_TRUE(std::find_if(
+                  std::begin(allowed_msgs),
+                  std::end(allowed_msgs),
+                  [&msg] (const std::string allowed_msg) {
+                    return msg.find(allowed_msg) != std::string::npos;
+                  }) != std::end(allowed_msgs))
+                << s;
+              LOG(INFO) << "transient error on i=" << i << ", msg: " << msg;
+            }
+          }
+        });
+  }
+
+  latch.Wait();
+  RETURN_NOT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (i ASC)", kTableName));
+  thread_holder.Stop();
+
+  LOG(INFO) << "Check counts";
+  const auto table_count = VERIFY_RESULT(conn_->FetchValue<PGUint64>(
+      Format("SELECT count(*) FROM $0", kTableName)));
+  const auto index_count = VERIFY_RESULT(conn_->FetchValue<PGUint64>(
+      Format("WITH w AS (SELECT * FROM $0 ORDER BY i) SELECT count(*) FROM w", kTableName)));
+
+  LOG(INFO) << "Table has " << table_count << " rows";
+  LOG(INFO) << "Index has " << index_count << " rows";
+  if (expect_missing_row) {
+    SCHECK_NE(table_count, index_count, IllegalState, "row count should mismatch");
+  } else {
+    SCHECK_EQ(table_count, index_count, IllegalState, "row count should match");
+  }
+
+  LOG(INFO) << "Check individual elements";
+  bool found_missing_row = false;
+  for (int thread_idx = 0; thread_idx < kNumThreads; thread_idx++) {
+    for (int n = 0; n < counts[thread_idx]; n++) {
+      int i = n * kNumThreads + thread_idx;
+      // Point index scan.
+      auto res = VERIFY_RESULT(conn_->FetchFormat("SELECT * FROM $0 WHERE i = $1", kTableName, i));
+      if (PQntuples(res.get()) == 1) {
+        SCHECK_EQ(1, PQnfields(res.get()), IllegalState, "returned wrong number of columns");
+        SCHECK_EQ(
+            i,
+            VERIFY_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+            IllegalState,
+            "found corruption");
+      } else {
+        // Prefer LOG(ERROR) over ADD_FAILURE() since it fits in one line so is easier to read.
+        LOG(ERROR) << "Index is missing element " << i;
+        found_missing_row = true;
+      }
+    }
+  }
+  if (expect_missing_row && !found_missing_row) {
+    return STATUS(IllegalState, "index should be missing a row");
+  }
+  return Status::OK();
+}
+
+TEST_F(PgIndexBackfillTest, YB_DISABLE_TEST_IN_TSAN(InsertsWhileCreatingIndex)) {
+  ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */));
+}
+
+class PgIndexBackfillTestDisableWait : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_disable_wait_for_backends_catalog_version=true");
+  }
+};
+
+TEST_F_EX(
+    PgIndexBackfillTest,
+    YB_DISABLE_TEST_IN_TSAN(InsertsWhileCreatingIndexDisableWait),
+    PgIndexBackfillTestDisableWait) {
+  ASSERT_OK(TestInsertsWhileCreatingIndex(true /* expect_missing_row */));
 }
 
 class PgIndexBackfillTestChunking : public PgIndexBackfillTest {
