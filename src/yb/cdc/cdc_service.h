@@ -233,14 +233,15 @@ class CDCServiceImpl : public CDCServiceIf {
       bool ignore_cache = false);
 
   Result<OpId> GetLastCheckpoint(
-      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
+      const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session,
+      const CDCRequestSource& request_source);
 
   Result<uint64_t> GetSafeTime(
       const ProducerTabletInfo& producer_tablet, const client::YBSessionPtr& session);
 
   Result<CDCSDKCheckpointPB> GetLastCDCSDKCheckpoint(
       const CDCStreamId& stream_id, const TabletId& tablet_id, const client::YBSessionPtr& session,
-      const TableId& colocated_table_id = "");
+      const CDCRequestSource& request_source, const TableId& colocated_table_id = "");
 
   Result<std::vector<std::pair<std::string, std::string>>> GetDBStreamInfo(
       const std::string& db_stream_id, const client::YBSessionPtr& session);
