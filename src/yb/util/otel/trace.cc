@@ -113,10 +113,11 @@ void InitPgTracer(int pid) {
   InitTracer(kPgServiceName, resource);
 }
 
-void InitTserverTracer(const std::string& host_name) {
-  auto resource = opentelemetry::sdk::resource::Resource::Create(
-      {{opentelemetry::sdk::resource::SemanticConventions::kServiceName, kTserverServiceName},
-       {opentelemetry::trace::SemanticConventions::kNetHostName, host_name}});
+void InitTserverTracer(const std::string& host_name, const std::string& uuid) {
+  auto resource = opentelemetry::sdk::resource::Resource::Create({
+      {opentelemetry::sdk::resource::SemanticConventions::kServiceName, kTserverServiceName},
+      {opentelemetry::trace::SemanticConventions::kNetHostName, host_name},
+      {opentelemetry::sdk::resource::SemanticConventions::kServiceInstanceId, uuid}});
 
   InitTracer(kTserverServiceName, resource);
 }
@@ -141,14 +142,9 @@ opentelemetry::trace::SpanId SpanIdFromHex(nostd::string_view span_id)
   return opentelemetry::trace::SpanId(buf);
 }
 
-nostd::shared_ptr<trace_api::Span> CreateSpanWithParent(
+nostd::shared_ptr<trace_api::Span> CreateSpanFromParentId(
     const std::string& trace_id, const std::string& span_id, const std::string& span_name) {
-
-  // Create a SpanOptions object and set the kind to Server to inform OpenTel.
-  trace_api::StartSpanOptions options;
-  options.kind = trace_api::SpanKind::kServer;
-
-  auto current_ctx = context::RuntimeContext::GetCurrent();
+  auto current_ctx = context::Context();
 
   auto span_context = trace_api::SpanContext(
       TraceIdFromHex(trace_id), SpanIdFromHex(span_id), trace_api::TraceFlags(), true,
@@ -157,13 +153,22 @@ nostd::shared_ptr<trace_api::Span> CreateSpanWithParent(
   nostd::shared_ptr<trace_api::Span> sp{new trace_api::DefaultSpan(span_context)};
   auto new_context = trace_api::SetSpan(current_ctx, sp);
 
-  options.parent   = trace_api::GetSpan(new_context)->GetContext();
-
+  // Create a SpanOptions object and set the kind to Server to inform OTel.
+  trace_api::StartSpanOptions options;
+  options.kind = trace_api::SpanKind::kServer;
+  options.parent = trace_api::GetSpan(new_context)->GetContext();
   return get_tracer(kTserverServiceName)
       ->StartSpan(
           span_name,
           {},
           options);
+}
+
+nostd::shared_ptr<trace_api::Span> CreateSpan(const std::string& span_name) {
+  return get_tracer(kTserverServiceName)
+      ->StartSpan(
+          span_name,
+          {});
 }
 
 void CleanupTracer() {

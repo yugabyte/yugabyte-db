@@ -898,12 +898,11 @@ struct RpcPerformQuery : public PerformData {
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
   auto& options = *req->mutable_options();
-  nostd::shared_ptr<trace_api::Span> span;
+  nostd::shared_ptr<trace_api::Span> span(new trace_api::DefaultSpan(trace_api::SpanContext::GetInvalid()));
   if (options.has_trace_context()) {
-    span = CreateSpanWithParent(
-        options.trace_context().trace_id(),
-        options.trace_context().span_id(),
-        "PerformRequest");
+    span = CreateSpanFromParentId(
+        options.trace_context().trace_id(), options.trace_context().span_id(), "PerformRequest");
+    LOG_WITH_PREFIX_AND_FUNC(INFO) << "Created a span from a parent";
   }
   auto data = std::make_shared<RpcPerformQuery>(id_, &table_cache_, req, resp, context, span);
   auto status = DoPerform(data, data->context.GetClientDeadline(), &data->context);

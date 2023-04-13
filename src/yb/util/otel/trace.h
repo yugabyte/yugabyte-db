@@ -48,12 +48,13 @@ static const size_t kTraceIdSize             = 32;
 static const size_t kSpanIdSize              = 16;
 
 void InitPgTracer(int pid);
-void InitTserverTracer(const std::string& host_name);
+void InitTserverTracer(const std::string& host_name, const std::string& uuid);
 
 void CleanupTracer();
 
 nostd::shared_ptr<trace_api::Tracer> get_tracer(std::string tracer_name);
-nostd::shared_ptr<trace_api::Span> CreateSpanWithParent(
-    const std::string& trace_id, const std::string& span_id, const std::string& span_name);
+nostd::shared_ptr<trace_api::Span> CreateSpanFromParentId(
+    const std::string& trace_id, const std::string& span_id, const std::string& span);
+nostd::shared_ptr<trace_api::Span> CreateSpan(const std::string& span_name);
 
 } //namespace
