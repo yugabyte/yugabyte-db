@@ -222,6 +222,10 @@ bool YBCStatusIsSnapshotTooOld(YBCStatus s) {
   return FetchErrorCode(s) == YBPgErrorCode::YB_PG_SNAPSHOT_TOO_OLD;
 }
 
+bool YBCStatusIsTryAgain(YBCStatus s) {
+  return StatusWrapper(s)->IsTryAgain();
+}
+
 uint32_t YBCStatusPgsqlError(YBCStatus s) {
   return to_underlying(FetchErrorCode(s));
 }

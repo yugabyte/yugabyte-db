@@ -39,6 +39,7 @@
 #include "yb/master/master.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/tablet_split_manager.h"
+#include "yb/master/ysql_backends_manager.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -287,6 +288,9 @@ void CatalogManagerBgTasks::Run() {
       // Run background tasks related to XCluster & CDC Schema.
       WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
 
+      // Abort inactive YSQL BackendsCatalogVersionJob jobs.
+      catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
+
       was_leader_ = true;
     } else {
       // leader_status is not ok.
@@ -294,6 +298,7 @@ void CatalogManagerBgTasks::Run() {
         LOG(INFO) << "Begin one-time cleanup on losing leadership";
         catalog_manager_->ResetMetrics();
         catalog_manager_->ResetTasksTrackers();
+        catalog_manager_->master_->ysql_backends_manager()->AbortAllJobs();
         was_leader_ = false;
       }
     }
