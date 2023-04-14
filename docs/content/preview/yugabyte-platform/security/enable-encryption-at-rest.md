@@ -18,7 +18,7 @@ Data at rest in a YugabyteDB universe should be protected from unauthorized user
 - [Enable encryption at rest during universe creation](#enable-encryption-at-rest-during-universe-creation)
 - [Enable encryption at rest on an existing universe](#enable-encryption-at-rest-on-an-existing-universe)
 - [Back up and restore data from an encrypted at rest universe](#back-up-and-restore-data-from-an-encrypted-at-rest-universe)
-- [Rotate the master key used for encryption at rest](#rotate-the-master-key-used-for-encryption-at-rest)
+- [Rotate the master keys used for encryption at rest](#rotate-the-master-keys-used-for-encryption-at-rest)
 - [Rotate the universe keys used for encryption at rest](#rotate-the-universe-keys-used-for-encryption-at-rest)
 - [Disable encryption at rest](#disable-encryption-at-rest)
 
@@ -85,18 +85,27 @@ When you back up and restore universe data with encryption at rest enabled, Yuga
 
 ## Rotate the master keys used for encryption at rest
 
-As part of envelope encryption, the universe keys are protected by Master keys. This key resides in the KMS of your choosing and is used to encrypt and decrypt the universe keys as needed.
+As part of envelope encryption, the universe keys are protected by master keys. The master key resides in the KMS of your choosing and is used to encrypt and decrypt the universe keys as needed.
 
 In YugabyteDB Anywhere, a KMS configuration is used to house the information about the master key to use in envelope encryption, as well as the credentials to use to access this master key.
 
-The KMS configurations, and consequently the master keys used to encrypt the universe key can be changed or rotated at any time. To accomplish this, create a new KMS configuration with the new master key to use. Once the KMS configuration is successfully created, go to the Actions tab for the encryption-at-rest enabled universe and select the Encryption-At-Rest menu item. In the Manage encryption-at-rest screen that shows, the KMS configuration field’s drop down menu can be used to select the new KMS config. Click Apply to use the new KMS config and Master key for envelope encryption.
+The KMS configurations, and consequently the master keys used to encrypt the universe key, can be changed or rotated at any time. To accomplish this, do the following:
 
-Note that you can choose to rotate the master key/KMS config or rotate the Universe key. Both actions cannot be performed simultaneously.
+1. Create a new KMS configuration with the new master key to use.
+1. After the KMS configuration is successfully created, go to the **Actions** tab of the encryption-at-rest enabled universe and select the **Encryption-At-Rest** menu item.
+1. In the Manage encryption-at-rest screen that shows, use the KMS configuration drop-down menu to select the new KMS configuration.
+1. Click **Apply** to use the new KMS config and Master key for envelope encryption.
+
+Note that you can choose to rotate the master key/KMS configuration or rotate the Universe key. You can't perform both actions at the same time.
 
 Backup and Restore
-When restoring an encrypted backup to a Universe, Yugabyte Anywhere detects the correct KMS config used to encrypt the backup. The KMS config used must be available in the Yugabyte Anywhere account for this.
+When restoring an encrypted backup to a Universe, Yugabyte Anywhere detects the correct KMS configuration used to encrypt the backup. The KMS configuration must be available in the YugabyteDB Anywhere account for this.
 
-Important: When you delete a KMS config, you will no longer be able to decrypt Universe keys that were encrypted using the Master key in the KMS config. Ensure that you no longer need a KMS config,or a master key, or any of the key’s versions before you destroy it. Retain all KMS configs used to encrypt the data in backups and snapshots.
+{{< warning title="Deleting KMS configurations" >}}
+
+When you delete a KMS configuration, you will no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Before deleting a configuration, make sure that you no longer need the KMS configuration, master key, or any of the key versions before you destroy it. Retain all KMS configurations used to encrypt data in backups and snapshots.
+
+{{< /warning >}}
 
 ## Rotate the universe keys used for encryption at rest
 
