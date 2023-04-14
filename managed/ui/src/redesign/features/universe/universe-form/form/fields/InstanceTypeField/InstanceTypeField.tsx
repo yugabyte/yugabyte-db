@@ -1,4 +1,4 @@
-import React, { ChangeEvent, ReactElement, useState } from 'react';
+import React, { ChangeEvent, ReactElement } from 'react';
 import pluralize from 'pluralize';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
@@ -202,24 +202,24 @@ export const InstanceTypeField = ({
                 )}
               </Box>
             </Box>
-            {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) 
-            && canUseSpotInstance(providerRuntimeConfigs) && (
-              <Box display="flex" width="100%" mt={2}>
-                <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
-                  {t('universeForm.instanceConfig.useSpotInstance')}
-                </YBLabel>
-                <Box
-                  flex={1}
-                  className={
-                    masterPlacement === MasterPlacementMode.COLOCATED
-                      ? classes.defaultTextBox
-                      : classes.instanceConfigTextBox
-                  }
-                >
-                  <YBToggleField name={SPOT_INSTANCE_FIELD} control={control} />
+            {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) &&
+              canUseSpotInstance(providerRuntimeConfigs) && (
+                <Box display="flex" width="100%" mt={2}>
+                  <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
+                    {t('universeForm.instanceConfig.useSpotInstance')}
+                  </YBLabel>
+                  <Box
+                    flex={1}
+                    className={
+                      masterPlacement === MasterPlacementMode.COLOCATED
+                        ? classes.defaultTextBox
+                        : classes.instanceConfigTextBox
+                    }
+                  >
+                    <YBToggleField name={SPOT_INSTANCE_FIELD} control={control} />
+                  </Box>
                 </Box>
-              </Box>
-            )}
+              )}
           </>
         );
       }}
