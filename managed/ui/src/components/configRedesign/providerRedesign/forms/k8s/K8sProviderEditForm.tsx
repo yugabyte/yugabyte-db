@@ -169,7 +169,8 @@ export const K8sProviderEditForm = ({
       kubernetesImageRegistry,
       kubernetesProvider,
       kubernetesPullSecretContent,
-      providerName
+      providerName,
+      regions
     } = adaptSuggestedKubernetesConfig(suggestedKubernetesConfig);
 
     formMethods.setValue('editPullSecretContent', true);
