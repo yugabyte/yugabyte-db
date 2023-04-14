@@ -39,7 +39,7 @@ class CreateKubernetesConfiguration extends Component {
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
       (providerType) => providerType.code === type
     );
-    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : "{}"  ;
+    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : '{}';
     fileConfigArray.push(providerKubeConfig);
     // Loop thru regions and check for config files
     vals.regionList.forEach((region, rIndex) => {
@@ -62,7 +62,7 @@ class CreateKubernetesConfiguration extends Component {
     const regionsLocInfo = vals.regionList.map((region) => {
       const regInDict = REGION_DICT[region.regionCode.value];
       return {
-        name: regInDict?.name ?? region.regionCode.label,
+        name: region.regionCode.label ?? regInDict?.name,
         code: regInDict?.code ?? region.regionCode.value,
         latitude: regInDict?.latitude,
         longitude: regInDict?.longitude,
@@ -73,7 +73,7 @@ class CreateKubernetesConfiguration extends Component {
             KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
             // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-            KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined  ,
+            KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined,
             KUBE_POD_ADDRESS_TEMPLATE: zone.zonePodAddressTemplate || undefined
           };
 
@@ -99,8 +99,7 @@ class CreateKubernetesConfiguration extends Component {
             : providerTypeMetadata
             ? providerTypeMetadata.code
             : 'gke',
-          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry,
-
+          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
         };
 
         if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
@@ -160,18 +159,13 @@ class CreateKubernetesConfiguration extends Component {
         const provider = _.find(KUBERNETES_PROVIDERS, { code: KUBECONFIG_PROVIDER.toLowerCase() });
         setFieldValue('providerType', { label: provider.name, value: provider.code });
 
-        const parsedRegionList = regionList.map((r) => {
-          let regionCode = {};
-
-          const region = REGION_DICT[r.code];
-          if (region) {
-            regionCode = { label: region.name, value: region.code };
-          } else {
-            regionCode = { label: r.code, value: r.code };
-          }
+        const parsedRegionList = regionList.map((region) => {
           return {
-            regionCode,
-            zoneList: r.zoneList.map((z) => {
+            regionCode: {
+              label: region.name || REGION_DICT[region.code].name,
+              value: region.code
+            },
+            zoneList: region.zoneList.map((z) => {
               return {
                 storageClasses: z.config.STORAGE_CLASS,
                 zoneLabel: z.name

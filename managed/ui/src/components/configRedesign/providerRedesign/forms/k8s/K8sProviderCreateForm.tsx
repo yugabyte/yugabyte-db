@@ -235,7 +235,8 @@ export const K8sProviderCreateForm = ({
       kubernetesImageRegistry,
       kubernetesProvider,
       kubernetesPullSecretContent,
-      providerName
+      providerName,
+      regions
     } = adaptSuggestedKubernetesConfig(suggestedKubernetesConfig);
 
     formMethods.setValue('kubernetesPullSecretContent', kubernetesPullSecretContent);
