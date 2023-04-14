@@ -180,13 +180,13 @@ The following example demonstrates the usage of `ybtransaction_priority`.
     ```sql
    BEGIN TRANSACTION;
    INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
-   show yb_transaction_priority;
+   SHOW yb_transaction_priority;
    COMMIT;
 
     ```
 
     ```output
-        yb_get_current_transaction_priority
+        yb_transaction_priority
     -------------------------------------------
       0.537144608 (Normal priority transaction)
     (1 row)
@@ -199,13 +199,13 @@ The following example demonstrates the usage of `ybtransaction_priority`.
     set yb_transaction_priority_lower_bound = 0.4;
     BEGIN TRANSACTION;
     SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-    show yb_transaction_priority;
+    SHOW yb_transaction_priority;
     COMMIT;
 
     ```
 
     ```output
-        yb_get_current_transaction_priority
+        yb_transaction_priority
     -------------------------------------------
      0.212004009 (High priority transaction)
     (1 row)

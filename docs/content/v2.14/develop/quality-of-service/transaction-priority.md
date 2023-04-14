@@ -186,7 +186,7 @@ The following example demonstrates the usage of `ybtransaction_priority`.
     ```
 
     ```output
-        yb_get_current_transaction_priority
+        yb_transaction_priority
     -------------------------------------------
       0.537144608 (Normal priority transaction)
     (1 row)
@@ -205,7 +205,7 @@ The following example demonstrates the usage of `ybtransaction_priority`.
     ```
 
     ```output
-        yb_get_current_transaction_priority
+        yb_transaction_priority
     -------------------------------------------
      0.212004009 (High priority transaction)
     (1 row)
