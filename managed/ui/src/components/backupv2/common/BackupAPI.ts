@@ -67,13 +67,17 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
   const cUUID = localStorage.getItem('customerId');
   const backupStorageInfoList = values['keyspaces'].map(
     (keyspace: Keyspace_Table, index: number) => {
-      return {
+      const infoList = {
         backupType: backup.backupType,
         keyspace: keyspace || backup.responseList[index].keyspace,
         sse: backup.sse,
         storageLocation:
-          backup.responseList[index].storageLocation ?? backup.responseList[index].defaultLocation
+          backup.responseList[index].storageLocation ?? backup.responseList[index].defaultLocation,
       };
+      if (values.allow_YCQL_conflict_keyspace) {
+        infoList['tableNameList'] = backup.responseList[index].tablesList;
+      }
+      return infoList;
     }
   );
   const payload = {
@@ -132,7 +136,8 @@ export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID:
     parallelism: values['parallel_threads'],
     sse: values['storage_config'].name === 'S3',
     storageConfigUUID: values['storage_config'].value,
-    universeUUID: values['universeUUID']
+    universeUUID: values['universeUUID'],
+    tableByTableBackup: values['isTableByTableBackup']
   };
 
   let dbMap: Dictionary<any> = [];

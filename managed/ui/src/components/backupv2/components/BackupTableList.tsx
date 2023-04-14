@@ -122,7 +122,7 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
   return (
     <div className="backup-table-list ycql-table" id="ycql-table">
       <BootstrapTable
-        data={dblist}
+        data={dblist.map((t, index) => { return { ...t, index } })}
         expandableRow={() => true}
         expandComponent={expandTables}
         expandColumnOptions={{
@@ -133,7 +133,7 @@ export const YCQLTableList: FC<YSQLTableProps> = ({
         trClassName="clickable"
         tableHeaderClass="table-list-header"
       >
-        <TableHeaderColumn dataField="keyspace" isKey={true} hidden={true} />
+        <TableHeaderColumn dataField="index" isKey={true} hidden={true} />
         <TableHeaderColumn dataField="keyspace">Keyspace</TableHeaderColumn>
         <TableHeaderColumn dataField="tablesList" dataFormat={(cell) => cell.length}>
           Tables

@@ -9,7 +9,7 @@
 
 import { IBackup } from './IBackup';
 
-interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'storageConfigUUID'> {
+interface Schedule_Task_Params extends Pick<IBackup, 'backupType' | 'sse' | 'storageConfigUUID'| 'isTableByTableBackup'> {
   firstTry: boolean;
   encryptionAtRestConfig: {
     encryptionAtRestEnabled: boolean;

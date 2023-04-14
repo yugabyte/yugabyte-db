@@ -18,7 +18,8 @@ const initialStateFeatureInTest = {
   enableThirdpartyUpgrade: false,
   topNodeMetrics: false,
   enableYbc: false,
-  enableMultiRegionConfig: false
+  enableMultiRegionConfig: false,
+  enableTableByTableBackup: true
 };
 
 const initialStateFeatureReleased = {
@@ -39,7 +40,8 @@ const initialStateFeatureReleased = {
   enableThirdpartyUpgrade: false,
   topNodeMetrics: false,
   enableYbc: false,
-  enableMultiRegionConfig: false
+  enableMultiRegionConfig: false,
+  enableTableByTableBackup: true
 };
 
 export const FeatureFlag = (

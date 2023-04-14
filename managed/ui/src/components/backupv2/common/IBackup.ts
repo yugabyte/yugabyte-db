@@ -50,6 +50,7 @@ export interface IBackup {
   customerUUID: string;
   universeName: string;
   isStorageConfigPresent: boolean;
+  isTableByTableBackup: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
   createTime: number;

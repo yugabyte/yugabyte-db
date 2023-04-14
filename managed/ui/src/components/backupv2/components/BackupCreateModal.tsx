@@ -120,7 +120,8 @@ const initialValues = {
   keep_indefinitely: false,
   search_text: '',
   parallel_threads: PARALLEL_THREADS_RANGE.MIN,
-  storage_config: null as any
+  storage_config: null as any,
+  isTableByTableBackup: false
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -144,6 +145,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   const universeDetails = useSelector(
     (state: any) => state.universe?.currentUniverse?.data?.universeDetails
   );
+
+  const featureFlags = useSelector((state: any) => state.featureFlags);
 
   const nodesInRegionsList =
     uniq(flatten(universeDetails?.clusters.map((e: any) => e.regions.map((r: any) => r.code)))) ??
@@ -369,7 +372,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               tablesInUniverse: tablesInUniverse?.data,
               isEditMode,
               nodesInRegionsList,
-              isYbcEnabledinCurrentUniverse
+              isYbcEnabledinCurrentUniverse,
+              featureFlags
             })}
           </>
         )
@@ -388,7 +392,8 @@ function BackupConfigurationForm({
   isScheduledBackup,
   isEditMode,
   nodesInRegionsList,
-  isYbcEnabledinCurrentUniverse
+  isYbcEnabledinCurrentUniverse,
+  featureFlags
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -406,6 +411,7 @@ function BackupConfigurationForm({
   isEditMode: boolean;
   nodesInRegionsList: string[];
   isYbcEnabledinCurrentUniverse: boolean;
+  featureFlags: { test: Record<string, boolean>, released: Record<string, boolean> };
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
@@ -547,9 +553,8 @@ function BackupConfigurationForm({
                   <components.Option {...props}>
                     <div className="storage-cfg-select-label">{props.data.label}</div>
                     <div className="storage-cfg-select-meta">
-                      <span>{`${props.data.name}${
-                        props.data.regions?.length > 0 ? ',' : ''
-                      }`}</span>
+                      <span>{`${props.data.name}${props.data.regions?.length > 0 ? ',' : ''
+                        }`}</span>
                       {props.data.regions?.length > 0 && <span>Multi-region support</span>}
                     </div>
                   </components.Option>
@@ -593,55 +598,55 @@ function BackupConfigurationForm({
       </Row>
       {(values['api_type'].value === BACKUP_API_TYPES.YCQL ||
         values['api_type'].value === BACKUP_API_TYPES.YEDIS) && (
-        <Row>
-          <Col lg={12} className="no-padding">
-            {TABLE_BACKUP_OPTIONS.map((target) => (
-              <>
-                <label className="btn-group btn-group-radio" key={target.value}>
-                  <Field
-                    name="backup_tables"
-                    component="input"
-                    defaultChecked={values['backup_tables'] === target.value}
-                    disabled={
-                      values['db_to_backup'] === null ||
-                      values['db_to_backup']?.value === null ||
-                      isEditMode
-                    }
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                      setFieldValue('backup_tables', e.target.value, false);
-                      if (
-                        e.target.value === Backup_Options_Type.CUSTOM &&
-                        values['selected_ycql_tables'].length === 0
-                      ) {
-                        setFieldValue('show_select_ycql_table', true);
+          <Row>
+            <Col lg={12} className="no-padding">
+              {TABLE_BACKUP_OPTIONS.map((target) => (
+                <>
+                  <label className="btn-group btn-group-radio" key={target.value}>
+                    <Field
+                      name="backup_tables"
+                      component="input"
+                      defaultChecked={values['backup_tables'] === target.value}
+                      disabled={
+                        values['db_to_backup'] === null ||
+                        values['db_to_backup']?.value === null ||
+                        isEditMode
                       }
-                    }}
-                    checked={values['backup_tables'] === target.value}
-                    type="radio"
-                    value={target.value}
-                  />
-                  {target.label}
-                  {target.value === Backup_Options_Type.CUSTOM &&
-                    values['backup_tables'] === Backup_Options_Type.CUSTOM && (
-                      <span className="tables-count">
-                        <span>{values['selected_ycql_tables'].length} tables selected</span>
-                        <span
-                          className="edit-selection"
-                          onClick={() => {
-                            setFieldValue('show_select_ycql_table', true);
-                          }}
-                        >
-                          <i className="fa fa-pencil" /> Edit selection
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setFieldValue('backup_tables', e.target.value, false);
+                        if (
+                          e.target.value === Backup_Options_Type.CUSTOM &&
+                          values['selected_ycql_tables'].length === 0
+                        ) {
+                          setFieldValue('show_select_ycql_table', true);
+                        }
+                      }}
+                      checked={values['backup_tables'] === target.value}
+                      type="radio"
+                      value={target.value}
+                    />
+                    {target.label}
+                    {target.value === Backup_Options_Type.CUSTOM &&
+                      values['backup_tables'] === Backup_Options_Type.CUSTOM && (
+                        <span className="tables-count">
+                          <span>{values['selected_ycql_tables'].length} tables selected</span>
+                          <span
+                            className="edit-selection"
+                            onClick={() => {
+                              setFieldValue('show_select_ycql_table', true);
+                            }}
+                          >
+                            <i className="fa fa-pencil" /> Edit selection
+                          </span>
                         </span>
-                      </span>
-                    )}
-                </label>
-                <br />
-              </>
-            ))}
-          </Col>
-        </Row>
-      )}
+                      )}
+                  </label>
+                  <br />
+                </>
+              ))}
+            </Col>
+          </Row>
+        )}
 
       <Row>
         <div>Select backup retention period</div>
@@ -701,6 +706,19 @@ function BackupConfigurationForm({
             {errors['parallel_threads'] && (
               <span className="standard-error">{errors['parallel_threads']}</span>
             )}
+          </Col>
+        </Row>
+      )}
+      {(featureFlags.test.enableTableByTableBackup || featureFlags.released.enableTableByTableBackup) && values['api_type'].value === BACKUP_API_TYPES.YCQL && (
+        <Row>
+          <Col>
+            <Field
+              name="isTableByTableBackup"
+              component={YBCheckBox}
+              disabled={isEditMode}
+              checkState={values['isTableByTableBackup']}
+            />
+            Take table by table backup
           </Col>
         </Row>
       )}
@@ -822,26 +840,26 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
           {values['selected_ycql_tables'].length === 0
             ? infoText
             : values['selected_ycql_tables'].map((t: ITable) => {
-                return (
-                  <div className="selected-table-item" key={t.tableUUID}>
-                    {t.tableName}
-                    <span
-                      className="remove-selected-table"
-                      onClick={() => {
-                        if (isEditMode) return;
-                        setFieldValue(
-                          'selected_ycql_tables',
-                          values['selected_ycql_tables'].filter(
-                            (f: ITable) => f.tableUUID !== t.tableUUID
-                          )
-                        );
-                      }}
-                    >
-                      <img alt="Remove" src={Close} width="22" />
-                    </span>
-                  </div>
-                );
-              })}
+              return (
+                <div className="selected-table-item" key={t.tableUUID}>
+                  {t.tableName}
+                  <span
+                    className="remove-selected-table"
+                    onClick={() => {
+                      if (isEditMode) return;
+                      setFieldValue(
+                        'selected_ycql_tables',
+                        values['selected_ycql_tables'].filter(
+                          (f: ITable) => f.tableUUID !== t.tableUUID
+                        )
+                      );
+                    }}
+                  >
+                    <img alt="Remove" src={Close} width="22" />
+                  </span>
+                </div>
+              );
+            })}
         </Col>
       </Row>
     </YBModalForm>

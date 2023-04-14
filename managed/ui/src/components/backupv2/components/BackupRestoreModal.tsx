@@ -41,7 +41,7 @@ import { toast } from 'react-toastify';
 import { components } from 'react-select';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { find, isFunction, omit } from 'lodash';
+import { find, findIndex, isFunction, omit } from 'lodash';
 import { BACKUP_API_TYPES } from '../common/IBackup';
 import { TableType } from '../../../redesign/helpers/dtos';
 
@@ -99,9 +99,9 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
 
   const kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
-        const labelName = config.metadata.provider + ' - ' + config.metadata.name;
-        return { value: config.metadata.configUUID, label: labelName };
-      })
+      const labelName = config.metadata.provider + ' - ' + config.metadata.name;
+      return { value: config.metadata.configUUID, label: labelName };
+    })
     : [];
 
   const restore = useMutation(
@@ -134,7 +134,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
   );
 
   const footerActions = [
-    () => {},
+    () => { },
     () => {
       setCurrentStep(currentStep - 1);
       setOverrideSubmitLabel(TEXT_RENAME_DATABASE);
@@ -152,7 +152,8 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     keyspaces: Array(backup_details?.responseList.length).fill(''),
     kmsConfigUUID: null,
     should_rename_keyspace: false,
-    disable_keyspace_rename: false
+    disable_keyspace_rename: false,
+    allow_YCQL_conflict_keyspace: false
   };
 
   const validateTablesAndRestore = async (
@@ -172,6 +173,50 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
       }
       return;
     }
+
+    // find if the user has entered the duplicate keyspace name
+    // we could have just find uniq(user_entered_keyspace), but in table by table backup
+    // we can have duplicate keyspace, so we make sure that single keyspace entered by user map with single keyspace
+    // in the backup_details
+    const renamedKeyspacemap = {};
+    let hasduplicateName = false;
+    values['keyspaces'].forEach((k: string, i: number) => {
+      if(!k) return;
+      const keyspaceToMatch = backup_details?.responseList[i].keyspace
+      if (!renamedKeyspacemap[k]) {
+        renamedKeyspacemap[k] = keyspaceToMatch;
+      }
+      else {
+        if (renamedKeyspacemap[k] !== keyspaceToMatch) {
+          isFunction(options.setFieldError) && options.setFieldError(`keyspaces[${i}]`, 'Duplicate keyspace name');
+          hasduplicateName = true;
+        }
+      }
+    })
+    // return if duplicate keyspace name is found.
+    if (hasduplicateName) {
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
+      return;
+    }
+
+    // for YCQL, we skip the table overwriding check in front end and defer it to the backend
+    // see https://yugabyte.atlassian.net/browse/PLAT-6460
+    if (values['backup']['backupType'] === BACKUP_API_TYPES.YCQL) {
+      if (options.doRestore) {
+        restore.mutate({
+          backup_details: backup_details as IBackup,
+          values
+        });
+        return;
+      }
+
+      options.setFieldValue('allow_YCQL_conflict_keyspace', true, false);
+      options.setFieldValue('should_rename_keyspace', false, false);
+      options.setFieldValue('disable_keyspace_rename', false, false);
+      isFunction(options.setSubmitting) && options.setSubmitting(false);
+      return;
+    }
+
     setIsFetchingTables(true);
     options.setFieldValue('should_rename_keyspace', true, false);
     options.setFieldValue('disable_keyspace_rename', true, false);
@@ -230,11 +275,11 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
     keyspaces:
       currentStep === 1
         ? Yup.array(
-            Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
-              message: 'Invalid keyspace name',
-              excludeEmptyString: true
-            })
-          )
+          Yup.string().matches(KEYSPACE_VALIDATION_REGEX, {
+            message: 'Invalid keyspace name',
+            excludeEmptyString: true
+          })
+        )
         : Yup.array(Yup.string()),
     parallelThreads: Yup.number()
       .min(1, 'Parallel threads should be greater than or equal to 1')
@@ -260,7 +305,7 @@ export const BackupRestoreModal: FC<RestoreModalProps> = ({ backup_details, onHi
         if (values['should_rename_keyspace'] && currentStep !== STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
           setOverrideSubmitLabel(TEXT_RESTORE);
-        } else if (currentStep === STEPS.length - 1) {
+        } else if (currentStep === STEPS.length - 1 || values['allow_YCQL_conflict_keyspace']) {
           await validateTablesAndRestore(values, {
             setFieldValue,
             setFieldError,
@@ -458,9 +503,8 @@ function RestoreChooseUniverseForm({
             <Field
               name="should_rename_keyspace"
               component={YBCheckBox}
-              label={`Rename databases in this backup before restoring (${
-                values['disable_keyspace_rename'] ? 'Required' : 'Optional'
-              })`}
+              label={`Rename databases in this backup before restoring (${values['disable_keyspace_rename'] ? 'Required' : 'Optional'
+                })`}
               input={{
                 checked: values['should_rename_keyspace'],
                 onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -509,6 +553,9 @@ export function RenameKeyspace({
   values: Record<string, any>;
   setFieldValue: Function;
 }) {
+
+  const isTableByTableBackup = values.backup.isTableByTableBackup;
+
   return (
     <div className="rename-keyspace-step">
       <Row>
@@ -531,39 +578,56 @@ export function RenameKeyspace({
         name="keyspaces"
         render={({ form: { errors } }) =>
           values.backup.responseList.map((keyspace: Keyspace_Table, index: number) =>
-            values['searchText'] &&
-            keyspace.keyspace &&
-            keyspace.keyspace.indexOf(values['searchText']) === -1 ? null : (
-              <Row key={index}>
-                <Col lg={6} className="keyspaces-input no-padding">
-                  <Field
-                    name={`keyspaces[${index}]`}
-                    component={YBInputField}
-                    input={{
-                      disabled: true,
-                      value: keyspace.keyspace
-                    }}
-                  />
-                  {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
-                    <span className="err-msg">Name already exists. Rename to proceed</span>
-                  )}
-                </Col>
-                <Col lg={6}>
-                  <Field
-                    name={`keyspaces[${index}]`}
-                    component={YBInputField}
-                    input={{
-                      value: values['keyspaces'][`${index}`]
-                    }}
-                    onValueChanged={(val: any) => setFieldValue(`keyspaces[${index}]`, val)}
-                    placeHolder="Add new name"
-                  />
-                  {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
-                    <span className="err-msg">{errors['keyspaces'][index]}</span>
-                  )}
-                </Col>
-              </Row>
-            )
+            (values['searchText'] &&
+              keyspace.keyspace &&
+              keyspace.keyspace.indexOf(values['searchText']) === -1) ||
+              findIndex(values.backup.responseList, { keyspace: keyspace.keyspace }) !== index
+              ? null : (
+                <Row key={index}>
+                  <Col lg={6} className="keyspaces-input no-padding">
+                    <Field
+                      name={`keyspaces[${index}]`}
+                      component={YBInputField}
+                      input={{
+                        disabled: true,
+                        value: keyspace.keyspace
+                      }}
+                    />
+                    {errors['keyspaces']?.[index] && !values['keyspaces']?.[index] && (
+                      <span className="err-msg">Name already exists. Rename to proceed</span>
+                    )}
+                  </Col>
+                  <Col lg={6}>
+                    <Field
+                      name={`keyspaces[${index}]`}
+                      component={YBInputField}
+                      input={{
+                        value: values['keyspaces'][`${index}`]
+                      }}
+                      onValueChanged={(val: any) => {
+                        if (isTableByTableBackup) {
+                          // if the tableByTable option is enabled, keyspaces with duplicate 
+                          // names can be present. So, we show unique keyspaces in the rename form.
+                          // and update the new names for all the duplicate keyspaces
+                          // See, https://yugabyte.atlassian.net/browse/PLAT-8319
+                          values.backup.responseList.forEach((table: any, i: number) => {
+                            if (table.keyspace === keyspace.keyspace) {
+                              setFieldValue(`keyspaces[${i}]`, val)
+                            }
+                          })
+                        }
+                        else {
+                          setFieldValue(`keyspaces[${index}]`, val)
+                        }
+                      }}
+                      placeHolder="Add new name"
+                    />
+                    {errors['keyspaces']?.[index] && values['keyspaces']?.[index] && (
+                      <span className="err-msg">{errors['keyspaces'][index]}</span>
+                    )}
+                  </Col>
+                </Row>
+              )
           )
         }
       />
