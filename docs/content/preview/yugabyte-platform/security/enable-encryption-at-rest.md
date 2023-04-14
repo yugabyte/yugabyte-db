@@ -11,13 +11,14 @@ menu:
 type: docs
 ---
 
-Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. YugabyteDB Anywhere allows you to do the following:
+Data at rest in a YugabyteDB universe should be protected from unauthorized users by encrypting it. YugabyteDB Anywhere allows you to do the following:
 
  <!-- no toc -->
 
 - [Enable encryption at rest during universe creation](#enable-encryption-at-rest-during-universe-creation)
 - [Enable encryption at rest on an existing universe](#enable-encryption-at-rest-on-an-existing-universe)
 - [Back up and restore data from an encrypted at rest universe](#back-up-and-restore-data-from-an-encrypted-at-rest-universe)
+- [Rotate the master key used for encryption at rest](#rotate-the-master-key-used-for-encryption-at-rest)
 - [Rotate the universe keys used for encryption at rest](#rotate-the-universe-keys-used-for-encryption-at-rest)
 - [Disable encryption at rest](#disable-encryption-at-rest)
 
@@ -81,6 +82,21 @@ You can enable encryption at rest on an existing universe as follows:
 ## Back up and restore data from an encrypted at rest universe
 
 When you back up and restore universe data with encryption at rest enabled, YugabyteDB Anywhere requires a KMS configuration to manage backing up and restoring encrypted universe data. Because of the possibility that you will need to restore data to a different universe that might have a different universe key, YugabyteDB Anywhere ensures that all encrypted backups include a metadata file (that includes a list of key IDs in the source's universe key registry). When restoring your universe data, YugabyteDB Anywhere uses the selected KMS configuration to consume the universe key ID and then retrieve the universe key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
+
+## Rotate the master keys used for encryption at rest
+
+As part of envelope encryption, the universe keys are protected by Master keys. This key resides in the KMS of your choosing and is used to encrypt and decrypt the universe keys as needed.
+
+In YugabyteDB Anywhere, a KMS configuration is used to house the information about the master key to use in envelope encryption, as well as the credentials to use to access this master key.
+
+The KMS configurations, and consequently the master keys used to encrypt the universe key can be changed or rotated at any time. To accomplish this, create a new KMS configuration with the new master key to use. Once the KMS configuration is successfully created, go to the Actions tab for the encryption-at-rest enabled universe and select the Encryption-At-Rest menu item. In the Manage encryption-at-rest screen that shows, the KMS configuration field’s drop down menu can be used to select the new KMS config. Click Apply to use the new KMS config and Master key for envelope encryption.
+
+Note that you can choose to rotate the master key/KMS config or rotate the Universe key. Both actions cannot be performed simultaneously.
+
+Backup and Restore
+When restoring an encrypted backup to a Universe, Yugabyte Anywhere detects the correct KMS config used to encrypt the backup. The KMS config used must be available in the Yugabyte Anywhere account for this.
+
+Important: When you delete a KMS config, you will no longer be able to decrypt Universe keys that were encrypted using the Master key in the KMS config. Ensure that you no longer need a KMS config,or a master key, or any of the key’s versions before you destroy it. Retain all KMS configs used to encrypt the data in backups and snapshots.
 
 ## Rotate the universe keys used for encryption at rest
 
