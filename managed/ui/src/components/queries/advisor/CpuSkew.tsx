@@ -67,7 +67,7 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
             <a
               target="_blank"
               rel="noopener noreferrer"
-              className="learnSchemaSuggestion"
+              className="learnRecommendationSuggestions"
               href={EXTERNAL_LINKS.CPU_SKEW_AND_USAGE}
             >
               {t('clusterDetail.performance.advisor.LearnHow')}

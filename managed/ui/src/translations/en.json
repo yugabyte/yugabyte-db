@@ -19,7 +19,8 @@
       "active": "Active",
       "none": "None",
       "edit": "Edit",
-      "remove": "Remove"
+      "remove": "Remove",
+      "wrong": "Something went wrong."
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -297,7 +298,8 @@
           "ScanBtn": "Scan",
           "ReScanBtn": "Re-Scan",
           "Hurray": "Hurray",
-          "ScanTime": "Current Scan"
+          "ScanTime": "Current Scan",
+          "DBScanFailed": "Failed to scan the database. Try again later."
         },
         "typeTag": {
           "IndexSuggestion": "INDEX SUGGESTION",
@@ -309,7 +311,7 @@
           "HotShard": "HOT SHARD"
         },
         "suggestionTypes": {
-          "All": "All recommendation types",
+          "All": "All Recommendation Types",
           "CpuSkew": "CPU Skew",
           "CpuUsage": "CPU Usage",
           "SchemaSuggestion": "Schema Suggestion",
