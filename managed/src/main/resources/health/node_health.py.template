@@ -1156,7 +1156,7 @@ class NodeChecker():
         errors = []
         if not ('Connected to local cluster at {}:{}'
                 .format(self.node, self.ycql_port) in output or
-                re.match(CQL_AUTH_FAILURE_MESSAGE_PATTERN, output)):
+                re.match(CQL_AUTH_FAILURE_MESSAGE_PATTERN, output, flags = re.DOTALL))
             errors = [output]
 
         has_errors = len(errors) > 0
