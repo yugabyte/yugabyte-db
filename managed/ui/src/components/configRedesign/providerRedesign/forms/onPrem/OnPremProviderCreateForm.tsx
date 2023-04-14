@@ -149,7 +149,7 @@ export const OnPremProviderCreateForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: ConfigureOnPremRegionFormValues[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: ConfigureOnPremRegionFormValues) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)

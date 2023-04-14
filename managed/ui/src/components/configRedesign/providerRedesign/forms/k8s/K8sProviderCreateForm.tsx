@@ -243,11 +243,12 @@ export const K8sProviderCreateForm = ({
     formMethods.setValue('kubernetesImageRegistry', kubernetesImageRegistry);
     formMethods.setValue('kubernetesProvider', kubernetesProvider);
     formMethods.setValue('providerName', providerName);
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   };
 
   const regions = formMethods.watch('regions', DEFAULT_FORM_VALUES.regions);
-  const setRegions = (regions: K8sRegionField[]) => formMethods.setValue('regions', regions);
+  const setRegions = (regions: K8sRegionField[]) =>
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: K8sRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
