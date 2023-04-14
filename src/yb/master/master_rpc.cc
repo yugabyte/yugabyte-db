@@ -48,9 +48,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-using yb::consensus::RaftPeerPB;
 using yb::rpc::Messenger;
-using yb::rpc::Rpc;
 
 using namespace std::placeholders;
 

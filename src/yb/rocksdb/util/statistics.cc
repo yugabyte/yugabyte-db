@@ -43,7 +43,6 @@ using yb::GaugePrototype;
 using yb::HistogramPrototype;
 using yb::MetricEntity;
 using yb::MetricRegistry;
-using yb::MetricPrototype;
 
 void PopulateHistogramData(const yb::HdrHistogram& hist, HistogramData* const data) {
   data->count = hist.CurrentCount();

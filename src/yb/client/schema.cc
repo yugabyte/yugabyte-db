@@ -53,7 +53,6 @@ using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 namespace client {

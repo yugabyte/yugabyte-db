@@ -38,7 +38,6 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/thread.h"
 
-using std::shared_ptr;
 using namespace std::literals;
 using namespace std::placeholders;
 

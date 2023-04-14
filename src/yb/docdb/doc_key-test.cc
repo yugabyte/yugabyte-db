@@ -27,14 +27,9 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-using std::unique_ptr;
 using std::vector;
 using std::string;
-using strings::Substitute;
 using yb::util::ApplyEagerLineContinuation;
-using yb::FormatSliceAsStr;
-using rocksdb::FilterBitsBuilder;
-using rocksdb::FilterBitsReader;
 
 using namespace std::placeholders;
 

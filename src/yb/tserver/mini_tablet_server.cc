@@ -74,12 +74,8 @@
 using std::pair;
 using std::string;
 
-using yb::consensus::Consensus;
-using yb::consensus::ConsensusOptions;
 using yb::consensus::RaftPeerPB;
 using yb::consensus::RaftConfigPB;
-using yb::log::Log;
-using strings::Substitute;
 using yb::tablet::TabletPeer;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);

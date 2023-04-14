@@ -82,7 +82,6 @@ using namespace yb::size_literals;
 using std::shared_lock;
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 
 DECLARE_int32(num_connections_to_server);
 DEFINE_UNKNOWN_int32(rpc_default_keepalive_time_ms, 65000,

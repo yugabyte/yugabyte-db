@@ -99,28 +99,20 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBError;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTableType;
-using client::YBValue;
 using std::shared_ptr;
-using master::AlterTableRequestPB;
-using master::AlterTableResponsePB;
-using master::MiniMaster;
 using std::map;
 using std::pair;
 using std::vector;
 using std::string;
 using std::max;
 using tablet::TabletPeer;
-using tserver::MiniTabletServer;
 
 class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
                        public ::testing::WithParamInterface<int> {

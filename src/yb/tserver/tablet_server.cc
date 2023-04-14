@@ -105,7 +105,6 @@ using std::shared_ptr;
 using std::vector;
 using std::string;
 using yb::rpc::ServiceIf;
-using yb::tablet::TabletPeer;
 
 using namespace yb::size_literals;
 using namespace std::placeholders;

@@ -44,7 +44,6 @@
 
 #include "yb/util/status_format.h"
 
-using std::make_shared;
 using std::vector;
 
 namespace yb {

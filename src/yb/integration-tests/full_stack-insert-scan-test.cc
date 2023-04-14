@@ -107,13 +107,9 @@ namespace tablet {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
 using client::YBTableName;
 using strings::Split;
 using strings::Substitute;

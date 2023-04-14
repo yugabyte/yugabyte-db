@@ -46,8 +46,6 @@
 
 namespace yb {
 
-using strings::Substitute;
-
 std::string ToString(const Endpoint& endpoint) {
   return boost::lexical_cast<std::string>(endpoint);
 }

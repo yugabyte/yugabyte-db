@@ -78,7 +78,6 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::kMinimumTerm;
 using consensus::MakeOpId;
-using consensus::ReplicateMsg;
 using consensus::ReplicateMsgPtr;
 using log::LogAnchorRegistry;
 using log::LogTestBase;

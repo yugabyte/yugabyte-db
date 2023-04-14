@@ -23,9 +23,6 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tostring.h"
 
-using yb::YBRocksDBLogger;
-using rocksdb::InfoLogLevel;
-
 namespace yb {
 
 namespace {

@@ -108,12 +108,10 @@ DECLARE_int32(TEST_log_change_config_every_n);
 namespace yb {
 namespace consensus {
 
-using log::Log;
 using std::shared_ptr;
 using std::string;
 using rpc::Messenger;
 using rpc::PeriodicTimer;
-using rpc::RpcController;
 using strings::Substitute;
 
 Peer::Peer(

@@ -50,7 +50,6 @@
 using std::string;
 using std::vector;
 
-using strings::Substitute;
 
 DECLARE_bool(TEST_simulate_fs_create_failure);
 DECLARE_bool(rpc_server_allow_ephemeral_ports);

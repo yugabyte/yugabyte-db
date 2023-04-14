@@ -46,7 +46,6 @@
 using std::cout;
 using std::cin;
 using std::endl;
-using std::make_shared;
 using std::string;
 using yb::client::YBClientBuilder;
 

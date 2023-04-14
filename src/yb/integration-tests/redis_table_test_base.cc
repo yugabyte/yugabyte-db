@@ -33,20 +33,13 @@
 
 using std::string;
 using std::vector;
-using std::unique_ptr;
 
 namespace yb {
 namespace integration_tests {
 
 using client::YBRedisWriteOp;
 using client::YBRedisReadOp;
-using client::YBColumnSchema;
-using client::YBTableCreator;
-using client::YBSchemaBuilder;
-using client::YBColumnSchema;
-using client::YBTableType;
 using client::YBTableName;
-using client::YBSession;
 
 using redisserver::RedisClientCommand;
 using redisserver::ParseSet;

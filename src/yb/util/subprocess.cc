@@ -59,7 +59,6 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 
-using std::shared_ptr;
 using std::string;
 using std::vector;
 using std::mutex;

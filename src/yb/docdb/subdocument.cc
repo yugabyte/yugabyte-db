@@ -26,9 +26,7 @@
 
 #include "yb/util/status.h"
 
-using std::endl;
 using std::make_pair;
-using std::map;
 using std::ostringstream;
 using std::shared_ptr;
 using std::string;

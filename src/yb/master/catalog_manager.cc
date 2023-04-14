@@ -567,7 +567,6 @@ DEFINE_test_flag(bool, pause_before_upsert_ysql_sys_table, false,
 namespace yb {
 namespace master {
 
-using std::atomic;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -579,15 +578,10 @@ using std::pair;
 
 using namespace std::placeholders;
 
-using base::subtle::NoBarrier_Load;
-using base::subtle::NoBarrier_CompareAndSwap;
 using consensus::kMinimumTerm;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
-using consensus::COMMITTED_OPID;
 using consensus::Consensus;
-using consensus::ConsensusMetadata;
-using consensus::ConsensusServiceProxy;
 using consensus::ConsensusStatePB;
 using consensus::GetConsensusRole;
 using consensus::PeerMemberType;
@@ -596,29 +590,17 @@ using consensus::StartRemoteBootstrapRequestPB;
 using rpc::RpcContext;
 using server::MonitoredTask;
 using strings::Substitute;
-using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
-using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
-using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
 using tablet::RaftGroupStatePB;
-using tablet::TabletStatusListener;
-using tablet::TabletStatusPB;
-using tserver::HandleReplacingStaleTablet;
-using tserver::TabletServerErrorPB;
 using yb::pgwrapper::PgWrapper;
 using yb::server::MasterAddressesToString;
 
-using yb::client::YBClient;
-using yb::client::YBClientBuilder;
-using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
-using yb::client::YBTable;
-using yb::client::YBTableName;
 
 namespace {
 
