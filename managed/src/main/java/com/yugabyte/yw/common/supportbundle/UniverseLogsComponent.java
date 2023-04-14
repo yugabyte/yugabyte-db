@@ -5,8 +5,6 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -32,20 +30,17 @@ class UniverseLogsComponent implements SupportBundleComponent {
   private final NodeUniverseManager nodeUniverseManager;
   protected final Config config;
   private final SupportBundleUtil supportBundleUtil;
-  private final RuntimeConfGetter confGetter;
 
   @Inject
   UniverseLogsComponent(
       UniverseInfoHandler universeInfoHandler,
       NodeUniverseManager nodeUniverseManager,
       Config config,
-      SupportBundleUtil supportBundleUtil,
-      RuntimeConfGetter confGetter) {
+      SupportBundleUtil supportBundleUtil) {
     this.universeInfoHandler = universeInfoHandler;
     this.nodeUniverseManager = nodeUniverseManager;
     this.config = config;
     this.supportBundleUtil = supportBundleUtil;
-    this.confGetter = confGetter;
   }
 
   @Override
@@ -91,9 +86,9 @@ class UniverseLogsComponent implements SupportBundleComponent {
 
     // Get the regex patterns used to filter file names
     String universeLogsRegexPattern =
-        confGetter.getConfForScope(universe, UniverseConfKeys.universeLogsRegexPattern);
+        config.getString("yb.support_bundle.universe_logs_regex_pattern");
     String postgresLogsRegexPattern =
-        confGetter.getConfForScope(universe, UniverseConfKeys.postgresLogsRegexPattern);
+        config.getString("yb.support_bundle.postgres_logs_regex_pattern");
     List<String> fileRegexList = Arrays.asList(universeLogsRegexPattern, postgresLogsRegexPattern);
 
     // Get and filter master log files that fall within given dates
