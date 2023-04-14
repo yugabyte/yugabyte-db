@@ -60,16 +60,23 @@ public class UniversePerfAdvisorRun extends Model {
 
   @ApiModelProperty(
       value = "Time perf advisor run was scheduled",
+      example = "2022-12-12T13:07:18Z",
       accessMode = AccessMode.READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date scheduleTime;
 
-  @ApiModelProperty(value = "Time perf advisor run was started", accessMode = AccessMode.READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Time perf advisor run was started",
+      example = "2022-12-12T13:07:18Z",
+      accessMode = AccessMode.READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date startTime;
 
-  @ApiModelProperty(value = "Time perf advisor run was finished", accessMode = AccessMode.READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Time perf advisor run was finished",
+      example = "2022-12-12T13:07:18Z",
+      accessMode = AccessMode.READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   private Date endTime;
 
   @ApiModelProperty(value = "Scheduled or manual run", accessMode = AccessMode.READ_ONLY)

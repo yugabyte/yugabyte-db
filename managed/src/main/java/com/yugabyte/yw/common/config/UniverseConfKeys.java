@@ -484,7 +484,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Performance Advisor query skew threshold",
           "Defines max difference between avg queries count and"
-              + " node queries count before cpu skew recommendation is raised",
+              + " node queries count before query skew recommendation is raised",
           ConfDataType.DoubleType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> perfAdvisorQuerySkewMinQueries =
