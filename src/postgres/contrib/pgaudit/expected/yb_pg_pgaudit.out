@@ -983,15 +983,7 @@ NOTICE:  AUDIT: SESSION,45,2,FUNCTION,EXECUTE,FUNCTION,public.int_add,"SELECT in
 CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');
 NOTICE:  AUDIT: SESSION,46,1,DDL,CREATE AGGREGATE,AGGREGATE,public.sum_test(integer),"CREATE AGGREGATE public.sum_test(INT) (SFUNC=public.int_add, STYPE=INT, INITCOND='0');",<none>
 ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;
-ERROR:  ALTER AGGREGATE not supported yet at character 1
--- YB note: bump audit number to stay same with upstream.
-SELECT 'yb';
-NOTICE:  AUDIT: SESSION,47,1,READ,SELECT,,,SELECT 'yb';,<none>
- ?column?
-----------
- yb
-(1 row)
-
+NOTICE:  AUDIT: SESSION,47,1,DDL,ALTER AGGREGATE,AGGREGATE,public.sum_test2(integer),ALTER AGGREGATE public.sum_test(integer) RENAME TO sum_test2;,<none>
 --
 -- Test conversion
 CREATE CONVERSION public.conversion_test FOR 'latin1' TO 'utf8' FROM pg_catalog.iso8859_1_to_utf8;

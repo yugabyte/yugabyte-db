@@ -9304,7 +9304,6 @@ AlterTblSpcStmt:
 
 RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER AGGREGATE", 2717);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_AGGREGATE;
 					n->object = (Node *) $3;
