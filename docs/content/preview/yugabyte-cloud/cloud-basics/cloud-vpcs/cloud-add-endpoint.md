@@ -35,7 +35,7 @@ To use ybm CLI, you need to do the following:
 In addition, to use AWS PrivateLink, you need the following:
 
 - An AWS user account with an IAM user policy that grants permissions to create, modify, describe, and delete endpoints.
-- The Amazon resource names (ARN) of security [principals](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) to which to grant access to the endpoint.
+- The Amazon resource names (ARN) of [security principals](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) to which to grant access to the endpoint.
 
 Make sure that default security group in your application VPC allows internal connectivity. Otherwise, your application may not be able to reach the endpoint.
 
