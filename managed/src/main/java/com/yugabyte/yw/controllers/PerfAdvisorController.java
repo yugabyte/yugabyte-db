@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.PerfAdvisorScheduler.RunResult;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.forms.PerfAdvisorManualRunStatus;
 import com.yugabyte.yw.forms.PerfAdvisorSettingsFormData;
 import com.yugabyte.yw.forms.PerfAdvisorSettingsWithDefaults;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -301,7 +302,9 @@ public class PerfAdvisorController extends AuthenticatedController {
     return YBPSuccess.empty();
   }
 
-  @ApiOperation(value = "Start performance advisor run for universe", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "Start performance advisor run for universe",
+      response = PerfAdvisorManualRunStatus.class)
   public Result runPerfAdvisor(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
@@ -314,11 +317,9 @@ public class PerfAdvisorController extends AuthenticatedController {
     auditService()
         .createAuditEntryWithReqBody(
             request, TargetType.PerformanceAdvisorRun, null, ActionType.Create);
-    if (result.isStarted()) {
-      return YBPSuccess.empty();
-    } else {
-      throw new PlatformServiceException(PRECONDITION_FAILED, result.getFailureReason());
-    }
+    return PlatformResults.withData(
+        new PerfAdvisorManualRunStatus(result.isStarted(), result.getFailureReason())
+            .setActiveRun(result.getActiveRun()));
   }
 
   @ApiOperation(value = "Get last performance advisor run details", response = YBPSuccess.class)

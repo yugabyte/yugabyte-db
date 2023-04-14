@@ -6596,6 +6596,25 @@
       "required" : [ "value" ],
       "type" : "object"
     },
+    "PerfAdvisorManualRunStatus" : {
+      "properties" : {
+        "activeRun" : {
+          "$ref" : "#/definitions/Universe performance advisor status",
+          "description" : "Started or in-progress perf advisor run"
+        },
+        "message" : {
+          "description" : "API response message.",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "success" : {
+          "description" : "API operation status. A value of true indicates the operation was successful.",
+          "readOnly" : true,
+          "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
     "PerfAdvisorSettingsFormData" : {
       "properties" : {
         "connection_skew_interval_mins" : {
@@ -10142,6 +10161,62 @@
           "type" : "string"
         }
       },
+      "type" : "object"
+    },
+    "Universe performance advisor status" : {
+      "properties" : {
+        "customerUUID" : {
+          "description" : "Customer UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "endTime" : {
+          "description" : "Time perf advisor run was finished",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "manual" : {
+          "description" : "Scheduled or manual run",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "scheduleTime" : {
+          "description" : "Time perf advisor run was scheduled",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "startTime" : {
+          "description" : "Time perf advisor run was started",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "state" : {
+          "description" : "State",
+          "enum" : [ "PENDING", "RUNNING", "COMPLETED", "FAILED" ],
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "description" : "Universe UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "uuid" : {
+          "description" : "Perf advisor run UUID",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        }
+      },
+      "required" : [ "customerUUID", "state", "universeUUID", "uuid" ],
       "type" : "object"
     },
     "UniverseConfigureTaskParams" : {
@@ -19562,7 +19637,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/PerfAdvisorManualRunStatus"
             }
           }
         },
