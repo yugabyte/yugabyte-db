@@ -102,7 +102,6 @@ namespace cdc {
 
 using client::TableHandle;
 using client::YBSessionPtr;
-using master::MiniMaster;
 using rpc::RpcController;
 
 const std::string kCDCTestKeyspace = "my_keyspace";

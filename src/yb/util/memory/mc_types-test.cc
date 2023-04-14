@@ -19,9 +19,7 @@
 
 namespace yb {
 
-using std::make_shared;
 using std::string;
-using std::unique_ptr;
 
 class MemoryContextTypesTest : public YBTest {
  public:

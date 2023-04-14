@@ -27,14 +27,9 @@
 
 using std::string;
 
-using yb::util::VarInt;
 using yb::util::FastEncodeDescendingSignedVarInt;
 using yb::util::FastDecodeDescendingSignedVarIntUnsafe;
-using yb::FormatBytesAsStr;
-using yb::FormatSliceAsStr;
-using yb::QuotesType;
 
-using strings::Substitute;
 using strings::SubstituteAndAppend;
 
 namespace yb {

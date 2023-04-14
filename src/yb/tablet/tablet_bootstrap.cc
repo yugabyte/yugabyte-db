@@ -154,7 +154,6 @@ using std::string;
 using std::vector;
 
 using log::Log;
-using log::LogEntryPB;
 using log::LogOptions;
 using log::LogReader;
 using log::ReadableLogSegment;
@@ -162,18 +161,12 @@ using log::LogEntryMetadata;
 using log::LogIndex;
 using log::CreateNewSegment;
 using log::SegmentSequence;
-using consensus::ChangeConfigRecordPB;
 using consensus::RaftConfigPB;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
-using consensus::OpIdEquals;
-using consensus::OpIdToString;
-using consensus::ReplicateMsg;
 using consensus::MakeOpIdPB;
 using strings::Substitute;
-using tserver::WriteRequestPB;
-using tserver::TabletSnapshotOpRequestPB;
 
 static string DebugInfo(const string& tablet_id,
                         uint64_t segment_seqno,

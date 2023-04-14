@@ -70,17 +70,13 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/tsan_util.h"
 
-using yb::client::YBClient;
-using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
-using yb::client::YBSchemaFromSchema;
 using yb::client::YBTableCreator;
 using yb::client::YBTableName;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::ConsensusMetadataPB;
 using yb::consensus::ConsensusStatePB;
 using yb::consensus::PeerMemberType;
-using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_COPYING;
 using yb::tablet::TABLET_DATA_DELETED;
@@ -90,9 +86,7 @@ using yb::tablet::TabletDataState;
 using yb::tablet::RaftGroupReplicaSuperBlockPB;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::TabletServerErrorPB;
-using std::numeric_limits;
 using std::string;
-using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 

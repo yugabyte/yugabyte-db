@@ -53,16 +53,10 @@
 #include "yb/util/threadpool.h"
 
 using std::atomic;
-using std::shared_ptr;
 using std::string;
-using std::thread;
 using std::unique_ptr;
-using std::vector;
 
-using strings::Substitute;
 DECLARE_bool(enable_tracing);
-
-using std::shared_ptr;
 
 namespace yb {
 

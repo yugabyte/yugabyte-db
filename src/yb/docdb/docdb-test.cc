@@ -56,20 +56,13 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_partition.h"
 
-using std::cout;
-using std::endl;
-using std::make_pair;
 using std::map;
 using std::string;
 using std::unique_ptr;
-using std::shared_ptr;
-using std::make_shared;
 using std::vector;
 
-using yb::util::TrimStr;
 using yb::util::ApplyEagerLineContinuation;
 
-using rocksdb::WriteOptions;
 
 using namespace std::literals;
 

@@ -108,13 +108,7 @@ using namespace std::placeholders;
 namespace yb {
 
 using std::shared_ptr;
-using rpc::ErrorStatusPB;
-using rpc::Messenger;
-using rpc::Rpc;
-using rpc::RpcController;
 using tserver::WriteRequestPB;
-using tserver::WriteResponsePB;
-using tserver::WriteResponsePB_PerRowErrorPB;
 using strings::Substitute;
 
 namespace client {

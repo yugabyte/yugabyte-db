@@ -14,7 +14,6 @@
 
 namespace yb {
 
-using client::YBClient;
 using client::YBTableName;
 
 using pgwrapper::PGConn;

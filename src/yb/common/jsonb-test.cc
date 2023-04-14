@@ -25,9 +25,6 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
-using std::to_string;
-using std::numeric_limits;
-
 namespace yb {
 namespace common {
 

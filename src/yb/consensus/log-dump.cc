@@ -99,10 +99,8 @@ DEFINE_UNKNOWN_string(output_wal_dir, "", "WAL directory for the output of --fil
 namespace yb {
 namespace log {
 
-using consensus::OperationType;
 using consensus::ReplicateMsg;
 using std::string;
-using std::vector;
 using std::cout;
 using std::endl;
 

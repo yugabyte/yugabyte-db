@@ -115,7 +115,6 @@ using std::string;
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
-using strings::Substitute;
 
 DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master tserver service");

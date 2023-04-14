@@ -63,8 +63,6 @@ using namespace std::placeholders;
 using namespace yb::size_literals;
 using namespace yb::ql; // NOLINT
 
-using yb::rpc::ServiceIf;
-
 namespace {
 
 boost::posix_time::time_duration refresh_interval() {

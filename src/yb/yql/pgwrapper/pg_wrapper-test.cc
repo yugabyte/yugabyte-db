@@ -31,7 +31,6 @@
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 
 using gflags::CommandLineFlagInfo;
-using yb::StatusFromPB;
 using yb::master::FlushTablesRequestPB;
 using yb::master::FlushTablesResponsePB;
 using yb::master::IsFlushTablesDoneRequestPB;
@@ -41,7 +40,6 @@ using std::string;
 using std::vector;
 using std::unique_ptr;
 
-using yb::client::YBTableName;
 using yb::rpc::RpcController;
 
 using namespace std::literals;

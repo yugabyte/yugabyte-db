@@ -93,7 +93,6 @@ using consensus::kInvalidOpIdIndex;
 using consensus::RaftConfigPB;
 using consensus::ConsensusRound;
 using consensus::ConsensusRoundPtr;
-using consensus::ReplicateMsg;
 using docdb::RateLimiterSharingMode;
 using master::ReportedTabletPB;
 using master::TabletReportPB;

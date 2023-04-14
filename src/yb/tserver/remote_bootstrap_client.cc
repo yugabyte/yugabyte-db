@@ -114,12 +114,9 @@ namespace yb {
 namespace tserver {
 
 using consensus::ConsensusMetadata;
-using consensus::ConsensusStatePB;
 using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
-using consensus::RaftPeerPB;
 using env_util::CopyFile;
-using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -130,7 +127,6 @@ using tablet::TabletDataState_Name;
 using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
-using tablet::RaftGroupReplicaSuperBlockPB;
 
 std::atomic<int32_t> remote_bootstrap_clients_started_{0};
 

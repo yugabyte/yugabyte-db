@@ -22,7 +22,6 @@
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-using std::vector;
 using yb::tablet::Tablet;
 using yb::tablet::TabletPeer;
 

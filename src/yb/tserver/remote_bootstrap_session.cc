@@ -69,15 +69,9 @@ using std::vector;
 using std::string;
 
 using consensus::MinimumOpId;
-using consensus::PeerMemberType;
-using consensus::RaftPeerPB;
-using log::LogAnchorRegistry;
-using log::ReadableLogSegment;
 using strings::Substitute;
-using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
-using tablet::RaftGroupReplicaSuperBlockPB;
 
 RemoteBootstrapSession::RemoteBootstrapSession(
     const std::shared_ptr<TabletPeer>& tablet_peer, std::string session_id,

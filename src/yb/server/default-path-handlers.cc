@@ -95,11 +95,9 @@ DECLARE_bool(TEST_mini_cluster_mode);
 namespace yb {
 
 using boost::replace_all;
-using google::CommandlineFlagsIntoString;
 using std::ifstream;
 using std::string;
 using std::endl;
-using std::shared_ptr;
 using std::map;
 using std::vector;
 using strings::Substitute;

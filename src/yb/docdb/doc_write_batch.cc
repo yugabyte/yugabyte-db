@@ -45,10 +45,6 @@
 using std::numeric_limits;
 using std::string;
 
-using yb::BinaryOutputFormat;
-
-using yb::server::HybridClock;
-
 namespace yb {
 namespace docdb {
 

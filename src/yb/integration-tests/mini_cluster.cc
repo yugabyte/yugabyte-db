@@ -112,9 +112,7 @@ DECLARE_int32(transaction_table_num_tablets);
 
 namespace yb {
 
-using client::YBClient;
 using client::YBClientBuilder;
-using master::CatalogManager;
 using master::MiniMaster;
 using master::TabletLocationsPB;
 using master::TSDescriptor;
@@ -122,7 +120,6 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 using tserver::MiniTabletServer;
-using tserver::TabletServer;
 using master::GetMasterClusterConfigResponsePB;
 using master::ChangeMasterClusterConfigRequestPB;
 using master::ChangeMasterClusterConfigResponsePB;

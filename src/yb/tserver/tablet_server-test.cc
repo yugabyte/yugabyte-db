@@ -69,16 +69,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
 
-using yb::consensus::RaftConfigPB;
-using yb::consensus::RaftPeerPB;
-using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
-using yb::server::Clock;
 using yb::server::HybridClock;
-using yb::tablet::Tablet;
-using yb::tablet::TabletPeer;
-using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 

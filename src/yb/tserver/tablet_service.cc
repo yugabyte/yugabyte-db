@@ -241,14 +241,12 @@ using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::ConsensusConfigType;
 using consensus::ConsensusRequestPB;
-using consensus::ConsensusResponsePB;
 using consensus::GetLastOpIdRequestPB;
 using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
 using consensus::LeaderLeaseStatus;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
-using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
@@ -262,7 +260,6 @@ using google::protobuf::RepeatedPtrField;
 using rpc::RpcContext;
 using std::shared_ptr;
 using std::string;
-using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 using tablet::ChangeMetadataOperation;
@@ -272,7 +269,6 @@ using tablet::TabletPeerPtr;
 using tablet::TabletStatusPB;
 using tablet::TruncateOperation;
 using tablet::OperationCompletionCallback;
-using tablet::WriteOperation;
 
 namespace {
 

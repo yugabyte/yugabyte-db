@@ -73,11 +73,9 @@ using log::LogOptions;
 using ::testing::_;
 using ::testing::AnyNumber;
 using ::testing::AtLeast;
-using ::testing::Eq;
 using ::testing::InSequence;
 using ::testing::Invoke;
 using ::testing::Mock;
-using ::testing::Property;
 using ::testing::Return;
 
 const char* kTestTable = "TestTable";

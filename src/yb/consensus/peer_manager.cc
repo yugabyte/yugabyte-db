@@ -46,9 +46,6 @@ DECLARE_bool(enable_multi_raft_heartbeat_batcher);
 namespace yb {
 namespace consensus {
 
-using log::Log;
-using strings::Substitute;
-
 PeerManager::PeerManager(
     const std::string tablet_id,
     const std::string local_uuid,
