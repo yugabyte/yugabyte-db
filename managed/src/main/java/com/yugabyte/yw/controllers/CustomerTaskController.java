@@ -451,7 +451,7 @@ public class CustomerTaskController extends AuthenticatedController {
             Json.toJson(taskParams),
             newTaskUUID);
 
-    return new PlatformResults.YBPTask(taskUUID, targetUUID).asResult();
+    return new PlatformResults.YBPTask(newTaskUUID, targetUUID).asResult();
   }
 
   @ApiOperation(
