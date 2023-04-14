@@ -47,10 +47,6 @@
 using std::string;
 using strings::Substitute;
 using yb::QLValuePB;
-using yb::common::Jsonb;
-using yb::util::Decimal;
-using yb::util::VarInt;
-using yb::FormatBytesAsStr;
 using yb::util::CompareUsingLessThan;
 using yb::util::FastDecodeSignedVarIntUnsafe;
 using yb::util::kInt32SignBitFlipMask;

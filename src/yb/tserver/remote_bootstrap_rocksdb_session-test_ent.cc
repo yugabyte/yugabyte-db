@@ -26,8 +26,6 @@ namespace tserver {
 using std::string;
 using std::vector;
 
-using yb::tablet::Tablet;
-
 static const string kSnapshotId = "0123456789ABCDEF0123456789ABCDEF";
 
 class RemoteBootstrapRocksDBTest : public RemoteBootstrapSessionTest {

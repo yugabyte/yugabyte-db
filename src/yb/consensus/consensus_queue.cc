@@ -162,7 +162,6 @@ using log::Log;
 using std::unique_ptr;
 using std::string;
 using std::max;
-using rpc::Messenger;
 using strings::Substitute;
 
 METRIC_DEFINE_gauge_int64(tablet, majority_done_ops, "Leader Operations Acked by Majority",

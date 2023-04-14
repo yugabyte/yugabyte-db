@@ -22,10 +22,8 @@
 namespace yb {
 namespace ql {
 
-using std::endl;
 using std::istream;
 using std::min;
-using std::shared_ptr;
 using std::string;
 
 //--------------------------------------------------------------------------------------------------

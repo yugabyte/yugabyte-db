@@ -121,11 +121,8 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-using consensus::RaftPeerPB;
 using master::GetLeaderMasterRpc;
 using master::MasterErrorPB;
-using rpc::Rpc;
-using rpc::RpcController;
 
 namespace client {
 

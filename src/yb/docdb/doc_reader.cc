@@ -40,9 +40,7 @@
 #include "yb/util/result.h"
 #include "yb/util/status.h"
 
-using std::vector;
 
-using yb::HybridTime;
 
 namespace yb {
 namespace docdb {

@@ -29,10 +29,7 @@ using std::ostringstream;
 using std::pair;
 using std::sort;
 using std::string;
-using std::tuple;
 using std::vector;
-
-using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace docdb {

@@ -69,9 +69,6 @@ DECLARE_uint64(remote_bootstrap_timeout_poll_period_ms);
 namespace yb {
 namespace tserver {
 
-using consensus::MaximumOpId;
-using consensus::MinimumOpId;
-using consensus::OpIdEquals;
 using env_util::ReadFully;
 using log::ReadableLogSegment;
 using rpc::ErrorStatusPB;

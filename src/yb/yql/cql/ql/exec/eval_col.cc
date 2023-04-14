@@ -30,8 +30,6 @@
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-
 //--------------------------------------------------------------------------------------------------
 
 Status Executor::ColumnRefsToPB(const PTDmlStmt *tnode,

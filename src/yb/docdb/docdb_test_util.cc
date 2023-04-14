@@ -44,17 +44,12 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/tostring.h"
 
-using std::endl;
-using std::make_shared;
 using std::string;
 using std::unique_ptr;
 using std::vector;
 using std::stringstream;
 
-using strings::Substitute;
-
 using yb::util::ApplyEagerLineContinuation;
-using yb::FormatBytesAsStr;
 using yb::util::TrimStr;
 using yb::util::LeftShiftTextBlock;
 using yb::util::TrimCppComments;

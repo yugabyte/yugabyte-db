@@ -47,8 +47,6 @@
 namespace yb {
 namespace consensus {
 
-using std::vector;
-
 // TODO: Share a test harness with ConsensusMetadataTest?
 const char* kTabletId = "TestTablet";
 

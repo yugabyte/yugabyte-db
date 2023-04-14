@@ -43,7 +43,6 @@ namespace cqlserver {
 using namespace yb::ql; // NOLINT
 using std::string;
 using std::unique_ptr;
-using std::vector;
 using strings::Substitute;
 using yb::integration_tests::YBTableTestBase;
 

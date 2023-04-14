@@ -76,7 +76,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
-using std::make_shared;
 using std::string;
 using std::vector;
 

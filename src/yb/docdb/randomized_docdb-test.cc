@@ -44,7 +44,6 @@ constexpr int kNumUniqueSubKeys = 500;
 
 using std::vector;
 using std::pair;
-using std::sort;
 
 namespace yb {
 namespace docdb {

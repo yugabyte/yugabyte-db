@@ -39,8 +39,6 @@
 using namespace std::literals;
 using std::shared_ptr;
 using std::unique_ptr;
-using std::unordered_set;
-using rocksdb::VectorToString;
 
 DECLARE_bool(ycql_enable_packed_row);
 

@@ -34,7 +34,6 @@
 using std::endl;
 using std::string;
 using std::stringstream;
-using strings::Substitute;
 
 namespace yb {
 namespace docdb {

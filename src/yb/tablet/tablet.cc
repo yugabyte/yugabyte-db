@@ -285,14 +285,12 @@ DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 using namespace std::placeholders;
 
 using std::shared_ptr;
-using std::make_shared;
 using std::string;
 using std::unordered_set;
 using std::vector;
 using std::unique_ptr;
 using namespace std::literals;  // NOLINT
 
-using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
 
 namespace yb {

@@ -38,7 +38,6 @@ using std::vector;
 using std::unique_ptr;
 using std::shared_ptr;
 using std::make_shared;
-using strings::Substitute;
 
 using client::YBOperation;
 using client::YBqlOp;

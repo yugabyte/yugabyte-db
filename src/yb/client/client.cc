@@ -116,11 +116,6 @@
 
 using namespace std::literals;
 
-using yb::master::AlterTableRequestPB;
-using yb::master::CreateTablegroupRequestPB;
-using yb::master::CreateTablegroupResponsePB;
-using yb::master::DeleteTablegroupRequestPB;
-using yb::master::DeleteTablegroupResponsePB;
 using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
@@ -266,7 +261,6 @@ namespace yb {
 namespace client {
 
 using internal::MetaCache;
-using ql::ObjectType;
 using std::shared_ptr;
 using std::pair;
 

@@ -29,7 +29,6 @@ namespace yb {
 namespace docdb {
 
 using std::string;
-using strings::Substitute;
 
 const MonoDelta ValueControlFields::kMaxTtl = common::kMaxTtl;
 const MonoDelta ValueControlFields::kResetTtl = MonoDelta::FromNanoseconds(0);

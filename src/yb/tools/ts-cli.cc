@@ -69,7 +69,6 @@ using std::ostringstream;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using yb::HostPort;
 using yb::consensus::ConsensusServiceProxy;
 using yb::consensus::RaftConfigPB;
 using yb::rpc::Messenger;

@@ -56,7 +56,6 @@
 using namespace std::literals;
 
 using yb::tablet::GetTransactionTimeout;
-using yb::tablet::TabletPeer;
 
 DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
 DECLARE_bool(TEST_fail_in_apply_if_no_metadata);

@@ -74,13 +74,10 @@ namespace master {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
-using std::shared_ptr;
 using std::string;
 
 const std::string kKeyspaceName("my_keyspace");

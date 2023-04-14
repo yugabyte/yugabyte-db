@@ -18,9 +18,7 @@ namespace yb {
 namespace ql {
 
 using std::endl;
-using std::shared_ptr;
 using std::string;
-using std::to_string;
 
 //--------------------------------------------------------------------------------------------------
 // Class Parser.

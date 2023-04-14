@@ -31,7 +31,6 @@ using namespace std::literals;
 
 using std::string;
 using std::vector;
-using std::stack;
 using std::thread;
 
 DECLARE_bool(dump_lock_keys);

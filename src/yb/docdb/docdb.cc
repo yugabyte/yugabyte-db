@@ -62,19 +62,10 @@
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
-using std::endl;
-using std::list;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
-using std::shared_ptr;
-using std::stack;
 using std::vector;
-using std::make_shared;
-
-using yb::HybridTime;
-using yb::FormatBytesAsStr;
-using strings::Substitute;
 
 using namespace std::placeholders;
 

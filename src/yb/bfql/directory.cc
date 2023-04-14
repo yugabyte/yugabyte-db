@@ -18,7 +18,6 @@
 namespace yb {
 namespace bfql {
 
-using std::initializer_list;
 using std::vector;
 
 const DataType VOID = DataType::UNKNOWN_DATA;

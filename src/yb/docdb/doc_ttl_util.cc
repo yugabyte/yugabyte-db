@@ -19,8 +19,6 @@
 
 using std::string;
 
-using yb::HybridTime;
-
 namespace yb {
 namespace docdb {
 

@@ -93,7 +93,6 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
 using consensus::GetConsensusRole;
-using consensus::RaftPeerPB;
 using itest::SimpleIntKeyYBSchema;
 using master::ReportedTabletPB;
 using master::TabletReportPB;

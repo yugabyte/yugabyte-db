@@ -63,9 +63,6 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
-using master::GetTableLocationsRequestPB;
-using master::GetTableLocationsResponsePB;
-using master::TableIdentifierPB;
 using test::Partitioning;
 
 template <class TabletSplitBase>

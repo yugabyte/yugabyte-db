@@ -36,7 +36,6 @@
 
 using std::vector;
 
-using yb::HybridTime;
 
 namespace yb {
 namespace docdb {

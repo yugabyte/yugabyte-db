@@ -27,7 +27,6 @@ using std::vector;
 using boost::asio::ip::address;
 using boost::asio::ip::address_v4;
 using boost::asio::ip::address_v6;
-using boost::asio::ip::tcp;
 
 namespace yb {
 

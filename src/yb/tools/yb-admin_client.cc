@@ -143,7 +143,6 @@ using google::protobuf::util::MessageToJsonString;
 
 using client::YBClientBuilder;
 using client::YBTableName;
-using rpc::MessengerBuilder;
 using rpc::RpcController;
 using pb_util::ParseFromSlice;
 using strings::Substitute;
@@ -160,8 +159,6 @@ using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 
 using master::BackupRowEntryPB;
-using master::ChangeEncryptionInfoRequestPB;
-using master::ChangeEncryptionInfoResponsePB;
 using master::CreateSnapshotRequestPB;
 using master::CreateSnapshotResponsePB;
 using master::DeleteSnapshotRequestPB;
@@ -172,7 +169,6 @@ using master::ImportSnapshotMetaResponsePB;
 using master::ImportSnapshotMetaResponsePB_TableMetaPB;
 using master::ListMastersRequestPB;
 using master::ListMastersResponsePB;
-using master::ListSnapshotRestorationsRequestPB;
 using master::ListSnapshotRestorationsResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
