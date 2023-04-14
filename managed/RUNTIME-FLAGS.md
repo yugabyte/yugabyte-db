@@ -116,7 +116,7 @@
 | "Performance Advisor cpu skew interval mins" | "yb.perf_advisor.cpu_skew_interval_mins" | "UNIVERSE" | "Defines time interval for cpu skew recommendation check, in minutes" | "Integer" |
 | "Performance Advisor CPU usage threshold" | "yb.perf_advisor.cpu_usage_threshold" | "UNIVERSE" | "Defines max allowed average CPU usage per 10 minutes before CPU usage recommendation is raised" | "Double" |
 | "Performance Advisor cpu usage interval mins" | "yb.perf_advisor.cpu_usage_interval_mins" | "UNIVERSE" | "Defines time interval for cpu usage recommendation check, in minutes" | "Integer" |
-| "Performance Advisor query skew threshold" | "yb.perf_advisor.query_skew_threshold_pct" | "UNIVERSE" | "Defines max difference between avg queries count and node queries count before cpu skew recommendation is raised" | "Double" |
+| "Performance Advisor query skew threshold" | "yb.perf_advisor.query_skew_threshold_pct" | "UNIVERSE" | "Defines max difference between avg queries count and node queries count before query skew recommendation is raised" | "Double" |
 | "Performance Advisor query skew min queries" | "yb.perf_advisor.query_skew_min_queries" | "UNIVERSE" | "Defines minimal queries count for query skew recommendation to be raised" | "Integer" |
 | "Performance Advisor query skew interval mins" | "yb.perf_advisor.query_skew_interval_mins" | "UNIVERSE" | "Defines time interval for query skew recommendation check, in minutes" | "Integer" |
 | "Performance Advisor rejected connections threshold" | "yb.perf_advisor.rejected_conn_threshold" | "UNIVERSE" | "Defines number of rejected connections during configured interval for rejected connections recommendation to be raised " | "Integer" |
