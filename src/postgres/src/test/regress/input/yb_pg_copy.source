@@ -24,3 +24,8 @@ COPY testjsonb FROM '@abs_srcdir@/data/jsonb.data';
 COPY array_op_test FROM '@abs_srcdir@/data/array.data';
 
 COPY array_index_op_test FROM '@abs_srcdir@/data/array.data';
+
+-- analyze all the data we just loaded, to ensure plan consistency
+-- in later tests
+
+ANALYZE tenk1;
