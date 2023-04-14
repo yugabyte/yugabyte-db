@@ -146,6 +146,16 @@ public class Util {
 
   private static final Pattern GO_DURATION_REGEX =
       Pattern.compile("(\\d+)(ms|us|\\u00b5s|ns|s|m|h|d)");
+
+  public static volatile String YBA_VERSION;
+
+  public static String getYbaVersion() {
+    return YBA_VERSION;
+  }
+
+  public static void setYbaVersion(String version) {
+    YBA_VERSION = version;
+  }
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
