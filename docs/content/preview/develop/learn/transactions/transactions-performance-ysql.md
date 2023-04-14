@@ -114,16 +114,17 @@ COMMIT;
 
 ## Optimistic concurrency control
 
-As noted, all transactions are dynamically assigned a priority. This is a value in the range of `[0.0, 1.0]`. The current priority can be fetched using the `yb_transaction_priority` setting as follows:
+As noted, all transactions are dynamically assigned a priority. This is a value in the range of `[0.0, 1.0]`. The current priority can be fetched using the `yb_get_current_transaction_priority` setting as follows:
 
 ```plpgsql
-SHOW yb_transaction_priority;
+SELECT yb_get_current_transaction_priority();
 ```
 
 ```output
-          yb_transaction_priority
+    yb_get_current_transaction_priority
 -------------------------------------------
  0.000000000 (Normal priority transaction)
+(1 row)
 ```
 
 The priority value is bound by two settings, namely `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. If an application would like a specific transaction to be given higher priority, it can issue statements like the following:
