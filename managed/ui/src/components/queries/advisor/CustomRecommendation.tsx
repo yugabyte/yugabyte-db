@@ -20,7 +20,7 @@ export const CustomRecommendations: FC<CustomRecommendation> = ({ summary, sugge
             {suggestion}
             <a
               target="_blank"
-              className="learnSchemaSuggestion"
+              className="learnRecommendationSuggestions"
               href={EXTERNAL_LINKS.CPU_SKEW_AND_USAGE}
               rel="noopener noreferrer"
             >

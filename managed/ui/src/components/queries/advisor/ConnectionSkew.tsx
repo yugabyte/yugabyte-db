@@ -67,7 +67,7 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
             <a
               target="_blank"
               rel="noopener noreferrer"
-              className="learnSchemaSuggestion"
+              className="learnRecommendationSuggestions"
               href={EXTERNAL_LINKS.CONNECTION_SKEW}
             >
               {t('clusterDetail.performance.advisor.LearnHow')}
