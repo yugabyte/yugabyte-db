@@ -173,3 +173,14 @@ export interface IndexAndShardingRecommendationData {
   indicator: number;
   table: TableData;
 }
+
+export interface LastRunData {
+  customerUUID: string;
+  endTime: string;
+  manual: boolean;
+  scheduleTime: string;
+  startTime: string;
+  state: string;
+  universeUUID: string;
+  uuid: string;
+}
