@@ -1,0 +1,231 @@
+<!-- doc/src/sgml/vacuumlo.sgml -->
+
+<refentry id="vacuumlo">
+ <indexterm zone="vacuumlo">
+  <primary>vacuumlo</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>vacuumlo</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>vacuumlo</refname>
+  <refpurpose>remove orphaned large objects from a <productname>PostgreSQL</productname> database</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>vacuumlo</command>
+   <arg choice="opt" rep="repeat"><replaceable>option</replaceable></arg>
+   <arg choice="plain" rep="repeat"><replaceable>dbname</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+ <para>
+  <application>vacuumlo</application> is a simple utility program that will remove any
+  <quote>orphaned</quote> large objects from a
+  <productname>PostgreSQL</productname> database.  An orphaned large object (LO) is
+  considered to be any LO whose OID does not appear in any <type>oid</type> or
+  <type>lo</type> data column of the database.
+ </para>
+
+ <para>
+  If you use this, you may also be interested in the <function>lo_manage</function>
+  trigger in the <xref linkend="lo"/> module.
+  <function>lo_manage</function> is useful to try
+  to avoid creating orphaned LOs in the first place.
+ </para>
+
+  <para>
+   All databases named on the command line are processed.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   <application>vacuumlo</application> accepts the following command-line arguments:
+
+  <variablelist>
+   <varlistentry>
+    <term><option>-l <replaceable class="parameter">limit</replaceable></option></term>
+    <term><option>--limit=<replaceable class="parameter">limit</replaceable></option></term>
+    <listitem>
+     <para>
+      Remove no more than <replaceable>limit</replaceable> large objects per
+      transaction (default 1000).  Since the server acquires a lock per LO
+      removed, removing too many LOs in one transaction risks exceeding
+      <xref linkend="guc-max-locks-per-transaction"/>.  Set the limit to
+      zero if you want all removals done in a single transaction.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-n</option></term>
+    <term><option>--dry-run</option></term>
+    <listitem>
+     <para>Don't remove anything, just show what would be done.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-v</option></term>
+    <term><option>--verbose</option></term>
+    <listitem>
+     <para>Write a lot of progress messages.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-V</option></term>
+    <term><option>--version</option></term>
+    <listitem>
+     <para>
+      Print the <application>vacuumlo</application> version and exit.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-?</option></term>
+    <term><option>--help</option></term>
+    <listitem>
+     <para>
+      Show help about <application>vacuumlo</application> command line
+      arguments, and exit.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+  </para>
+
+  <para>
+   <application>vacuumlo</application> also accepts the following command-line
+   arguments for connection parameters:
+
+  <variablelist>
+   <varlistentry>
+    <term><option>-h <replaceable class="parameter">host</replaceable></option></term>
+    <term><option>--host=<replaceable class="parameter">host</replaceable></option></term>
+    <listitem>
+     <para>Database server's host.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-p <replaceable>port</replaceable></option></term>
+    <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
+    <listitem>
+     <para>Database server's port.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-U <replaceable>username</replaceable></option></term>
+    <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
+    <listitem>
+     <para>User name to connect as.</para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-w</option></term>
+    <term><option>--no-password</option></term>
+    <listitem>
+     <para>
+      Never issue a password prompt.  If the server requires password
+      authentication and a password is not available by other means
+      such as a <filename>.pgpass</filename> file, the connection
+      attempt will fail.  This option can be useful in batch jobs and
+      scripts where no user is present to enter a password.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><option>-W</option></term>
+    <term><option>--password</option></term>
+    <listitem>
+     <para>
+      Force <application>vacuumlo</application> to prompt for a
+      password before connecting to a database.
+     </para>
+
+     <para>
+      This option is never essential, since
+      <application>vacuumlo</application> will automatically prompt
+      for a password if the server demands password authentication.
+      However, <application>vacuumlo</application> will waste a
+      connection attempt finding out that the server wants a password.
+      In some cases it is worth typing <option>-W</option> to avoid the extra
+      connection attempt.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname> utilities,
+   also uses the environment variables supported by <application>libpq</application>
+   (see <xref linkend="libpq-envars"/>).
+  </para>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <application>vacuumlo</application> works by the following method:
+   First, <application>vacuumlo</application> builds a temporary table which contains all
+   of the OIDs of the large objects in the selected database.  It then scans
+   through all columns in the database that are of type
+   <type>oid</type> or <type>lo</type>, and removes matching entries from the temporary
+   table.  (Note: Only types with these names are considered; in particular,
+   domains over them are not considered.)  The remaining entries in the
+   temporary table identify orphaned LOs.  These are removed.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Author</title>
+
+  <para>
+   Peter Mount <email>peter@retep.org.uk</email>
+  </para>
+ </refsect1>
+
+</refentry>

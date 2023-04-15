@@ -1,0 +1,294 @@
+<!--
+doc/src/sgml/ref/dropuser.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-dropuser">
+ <indexterm zone="app-dropuser">
+  <primary>dropuser</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>dropuser</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>dropuser</refname>
+  <refpurpose>remove a <productname>PostgreSQL</productname> user account</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>dropuser</command>
+   <arg rep="repeat"><replaceable>connection-option</replaceable></arg>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+   <arg choice="opt"><replaceable>username</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <application>dropuser</application> removes an existing
+   <productname>PostgreSQL</productname> user.
+   Only superusers and users with the <literal>CREATEROLE</literal> privilege can
+   remove <productname>PostgreSQL</productname> users.  (To remove a
+   superuser, you must yourself be a superuser.)
+  </para>
+
+  <para>
+   <application>dropuser</application> is a wrapper around the
+   <acronym>SQL</acronym> command <link linkend="sql-droprole"><command>DROP ROLE</command></link>.
+   There is no effective difference between dropping users via
+   this utility and via other methods for accessing the server.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   <application>dropuser</application> accepts the following command-line arguments:
+
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">username</replaceable></term>
+      <listitem>
+       <para>
+        Specifies the name of the <productname>PostgreSQL</productname> user to be removed.
+        You will be prompted for a name if none is specified on the command
+        line and the <option>-i</option>/<option>--interactive</option> option
+        is used.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-e</option></term>
+      <term><option>--echo</option></term>
+      <listitem>
+       <para>
+        Echo the commands that <application>dropuser</application> generates
+        and sends to the server.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-i</option></term>
+      <term><option>--interactive</option></term>
+      <listitem>
+       <para>
+        Prompt for confirmation before actually removing the user, and prompt
+        for the user name if none is specified on the command line.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-V</option></term>
+       <term><option>--version</option></term>
+       <listitem>
+       <para>
+       Print the <application>dropuser</application> version and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>--if-exists</option></term>
+      <listitem>
+       <para>
+        Do not throw an error if the user does not exist. A notice is
+        issued in this case.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+       <term><option>-?</option></term>
+       <term><option>--help</option></term>
+       <listitem>
+       <para>
+       Show help about <application>dropuser</application> command line
+       arguments, and exit.
+       </para>
+       </listitem>
+     </varlistentry>
+
+    </variablelist>
+  </para>
+
+  <para>
+   <application>dropuser</application> also accepts the following
+   command-line arguments for connection parameters:
+
+   <variablelist>
+     <varlistentry>
+      <term><option>-h <replaceable class="parameter">host</replaceable></option></term>
+      <term><option>--host=<replaceable class="parameter">host</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the host name of the machine on which the
+        server
+        is running.  If the value begins with a slash, it is used
+        as the directory for the Unix domain socket.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
+      <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
+      <listitem>
+       <para>
+        Specifies the TCP port or local Unix domain socket file
+        extension on which the server
+        is listening for connections.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
+      <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
+      <listitem>
+       <para>
+        User name to connect as (not the user name to drop).
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-w</option></term>
+      <term><option>--no-password</option></term>
+      <listitem>
+       <para>
+        Never issue a password prompt.  If the server requires
+        password authentication and a password is not available by
+        other means such as a <filename>.pgpass</filename> file, the
+        connection attempt will fail.  This option can be useful in
+        batch jobs and scripts where no user is present to enter a
+        password.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><option>-W</option></term>
+      <term><option>--password</option></term>
+      <listitem>
+       <para>
+        Force <application>dropuser</application> to prompt for a
+        password before connecting to a database.
+       </para>
+
+       <para>
+        This option is never essential, since
+        <application>dropuser</application> will automatically prompt
+        for a password if the server demands password authentication.
+        However, <application>dropuser</application> will waste a
+        connection attempt finding out that the server wants a password.
+        In some cases it is worth typing <option>-W</option> to avoid the extra
+        connection attempt.
+       </para>
+      </listitem>
+     </varlistentry>
+   </variablelist>
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><envar>PG_COLOR</envar></term>
+    <listitem>
+     <para>
+      Specifies whether to use color in diagnostic messages. Possible values
+      are <literal>always</literal>, <literal>auto</literal> and
+      <literal>never</literal>.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname> utilities,
+   also uses the environment variables supported by <application>libpq</application>
+   (see <xref linkend="libpq-envars"/>).
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Diagnostics</title>
+
+  <para>
+   In case of difficulty, see <xref linkend="sql-droprole"/>
+   and <xref linkend="app-psql"/> for
+   discussions of potential problems and error messages.
+   The database server must be running at the
+   targeted host.  Also, any default connection settings and environment
+   variables used by the <application>libpq</application> front-end
+   library will apply.
+  </para>
+
+ </refsect1>
+
+
+ <refsect1>
+  <title>Examples</title>
+
+   <para>
+    To remove user <literal>joe</literal> from the default database
+    server:
+<screen>
+<prompt>$ </prompt><userinput>dropuser joe</userinput>
+</screen>
+   </para>
+
+   <para>
+    To remove user <literal>joe</literal> using the server on host
+    <literal>eden</literal>, port 5000, with verification and a peek at the underlying
+    command:
+<screen>
+<prompt>$ </prompt><userinput>dropuser -p 5000 -h eden -i -e joe</userinput>
+<computeroutput>Role "joe" will be permanently removed.
+Are you sure? (y/n) </computeroutput><userinput>y</userinput>
+<computeroutput>DROP ROLE joe;</computeroutput>
+</screen></para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="app-createuser"/></member>
+   <member><xref linkend="sql-droprole"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

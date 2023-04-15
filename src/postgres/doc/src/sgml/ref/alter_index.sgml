@@ -1,0 +1,323 @@
+<!--
+doc/src/sgml/ref/alter_index.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterindex">
+ <indexterm zone="sql-alterindex">
+  <primary>ALTER INDEX</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER INDEX</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER INDEX</refname>
+  <refpurpose>change the definition of an index</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER INDEX [ IF EXISTS ] <replaceable class="parameter">name</replaceable> RENAME TO <replaceable class="parameter">new_name</replaceable>
+ALTER INDEX [ IF EXISTS ] <replaceable class="parameter">name</replaceable> SET TABLESPACE <replaceable class="parameter">tablespace_name</replaceable>
+ALTER INDEX <replaceable class="parameter">name</replaceable> ATTACH PARTITION <replaceable class="parameter">index_name</replaceable>
+ALTER INDEX <replaceable class="parameter">name</replaceable> [ NO ] DEPENDS ON EXTENSION <replaceable class="parameter">extension_name</replaceable>
+ALTER INDEX [ IF EXISTS ] <replaceable class="parameter">name</replaceable> SET ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )
+ALTER INDEX [ IF EXISTS ] <replaceable class="parameter">name</replaceable> RESET ( <replaceable class="parameter">storage_parameter</replaceable> [, ... ] )
+ALTER INDEX [ IF EXISTS ] <replaceable class="parameter">name</replaceable> ALTER [ COLUMN ] <replaceable class="parameter">column_number</replaceable>
+    SET STATISTICS <replaceable class="parameter">integer</replaceable>
+ALTER INDEX ALL IN TABLESPACE <replaceable class="parameter">name</replaceable> [ OWNED BY <replaceable class="parameter">role_name</replaceable> [, ... ] ]
+    SET TABLESPACE <replaceable class="parameter">new_tablespace</replaceable> [ NOWAIT ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER INDEX</command> changes the definition of an existing index.
+   There are several subforms described below. Note that the lock level required
+   may differ for each subform. An <literal>ACCESS EXCLUSIVE</literal> lock is held
+   unless explicitly noted. When multiple subcommands are listed, the lock
+   held will be the strictest one required from any subcommand.
+
+  <variablelist>
+
+   <varlistentry>
+    <term><literal>RENAME</literal></term>
+    <listitem>
+     <para>
+      The <literal>RENAME</literal> form changes the name of the index.
+      If the index is associated with a table constraint (either
+      <literal>UNIQUE</literal>, <literal>PRIMARY KEY</literal>,
+      or <literal>EXCLUDE</literal>), the constraint is renamed as well.
+      There is no effect on the stored data.
+     </para>
+     <para>
+      Renaming an index acquires a <literal>SHARE UPDATE EXCLUSIVE</literal>
+      lock.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET TABLESPACE</literal></term>
+    <listitem>
+     <para>
+      This form changes the index's tablespace to the specified tablespace and
+      moves the data file(s) associated with the index to the new tablespace.
+      To change the tablespace of an index, you must own the index and have
+      <literal>CREATE</literal> privilege on the new tablespace.
+      All indexes in the current database in a tablespace can be moved by using
+      the <literal>ALL IN TABLESPACE</literal> form, which will lock all
+      indexes to be moved and then move each one.  This form also supports
+      <literal>OWNED BY</literal>, which will only move indexes owned by the
+      roles specified.  If the <literal>NOWAIT</literal> option is specified
+      then the command will fail if it is unable to acquire all of the locks
+      required immediately.  Note that system catalogs will not be moved by
+      this command, use <command>ALTER DATABASE</command> or explicit
+      <command>ALTER INDEX</command> invocations instead if desired.
+      See also
+      <link linkend="sql-createtablespace"><command>CREATE TABLESPACE</command></link>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ATTACH PARTITION</literal></term>
+    <listitem>
+     <para>
+      Causes the named index to become attached to the altered index.
+      The named index must be on a partition of the table containing the
+      index being altered, and have an equivalent definition.  An attached
+      index cannot be dropped by itself, and will automatically be dropped
+      if its parent index is dropped.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>DEPENDS ON EXTENSION <replaceable class="parameter">extension_name</replaceable></literal></term>
+    <term><literal>NO DEPENDS ON EXTENSION <replaceable class="parameter">extension_name</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form marks the index as dependent on the extension, or no longer
+      dependent on that extension if <literal>NO</literal> is specified.
+      An index that's marked as dependent on an extension is automatically
+      dropped when the extension is dropped.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>SET ( <replaceable class="parameter">storage_parameter</replaceable> [= <replaceable class="parameter">value</replaceable>] [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This form changes one or more index-method-specific storage parameters
+      for the index.  See
+      <link linkend="sql-createindex"><command>CREATE INDEX</command></link>
+      for details on the available parameters.  Note that the index contents
+      will not be modified immediately by this command; depending on the
+      parameter you might need to rebuild the index with
+      <link linkend="sql-reindex"><command>REINDEX</command></link>
+      to get the desired effects.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESET ( <replaceable class="parameter">storage_parameter</replaceable> [, ... ] )</literal></term>
+    <listitem>
+     <para>
+      This form resets one or more index-method-specific storage parameters to
+      their defaults.  As with <literal>SET</literal>, a <literal>REINDEX</literal>
+      might be needed to update the index entirely.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>ALTER [ COLUMN ] <replaceable class="parameter">column_number</replaceable> SET STATISTICS <replaceable class="parameter">integer</replaceable></literal></term>
+    <listitem>
+     <para>
+      This form sets the per-column statistics-gathering target for
+      subsequent <link linkend="sql-analyze"><command>ANALYZE</command></link> operations, though can
+      be used only on index columns that are defined as an expression.
+      Since expressions lack a unique name, we refer to them using the
+      ordinal number of the index column.
+      The target can be set in the range 0 to 10000; alternatively, set it
+      to -1 to revert to using the system default statistics
+      target (<xref linkend="guc-default-statistics-target"/>).
+      For more information on the use of statistics by the
+      <productname>PostgreSQL</productname> query planner, refer to
+      <xref linkend="planner-stats"/>.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+    <variablelist>
+
+     <varlistentry>
+      <term><literal>IF EXISTS</literal></term>
+      <listitem>
+       <para>
+        Do not throw an error if the index does not exist. A notice is issued
+        in this case.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">column_number</replaceable></term>
+      <listitem>
+       <para>
+        The ordinal number refers to the ordinal (left-to-right) position
+        of the index column.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">name</replaceable></term>
+      <listitem>
+       <para>
+        The name (possibly schema-qualified) of an existing index to
+        alter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_name</replaceable></term>
+      <listitem>
+       <para>
+        The new name for the index.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">tablespace_name</replaceable></term>
+      <listitem>
+       <para>
+        The tablespace to which the index will be moved.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">extension_name</replaceable></term>
+      <listitem>
+       <para>
+        The name of the extension that the index is to depend on.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">storage_parameter</replaceable></term>
+      <listitem>
+       <para>
+        The name of an index-method-specific storage parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">value</replaceable></term>
+      <listitem>
+       <para>
+        The new value for an index-method-specific storage parameter.
+        This might be a number or a word depending on the parameter.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+   <para>
+    These operations are also possible using
+    <link linkend="sql-altertable"><command>ALTER TABLE</command></link>.
+    <command>ALTER INDEX</command> is in fact just an alias for the forms
+    of <command>ALTER TABLE</command> that apply to indexes.
+   </para>
+
+   <para>
+    There was formerly an <command>ALTER INDEX OWNER</command> variant, but
+    this is now ignored (with a warning).  An index cannot have an owner
+    different from its table's owner.  Changing the table's owner
+    automatically changes the index as well.
+   </para>
+
+   <para>
+    Changing any part of a system catalog index is not permitted.
+   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+  <para>
+   To rename an existing index:
+<programlisting>
+ALTER INDEX distributors RENAME TO suppliers;
+</programlisting>
+  </para>
+
+  <para>
+   To move an index to a different tablespace:
+<programlisting>
+ALTER INDEX distributors SET TABLESPACE fasttablespace;
+</programlisting>
+  </para>
+
+  <para>
+   To change an index's fill factor (assuming that the index method
+   supports it):
+<programlisting>
+ALTER INDEX distributors SET (fillfactor = 75);
+REINDEX INDEX distributors;
+</programlisting></para>
+
+  <para>
+   Set the statistics-gathering target for an expression index:
+<programlisting>
+CREATE INDEX coord_idx ON measured (x, y, (z + t));
+ALTER INDEX coord_idx ALTER COLUMN 3 SET STATISTICS 1000;
+</programlisting></para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>ALTER INDEX</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createindex"/></member>
+   <member><xref linkend="sql-reindex"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

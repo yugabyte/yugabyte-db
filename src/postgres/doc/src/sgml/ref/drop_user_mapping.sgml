@@ -1,0 +1,110 @@
+<!--
+doc/src/sgml/ref/drop_user_mapping.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-dropusermapping">
+ <indexterm zone="sql-dropusermapping">
+  <primary>DROP USER MAPPING</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>DROP USER MAPPING</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>DROP USER MAPPING</refname>
+  <refpurpose>remove a user mapping for a foreign server</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+DROP USER MAPPING [ IF EXISTS ] FOR { <replaceable class="parameter">user_name</replaceable> | USER | CURRENT_ROLE | CURRENT_USER | PUBLIC } SERVER <replaceable class="parameter">server_name</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>DROP USER MAPPING</command> removes an existing user
+   mapping from foreign server.
+  </para>
+
+  <para>
+   The owner of a foreign server can drop user mappings for that server
+   for any user.  Also, a user can drop a user mapping for their own
+   user name if <literal>USAGE</literal> privilege on the server has been
+   granted to the user.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><literal>IF EXISTS</literal></term>
+    <listitem>
+     <para>
+      Do not throw an error if the user mapping does not exist.  A
+      notice is issued in this case.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">user_name</replaceable></term>
+    <listitem>
+     <para>
+      User name of the mapping.  <literal>CURRENT_ROLE</literal>, <literal>CURRENT_USER</literal>,
+      and <literal>USER</literal> match the name of the current
+      user.  <literal>PUBLIC</literal> is used to match all present and
+      future user names in the system.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">server_name</replaceable></term>
+    <listitem>
+     <para>
+      Server name of the user mapping.
+     </para>
+    </listitem>
+   </varlistentry>
+    </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Drop a user mapping <literal>bob</literal>, server <literal>foo</literal> if it exists:
+<programlisting>
+DROP USER MAPPING IF EXISTS FOR bob SERVER foo;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>DROP USER MAPPING</command> conforms to ISO/IEC 9075-9
+   (SQL/MED).  The <literal>IF EXISTS</literal> clause is
+   a <productname>PostgreSQL</productname> extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createusermapping"/></member>
+   <member><xref linkend="sql-alterusermapping"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

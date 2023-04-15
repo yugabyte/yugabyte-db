@@ -1,0 +1,360 @@
+<!--
+doc/src/sgml/ref/alter_opfamily.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alteropfamily">
+ <indexterm zone="sql-alteropfamily">
+  <primary>ALTER OPERATOR FAMILY</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER OPERATOR FAMILY</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER OPERATOR FAMILY</refname>
+  <refpurpose>change the definition of an operator family</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable> ADD
+  {  OPERATOR <replaceable class="parameter">strategy_number</replaceable> <replaceable class="parameter">operator_name</replaceable> ( <replaceable class="parameter">op_type</replaceable>, <replaceable class="parameter">op_type</replaceable> )
+              [ FOR SEARCH | FOR ORDER BY <replaceable class="parameter">sort_family_name</replaceable> ]
+   | FUNCTION <replaceable class="parameter">support_number</replaceable> [ ( <replaceable class="parameter">op_type</replaceable> [ , <replaceable class="parameter">op_type</replaceable> ] ) ]
+              <replaceable class="parameter">function_name</replaceable> [ ( <replaceable class="parameter">argument_type</replaceable> [, ...] ) ]
+  } [, ... ]
+
+ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable> DROP
+  {  OPERATOR <replaceable class="parameter">strategy_number</replaceable> ( <replaceable class="parameter">op_type</replaceable> [ , <replaceable class="parameter">op_type</replaceable> ] )
+   | FUNCTION <replaceable class="parameter">support_number</replaceable> ( <replaceable class="parameter">op_type</replaceable> [ , <replaceable class="parameter">op_type</replaceable> ] )
+  } [, ... ]
+
+ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
+    RENAME TO <replaceable>new_name</replaceable>
+
+ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
+    OWNER TO { <replaceable>new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+
+ALTER OPERATOR FAMILY <replaceable>name</replaceable> USING <replaceable class="parameter">index_method</replaceable>
+    SET SCHEMA <replaceable>new_schema</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER OPERATOR FAMILY</command> changes the definition of
+   an operator family.  You can add operators and support functions
+   to the family, remove them from the family,
+   or change the family's name or owner.
+  </para>
+
+  <para>
+   When operators and support functions are added to a family with
+   <command>ALTER OPERATOR FAMILY</command>, they are not part of any
+   specific operator class within the family, but are just <quote>loose</quote>
+   within the family.  This indicates that these operators and functions
+   are compatible with the family's semantics, but are not required for
+   correct functioning of any specific index.  (Operators and functions
+   that are so required should be declared as part of an operator class,
+   instead; see <xref linkend="sql-createopclass"/>.)
+   <productname>PostgreSQL</productname> will allow loose members of a
+   family to be dropped from the family at any time, but members of an
+   operator class cannot be dropped without dropping the whole class and
+   any indexes that depend on it.
+   Typically, single-data-type operators
+   and functions are part of operator classes because they are needed to
+   support an index on that specific data type, while cross-data-type
+   operators and functions are made loose members of the family.
+  </para>
+
+  <para>
+   You must be a superuser to use <command>ALTER OPERATOR FAMILY</command>.
+   (This restriction is made because an erroneous operator family definition
+   could confuse or even crash the server.)
+  </para>
+
+  <para>
+   <command>ALTER OPERATOR FAMILY</command> does not presently check
+   whether the operator family definition includes all the operators and
+   functions required by the index method, nor whether the operators and
+   functions form a self-consistent set.  It is the user's
+   responsibility to define a valid operator family.
+  </para>
+
+  <para>
+   Refer to <xref linkend="xindex"/> for further information.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing operator
+      family.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">index_method</replaceable></term>
+    <listitem>
+     <para>
+      The name of the index method this operator family is for.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">strategy_number</replaceable></term>
+    <listitem>
+     <para>
+      The index method's strategy number for an operator
+      associated with the operator family.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">operator_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an operator associated
+      with the operator family.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">op_type</replaceable></term>
+    <listitem>
+     <para>
+      In an <literal>OPERATOR</literal> clause,
+      the operand data type(s) of the operator, or <literal>NONE</literal> to
+      signify a prefix operator.  Unlike the comparable
+      syntax in <command>CREATE OPERATOR CLASS</command>, the operand data types
+      must always be specified.
+     </para>
+
+     <para>
+      In an <literal>ADD FUNCTION</literal> clause, the operand data type(s) the
+      function is intended to support, if different from
+      the input data type(s) of the function.  For B-tree comparison functions
+      and hash functions it is not necessary to specify <replaceable
+      class="parameter">op_type</replaceable> since the function's input
+      data type(s) are always the correct ones to use.  For B-tree sort
+      support functions, B-Tree equal image functions, and all
+      functions in GiST, SP-GiST and GIN operator classes, it is
+      necessary to specify the operand data type(s) the function is to
+      be used with.
+     </para>
+
+     <para>
+      In a <literal>DROP FUNCTION</literal> clause, the operand data type(s) the
+      function is intended to support must be specified.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">sort_family_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of an existing <literal>btree</literal> operator
+      family that describes the sort ordering associated with an ordering
+      operator.
+     </para>
+
+     <para>
+      If neither <literal>FOR SEARCH</literal> nor <literal>FOR ORDER BY</literal> is
+      specified, <literal>FOR SEARCH</literal> is the default.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">support_number</replaceable></term>
+    <listitem>
+     <para>
+      The index method's support function number for a
+      function associated with the operator family.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">function_name</replaceable></term>
+    <listitem>
+     <para>
+      The name (optionally schema-qualified) of a function that is an index
+      method support function for the operator family.  If no argument list
+      is specified, the name must be unique in its schema.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">argument_type</replaceable></term>
+    <listitem>
+     <para>
+      The parameter data type(s) of the function.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
+    <listitem>
+     <para>
+      The new name of the operator family.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
+    <listitem>
+     <para>
+      The new owner of the operator family.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the operator family.
+     </para>
+    </listitem>
+   </varlistentry>
+ </variablelist>
+
+  <para>
+   The <literal>OPERATOR</literal> and <literal>FUNCTION</literal>
+   clauses can appear in any order.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Notice that the <literal>DROP</literal> syntax only specifies the <quote>slot</quote>
+   in the operator family, by strategy or support number and input data
+   type(s).  The name of the operator or function occupying the slot is not
+   mentioned.  Also, for <literal>DROP FUNCTION</literal> the type(s) to specify
+   are the input data type(s) the function is intended to support; for
+   GiST, SP-GiST and GIN indexes this might have nothing to do with the actual
+   input argument types of the function.
+  </para>
+
+  <para>
+   Because the index machinery does not check access permissions on functions
+   before using them, including a function or operator in an operator family
+   is tantamount to granting public execute permission on it.  This is usually
+   not an issue for the sorts of functions that are useful in an operator
+   family.
+  </para>
+
+  <para>
+   The operators should not be defined by SQL functions.  An SQL function
+   is likely to be inlined into the calling query, which will prevent
+   the optimizer from recognizing that the query matches an index.
+  </para>
+
+  <para>
+   Before <productname>PostgreSQL</productname> 8.4, the <literal>OPERATOR</literal>
+   clause could include a <literal>RECHECK</literal> option.  This is no longer
+   supported because whether an index operator is <quote>lossy</quote> is now
+   determined on-the-fly at run time.  This allows efficient handling of
+   cases where an operator might or might not be lossy.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   The following example command adds cross-data-type operators and
+   support functions to an operator family that already contains B-tree
+   operator classes for data types <type>int4</type> and <type>int2</type>.
+  </para>
+
+<programlisting>
+ALTER OPERATOR FAMILY integer_ops USING btree ADD
+
+  -- int4 vs int2
+  OPERATOR 1 &lt; (int4, int2) ,
+  OPERATOR 2 &lt;= (int4, int2) ,
+  OPERATOR 3 = (int4, int2) ,
+  OPERATOR 4 &gt;= (int4, int2) ,
+  OPERATOR 5 &gt; (int4, int2) ,
+  FUNCTION 1 btint42cmp(int4, int2) ,
+
+  -- int2 vs int4
+  OPERATOR 1 &lt; (int2, int4) ,
+  OPERATOR 2 &lt;= (int2, int4) ,
+  OPERATOR 3 = (int2, int4) ,
+  OPERATOR 4 &gt;= (int2, int4) ,
+  OPERATOR 5 &gt; (int2, int4) ,
+  FUNCTION 1 btint24cmp(int2, int4) ;
+</programlisting>
+
+  <para>
+   To remove these entries again:
+  </para>
+
+<programlisting>
+ALTER OPERATOR FAMILY integer_ops USING btree DROP
+
+  -- int4 vs int2
+  OPERATOR 1 (int4, int2) ,
+  OPERATOR 2 (int4, int2) ,
+  OPERATOR 3 (int4, int2) ,
+  OPERATOR 4 (int4, int2) ,
+  OPERATOR 5 (int4, int2) ,
+  FUNCTION 1 (int4, int2) ,
+
+  -- int2 vs int4
+  OPERATOR 1 (int2, int4) ,
+  OPERATOR 2 (int2, int4) ,
+  OPERATOR 3 (int2, int4) ,
+  OPERATOR 4 (int2, int4) ,
+  OPERATOR 5 (int2, int4) ,
+  FUNCTION 1 (int2, int4) ;
+</programlisting>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER OPERATOR FAMILY</command> statement in
+   the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createopfamily"/></member>
+   <member><xref linkend="sql-dropopfamily"/></member>
+   <member><xref linkend="sql-createopclass"/></member>
+   <member><xref linkend="sql-alteropclass"/></member>
+   <member><xref linkend="sql-dropopclass"/></member>
+  </simplelist>
+ </refsect1>
+</refentry>

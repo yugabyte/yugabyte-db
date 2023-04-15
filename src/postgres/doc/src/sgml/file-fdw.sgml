@@ -1,0 +1,282 @@
+<!-- doc/src/sgml/file-fdw.sgml -->
+
+<sect1 id="file-fdw" xreflabel="file_fdw">
+ <title>file_fdw</title>
+
+ <indexterm zone="file-fdw">
+  <primary>file_fdw</primary>
+ </indexterm>
+
+ <para>
+  The <filename>file_fdw</filename> module provides the foreign-data wrapper
+  <function>file_fdw</function>, which can be used to access data
+  files in the server's file system, or to execute programs on the server
+  and read their output.  The data file or program output must be in a format
+  that can be read by <command>COPY FROM</command>;
+  see <xref linkend="sql-copy"/> for details.
+  Access to data files is currently read-only.
+ </para>
+
+ <para>
+  A foreign table created using this wrapper can have the following options:
+ </para>
+
+ <variablelist>
+
+  <varlistentry>
+   <term><literal>filename</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the file to be read.  Relative paths are relative to the
+     data directory.
+     Either <literal>filename</literal> or <literal>program</literal> must be
+     specified, but not both.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>program</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the command to be executed.  The standard output of this
+     command will be read as though <command>COPY FROM PROGRAM</command> were used.
+     Either <literal>program</literal> or <literal>filename</literal> must be
+     specified, but not both.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>format</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the data format,
+     the same as <command>COPY</command>'s <literal>FORMAT</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>header</literal></term>
+
+   <listitem>
+    <para>
+     Specifies whether the data has a header line,
+     the same as <command>COPY</command>'s <literal>HEADER</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>delimiter</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the data delimiter character,
+     the same as <command>COPY</command>'s <literal>DELIMITER</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>quote</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the data quote character,
+     the same as <command>COPY</command>'s <literal>QUOTE</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>escape</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the data escape character,
+     the same as <command>COPY</command>'s <literal>ESCAPE</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>null</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the data null string,
+     the same as <command>COPY</command>'s <literal>NULL</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>encoding</literal></term>
+
+   <listitem>
+    <para>
+     Specifies the data encoding,
+     the same as <command>COPY</command>'s <literal>ENCODING</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+ </variablelist>
+
+ <para>
+  Note that while <command>COPY</command> allows options such as <literal>HEADER</literal>
+  to be specified without a corresponding value, the foreign table option
+  syntax requires a value to be present in all cases.  To activate
+  <command>COPY</command> options typically written without a value, you can pass
+  the value TRUE, since all such options are Booleans.
+ </para>
+
+ <para>
+  A column of a foreign table created using this wrapper can have the
+  following options:
+ </para>
+
+ <variablelist>
+
+  <varlistentry>
+   <term><literal>force_not_null</literal></term>
+
+   <listitem>
+    <para>
+     This is a Boolean option.  If true, it specifies that values of the
+     column should not be matched against the null string (that is, the
+     table-level <literal>null</literal> option).  This has the same effect
+     as listing the column in <command>COPY</command>'s
+     <literal>FORCE_NOT_NULL</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+  <varlistentry>
+   <term><literal>force_null</literal></term>
+
+   <listitem>
+    <para>
+     This is a Boolean option.  If true, it specifies that values of the
+     column which match the null string are returned as <literal>NULL</literal>
+     even if the value is quoted. Without this option, only unquoted
+     values matching the null string are returned as <literal>NULL</literal>.
+     This has the same effect  as listing the column in
+     <command>COPY</command>'s <literal>FORCE_NULL</literal> option.
+    </para>
+   </listitem>
+  </varlistentry>
+
+ </variablelist>
+
+ <para>
+  <command>COPY</command>'s <literal>FORCE_QUOTE</literal> option is
+  currently not supported by <literal>file_fdw</literal>.
+ </para>
+
+ <para>
+  These options can only be specified for a foreign table or its columns, not
+  in the options of the <literal>file_fdw</literal> foreign-data wrapper, nor in the
+  options of a server or user mapping using the wrapper.
+ </para>
+
+ <para>
+  Changing table-level options requires being a superuser or having the privileges
+  of the role <literal>pg_read_server_files</literal> (to use a filename) or
+  the role <literal>pg_execute_server_program</literal> (to use a program),
+  for security reasons: only certain users should be able to control which file is
+  read or which program is run.  In principle regular users could be allowed to
+  change the other options, but that's not supported at present.
+ </para>
+
+ <para>
+  When specifying the <literal>program</literal> option, keep in mind that the option
+  string is executed by the shell.  If you need to pass any arguments to the
+  command that come from an untrusted source, you must be careful to strip or
+  escape any characters that might have special meaning to the shell.
+  For security reasons, it is best to use a fixed command string, or at least
+  avoid passing any user input in it.
+ </para>
+
+ <para>
+  For a foreign table using <literal>file_fdw</literal>, <command>EXPLAIN</command> shows
+  the name of the file to be read or program to be run.
+  For a file, unless <literal>COSTS OFF</literal> is
+  specified, the file size (in bytes) is shown as well.
+ </para>
+
+ <example>
+  <title>Create a Foreign Table for PostgreSQL CSV Logs</title>
+
+  <para>
+   One of the obvious uses for <literal>file_fdw</literal> is to make
+   the PostgreSQL activity log available as a table for querying.  To
+   do this, first you must be <link
+   linkend="runtime-config-logging-csvlog">logging to a CSV file,</link>
+   which here we
+   will call <literal>pglog.csv</literal>.  First, install <literal>file_fdw</literal>
+   as an extension:
+  </para>
+
+<programlisting>
+CREATE EXTENSION file_fdw;
+</programlisting>
+
+  <para>
+   Then create a foreign server:
+
+<programlisting>
+CREATE SERVER pglog FOREIGN DATA WRAPPER file_fdw;
+</programlisting>
+  </para>
+
+  <para>
+   Now you are ready to create the foreign data table.  Using the
+   <command>CREATE FOREIGN TABLE</command> command, you will need to define
+   the columns for the table, the CSV file name, and its format:
+
+<programlisting>
+CREATE FOREIGN TABLE pglog (
+  log_time timestamp(3) with time zone,
+  user_name text,
+  database_name text,
+  process_id integer,
+  connection_from text,
+  session_id text,
+  session_line_num bigint,
+  command_tag text,
+  session_start_time timestamp with time zone,
+  virtual_transaction_id text,
+  transaction_id bigint,
+  error_severity text,
+  sql_state_code text,
+  message text,
+  detail text,
+  hint text,
+  internal_query text,
+  internal_query_pos integer,
+  context text,
+  query text,
+  query_pos integer,
+  location text,
+  application_name text,
+  backend_type text,
+  leader_pid integer,
+  query_id bigint
+) SERVER pglog
+OPTIONS ( filename 'log/pglog.csv', format 'csv' );
+</programlisting>
+  </para>
+
+  <para>
+   That's it &mdash; now you can query your log directly. In production, of
+   course, you would need to define some way to deal with log rotation.
+  </para>
+ </example>
+
+</sect1>

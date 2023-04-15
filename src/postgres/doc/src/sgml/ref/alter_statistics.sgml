@@ -1,0 +1,135 @@
+<!--
+doc/src/sgml/ref/alter_statistics.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-alterstatistics">
+ <indexterm zone="sql-alterstatistics">
+  <primary>ALTER STATISTICS</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>ALTER STATISTICS</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>ALTER STATISTICS</refname>
+  <refpurpose>
+   change the definition of an extended statistics object
+  </refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+ALTER STATISTICS <replaceable class="parameter">name</replaceable> OWNER TO { <replaceable class="parameter">new_owner</replaceable> | CURRENT_ROLE | CURRENT_USER | SESSION_USER }
+ALTER STATISTICS <replaceable class="parameter">name</replaceable> RENAME TO <replaceable class="parameter">new_name</replaceable>
+ALTER STATISTICS <replaceable class="parameter">name</replaceable> SET SCHEMA <replaceable class="parameter">new_schema</replaceable>
+ALTER STATISTICS <replaceable class="parameter">name</replaceable> SET STATISTICS <replaceable class="parameter">new_target</replaceable>
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>ALTER STATISTICS</command> changes the parameters of an existing
+   extended statistics object.  Any parameters not specifically set in the
+   <command>ALTER STATISTICS</command> command retain their prior settings.
+  </para>
+
+  <para>
+   You must own the statistics object to use <command>ALTER STATISTICS</command>.
+   To change a statistics object's schema, you must also
+   have <literal>CREATE</literal> privilege on the new schema.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the statistics object's schema.  (These restrictions enforce that altering
+   the owner doesn't do anything you couldn't do by dropping and recreating
+   the statistics object.  However, a superuser can alter ownership of any
+   statistics object anyway.)
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <para>
+    <variablelist>
+     <varlistentry>
+      <term><replaceable class="parameter">name</replaceable></term>
+      <listitem>
+       <para>
+        The name (optionally schema-qualified) of the statistics object to be
+        altered.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_owner</replaceable></term>
+      <listitem>
+       <para>
+        The user name of the new owner of the statistics object.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_name</replaceable></term>
+      <listitem>
+       <para>
+        The new name for the statistics object.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_schema</replaceable></term>
+      <listitem>
+       <para>
+        The new schema for the statistics object.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">new_target</replaceable></term>
+      <listitem>
+       <para>
+        The statistic-gathering target for this statistics object for subsequent
+        <link linkend="sql-analyze"><command>ANALYZE</command></link> operations.
+        The target can be set in the range 0 to 10000; alternatively, set it
+        to -1 to revert to using the maximum of the statistics target of the
+        referenced columns, if set, or the system default statistics
+        target (<xref linkend="guc-default-statistics-target"/>).
+        For more information on the use of statistics by the
+        <productname>PostgreSQL</productname> query planner, refer to
+        <xref linkend="planner-stats"/>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+    </variablelist>
+   </para>
+  </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   There is no <command>ALTER STATISTICS</command> command in the SQL standard.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createstatistics"/></member>
+   <member><xref linkend="sql-dropstatistics"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

@@ -1,0 +1,247 @@
+<!--
+doc/src/sgml/ref/create_extension.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createextension">
+ <indexterm zone="sql-createextension">
+  <primary>CREATE EXTENSION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE EXTENSION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE EXTENSION</refname>
+  <refpurpose>install an extension</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE EXTENSION [ IF NOT EXISTS ] <replaceable class="parameter">extension_name</replaceable>
+    [ WITH ] [ SCHEMA <replaceable class="parameter">schema_name</replaceable> ]
+             [ VERSION <replaceable class="parameter">version</replaceable> ]
+             [ CASCADE ]
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+  <para>
+   <command>CREATE EXTENSION</command> loads a new extension into the current
+   database.  There must not be an extension of the same name already loaded.
+  </para>
+
+  <para>
+   Loading an extension essentially amounts to running the extension's script
+   file.  The script will typically create new <acronym>SQL</acronym> objects such as
+   functions, data types, operators and index support methods.
+   <command>CREATE EXTENSION</command> additionally records the identities
+   of all the created objects, so that they can be dropped again if
+   <command>DROP EXTENSION</command> is issued.
+  </para>
+
+  <para>
+   The user who runs <command>CREATE EXTENSION</command> becomes the
+   owner of the extension for purposes of later privilege checks, and
+   normally also becomes the owner of any objects created by the
+   extension's script.
+  </para>
+
+  <para>
+   Loading an extension ordinarily requires the same privileges that would
+   be required to create its component objects.  For many extensions this
+   means superuser privileges are needed.
+   However, if the extension is marked <firstterm>trusted</firstterm> in
+   its control file, then it can be installed by any user who has
+   <literal>CREATE</literal> privilege on the current database.
+   In this case the extension object itself will be owned by the calling
+   user, but the contained objects will be owned by the bootstrap superuser
+   (unless the extension's script explicitly assigns them to the calling
+   user).  This configuration gives the calling user the right to drop the
+   extension, but not to modify individual objects within it.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+    <variablelist>
+     <varlistentry>
+      <term><literal>IF NOT EXISTS</literal></term>
+      <listitem>
+       <para>
+        Do not throw an error if an extension with the same name already
+        exists.  A notice is issued in this case.  Note that there is no
+        guarantee that the existing extension is anything like the one that
+        would have been created from the currently-available script file.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">extension_name</replaceable></term>
+      <listitem>
+       <para>
+        The name of the extension to be
+        installed. <productname>PostgreSQL</productname> will create the
+        extension using details from the file
+        <literal>SHAREDIR/extension/</literal><replaceable class="parameter">extension_name</replaceable><literal>.control</literal>.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">schema_name</replaceable></term>
+      <listitem>
+       <para>
+        The name of the schema in which to install the extension's
+        objects, given that the extension allows its contents to be
+        relocated.  The named schema must already exist.
+        If not specified, and the extension's control file does not specify a
+        schema either, the current default object creation schema is used.
+       </para>
+
+       <para>
+        If the extension specifies a <literal>schema</literal> parameter in its
+        control file, then that schema cannot be overridden with
+        a <literal>SCHEMA</literal> clause.  Normally, an error will be raised if
+        a <literal>SCHEMA</literal> clause is given and it conflicts with the
+        extension's <literal>schema</literal> parameter.  However, if
+        the <literal>CASCADE</literal> clause is also given,
+        then <replaceable class="parameter">schema_name</replaceable> is
+        ignored when it conflicts.  The
+        given <replaceable class="parameter">schema_name</replaceable> will be
+        used for installation of any needed extensions that do not
+        specify <literal>schema</literal> in their control files.
+       </para>
+
+       <para>
+        Remember that the extension itself is not considered to be within any
+        schema: extensions have unqualified names that must be unique
+        database-wide.  But objects belonging to the extension can be within
+        schemas.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="parameter">version</replaceable></term>
+      <listitem>
+       <para>
+        The version of the extension to install.  This can be written as
+        either an identifier or a string literal.  The default version is
+        whatever is specified in the extension's control file.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><literal>CASCADE</literal></term>
+      <listitem>
+       <para>
+        Automatically install any extensions that this extension depends on
+        that are not already installed.  Their dependencies are likewise
+        automatically installed, recursively.  The <literal>SCHEMA</literal> clause,
+        if given, applies to all extensions that get installed this way.
+        Other options of the statement are not applied to
+        automatically-installed extensions; in particular, their default
+        versions are always selected.
+       </para>
+      </listitem>
+     </varlistentry>
+  </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   Before you can use <command>CREATE EXTENSION</command> to load an extension
+   into a database, the extension's supporting files must be installed.
+   Information about installing the extensions supplied with
+   <productname>PostgreSQL</productname> can be found in
+   <link linkend="contrib">Additional Supplied Modules</link>.
+  </para>
+
+  <para>
+   The extensions currently available for loading can be identified from the
+   <link linkend="view-pg-available-extensions"><structname>pg_available_extensions</structname></link>
+   or
+   <link linkend="view-pg-available-extension-versions"><structname>pg_available_extension_versions</structname></link>
+   system views.
+  </para>
+
+  <caution>
+   <para>
+    Installing an extension as superuser requires trusting that the
+    extension's author wrote the extension installation script in a secure
+    fashion.  It is not terribly difficult for a malicious user to create
+    trojan-horse objects that will compromise later execution of a
+    carelessly-written extension script, allowing that user to acquire
+    superuser privileges.  However, trojan-horse objects are only hazardous
+    if they are in the <varname>search_path</varname> during script
+    execution, meaning that they are in the extension's installation target
+    schema or in the schema of some extension it depends on.  Therefore, a
+    good rule of thumb when dealing with extensions whose scripts have not
+    been carefully vetted is to install them only into schemas for which
+    CREATE privilege has not been and will not be granted to any untrusted
+    users.  Likewise for any extensions they depend on.
+   </para>
+
+   <para>
+    The extensions supplied with <productname>PostgreSQL</productname> are
+    believed to be secure against installation-time attacks of this sort,
+    except for a few that depend on other extensions.  As stated in the
+    documentation for those extensions, they should be installed into secure
+    schemas, or installed into the same schemas as the extensions they
+    depend on, or both.
+   </para>
+  </caution>
+
+  <para>
+   For information about writing new extensions, see
+   <xref linkend="extend-extensions"/>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Install the <link linkend="hstore">hstore</link> extension into the
+   current database, placing its objects in schema <literal>addons</literal>:
+<programlisting>
+CREATE EXTENSION hstore SCHEMA addons;
+</programlisting>
+   Another way to accomplish the same thing:
+<programlisting>
+SET search_path = addons;
+CREATE EXTENSION hstore;
+</programlisting></para>
+ </refsect1>
+
+ <refsect1>
+  <title>Compatibility</title>
+
+  <para>
+   <command>CREATE EXTENSION</command> is a <productname>PostgreSQL</productname>
+   extension.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterextension"/></member>
+   <member><xref linkend="sql-dropextension"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>

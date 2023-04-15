@@ -1,0 +1,332 @@
+<!--
+doc/src/sgml/ref/pg_config-ref.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="app-pgconfig">
+ <indexterm zone="app-pgconfig">
+  <primary>pg_config</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle><application>pg_config</application></refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>pg_config</refname>
+  <refpurpose>retrieve information about the installed version of <productname>PostgreSQL</productname></refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>pg_config</command>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+  <para>
+   The <application>pg_config</application> utility prints configuration parameters
+   of the currently installed version of <productname>PostgreSQL</productname>. It is
+   intended, for example, to be used by software packages that want to interface
+   to <productname>PostgreSQL</productname> to facilitate finding the required header files
+   and libraries.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   To use <application>pg_config</application>, supply one or more of the following
+   options:
+   <variablelist>
+    <varlistentry>
+     <term><option>--bindir</option></term>
+     <listitem>
+      <para>
+       Print the location of user executables. Use this, for example, to find
+       the <command>psql</command> program. This is normally also the location
+       where the <filename>pg_config</filename> program resides.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--docdir</option></term>
+     <listitem>
+      <para>
+       Print the location of documentation files.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--htmldir</option></term>
+     <listitem>
+      <para>
+       Print the location of HTML documentation files.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--includedir</option></term>
+     <listitem>
+      <para>
+       Print the location of C header files of the client interfaces.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--pkgincludedir</option></term>
+     <listitem>
+      <para>
+       Print the location of other C header files.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--includedir-server</option></term>
+     <listitem>
+      <para>
+       Print the location of C header files for server programming.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--libdir</option></term>
+     <listitem>
+      <para>
+       Print the location of object code libraries.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--pkglibdir</option></term>
+     <listitem>
+      <para>
+       Print the location of dynamically loadable modules, or where
+       the server would search for them.  (Other
+       architecture-dependent data files might also be installed in this
+       directory.)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--localedir</option></term>
+     <listitem>
+      <para>
+       Print the location of locale support files.  (This will be an empty
+       string if locale support was not configured when
+       <productname>PostgreSQL</productname> was built.)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--mandir</option></term>
+     <listitem>
+      <para>
+       Print the location of manual pages.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--sharedir</option></term>
+     <listitem>
+      <para>
+       Print the location of architecture-independent support files.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--sysconfdir</option></term>
+     <listitem>
+      <para>
+       Print the location of system-wide configuration files.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--pgxs</option></term>
+     <listitem>
+      <para>
+       Print the location of extension makefiles.
+     </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--configure</option></term>
+     <listitem>
+      <para>
+       Print the options that were given to the <filename>configure</filename>
+       script when <productname>PostgreSQL</productname> was configured for building.
+       This can be used to reproduce the identical configuration, or
+       to find out with what options a binary package was built. (Note
+       however that binary packages often contain vendor-specific custom
+       patches.)  See also the examples below.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--cc</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>CC</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This shows the C compiler used.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--cppflags</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>CPPFLAGS</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This shows C compiler switches needed
+       at preprocessing time (typically, <literal>-I</literal> switches).
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--cflags</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>CFLAGS</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This shows C compiler switches.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--cflags_sl</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>CFLAGS_SL</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This shows extra C compiler switches
+       used for building shared libraries.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--ldflags</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>LDFLAGS</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This shows linker switches.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--ldflags_ex</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>LDFLAGS_EX</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This shows linker switches
+       used for building executables only.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--ldflags_sl</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>LDFLAGS_SL</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This shows linker switches
+       used for building shared libraries only.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--libs</option></term>
+     <listitem>
+      <para>
+       Print the value of the <varname>LIBS</varname> variable that was used for building
+       <productname>PostgreSQL</productname>.  This normally contains <literal>-l</literal>
+       switches for external libraries linked into <productname>PostgreSQL</productname>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>--version</option></term>
+     <listitem>
+      <para>
+       Print the version of <productname>PostgreSQL</productname>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-?</option></term>
+     <term><option>--help</option></term>
+      <listitem>
+       <para>
+        Show help about <application>pg_config</application> command line
+        arguments, and exit.
+       </para>
+      </listitem>
+     </varlistentry>
+   </variablelist>
+
+   If more than one option is given, the information is printed in that order,
+   one item per line.  If no options are given, all available information
+   is printed, with labels.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   The options <option>--docdir</option>, <option>--pkgincludedir</option>,
+   <option>--localedir</option>, <option>--mandir</option>,
+   <option>--sharedir</option>, <option>--sysconfdir</option>,
+   <option>--cc</option>, <option>--cppflags</option>,
+   <option>--cflags</option>, <option>--cflags_sl</option>,
+   <option>--ldflags</option>, <option>--ldflags_sl</option>,
+   and <option>--libs</option> were added in <productname>PostgreSQL</productname> 8.1.
+   The option <option>--htmldir</option> was added in <productname>PostgreSQL</productname> 8.4.
+   The option <option>--ldflags_ex</option> was added in <productname>PostgreSQL</productname> 9.0.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>Example</title>
+
+  <para>
+   To reproduce the build configuration of the current PostgreSQL
+   installation, run the following command:
+<programlisting>
+eval ./configure `pg_config --configure`
+</programlisting>
+   The output of <literal>pg_config --configure</literal> contains
+   shell quotation marks so arguments with spaces are represented
+   correctly.  Therefore, using <literal>eval</literal> is required
+   for proper results.
+  </para>
+ </refsect1>
+
+</refentry>

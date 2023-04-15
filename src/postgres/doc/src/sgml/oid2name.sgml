@@ -1,0 +1,376 @@
+<!-- doc/src/sgml/oid2name.sgml -->
+
+<refentry id="oid2name">
+ <indexterm zone="oid2name">
+  <primary>oid2name</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>oid2name</refentrytitle>
+  <manvolnum>1</manvolnum>
+  <refmiscinfo>Application</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>oid2name</refname>
+  <refpurpose>resolve OIDs and file nodes in a <productname>PostgreSQL</productname> data directory</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+  <cmdsynopsis>
+   <command>oid2name</command>
+   <arg rep="repeat"><replaceable>option</replaceable></arg>
+  </cmdsynopsis>
+ </refsynopsisdiv>
+
+ <refsect1>
+  <title>Description</title>
+
+ <para>
+  <application>oid2name</application> is a utility program that helps administrators to
+  examine the file structure used by PostgreSQL.  To make use of it, you need
+  to be familiar with the database file structure, which is described in
+  <xref linkend="storage"/>.
+ </para>
+
+ <note>
+  <para>
+   The name <quote>oid2name</quote> is historical, and is actually rather
+   misleading, since most of the time when you use it, you will really
+   be concerned with tables' filenode numbers (which are the file names
+   visible in the database directories).  Be sure you understand the
+   difference between table OIDs and table filenodes!
+  </para>
+ </note>
+
+  <para>
+   <application>oid2name</application> connects to a target database and
+   extracts OID, filenode, and/or table name information.  You can also have
+   it show database OIDs or tablespace OIDs.
+  </para>
+
+ </refsect1>
+
+ <refsect1>
+  <title>Options</title>
+
+  <para>
+   <application>oid2name</application> accepts the following command-line arguments:
+
+   <variablelist>
+
+    <varlistentry>
+     <term><option>-f <replaceable class="parameter">filenode</replaceable></option></term>
+     <term><option>--filenode=<replaceable class="parameter">filenode</replaceable></option></term>
+     <listitem><para>show info for table with filenode <replaceable>filenode</replaceable>.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-i</option></term>
+     <term><option>--indexes</option></term>
+     <listitem><para>include indexes and sequences in the listing.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-o <replaceable class="parameter">oid</replaceable></option></term>
+     <term><option>--oid=<replaceable class="parameter">oid</replaceable></option></term>
+     <listitem><para>show info for table with OID <replaceable>oid</replaceable>.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-q</option></term>
+     <term><option>--quiet</option></term>
+     <listitem><para>omit headers (useful for scripting).</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-s</option></term>
+     <term><option>--tablespaces</option></term>
+     <listitem><para>show tablespace OIDs.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-S</option></term>
+     <term><option>--system-objects</option></term>
+     <listitem><para>include system objects (those in
+      <option>information_schema</option>, <option>pg_toast</option>
+      and <option>pg_catalog</option> schemas).
+     </para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-t <replaceable class="parameter">tablename_pattern</replaceable></option></term>
+     <term><option>--table=<replaceable class="parameter">tablename_pattern</replaceable></option></term>
+     <listitem><para>show info for table(s) matching <replaceable class="parameter">tablename_pattern</replaceable>.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-V</option></term>
+     <term><option>--version</option></term>
+     <listitem>
+      <para>
+       Print the <application>oid2name</application> version and exit.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-x</option></term>
+     <term><option>--extended</option></term>
+     <listitem><para>display more information about each object shown: tablespace name,
+      schema name, and OID.
+     </para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-?</option></term>
+     <term><option>--help</option></term>
+     <listitem>
+      <para>
+       Show help about <application>oid2name</application> command line
+       arguments, and exit.
+      </para>
+     </listitem>
+    </varlistentry>
+   </variablelist>
+  </para>
+
+  <para>
+   <application>oid2name</application> also accepts the following command-line
+   arguments for connection parameters:
+
+   <variablelist>
+    <varlistentry>
+     <term><option>-d <replaceable class="parameter">database</replaceable></option></term>
+     <term><option>--dbname=<replaceable class="parameter">database</replaceable></option></term>
+     <listitem><para>database to connect to.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-h <replaceable class="parameter">host</replaceable></option></term>
+     <term><option>--host=<replaceable class="parameter">host</replaceable></option></term>
+     <listitem><para>database server's host.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-H <replaceable class="parameter">host</replaceable></option></term>
+     <listitem><para>database server's host.  Use of this parameter is
+     <emphasis>deprecated</emphasis> as of
+     <productname>PostgreSQL</productname> 12.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-p <replaceable class="parameter">port</replaceable></option></term>
+     <term><option>--port=<replaceable class="parameter">port</replaceable></option></term>
+     <listitem><para>database server's port.</para></listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><option>-U <replaceable class="parameter">username</replaceable></option></term>
+     <term><option>--username=<replaceable class="parameter">username</replaceable></option></term>
+     <listitem><para>user name to connect as.</para></listitem>
+    </varlistentry>
+
+   </variablelist>
+  </para>
+
+  <para>
+   To display specific tables, select which tables to show by
+   using <option>-o</option>, <option>-f</option> and/or <option>-t</option>.
+   <option>-o</option> takes an OID,
+   <option>-f</option> takes a filenode,
+   and <option>-t</option> takes a table name (actually, it's a <literal>LIKE</literal>
+   pattern, so you can use things like <literal>foo%</literal>).
+   You can use as many
+   of these options as you like, and the listing will include all objects
+   matched by any of the options.  But note that these options can only
+   show objects in the database given by <option>-d</option>.
+  </para>
+
+  <para>
+   If you don't give any of <option>-o</option>, <option>-f</option> or <option>-t</option>,
+   but do give <option>-d</option>, it will list all tables in the database
+   named by <option>-d</option>.  In this mode, the <option>-S</option> and
+   <option>-i</option> options control what gets listed.
+  </para>
+
+  <para>
+   If you don't give <option>-d</option> either, it will show a listing of database
+   OIDs.  Alternatively you can give <option>-s</option> to get a tablespace
+   listing.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Environment</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><envar>PGHOST</envar></term>
+    <term><envar>PGPORT</envar></term>
+    <term><envar>PGUSER</envar></term>
+
+    <listitem>
+     <para>
+      Default connection parameters.
+     </para>
+    </listitem>
+   </varlistentry>
+  </variablelist>
+
+  <para>
+   This utility, like most other <productname>PostgreSQL</productname>
+   utilities, also uses the environment variables supported by
+   <application>libpq</application> (see <xref linkend="libpq-envars"/>).
+  </para>
+
+  <para>
+   The environment variable <envar>PG_COLOR</envar> specifies whether to use
+   color in diagnostic messages. Possible values are
+   <literal>always</literal>, <literal>auto</literal> and
+   <literal>never</literal>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   <application>oid2name</application> requires a running database server with
+   non-corrupt system catalogs.  It is therefore of only limited use
+   for recovering from catastrophic database corruption situations.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+<screen>
+$ # what's in this database server, anyway?
+$ oid2name
+All databases:
+    Oid  Database Name  Tablespace
+----------------------------------
+  17228       alvherre  pg_default
+  17255     regression  pg_default
+  17227      template0  pg_default
+      1      template1  pg_default
+
+$ oid2name -s
+All tablespaces:
+     Oid  Tablespace Name
+-------------------------
+    1663       pg_default
+    1664        pg_global
+  155151         fastdisk
+  155152          bigdisk
+
+$ # OK, let's look into database alvherre
+$ cd $PGDATA/base/17228
+
+$ # get top 10 db objects in the default tablespace, ordered by size
+$ ls -lS * | head -10
+-rw-------  1 alvherre alvherre 136536064 sep 14 09:51 155173
+-rw-------  1 alvherre alvherre  17965056 sep 14 09:51 1155291
+-rw-------  1 alvherre alvherre   1204224 sep 14 09:51 16717
+-rw-------  1 alvherre alvherre    581632 sep  6 17:51 1255
+-rw-------  1 alvherre alvherre    237568 sep 14 09:50 16674
+-rw-------  1 alvherre alvherre    212992 sep 14 09:51 1249
+-rw-------  1 alvherre alvherre    204800 sep 14 09:51 16684
+-rw-------  1 alvherre alvherre    196608 sep 14 09:50 16700
+-rw-------  1 alvherre alvherre    163840 sep 14 09:50 16699
+-rw-------  1 alvherre alvherre    122880 sep  6 17:51 16751
+
+$ # I wonder what file 155173 is ...
+$ oid2name -d alvherre -f 155173
+From database "alvherre":
+  Filenode  Table Name
+----------------------
+    155173    accounts
+
+$ # you can ask for more than one object
+$ oid2name -d alvherre -f 155173 -f 1155291
+From database "alvherre":
+  Filenode     Table Name
+-------------------------
+    155173       accounts
+   1155291  accounts_pkey
+
+$ # you can mix the options, and get more details with -x
+$ oid2name -d alvherre -t accounts -f 1155291 -x
+From database "alvherre":
+  Filenode     Table Name      Oid  Schema  Tablespace
+------------------------------------------------------
+    155173       accounts   155173  public  pg_default
+   1155291  accounts_pkey  1155291  public  pg_default
+
+$ # show disk space for every db object
+$ du [0-9]* |
+> while read SIZE FILENODE
+> do
+>   echo "$SIZE       `oid2name -q -d alvherre -i -f $FILENODE`"
+> done
+16            1155287  branches_pkey
+16            1155289  tellers_pkey
+17561            1155291  accounts_pkey
+...
+
+$ # same, but sort by size
+$ du [0-9]* | sort -rn | while read SIZE FN
+> do
+>   echo "$SIZE   `oid2name -q -d alvherre -f $FN`"
+> done
+133466             155173    accounts
+17561            1155291  accounts_pkey
+1177              16717  pg_proc_proname_args_nsp_index
+...
+
+$ # If you want to see what's in tablespaces, use the pg_tblspc directory
+$ cd $PGDATA/pg_tblspc
+$ oid2name -s
+All tablespaces:
+     Oid  Tablespace Name
+-------------------------
+    1663       pg_default
+    1664        pg_global
+  155151         fastdisk
+  155152          bigdisk
+
+$ # what databases have objects in tablespace "fastdisk"?
+$ ls -d 155151/*
+155151/17228/  155151/PG_VERSION
+
+$ # Oh, what was database 17228 again?
+$ oid2name
+All databases:
+    Oid  Database Name  Tablespace
+----------------------------------
+  17228       alvherre  pg_default
+  17255     regression  pg_default
+  17227      template0  pg_default
+      1      template1  pg_default
+
+$ # Let's see what objects does this database have in the tablespace.
+$ cd 155151/17228
+$ ls -l
+total 0
+-rw-------  1 postgres postgres 0 sep 13 23:20 155156
+
+$ # OK, this is a pretty small table ... but which one is it?
+$ oid2name -d alvherre -f 155156
+From database "alvherre":
+  Filenode  Table Name
+----------------------
+    155156         foo
+</screen>
+ </refsect1>
+
+ <refsect1>
+  <title>Author</title>
+
+  <para>
+   B. Palmer <email>bpalmer@crimelabs.net</email>
+  </para>
+ </refsect1>
+
+</refentry>

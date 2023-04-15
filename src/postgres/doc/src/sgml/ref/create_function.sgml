@@ -1,0 +1,935 @@
+<!--
+doc/src/sgml/ref/create_function.sgml
+PostgreSQL documentation
+-->
+
+<refentry id="sql-createfunction">
+ <indexterm zone="sql-createfunction">
+  <primary>CREATE FUNCTION</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE FUNCTION</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE FUNCTION</refname>
+  <refpurpose>define a new function</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+<synopsis>
+CREATE [ OR REPLACE ] FUNCTION
+    <replaceable class="parameter">name</replaceable> ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [ { DEFAULT | = } <replaceable class="parameter">default_expr</replaceable> ] [, ...] ] )
+    [ RETURNS <replaceable class="parameter">rettype</replaceable>
+      | RETURNS TABLE ( <replaceable class="parameter">column_name</replaceable> <replaceable class="parameter">column_type</replaceable> [, ...] ) ]
+  { LANGUAGE <replaceable class="parameter">lang_name</replaceable>
+    | TRANSFORM { FOR TYPE <replaceable class="parameter">type_name</replaceable> } [, ... ]
+    | WINDOW
+    | { IMMUTABLE | STABLE | VOLATILE }
+    | [ NOT ] LEAKPROOF
+    | { CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT }
+    | { [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER }
+    | PARALLEL { UNSAFE | RESTRICTED | SAFE }
+    | COST <replaceable class="parameter">execution_cost</replaceable>
+    | ROWS <replaceable class="parameter">result_rows</replaceable>
+    | SUPPORT <replaceable class="parameter">support_function</replaceable>
+    | SET <replaceable class="parameter">configuration_parameter</replaceable> { TO <replaceable class="parameter">value</replaceable> | = <replaceable class="parameter">value</replaceable> | FROM CURRENT }
+    | AS '<replaceable class="parameter">definition</replaceable>'
+    | AS '<replaceable class="parameter">obj_file</replaceable>', '<replaceable class="parameter">link_symbol</replaceable>'
+    | <replaceable class="parameter">sql_body</replaceable>
+  } ...
+</synopsis>
+ </refsynopsisdiv>
+
+ <refsect1 id="sql-createfunction-description">
+  <title>Description</title>
+
+  <para>
+   <command>CREATE FUNCTION</command> defines a new function.
+   <command>CREATE OR REPLACE FUNCTION</command> will either create a
+   new function, or replace an existing definition.
+   To be able to define a function, the user must have the
+   <literal>USAGE</literal> privilege on the language.
+  </para>
+
+  <para>
+   If a schema name is included, then the function is created in the
+   specified schema.  Otherwise it is created in the current schema.
+   The name of the new function must not match any existing function or procedure
+   with the same input argument types in the same schema.  However,
+   functions and procedures of different argument types can share a name (this is
+   called <firstterm>overloading</firstterm>).
+  </para>
+
+  <para>
+   To replace the current definition of an existing function, use
+   <command>CREATE OR REPLACE FUNCTION</command>.  It is not possible
+   to change the name or argument types of a function this way (if you
+   tried, you would actually be creating a new, distinct function).
+   Also, <command>CREATE OR REPLACE FUNCTION</command> will not let
+   you change the return type of an existing function.  To do that,
+   you must drop and recreate the function.  (When using <literal>OUT</literal>
+   parameters, that means you cannot change the types of any
+   <literal>OUT</literal> parameters except by dropping the function.)
+  </para>
+
+  <para>
+   When <command>CREATE OR REPLACE FUNCTION</command> is used to replace an
+   existing function, the ownership and permissions of the function
+   do not change.  All other function properties are assigned the
+   values specified or implied in the command.  You must own the function
+   to replace it (this includes being a member of the owning role).
+  </para>
+
+  <para>
+   If you drop and then recreate a function, the new function is not
+   the same entity as the old; you will have to drop existing rules, views,
+   triggers, etc. that refer to the old function.  Use
+   <command>CREATE OR REPLACE FUNCTION</command> to change a function
+   definition without breaking objects that refer to the function.
+   Also, <command>ALTER FUNCTION</command> can be used to change most of the
+   auxiliary properties of an existing function.
+  </para>
+
+  <para>
+   The user that creates the function becomes the owner of the function.
+  </para>
+
+  <para>
+   To be able to create a function, you must have <literal>USAGE</literal>
+   privilege on the argument types and the return type.
+  </para>
+
+  <para>
+   Refer to <xref linkend="xfunc"/> for further information on writing
+   functions.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Parameters</title>
+
+   <variablelist>
+
+    <varlistentry>
+     <term><replaceable class="parameter">name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name (optionally schema-qualified) of the function to create.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">argmode</replaceable></term>
+
+     <listitem>
+      <para>
+       The mode of an argument: <literal>IN</literal>, <literal>OUT</literal>,
+       <literal>INOUT</literal>, or <literal>VARIADIC</literal>.
+       If omitted, the default is <literal>IN</literal>.
+       Only <literal>OUT</literal> arguments can follow a <literal>VARIADIC</literal> one.
+       Also, <literal>OUT</literal> and <literal>INOUT</literal> arguments cannot be used
+       together with the <literal>RETURNS TABLE</literal> notation.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">argname</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of an argument. Some languages (including SQL and PL/pgSQL)
+       let you use the name in the function body.  For other languages the
+       name of an input argument is just extra documentation, so far as
+       the function itself is concerned; but you can use input argument names
+       when calling a function to improve readability (see <xref
+       linkend="sql-syntax-calling-funcs"/>).  In any case, the name
+       of an output argument is significant, because it defines the column
+       name in the result row type.  (If you omit the name for an output
+       argument, the system will choose a default column name.)
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">argtype</replaceable></term>
+
+     <listitem>
+      <para>
+       The data type(s) of the function's arguments (optionally
+       schema-qualified), if any. The argument types can be base, composite,
+       or domain types, or can reference the type of a table column.
+      </para>
+      <para>
+       Depending on the implementation language it might also be allowed
+       to specify <quote>pseudo-types</quote> such as <type>cstring</type>.
+       Pseudo-types indicate that the actual argument type is either
+       incompletely specified, or outside the set of ordinary SQL data types.
+      </para>
+      <para>
+       The type of a column is referenced by writing
+       <literal><replaceable
+       class="parameter">table_name</replaceable>.<replaceable
+       class="parameter">column_name</replaceable>%TYPE</literal>.
+       Using this feature can sometimes help make a function independent of
+       changes to the definition of a table.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">default_expr</replaceable></term>
+
+     <listitem>
+      <para>
+       An expression to be used as default value if the parameter is
+       not specified.  The expression has to be coercible to the
+       argument type of the parameter.
+       Only input (including <literal>INOUT</literal>) parameters can have a default
+        value.  All input parameters following a
+       parameter with a default value must have default values as well.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">rettype</replaceable></term>
+
+     <listitem>
+      <para>
+       The return data type (optionally schema-qualified). The return type
+       can be a base, composite, or domain type,
+       or can reference the type of a table column.
+       Depending on the implementation language it might also be allowed
+       to specify <quote>pseudo-types</quote> such as <type>cstring</type>.
+       If the function is not supposed to return a value, specify
+       <type>void</type> as the return type.
+      </para>
+      <para>
+       When there are <literal>OUT</literal> or <literal>INOUT</literal> parameters,
+       the <literal>RETURNS</literal> clause can be omitted.  If present, it
+       must agree with the result type implied by the output parameters:
+       <literal>RECORD</literal> if there are multiple output parameters, or
+       the same type as the single output parameter.
+      </para>
+      <para>
+       The <literal>SETOF</literal>
+       modifier indicates that the function will return a set of
+       items, rather than a single item.
+      </para>
+      <para>
+       The type of a column is referenced by writing
+       <literal><replaceable
+       class="parameter">table_name</replaceable>.<replaceable
+       class="parameter">column_name</replaceable>%TYPE</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">column_name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of an output column in the <literal>RETURNS TABLE</literal>
+       syntax.  This is effectively another way of declaring a named
+       <literal>OUT</literal> parameter, except that <literal>RETURNS TABLE</literal>
+       also implies <literal>RETURNS SETOF</literal>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">column_type</replaceable></term>
+
+     <listitem>
+      <para>
+       The data type of an output column in the <literal>RETURNS TABLE</literal>
+       syntax.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">lang_name</replaceable></term>
+
+     <listitem>
+      <para>
+       The name of the language that the function is implemented in.
+       It can be <literal>sql</literal>, <literal>c</literal>,
+       <literal>internal</literal>, or the name of a user-defined
+       procedural language, e.g., <literal>plpgsql</literal>.  The default is
+       <literal>sql</literal> if <replaceable
+       class="parameter">sql_body</replaceable> is specified.  Enclosing the
+       name in single quotes is deprecated and requires matching case.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>TRANSFORM { FOR TYPE <replaceable class="parameter">type_name</replaceable> } [, ... ] }</literal></term>
+
+     <listitem>
+      <para>
+       Lists which transforms a call to the function should apply.  Transforms
+       convert between SQL types and language-specific data types;
+       see <xref linkend="sql-createtransform"/>.  Procedural language
+       implementations usually have hardcoded knowledge of the built-in types,
+       so those don't need to be listed here.  If a procedural language
+       implementation does not know how to handle a type and no transform is
+       supplied, it will fall back to a default behavior for converting data
+       types, but this depends on the implementation.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>WINDOW</literal></term>
+
+     <listitem>
+      <para><literal>WINDOW</literal> indicates that the function is a
+       <firstterm>window function</firstterm> rather than a plain function.
+       This is currently only useful for functions written in C.
+       The <literal>WINDOW</literal> attribute cannot be changed when
+       replacing an existing function definition.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>IMMUTABLE</literal></term>
+     <term><literal>STABLE</literal></term>
+     <term><literal>VOLATILE</literal></term>
+
+     <listitem>
+      <para>
+       These attributes inform the query optimizer about the behavior
+       of the function.  At most one choice
+       can be specified.  If none of these appear,
+       <literal>VOLATILE</literal> is the default assumption.
+      </para>
+
+      <para><literal>IMMUTABLE</literal> indicates that the function
+       cannot modify the database and always
+       returns the same result when given the same argument values; that
+       is, it does not do database lookups or otherwise use information not
+       directly present in its argument list.  If this option is given,
+       any call of the function with all-constant arguments can be
+       immediately replaced with the function value.
+      </para>
+
+      <para><literal>STABLE</literal> indicates that the function
+       cannot modify the database,
+       and that within a single table scan it will consistently
+       return the same result for the same argument values, but that its
+       result could change across SQL statements.  This is the appropriate
+       selection for functions whose results depend on database lookups,
+       parameter variables (such as the current time zone), etc.  (It is
+       inappropriate for <literal>AFTER</literal> triggers that wish to
+       query rows modified by the current command.)  Also note
+       that the <function>current_timestamp</function> family of functions qualify
+       as stable, since their values do not change within a transaction.
+      </para>
+
+      <para><literal>VOLATILE</literal> indicates that the function value can
+       change even within a single table scan, so no optimizations can be
+       made.  Relatively few database functions are volatile in this sense;
+       some examples are <literal>random()</literal>, <literal>currval()</literal>,
+       <literal>timeofday()</literal>.  But note that any function that has
+       side-effects must be classified volatile, even if its result is quite
+       predictable, to prevent calls from being optimized away; an example is
+       <literal>setval()</literal>.
+      </para>
+
+      <para>
+       For additional details see <xref linkend="xfunc-volatility"/>.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>LEAKPROOF</literal></term>
+     <listitem>
+      <para>
+       <literal>LEAKPROOF</literal> indicates that the function has no side
+       effects.  It reveals no information about its arguments other than by
+       its return value.  For example, a function which throws an error message
+       for some argument values but not others, or which includes the argument
+       values in any error message, is not leakproof.  This affects how the
+       system executes queries against views created with the
+       <literal>security_barrier</literal> option or tables with row level
+       security enabled.  The system will enforce conditions from security
+       policies and security barrier views before any user-supplied conditions
+       from the query itself that contain non-leakproof functions, in order to
+       prevent the inadvertent exposure of data.  Functions and operators
+       marked as leakproof are assumed to be trustworthy, and may be executed
+       before conditions from security policies and security barrier views.
+       In addition, functions which do not take arguments or which are not
+       passed any arguments from the security barrier view or table do not have
+       to be marked as leakproof to be executed before security conditions.  See
+       <xref linkend="sql-createview"/> and <xref linkend="rules-privileges"/>.
+       This option can only be set by the superuser.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>CALLED ON NULL INPUT</literal></term>
+     <term><literal>RETURNS NULL ON NULL INPUT</literal></term>
+     <term><literal>STRICT</literal></term>
+
+     <listitem>
+      <para><literal>CALLED ON NULL INPUT</literal> (the default) indicates
+       that the function will be called normally when some of its
+       arguments are null.  It is then the function author's
+       responsibility to check for null values if necessary and respond
+       appropriately.
+      </para>
+
+      <para><literal>RETURNS NULL ON NULL INPUT</literal> or
+       <literal>STRICT</literal> indicates that the function always
+       returns null whenever any of its arguments are null.  If this
+       parameter is specified, the function is not executed when there
+       are null arguments; instead a null result is assumed
+       automatically.
+      </para>
+     </listitem>
+    </varlistentry>
+
+   <varlistentry>
+    <term><literal><optional>EXTERNAL</optional> SECURITY INVOKER</literal></term>
+    <term><literal><optional>EXTERNAL</optional> SECURITY DEFINER</literal></term>
+
+    <listitem>
+     <para><literal>SECURITY INVOKER</literal> indicates that the function
+      is to be executed with the privileges of the user that calls it.
+      That is the default.  <literal>SECURITY DEFINER</literal>
+      specifies that the function is to be executed with the
+      privileges of the user that owns it.
+     </para>
+
+     <para>
+      The key word <literal>EXTERNAL</literal> is allowed for SQL
+      conformance, but it is optional since, unlike in SQL, this feature
+      applies to all functions not only external ones.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>PARALLEL</literal></term>
+
+    <listitem>
+     <para><literal>PARALLEL UNSAFE</literal> indicates that the function
+      can't be executed in parallel mode and the presence of such a
+      function in an SQL statement forces a serial execution plan.  This is
+      the default.  <literal>PARALLEL RESTRICTED</literal> indicates that
+      the function can be executed in parallel mode, but the execution is
+      restricted to parallel group leader.  <literal>PARALLEL SAFE</literal>
+      indicates that the function is safe to run in parallel mode without
+      restriction.
+     </para>
+
+     <para>
+      Functions should be labeled parallel unsafe if they modify any database
+      state, or if they make changes to the transaction such as using
+      sub-transactions, or if they access sequences or attempt to make
+      persistent changes to settings (e.g., <literal>setval</literal>).  They should
+      be labeled as parallel restricted if they access temporary tables,
+      client connection state, cursors, prepared statements, or miscellaneous
+      backend-local state which the system cannot synchronize in parallel mode
+      (e.g.,  <literal>setseed</literal> cannot be executed other than by the group
+      leader because a change made by another process would not be reflected
+      in the leader).  In general, if a function is labeled as being safe when
+      it is restricted or unsafe, or if it is labeled as being restricted when
+      it is in fact unsafe, it may throw errors or produce wrong answers
+      when used in a parallel query.  C-language functions could in theory
+      exhibit totally undefined behavior if mislabeled, since there is no way
+      for the system to protect itself against arbitrary C code, but in most
+      likely cases the result will be no worse than for any other function.
+      If in doubt, functions should be labeled as <literal>UNSAFE</literal>, which is
+      the default.
+     </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+     <term><literal>COST</literal> <replaceable class="parameter">execution_cost</replaceable></term>
+
+     <listitem>
+      <para>
+       A positive number giving the estimated execution cost for the function,
+       in units of <xref linkend="guc-cpu-operator-cost"/>.  If the function
+       returns a set, this is the cost per returned row.  If the cost is
+       not specified, 1 unit is assumed for C-language and internal functions,
+       and 100 units for functions in all other languages.  Larger values
+       cause the planner to try to avoid evaluating the function more often
+       than necessary.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>ROWS</literal> <replaceable class="parameter">result_rows</replaceable></term>
+
+     <listitem>
+      <para>
+       A positive number giving the estimated number of rows that the planner
+       should expect the function to return.  This is only allowed when the
+       function is declared to return a set.  The default assumption is
+       1000 rows.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal>SUPPORT</literal> <replaceable class="parameter">support_function</replaceable></term>
+
+     <listitem>
+      <para>
+       The name (optionally schema-qualified) of a <firstterm>planner support
+       function</firstterm> to use for this function.  See
+       <xref linkend="xfunc-optimization"/> for details.
+       You must be superuser to use this option.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable>configuration_parameter</replaceable></term>
+     <term><replaceable>value</replaceable></term>
+     <listitem>
+      <para>
+       The <literal>SET</literal> clause causes the specified configuration
+       parameter to be set to the specified value when the function is
+       entered, and then restored to its prior value when the function exits.
+       <literal>SET FROM CURRENT</literal> saves the value of the parameter that
+       is current when <command>CREATE FUNCTION</command> is executed as the value
+       to be applied when the function is entered.
+      </para>
+
+      <para>
+       If a <literal>SET</literal> clause is attached to a function, then
+       the effects of a <command>SET LOCAL</command> command executed inside the
+       function for the same variable are restricted to the function: the
+       configuration parameter's prior value is still restored at function exit.
+       However, an ordinary
+       <command>SET</command> command (without <literal>LOCAL</literal>) overrides the
+       <literal>SET</literal> clause, much as it would do for a previous <command>SET
+       LOCAL</command> command: the effects of such a command will persist after
+       function exit, unless the current transaction is rolled back.
+      </para>
+
+      <para>
+       See <xref linkend="sql-set"/> and
+       <xref linkend="runtime-config"/>
+       for more information about allowed parameter names and values.
+      </para>
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">definition</replaceable></term>
+
+     <listitem>
+      <para>
+       A string constant defining the function; the meaning depends on the
+       language.  It can be an internal function name, the path to an
+       object file, an SQL command, or text in a procedural language.
+      </para>
+
+      <para>
+       It is often helpful to use dollar quoting (see <xref
+       linkend="sql-syntax-dollar-quoting"/>) to write the function definition
+       string, rather than the normal single quote syntax.  Without dollar
+       quoting, any single quotes or backslashes in the function definition must
+       be escaped by doubling them.
+      </para>
+
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><literal><replaceable class="parameter">obj_file</replaceable>, <replaceable class="parameter">link_symbol</replaceable></literal></term>
+
+     <listitem>
+      <para>
+       This form of the <literal>AS</literal> clause is used for
+       dynamically loadable C language functions when the function name
+       in the C language source code is not the same as the name of
+       the SQL function. The string <replaceable
+       class="parameter">obj_file</replaceable> is the name of the shared
+       library file containing the compiled C function, and is interpreted
+       as for the <link linkend="sql-load"><command>LOAD</command></link> command.  The string
+       <replaceable class="parameter">link_symbol</replaceable> is the
+       function's link symbol, that is, the name of the function in the C
+       language source code.  If the link symbol is omitted, it is assumed to
+       be the same as the name of the SQL function being defined.  The C names
+       of all functions must be different, so you must give overloaded C
+       functions different C names (for example, use the argument types as
+       part of the C names).
+      </para>
+
+      <para>
+       When repeated <command>CREATE FUNCTION</command> calls refer to
+       the same object file, the file is only loaded once per session.
+       To unload and
+       reload the file (perhaps during development), start a new session.
+      </para>
+
+     </listitem>
+    </varlistentry>
+
+    <varlistentry>
+     <term><replaceable class="parameter">sql_body</replaceable></term>
+
+     <listitem>
+      <para>
+       The body of a <literal>LANGUAGE SQL</literal> function.  This can
+       either be a single statement
+<programlisting>
+RETURN <replaceable>expression</replaceable>
+</programlisting>
+       or a block
+<programlisting>
+BEGIN ATOMIC
+  <replaceable>statement</replaceable>;
+  <replaceable>statement</replaceable>;
+  ...
+  <replaceable>statement</replaceable>;
+END
+</programlisting>
+      </para>
+
+      <para>
+       This is similar to writing the text of the function body as a string
+       constant (see <replaceable>definition</replaceable> above), but there
+       are some differences: This form only works for <literal>LANGUAGE
+       SQL</literal>, the string constant form works for all languages.  This
+       form is parsed at function definition time, the string constant form is
+       parsed at execution time; therefore this form cannot support
+       polymorphic argument types and other constructs that are not resolvable
+       at function definition time.  This form tracks dependencies between the
+       function and objects used in the function body, so <literal>DROP
+       ... CASCADE</literal> will work correctly, whereas the form using
+       string literals may leave dangling functions.  Finally, this form is
+       more compatible with the SQL standard and other SQL implementations.
+      </para>
+     </listitem>
+    </varlistentry>
+
+   </variablelist>
+ </refsect1>
+
+ <refsect1 id="sql-createfunction-overloading">
+  <title>Overloading</title>
+
+   <para>
+    <productname>PostgreSQL</productname> allows function
+    <firstterm>overloading</firstterm>; that is, the same name can be
+    used for several different functions so long as they have distinct
+    input argument types.  Whether or not you use it, this capability entails
+    security precautions when calling functions in databases where some users
+    mistrust other users; see <xref linkend="typeconv-func"/>.
+   </para>
+
+   <para>
+    Two functions are considered the same if they have the same names and
+    <emphasis>input</emphasis> argument types, ignoring any <literal>OUT</literal>
+    parameters.  Thus for example these declarations conflict:
+<programlisting>
+CREATE FUNCTION foo(int) ...
+CREATE FUNCTION foo(int, out text) ...
+</programlisting>
+   </para>
+
+   <para>
+    Functions that have different argument type lists will not be considered
+    to conflict at creation time, but if defaults are provided they might
+    conflict in use.  For example, consider
+<programlisting>
+CREATE FUNCTION foo(int) ...
+CREATE FUNCTION foo(int, int default 42) ...
+</programlisting>
+    A call <literal>foo(10)</literal> will fail due to the ambiguity about which
+    function should be called.
+   </para>
+
+ </refsect1>
+
+ <refsect1 id="sql-createfunction-notes">
+  <title>Notes</title>
+
+   <para>
+    The full <acronym>SQL</acronym> type syntax is allowed for
+    declaring a function's arguments and return value.  However,
+    parenthesized type modifiers (e.g., the precision field for
+    type <type>numeric</type>) are discarded by <command>CREATE FUNCTION</command>.
+    Thus for example
+    <literal>CREATE FUNCTION foo (varchar(10)) ...</literal>
+    is exactly the same as
+    <literal>CREATE FUNCTION foo (varchar) ...</literal>.
+   </para>
+
+   <para>
+    When replacing an existing function with <command>CREATE OR REPLACE
+    FUNCTION</command>, there are restrictions on changing parameter names.
+    You cannot change the name already assigned to any input parameter
+    (although you can add names to parameters that had none before).
+    If there is more than one output parameter, you cannot change the
+    names of the output parameters, because that would change the
+    column names of the anonymous composite type that describes the
+    function's result.  These restrictions are made to ensure that
+    existing calls of the function do not stop working when it is replaced.
+   </para>
+
+   <para>
+    If a function is declared <literal>STRICT</literal> with a <literal>VARIADIC</literal>
+    argument, the strictness check tests that the variadic array <emphasis>as
+    a whole</emphasis> is non-null.  The function will still be called if the
+    array has null elements.
+   </para>
+
+ </refsect1>
+
+ <refsect1 id="sql-createfunction-examples">
+  <title>Examples</title>
+
+  <para>
+   Add two integers using an SQL function:
+<programlisting>
+CREATE FUNCTION add(integer, integer) RETURNS integer
+    AS 'select $1 + $2;'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+</programlisting>
+   The same function written in a more SQL-conforming style, using argument
+   names and an unquoted body:
+<programlisting>
+CREATE FUNCTION add(a integer, b integer) RETURNS integer
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT
+    RETURN a + b;
+</programlisting>
+  </para>
+
+  <para>
+   Increment an integer, making use of an argument name, in
+   <application>PL/pgSQL</application>:
+<programlisting>
+CREATE OR REPLACE FUNCTION increment(i integer) RETURNS integer AS $$
+        BEGIN
+                RETURN i + 1;
+        END;
+$$ LANGUAGE plpgsql;
+</programlisting>
+  </para>
+
+  <para>
+   Return a record containing multiple output parameters:
+<programlisting>
+CREATE FUNCTION dup(in int, out f1 int, out f2 text)
+    AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$
+    LANGUAGE SQL;
+
+SELECT * FROM dup(42);
+</programlisting>
+   You can do the same thing more verbosely with an explicitly named
+   composite type:
+<programlisting>
+CREATE TYPE dup_result AS (f1 int, f2 text);
+
+CREATE FUNCTION dup(int) RETURNS dup_result
+    AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$
+    LANGUAGE SQL;
+
+SELECT * FROM dup(42);
+</programlisting>
+   Another way to return multiple columns is to use a <literal>TABLE</literal>
+   function:
+<programlisting>
+CREATE FUNCTION dup(int) RETURNS TABLE(f1 int, f2 text)
+    AS $$ SELECT $1, CAST($1 AS text) || ' is text' $$
+    LANGUAGE SQL;
+
+SELECT * FROM dup(42);
+</programlisting>
+   However, a <literal>TABLE</literal> function is different from the
+   preceding examples, because it actually returns a <emphasis>set</emphasis>
+   of records, not just one record.
+  </para>
+ </refsect1>
+
+ <refsect1 id="sql-createfunction-security">
+  <title>Writing <literal>SECURITY DEFINER</literal> Functions Safely</title>
+
+  <indexterm>
+   <primary><varname>search_path</varname> configuration parameter</primary>
+   <secondary>use in securing functions</secondary>
+  </indexterm>
+
+   <para>
+    Because a <literal>SECURITY DEFINER</literal> function is executed
+    with the privileges of the user that owns it, care is needed to
+    ensure that the function cannot be misused.  For security,
+    <xref linkend="guc-search-path"/> should be set to exclude any schemas
+    writable by untrusted users.  This prevents
+    malicious users from creating objects (e.g., tables, functions, and
+    operators) that mask objects intended to be used by the function.
+    Particularly important in this regard is the
+    temporary-table schema, which is searched first by default, and
+    is normally writable by anyone.  A secure arrangement can be obtained
+    by forcing the temporary schema to be searched last.  To do this,
+    write <literal>pg_temp</literal><indexterm><primary>pg_temp</primary><secondary>securing functions</secondary></indexterm> as the last entry in <varname>search_path</varname>.
+    This function illustrates safe usage:
+
+<programlisting>
+CREATE FUNCTION check_password(uname TEXT, pass TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE passed BOOLEAN;
+BEGIN
+        SELECT  (pwd = $2) INTO passed
+        FROM    pwds
+        WHERE   username = $1;
+
+        RETURN passed;
+END;
+$$  LANGUAGE plpgsql
+    SECURITY DEFINER
+    -- Set a secure search_path: trusted schema(s), then 'pg_temp'.
+    SET search_path = admin, pg_temp;
+</programlisting>
+
+    This function's intention is to access a table <literal>admin.pwds</literal>.
+    But without the <literal>SET</literal> clause, or with a <literal>SET</literal> clause
+    mentioning only <literal>admin</literal>, the function could be subverted by
+    creating a temporary table named <literal>pwds</literal>.
+   </para>
+
+   <para>
+    Before <productname>PostgreSQL</productname> version 8.3, the
+    <literal>SET</literal> clause was not available, and so older functions may
+    contain rather complicated logic to save, set, and restore
+    <varname>search_path</varname>.  The <literal>SET</literal> clause is far easier
+    to use for this purpose.
+   </para>
+
+   <para>
+    Another point to keep in mind is that by default, execute privilege
+    is granted to <literal>PUBLIC</literal> for newly created functions
+    (see <xref linkend="ddl-priv"/> for more
+    information).  Frequently you will wish to restrict use of a security
+    definer function to only some users.  To do that, you must revoke
+    the default <literal>PUBLIC</literal> privileges and then grant execute
+    privilege selectively.  To avoid having a window where the new function
+    is accessible to all, create it and set the privileges within a single
+    transaction.  For example:
+   </para>
+
+<programlisting>
+BEGIN;
+CREATE FUNCTION check_password(uname TEXT, pass TEXT) ... SECURITY DEFINER;
+REVOKE ALL ON FUNCTION check_password(uname TEXT, pass TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION check_password(uname TEXT, pass TEXT) TO admins;
+COMMIT;
+</programlisting>
+
+ </refsect1>
+
+ <refsect1 id="sql-createfunction-compat">
+  <title>Compatibility</title>
+
+  <para>
+   A <command>CREATE FUNCTION</command> command is defined in the SQL
+   standard.  The <productname>PostgreSQL</productname> implementation can be
+   used in a compatible way but has many extensions.  Conversely, the SQL
+   standard specifies a number of optional features that are not implemented
+   in <productname>PostgreSQL</productname>.
+  </para>
+
+  <para>
+   The following are important compatibility issues:
+
+   <itemizedlist>
+    <listitem>
+     <para>
+      <literal>OR REPLACE</literal> is a PostgreSQL extension.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      For compatibility with some other database systems, <replaceable
+      class="parameter">argmode</replaceable> can be written either before or
+      after <replaceable class="parameter">argname</replaceable>.  But only
+      the first way is standard-compliant.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      For parameter defaults, the SQL standard specifies only the syntax with
+      the <literal>DEFAULT</literal> key word.  The syntax with
+      <literal>=</literal> is used in T-SQL and Firebird.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      The <literal>SETOF</literal> modifier is a PostgreSQL extension.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      Only <literal>SQL</literal> is standardized as a language.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      All other attributes except <literal>CALLED ON NULL INPUT</literal> and
+      <literal>RETURNS NULL ON NULL INPUT</literal> are not standardized.
+     </para>
+    </listitem>
+
+    <listitem>
+     <para>
+      For the body of <literal>LANGUAGE SQL</literal> functions, the SQL
+      standard only specifies the <replaceable>sql_body</replaceable> form.
+     </para>
+    </listitem>
+   </itemizedlist>
+  </para>
+
+  <para>
+   Simple <literal>LANGUAGE SQL</literal> functions can be written in a way
+   that is both standard-conforming and portable to other implementations.
+   More complex functions using advanced features, optimization attributes, or
+   other languages will necessarily be specific to PostgreSQL in a significant
+   way.
+  </para>
+ </refsect1>
+
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-alterfunction"/></member>
+   <member><xref linkend="sql-dropfunction"/></member>
+   <member><xref linkend="sql-grant"/></member>
+   <member><xref linkend="sql-load"/></member>
+   <member><xref linkend="sql-revoke"/></member>
+  </simplelist>
+ </refsect1>
+
+</refentry>
