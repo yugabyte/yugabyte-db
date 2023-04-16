@@ -2,7 +2,7 @@
 
 use strict;
 
-my $srcpath = "/home/ioltas/git/postgres/";
+my $srcpath;
 my @sources = (
 	'src/backend/optimizer/path/allpaths.c',
 	'src/backend/optimizer/path/joinrels.c');
