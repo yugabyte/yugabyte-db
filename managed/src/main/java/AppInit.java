@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import static com.yugabyte.yw.forms.AbstractTaskParams.platformVersion;
+import static com.yugabyte.yw.common.Util.setYbaVersion;
 import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
@@ -239,7 +239,7 @@ public class AppInit {
         Logger.info("Completed initialization in " + elapsedStr + " seconds.");
       }
 
-      platformVersion = ConfigHelper.getCurrentVersion(application);
+      setYbaVersion(ConfigHelper.getCurrentVersion(application));
 
       Logger.info("AppInit completed");
     }
