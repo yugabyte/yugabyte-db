@@ -37,7 +37,7 @@ You can enable encryption at rest during the universe creation as follows:
 2. Click **Create Universe** to open the **Universe Configuration** page.
 3. After you select a provider, the **Instance Configuration** section expands to show more options.
 4. Select the **Enable Encryption at Rest** option. The **Key Management Service Config** option appears.
-5. Select your key management service (KMS) configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/).
+5. Select your key management service (KMS) configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/aws-kms/).
 6. Continue with your universe creation, then click **Create**.
 
 You can verify that encryption at rest has been successfully configured as follows:
@@ -57,7 +57,7 @@ You can verify that encryption at rest has been successfully configured as follo
     }
     ```
 
-If your configuration includes AWS KMS, the following occurs: once the universe has been created with encryption at rest enabled, YugabyteDB Anywhere persists the ciphertext of the universe key (because AWS does not persist any CMK-generated data keys themselves) and requests the plaintext of the universe key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes. For more information, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/).
+If your configuration includes AWS KMS, the following occurs: after the universe has been created with encryption at rest enabled, YugabyteDB Anywhere persists the ciphertext of the universe key (because AWS does not persist any CMK-generated data keys themselves) and requests the plaintext of the universe key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes. For more information, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/).
 
 ## Enable encryption at rest on an existing universe
 
@@ -81,25 +81,26 @@ You can enable encryption at rest on an existing universe as follows:
 
 ## Back up and restore data from an encrypted at rest universe
 
-When you back up and restore universe data with encryption at rest enabled, YugabyteDB Anywhere requires a KMS configuration to manage backing up and restoring encrypted universe data. Because of the possibility that you will need to restore data to a different universe that might have a different universe key, YugabyteDB Anywhere ensures that all encrypted backups include a metadata file (that includes a list of key IDs in the source's universe key registry). When restoring your universe data, YugabyteDB Anywhere uses the selected KMS configuration to consume the universe key ID and then retrieve the universe key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
+When you back up and restore universe data with encryption at rest enabled, YugabyteDB Anywhere requires a KMS configuration to manage backing up and restoring encrypted universe data. Because of the possibility that you will need to restore data to a different universe that might have a different universe key, YugabyteDB Anywhere ensures that all encrypted backups include a metadata file. The file includes a list of key IDs in the source's universe key registry.
+
+When restoring an encrypted backup to a Universe, Yugabyte Anywhere detects the correct KMS configuration used to encrypt the backup. The KMS configuration must be available in the YugabyteDB Anywhere account.
+
+When restoring your universe data, YugabyteDB Anywhere uses the selected KMS configuration to consume the universe key ID and then retrieve the universe key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
 
 ## Rotate the master keys used for encryption at rest
 
 As part of envelope encryption, the universe keys are protected by master keys. The master key resides in the KMS of your choosing and is used to encrypt and decrypt the universe keys as needed.
 
-In YugabyteDB Anywhere, a KMS configuration is used to house the information about the master key to use in envelope encryption, as well as the credentials to use to access this master key.
+YugabyteDB Anywhere uses a KMS configuration to house the information about the master key to use in envelope encryption, as well as the credentials to use to access this master key.
 
-The KMS configurations, and consequently the master keys used to encrypt the universe key, can be changed or rotated at any time. To accomplish this, do the following:
+You can change KMS configurations, and consequently the master keys used to encrypt the universe key, at any time. To accomplish this, do the following:
 
-1. Create a new KMS configuration with the new master key to use.
-1. After the KMS configuration is successfully created, go to the **Actions** tab of the encryption-at-rest enabled universe and select the **Encryption-At-Rest** menu item.
-1. In the Manage encryption-at-rest screen that shows, use the KMS configuration drop-down menu to select the new KMS configuration.
-1. Click **Apply** to use the new KMS config and Master key for envelope encryption.
+1. [Create a new KMS configuration](../create-kms-config/aws-kms/) with the new master key to use.
+1. After the KMS configuration is successfully created, go to the encryption at rest-enabled universe, and select **Actions > Edit Security > Encryption-at-Rest**.
+1. In the **Manage Encryption-at-Rest** dialog, choose the new KMS configuration from the **Key Management Service Config** list.
+1. Click **Submit** to use the new KMS configuration and master key for envelope encryption.
 
 Note that you can choose to rotate the master key/KMS configuration or rotate the Universe key. You can't perform both actions at the same time.
-
-Backup and Restore
-When restoring an encrypted backup to a Universe, Yugabyte Anywhere detects the correct KMS configuration used to encrypt the backup. The KMS configuration must be available in the YugabyteDB Anywhere account for this.
 
 {{< warning title="Deleting KMS configurations" >}}
 
