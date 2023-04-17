@@ -23,6 +23,9 @@ interface RecommendationProps {
   type: RecommendationType;
   data: PerfRecommendationData | IndexAndShardingRecommendationData;
   key: string;
+  idKey: string;
+  resolved: boolean;
+  onResolve: (key: string, value: boolean) => void;
 }
 
 const getRecommendation = (type: RecommendationType, summary: ReactNode | string, data: any) => {
@@ -97,7 +100,13 @@ const getRecommendation = (type: RecommendationType, summary: ReactNode | string
   return null;
 };
 
-export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) => {
+export const RecommendationBox: FC<RecommendationProps> = ({
+  idKey,
+  type,
+  data,
+  resolved,
+  onResolve
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -186,11 +195,12 @@ export const RecommendationBox: FC<RecommendationProps> = ({ key, type, data }) 
   };
 
   const [open, setOpen] = useState(false);
-  const [resolved, setResolved] = useState(false);
+  // const [resolved1, setResolved] = useState(false);
 
   const handleResolveRecommendation = (event: ChangeEvent<HTMLInputElement>) => {
     const isChecked = event.target.checked;
-    setResolved(isChecked);
+    onResolve(idKey, isChecked);
+    // setResolved(isChecked);
     if (isChecked) {
       setOpen(false);
     }
