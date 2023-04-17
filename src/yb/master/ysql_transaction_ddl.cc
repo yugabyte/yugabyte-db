@@ -134,7 +134,7 @@ YsqlTransactionDdl::GetPgCatalogTableScanIterator(const TableId& pg_catalog_tabl
   cond.add_operands()->set_column_id(oid_col_id);
   cond.set_op(QL_OP_EQUAL);
   cond.add_operands()->mutable_value()->set_uint32_value(oid_value);
-  const std::vector<docdb::KeyEntryValue> empty_key_components;
+  const dockv::KeyEntryValues empty_key_components;
   docdb::DocPgsqlScanSpec spec(
       *projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
       &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);

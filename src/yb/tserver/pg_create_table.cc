@@ -21,8 +21,8 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -209,7 +209,7 @@ Status PgCreateTable::AddColumn(const PgCreateColumnPB& req) {
       return STATUS(InvalidArgument, "Hash column can't have sorting order");
     }
     col->HashPrimaryKey();
-    hash_schema_ = YBHashSchema::kPgsqlHash;
+    hash_schema_ = dockv::YBHashSchema::kPgsqlHash;
   } else if (req.is_range()) {
     col->PrimaryKey();
     range_columns_.emplace_back(req.attr_name());
@@ -256,7 +256,7 @@ void PgCreateTable::EnsureYBbasectidColumnCreated() {
 Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBSchema& schema) {
   std::vector<std::string> rows;
   rows.reserve(req_.split_bounds().size());
-  docdb::DocKey prev_doc_key;
+  dockv::DocKey prev_doc_key;
   for (const auto& bounds : req_.split_bounds()) {
     const auto& row = bounds.values();
     SCHECK_EQ(
@@ -269,19 +269,19 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
     const auto partitioning_version = schema.table_properties().partitioning_version();
     const auto range_components_size = row.size() + (partitioning_version > 0 ? 1 : 0);
 
-    std::vector<docdb::KeyEntryValue> range_components;
+    dockv::KeyEntryValues range_components;
     range_components.reserve(range_components_size);
     bool compare_columns = true;
     for (const auto& row_value : row) {
       const auto column_index = range_components.size();
       if (partitioning_version > 0) {
-        range_components.push_back(docdb::KeyEntryValue::FromQLValuePBForKey(
+        range_components.push_back(dockv::KeyEntryValue::FromQLValuePBForKey(
             row_value,
             schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
       } else {
         range_components.push_back(row_value.value_case() == QLValuePB::VALUE_NOT_SET
-            ? docdb::KeyEntryValue(docdb::KeyEntryType::kLowest)
-            : docdb::KeyEntryValue::FromQLValuePB(
+            ? dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)
+            : dockv::KeyEntryValue::FromQLValuePB(
                 row_value,
                 schema.Column(schema.FindColumn(range_columns_[column_index])).sorting_type()));
       }
@@ -306,9 +306,9 @@ Result<std::vector<std::string>> PgCreateTable::BuildSplitRows(const client::YBS
     // YBTransformPartitionSplitPoints() and https://github.com/yugabyte/yugabyte-db/issues/12191
     if ((partitioning_version > 0) && ybbasectid_added_) {
       range_components.push_back(
-          docdb::KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB::LIMIT_MIN));
+          dockv::KeyEntryValue::FromQLVirtualValue(QLVirtualValuePB::LIMIT_MIN));
     }
-    prev_doc_key = docdb::DocKey(std::move(range_components));
+    prev_doc_key = dockv::DocKey(std::move(range_components));
     const auto keybytes = prev_doc_key.Encode();
 
     // Validate that there are no duplicate split rows.
@@ -353,7 +353,7 @@ Status CreateSequencesDataTable(client::YBClient* client, CoarseTimePoint deadli
       .schema(&schema)
       .table_type(client::YBTableType::PGSQL_TABLE_TYPE)
       .table_id(oid.GetYbTableId())
-      .hash_schema(YBHashSchema::kPgsqlHash)
+      .hash_schema(dockv::YBHashSchema::kPgsqlHash)
       .timeout(deadline - CoarseMonoClock::now())
       .Create();
   // If we could create it, then all good!

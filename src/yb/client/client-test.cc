@@ -57,7 +57,7 @@
 #include "yb/client/value.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -154,6 +154,7 @@ using base::subtle::Atomic32;
 using base::subtle::NoBarrier_AtomicIncrement;
 using base::subtle::NoBarrier_Load;
 using base::subtle::NoBarrier_Store;
+using dockv::PartitionSchema;
 using master::GetNamespaceInfoResponsePB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;

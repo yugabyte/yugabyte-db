@@ -17,7 +17,7 @@
 #include "yb/common/typedefs.h"
 
 #include "yb/docdb/doc_expr.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/intent_aware_iterator.h"
 
@@ -125,7 +125,7 @@ class QLWriteOperation :
   Result<bool> HasDuplicateUniqueIndexValue(
       const DocOperationApplyData& data, ReadHybridTime read_time);
   Result<HybridTime> FindOldestOverwrittenTimestamp(
-      IntentAwareIterator* iter, const SubDocKey& sub_doc_key,
+      IntentAwareIterator* iter, const dockv::SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
   // Deletes an element (key/index) from a subscripted column.
@@ -137,7 +137,7 @@ class QLWriteOperation :
   Status DeleteSubscriptedColumnElement(
       const DocOperationApplyData& data, const ColumnSchema& column_schema,
       const QLColumnValuePB& column_value, ColumnId column_id);
-  Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+  Status DeleteRow(const dockv::DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   Result<bool> IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
@@ -149,7 +149,7 @@ class QLWriteOperation :
       const DocOperationApplyData& data, const QLTableRow& existing_row, QLTableRow* new_row);
   Status ApplyDelete(
       const DocOperationApplyData& data, QLTableRow* existing_row, QLTableRow* new_row);
-  DocPath MakeSubPath(const ColumnSchema& column_schema, ColumnId column_id);
+  dockv::DocPath MakeSubPath(const ColumnSchema& column_schema, ColumnId column_id);
   Status InsertScalar(
       const ApplyContext& apply_context,
       const ColumnSchema& column_schema,
@@ -165,13 +165,13 @@ class QLWriteOperation :
 
   // Doc key and encoded Doc key for hashed key (i.e. without range columns). Present when there is
   // a static column being written.
-  boost::optional<DocKey> hashed_doc_key_;
+  boost::optional<dockv::DocKey> hashed_doc_key_;
   RefCntPrefix encoded_hashed_doc_key_;
 
   // Doc key and encoded Doc key for primary key (i.e. with range columns). Present when there is a
   // non-static column being written or when writing the primary key alone (i.e. range columns are
   // present or table does not have range columns).
-  boost::optional<DocKey> pk_doc_key_;
+  boost::optional<dockv::DocKey> pk_doc_key_;
   RefCntPrefix encoded_pk_doc_key_;
 
   QLResponsePB* response_ = nullptr;
@@ -224,14 +224,14 @@ class QLReadOperation : public DocExprExecutor {
                  QLResultSet* result_set,
                  HybridTime* restart_read_ht);
 
-  Status PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
+  Status PopulateResultSet(const std::unique_ptr<dockv::QLScanSpec>& spec,
                            const QLTableRow& table_row,
                            QLResultSet *result_set);
 
   Status EvalAggregate(const QLTableRow& table_row);
   Status PopulateAggregate(const QLTableRow& table_row, QLResultSet *resultset);
 
-  Status AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
+  Status AddRowToResult(const std::unique_ptr<dockv::QLScanSpec>& spec,
                         const QLTableRow& row,
                         const size_t row_count_limit,
                         const size_t offset,

@@ -18,7 +18,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/doc_write_batch.h"
@@ -39,7 +39,7 @@ Status SetValueFromQLBinaryWrapper(
     DatumMessagePB* cdc_datum_message = NULL);
 
 struct ExternalIntent {
-  DocPath doc_path;
+  dockv::DocPath doc_path;
   std::string value;
 };
 
@@ -90,7 +90,8 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       HybridTime hybrid_time = HybridTime::kInvalid,
       bool decode_dockey = true,
       bool increment_write_id = true,
-      PartialRangeKeyIntents partial_range_key_intents = PartialRangeKeyIntents::kTrue) const;
+      dockv::PartialRangeKeyIntents partial_range_key_intents =
+          dockv::PartialRangeKeyIntents::kTrue) const;
 
   // Writes the given DocWriteBatch to RocksDB. We substitue the hybrid time, if provided.
   Status WriteToRocksDB(
@@ -98,7 +99,8 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       const HybridTime& hybrid_time,
       bool decode_dockey = true,
       bool increment_write_id = true,
-      PartialRangeKeyIntents partial_range_key_intents = PartialRangeKeyIntents::kTrue);
+      dockv::PartialRangeKeyIntents partial_range_key_intents =
+          dockv::PartialRangeKeyIntents::kTrue);
 
   // The same as WriteToRocksDB but also clears the write batch afterwards.
   Status WriteToRocksDBAndClear(DocWriteBatch* dwb, const HybridTime& hybrid_time,
@@ -117,22 +119,22 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
   // SetPrimitive taking a Value
 
   Status SetPrimitive(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max()) {
-    return SetPrimitive(doc_path, ValueControlFields(), value, hybrid_time, read_ht);
+    return SetPrimitive(doc_path, dockv::ValueControlFields(), value, hybrid_time, read_ht);
   }
 
   Status SetPrimitive(
-      const DocPath& doc_path,
-      const ValueControlFields& control_fields,
+      const dockv::DocPath& doc_path,
+      const dockv::ValueControlFields& control_fields,
       const ValueRef& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   Status SetPrimitive(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const QLValuePB& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
@@ -144,38 +146,38 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
       HybridTime hybrid_time);
 
   Status InsertSubDocument(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   Status ExtendSubDocument(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
       HybridTime hybrid_time,
-      MonoDelta ttl = ValueControlFields::kMaxTtl,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   Status ExtendList(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       const ValueRef& value,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 
   Status ReplaceInList(
-      const DocPath &doc_path,
+      const dockv::DocPath &doc_path,
       const int target_cql_index,
       const ValueRef& value,
       const ReadHybridTime& read_ht,
       const HybridTime& hybrid_time,
       const rocksdb::QueryId query_id,
-      MonoDelta default_ttl = ValueControlFields::kMaxTtl,
-      MonoDelta ttl = ValueControlFields::kMaxTtl,
-      UserTimeMicros user_timestamp = ValueControlFields::kInvalidTimestamp);
+      MonoDelta default_ttl = dockv::ValueControlFields::kMaxTtl,
+      MonoDelta ttl = dockv::ValueControlFields::kMaxTtl,
+      UserTimeMicros user_timestamp = dockv::ValueControlFields::kInvalidTimestamp);
 
   Status DeleteSubDoc(
-      const DocPath& doc_path,
+      const dockv::DocPath& doc_path,
       HybridTime hybrid_time,
       const ReadHybridTime& read_ht = ReadHybridTime::Max());
 

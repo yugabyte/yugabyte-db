@@ -41,7 +41,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -637,7 +637,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
       unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
       s = table_creator->table_name(table_name)
           .schema(&schema_)
-          .hash_schema(YBHashSchema::kMultiColumnHash)
+          .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
           .set_range_partition_columns({ "key" })
           .num_tablets(1)
           .wait(false)

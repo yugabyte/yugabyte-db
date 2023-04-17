@@ -14,7 +14,7 @@
 #pragma once
 
 #include "yb/common/hybrid_time.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/tablet/tablet_fwd.h"
 #include "yb/rocksdb/rocksdb_fwd.h"
 
@@ -29,8 +29,8 @@ class HistoryRetentionPolicy;
 // during compaction.
 // Both bounds should be encoded DocKey or its part to avoid splitting DocDB row.
 struct KeyBounds {
-  KeyBytes lower;
-  KeyBytes upper;
+  dockv::KeyBytes lower;
+  dockv::KeyBytes upper;
 
   static const KeyBounds kNoBounds;
 

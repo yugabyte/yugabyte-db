@@ -28,7 +28,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 

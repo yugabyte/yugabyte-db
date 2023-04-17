@@ -27,13 +27,13 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/lock_batch.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/value.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
 
 #include "yb/rocksdb/rocksdb_fwd.h"
 
@@ -113,12 +113,12 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const scoped_refptr<Histogram>& write_lock_latency,
     const scoped_refptr<Counter>& failed_batch_lock,
     const IsolationLevel isolation_level,
-    const OperationKind operation_kind,
+    const dockv::OperationKind operation_kind,
     const RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
-    PartialRangeKeyIntents partial_range_key_intents,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager);
 
 // This constructs a DocWriteBatch using the given list of DocOperations, reading the previous
@@ -180,39 +180,10 @@ bool PrepareExternalWriteBatch(
     rocksdb::WriteBatch* intents_write_batch,
     ExternalTxnIntentsState* external_txn_intents_state);
 
-YB_STRONGLY_TYPED_BOOL(LastKey);
-
-// Enumerates intents corresponding to provided key value pairs.
-// For each key it generates a strong intent and for each parent of each it generates a weak one.
-// functor should accept 3 arguments:
-// intent_kind - kind of intent weak or strong
-// value_slice - value of intent
-// key - pointer to key in format of SubDocKey (no ht)
-// last_key - whether it is last strong key in enumeration
-
-// Indicates that the intent contains a full document key, i.e. it does not omit any final range
-// components of the document key. This flag is also true for intents that include subdocument keys.
-YB_STRONGLY_TYPED_BOOL(FullDocKey);
-
-// TODO(dtxn) don't expose this method outside of DocDB if TransactionConflictResolver is moved
-// inside DocDB.
-// Note: From https://stackoverflow.com/a/17278470/461529:
-// "As of GCC 4.8.1, the std::function in libstdc++ optimizes only for pointers to functions and
-// methods. So regardless the size of your functor (lambdas included), initializing a std::function
-// from it triggers heap allocation."
-// So, we use boost::function which doesn't have such issue:
-// http://www.boost.org/doc/libs/1_65_1/doc/html/function/misc.html
-typedef boost::function<
-    Status(IntentStrength, FullDocKey, Slice, KeyBytes*, LastKey)> EnumerateIntentsCallback;
-
 Status EnumerateIntents(
-    const ArenaList<docdb::LWKeyValuePairPB>& kv_pairs,
-    const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents);
-
-Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
-    LastKey last_key = LastKey::kFalse);
+    const ArenaList<LWKeyValuePairPB>& kv_pairs,
+    const dockv::EnumerateIntentsCallback& functor,
+    dockv::PartialRangeKeyIntents partial_range_key_intents);
 
 // replicated_batches_state format does not matter at this point, because it is just
 // appended to appropriate value.
@@ -222,7 +193,7 @@ void PrepareTransactionWriteBatch(
     rocksdb::WriteBatch* rocksdb_write_batch,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
-    PartialRangeKeyIntents partial_range_key_intents,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
     const Slice& replicated_batches_state,
     IntraTxnWriteId* write_id);
 
@@ -293,7 +264,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     rocksdb::DB* intents_db,
     std::vector<IntentKeyValueForCDC>* keyValueIntents);
 
-void AppendTransactionKeyPrefix(const TransactionId& transaction_id, docdb::KeyBytes* out);
+void AppendTransactionKeyPrefix(const TransactionId& transaction_id, dockv::KeyBytes* out);
 
 // Class that is used while combining external intents into single key value pair.
 class ExternalIntentsProvider {

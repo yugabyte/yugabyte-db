@@ -80,8 +80,8 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
-#include "yb/common/partial_row.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/roles_permissions.h"
@@ -96,7 +96,7 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
@@ -587,6 +587,8 @@ using consensus::GetConsensusRole;
 using consensus::PeerMemberType;
 using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;
+using dockv::Partition;
+using dockv::PartitionSchema;
 using rpc::RpcContext;
 using server::MonitoredTask;
 using strings::Substitute;
@@ -2926,9 +2928,9 @@ Status CatalogManager::DoSplitTablet(
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, const docdb::DocKeyHash split_hash_code,
     const ManualSplit is_manual_split) {
-  docdb::KeyBytes split_encoded_key;
-  docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
-      .Hash(split_hash_code, std::vector<docdb::KeyEntryValue>());
+  dockv::KeyBytes split_encoded_key;
+  dockv::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
+      .Hash(split_hash_code, dockv::KeyEntryValues());
 
   const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 

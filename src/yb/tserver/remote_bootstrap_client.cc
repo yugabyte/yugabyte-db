@@ -341,10 +341,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                         wal_root_dir);
     }
   } else {
-    Partition partition;
-    Partition::FromPB(superblock_->partition(), &partition);
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(table.partition_schema(), schema, &partition_schema));
+    dockv::Partition partition;
+    dockv::Partition::FromPB(superblock_->partition(), &partition);
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+        table.partition_schema(), schema, &partition_schema));
     // Create the superblock on disk.
     if (ts_manager != nullptr) {
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),

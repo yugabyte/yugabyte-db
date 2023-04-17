@@ -70,7 +70,7 @@ class YQLRowwiseIteratorIf {
   }
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  virtual Status GetNextReadSubDocKey(SubDocKey* sub_doc_key);
+  virtual Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key);
 
   // Returns the tuple id of the current tuple. See DocRowwiseIterator for details.
   virtual Result<Slice> GetTupleId() const;

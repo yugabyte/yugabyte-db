@@ -22,13 +22,13 @@
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -39,8 +39,8 @@
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/packed_row.h"
-#include "yb/docdb/primitive_value_util.h"
+#include "yb/dockv/packed_row.h"
+#include "yb/dockv/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/rpc/sidecars.h"
@@ -109,6 +109,11 @@ DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
 namespace yb {
 namespace docdb {
 
+using dockv::DocKey;
+using dockv::DocPath;
+using dockv::KeyEntryValue;
+using dockv::SubDocKey;
+
 bool ShouldYsqlPackRow(bool is_colocated) {
   return FLAGS_ysql_enable_packed_row &&
          (!is_colocated || FLAGS_ysql_enable_packed_row_for_colocated_table);
@@ -165,7 +170,7 @@ void AddIntent(
     LWKeyValueWriteBatchPB *out) {
   auto* pair = out->add_read_pairs();
   pair->dup_key(encoded_key);
-  pair->dup_value(Slice(&ValueEntryTypeAsChar::kNullLow, 1));
+  pair->dup_value(Slice(&dockv::ValueEntryTypeAsChar::kNullLow, 1));
   if (wait_policy) {
     // Since we don't batch read RPCs that lock rows, we can get away with using a singular
     // wait_policy field. Once we start batching read requests (issue #2495), we will need a
@@ -193,9 +198,9 @@ Result<R> FetchDocKeyImpl(const Schema& schema,
     SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
     return edk_processor(ybctid);
   } else {
-    auto hashed_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
+    auto hashed_components = VERIFY_RESULT(dockv::InitKeyColumnPrimitiveValues(
         req.partition_column_values(), schema, 0 /* start_idx */));
-    auto range_components = VERIFY_RESULT(InitKeyColumnPrimitiveValues(
+    auto range_components = VERIFY_RESULT(dockv::InitKeyColumnPrimitiveValues(
         req.range_column_values(), schema, schema.num_hash_key_columns()));
     return dk_processor(hashed_components.empty()
         ? DocKey(schema, std::move(range_components))
@@ -248,7 +253,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     if (request.has_paging_state() &&
         request.paging_state().has_next_row_key() &&
         !request.paging_state().next_row_key().empty()) {
-      KeyBytes start_key_bytes(request.paging_state().next_row_key());
+      dockv::KeyBytes start_key_bytes(request.paging_state().next_row_key());
       RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
       // TODO(dmitry) Remove backward compatibility block when obsolete.
       if (!is_explicit_request_read_time) {
@@ -264,7 +269,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
       PgsqlBackfillSpecPB spec;
       spec.ParseFromString(a2b_hex(request.backfill_spec()));
       if (!spec.next_row_key().empty()) {
-        KeyBytes start_key_bytes(spec.next_row_key());
+        dockv::KeyBytes start_key_bytes(spec.next_row_key());
         RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
       }
     }
@@ -283,7 +288,7 @@ class DocKeyColumnPathBuilder {
 
   RefCntPrefix Build(ColumnIdRep column_id) {
     buffer_.Clear();
-    buffer_.AppendKeyEntryType(KeyEntryType::kColumnId);
+    buffer_.AppendKeyEntryType(dockv::KeyEntryType::kColumnId);
     buffer_.AppendColumnId(ColumnId(column_id));
     RefCntBuffer path(doc_key_.size() + buffer_.size());
     doc_key_.CopyTo(path.data());
@@ -293,12 +298,12 @@ class DocKeyColumnPathBuilder {
 
  private:
   Slice doc_key_;
-  KeyBytes buffer_;
+  dockv::KeyBytes buffer_;
 };
 
 struct RowPackerData {
   SchemaVersion schema_version;
-  const SchemaPacking& packing;
+  const dockv::SchemaPacking& packing;
 
   static Result<RowPackerData> Create(
       const PgsqlWriteRequestPB& request, const DocReadContext& read_context) {
@@ -370,7 +375,7 @@ class PgsqlWriteOperation::RowPackContext {
         data_(data),
         write_id_(data.doc_write_batch->ReserveWriteId()),
         packer_(packer_data.schema_version, packer_data.packing, FLAGS_ysql_packed_row_size_limit,
-                ValueControlFields()) {
+                dockv::ValueControlFields()) {
   }
 
   Result<bool> Add(ColumnId column_id, const QLValuePB& value) {
@@ -381,7 +386,7 @@ class PgsqlWriteOperation::RowPackContext {
     auto encoded_value = VERIFY_RESULT(packer_.Complete());
     return data_.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key.as_slice()),
-        ValueControlFields(), ValueRef(encoded_value),
+        dockv::ValueControlFields(), ValueRef(encoded_value),
         data_.read_time, data_.deadline, query_id_,
         write_id_);
   }
@@ -390,7 +395,7 @@ class PgsqlWriteOperation::RowPackContext {
   rocksdb::QueryId query_id_;
   const DocOperationApplyData& data_;
   const IntraTxnWriteId write_id_;
-  RowPacker packer_;
+  dockv::RowPacker packer_;
 };
 
 //--------------------------------------------------------------------------------------------------
@@ -408,7 +413,7 @@ Status PgsqlWriteOperation::Init(PgsqlResponsePB* response) {
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
+      data.doc_write_batch->doc_db(), dockv::SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
@@ -496,7 +501,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
               << " vs New: " << yb::ToString(new_value)
               << "\nUsed read time as " << yb::ToString(data.read_time);
       DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-          data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
+          data.doc_write_batch->doc_db(), dockv::SchemaPackingStorage(TableType::PGSQL_TABLE_TYPE));
       return true;
     }
   }
@@ -513,7 +518,7 @@ Result<HybridTime> PgsqlWriteOperation::FindOldestOverwrittenTimestamp(
   VLOG(3) << "Doing iter->Seek " << *doc_key_;
   iter->Seek(*doc_key_);
   if (!iter->IsOutOfRecords()) {
-    const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
+    const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(
         iter->FindOldestRecord(sub_key_slice, min_read_time));
@@ -641,8 +646,8 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
   } else {
     RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
         DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
-        ValueControlFields(), ValueRef(ValueEntryType::kNullLow), data.read_time, data.deadline,
-        request_.stmt_id()));
+        dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow), data.read_time,
+        data.deadline, request_.stmt_id()));
 
     for (const auto& column_value : request_.column_values()) {
       RETURN_NOT_OK(InsertColumn(data, table_row, column_value, /* pack_context=*/ nullptr));
@@ -1003,9 +1008,9 @@ Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
         // Strip cotable ID / colocation ID from the serialized DocKey before returning it
         // as ybctid.
         Slice tuple_id = encoded_doc_key_.as_slice();
-        if (tuple_id.starts_with(KeyEntryTypeAsChar::kTableId)) {
+        if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kTableId)) {
           tuple_id.remove_prefix(1 + kUuidSize);
-        } else if (tuple_id.starts_with(KeyEntryTypeAsChar::kColocationId)) {
+        } else if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kColocationId)) {
           tuple_id.remove_prefix(1 + sizeof(ColocationId));
         }
         value.Writer().NewValue().set_binary_value(tuple_id.data(), tuple_id.size());
@@ -1060,7 +1065,7 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         }
         if (!has_expression) {
           DocKeyColumnPathBuilder builder(encoded_doc_key_);
-          paths->push_back(builder.Build(to_underlying(SystemColumnIds::kLivenessColumn)));
+          paths->push_back(builder.Build(to_underlying(dockv::SystemColumnIds::kLivenessColumn)));
           return Status::OK();
         }
       }
@@ -1560,7 +1565,7 @@ Status PgsqlReadOperation::SetPagingState(YQLRowwiseIteratorIf* iter,
     PgsqlPagingStatePB* paging_state = response_.mutable_paging_state();
     if (schema.num_hash_key_columns() > 0) {
       paging_state->set_next_partition_key(
-          PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+          dockv::PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
     } else {
       paging_state->set_next_partition_key(keybytes.ToStringBuffer());
     }

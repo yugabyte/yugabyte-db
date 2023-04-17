@@ -13,13 +13,13 @@
 
 #pragma once
 
-#include "yb/common/ql_scanspec.h"
+#include "yb/dockv/ql_scanspec.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
-#include "yb/docdb/value.h"
+#include "yb/dockv/value.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -58,10 +58,10 @@ class ScanChoices {
   // Append KeyEntryValue to target. After every append, we need to check if it is the last hash key
   // column. Subsequently, we need to add a kGroundEnd after that if it is the last hash key cokumn.
   // Hence, appending to scan target should always be done using this function.
-  void AppendToScanTarget(const KeyEntryValue& target, size_t col_idx) {
+  void AppendToScanTarget(const dockv::KeyEntryValue& target, size_t col_idx) {
     target.AppendToKey(&current_scan_target_);
     if (has_hash_columns_ && col_idx == num_hash_cols_) {
-      current_scan_target_.AppendKeyEntryType(KeyEntryType::kGroupEnd);
+      current_scan_target_.AppendKeyEntryType(dockv::KeyEntryType::kGroupEnd);
     }
   }
 
@@ -70,18 +70,18 @@ class ScanChoices {
       current_scan_target_.RemoveLastByte();
     }
 
-    KeyEntryValue inf_val =
-        positive ? KeyEntryValue(KeyEntryType::kHighest) : KeyEntryValue(KeyEntryType::kLowest);
+    auto inf_val = positive ? dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)
+                            : dockv::KeyEntryValue(dockv::KeyEntryType::kLowest);
     AppendToScanTarget(inf_val, col_idx);
   }
 
   static ScanChoicesPtr Create(
-      const Schema& schema, const YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key);
+      const Schema& schema, const dockv::YQLScanSpec& doc_spec,
+      const dockv::KeyBytes& lower_doc_key, const dockv::KeyBytes& upper_doc_key);
 
  protected:
   const bool is_forward_scan_;
-  KeyBytes current_scan_target_;
+  dockv::KeyBytes current_scan_target_;
   bool finished_ = false;
   bool has_hash_columns_ = false;
   size_t num_hash_cols_;
@@ -158,51 +158,54 @@ class ScanChoices {
 // The lower and upper values are vectors to incorporate multi-column IN clause.
 class OptionRange {
  public:
-  OptionRange(KeyEntryValue lower, bool lower_inclusive, KeyEntryValue upper, bool upper_inclusive)
-    : OptionRange(std::move(lower),
-                  lower_inclusive,
-                  std::move(upper),
-                  upper_inclusive,
-                  0 /* begin_idx_ */,
-                  0 /* end_idx_ */) {}
+  OptionRange(
+      dockv::KeyEntryValue lower, bool lower_inclusive,
+      dockv::KeyEntryValue upper, bool upper_inclusive)
+      : OptionRange(std::move(lower),
+                    lower_inclusive,
+                    std::move(upper),
+                    upper_inclusive,
+                    0 /* begin_idx_ */,
+                    0 /* end_idx_ */) {}
 
   OptionRange(
-    KeyEntryValue lower, bool lower_inclusive, KeyEntryValue upper, bool upper_inclusive,
-    size_t begin_idx, size_t end_idx)
-    : lower_(std::move(lower)),
-      lower_inclusive_(lower_inclusive),
-      upper_(std::move(upper)),
-      upper_inclusive_(upper_inclusive),
-      begin_idx_(begin_idx),
-      end_idx_(end_idx) {}
+      dockv::KeyEntryValue lower, bool lower_inclusive,
+      dockv::KeyEntryValue upper, bool upper_inclusive,
+      size_t begin_idx, size_t end_idx)
+      : lower_(std::move(lower)),
+        lower_inclusive_(lower_inclusive),
+        upper_(std::move(upper)),
+        upper_inclusive_(upper_inclusive),
+        begin_idx_(begin_idx),
+        end_idx_(end_idx) {}
 
   // Convenience constructors for testing
   OptionRange(int begin, int end, SortOrder sort_order = SortOrder::kAscending)
       : OptionRange(
-            {KeyEntryValue::Int32(begin, sort_order)}, true,
-            {KeyEntryValue::Int32(end, sort_order)}, true) {}
+            {dockv::KeyEntryValue::Int32(begin, sort_order)}, true,
+            {dockv::KeyEntryValue::Int32(end, sort_order)}, true) {}
 
   OptionRange(int value, SortOrder sort_order = SortOrder::kAscending) // NOLINT
       : OptionRange(value, value, sort_order) {}
 
   OptionRange(int bound, bool upper, SortOrder sort_order = SortOrder::kAscending)
       : OptionRange(
-            {upper ? KeyEntryValue(KeyEntryType::kNullLow)
-                   : KeyEntryValue::Int32(bound, sort_order)},
+            {upper ? dockv::KeyEntryValue(dockv::KeyEntryType::kNullLow)
+                   : dockv::KeyEntryValue::Int32(bound, sort_order)},
             !upper,
-            {upper ? KeyEntryValue::Int32(bound, sort_order)
-                   : KeyEntryValue(KeyEntryType::kNullHigh)},
+            {upper ? dockv::KeyEntryValue::Int32(bound, sort_order)
+                   : dockv::KeyEntryValue(dockv::KeyEntryType::kNullHigh)},
             upper) {}
   OptionRange()
       : OptionRange(
-            {KeyEntryValue(KeyEntryType::kLowest)},
+            {dockv::KeyEntryValue(dockv::KeyEntryType::kLowest)},
             false,
-            {KeyEntryValue(KeyEntryType::kHighest)},
+            {dockv::KeyEntryValue(dockv::KeyEntryType::kHighest)},
             false) {}
 
-  const KeyEntryValue& lower() const { return lower_; }
+  const dockv::KeyEntryValue& lower() const { return lower_; }
   bool lower_inclusive() const { return lower_inclusive_; }
-  const KeyEntryValue& upper() const { return upper_; }
+  const dockv::KeyEntryValue& upper() const { return upper_; }
   bool upper_inclusive() const { return upper_inclusive_; }
 
   size_t begin_idx() const { return begin_idx_; }
@@ -223,9 +226,9 @@ class OptionRange {
   }
 
  private:
-  KeyEntryValue lower_;
+  dockv::KeyEntryValue lower_;
   bool lower_inclusive_;
-  KeyEntryValue upper_;
+  dockv::KeyEntryValue upper_;
   bool upper_inclusive_;
 
   size_t begin_idx_;
@@ -265,20 +268,20 @@ class HybridScanChoices : public ScanChoices {
 
   HybridScanChoices(
       const Schema& schema,
-      const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key,
+      const dockv::KeyBytes& lower_doc_key,
+      const dockv::KeyBytes& upper_doc_key,
       bool is_forward_scan,
       const std::vector<ColumnId>& options_col_ids,
-      const std::shared_ptr<std::vector<OptionList>>& options,
-      const QLScanRange* range_bounds,
+      const std::shared_ptr<std::vector<dockv::OptionList>>& options,
+      const dockv::QLScanRange* range_bounds,
       const ColGroupHolder& col_groups,
       const size_t prefix_length);
 
   HybridScanChoices(
       const Schema& schema,
-      const YQLScanSpec& doc_spec,
-      const KeyBytes& lower_doc_key,
-      const KeyBytes& upper_doc_key);
+      const dockv::YQLScanSpec& doc_spec,
+      const dockv::KeyBytes& lower_doc_key,
+      const dockv::KeyBytes& upper_doc_key);
 
   Result<bool> SkipTargetsUpTo(const Slice& new_target) override;
   Status DoneWithCurrentTarget() override;
@@ -294,14 +297,15 @@ class HybridScanChoices : public ScanChoices {
 
   // Utility function for testing
   std::vector<OptionRange> TEST_GetCurrentOptions();
-  Result<bool> ValidateHashGroup(const KeyBytes& scan_target) const;
+  Result<bool> ValidateHashGroup(const dockv::KeyBytes& scan_target) const;
 
  private:
   // Utility method to return a column corresponding to idx in the schema.
   // This may be different from schema.column_id in the presence of the hash_code column.
   ColumnId GetColumnId(const Schema& schema, size_t idx) const;
 
-  Status DecodeKey(DocKeyDecoder* decoder, KeyEntryValue* target_value = nullptr) const;
+  Status DecodeKey(
+      dockv::DocKeyDecoder* decoder, dockv::KeyEntryValue* target_value = nullptr) const;
 
   // Returns an iterator reference to the lowest option in the current search
   // space of this option list index. See comment for OptionRange.
@@ -323,7 +327,7 @@ class HybridScanChoices : public ScanChoices {
   // Sets an entire group to a particular logical option index.
   void SetGroup(size_t opt_list_idx, size_t opt_index);
 
-  KeyBytes prev_scan_target_;
+  dockv::KeyBytes prev_scan_target_;
 
   // The following fields aid in the goal of iterating through all possible
   // scan key values based on given IN-lists and range filters.
@@ -340,8 +344,8 @@ class HybridScanChoices : public ScanChoices {
 
   bool is_options_done_ = false;
 
-  const KeyBytes lower_doc_key_;
-  const KeyBytes upper_doc_key_;
+  const dockv::KeyBytes lower_doc_key_;
+  const dockv::KeyBytes upper_doc_key_;
 
   // When we have tuple IN filters such as (r1,r3) IN ((1,3), (2,5) ...) where
   // (r1,r2,r3) is the index key, we cannot simply just populate

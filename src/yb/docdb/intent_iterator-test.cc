@@ -18,7 +18,7 @@
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/intent_iterator.h"
 
@@ -26,6 +26,11 @@ DECLARE_bool(TEST_docdb_sort_weak_intents);
 
 namespace yb {
 namespace docdb {
+
+using dockv::DocPath;
+using dockv::KeyEntryValue;
+using dockv::PrimitiveValue;
+using dockv::SubDocKey;
 
 class IntentIteratorTest : public DocDBTestBase {
  protected:
@@ -52,14 +57,11 @@ constexpr int64_t kIntKey1 = 11111;
 const std::string kStrKey2 = "row2";
 constexpr int64_t kIntKey2 = 22222;
 
-static const KeyBytes kEncodedDocKey1(
-    DocKey(KeyEntryValues(kStrKey1, kIntKey1)).Encode());
-
-static const KeyBytes kEncodedDocKey2(
-    DocKey(KeyEntryValues(kStrKey2, kIntKey2)).Encode());
+const auto kEncodedDocKey1 = dockv::MakeDocKey(kStrKey1, kIntKey1).Encode();
+const auto kEncodedDocKey2 = dockv::MakeDocKey(kStrKey2, kIntKey2).Encode();
 
 void ValidateKeyAndValue(
-    const IntentIterator& iter, const KeyBytes& expected_key_bytes,
+    const IntentIterator& iter, const dockv::KeyBytes& expected_key_bytes,
     const KeyEntryValue& expected_key_entry_value, HybridTime expected_ht,
     const PrimitiveValue& expected_value, bool expect_int = false) {
   ASSERT_TRUE(iter.valid());
@@ -67,12 +69,12 @@ void ValidateKeyAndValue(
   ASSERT_EQ(key_result.key.compare_prefix(expected_key_bytes), 0);
   ASSERT_EQ(expected_ht, key_result.write_time.hybrid_time());
 
-  SubDocument doc(expected_value.value_type());
+  dockv::SubDocument doc(expected_value.value_type());
   ASSERT_OK(doc.DecodeFromValue(iter.value()));
 
   if (!expected_value.IsTombstone()) {
     SubDocKey key;
-    ASSERT_OK(key.DecodeFrom(&key_result.key, HybridTimeRequired::kFalse));
+    ASSERT_OK(key.DecodeFrom(&key_result.key, dockv::HybridTimeRequired::kFalse));
     ASSERT_EQ(expected_key_entry_value, key.subkeys()[0]);
 
     ASSERT_EQ(expected_value, doc)
@@ -487,7 +489,7 @@ TXN REV 30303030-3030-3030-3030-303030303032 HT{ physical: 4000 w: 3 } -> \
         iter, kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId), HybridTime::FromMicros(6000),
         PrimitiveValue::kTombstone);
 
-    KeyBytes doc_key1;
+    dockv::KeyBytes doc_key1;
     doc_key1.Append(kEncodedDocKey1);
     iter.SeekOutOfSubKey(&doc_key1);
 
