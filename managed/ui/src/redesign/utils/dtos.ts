@@ -164,7 +164,7 @@ export interface PerfRecommendationData {
   recommendationPriority?: RecommendationPriority;
   recommendationTimestamp?: number;
   isStale?: boolean;
-  new?: boolean
+  new?: boolean;
 }
 
 export interface IndexAndShardingRecommendationData {
