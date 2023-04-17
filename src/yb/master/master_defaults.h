@@ -90,6 +90,13 @@ static const char* const kSystemAuthRolePermissionsTableName = "role_permissions
 static const char* const kSystemAuthResourceRolePermissionsIndexTableName =
                   "resource_role_permissions_index";
 
+static const char* const kTestEchoTimestamp = "timestamp";
+constexpr size_t kTestEchoTimestampIdx = 0;
+static const char* const kTestEchoNodeId = "node_id";
+constexpr size_t kTestEchoNodeIdIdx = 1;
+static const char* const kTestEchoMessage = "message";
+constexpr size_t kTestEchoMessageIdx = 2;
+
 static const char* const kDefaultSchemaVersion = "00000000-0000-0000-0000-000000000000";
 
 static const char* const kSecurityConfigType = "security-configuration";

@@ -195,6 +195,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
@@ -3509,7 +3510,7 @@ Status CheckNumReplicas(const PlacementInfoPB& placement_info,
 }
 
 std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
-  return StatefulServiceKind_Name(service_kind) + "_table";
+  return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
 }
 } // namespace
 
@@ -4773,8 +4774,9 @@ Status CatalogManager::CreateTestEchoService() {
   }
 
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("timestamp")->HashPrimaryKey()->Type(DataType::TIMESTAMP);
-  schema_builder.AddColumn("text")->Type(DataType::STRING);
+  schema_builder.AddColumn(kTestEchoTimestamp)->HashPrimaryKey()->Type(DataType::TIMESTAMP);
+  schema_builder.AddColumn(kTestEchoNodeId)->Type(DataType::STRING);
+  schema_builder.AddColumn(kTestEchoMessage)->Type(DataType::STRING);
 
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));

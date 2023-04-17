@@ -13,20 +13,24 @@
 
 #pragma once
 
+#include <string>
+#include "yb/client/yb_table_name.h"
 #include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/stateful_services/test_echo_service.service.h"
 
 namespace yb {
 namespace stateful_service {
-class TestEchoService : public StatefulServiceBase, public TestEchoServiceIf {
+class TestEchoService : public StatefulRpcServiceBase<TestEchoServiceIf> {
  public:
-  TestEchoService(const std::string& node_uuid, const scoped_refptr<MetricEntity>& metric_entity);
-  void Shutdown() override;
+  TestEchoService(
+      const std::string& node_uuid, const scoped_refptr<MetricEntity>& metric_entity,
+      const std::shared_future<client::YBClient*>& client_future);
 
  private:
   void Activate(const int64_t leader_term) override;
   void Deactivate() override;
-  virtual Result<bool> RunPeriodicTask() override;
+  Result<bool> RunPeriodicTask() override;
+  Status RecordRequestInTable(const std::string& message);
 
   STATEFUL_SERVICE_IMPL_METHODS((GetEcho));
 
