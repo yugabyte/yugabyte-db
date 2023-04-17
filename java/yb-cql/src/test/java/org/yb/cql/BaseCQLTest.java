@@ -186,6 +186,7 @@ public class BaseCQLTest extends BaseMiniClusterTest {
         break;
       }
       LOG.info("system.peers still contains only " + numPeers + " entries, waiting");
+      attemptsMade++;
       Thread.sleep(1000);
     }
     if (waitSuccessful) {
