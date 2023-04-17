@@ -1062,6 +1062,8 @@
         }
       },
       "nodes": {
+        "primaryCluster": "Primary Cluster",
+        "readReplicaClusters": "Read Replica Clusters",
         "numNodes": "{{count}} Node",
         "numNodes_plural": "{{count}} Nodes",
         "noNodesCopy": "No nodes to display",
@@ -1090,7 +1092,7 @@
         "general": "General",
         "nodeAndIpAddress": "Node & IP Address",
         "regionAndZone": "Region & Zone",
-        "placementUUID": "Placement UUID",
+        "clusterName": "Cluster Name",
         "readReplica": "Read Replica",
         "performance": "Performance",
         "readOpsPerSec": "Read Ops/sec",
@@ -1114,6 +1116,7 @@
         "down": "Down",
         "status": "Status",
         "uptime": "Uptime",
+        "allClusters": "All Clusters",
         "masterAndTserverStatus": "Master & Tserver Status",
         "masterAndTserverUptime": "Master & Tserver Uptime",
         "tserver": "Tserver",

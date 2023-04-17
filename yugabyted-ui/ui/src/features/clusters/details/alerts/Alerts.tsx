@@ -161,7 +161,7 @@ export const Alerts: FC = () => {
             onClose={() => setDrawerOpen(undefined)}
             enableBackdropDismiss
             titleSeparator
-            cancelLabel={t('common.cancel')}
+            cancelLabel={t('common.close')}
             isSidePanel
           >
             {drawerOpenIndex !== undefined &&
