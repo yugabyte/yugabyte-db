@@ -74,7 +74,7 @@ The **Universes** view allows you to examine various aspects of the universe:
 
 ## Connect to a database node
 
-Once the universe is ready, its **Overview** tab should appear similar to the following illustration:
+After the universe is ready, its **Overview** tab should appear similar to the following illustration:
 
 ![Multi-zone universe ready](/images/yp/multi-zone-universe-ready-1.png)
 
