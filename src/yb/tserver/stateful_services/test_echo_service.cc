@@ -12,14 +12,21 @@
 //
 
 #include "yb/tserver/stateful_services/test_echo_service.h"
+#include "yb/client/client.h"
+#include "yb/client/session.h"
+#include "yb/client/yb_op.h"
+#include "yb/gutil/walltime.h"
+#include "yb/master/master_defaults.h"
+
+using namespace std::chrono_literals;
 
 namespace yb {
 
 namespace stateful_service {
 TestEchoService::TestEchoService(
-    const std::string& node_uuid, const scoped_refptr<MetricEntity>& metric_entity)
-    : StatefulServiceBase(StatefulServiceKind::TEST_ECHO),
-      TestEchoServiceIf(metric_entity),
+    const std::string& node_uuid, const scoped_refptr<MetricEntity>& metric_entity,
+    const std::shared_future<client::YBClient*>& client_future)
+    : StatefulRpcServiceBase(StatefulServiceKind::TEST_ECHO, metric_entity, client_future),
       node_uuid_(node_uuid) {}
 
 void TestEchoService::Activate(const int64_t leader_term) {
@@ -33,13 +40,11 @@ Result<bool> TestEchoService::RunPeriodicTask() {
   return true;
 }
 
-void TestEchoService::Shutdown() {
-  TestEchoServiceIf::Shutdown();
-  StatefulServiceBase::Shutdown();
-}
-
 Status TestEchoService::GetEchoImpl(const GetEchoRequestPB& req, GetEchoResponsePB* resp) {
   std::string echo = req.message();
+
+  RETURN_NOT_OK(RecordRequestInTable(echo));
+
   // For a string to bounce back and make an echo, there has to be a lot of latency between the
   // string source and the thing (wall or mountain or service) that it hits and bounces back. Since
   // latency in Yugabyte is very low we need to do some string manipulation instead.
@@ -51,6 +56,20 @@ Status TestEchoService::GetEchoImpl(const GetEchoRequestPB& req, GetEchoResponse
   resp->set_node_id(node_uuid_);
 
   return Status::OK();
+}
+
+Status TestEchoService::RecordRequestInTable(const std::string& message) {
+  auto* table = VERIFY_RESULT(GetServiceTable());
+
+  const auto op = table->NewWriteOp(QLWriteRequestPB::QL_STMT_INSERT);
+  auto* const req = op->mutable_request();
+  QLAddTimestampHashValue(req, GetCurrentTimeMicros());
+  table->AddStringColumnValue(req, master::kTestEchoNodeId, node_uuid_);
+  table->AddStringColumnValue(req, master::kTestEchoMessage, message);
+
+  std::shared_ptr<client::YBSession> session = GetYBSession();
+  session->SetTimeout(30s);
+  return session->TEST_ApplyAndFlush(op);
 }
 
 }  // namespace stateful_service

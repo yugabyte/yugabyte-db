@@ -15,6 +15,7 @@
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/catalog_manager.h"
+#include "yb/util/string_case.h"
 
 namespace yb {
 using std::string;
@@ -29,7 +30,7 @@ TEST_F(StatefulServiceTest, TestCreateStatefulService) {
 
   ASSERT_OK(catalog_manager.CreateTestEchoService());
 
-  const auto table_name_prefix = StatefulServiceKind_Name(kTestEchoServiceKind);
+  const auto table_name_prefix = ToLowerCase(StatefulServiceKind_Name(kTestEchoServiceKind));
   auto tables = catalog_manager.GetTables(GetTablesMode::kAll);
   TableInfoPtr service_table;
   for (auto& table : tables) {
