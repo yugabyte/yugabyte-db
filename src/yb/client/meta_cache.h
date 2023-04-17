@@ -45,7 +45,7 @@
 
 #include "yb/client/client_fwd.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/placement_info.h"
 #include "yb/consensus/metadata.pb.h"
 
@@ -231,7 +231,7 @@ struct ReplicasCount {
 class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
  public:
   RemoteTablet(std::string tablet_id,
-               Partition partition,
+               dockv::Partition partition,
                boost::optional<PartitionListVersion> partition_list_version,
                uint64 split_depth,
                const TabletId& split_parent_tablet_id);
@@ -315,7 +315,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   const std::string& tablet_id() const { return tablet_id_; }
 
-  const Partition& partition() const {
+  const dockv::Partition& partition() const {
     return partition_;
   }
 
@@ -353,7 +353,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 
   const std::string tablet_id_;
   const std::string log_prefix_;
-  const Partition partition_;
+  const dockv::Partition partition_;
   const boost::optional<PartitionListVersion> partition_list_version_;
   const uint64 split_depth_;
   const TabletId split_parent_tablet_id_;

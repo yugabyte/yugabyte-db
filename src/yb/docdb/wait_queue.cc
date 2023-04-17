@@ -29,7 +29,7 @@
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
@@ -512,7 +512,7 @@ class BlockerData {
   // conflict_info is not null, populate conflict information. Otherwise, early return true to
   // indicate a conflict was found. Return false if no conflict is found.
   bool PopulateConflictInfo(
-      const RefCntPrefix& doc_path, const IntentTypeSet& intent_type_set,
+      const RefCntPrefix& doc_path, const dockv::IntentTypeSet& intent_type_set,
       TransactionConflictInfo* conflict_info) {
     bool did_find_conflicts = false;
     SharedLock l(mutex_);
@@ -551,7 +551,7 @@ class BlockerData {
 
   using IntentsByKey = std::unordered_map<
       RefCntPrefix,
-      IntentTypeSet,
+      dockv::IntentTypeSet,
       RefCntPrefixHash>;
   std::unordered_map<SubTransactionId, IntentsByKey> subtxn_intents_by_key_ GUARDED_BY(mutex_);
 };

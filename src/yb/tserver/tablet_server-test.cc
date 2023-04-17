@@ -31,7 +31,7 @@
 //
 
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_wire_protocol.h"
 
@@ -851,10 +851,10 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   const char *tabletId = "TestWriteOutOfBoundsTablet";
   Schema schema = SchemaBuilder(schema_).Build();
 
-  PartitionSchema partition_schema;
-  CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  CHECK_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  Partition partition;
+  dockv::Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
       YQL_TABLE_TYPE, schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */,

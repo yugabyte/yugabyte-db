@@ -2429,7 +2429,7 @@ TEST_P(XClusterTest, TestWalRetentionSet) {
 
   // Verify that the table got altered on the producer.
   YBSchema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   ASSERT_OK(producer_client()->GetTableSchema(table_name, &schema, &partition_schema));
 
   ASSERT_NE(static_cast<int>(Schema::kColumnNotFound), schema.FindColumn("new_col"));

@@ -19,7 +19,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
@@ -96,7 +96,7 @@ void MasterTabletServiceImpl::Write(const tserver::WriteRequestPB* req,
         // The write op to increment the catalog version number is special and may not have
         // set any of ysql_catalog_version, ysql_db_catalog_version, and ysql_db_oid. Therefore
         // we need to get db oid by decoding from ybctid.
-        docdb::DocKey doc_key;
+        dockv::DocKey doc_key;
         if (!pg_req.has_ybctid_column_value() ||
             !doc_key.FullyDecodeFrom(pg_req.ybctid_column_value().value().binary_value()).ok() ||
             doc_key.range_group().size() != 1) {

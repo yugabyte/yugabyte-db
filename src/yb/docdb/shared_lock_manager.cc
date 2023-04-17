@@ -34,6 +34,8 @@ using std::string;
 namespace yb {
 namespace docdb {
 
+using dockv::IntentTypeSet;
+
 namespace {
 
 // Lock state stores number of locks acquired for each intent type.
@@ -49,17 +51,18 @@ const size_t kIntentTypeBits = 16;
 // is "least significant", as in furthest to the right.
 const LockState kSingleIntentMask = (static_cast<LockState>(1) << kIntentTypeBits) - 1;
 
-bool IntentTypesConflict(IntentType lhs, IntentType rhs) {
+bool IntentTypesConflict(dockv::IntentType lhs, dockv::IntentType rhs) {
   auto lhs_value = to_underlying(lhs);
   auto rhs_value = to_underlying(rhs);
   // The rules are the following:
   // 1) At least one intent should be strong for conflict.
   // 2) Read and write conflict only with opposite type.
-  return ((lhs_value & kStrongIntentFlag) || (rhs_value & kStrongIntentFlag)) &&
-         ((lhs_value & kWriteIntentFlag) != (rhs_value & kWriteIntentFlag));
+  return ((lhs_value & dockv::kStrongIntentFlag) || (rhs_value & dockv::kStrongIntentFlag)) &&
+         ((lhs_value & dockv::kWriteIntentFlag) != (rhs_value & dockv::kWriteIntentFlag));
 }
 
-LockState IntentTypeMask(IntentType intent_type, LockState single_intent_mask = kSingleIntentMask) {
+LockState IntentTypeMask(
+    dockv::IntentType intent_type, LockState single_intent_mask = kSingleIntentMask) {
   return single_intent_mask << (to_underlying(intent_type) * kIntentTypeBits);
 }
 
@@ -67,12 +70,12 @@ LockState IntentTypeMask(IntentType intent_type, LockState single_intent_mask = 
 // returned array represents a conflict mask for the i-th possible IntentTypeSet. To determine if a
 // given IntentTypeSet i conflicts with the key's existing LockState l, you can do the following:
 // bool is_conflicting = kIntentTypeSetConflicts[i.ToUintPtr()] & l != 0;
-std::array<LockState, kIntentTypeSetMapSize> GenerateConflicts() {
-  std::array<LockState, kIntentTypeSetMapSize> result;
-  for (size_t idx = 0; idx < kIntentTypeSetMapSize; ++idx) {
+std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateConflicts() {
+  std::array<LockState, dockv::kIntentTypeSetMapSize> result;
+  for (size_t idx = 0; idx < dockv::kIntentTypeSetMapSize; ++idx) {
     result[idx] = 0;
     for (auto intent_type : IntentTypeSet(idx)) {
-      for (auto other_intent_type : IntentTypeList()) {
+      for (auto other_intent_type : dockv::IntentTypeList()) {
         if (IntentTypesConflict(intent_type, other_intent_type)) {
           result[idx] |= IntentTypeMask(other_intent_type);
         }
@@ -84,10 +87,10 @@ std::array<LockState, kIntentTypeSetMapSize> GenerateConflicts() {
 
 // Generate array of LockState's with one entry for each possible subset of intent type set.
 // The entry is combination of single_intent_mask for intents from set.
-std::array<LockState, kIntentTypeSetMapSize> GenerateByMask(LockState single_intent_mask) {
+std::array<LockState, dockv::kIntentTypeSetMapSize> GenerateByMask(LockState single_intent_mask) {
   DCHECK_EQ(single_intent_mask & kSingleIntentMask, single_intent_mask);
-  std::array<LockState, kIntentTypeSetMapSize> result;
-  for (size_t idx = 0; idx != kIntentTypeSetMapSize; ++idx) {
+  std::array<LockState, dockv::kIntentTypeSetMapSize> result;
+  for (size_t idx = 0; idx != dockv::kIntentTypeSetMapSize; ++idx) {
     result[idx] = 0;
     for (auto intent_type : IntentTypeSet(idx)) {
       result[idx] |= IntentTypeMask(intent_type, single_intent_mask);
@@ -104,7 +107,7 @@ std::array<LockState, kIntentTypeSetMapSize> GenerateByMask(LockState single_int
 // element present would be represented by the number = (2^0 + 2^2) = 5. The fifth index of an
 // IntentTypeSetMap stores some value which corresponds to this IntentTypeSet.
 // TODO -- clarify the semantics of IntentTypeSetMap by making it a class.
-typedef std::array<LockState, kIntentTypeSetMapSize> IntentTypeSetMap;
+typedef std::array<LockState, dockv::kIntentTypeSetMapSize> IntentTypeSetMap;
 
 // Maps IntentTypeSet to a LockState mask which determines if another LockState will conflict with
 // any of the elements present in the IntentTypeSet.
@@ -189,14 +192,14 @@ class SharedLockManager::Impl {
 std::string SharedLockManager::ToString(const LockState& state) {
   std::string result = "{";
   bool first = true;
-  for (auto type : IntentTypeList()) {
+  for (auto type : dockv::IntentTypeList()) {
     if ((state & IntentTypeMask(type)) != 0) {
       if (first) {
         first = false;
       } else {
         result += ", ";
       }
-      result += docdb::ToString(type);
+      result += AsString(type);
     }
   }
   result += "}";

@@ -24,9 +24,9 @@
 
 #include "yb/docdb/compaction_file_filter.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_context.h"
-#include "yb/docdb/primitive_value.h"
+#include "yb/dockv/primitive_value.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 #include "yb/rocksdb/db/version_edit.h"
@@ -41,6 +41,9 @@ DECLARE_bool(file_expiration_value_ttl_overrides_table_ttl);
 
 namespace yb {
 namespace docdb {
+
+using dockv::kNoExpiration;
+using dockv::kUseDefaultTTL;
 using rocksdb::FilterDecision;
 
 static const Schema kTableSchema({ ColumnSchema("key", INT32),
@@ -159,7 +162,7 @@ TEST_F(ExpirationFilterTest, TestExpirationNoTableTTL) {
   const auto future_time = current_time.AddSeconds(1000);
   const auto past_time = 1000_usec_ht;
   // Use maximum table TTL
-  const MonoDelta table_ttl_sec = ValueControlFields::kMaxTtl;
+  const MonoDelta table_ttl_sec = dockv::ValueControlFields::kMaxTtl;
   // Check 1: File with maximum hybrid time and value non-expiration. (keep)
   auto expiry = ExpirationTime{kNoExpiration, HybridTime::kMax};
   EXPECT_EQ(TtlIsExpired(expiry, table_ttl_sec, current_time), false);

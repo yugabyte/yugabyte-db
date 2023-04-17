@@ -42,7 +42,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
 
@@ -320,7 +320,7 @@ Result<bool> DeleteTableTest::VerifyTableCompletelyDeleted(
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   Status s = client_->GetTableSchema(table, &schema, &partition_schema);
   if (!s.IsNotFound()) {
     return false;
@@ -403,7 +403,7 @@ TEST_F(DeleteTableTest, TestDeleteEmptyTable) {
 
   // 2) Should respond to GetTableSchema with a NotFound error.
   YBSchema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   Status s = client_->GetTableSchema(
       TestWorkloadOptions::kDefaultTableName, &schema, &partition_schema);
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();

@@ -24,7 +24,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 
@@ -1117,7 +1117,7 @@ void PgMiniTest::TestBigInsert(bool restart) {
 
     for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       Slice key = iter->key();
-      ASSERT_FALSE(key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState))
+      ASSERT_FALSE(key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionApplyState))
           << "Key: " << iter->key().ToDebugString() << ", value: " << iter->value().ToDebugString();
     }
   }

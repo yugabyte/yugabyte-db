@@ -45,7 +45,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol-test-util.h"
@@ -59,8 +59,8 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/strcat.h"
@@ -3423,10 +3423,10 @@ TEST_F(RaftConsensusITest, SplitOpId) {
     const auto min_hash_code = std::numeric_limits<docdb::DocKeyHash>::max();
     const auto max_hash_code = std::numeric_limits<docdb::DocKeyHash>::min();
     const auto split_hash_code = (max_hash_code - min_hash_code) / 2 + min_hash_code;
-    const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
-    docdb::KeyBytes encoded_doc_key;
-    docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-        split_hash_code, std::vector<docdb::KeyEntryValue>());
+    const auto partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
+    dockv::KeyBytes encoded_doc_key;
+    dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+        split_hash_code, dockv::KeyEntryValues());
     req.set_split_encoded_key(encoded_doc_key.ToStringBuffer());
     req.set_split_partition_key(partition_key);
   }

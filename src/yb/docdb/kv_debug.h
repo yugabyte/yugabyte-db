@@ -19,20 +19,22 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 namespace yb {
 namespace docdb {
 
-Result<std::string> DocDBKeyToDebugStr(Slice key_slice, StorageDbType db_type,
-                                       HybridTimeRequired htRequired = HybridTimeRequired::kTrue);
+Result<std::string> DocDBKeyToDebugStr(
+    Slice key_slice, StorageDbType db_type,
+    dockv::HybridTimeRequired htRequired = dockv::HybridTimeRequired::kTrue);
 
 Result<std::string> DocDBValueToDebugStr(
-    KeyType key_type, Slice key, Slice value, const SchemaPackingStorage& schema_packing_storage);
+    KeyType key_type, Slice key, Slice value,
+    const dockv::SchemaPackingStorage& schema_packing_storage);
 
 Result<std::string> DocDBValueToDebugStr(
     Slice key, StorageDbType db_type, Slice value,
-    const SchemaPackingStorage& schema_packing_storage);
+    const dockv::SchemaPackingStorage& schema_packing_storage);
 
 }  // namespace docdb
 }  // namespace yb

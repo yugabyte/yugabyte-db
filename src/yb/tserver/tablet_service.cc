@@ -1423,18 +1423,18 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
                "tablet_id", req->tablet_id());
 
   Schema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   auto status = SchemaFromPB(req->schema(), &schema);
   if (status.ok()) {
     DCHECK(schema.has_column_ids());
-    status = PartitionSchema::FromPB(req->partition_schema(), schema, &partition_schema);
+    status = dockv::PartitionSchema::FromPB(req->partition_schema(), schema, &partition_schema);
   }
   if (!status.ok()) {
     return status.CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::INVALID_SCHEMA));
   }
 
-  Partition partition;
-  Partition::FromPB(req->partition(), &partition);
+  dockv::Partition partition;
+  dockv::Partition::FromPB(req->partition(), &partition);
 
   LOG(INFO) << "Processing CreateTablet for T " << req->tablet_id() << " P " << req->dest_uuid()
             << " (table=" << req->table_name()
@@ -1951,7 +1951,7 @@ Status TabletServiceImpl::PerformWrite(
         } else if (
             entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_INSERT ||
             entry.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPSERT) {
-          docdb::DocKey doc_key;
+          dockv::DocKey doc_key;
           CHECK_OK(doc_key.FullyDecodeFrom(entry.ybctid_column_value().value().binary_value()));
           LOG(INFO) << txn_id << " INSERT: " << doc_key.hashed_group()[0].GetInt32() << " = "
                     << entry.column_values(0).expr().value().string_value();

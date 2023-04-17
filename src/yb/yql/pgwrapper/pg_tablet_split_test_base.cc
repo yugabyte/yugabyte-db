@@ -17,7 +17,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 

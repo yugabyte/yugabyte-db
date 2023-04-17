@@ -21,6 +21,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/partition.h"
+
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/util/result.h"
@@ -75,15 +77,15 @@ YBTableCreator& YBTableCreator::is_pg_shared_table() {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
+YBTableCreator& YBTableCreator::hash_schema(dockv::YBHashSchema hash_schema) {
   switch (hash_schema) {
-    case YBHashSchema::kMultiColumnHash:
+    case dockv::YBHashSchema::kMultiColumnHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
       break;
-    case YBHashSchema::kRedisHash:
+    case dockv::YBHashSchema::kRedisHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
       break;
-    case YBHashSchema::kPgsqlHash:
+    case dockv::YBHashSchema::kPgsqlHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
       break;
   }
@@ -135,7 +137,7 @@ YBTableCreator& YBTableCreator::part_of_transaction(const TransactionMetadata* t
   return *this;
 }
 
-YBTableCreator &YBTableCreator::add_partition(const Partition& partition) {
+YBTableCreator &YBTableCreator::add_partition(const dockv::Partition& partition) {
     partitions_.push_back(partition);
     return *this;
 }

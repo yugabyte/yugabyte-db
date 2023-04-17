@@ -16,7 +16,7 @@
 // https://github.com/google/fuzzing/blob/master/docs/split-inputs.md#fuzzed-data-provider
 #include <fuzzer/FuzzedDataProvider.h>
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/util/decimal.h"
 #include "yb/util/test_util.h"
@@ -42,10 +42,9 @@ enum class FuzzKeyEntryValue {
   NullValue  // Must be the last one
 };
 
-KeyEntryValue GetKeyEntryValue(FuzzedDataProvider *fdp);
-std::vector<KeyEntryValue> GetKeyEntryValueVector(FuzzedDataProvider *fdp,
-                                                  bool consume_all);
-DocKey GetDocKey(FuzzedDataProvider *fdp, bool consume_all);
+dockv::KeyEntryValue GetKeyEntryValue(FuzzedDataProvider *fdp);
+dockv::KeyEntryValues GetKeyEntryValueVector(FuzzedDataProvider *fdp, bool consume_all);
+dockv::DocKey GetDocKey(FuzzedDataProvider *fdp, bool consume_all);
 
 }  // namespace fuzz
 }  // namespace docdb

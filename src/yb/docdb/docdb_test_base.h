@@ -19,7 +19,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 

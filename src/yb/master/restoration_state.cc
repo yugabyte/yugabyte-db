@@ -10,8 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#include "yb/docdb/key_bytes.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/master/restoration_state.h"
 
@@ -202,11 +202,11 @@ Status RestorationState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_ba
 
 Status RestorationState::StoreToKeyValuePair(docdb::KeyValuePairPB* pair) {
   ++version_;
-  docdb::KeyBytes encoded_key = VERIFY_RESULT(
+  dockv::KeyBytes encoded_key = VERIFY_RESULT(
       EncodedKey(SysRowEntryType::SNAPSHOT_RESTORATION, restoration_id_.AsSlice(), &context()));
   pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
   faststring value;
-  value.push_back(docdb::ValueEntryTypeAsChar::kString);
+  value.push_back(dockv::ValueEntryTypeAsChar::kString);
   SysRestorationEntryPB entry;
   ForClient for_client = ForClient::kFalse;
   if (FLAGS_TEST_update_aggregated_restore_state) {

@@ -93,7 +93,7 @@ class PlacementInfoTest : public YBTest {
     table_name_->set_namespace_name(yb::master::kSystemNamespaceName);
     CHECK_OK(table_creator->table_name(*table_name_)
                  .schema(&schema)
-                 .hash_schema(YBHashSchema::kMultiColumnHash)
+                 .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
                  .wait(true)
                  .num_tablets(1)
                  .Create());
@@ -191,8 +191,8 @@ TEST_F(PlacementInfoTest, TestSelectTServer) {
   master::TabletLocationsPB tablet_locations;
   GetTabletLocations(&tablet_locations);
 
-  Partition partition;
-  Partition::FromPB(tablet_locations.partition(), &partition);
+  dockv::Partition partition;
+  dockv::Partition::FromPB(tablet_locations.partition(), &partition);
   internal::RemoteTabletPtr remote_tablet = new internal::RemoteTablet(
       tablet_locations.tablet_id(), partition, /* partition_list_version = */ 0,
       /* split_depth = */ 0, /* split_parent_id = */ "");

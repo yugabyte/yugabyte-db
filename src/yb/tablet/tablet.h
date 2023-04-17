@@ -676,8 +676,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // split_op_hybrid_time.
   // In case of error sub-tablet could be partially persisted on disk.
   Result<RaftGroupMetadataPtr> CreateSubtablet(
-      const TabletId& tablet_id, const Partition& partition, const docdb::KeyBounds& key_bounds,
-      const yb::OpId& split_op_id, const HybridTime& split_op_hybrid_time);
+      const TabletId& tablet_id, const dockv::Partition& partition,
+      const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
+      const HybridTime& split_op_hybrid_time);
 
   // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
   Result<int64_t> CountIntents();
@@ -896,7 +897,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  std::shared_ptr<docdb::SchemaPackingStorage> PrimarySchemaPackingStorage();
+  std::shared_ptr<dockv::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
 
