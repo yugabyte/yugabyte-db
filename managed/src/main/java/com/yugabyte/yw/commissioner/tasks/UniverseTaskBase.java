@@ -2112,7 +2112,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
                     String.format("%s:%s", tableSchema.getNamespace(), tableSchema.getTableName()));
               }
             }
-            backupTableParamsList.add(backupParams);
+            if (CollectionUtils.isNotEmpty(backupParams.tableUUIDList)) {
+              backupTableParamsList.add(backupParams);
+            }
           } else {
             backupParams.allTables = true;
             for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : tableInfoList) {
