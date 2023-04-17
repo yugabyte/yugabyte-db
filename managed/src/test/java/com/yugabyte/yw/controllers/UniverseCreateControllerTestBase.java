@@ -933,7 +933,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         PublicCloudConstants.StorageType.GP3,
         1,
         100,
-        1000,
+        3000,
         125,
         null,
         null
@@ -1083,7 +1083,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         PublicCloudConstants.StorageType.GP3,
         1,
         100,
-        1000,
+        3000,
         null,
         null,
         "Disk throughput is mandatory for GP3 storage"
@@ -1141,7 +1141,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         -1,
         125,
         null,
-        "Disk IOPS should be positive"
+        "Disk IOPS for storage type GP3 should be in range [3000, 16000]"
       },
       {
         Common.CloudType.aws,
@@ -1149,10 +1149,10 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
         PublicCloudConstants.StorageType.GP3,
         1,
         100,
-        1000,
+        3000,
         -1,
         null,
-        "Disk throughput should be positive"
+        "Disk throughput for storage type GP3 should be in range [125, 1000]"
       },
       {
         Common.CloudType.gcp,
