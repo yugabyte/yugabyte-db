@@ -48,11 +48,11 @@ To create a multi-zone universe using [Google Cloud provider (GCP)](../../config
 
 - Enter the region (**Oregon**).
 
-- Change the instance type (**n1-standard-8**).
-
-- Accept default values for all of the remaining fields (replication factor = 3, number of nodes = 3), as per the following illustration:<br>
+- Accept default values for all of the remaining fields (Master Placement,replication factor = 3, Total nodes = 3), as per the following illustration:<br>
 
   ![Create Universe on GCP](/images/yp/create-uni-multi-zone-1.png)<br>
+
+- For **Instance Configuration**, change the instance type (**n1-standard-8**).
 
 - Click **Create**.
 
