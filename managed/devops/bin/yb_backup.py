@@ -3486,6 +3486,7 @@ class YBBackup:
                             num_ts += 1
                         else:
                             # Bad/temporary roles: LEARNER, NON_PARTICIPANT, UNKNOWN_ROLE.
+                            broadcast_ip = rpc_ip
                             found_bad_ts = True
                             logging.warning("Found TS {} with bad role: {} for tablet {}. "
                                             "Retry searching.".format(broadcast_ip, role,
