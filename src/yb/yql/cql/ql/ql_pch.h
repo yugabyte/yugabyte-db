@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <float.h>
 #include <inttypes.h>
 #include <lz4.h>
@@ -16,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <time.h>
@@ -40,10 +42,13 @@
 #include <deque>
 #include <functional>
 #include <future>
+#include <initializer_list>
 #include <iosfwd>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <list>
+#include <locale>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -82,6 +87,7 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/mpl/and.hpp>
@@ -99,9 +105,11 @@
 #include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>
 #include <boost/preprocessor/if.hpp>
+#include <boost/preprocessor/list/for_each.hpp>
 #include <boost/preprocessor/punctuation/is_begin_parens.hpp>
 #include <boost/preprocessor/seq/enum.hpp>
 #include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/to_list.hpp>
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
@@ -198,6 +206,7 @@
 #include "yb/util/errno.h"
 #include "yb/util/ev_util.h"
 #include "yb/util/faststring.h"
+#include "yb/util/fault_injection.h"
 #include "yb/util/file_system.h"
 #include "yb/util/flags.h"
 #include "yb/util/flags/auto_flags.h"
@@ -258,6 +267,8 @@
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
 #include "yb/util/test_util.h"
+#include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
@@ -271,4 +282,5 @@
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
 #include "yb/util/web_callback_registry.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
