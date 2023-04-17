@@ -12,7 +12,9 @@
 //
 
 #include <chrono>
+#include "yb/client/session.h"
 #include "yb/client/stateful_services/test_echo_service_client.h"
+#include "yb/client/table_handle.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/client-internal.h"
 #include "yb/integration-tests/cluster_itest_util.h"
@@ -25,6 +27,7 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
 #include "yb/master/master_defaults.h"
@@ -41,9 +44,8 @@ using namespace std::chrono_literals;
 const MonoDelta kTimeout = 20s * kTimeMultiplier;
 const int kNumMasterServers = 3;
 const int kNumTServers = 3;
-const client::YBTableName service_table_name(
-    YQL_DATABASE_CQL, master::kSystemNamespaceName,
-    StatefulServiceKind_Name(StatefulServiceKind::TEST_ECHO) + "_table");
+const client::YBTableName service_table_name =
+    stateful_service::GetStatefulServiceTableName(StatefulServiceKind::TEST_ECHO);
 
 class StatefulServiceTest : public MiniClusterTestWithClient<MiniCluster> {
  public:
@@ -169,13 +171,58 @@ TEST_F(StatefulServiceTest, TestGetStatefulServiceLocation) {
   ASSERT_OK(initial_leader->Start());
 }
 
+struct TableRow {
+  std::string node_uuid;
+  std::string message;
+};
+
+namespace {
+Status ValidateRowsFromServiceTable(
+    const client::TableHandle& table, int expected_row_count, const std::string& message,
+    const std::string& node_uuid) {
+  std::vector<TableRow> table_rows;
+
+  Status table_scan_status;
+  client::TableIteratorOptions options;
+  options.error_handler = [&table_scan_status](const Status& status) {
+    table_scan_status = status;
+  };
+
+  for (const auto& row : client::TableRange(table, options)) {
+    TableRow table_row;
+    table_row.node_uuid = row.column(master::kTestEchoNodeIdIdx).string_value();
+    table_row.message = row.column(master::kTestEchoMessageIdx).string_value();
+    table_rows.emplace_back(std::move(table_row));
+  }
+  RETURN_NOT_OK(table_scan_status);
+
+  SCHECK_EQ(table_rows.size(), expected_row_count, IllegalState, "Row count mismatch");
+  auto it = std::find_if(table_rows.begin(), table_rows.end(), [&message](const TableRow& row) {
+    return row.message == message;
+  });
+  SCHECK(it != table_rows.end(), IllegalState, Format("Row for message '$0' not found", message));
+  SCHECK_EQ(
+      it->node_uuid, node_uuid, IllegalState,
+      Format("Node UUID for message '$0' is incorrect", message));
+
+  return Status::OK();
+}
+
+}  // namespace
+
 TEST_F(StatefulServiceTest, TestEchoService) {
   auto service_client =
       ASSERT_RESULT(cluster_->CreateStatefulServiceClient<client::TestEchoServiceClient>());
 
+  auto service_table = std::make_unique<client::TableHandle>();
+  ASSERT_OK(service_table->Open(service_table_name, client_.get()));
+  std::shared_ptr<client::YBSession> session = client_->NewSession();
+  session->SetTimeout(kTimeout);
+
   stateful_service::GetEchoRequestPB req;
   stateful_service::GetEchoResponsePB resp;
-  req.set_message("Hello World!");
+  auto message = "Hello World!";
+  req.set_message(message);
 
   ASSERT_OK(service_client->GetEcho(CoarseMonoClock::Now() + kTimeout, req, &resp));
 
@@ -186,11 +233,13 @@ TEST_F(StatefulServiceTest, TestEchoService) {
   auto initial_leader = GetLeaderForTablet(cluster_.get(), tablet_id_);
   auto initial_leader_uuid = initial_leader->server()->permanent_uuid();
   ASSERT_EQ(resp.node_id(), initial_leader_uuid);
+  ASSERT_OK(ValidateRowsFromServiceTable(*service_table, 1, message, initial_leader_uuid));
 
   initial_leader->Shutdown();
 
   resp.Clear();
-  req.set_message("Hungry shark doo");
+  message = "Hungry shark doo";
+  req.set_message(message);
   ASSERT_OK(service_client->GetEcho(CoarseMonoClock::Now() + kTimeout, req, &resp));
 
   ASSERT_EQ(resp.message(), "Hungry shark doo doo doo");
@@ -208,14 +257,18 @@ TEST_F(StatefulServiceTest, TestEchoService) {
   auto final_leader = GetLeaderForTablet(cluster_.get(), tablet_id_);
   auto final_leader_uuid = final_leader->server()->permanent_uuid();
   ASSERT_NE(final_leader_uuid, initial_leader_uuid);
+  // We cannot test ValidateRowsFromServiceTable as we dont know which leader which processed the
+  // request. Load balancer could have moved the leader before we can find it.
 
   resp.Clear();
-  req.set_message("Anybody there?");
+  message = "Anybody there?";
+  req.set_message(message);
   ASSERT_OK(service_client->GetEcho(CoarseMonoClock::Now() + kTimeout, req, &resp));
 
   // Make sure the new tablet leader is the one serving the request.
   ASSERT_EQ(resp.message(), "Anybody there? there? there?");
   ASSERT_EQ(resp.node_id(), final_leader_uuid);
+  ASSERT_OK(ValidateRowsFromServiceTable(*service_table, 3, message, final_leader_uuid));
 
   ASSERT_OK(initial_leader->Start());
 }
