@@ -98,6 +98,7 @@ class DocDBTableReader {
       const ReaderProjection* projection,
       TableType table_type,
       std::reference_wrapper<const SchemaPackingStorage> schema_packing_storage);
+  ~DocDBTableReader();
 
   // Updates expiration/overwrite data based on table tombstone time.
   // If the given doc_ht is DocHybridTime::kInvalid, this method is a no-op.
@@ -128,13 +129,14 @@ class DocDBTableReader {
 
   class GetHelper;
   class FlatGetHelper;
+  class PackedRowData;
 
   // Owned by caller.
   IntentAwareIterator* iter_;
   DeadlineInfo deadline_info_;
   const ReaderProjection* projection_;
   const TableType table_type_;
-  const SchemaPackingStorage& schema_packing_storage_;
+  std::unique_ptr<PackedRowData> packed_row_;
 
   std::vector<KeyBytes> encoded_projection_;
   EncodedDocHybridTime table_tombstone_time_{EncodedDocHybridTime::kMin};

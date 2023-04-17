@@ -3,6 +3,7 @@
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
+import com.google.inject.assistedinject.FactoryModuleBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -36,6 +37,7 @@ import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.YBALifeCycle;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -60,6 +62,7 @@ import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
 import com.yugabyte.yw.common.services.LocalYBClientService;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.common.ybflyway.YBFlywayInit;
 import com.yugabyte.yw.controllers.MetricGrafanaController;
 import com.yugabyte.yw.controllers.PlatformHttpActionAdapter;
@@ -180,6 +183,7 @@ public class Module extends AbstractModule {
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformReplicationHelper.class).asEagerSingleton();
       bind(GFlagsValidation.class).asEagerSingleton();
+      bind(XClusterUniverseService.class).asEagerSingleton();
       bind(TaskExecutor.class).asEagerSingleton();
       bind(ShellKubernetesManager.class).asEagerSingleton();
       bind(NativeKubernetesManager.class).asEagerSingleton();
@@ -193,6 +197,8 @@ public class Module extends AbstractModule {
       requestStaticInjection(CertificateInfo.class);
       requestStaticInjection(HealthCheck.class);
     }
+
+    bind(YbClientConfigFactory.class).asEagerSingleton();
   }
 
   @Provides

@@ -35,11 +35,9 @@
 namespace yb {
 namespace tools {
 
-using client::YBSchema;
 using client::YBTableName;
 using google::protobuf::RepeatedPtrField;
 using master::TabletLocationsPB;
-using std::map;
 using std::string;
 using std::vector;
 

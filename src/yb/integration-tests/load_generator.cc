@@ -54,24 +54,10 @@ using std::string;
 using std::set;
 using std::ostream;
 using std::vector;
-using yb::Status;
-using yb::ThreadPool;
-using yb::ThreadPoolBuilder;
-using yb::MonoDelta;
-using yb::MemoryOrder;
-using yb::ConditionVariable;
-using yb::Mutex;
-using yb::MutexLock;
-using yb::CountDownLatch;
-using yb::Slice;
 using yb::YBPartialRow;
-using yb::TableType;
 
-using yb::client::YBClient;
-using yb::client::YBError;
 using yb::client::YBNoOp;
 using yb::client::YBSession;
-using yb::client::YBTable;
 using yb::redisserver::RedisReply;
 
 DEFINE_UNKNOWN_bool(load_gen_verbose,

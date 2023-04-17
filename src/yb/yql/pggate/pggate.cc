@@ -76,7 +76,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
-using std::make_shared;
 using std::string;
 using std::vector;
 
@@ -84,6 +83,8 @@ DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 DECLARE_bool(node_to_node_encryption_use_client_certificates);
 DECLARE_int32(backfill_index_client_rpc_timeout_ms);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
 
 namespace yb {
 namespace pggate {
@@ -1180,6 +1181,19 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   }
   pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTable*>(handle)->Exec();
+}
+
+Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version) {
+  tserver::PgWaitForBackendsCatalogVersionRequestPB req;
+  req.set_database_oid(dboid);
+  req.set_catalog_version(version);
+  // Incorporate the margin into the deadline because master will subtract the margin for
+  // responding.
+  return pg_session_->pg_client().WaitForBackendsCatalogVersion(
+      &req,
+      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms
+        + FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
 }
 
 Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {

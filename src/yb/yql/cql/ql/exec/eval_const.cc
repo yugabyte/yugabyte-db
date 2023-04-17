@@ -41,7 +41,6 @@ using std::string;
 namespace yb {
 namespace ql {
 
-using strings::Substitute;
 
 Status Executor::PTConstToPB(const PTExpr::SharedPtr& expr,
                              QLValuePB *const_pb,

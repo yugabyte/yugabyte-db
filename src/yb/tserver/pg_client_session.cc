@@ -652,6 +652,17 @@ Status PgClientSession::TruncateTable(
   return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
+Status PgClientSession::WaitForBackendsCatalogVersion(
+    const PgWaitForBackendsCatalogVersionRequestPB& req,
+    PgWaitForBackendsCatalogVersionResponsePB* resp,
+    rpc::RpcContext* context) {
+  // TODO(jason): send deadline to client.
+  const int num_lagging_backends = VERIFY_RESULT(client().WaitForYsqlBackendsCatalogVersion(
+      req.database_oid(), req.catalog_version(), context->GetClientDeadline()));
+  resp->set_num_lagging_backends(num_lagging_backends);
+  return Status::OK();
+}
+
 Status PgClientSession::BackfillIndex(
     const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
     rpc::RpcContext* context) {

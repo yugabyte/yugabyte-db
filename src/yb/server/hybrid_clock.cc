@@ -83,7 +83,6 @@ DEFINE_UNKNOWN_uint64(clock_skew_force_crash_bound_usec, 60000000,
 
 DECLARE_uint64(max_clock_skew_usec);
 
-using yb::Status;
 using strings::Substitute;
 
 namespace yb {

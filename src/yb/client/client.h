@@ -52,6 +52,7 @@
 #include "yb/common/clock.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 
@@ -653,6 +654,27 @@ class YBClient {
   // Get a list of global transaction status tablets, and local transaction status tablets
   // that are local to 'placement'.
   Result<TransactionStatusTablets> GetTransactionStatusTablets(const CloudInfoPB& placement);
+
+  // Wait for YSQL backends on specified DB to reach specified catalog version.
+  //
+  // There is a slight risk of database name changes happening at the same time.  Therefore, prefer
+  // specifying database oid unless it is certain that the database names won't change (like tests).
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      const std::string& database_name,
+      uint64_t version,
+      const MonoDelta& timeout = MonoDelta());
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      const std::string& database_name,
+      uint64_t version,
+      const CoarseTimePoint& deadline);
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      PgOid database_oid,
+      uint64_t version,
+      const MonoDelta& timeout = MonoDelta());
+  Result<int> WaitForYsqlBackendsCatalogVersion(
+      PgOid database_oid,
+      uint64_t version,
+      const CoarseTimePoint& deadline);
 
   // Get the list of master uuids. Can be enhanced later to also return port/host info.
   Status ListMasters(

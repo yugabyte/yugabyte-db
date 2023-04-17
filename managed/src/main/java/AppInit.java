@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import static com.yugabyte.yw.forms.AbstractTaskParams.platformVersion;
+import static com.yugabyte.yw.common.Util.setYbaVersion;
 import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
@@ -230,7 +230,9 @@ public class AppInit {
 
       ybcUpgrade.start();
 
-      kubernetesOperator.init();
+      if (config.getBoolean("yb.kubernetesOperator.enabled")) {
+        kubernetesOperator.init();
+      }
 
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
@@ -243,7 +245,7 @@ public class AppInit {
         log.info("Completed initialization in " + elapsedStr + " seconds.");
       }
 
-      platformVersion = ConfigHelper.getCurrentVersion(environment);
+      setYbaVersion(ConfigHelper.getCurrentVersion(environment));
 
       log.info("AppInit completed");
     }

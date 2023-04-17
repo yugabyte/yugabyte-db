@@ -133,7 +133,6 @@ using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableName;
 using master::MiniMaster;
-using tserver::XClusterConsumer;
 
 using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransactionPtr>;
 

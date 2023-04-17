@@ -23,7 +23,6 @@
 #include <string.h>
 #include <iterator>
 using std::back_insert_iterator;
-using std::iterator_traits;
 #include <limits>
 using std::numeric_limits;
 using std::string;

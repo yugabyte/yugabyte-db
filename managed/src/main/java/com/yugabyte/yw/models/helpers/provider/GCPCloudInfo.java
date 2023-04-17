@@ -158,9 +158,11 @@ public class GCPCloudInfo implements CloudInfoInterface {
       ObjectNode providerCredNodeValue = (ObjectNode) gcpCloudInfo.gceApplicationCredentials;
 
       for (String key : toMaskFieldsInCreds) {
-        String keyValue = editCredNodeValue.get(key).toString();
-        if (keyValue.contains("*")) {
-          editCredNodeValue.put(key, providerCredNodeValue.get(key));
+        if (editCredNodeValue.has(key) && providerCredNodeValue != null) {
+          String keyValue = editCredNodeValue.get(key).toString();
+          if (keyValue.contains("*") && providerCredNodeValue.has(key)) {
+            editCredNodeValue.put(key, providerCredNodeValue.get(key));
+          }
         }
       }
       this.gceApplicationCredentials = editCredNodeValue;

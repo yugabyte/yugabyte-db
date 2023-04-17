@@ -42,7 +42,7 @@ export const SchemaSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary 
             {t('clusterDetail.performance.advisor.RangeSharding')}
             <a
               target="_blank"
-              className="learnSchemaSuggestion"
+              className="learnRecommendationSuggestions"
               href={EXTERNAL_LINKS.RANGE_SHARDING}
               rel="noopener noreferrer"
             >

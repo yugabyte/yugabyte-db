@@ -7,7 +7,9 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
+import { BaseRange, NodeEntry } from 'slate';
 import { RenderElementProps, RenderLeafProps } from 'slate-react';
+import { Token } from 'prismjs';
 import { CustomElement, CustomText, DOMElement, IYBEditor } from './custom-types';
 
 export interface SlateRenderElementProps extends RenderElementProps {
@@ -15,12 +17,14 @@ export interface SlateRenderElementProps extends RenderElementProps {
 }
 export interface SlateRenderLeafProps extends RenderLeafProps {
   text: CustomText;
+  leaf: CustomText & { JSON?: { decoration: Token['type'] } };
 }
 
 export type IYBSlatePluginInputProps = {
   editor: IYBEditor;
   enabled?: boolean;
 };
+
 export type IYBSlatePluginReturnProps = {
   /**
    * name of the plugin
@@ -81,6 +85,8 @@ export type IYBSlatePluginReturnProps = {
    * @returns true if the plugin is enabled
    */
   isEnabled: () => boolean;
+
+  decorator?: (node: NodeEntry<CustomText>) => Partial<BaseRange>[]
 };
 
 export type IYBSlatePlugin = (props: IYBSlatePluginInputProps) => IYBSlatePluginReturnProps;

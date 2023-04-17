@@ -102,13 +102,13 @@ public class CheckUpgrade extends ServerSubTaskBase {
         ProtocolStringList oldTserverAutoFlags = autoFlagConfig.getPromotedFlags(1).getFlagsList();
         if (CollectionUtils.isNotEmpty(oldMasterAutoFlags)) {
           AutoFlagsPerServer newMasterAutoFlags =
-              gFlagsValidation.extractAutoFlags(releasePath, newVersion, "yb-master");
+              gFlagsValidation.extractAutoFlags(newVersion, "yb-master");
           checkAutoFlagsAvailability(oldMasterAutoFlags, newMasterAutoFlags, newVersion);
         }
 
         if (!CollectionUtils.isNotEmpty(oldTserverAutoFlags)) {
           AutoFlagsPerServer newTserverAutoFlags =
-              gFlagsValidation.extractAutoFlags(releasePath, newVersion, "yb-tserver");
+              gFlagsValidation.extractAutoFlags(newVersion, "yb-tserver");
           checkAutoFlagsAvailability(oldTserverAutoFlags, newTserverAutoFlags, newVersion);
         }
       }

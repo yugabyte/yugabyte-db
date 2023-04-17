@@ -40,7 +40,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
 
 type ZoneCode = { value: string; label: string; isDisabled: boolean };
 type Zones = {
-  code: ZoneCode;
+  code: ZoneCode | undefined;
   subnet: string;
 }[];
 export interface ConfigureRegionFormValues {
@@ -128,7 +128,7 @@ export const ConfigureRegionModal = ({
       is: () => shouldExposeField.zones,
       then: array().of(
         object().shape({
-          code: object(),
+          code: object().required('Zone code is required.'),
           subnet: string().required('Zone subnet is required.')
         })
       )
@@ -170,7 +170,7 @@ export const ConfigureRegionModal = ({
         : { ...region, zones: [], code: regionData.value.code };
     if (shouldExposeField.zones) {
       newRegion.zones = zones.map((zone) => ({
-        code: zone.code.value,
+        code: zone.code?.value ?? '',
         subnet: zone.subnet
       }));
     } else if (providerCode === ProviderCode.GCP) {

@@ -33,9 +33,9 @@
       {{- if .Site.Params.yb.navbar_logo.url -}}
         <a class="navbar-brand" href="{{ .Site.Params.yb.navbar_logo.url }}"{{- if .Site.Params.yb.navbar_logo.title }} title="{{ .Site.Params.yb.navbar_logo.title }}"{{- end }}{{- if .Site.Params.yb.navbar_logo.newTab }} target="_blank" rel="noopener"{{- end }}>
       {{- end -}}
-
-      <span class="navbar-logo">{{ with resources.Get "icons/logo.svg" }}{{ ( . | minify).Content | safeHTML }}{{- end -}}</span>
-
+      <span class="navbar-logo">
+        <img src="{{ .Site.Params.yb.navbar_logo.path }}" alt="YugabyteDB" title="YugabyteDB" width="181" height="30">
+      </span>
       {{- if .Site.Params.yb.navbar_logo.url -}}
         </a>
       {{- end -}}

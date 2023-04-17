@@ -796,6 +796,12 @@ YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
 }
 
+YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version,
+                                             int* num_lagging_backends) {
+  return ExtractValueFromResult(pgapi->WaitForBackendsCatalogVersion(dboid, version),
+                                num_lagging_backends);
+}
+
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
     const YBCPgOid index_oid) {

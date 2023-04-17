@@ -34,7 +34,6 @@
 namespace yb {
 namespace ql {
 
-using std::make_shared;
 using std::string;
 using strings::Substitute;
 using std::dynamic_pointer_cast;

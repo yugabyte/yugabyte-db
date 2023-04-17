@@ -28,12 +28,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/memutil.h"
 
-using std::copy;
-using std::max;
 using std::min;
-using std::reverse;
-using std::sort;
-using std::swap;
 using std::string;
 
 namespace std {

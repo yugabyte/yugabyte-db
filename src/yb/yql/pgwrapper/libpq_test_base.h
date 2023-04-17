@@ -31,6 +31,7 @@ class LibPqTestBase : public PgWrapperTestBase {
       const std::string& db_name,
       const std::string& user,
       bool simple_query_protocol = false);
+  Result<PGConn> ConnectToTs(const ExternalTabletServer& pg_ts);
   Result<PGConn> ConnectUsingString(
       const std::string& conn_str,
       CoarseTimePoint deadline = CoarseMonoClock::Now() + MonoDelta::FromSeconds(10),

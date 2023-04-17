@@ -66,7 +66,6 @@ DEFINE_UNKNOWN_int32(proxy_resolve_cache_ms, 5000,
 
 using namespace std::literals;
 
-using google::protobuf::Message;
 using std::string;
 using std::shared_ptr;
 

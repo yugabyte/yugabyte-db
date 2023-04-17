@@ -51,11 +51,8 @@ DEFINE_UNKNOWN_uint64(intents_compaction_filter_max_errors_to_log, 100,
 
 DECLARE_uint32(external_transaction_retention_window_secs);
 
-using std::shared_ptr;
 using std::unique_ptr;
-using std::unordered_set;
 using rocksdb::CompactionFilter;
-using rocksdb::VectorToString;
 
 namespace yb {
 namespace docdb {

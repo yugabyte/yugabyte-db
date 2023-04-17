@@ -84,7 +84,6 @@ DEFINE_UNKNOWN_uint64(
 namespace yb {
 namespace docdb {
 
-using std::pair;
 using std::unordered_map;
 using std::unordered_set;
 using std::vector;

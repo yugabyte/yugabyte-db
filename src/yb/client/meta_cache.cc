@@ -127,14 +127,10 @@ DECLARE_string(placement_region);
 
 namespace yb {
 
-using consensus::RaftPeerPB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TabletLocationsPB;
 using master::TabletLocationsPB_ReplicaPB;
-using master::TSInfoPB;
-using rpc::Messenger;
-using rpc::Rpc;
 using tablet::RaftGroupStatePB;
 using tserver::LocalTabletServer;
 using tserver::TabletServerServiceProxy;

@@ -70,12 +70,9 @@ namespace tools {
 using std::string;
 using std::vector;
 
-using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSession;
-using client::YBTable;
 using client::YBTableName;
 using std::shared_ptr;
 

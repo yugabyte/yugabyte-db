@@ -74,6 +74,7 @@ class PgMutationCounter;
     (SetActiveSubTransaction) \
     (TruncateTable) \
     (UpdateSequenceTuple) \
+    (WaitForBackendsCatalogVersion) \
     /**/
 
 using PgClientSessionOperations = std::vector<std::shared_ptr<client::YBPgsqlOp>>;

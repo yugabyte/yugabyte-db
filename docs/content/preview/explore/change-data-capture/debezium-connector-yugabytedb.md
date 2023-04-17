@@ -694,11 +694,11 @@ A `delete` change event record provides a consumer with the information it needs
 
 When a row is deleted, the _delete_ event value still works with log compaction, because Kafka can remove all earlier messages that have that same key. However, for Kafka to remove all messages that have that same key, the message value must be `null`. To make this possible, the YugabyteDB connector follows a delete event with a special _tombstone_ event that has the same key but a null value.
 
-{{< warning title="DROP and ALTER table commands" >}}
+{{< tip title="DROP or TRUNCATE tables when CDC is enabled" >}}
 
-The YugabyteDB CDC implementation doesn't yet support DROP TABLE and TRUNCATE TABLE commands, and the behavior of these commands while streaming data from CDC is undefined. If you need to drop or truncate a table, delete the stream ID using [yb-admin](../../../admin/yb-admin/#change-data-capture-cdc-commands). Also, see the [limitations](../../change-data-capture/#limitations) section.
+By default, the YugabyteDB CDC implementation does not allow you to DROP or TRUNCATE a table while an active CDC stream is present on the namespace. If you need to perform these operations while CDC is enabled, set the [enable_delete_truncate_cdcsdk_table](../../../reference/configuration/yb-tserver/#enable-delete-truncate-cdcsdk-table) flag to `true` and then you can DROP or TRUNCATE the table.
 
-{{< /warning >}}
+{{< /tip >}}
 
 #### Suppressing tombstone events
 

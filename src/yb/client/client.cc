@@ -68,6 +68,7 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/partition.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
@@ -115,11 +116,6 @@
 
 using namespace std::literals;
 
-using yb::master::AlterTableRequestPB;
-using yb::master::CreateTablegroupRequestPB;
-using yb::master::CreateTablegroupResponsePB;
-using yb::master::DeleteTablegroupRequestPB;
-using yb::master::DeleteTablegroupResponsePB;
 using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
@@ -206,6 +202,8 @@ using yb::master::UpdateConsumerOnProducerSplitRequestPB;
 using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::GetTableSchemaFromSysCatalogRequestPB;
+using yb::master::WaitForYsqlBackendsCatalogVersionRequestPB;
+using yb::master::WaitForYsqlBackendsCatalogVersionResponsePB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
@@ -252,11 +250,17 @@ DEFINE_RUNTIME_int32(ysql_num_tablets, -1,
     "DDL statement (split into x tablets syntax) then it takes precedence over the "
     "value of this flag. Needs to be set at tserver.");
 
+// Non-runtime because pggate uses it.
+DEFINE_NON_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+    20000,
+    "WaitForYsqlBackendsCatalogVersion client-to-master RPC timeout. Specifically, both the "
+    "postgres-to-tserver and tserver-to-master RPC timeout.");
+TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);
+
 namespace yb {
 namespace client {
 
 using internal::MetaCache;
-using ql::ObjectType;
 using std::shared_ptr;
 using std::pair;
 
@@ -1888,6 +1892,69 @@ Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(
   MoveCollection(&resp.placement_local_tablet_id(), &tablets.placement_local_tablets);
 
   return tablets;
+}
+
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    const std::string& database_name, uint64_t version, const MonoDelta& timeout) {
+  // In order for timeout to approximately determine how much time is spent before responding,
+  // incorporate the margin into the deadline because master will subtract the margin for
+  // responding.
+  CoarseTimePoint deadline = (
+      CoarseMonoClock::Now()
+      + MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
+  if (!timeout.Initialized()) {
+    deadline += MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+  } else {
+    deadline += timeout;
+  }
+  return WaitForYsqlBackendsCatalogVersion(database_name, version, deadline);
+}
+
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    const std::string& database_name, uint64_t version, const CoarseTimePoint& deadline) {
+  GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(GetNamespaceInfo("", database_name, YQL_DATABASE_PGSQL, &resp));
+  PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(resp.namespace_().id()));
+  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline);
+}
+
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    PgOid database_oid, uint64_t version, const MonoDelta& timeout) {
+  // In order for timeout to approximately determine how much time is spent before responding,
+  // incorporate the margin into the deadline because master will subtract the margin for
+  // responding.
+  CoarseTimePoint deadline = (
+      CoarseMonoClock::Now()
+      + MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
+  if (!timeout.Initialized()) {
+    deadline += MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+  } else {
+    deadline += timeout;
+  }
+  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline);
+}
+
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    PgOid database_oid, uint64_t version, const CoarseTimePoint& deadline) {
+  WaitForYsqlBackendsCatalogVersionRequestPB req;
+  WaitForYsqlBackendsCatalogVersionResponsePB resp;
+
+  req.set_database_oid(database_oid);
+  req.set_catalog_version(version);
+
+  DCHECK(deadline != CoarseTimePoint()) << ToString(deadline);
+
+  CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(Admin, req, resp, deadline,
+                                            WaitForYsqlBackendsCatalogVersion);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.num_lagging_backends();
 }
 
 Status YBClient::GetTablets(const YBTableName& table_name,

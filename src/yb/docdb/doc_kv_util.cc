@@ -22,10 +22,6 @@
 
 using std::string;
 
-using strings::Substitute;
-using yb::HybridTime;
-using yb::FormatBytesAsStr;
-
 namespace yb {
 namespace docdb {
 

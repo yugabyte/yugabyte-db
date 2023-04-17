@@ -35,10 +35,7 @@ DEFINE_test_flag(bool, do_not_add_enum_sort_order, false,
 namespace yb {
 namespace pggate {
 
-using std::make_shared;
 using std::string;
-using std::placeholders::_1;
-using std::placeholders::_2;
 
 namespace {
 // Collation flags. kCollationMarker ensures the collation byte is non-zero.

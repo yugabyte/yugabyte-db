@@ -42,7 +42,6 @@
 #include "yb/util/blocking_queue.h"
 #include "yb/util/countdown_latch.h"
 
-using std::shared_ptr;
 using std::string;
 using std::vector;
 

@@ -78,7 +78,6 @@ using rpc::RpcController;
 using std::shared_ptr;
 using std::string;
 using std::vector;
-using strings::Substitute;
 using client::YBTableName;
 
 MonoDelta GetDefaultTimeout() {

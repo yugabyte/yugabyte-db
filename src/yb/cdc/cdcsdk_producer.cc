@@ -66,7 +66,6 @@ using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
 using docdb::PrimitiveValue;
 using docdb::SchemaPackingStorage;
-using tablet::TransactionParticipant;
 using yb::QLTableRow;
 
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));

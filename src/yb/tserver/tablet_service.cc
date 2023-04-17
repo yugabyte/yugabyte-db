@@ -89,6 +89,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/crc.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/long_operation_tracker.h"
@@ -101,6 +102,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -113,6 +115,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/ysql_upgrade.h"
 
 using namespace std::literals;  // NOLINT
@@ -188,6 +191,9 @@ DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
 DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
                  "Pause before processing a GetSplitKey request.");
 
+DEFINE_test_flag(bool, fail_wait_for_ysql_backends_catalog_version, false,
+                 "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
+
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
@@ -235,14 +241,12 @@ using consensus::CONSENSUS_CONFIG_ACTIVE;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::ConsensusConfigType;
 using consensus::ConsensusRequestPB;
-using consensus::ConsensusResponsePB;
 using consensus::GetLastOpIdRequestPB;
 using consensus::GetNodeInstanceRequestPB;
 using consensus::GetNodeInstanceResponsePB;
 using consensus::LeaderLeaseStatus;
 using consensus::LeaderStepDownRequestPB;
 using consensus::LeaderStepDownResponsePB;
-using consensus::RaftPeerPB;
 using consensus::RunLeaderElectionRequestPB;
 using consensus::RunLeaderElectionResponsePB;
 using consensus::StartRemoteBootstrapRequestPB;
@@ -256,7 +260,6 @@ using google::protobuf::RepeatedPtrField;
 using rpc::RpcContext;
 using std::shared_ptr;
 using std::string;
-using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 using tablet::ChangeMetadataOperation;
@@ -266,7 +269,6 @@ using tablet::TabletPeerPtr;
 using tablet::TabletStatusPB;
 using tablet::TruncateOperation;
 using tablet::OperationCompletionCallback;
-using tablet::WriteOperation;
 
 namespace {
 
@@ -444,8 +446,12 @@ TabletServiceImpl::TabletServiceImpl(TabletServerIf* server)
 }
 
 TabletServiceAdminImpl::TabletServiceAdminImpl(TabletServer* server)
-    : TabletServerAdminServiceIf(server->MetricEnt()), server_(server) {
+    : TabletServerAdminServiceIf(DCHECK_NOTNULL(server)->MetricEnt()), server_(server) {
   ts_split_op_added_ = METRIC_ts_split_op_added.Instantiate(server->MetricEnt(), 0);
+}
+
+std::string TabletServiceAdminImpl::LogPrefix() const {
+  return Format("P $0: ", server_->permanent_uuid());
 }
 
 void TabletServiceAdminImpl::BackfillDone(
@@ -1754,6 +1760,135 @@ void TabletServiceAdminImpl::UpgradeYsql(
   }
 
   LOG(INFO) << "YSQL upgrade done successfully";
+  context.RespondSuccess();
+}
+
+void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
+    const WaitForYsqlBackendsCatalogVersionRequestPB* req,
+    WaitForYsqlBackendsCatalogVersionResponsePB* resp,
+    rpc::RpcContext context) {
+  VLOG_WITH_PREFIX(2) << "Received Wait for YSQL Backends Catalog Version RPC: "
+                      << req->ShortDebugString();
+
+  if (FLAGS_TEST_fail_wait_for_ysql_backends_catalog_version) {
+    LOG(INFO) << "Responding with a failure to " << req->ShortDebugString();
+    // Send back OPERATION_NOT_SUPPORTED to prevent further retry.
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS(InternalError, "test failure").CloneAndAddErrorCode(
+          TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED)),
+        &context);
+    return;
+  }
+
+  const PgOid database_oid = req->database_oid();
+  const uint64_t catalog_version = req->catalog_version();
+  const int prev_num_lagging_backends = req->prev_num_lagging_backends();
+  if (prev_num_lagging_backends == 0 || prev_num_lagging_backends < -1) {
+    // Send back OPERATION_NOT_SUPPORTED to prevent further retry.
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(InvalidArgument,
+                      "Unexpected prev_num_lagging_backends: $0",
+                      prev_num_lagging_backends)
+          .CloneAndAddErrorCode(TabletServerError(TabletServerErrorPB::OPERATION_NOT_SUPPORTED)),
+        &context);
+    return;
+  }
+
+  const CoarseTimePoint& deadline = context.GetClientDeadline();
+  // Reserve 1s for responding back to master.
+  const auto modified_deadline = deadline - 1s;
+
+  // First, check tserver's catalog version.
+  const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
+  uint64_t ts_catalog_version = 0;
+  Status s = Wait(
+      [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
+        // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
+        // sure to handle that case if initdb ever goes through this codepath.
+        if (FLAGS_TEST_enable_db_catalog_version_mode) {
+          server_->get_ysql_db_catalog_version(
+              database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
+        } else {
+          server_->get_ysql_catalog_version(
+              &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
+        }
+        return ts_catalog_version >= catalog_version;
+      },
+      modified_deadline,
+      Format("Wait for tserver catalog version to reach $0", db_ver_tag));
+  if (!s.ok()) {
+    DCHECK(s.IsTimedOut());
+    const std::string ts_db_ver_tag = Format("[DB $0, V $1]", database_oid, ts_catalog_version);
+    SetupErrorAndRespond(
+        resp->mutable_error(),
+        STATUS_FORMAT(TryAgain,
+                      "Tserver's catalog version is too old: $0 vs $1",
+                      ts_db_ver_tag, db_ver_tag),
+        &context);
+    return;
+  }
+
+  // Second, check backends' catalog version.
+  // Use template1 database because it is guaranteed to exist.
+  // TODO(jason): use database related to database we are waiting on to not overload template1.
+  // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
+  // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
+  // backfill, and this.  Creating the connection has a startup cost.
+  auto res = pgwrapper::PGConnBuilder({
+        .host = PgDeriveSocketDir(server_->pgsql_proxy_bind_address()),
+        .port = server_->pgsql_proxy_bind_address().port(),
+        .dbname = "template1",
+        .user = "postgres",
+        .password = UInt64ToString(server_->GetSharedMemoryPostgresAuthKey()),
+        .connect_timeout = make_unsigned(std::max(
+            2, narrow_cast<int>(ToSeconds(modified_deadline - CoarseMonoClock::Now())))),
+      }).Connect();
+  if (!res.ok()) {
+    LOG_WITH_PREFIX_AND_FUNC(ERROR) << "failed to connect to local postgres: " << res.status();
+    SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
+    return;
+  }
+  pgwrapper::PGConn conn = std::move(*res);
+
+  // TODO(jason): handle or create issue for catalog version being uint64 vs int64.
+  const std::string num_lagging_backends_query = Format(
+      "SELECT count(*) FROM pg_stat_activity WHERE catalog_version < $0 AND datid = $1",
+      catalog_version, database_oid);
+  int num_lagging_backends = -1;
+  const std::string description = Format("Wait for update to num lagging backends $0", db_ver_tag);
+  s = Wait(
+      [&]() -> Result<bool> {
+        num_lagging_backends = narrow_cast<int>(VERIFY_RESULT(
+            conn.FetchValue<pgwrapper::PGUint64>(num_lagging_backends_query)));
+        if (num_lagging_backends != prev_num_lagging_backends) {
+          SCHECK((prev_num_lagging_backends == -1 ||
+                  prev_num_lagging_backends > num_lagging_backends),
+                 InternalError,
+                 Format("Unexpected prev_num_lagging_backends: $0, num_lagging_backends: $1",
+                        prev_num_lagging_backends, num_lagging_backends));
+          return true;
+        }
+        VLOG_WITH_PREFIX(4) << "Some backends are behind: " << num_lagging_backends;
+        return false;
+      },
+      modified_deadline,
+      description,
+      (prev_num_lagging_backends == -1 ? 10ms : 5s) /* initial_delay */,
+      1.4 /* delay_multiplier */,
+      5s /* max_delay */);
+
+  if (s.IsTimedOut() && s.message().ToBuffer().find(description) != std::string::npos) {
+    LOG_WITH_PREFIX(INFO) << "Deadline reached: still waiting on " << num_lagging_backends
+                          << " backends " << db_ver_tag;
+  } else if (!s.ok()) {
+    LOG_WITH_PREFIX_AND_FUNC(ERROR) << "num lagging backends query failed: " << s;
+    SetupErrorAndRespond(resp->mutable_error(), s, &context);
+    return;
+  }
+  DCHECK_GE(num_lagging_backends, 0);
+  resp->set_num_lagging_backends(num_lagging_backends);
   context.RespondSuccess();
 }
 

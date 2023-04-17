@@ -51,6 +51,8 @@ import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 @Slf4j
 public class PerfAdvisorScheduler {
 
+  private static final String PERF_ADVISOR_RUN_IN_PROGRESS = "Perf advisor run in progress";
+
   private final PlatformScheduler platformScheduler;
 
   private final ExecutorService threadPool;
@@ -122,7 +124,13 @@ public class PerfAdvisorScheduler {
       return RunResult.builder().failureReason("Universe update in progress").build();
     }
     if (universesLock.containsKey(universe.getUniverseUUID())) {
-      return RunResult.builder().failureReason("Perf advisor run in progress").build();
+      UniversePerfAdvisorRun currentRun =
+          UniversePerfAdvisorRun.getLastRun(customer.getUuid(), universe.getUniverseUUID(), false)
+              .orElse(null);
+      return RunResult.builder()
+          .failureReason(PERF_ADVISOR_RUN_IN_PROGRESS)
+          .activeRun(currentRun)
+          .build();
     }
 
     Config universeConfig = configFactory.forUniverse(universe);
@@ -165,7 +173,7 @@ public class PerfAdvisorScheduler {
     }
 
     RunResult.RunResultBuilder result =
-        RunResult.builder().failureReason("Perf advisor run in progress");
+        RunResult.builder().failureReason(PERF_ADVISOR_RUN_IN_PROGRESS);
     universesLock.computeIfAbsent(
         universe.getUniverseUUID(),
         (k) -> {
@@ -177,7 +185,7 @@ public class PerfAdvisorScheduler {
                 () ->
                     runPerfAdvisor(
                         customer, universe, universeConfig, universeNodeConfigList, run));
-            result.started(true).failureReason(null);
+            result.started(true).activeRun(run).failureReason(null);
             return true;
           } catch (Exception e) {
             log.error(
@@ -186,6 +194,14 @@ public class PerfAdvisorScheduler {
             throw e;
           }
         });
+    if (result.failureReason != null && result.failureReason.equals(PERF_ADVISOR_RUN_IN_PROGRESS)) {
+      // If we ended up here we're in a race condition where other run started faster.
+      // Let's return it in run result.
+      UniversePerfAdvisorRun currentRun =
+          UniversePerfAdvisorRun.getLastRun(customer.getUuid(), universe.getUniverseUUID(), false)
+              .orElse(null);
+      result.activeRun(currentRun);
+    }
     return result.build();
   }
 
@@ -227,7 +243,6 @@ public class PerfAdvisorScheduler {
           new PerfAdvisorScriptConfig(
               databases,
               NodeManager.YUGABYTE_USER,
-              databaseHost,
               tserverNode.ysqlServerRpcPort,
               DB_QUERY_RECOMMENDATION_TYPES,
               ysqlAuth,
@@ -259,5 +274,6 @@ public class PerfAdvisorScheduler {
   public static class RunResult {
     @Builder.Default boolean started = false;
     String failureReason;
+    UniversePerfAdvisorRun activeRun;
   }
 }

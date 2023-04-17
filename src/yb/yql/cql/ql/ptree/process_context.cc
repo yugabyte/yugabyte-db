@@ -26,7 +26,6 @@ namespace ql {
 
 using std::endl;
 using std::istream;
-using std::min;
 using std::string;
 
 //--------------------------------------------------------------------------------------------------

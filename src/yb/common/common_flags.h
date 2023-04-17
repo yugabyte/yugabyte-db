@@ -23,6 +23,7 @@ DECLARE_bool(enable_ysql);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(log_ysql_catalog_versions);
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms);
 
 namespace yb {
 

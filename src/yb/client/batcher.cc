@@ -83,18 +83,11 @@ DEFINE_test_flag(double, simulate_tablet_lookup_does_not_match_partition_key_pro
                  "range of the resolved tablet's partition.");
 
 using std::pair;
-using std::set;
-using std::unique_ptr;
 using std::shared_ptr;
-using std::unordered_map;
-using strings::Substitute;
 
 using namespace std::placeholders;
 
 namespace yb {
-
-using tserver::WriteResponsePB;
-using tserver::WriteResponsePB_PerRowErrorPB;
 
 namespace client {
 
@@ -641,8 +634,6 @@ std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
   }
   FATAL_INVALID_ENUM_VALUE(OpGroup, op_group);
 }
-
-using tserver::ReadResponsePB;
 
 void Batcher::AddOpCountMismatchError() {
   // TODO: how to handle this kind of error where the array of response PB's don't match

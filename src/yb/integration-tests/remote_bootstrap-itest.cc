@@ -85,26 +85,20 @@ DEFINE_UNKNOWN_int32(test_delete_leader_num_writer_threads, 1,
 DEFINE_UNKNOWN_int32(remote_bootstrap_itest_timeout_sec, 180,
              "Timeout in seconds to use in remote bootstrap integration test.");
 
-using yb::client::YBClient;
-using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSchemaFromSchema;
 using yb::client::YBTableCreator;
 using yb::client::YBTableType;
 using yb::client::YBTableName;
-using std::shared_ptr;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
 using yb::consensus::PeerMemberType;
-using yb::consensus::RaftPeerPB;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_READY;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
 using yb::tserver::ListTabletsResponsePB;
 using yb::tserver::RemoteBootstrapClient;
 using std::string;
-using std::unordered_map;
 using std::vector;
-using strings::Substitute;
 
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_histogram(handler_latency_yb_consensus_ConsensusService_UpdateConsensus);

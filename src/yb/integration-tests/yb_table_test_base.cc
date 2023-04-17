@@ -46,7 +46,6 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTableCreator;

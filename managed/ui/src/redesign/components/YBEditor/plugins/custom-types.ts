@@ -43,9 +43,14 @@ export type AlertVariableElement = {
   children: CustomText[];
 };
 
+export type JSONCodeBlock = {
+  type: 'jsonCode',
+  children: Descendant[]
+}
+
 export type IYBEditor = BaseEditor & ReactEditor & HistoryEditor;
 
-export type CustomElement = HeadingElement | Paragraph | AlertVariableElement | ListItemElement;
+export type CustomElement = HeadingElement | Paragraph | AlertVariableElement | ListItemElement | JSONCodeBlock;
 
 export type DOMElement = Element;
 declare module 'slate' {

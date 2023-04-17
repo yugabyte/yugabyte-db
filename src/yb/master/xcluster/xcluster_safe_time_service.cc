@@ -30,6 +30,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
+#include "yb/util/string_util.h"
 #include "yb/util/thread.h"
 
 using std::min;
@@ -42,6 +43,12 @@ DEFINE_UNKNOWN_int32(xcluster_safe_time_table_num_tablets, 1,
 TAG_FLAG(xcluster_safe_time_table_num_tablets, advanced);
 
 DECLARE_int32(xcluster_safe_time_update_interval_secs);
+
+DEFINE_RUNTIME_uint32(xcluster_safe_time_log_outliers_interval_secs, 600,
+    "Frequency in seconds at which to log outlier tablets for xcluster safe time.");
+
+DEFINE_RUNTIME_uint32(xcluster_safe_time_slow_tablet_delta_secs, 600,
+    "Lag in seconds at which a tablet is considered an outlier for xcluster safe time.");
 
 METRIC_DECLARE_entity(cluster);
 
@@ -260,7 +267,7 @@ HybridTime GetNewSafeTime(
 
 XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
     const XClusterNamespaceToSafeTimeMap& previous_safe_time_map,
-    const std::map<NamespaceId, HybridTime>& namespace_safe_time) {
+    const std::unordered_map<NamespaceId, HybridTime>& namespace_safe_time) {
   XClusterNamespaceToSafeTimeMap new_safe_time_map;
 
   // System tables like 'transactions' table affect the safe time of every user namespace. Compute
@@ -296,6 +303,25 @@ XClusterNamespaceToSafeTimeMap ComputeSafeTimeMap(
 
   return new_safe_time_map;
 }
+
+// Similar to YB_LOG_EVERY_N_SECS, but doesn't return ShouldLog true until interval has passed since
+// instance creation. (YB_LOG_EVERY_N_SECS returns ShouldLog true the first time it is called)
+class LogThrottle {
+ public:
+  LogThrottle() { last_timestamp_ = GetMonoTimeMicros(); }
+
+  bool ShouldLog(const MonoDelta& interval) {
+    MicrosecondsInt64 current_timestamp = GetMonoTimeMicros();
+    if (current_timestamp - last_timestamp_ > interval.ToMicroseconds()) {
+      last_timestamp_ = current_timestamp;
+      return true;
+    }
+    return false;
+  }
+
+ private:
+  MicrosecondsInt64 last_timestamp_;
+};
 }  // namespace
 
 Result<bool> XClusterSafeTimeService::ComputeSafeTime(
@@ -307,13 +333,38 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   // changed and tservers may have already started populating new entries in it.
   RETURN_NOT_OK(RefreshProducerTabletToNamespaceMap());
 
-  std::map<NamespaceId, HybridTime> namespace_safe_time_map;
+  static LogThrottle log_throttle;
+  const bool should_log_outlier_tablets =
+      log_throttle.ShouldLog(1s * FLAGS_xcluster_safe_time_log_outliers_interval_secs);
+
+  std::unordered_map<NamespaceId, HybridTime> namespace_safe_time_map;
   std::vector<ProducerTabletInfo> table_entries_to_delete;
+
+  // Track tablets that are missing from the safe time, or slow. This is for reporting only.
+  std::unordered_map<NamespaceId, std::vector<TabletId>> tablets_missing_safe_time_map;
+  std::unordered_map<NamespaceId, std::vector<TabletId>> slow_tablets_map;
+  std::unordered_map<NamespaceId, HybridTime> namespace_max_safe_time;
+  std::unordered_map<NamespaceId, HybridTime> namespace_min_safe_time;
 
   for (const auto& [tablet_info, namespace_id] : producer_tablet_namespace_map_) {
     namespace_safe_time_map[namespace_id] = HybridTime::kMax;
     // Add Invalid values for missing tablets
     InsertIfNotPresent(&tablet_to_safe_time_map, tablet_info, HybridTime::kInvalid);
+    if (should_log_outlier_tablets) {
+      const auto& tablet_safe_time = tablet_to_safe_time_map[tablet_info];
+      if (tablet_safe_time.is_special()) {
+        tablets_missing_safe_time_map[namespace_id].emplace_back(tablet_info.tablet_id);
+      } else {
+        namespace_max_safe_time[namespace_id].MakeAtLeast(tablet_safe_time);
+      }
+    }
+  }
+
+  if (should_log_outlier_tablets) {
+    for (const auto& [namespace_id, tablet_ids] : tablets_missing_safe_time_map) {
+      LOG(WARNING) << "Missing xcluster safe time for producer tablet(s) "
+                   << TabletIdsToLimitedString(tablet_ids) << " in namespace " << namespace_id;
+    }
   }
 
   for (const auto& [tablet_info, tablet_safe_time] : tablet_to_safe_time_map) {
@@ -330,10 +381,29 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
       continue;
     }
 
+    if (should_log_outlier_tablets) {
+      if (tablet_safe_time.AddDelta(1s * FLAGS_xcluster_safe_time_slow_tablet_delta_secs) <
+          namespace_max_safe_time[*namespace_id]) {
+        namespace_min_safe_time[*namespace_id].MakeAtMost(tablet_safe_time);
+        slow_tablets_map[*namespace_id].emplace_back(tablet_info.tablet_id);
+      }
+    }
+
     auto& namespace_safe_time = FindOrDie(namespace_safe_time_map, *namespace_id);
 
+    // Ignore if it has been marked as invalid.
     if (namespace_safe_time.is_valid()) {
-      namespace_safe_time = min(namespace_safe_time, tablet_safe_time);
+      namespace_safe_time.MakeAtMost(tablet_safe_time);
+    }
+  }
+
+  if (should_log_outlier_tablets) {
+    for (const auto& [namespace_id, tablet_ids] : slow_tablets_map) {
+      LOG(WARNING) << "xcluster safe time for namespace " << namespace_id << " is held up by "
+                   << namespace_max_safe_time[namespace_id].PhysicalDiff(
+                          namespace_min_safe_time[namespace_id]) /
+                          MonoTime::kMicrosecondsPerSecond
+                   << "s due to producer tablet(s) " << TabletIdsToLimitedString(tablet_ids);
     }
   }
 
@@ -624,5 +694,16 @@ xcluster::XClusterConsumerClusterMetrics* XClusterSafeTimeService::TEST_GetMetri
   return cluster_metrics_per_namespace_[namespace_id].get();
 }
 
+std::string XClusterSafeTimeService::TabletIdsToLimitedString(
+    const std::vector<TabletId>& tablet_ids) {
+  const uint32 max_tablet_count = 20;
+  uint32 tablet_count = std::min(max_tablet_count, static_cast<uint32>(tablet_ids.size()));
+  auto tablet_str = JoinStringsIterator(tablet_ids.begin(), tablet_ids.begin() + tablet_count, ",");
+  const auto tablets_left = tablet_ids.size() - tablet_count;
+  if (tablets_left > 0) {
+    tablet_str += Format(" and $0 others", tablets_left);
+  }
+  return tablet_str;
+}
 }  // namespace master
 }  // namespace yb

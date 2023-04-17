@@ -388,7 +388,7 @@ bool TabletInvoker::Done(Status* status) {
   // this case.
   if (status->IsIllegalState() || status->IsServiceUnavailable() || status->IsAborted() ||
       status->IsLeaderNotReadyToServe() || status->IsLeaderHasNoLease() ||
-      TabletNotFoundOnTServer(rsp_err, *status) ||
+      IsTabletConsideredNotFound(rsp_err, *status) ||
       (status->IsTimedOut() && CoarseMonoClock::Now() < retrier_->deadline())) {
     VLOG(4) << "Retryable failure: " << *status
             << ", response: " << yb::ToString(rsp_err);
@@ -414,12 +414,16 @@ bool TabletInvoker::Done(Status* status) {
 
     // If only local tserver is requested and it is not the leader, respond error and done.
     // Otherwise, continue below to retry.
+    // TODO(tsplit): At the moment it's not possible to identify if status->IsIllegalState() due
+    // to any type of failure or because the tablet is in SHUTDOWN state. If tablet is in SHUTDOWN
+    // state the RPC should be retried as if tablet is not found.
+    // Refer to https://github.com/yugabyte/yugabyte-db/issues/16846
     if (local_tserver_only_ && current_ts_->IsLocal() && status->IsIllegalState()) {
       rpc_->Failed(*status);
       return true;
     }
 
-    if (status->IsIllegalState() || TabletNotFoundOnTServer(rsp_err, *status)) {
+    if (status->IsIllegalState() || IsTabletConsideredNotFound(rsp_err, *status)) {
       // The whole operation is completed if we can't schedule a retry.
       return !FailToNewReplica(*status, rsp_err).ok();
     } else {

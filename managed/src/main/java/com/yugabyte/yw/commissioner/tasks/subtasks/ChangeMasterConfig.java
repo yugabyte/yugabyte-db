@@ -14,6 +14,8 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
@@ -27,10 +29,13 @@ import org.yb.client.YBClient;
 public class ChangeMasterConfig extends UniverseTaskBase {
 
   private static final Duration YBCLIENT_ADMIN_OPERATION_TIMEOUT = Duration.ofMinutes(15);
+  private final YbClientConfigFactory ybcClientConfigFactory;
 
   @Inject
-  protected ChangeMasterConfig(BaseTaskDependencies baseTaskDependencies) {
+  protected ChangeMasterConfig(
+      BaseTaskDependencies baseTaskDependencies, YbClientConfigFactory ybcConfigFactory) {
     super(baseTaskDependencies);
+    this.ybcClientConfigFactory = ybcConfigFactory;
   }
 
   // Create an enum specifying the operation type.
@@ -120,7 +125,7 @@ public class ChangeMasterConfig extends UniverseTaskBase {
     }
     ChangeConfigResponse response = null;
     String certificate = universe.getCertificateNodetoNode();
-    YBClientService.Config config = new YBClientService.Config(masterAddresses, certificate);
+    YbClientConfig config = ybcClientConfigFactory.create(masterAddresses, certificate);
     config.setAdminOperationTimeout(YBCLIENT_ADMIN_OPERATION_TIMEOUT);
     YBClient client = ybService.getClientWithConfig(config);
     try {

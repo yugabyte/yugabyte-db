@@ -540,7 +540,9 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               : null;
       Map<String, String> azConfig = entry.getValue();
       PlacementInfo azPI = new PlacementInfo();
-      PlacementInfoUtil.addPlacementZone(azUUID, azPI);
+      int rf = placement.masters.getOrDefault(azUUID, 0);
+      int numNodesInAZ = placement.tservers.getOrDefault(azUUID, 0);
+      PlacementInfoUtil.addPlacementZone(azUUID, azPI, rf, numNodesInAZ, true);
       // Validate that the StorageClass has allowVolumeExpansion=true
       createTaskToValidateExpansion(
           universeName, azConfig, azName, isReadOnlyCluster, newNamingStyle, providerUUID);

@@ -68,8 +68,6 @@ DEFINE_UNKNOWN_bool(exclude_dead, false, "Exclude dead tservers from output");
 using std::cerr;
 using std::endl;
 using std::ostringstream;
-using std::make_pair;
-using std::next;
 using std::pair;
 using std::string;
 using std::vector;

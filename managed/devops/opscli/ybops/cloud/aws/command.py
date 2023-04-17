@@ -17,11 +17,11 @@ from ybops.cloud.aws.method import AwsProvisionInstancesMethod, AwsCreateInstanc
     AwsDeleteDnsEntryMethod, AwsListDnsEntryMethod, AwsTagsMethod, AwsPauseInstancesMethod, \
     AwsResumeInstancesMethod, AwsCreateRootVolumesMethod, AwsReplaceRootVolumeMethod, \
     AwsChangeInstanceTypeMethod, AwsUpdateMountedDisksMethod, AwsQueryImageMethod, \
-    AwsDeleteRootVolumesMethod, AwsHardRebootInstancesMethod
+    AwsDeleteRootVolumesMethod, AwsHardRebootInstancesMethod, AwsUpdateDiskMethod
 from ybops.cloud.common.command import InstanceCommand, NetworkCommand, AccessCommand, \
     QueryCommand, DnsCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, AccessCreateVaultMethod, \
-    InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, AccessEditVaultMethod, \
+    InitYSQLMethod, CronCheckMethod, AccessEditVaultMethod, \
     TransferXClusterCerts, VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
     RebootInstancesMethod, RunHooks, WaitForConnection
 
@@ -40,7 +40,7 @@ class AwsInstanceCommand(InstanceCommand):
         self.add_method(ConfigureInstancesMethod(self))
         self.add_method(AwsTagsMethod(self))
         self.add_method(InitYSQLMethod(self))
-        self.add_method(UpdateDiskMethod(self))
+        self.add_method(AwsUpdateDiskMethod(self))
         self.add_method(AwsUpdateMountedDisksMethod(self))
         self.add_method(CronCheckMethod(self))
         self.add_method(AwsPauseInstancesMethod(self))

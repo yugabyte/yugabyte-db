@@ -37,7 +37,6 @@
 using std::string;
 
 using yb::pggate::PgValueFromPB;
-using yb::pggate::PgValueToPB;
 
 namespace yb {
 namespace docdb {

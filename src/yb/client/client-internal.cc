@@ -121,11 +121,8 @@ using strings::Substitute;
 
 using namespace std::placeholders;
 
-using consensus::RaftPeerPB;
 using master::GetLeaderMasterRpc;
 using master::MasterErrorPB;
-using rpc::Rpc;
-using rpc::RpcController;
 
 namespace client {
 
@@ -256,8 +253,9 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetIndexBackfillProgress);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);

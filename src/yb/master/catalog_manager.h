@@ -75,6 +75,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -1360,6 +1361,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackfillTable;
   friend class BackfillTablet;
   friend class XClusterConfigLoader;
+  friend class YsqlBackendsManager;
+  friend class BackendsCatalogVersionJob;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 

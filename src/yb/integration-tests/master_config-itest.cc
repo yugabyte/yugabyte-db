@@ -41,17 +41,10 @@
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
-using std::shared_ptr;
 using std::string;
 using std::vector;
 using std::min;
 using strings::Substitute;
-using yb::rpc::Messenger;
-using yb::rpc::MessengerBuilder;
-using yb::consensus::ChangeConfigRequestPB;
-using yb::consensus::ChangeConfigResponsePB;
-using yb::consensus::ConsensusServiceProxy;
-using yb::consensus::RaftPeerPB;
 using yb::tserver::TabletServerErrorPB;
 
 using namespace std::chrono_literals;
