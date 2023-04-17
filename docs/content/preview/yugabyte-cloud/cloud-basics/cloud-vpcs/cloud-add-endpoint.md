@@ -89,9 +89,9 @@ To create a PSE, do the following:
 
 You can create the AWS endpoint using the AWS [VPC console](https://console.aws.amazon.com/vpc/) or from the command line using the [AWS CLI](https://docs.aws.amazon.com/cli/).
 
-For more information on sharing services using PrivateLink, refer to [Make your endpoint service available to service consumers](https://docs.aws.amazon.com/vpc/latest/privatelink/create-endpoint-service.html#share-endpoint-service) in the AWS documentation.
-
 #### Use the Amazon VPC console
+
+To create an interface endpoint to connect to your cluster endpoint, do the following:
 
 1. Open the Amazon [VPC console](https://console.aws.amazon.com/vpc/).
 
@@ -119,7 +119,7 @@ For more information on sharing services using PrivateLink, refer to [Make your 
 
     The endpoint is added to the Endpoints in AWS.
 
-1. Select the endpoint and on the endpoint details page, click **Actions** and choose **Modify private DNS name** so that the Private DNS names enabled setting is set to Yes.
+1. Select the endpoint and on the endpoint details page, click **Actions** and choose **Modify private DNS name** so that the **Private DNS names enabled** setting is set to Yes.
 
     ![AWS endpoint service](/images/yb-cloud/managed-endpoint-aws-dns.png)
 
