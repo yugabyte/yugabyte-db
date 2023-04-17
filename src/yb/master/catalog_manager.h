@@ -1034,10 +1034,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map);
 
-  Status GetXClusterEstimatedDataLoss(
-      const GetXClusterEstimatedDataLossRequestPB* req,
-      GetXClusterEstimatedDataLossResponsePB* resp);
-
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
 

@@ -468,9 +468,10 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
     return count;
   }
 
-  Result<uint64_t> GetXClusterEstimatedDataLoss(const NamespaceId& namespace_id) {
-    master::GetXClusterEstimatedDataLossRequestPB req;
-    master::GetXClusterEstimatedDataLossResponsePB resp;
+  // Returns the safe time lag (not skew).
+  Result<uint64_t> GetXClusterSafeTimeLag(const NamespaceId& namespace_id) {
+    master::GetXClusterSafeTimeRequestPB req;
+    master::GetXClusterSafeTimeResponsePB resp;
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
@@ -478,11 +479,11 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
         &consumer_client()->proxy_cache(),
         VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
 
-    RETURN_NOT_OK(master_proxy->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
+    RETURN_NOT_OK(master_proxy->GetXClusterSafeTime(req, &resp, &rpc));
 
-    for (const auto& namespace_data_loss : resp.namespace_data_loss()) {
+    for (const auto& namespace_data_loss : resp.namespace_safe_times()) {
       if (namespace_id == namespace_data_loss.namespace_id()) {
-        return namespace_data_loss.data_loss_us();
+        return namespace_data_loss.safe_time_lag();
       }
     }
 
@@ -490,7 +491,7 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
         NotFound, "Did not find estimated data loss for namespace $0", namespace_id);
   }
 
-  Result<uint64_t> GetXClusterEstimatedDataLossFromMetrics(const NamespaceId& namespace_id) {
+  Result<uint64_t> GetXClusterSafeTimeLagFromMetrics(const NamespaceId& namespace_id) {
     auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
     const auto metrics =
         cm.TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(namespace_id);
@@ -525,7 +526,7 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount);
 
   // Get the initial regular rpo.
-  const auto initial_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  const auto initial_rpo = ASSERT_RESULT(GetXClusterSafeTimeLag(namespace_id_));
   LOG(INFO) << "Initial RPO is " << initial_rpo;
 
   // Pause replication on only 1 tablet.
@@ -557,15 +558,15 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   ASSERT_LT(latest_row_count, num_records_written + kNumRecordsPerBatch);
 
   // Check that safe time rpo has gone up.
-  const auto high_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  const auto high_rpo = ASSERT_RESULT(GetXClusterSafeTimeLag(namespace_id_));
   LOG(INFO) << "High RPO is " << high_rpo;
   // RPO only gets updated every second, so only checking for at least one timeout.
   ASSERT_GT(high_rpo, MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMicroseconds());
   // The estimated data loss from the metrics is from a snapshot, as opposed to the result from
-  // GetXClusterEstimatedDataLoss which is a current, newly calculated value. Thus we can't expect
+  // GetXClusterSafeTimeLag which is a current, newly calculated value. Thus we can't expect
   // these values to be equal, but should still expect the same assertions to hold.
   ASSERT_GT(
-      ASSERT_RESULT(GetXClusterEstimatedDataLossFromMetrics(namespace_id_)),
+      ASSERT_RESULT(GetXClusterSafeTimeLagFromMetrics(namespace_id_)),
       MonoDelta::FromSeconds(kWaitForRowCountTimeout).ToMilliseconds());
 
   // Resume replication and verify all data is written on the consumer.
@@ -578,10 +579,10 @@ TEST_F(XClusterConsistencyTest, ConsistentReads) {
   ASSERT_EQ(CountTabletsWithNewReadTimes(), kTabletCount + 1);
 
   // Check that safe time rpo has dropped again.
-  const auto final_rpo = ASSERT_RESULT(GetXClusterEstimatedDataLoss(namespace_id_));
+  const auto final_rpo = ASSERT_RESULT(GetXClusterSafeTimeLag(namespace_id_));
   LOG(INFO) << "Final RPO is " << final_rpo;
   ASSERT_LT(final_rpo, high_rpo);
-  ASSERT_LT(ASSERT_RESULT(GetXClusterEstimatedDataLossFromMetrics(namespace_id_)), high_rpo / 1000);
+  ASSERT_LT(ASSERT_RESULT(GetXClusterSafeTimeLagFromMetrics(namespace_id_)), high_rpo / 1000);
 }
 
 TEST_F(XClusterConsistencyTest, LagInTransactionsTable) {

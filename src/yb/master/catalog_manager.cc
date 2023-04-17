@@ -12883,37 +12883,25 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 
-Status CatalogManager::GetXClusterEstimatedDataLoss(
-    const GetXClusterEstimatedDataLossRequestPB* req,
-    GetXClusterEstimatedDataLossResponsePB* resp) {
-  const auto result = xcluster_safe_time_service_->GetEstimatedDataLossMicroSec();
-  if (!result) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
-  }
-
-  const auto per_namespace_data_loss_map = result.get();
-  for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
-    auto entry = resp->add_namespace_data_loss();
-    entry->set_namespace_id(namespace_id);
-    entry->set_data_loss_us(data_loss);
-  }
-  return Status::OK();
-}
-
 Status CatalogManager::GetXClusterSafeTime(
     const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp) {
-  const auto ns_safe_time_map =
-      xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap();
-  if (!ns_safe_time_map) {
-    return SetupError(
-        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, ns_safe_time_map.status());
+  const auto status = xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(resp);
+  if (!status.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);
   }
 
-  for (const auto& [namespace_id, safe_time] : ns_safe_time_map.get()) {
-    auto entry = resp->add_namespace_safe_times();
-    entry->set_namespace_id(namespace_id);
-    entry->set_safe_time_ht(safe_time.ToUint64());
+  // Also fill out the namespace_name for each entry.
+  if (resp->namespace_safe_times_size()) {
+    SharedLock lock(mutex_);
+    for (auto& safe_time_info : *resp->mutable_namespace_safe_times()) {
+      const auto result = FindNamespaceByIdUnlocked(safe_time_info.namespace_id());
+      if (!result) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
+      }
+      safe_time_info.set_namespace_name(result.get()->name());
+    }
   }
+
   return Status::OK();
 }
 

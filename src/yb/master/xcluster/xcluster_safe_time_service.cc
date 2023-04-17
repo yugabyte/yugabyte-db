@@ -161,6 +161,48 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
   ScheduleTaskIfNeeded();
 }
 
+Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
+    GetXClusterSafeTimeResponsePB* resp) {
+  // Recompute safe times again before fetching maps.
+  const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
+  XClusterNamespaceToSafeTimeMap max_safe_time_map;
+  {
+    std::lock_guard lock(mutex_);
+    max_safe_time_map = GetMaxNamespaceSafeTimeFromMap(VERIFY_RESULT(GetSafeTimeFromTable()));
+  }
+  const auto cur_time_micros = GetCurrentTimeMicros();
+
+  for (const auto& [namespace_id, safe_time] : current_safe_time_map) {
+    // First set all the current safe time values.
+    auto entry = resp->add_namespace_safe_times();
+    entry->set_namespace_id(namespace_id);
+    entry->set_safe_time_ht(safe_time.ToUint64());
+    // Safe time lag is calculated as (current time - current safe time).
+    entry->set_safe_time_lag(
+        std::max(cur_time_micros - safe_time.GetPhysicalValueMicros(), (uint64_t)0));
+
+    // Then find and set the skew.
+    // Safe time skew is calculated as (safe time of most caught up tablet - safe time of
+    // laggiest tablet).
+    const auto it = max_safe_time_map.find(namespace_id);
+    if (safe_time.is_special() || it == max_safe_time_map.end() || it->second.is_special()) {
+      // Missing a valid safe time, so return an invalid value.
+      entry->set_safe_time_skew(UINT64_MAX);
+      continue;
+    }
+
+    const auto& max_safe_time = it->second;
+    if (max_safe_time < safe_time) {
+      // Very rare case that could happen since clocks are not synced.
+      entry->set_safe_time_skew(0);
+    } else {
+      entry->set_safe_time_skew(max_safe_time.PhysicalDiff(safe_time));
+    }
+  }
+
+  return Status::OK();
+}
+
 Result<std::unordered_map<NamespaceId, uint64_t>>
 XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
   // Recompute safe times again before fetching maps.
