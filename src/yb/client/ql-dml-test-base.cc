@@ -27,7 +27,7 @@
 
 #include "yb/common/ql_name.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"

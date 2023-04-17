@@ -175,7 +175,7 @@ class BootstrapTest : public LogTestBase {
 
   Result<RaftGroupMetadataPtr> LoadOrCreateTestRaftGroupMetadata(const Schema& src_schema) {
     Schema schema = SchemaBuilder(src_schema).Build();
-    std::pair<PartitionSchema, Partition> partition = CreateDefaultPartition(schema);
+    auto partition = CreateDefaultPartition(schema);
 
     auto table_info = std::make_shared<TableInfo>(
         "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,

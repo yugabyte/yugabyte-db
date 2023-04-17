@@ -20,7 +20,7 @@
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/scan_choices.h"
 
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 #include "yb/gutil/casts.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
@@ -29,6 +29,9 @@ using std::string;
 
 namespace yb {
 namespace docdb {
+
+using dockv::DocKey;
+using dockv::KeyEntryValue;
 
 const Schema test_range_schema(
     {ColumnSchema(
@@ -190,7 +193,7 @@ void ScanChoicesTest::SetupCondition(
 // Initializes an instance of ScanChoices in choices_
 void ScanChoicesTest::InitializeScanChoicesInstance(const Schema &schema, PgsqlConditionPB &cond) {
   current_schema_ = &schema;
-  std::vector<KeyEntryValue> empty_components;
+  dockv::KeyEntryValues empty_components;
   DocPgsqlScanSpec spec(
       schema, rocksdb::kDefaultQueryId, empty_components, empty_components, &cond,
       boost::none, boost::none, nullptr, DocKey(), true);
@@ -230,7 +233,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
 
   EXPECT_FALSE(choices_->FinishedWithScanChoices());
   const auto &cur_target = choices_->current_scan_target_;
-  DocKeyDecoder decoder(cur_target);
+  dockv::DocKeyDecoder decoder(cur_target);
   EXPECT_OK(decoder.DecodeToKeys());
   KeyEntryValue cur_val;
   // The size of the dockey we have found so far that does not need adjustment
@@ -245,7 +248,7 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
     }
 
     if (i == cur_opts.size() || cur_val.IsInfinity()) {
-      KeyBytes new_target;
+      dockv::KeyBytes new_target;
       new_target.Reset(Slice(cur_target.data().AsSlice().data(),
           cur_target.data().AsSlice().data() + valid_size));
       ASSERT_GE(i, 1);
@@ -266,8 +269,8 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
       }
 
       for (; j < current_schema_->num_range_key_columns(); j++) {
-        auto upper =
-            j < cur_opts.size() ? cur_opts[j].upper() : KeyEntryValue(KeyEntryType::kHighest);
+        auto upper = j < cur_opts.size() ? cur_opts[j].upper()
+                                         : KeyEntryValue(dockv::KeyEntryType::kHighest);
         upper.AppendToKey(&new_target);
       }
 
@@ -288,8 +291,8 @@ void ScanChoicesTest::AdjustForRangeConstraints() {
 // Validate the list of options that choices_ iterates over and the given expected list
 void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &expected) {
   auto expected_it = expected.begin();
-  KeyBytes target;
-  std::vector<KeyEntryValue> target_vals;
+  dockv::KeyBytes target;
+  dockv::KeyEntryValues target_vals;
   // We don't test for backwards scan yet
   ASSERT_TRUE(choices_->is_forward_scan_);
 
@@ -301,7 +304,7 @@ void ScanChoicesTest::CheckOptions(const std::vector<std::vector<OptionRange>> &
       // We don't support testing for (a,b) options where a and b are finite
       // values as of now.
       ASSERT_TRUE((opt.lower_inclusive() || opt.upper_inclusive()) ||
-                  opt.upper().type() == KeyEntryType::kHighest);
+                  opt.upper().type() == dockv::KeyEntryType::kHighest);
       if (opt.lower_inclusive()) {
         opt.lower().AppendToKey(&target);
       } else {
@@ -338,8 +341,8 @@ void ScanChoicesTest::CheckSkipTargetsUpTo(
   InitializeScanChoicesInstance(schema, cond);
 
   for (auto [target, expected] : test_targs) {
-    std::vector<KeyEntryValue> target_keyentries;
-    std::vector<KeyEntryValue> expected_keyentries;
+    dockv::KeyEntryValues target_keyentries;
+    dockv::KeyEntryValues expected_keyentries;
     for (size_t i = 0; i < target.size(); i++) {
       SortingType sorttype = schema.column(i).sorting_type();
       SortOrder sortorder = (sorttype == SortingType::kAscending ||
@@ -350,11 +353,11 @@ void ScanChoicesTest::CheckSkipTargetsUpTo(
       expected_keyentries.push_back(KeyEntryValue::Int32(expected[i], sortorder));
     }
 
-    KeyBytes target_keybytes = DocKey(target_keyentries).Encode();
+    auto target_keybytes = DocKey(target_keyentries).Encode();
     Slice target_slice = target_keybytes.AsSlice();
     EXPECT_OK(choices_->SkipTargetsUpTo(target_slice));
 
-    KeyBytes expected_keybytes = DocKey(expected_keyentries).Encode();
+    auto expected_keybytes = DocKey(expected_keyentries).Encode();
     Slice expected_slice = expected_keybytes.AsSlice();
     EXPECT_TRUE(choices_->CurrentTargetMatchesKey(expected_slice))
         << "Expected: " << DocKey::DebugSliceToString(expected_slice)

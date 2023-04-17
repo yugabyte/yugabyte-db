@@ -24,7 +24,7 @@
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -121,7 +121,7 @@ Status ComputeTabletMapping(
   for (const auto& producer : producer_tablet_keys) {
     const auto& producer_tablet_id = producer.first;
     auto producer_key_range = producer.second;
-    auto producer_middle_key = VERIFY_RESULT(PartitionSchema::GetLexicographicMiddleKey(
+    auto producer_middle_key = VERIFY_RESULT(dockv::PartitionSchema::GetLexicographicMiddleKey(
         producer_key_range.start_key, producer_key_range.end_key));
     std::string consumer_tablet_id;
 
@@ -129,7 +129,7 @@ Status ComputeTabletMapping(
       auto consumer_key_range = consumer_tablet.second;
       docdb::KeyBounds key_bounds(consumer_key_range.start_key, consumer_key_range.end_key);
       if (key_bounds.IsWithinBounds(producer_middle_key)) {
-        DCHECK(PartitionSchema::HasOverlap(
+        DCHECK(dockv::PartitionSchema::HasOverlap(
             producer_key_range.start_key, producer_key_range.end_key,
             consumer_key_range.start_key, consumer_key_range.end_key));
         consumer_tablet_id = consumer_tablet.first;

@@ -124,7 +124,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     int col_idx = schema.num_key_columns() == 1 ? 2 : 3;
     LOG(INFO) << "Update thread using schema: " << schema.ToString();
 
-    YBPartialRow row(&client_schema_);
+    dockv::YBPartialRow row(&client_schema_);
 
     QLTableRow value_map;
 

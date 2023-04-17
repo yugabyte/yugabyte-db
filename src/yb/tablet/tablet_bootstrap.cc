@@ -56,7 +56,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -479,7 +479,7 @@ bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
     return true;
   }
   for (const auto& pair : write_batch.write_pairs()) {
-    if (!pair.key().empty() && pair.key()[0] == docdb::KeyEntryTypeAsChar::kExternalTransactionId) {
+    if (!pair.key().empty() && pair.key()[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
     }
   }

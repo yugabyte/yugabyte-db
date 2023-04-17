@@ -86,6 +86,7 @@ YRPC_GENERATE(
   )
 set(TABLET_PROTO_LIBS
   docdb_proto
+  dockv_proto
   protobuf
   fs_proto
   consensus_metadata_proto

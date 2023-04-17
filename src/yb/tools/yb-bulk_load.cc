@@ -25,7 +25,7 @@
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -321,7 +321,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   string partition_key;
   RETURN_NOT_OK(partition_generator->LookupTabletIdWithTokenizer(
       tokenizer, skipped_cols_, &tablet_id, &partition_key));
-  req.set_hash_code(PartitionSchema::DecodeMultiColumnHashValue(partition_key));
+  req.set_hash_code(dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key));
 
   // Finally apply the operation to the doc_write_batch.
   // TODO(dtxn) pass correct TransactionContext.

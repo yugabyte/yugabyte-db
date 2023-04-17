@@ -18,7 +18,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/common_fwd.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 
 #include "yb/tserver/pg_client.fwd.h"
@@ -51,7 +51,7 @@ class PgCreateTable {
 
   const PgCreateTableRequestPB& req_;
   client::YBTableName table_name_;
-  boost::optional<YBHashSchema> hash_schema_;
+  boost::optional<dockv::YBHashSchema> hash_schema_;
   std::vector<std::string> range_columns_;
   client::YBSchemaBuilder schema_builder_;
   PgObjectId indexed_table_id_;

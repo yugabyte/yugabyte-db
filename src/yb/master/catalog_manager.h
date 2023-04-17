@@ -47,7 +47,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
@@ -1454,10 +1454,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // catalog manager maps.
   Status CreateTableInMemory(const CreateTableRequestPB& req,
                              const Schema& schema,
-                             const PartitionSchema& partition_schema,
+                             const dockv::PartitionSchema& partition_schema,
                              const NamespaceId& namespace_id,
                              const NamespaceName& namespace_name,
-                             const std::vector<Partition>& partitions,
+                             const std::vector<dockv::Partition>& partitions,
                              bool colocated,
                              IsSystemObject system_table,
                              IndexInfoPB* index_info,
@@ -1465,7 +1465,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                              CreateTableResponsePB* resp,
                              scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
 
-  Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
+  Result<TabletInfos> CreateTabletsFromTable(const std::vector<dockv::Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Check that local host is present in master addresses for normal master process start.
@@ -1487,7 +1487,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // "dirty" state field.
   scoped_refptr<TableInfo> CreateTableInfo(const CreateTableRequestPB& req,
                                            const Schema& schema,
-                                           const PartitionSchema& partition_schema,
+                                           const dockv::PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
                                            const NamespaceName& namespace_name,
                                            bool colocated,
@@ -2296,7 +2296,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateTableRequestPB& request, const Schema& schema,
       const PlacementInfoPB& placement_info);
 
-  Result<std::pair<PartitionSchema, std::vector<Partition>>> CreatePartitions(
+  Result<std::pair<dockv::PartitionSchema, std::vector<dockv::Partition>>> CreatePartitions(
       const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
       CreateTableRequestPB* request, CreateTableResponsePB* resp);
 

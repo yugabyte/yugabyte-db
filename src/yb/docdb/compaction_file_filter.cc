@@ -18,7 +18,7 @@
 #include "yb/common/hybrid_time.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb_compaction_context.h"
 
 #include "yb/gutil/casts.h"
@@ -73,7 +73,7 @@ ExpirationTime ExtractExpirationTime(const FileMetaData* file) {
   // If the TTL expiration time is uninitialized, return a max expiration time with the
   // frontier's hybrid time.
   const auto ttl_expiry_ht =
-      consensus_frontier.max_value_level_ttl_expiration_time().GetValueOr(kNoExpiration);
+      consensus_frontier.max_value_level_ttl_expiration_time().GetValueOr(dockv::kNoExpiration);
 
   return ExpirationTime{
     .ttl_expiration_ht = ttl_expiry_ht,
@@ -88,15 +88,16 @@ bool TtlIsExpired(const ExpirationTime expiry,
   // If FLAGS_file_expiration_ignore_value_ttl is set, ignore the value level TTL
   // entirely and use only the default table TTL.
   const auto ttl_expiry_ht =
-      mode == EXP_TABLE_ONLY ? kUseDefaultTTL : expiry.ttl_expiration_ht;
+      mode == EXP_TABLE_ONLY ? dockv::kUseDefaultTTL : expiry.ttl_expiration_ht;
 
-  if (mode == EXP_TRUST_VALUE && ttl_expiry_ht.is_valid() && ttl_expiry_ht != kUseDefaultTTL) {
-    return HasExpiredTTL(ttl_expiry_ht, now);
+  if (mode == EXP_TRUST_VALUE && ttl_expiry_ht.is_valid() &&
+      ttl_expiry_ht != dockv::kUseDefaultTTL) {
+    return dockv::HasExpiredTTL(ttl_expiry_ht, now);
   }
 
-  auto file_expiry_ht = MaxExpirationFromValueAndTableTTL(
+  auto file_expiry_ht = dockv::MaxExpirationFromValueAndTableTTL(
       expiry.created_ht, table_ttl, ttl_expiry_ht);
-  return HasExpiredTTL(file_expiry_ht, now);
+  return dockv::HasExpiredTTL(file_expiry_ht, now);
 }
 
 bool IsLastKeyCreatedBeforeHistoryCutoff(ExpirationTime expiry, HybridTime history_cutoff) {

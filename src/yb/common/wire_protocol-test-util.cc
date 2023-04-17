@@ -13,7 +13,7 @@
 
 #include "yb/common/wire_protocol-test-util.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.messages.h"
 
 using std::string;
@@ -43,19 +43,19 @@ void DoAddKVToPB(int32_t key_val,
   auto add_kv_pair = [&](const SubDocKey &subdoc_key, const QLValuePB& value) {
     auto& kv = *write_batch->add_write_pairs();
     ValueBuffer buffer;
-    docdb::AppendEncodedValue(value, &buffer);
+    dockv::AppendEncodedValue(value, &buffer);
     SetKeyValue(subdoc_key.Encode().AsSlice(), buffer.AsSlice(), &kv);
   };
 
   std::string hash_key;
   YBPartition::AppendIntToKey<int32_t, uint32_t>(key_val, &hash_key);
   auto hash = YBPartition::HashColumnCompoundValue(hash_key);
-  const DocKey doc_key(hash, {docdb::KeyEntryValue::Int32(key_val)}, {});
+  const dockv::DocKey doc_key(hash, {dockv::KeyEntryValue::Int32(key_val)}, {});
   QLValuePB value;
   value.set_int32_value(int_val);
-  add_kv_pair(SubDocKey(doc_key, docdb::KeyEntryValue::MakeColumnId(int_val_col_id)), value);
+  add_kv_pair(SubDocKey(doc_key, dockv::KeyEntryValue::MakeColumnId(int_val_col_id)), value);
   value.set_string_value(string_val);
-  add_kv_pair(SubDocKey(doc_key, docdb::KeyEntryValue::MakeColumnId(string_val_col_id)), value);
+  add_kv_pair(SubDocKey(doc_key, dockv::KeyEntryValue::MakeColumnId(string_val_col_id)), value);
 }
 
 } // namespace

@@ -67,7 +67,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
@@ -751,7 +751,7 @@ Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
 
 Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
-                                PartitionSchema* partition_schema) {
+                                dockv::PartitionSchema* partition_schema) {
   Result<YBTableInfo> info = GetYBTableInfo(table_name);
   if (!info.ok()) {
     return info.status();

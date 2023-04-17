@@ -156,12 +156,12 @@ class TabletRestorePatch : public RestorePatch {
       const Slice& existing_key, const Slice& existing_value) override;
 
   Status UpdateColumnValueInMap(const Slice& key, const Slice& value,
-      std::map<docdb::DocKey, SequencesDataInfo>* key_to_seq_info_map);
+      std::map<dockv::DocKey, SequencesDataInfo>* key_to_seq_info_map);
 
   int64_t db_oid_;
 
-  std::map<docdb::DocKey, SequencesDataInfo> existing_key_to_seq_info_map_;
-  std::map<docdb::DocKey, SequencesDataInfo> restoring_key_to_seq_info_map_;
+  std::map<dockv::DocKey, SequencesDataInfo> existing_key_to_seq_info_map_;
+  std::map<dockv::DocKey, SequencesDataInfo> restoring_key_to_seq_info_map_;
 };
 
 } // namespace tablet

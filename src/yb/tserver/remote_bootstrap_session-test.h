@@ -37,7 +37,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/consensus/consensus_fwd.h"
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus_meta.h"

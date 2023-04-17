@@ -40,7 +40,7 @@
 #include "yb/common/ql_type.h"
 #include "yb/common/row.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
@@ -63,8 +63,8 @@ using std::shared_ptr;
 using std::unordered_set;
 using std::string;
 using std::vector;
-using yb::docdb::DocKey;
-using yb::docdb::KeyEntryValue;
+using dockv::DocKey;
+using dockv::KeyEntryValue;
 
 // ------------------------------------------------------------------------------------------------
 // ColumnSchema
