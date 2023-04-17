@@ -5,10 +5,13 @@
 #include <assert.h>
 #include <crcutil/interface.h>
 #include <dirent.h>
+#include <fcntl.h>
 #include <float.h>
 #include <inttypes.h>
 #include <openssl/ossl_typ.h>
 #include <pthread.h>
+#include <signal.h>
+#include <spawn.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -71,6 +74,7 @@
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
+#include <boost/asio.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
@@ -83,12 +87,15 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/core/demangle.hpp>
 #include <boost/core/enable_if.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
 #include <boost/function.hpp>
 #include <boost/function/function_fwd.hpp>
 #include <boost/functional/hash.hpp>
 #include <boost/functional/hash/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
+#include <boost/interprocess/shared_memory_object.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/lockfree/queue.hpp>
@@ -96,7 +103,9 @@
 #include <boost/mpl/if.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
+#include <boost/multi_index/member.hpp>
 #include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/sequenced_index.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
@@ -154,6 +163,7 @@
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
+#include "yb/gutil/bind_helpers.h"
 #include "yb/gutil/bind_internal.h"
 #include "yb/gutil/callback.h"
 #include "yb/gutil/callback_forward.h"
@@ -219,6 +229,7 @@
 #include "yb/util/debug/long_operation_tracker.h"
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_event_impl.h"
+#include "yb/util/decimal.h"
 #include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/env_util.h"
@@ -243,6 +254,8 @@
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
+#include "yb/util/lru_cache.h"
+#include "yb/util/main_util.h"
 #include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
@@ -273,6 +286,7 @@
 #include "yb/util/opid.pb.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/physical_time.h"
 #include "yb/util/port_picker.h"
 #include "yb/util/promise.h"
@@ -285,10 +299,12 @@
 #include "yb/util/rw_semaphore.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/shared_mem.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
@@ -299,15 +315,18 @@
 #include "yb/util/std_util.h"
 #include "yb/util/stol_utils.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/subprocess.h"
 #include "yb/util/test_graph.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
@@ -317,6 +336,8 @@
 #include "yb/util/type_traits.h"
 #include "yb/util/uint_set.h"
 #include "yb/util/ulimit.h"
+#include "yb/util/ulimit_util.h"
+#include "yb/util/unique_lock.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/user.h"
 #include "yb/util/uuid.h"
@@ -324,5 +345,6 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 #include "yb/util/web_callback_registry.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"
 #include "yb/util/yb_pg_errcodes.h"
