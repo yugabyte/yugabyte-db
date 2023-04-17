@@ -349,16 +349,14 @@ LINE 4:                where sum(distinct a.four + b.four) = b.four)...
                              ^
 -- Test handling of sublinks within outer-level aggregates.
 -- Per bug report from Daniel Grace.
-create view oneh as select * from onek order by unique2 limit 100;
 select
-  (select max((select i.unique2 from oneh i where i.unique1 = o.unique1)))
-from oneh o;
+  (select max((select i.unique2 from tenk1 i where i.unique1 = o.unique1)))
+from tenk1 o;
  max
------
-  99
+------
+ 9999
 (1 row)
 
-drop view oneh;
 -- Test handling of Params within aggregate arguments in hashed aggregation.
 -- Per bug report from Jeevan Chalke.
 explain (verbose, costs off)
@@ -475,8 +473,6 @@ FROM bitwise_test;
  1 | 1 | 1 | 1 | 0 | 0100 | 7 | 7 | 7 | 3 | 7 | 1101
 (1 row)
 
--- drop temp table
-DROP TABLE bitwise_test;
 --
 -- test boolean aggregates
 --
@@ -665,13 +661,14 @@ rollback;
 -- multi-column index (uses tenk1_thous_tenthous)
 explain (costs off)
   select max(tenthous) from tenk1 where thousand = 33;
-               QUERY PLAN
-----------------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Remote Filter: (thousand = 33)
-         Partial Aggregate: true
-(4 rows)
+                                 QUERY PLAN
+----------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_thous_tenthous on tenk1
+                 Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
+(5 rows)
 
 select max(tenthous) from tenk1 where thousand = 33;
  max
@@ -681,13 +678,14 @@ select max(tenthous) from tenk1 where thousand = 33;
 
 explain (costs off)
   select min(tenthous) from tenk1 where thousand = 33;
-               QUERY PLAN
-----------------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Remote Filter: (thousand = 33)
-         Partial Aggregate: true
-(4 rows)
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan using tenk1_thous_tenthous on tenk1
+                 Index Cond: ((thousand = 33) AND (tenthous IS NOT NULL))
+(5 rows)
 
 select min(tenthous) from tenk1 where thousand = 33;
  min
@@ -709,9 +707,21 @@ explain (costs off)
                  Partial Aggregate: true
 (6 rows)
 
--- TODO(jayden): Non-deterministic, so commenting out.
--- select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
---   from int4_tbl;
+-- YB note: add consistent ordering that matches upstream:
+-- 1. mainly order by absolute value of f1.
+-- 2. order positives before negatives by adding an offset of -1/+1 using the
+--    sign function.
+select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
+  from int4_tbl order by abs(f1) - sign(f1);
+     f1      | gt
+-------------+----
+           0 |  1
+      123456 |
+     -123456 |  0
+  2147483647 |
+ -2147483647 |  0
+(5 rows)
+
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off)
   select distinct max(unique2) from tenk1;
@@ -940,10 +950,17 @@ group by t1.a,t1.b,t1.c,t1.d,t2.x,t2.z;
 (7 rows)
 
 -- Cannot optimize when PK is deferrable
--- explain (costs off) select * from t3 group by a,b,c;
+explain (costs off) select * from t3 group by a,b,c;
+      QUERY PLAN
+----------------------
+ HashAggregate
+   Group Key: a, b, c
+   ->  Seq Scan on t3
+(3 rows)
+
 drop table t1;
 drop table t2;
--- drop table t3;
+drop table t3;
 --
 -- Test combinations of DISTINCT and/or ORDER BY
 --
@@ -1271,16 +1288,41 @@ select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -
 (1 row)
 
 -- string_agg bytea tests
--- TODO(jayden): Below test relies on retrieval ordering, thus is non-deterministic.
--- create table bytea_test_table(v bytea);
--- select string_agg(v, '') from bytea_test_table;
--- insert into bytea_test_table values(decode('ff','hex'));
--- select string_agg(v, '') from bytea_test_table;
--- insert into bytea_test_table values(decode('aa','hex'));
--- select string_agg(v, '') from bytea_test_table;
--- select string_agg(v, NULL) from bytea_test_table;
--- select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
--- drop table bytea_test_table;
+-- YB note: add PK ordering for consistent output.
+create table bytea_test_table(v bytea, PRIMARY KEY (v DESC));
+select string_agg(v, '') from bytea_test_table;
+ string_agg
+------------
+ 
+(1 row)
+
+insert into bytea_test_table values(decode('ff','hex'));
+select string_agg(v, '') from bytea_test_table;
+ string_agg
+------------
+ \xff
+(1 row)
+
+insert into bytea_test_table values(decode('aa','hex'));
+select string_agg(v, '') from bytea_test_table;
+ string_agg
+------------
+ \xffaa
+(1 row)
+
+select string_agg(v, NULL) from bytea_test_table;
+ string_agg
+------------
+ \xffaa
+(1 row)
+
+select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
+ string_agg
+------------
+ \xffeeaa
+(1 row)
+
+drop table bytea_test_table;
 -- FILTER tests
 select min(unique1) filter (where unique1 > 100) from tenk1;
  min
