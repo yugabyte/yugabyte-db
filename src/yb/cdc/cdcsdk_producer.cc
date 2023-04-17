@@ -1380,12 +1380,18 @@ Status GetChangesForCDCSDK(
       time = ReadHybridTime::SingleTime(data.log_ht);
       // Use the last replicated hybrid time as a safe time for snapshot operation. so that
       // compaction can be restricted during snapshot operation.
-      *leader_safe_time = data.log_ht;
 
-      // This should go to cdc_state table.
-      // Below condition update the checkpoint in cdc_state table.
-      SetCheckpoint(
-          data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), &checkpoint, nullptr);
+      if (time.read.ToUint64() == 0) {
+        // This means there is no data from the sansphot.
+        SetCheckpoint(data.op_id.term, data.op_id.index, 0, "", 0, &checkpoint, nullptr);
+      } else {
+        *leader_safe_time = data.log_ht;
+        // This should go to cdc_state table.
+        // Below condition update the checkpoint in cdc_state table.
+        SetCheckpoint(
+            data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), &checkpoint, nullptr);
+      }
+
       checkpoint_updated = true;
     } else {
       // Snapshot is already taken.
