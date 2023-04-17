@@ -1,4 +1,4 @@
-      - alert: {{ definition_name }}
+      - alert: "{{ definition_name }}"
         expr: {{ definition_expr }}
         for: {{ duration }}
         labels:
