@@ -28,7 +28,7 @@ const initialStateFeatureInTest = {
   enableNewUI: true, // feature flag to enable new revamped UI,
   enableCustomEmailTemplates: false,
   enableAWSProviderValidation: false,
-  enableMKR: false
+  enableMKR: true
 };
 
 const initialStateFeatureReleased = {
