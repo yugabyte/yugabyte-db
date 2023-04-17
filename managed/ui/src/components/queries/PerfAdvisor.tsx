@@ -2,7 +2,8 @@ import React, { useState, FC, ReactNode, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from 'react-query';
 import { useSelector } from 'react-redux';
-import { FormControl, Button } from 'react-bootstrap';
+import { Button } from 'react-bootstrap';
+import { MenuItem } from '@material-ui/core';
 import { RecommendationBox } from './RecommendationBox';
 import { YBPanelItem } from '../panels';
 import { YBLoading } from '../../components/common/indicators';
@@ -19,16 +20,18 @@ import {
   SortDirection,
   LastRunData
 } from '../../redesign/utils/dtos';
+import { YBSelect } from '../../redesign/components';
 import dbSettingsIcon from './images/db-settings.svg';
 import documentationIcon from './images/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
 import WarningIcon from './images/warning.svg';
+
 import './PerfAdvisor.scss';
 
 interface RecommendationDetailProps {
   data: PerfRecommendationData | IndexAndShardingRecommendationData;
   key: string;
-  resolved?: boolean;
+  isResolved?: boolean;
 }
 
 const LastRunStatus = {
@@ -206,13 +209,13 @@ export const PerfAdvisor: FC = () => {
         });
       });
       setDatabaseOptionList([
-        <option value={''} key={'all-databases'}>
+        <MenuItem value={''} key={'all-databases'}>
           {t('clusterDetail.performance.advisor.AllDatabases')}
-        </option>,
+        </MenuItem>,
         [...databasesInRecommendations].map((databaseName: string) => (
-          <option value={databaseName} key={`ysql-${databaseName}`}>
+          <MenuItem value={databaseName} key={`ysql-${databaseName}`}>
             {databaseName}
-          </option>
+          </MenuItem>
         ))
       ]);
       return recommendationArr;
@@ -232,13 +235,13 @@ export const PerfAdvisor: FC = () => {
         }
       });
       setDatabaseOptionList([
-        <option value={''} key={'all-databases'}>
+        <MenuItem value={''} key={'all-databases'}>
           {t('clusterDetail.performance.advisor.AllDatabases')}
-        </option>,
+        </MenuItem>,
         [...databasesInRecommendations].map((databaseName: string) => (
-          <option value={databaseName} key={`ysql-${databaseName}`}>
+          <MenuItem value={databaseName} key={`ysql-${databaseName}`}>
             {databaseName}
-          </option>
+          </MenuItem>
         ))
       ]);
     },
@@ -279,6 +282,15 @@ export const PerfAdvisor: FC = () => {
       localStorage.setItem(universeUUID, '');
     };
   }, [universeUUID]);
+
+  const handleResolve = (id: string, isResolved: boolean) => {
+    const copyRecommendations = [...recommendations];
+    const userSelectedRecommendation = copyRecommendations.find((rec) => rec.key === id);
+    if (userSelectedRecommendation) {
+      userSelectedRecommendation.isResolved = isResolved;
+    }
+    setRecommendations(copyRecommendations);
+  };
 
   const filteredByDatabaseRecommendations = recommendations.filter((rec) => {
     if (databaseSelection) {
@@ -428,29 +440,42 @@ export const PerfAdvisor: FC = () => {
             />
           </div>
           <div className="perfAdvisor__containerRecommendationFlex">
-            <FormControl
-              componentClass="select"
+            <YBSelect
               onChange={handleDbSelection}
               value={databaseSelection}
               className="filterDropdowns"
+              inputProps={{
+                'data-testid': `PerfAdvisor-DBSelect`
+              }}
             >
               {databaseOptionList}
-            </FormControl>
-            <FormControl
-              componentClass="select"
+            </YBSelect>
+            <YBSelect
               onChange={handleSuggestionTypeSelection}
               value={suggestionType}
               className="filterDropdowns"
+              inputProps={{
+                'data-testid': `PerfAdvisor-SuggestionTypeSelect`
+              }}
             >
               {recommendationTypes.map((type) => (
-                <option key={`suggestion-${type}`} value={type}>
+                <MenuItem key={`suggestion-${type}`} value={type}>
                   {t(`clusterDetail.performance.suggestionTypes.${TranslationTypeMap[type]}`)}
-                </option>
+                </MenuItem>
               ))}
-            </FormControl>
+            </YBSelect>
           </div>
           {displayedRecomendations.map((rec) => (
-            <RecommendationBox key={rec.key} type={rec.data.type} data={rec.data} />
+            <>
+              <RecommendationBox
+                key={rec.key}
+                idKey={rec.key}
+                type={rec.data.type}
+                data={rec.data}
+                resolved={!!rec.isResolved}
+                onResolve={handleResolve}
+              />
+            </>
           ))}
         </div>
       )}
