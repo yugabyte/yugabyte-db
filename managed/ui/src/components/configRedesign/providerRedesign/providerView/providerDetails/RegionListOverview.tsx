@@ -38,6 +38,8 @@ const RegionItemField = {
   ARCH_TYPE: 'arch'
 } as const;
 
+const TABLE_MIN_PAGE_SIZE = 10;
+
 export const RegionListOverview = ({ providerConfig }: RegionListOverviewProps) => {
   const formatZones = (zones: YBAvailabilityZone[]) => pluralize('zone', zones.length, true);
   const { fields, regionListItems } = adaptToListItems(providerConfig);
@@ -50,6 +52,7 @@ export const RegionListOverview = ({ providerConfig }: RegionListOverviewProps) 
         expandComponent={(row: YBRegion) => (
           <ZoneList zones={row.zones} providerCode={providerConfig.code} />
         )}
+        pagination={regionListItems.length > TABLE_MIN_PAGE_SIZE}
       >
         <TableHeaderColumn dataField={RegionItemField.NAME} isKey={true} dataSort={true}>
           Region
