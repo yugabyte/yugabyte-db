@@ -726,9 +726,6 @@ TEST_F(TsTabletManagerTest, FullCompactionCalculateNextCompaction) {
     // The expected max jitter delta, determined by
     // compaction_frequency * jitter_factor_percentage / 100.
     MonoDelta expected_max_jitter;
-    // The expected amount of jitter, determined by pseudorandom 0 to 1 from hash of
-    // tablet id and last compaction time * max jitter delta.
-    MonoDelta expected_jitter;
   };
 
   // Recent compaction time is several minutes before now.
@@ -738,73 +735,70 @@ TEST_F(TsTabletManagerTest, FullCompactionCalculateNextCompaction) {
   const MonoDelta kStandardFrequency = MonoDelta::FromDays(30);
   const int32_t kStandardJitterFactor = 33;
   const MonoDelta kStandardMaxJitter = kStandardFrequency * kStandardJitterFactor / 100;
-  const MonoDelta jitter_factor_ten_tablet_id = MonoDelta::FromNanoseconds(11493522086400);
   auto compaction_manager = tablet_manager_->full_compaction_manager();
 
   std::vector<JitterToTest> jitter_to_test = {
-    // 1) Standard compaction frequency and jitter factor, with no last compaction time.
+    // 0) Standard compaction frequency and jitter factor, with no last compaction time.
     {kTabletId, kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
-        kStandardMaxJitter /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(652715357120640) /* expected_jitter */},
+        kStandardMaxJitter /* expected_max_jitter */},
+
+    // 1) Standard compaction frequency and jitter factor, with no last compaction time
+    //    (same tablet ID, same expected output as #0).
+    {kTabletId, kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
+        kStandardMaxJitter /* expected_max_jitter */},
 
     // 2) Standard compaction frequency and jitter factor with no last compaction time,
-    //    using a different tablet id.
+    //    using a different tablet id (different expected output as #0).
     {TabletId("another-tablet-id"), kStandardFrequency, kStandardJitterFactor, kNoLastCompact,
-        kStandardMaxJitter /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(756909369279360) /* expected_jitter */},
+        kStandardMaxJitter /* expected_max_jitter */},
 
-    // 3) Standard compaction frequency and jitter factor, with a recent compaction.
+    // 3) Standard compaction frequency and jitter factor, with a recent compaction
+    //    (different expected output as #0).
     {kTabletId, kStandardFrequency, kStandardJitterFactor, kRecentCompactionTime,
-        kStandardMaxJitter /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(37928622885120) /* expected_jitter */},
+        kStandardMaxJitter /* expected_max_jitter */},
 
     // 4) Standard compaction frequency and jitter factor, with a recent compaction
-    //    (different tablet id).
-    {TabletId("another-tablet-id"), kStandardFrequency, kStandardJitterFactor, kTimeRecent,
-        kStandardMaxJitter /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(724436812408320) /* expected_jitter */},
+    //    (different tablet id, different expected output as #3).
+    {TabletId("another-tablet-id"), kStandardFrequency, kStandardJitterFactor,
+        kRecentCompactionTime, kStandardMaxJitter /* expected_max_jitter */},
 
     // 5) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
     //    (same expected output as #3).
     {kTabletId, kStandardFrequency, -1, kRecentCompactionTime,
-        kStandardMaxJitter /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(37928622885120) /* expected_jitter */},
+        kStandardMaxJitter /* expected_max_jitter */},
 
     // 6) Invalid jitter factor, will default to kDefaultJitterFactorPercentage
     //    (same expected output as #3 and #5).
     {kTabletId, kStandardFrequency, 200, kRecentCompactionTime,
-        kStandardMaxJitter /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(37928622885120) /* expected_jitter */},
+        kStandardMaxJitter /* expected_max_jitter */},
 
     // 7) Longer compaction frequency with recent compaction time and standard jitter.
     {kTabletId, kStandardFrequency * 3, kStandardJitterFactor, kRecentCompactionTime,
-        kStandardMaxJitter * 3 /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(113785868655360) /* expected_jitter */},
+        kStandardMaxJitter * 3 /* expected_max_jitter */},
 
-    // 8) Standard compaction frequency with recent compaction time and no jitter.
+    // 8) Standard compaction frequency with recent compaction time and no jitter
+    //    (expected jitter of 0).
     {kTabletId, kStandardFrequency, 0, kRecentCompactionTime,
-        MonoDelta::FromNanoseconds(0) /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(0) /* expected_jitter */},
+        MonoDelta::FromNanoseconds(0) /* expected_max_jitter */},
 
     // 9) Standard compaction frequency with jitter factor of 10%.
     {kTabletId, kStandardFrequency, 10, kRecentCompactionTime,
-        kStandardFrequency / 10 /* expected_max_jitter */,
-        jitter_factor_ten_tablet_id /* expected_jitter */},
+        kStandardFrequency / 10 /* expected_max_jitter */},
 
     // 10) Standard compaction frequency with jitter factor of 100%.
-    //     (Expected jitter should be exactly 10X the expected jitter of #9).
+    //     (expected jitter should be exactly 10X the expected jitter of #9).
     {kTabletId, kStandardFrequency, 100, kRecentCompactionTime,
-        kStandardFrequency /* expected_max_jitter */,
-        jitter_factor_ten_tablet_id * 10 /* expected_jitter */},
+        kStandardFrequency /* expected_max_jitter */},
 
     // 11) Standard compaction frequency with jitter factor of 100% and no previous
     //     full compaction time.
     {kTabletId, kStandardFrequency, 100, kNoLastCompact,
-        kStandardFrequency /* expected_max_jitter */,
-        MonoDelta::FromNanoseconds(1977925324608000) /* expected_jitter */},
+        kStandardFrequency /* expected_max_jitter */},
   };
 
-  int i = 1;
+  std::vector<MonoDelta> jitter_results;
+
+  int i = 0;
   for (auto jtt : jitter_to_test) {
     LOG(INFO) << "Calculating next compaction time for scenario " << i++;
     compaction_manager->ResetFrequencyAndJitterIfNeeded(
@@ -816,16 +810,36 @@ TEST_F(TsTabletManagerTest, FullCompactionCalculateNextCompaction) {
             jtt.tablet_id, now, jtt.last_compact_time, jitter);
 
     ASSERT_EQ(jtt.expected_max_jitter, compaction_manager->max_jitter());
-    ASSERT_EQ(jtt.expected_jitter, jitter);
+    ASSERT_GE(jitter, MonoDelta::FromNanoseconds(0));
+    ASSERT_LE(jitter, jtt.expected_max_jitter);
+    jitter_results.push_back(jitter);
 
     // Expected time of next compaction based on the current time, previous compaction
     // time compaction, compaction frequency, and jitter. If the previous compaction
     // time is 0, uses the current time + jitter.
     HybridTime expected_next_compact_time = jtt.last_compact_time.is_special() ?
         now.AddDelta(jitter) :
-        jtt.last_compact_time.AddDelta(jtt.compaction_frequency - jtt.expected_jitter);
+        jtt.last_compact_time.AddDelta(jtt.compaction_frequency - jitter);
     ASSERT_EQ(next_compact_time, expected_next_compact_time);
   }
+
+  // Check jitter value special cases.
+  // Jitter for tests 0 and 1 should match.
+  ASSERT_EQ(jitter_results[0], jitter_results[1]);
+  // Jitter for tests 0 and 2 should NOT match.
+  ASSERT_NE(jitter_results[0], jitter_results[2]);
+  // Jitter for tests 0 and 3 should NOT match.
+  ASSERT_NE(jitter_results[0], jitter_results[3]);
+  // Jitter for tests 3 and 4 should NOT match.
+  ASSERT_NE(jitter_results[3], jitter_results[4]);
+  // Jitter for tests 3 and 5 should match.
+  ASSERT_EQ(jitter_results[3], jitter_results[5]);
+  // Jitter for tests 3 and 6 should match.
+  ASSERT_EQ(jitter_results[3], jitter_results[6]);
+  // Jitter for test 8 should be 0.
+  ASSERT_EQ(jitter_results[8], MonoDelta::FromNanoseconds(0));
+  // Jitter for test 10 should be 10x jitter of test 9.
+  ASSERT_EQ(jitter_results[10], jitter_results[9] * 10);
 }
 
 // Tests that scheduled compaction times are roughly evenly spread based on jitter factor.
