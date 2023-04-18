@@ -56,6 +56,7 @@ func initAfterFlagsParsed(cmdName string) {
 	log.Trace(fmt.Sprintf("yba-ctl started with cmd %s", cmdName))
 
 	initServices()
+
 }
 
 func ensureInstallerConfFile() {
@@ -88,12 +89,16 @@ func initServices() {
 	// services is an ordered map so services that depend on others should go later in the chain.
 	services = make(map[string]common.Component)
 	installPostgres := viper.GetBool("postgres.install.enabled")
+	installYbdb := viper.GetBool("ybdb.install.enabled")
 	services[PostgresServiceName] = NewPostgres("10.23")
+	services[YbdbServiceName] = NewYbdb("2.17.2.0")
 	services[PrometheusServiceName] = NewPrometheus("2.42.0")
 	services[YbPlatformServiceName] = NewPlatform(common.GetVersion())
 	// serviceOrder = make([]string, len(services))
 	if installPostgres {
 		serviceOrder = []string{PostgresServiceName, PrometheusServiceName, YbPlatformServiceName}
+	} else if installYbdb {
+		serviceOrder = []string{YbdbServiceName, PrometheusServiceName, YbPlatformServiceName}
 	} else {
 		serviceOrder = []string{PrometheusServiceName, YbPlatformServiceName}
 	}

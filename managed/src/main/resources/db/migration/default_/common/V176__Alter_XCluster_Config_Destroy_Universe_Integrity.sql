@@ -34,14 +34,14 @@ ALTER TABLE IF EXISTS xcluster_config
     ALTER COLUMN target_universe_uuid DROP NOT NULL;
 
 ALTER TABLE IF EXISTS xcluster_config
-    DROP CONSTRAINT IF EXISTS ck_source_universe_uuid_not_null_or_status_is_deleted_universe;
+   DROP CONSTRAINT IF EXISTS ck_source_universe_uuid_not_null_or_status_is_deleted_universe;
 
 ALTER TABLE IF EXISTS xcluster_config
     ADD CONSTRAINT ck_source_universe_uuid_not_null_or_status_is_deleted_universe
     CHECK (source_universe_uuid IS NOT NULL OR status = 'DeletedUniverse');
 
 ALTER TABLE IF EXISTS xcluster_config
-    DROP CONSTRAINT IF EXISTS ck_target_universe_uuid_not_null_or_status_is_deleted_universe;
+   DROP CONSTRAINT IF EXISTS ck_target_universe_uuid_not_null_or_status_is_deleted_universe;
 
 ALTER TABLE IF EXISTS xcluster_config
     ADD CONSTRAINT ck_target_universe_uuid_not_null_or_status_is_deleted_universe

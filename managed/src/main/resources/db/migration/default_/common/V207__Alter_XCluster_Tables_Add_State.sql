@@ -6,7 +6,7 @@ ALTER TABLE IF EXISTS xcluster_table_config
 
 -- Add check constraint for possible values of xcluster_table_config.status.
 ALTER TABLE IF EXISTS xcluster_table_config
-    DROP CONSTRAINT IF EXISTS ck_xcluster_table_config_table_status;
+  DROP CONSTRAINT IF EXISTS ck_xcluster_table_config_table_status;
 
 ALTER TABLE IF EXISTS xcluster_table_config
     ADD CONSTRAINT ck_xcluster_table_config_table_status

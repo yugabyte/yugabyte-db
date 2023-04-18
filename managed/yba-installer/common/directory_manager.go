@@ -22,6 +22,7 @@ import (
 					 pgsql/
 					 prometheus/
 					 yb-platform/
+					 ybdb/
 *               software/
 *                  2.16.1.0-b234/
                    2.18.2.0-b12/
@@ -168,6 +169,22 @@ func GetPostgresPackagePath() string {
 
 func GetJavaPackagePath() string {
 	return GetFileMatchingGlobOrFatal(javaBinaryGlob)
+}
+
+//Returns YBDB package path.
+func GetYbdbPackagePath() string {
+	return GetFileMatchingGlobOrFatal(ybdbPackageGlob)
+}
+
+//Gets 0 or 1 matches of YBDB package path.
+//Fatal error if more than 1 match.
+func MaybeGetYbdbPackagePath() string {
+	path, matches, err := GetFileMatchingGlob(ybdbPackageGlob)
+	// Fatal if more than one match found.
+	if err != nil && matches > 1 {
+		log.Fatal(err.Error())
+	}
+	return path
 }
 
 func GetTemplatesDir() string {
