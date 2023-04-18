@@ -111,6 +111,7 @@ export const GetInsertVariableButton = React.forwardRef<
       variant="secondary"
       className={classes.insertVariableButton}
       startIcon={<Add />}
+      data-testid={'insert-alert-variable-button'}
     >
       {t('alertCustomTemplates.composer.insertVariableButton')}
       <span className={classes.startTag}>{ALERT_VARIABLE_START_TAG}</span>
