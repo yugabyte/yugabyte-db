@@ -21,11 +21,11 @@
 #include "yb/common/transaction.pb.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/transaction_priority.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/transaction_dump.h"
 #include "yb/gutil/stl_util.h"
@@ -43,6 +43,12 @@ using namespace std::placeholders;
 
 namespace yb {
 namespace docdb {
+
+using dockv::IntentTypeSet;
+using dockv::KeyBytes;
+using dockv::KeyEntryTypeAsChar;
+using dockv::PartialRangeKeyIntents;
+using dockv::SubDocKey;
 
 namespace {
 
@@ -177,14 +183,14 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
 
     KeyBytes upperbound_key(*intent_key_prefix);
-    upperbound_key.AppendKeyEntryType(KeyEntryType::kMaxByte);
+    upperbound_key.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
     intent_key_upperbound_ = upperbound_key.AsSlice();
 
     size_t original_size = intent_key_prefix->size();
-    intent_key_prefix->AppendKeyEntryType(KeyEntryType::kIntentTypeSet);
+    intent_key_prefix->AppendKeyEntryType(dockv::KeyEntryType::kIntentTypeSet);
     // Have only weak intents, so could skip other weak intents.
     if (!HasStrong(type)) {
-      char value = 1 << kStrongIntentFlag;
+      char value = 1 << dockv::kStrongIntentFlag;
       intent_key_prefix->AppendRawBytes(&value, 1);
     }
     auto se = ScopeExit([this, intent_key_prefix, original_size] {
@@ -209,7 +215,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       // kObsoleteIntentType.
       // Actual handling of obsolete intent type is done in ParseIntentKey.
       if (existing_key.size() <= prefix_slice.size() ||
-          !IntentValueType(existing_key[prefix_slice.size()])) {
+          !dockv::IntentValueType(existing_key[prefix_slice.size()])) {
         break;
       }
 
@@ -221,11 +227,11 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
                                    << " has intent types " << ToString(existing_intent.types);
       const auto intent_mask = kIntentTypeSetMask[existing_intent.types.ToUIntPtr()];
       if ((conflicting_intent_types & intent_mask) != 0) {
-        auto decoded_value = VERIFY_RESULT(DecodeIntentValue(
+        auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
             existing_value, nullptr /* verify_transaction_id_slice */,
             HasStrong(existing_intent.types)));
         auto transaction_id = decoded_value.transaction_id;
-        bool lock_only = decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock);
+        bool lock_only = decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock);
         VLOG_WITH_PREFIX_AND_FUNC(4)
             << "Found conflict with exiting transaction: " << transaction_id
             << ", lock_only: " << lock_only
@@ -242,7 +248,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
 
           if (RecordLockInfo()) {
             auto doc_path = RefCntPrefix(existing_intent.doc_path);
-            RETURN_NOT_OK(RemoveGroupEndSuffix(&doc_path));
+            RETURN_NOT_OK(dockv::RemoveGroupEndSuffix(&doc_path));
             auto lock_it = subtxn_conflict_info.locks.emplace_back(
                 LockInfo {std::move(doc_path), existing_intent.types});
           }
@@ -653,8 +659,9 @@ class IntentProcessor {
         weak_intent_types_(StrongToWeak(strong_intent_types_))
   {}
 
-  void Process(IntentStrength strength, FullDocKey full_doc_key, KeyBytes* intent_key) {
-    const auto is_strong = strength == IntentStrength::kStrong;
+  void Process(
+      dockv::IntentStrength strength, dockv::FullDocKey full_doc_key, KeyBytes* intent_key) {
+    const auto is_strong = strength == dockv::IntentStrength::kStrong;
     const auto& intent_type_set = is_strong ? strong_intent_types_ : weak_intent_types_;
     auto i = container_.find(intent_key->data());
     if (i == container_.end()) {
@@ -715,7 +722,7 @@ class StrongConflictChecker {
 
   Status Check(
       const Slice& intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
-    const auto hash = VERIFY_RESULT(DecodeDocKeyHash(intent_key));
+    const auto hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(intent_key));
     if (PREDICT_FALSE(!value_iter_.Initialized() || hash != value_iter_hash_)) {
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,
@@ -943,7 +950,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     IntentTypesContainer container;
     IntentProcessor write_processor(
         &container,
-        GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kWrite, row_mark));
+        GetStrongIntentTypeSet(metadata_.isolation, dockv::OperationKind::kWrite, row_mark));
     for (const auto& doc_op : doc_ops()) {
       paths.clear();
       IsolationLevel ignored_isolation_level;
@@ -957,7 +964,7 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
             path.as_slice(),
             /* intent_value */ Slice(),
             [&write_processor](
-                auto strength, FullDocKey full_doc_key, auto, auto intent_key, auto) {
+                auto strength, dockv::FullDocKey full_doc_key, auto, auto intent_key, auto) {
               write_processor.Process(strength, full_doc_key, intent_key);
               return Status::OK();
             },
@@ -970,11 +977,11 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     if (!pairs.empty()) {
       IntentProcessor read_processor(
           &container,
-          GetStrongIntentTypeSet(metadata_.isolation, docdb::OperationKind::kRead, row_mark));
+          GetStrongIntentTypeSet(metadata_.isolation, dockv::OperationKind::kRead, row_mark));
       RETURN_NOT_OK(EnumerateIntents(
           pairs,
           [&read_processor] (
-              auto strength, FullDocKey full_doc_key, auto, auto intent_key, auto) {
+              auto strength, dockv::FullDocKey full_doc_key, auto, auto intent_key, auto) {
             read_processor.Process(strength, full_doc_key, intent_key);
             return Status::OK();
           },
@@ -1125,12 +1132,12 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 
     IntentTypeSet strong_intent_types;
 
-    EnumerateIntentsCallback callback = [&strong_intent_types, resolver](
-        IntentStrength intent_strength, FullDocKey full_doc_key, Slice,
-        KeyBytes* encoded_key_buffer, LastKey) {
+    dockv::EnumerateIntentsCallback callback = [&strong_intent_types, resolver](
+        dockv::IntentStrength intent_strength, dockv::FullDocKey full_doc_key, Slice,
+        KeyBytes* encoded_key_buffer, dockv::LastKey) {
       return resolver->ReadIntentConflicts(
-          intent_strength == IntentStrength::kStrong ? strong_intent_types
-                                                     : StrongToWeak(strong_intent_types),
+          intent_strength == dockv::IntentStrength::kStrong ? strong_intent_types
+                                                            : StrongToWeak(strong_intent_types),
           encoded_key_buffer);
     };
 
@@ -1139,7 +1146,7 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
       IsolationLevel isolation;
       RETURN_NOT_OK(doc_op->GetDocPaths(GetDocPathsMode::kIntents, &doc_paths, &isolation));
 
-      strong_intent_types = GetStrongIntentTypeSet(isolation, OperationKind::kWrite,
+      strong_intent_types = GetStrongIntentTypeSet(isolation, dockv::OperationKind::kWrite,
                                                    RowMarkType::ROW_MARK_ABSENT);
 
       for (const auto& doc_path : doc_paths) {
@@ -1288,9 +1295,9 @@ Result<ParsedIntent> ParseIntentKey(Slice intent_key, Slice transaction_id_sourc
   result.doc_path.remove_suffix(doc_ht_size + 3);
   auto intent_type_and_doc_ht = result.doc_path.end();
   if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentType) {
-    result.types = ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
+    result.types = dockv::ObsoleteIntentTypeToSet(intent_type_and_doc_ht[1]);
   } else if (intent_type_and_doc_ht[0] == KeyEntryTypeAsChar::kObsoleteIntentTypeSet) {
-    result.types = ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
+    result.types = dockv::ObsoleteIntentTypeSetToNew(intent_type_and_doc_ht[1]);
   } else {
     INTENT_KEY_SCHECK(intent_type_and_doc_ht[0], EQ, KeyEntryTypeAsChar::kIntentTypeSet,
         "intent type set type expected");

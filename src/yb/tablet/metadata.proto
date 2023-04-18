@@ -37,7 +37,7 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/common_types.proto";
-import "yb/docdb/docdb.proto";
+import "yb/dockv/dockv.proto";
 import "yb/tablet/tablet_types.proto";
 import "yb/util/opid.proto";
 
@@ -70,7 +70,7 @@ message TableInfoPB {
   // Deleted column IDs with timestamps so that memory can be cleaned up.
   repeated DeletedColumnPB deleted_cols = 9;
 
-  repeated docdb.SchemaPackingPB old_schema_packings = 11;
+  repeated dockv.SchemaPackingPB old_schema_packings = 11;
 
   // CDC WAL retention time in secs of the table.
   optional uint32 wal_retention_secs = 12;

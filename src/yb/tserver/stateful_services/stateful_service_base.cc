@@ -18,9 +18,11 @@
 #include "yb/consensus/consensus.h"
 #include "yb/gutil/bind.h"
 #include "yb/gutil/bind_helpers.h"
+#include "yb/master/master_defaults.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/logging.h"
+#include "yb/util/string_case.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::chrono_literals;
@@ -43,37 +45,42 @@ namespace stateful_service {
 #define LOG_TASK_IDLE_AND_RETURN_IF(condition, reason) \
   do { \
     if (condition) { \
-      VLOG(1) << name_ << " periodic task entering idle mode due to: " << reason; \
+      VLOG(1) << ServiceName() << " periodic task entering idle mode due to: " << reason; \
       return; \
     } \
   } while (0)
 
 #define LOG_TASK_IDLE_AND_RETURN_IF_SHUTDOWN LOG_TASK_IDLE_AND_RETURN_IF(shutdown_, "Shutdown")
 
-StatefulServiceBase::StatefulServiceBase(const StatefulServiceKind service_kind)
-    : name_(StatefulServiceKind_Name(service_kind) + "_Service"), service_kind_(service_kind) {}
+StatefulServiceBase::StatefulServiceBase(
+    const StatefulServiceKind service_kind,
+    const std::shared_future<client::YBClient*>& client_future)
+    : service_name_(StatefulServiceKind_Name(service_kind) + "_service"),
+      service_kind_(service_kind),
+      table_name_(GetStatefulServiceTableName(service_kind)),
+      client_future_(client_future) {}
 
 StatefulServiceBase::~StatefulServiceBase() {
-  LOG_IF(DFATAL, !shutdown_) << "Shutdown was not called for " << name_;
+  LOG_IF(DFATAL, !shutdown_) << "Shutdown was not called for " << ServiceName();
 }
 
 Status StatefulServiceBase::Init(tserver::TSTabletManager* ts_manager) {
   std::lock_guard lock(task_enqueue_mutex_);
-  auto thread_pool_builder = ThreadPoolBuilder(name_ + "PeriodicTask");
+  auto thread_pool_builder = ThreadPoolBuilder(ServiceName() + "PeriodicTask");
   thread_pool_builder.set_max_threads(1);
 
   RETURN_NOT_OK_PREPEND(
       thread_pool_builder.Build(&thread_pool_),
-      Format("Failed to create thread pool for $0", name_));
+      Format("Failed to create thread pool for $0", ServiceName()));
 
   thread_pool_token_ = thread_pool_->NewToken(ThreadPool::ExecutionMode::SERIAL);
 
   task_interval_ms_flag_callback_reg_ = VERIFY_RESULT(RegisterFlagUpdateCallback(
-      &FLAGS_stateful_service_periodic_task_interval_ms, name_,
+      &FLAGS_stateful_service_periodic_task_interval_ms, ServiceName(),
       [this]() { StartPeriodicTaskIfNeeded(); }));
 
   return ts_manager->RegisterServiceCallback(
-      service_kind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this)));
+      ServiceKind(), Bind(&StatefulServiceBase::RaftConfigChangeCallback, Unretained(this)));
 }
 
 void StatefulServiceBase::Shutdown() {
@@ -157,7 +164,7 @@ void StatefulServiceBase::DoDeactivate() {
     leader_term_ = OpId::kUnknownTerm;
   }
 
-  LOG(INFO) << "Deactivating " << name();
+  LOG(INFO) << "Deactivating " << ServiceName();
   Deactivate();
 }
 
@@ -194,7 +201,7 @@ void StatefulServiceBase::ActivateOrDeactivateServiceIfNeeded() {
   DoDeactivate();
 
   if (new_leader_term != OpId::kUnknownTerm) {
-    LOG(INFO) << "Activating " << name() << " on term " << new_leader_term;
+    LOG(INFO) << "Activating " << ServiceName() << " on term " << new_leader_term;
     Activate(new_leader_term);
 
     // Only after Activate completes we can set the leader_term_ and serve user requests.
@@ -212,7 +219,7 @@ int64_t StatefulServiceBase::WaitForLeaderLeaseAndGetTerm(TabletPeerPtr tablet_p
   const auto& tablet_id = tablet_peer->tablet_id();
   auto consensus = tablet_peer->shared_consensus();
   if (!consensus) {
-    VLOG(1) << name() << " Received notification of tablet leader change "
+    VLOG(1) << ServiceName() << " Received notification of tablet leader change "
             << "but tablet no longer running. Tablet ID: " << tablet_id;
     return OpId::kUnknownTerm;
   }
@@ -224,7 +231,8 @@ int64_t StatefulServiceBase::WaitForLeaderLeaseAndGetTerm(TabletPeerPtr tablet_p
   // IllegalState: We are not leader.
   if (leader_status.ok() || leader_status.IsLeaderHasNoLease() ||
       leader_status.IsLeaderNotReadyToServe()) {
-    VLOG_WITH_FUNC(1) << name() << " started waiting for leader lease of tablet " << tablet_id;
+    VLOG_WITH_FUNC(1) << ServiceName() << " started waiting for leader lease of tablet "
+                      << tablet_id;
     CoarseBackoffWaiter waiter(CoarseTimePoint::max(), 1s /* max_wait */, 100ms /* base_delay */);
     while (!shutdown_) {
       auto status =
@@ -238,25 +246,25 @@ int64_t StatefulServiceBase::WaitForLeaderLeaseAndGetTerm(TabletPeerPtr tablet_p
       if (status.ok()) {
         auto term = consensus->LeaderTerm();
         if (term != OpId::kUnknownTerm) {
-          VLOG_WITH_FUNC(1) << name() << " completed waiting for leader lease of tablet "
+          VLOG_WITH_FUNC(1) << ServiceName() << " completed waiting for leader lease of tablet "
                             << tablet_id << " with term " << term;
           return term;
         }
         // We either lost the lease or the leader changed. Go back to
         // WaitForLeaderLeaseImprecise to see which one it was.
       } else if (!status.IsTimedOut()) {
-        LOG_WITH_FUNC(WARNING) << name() << " failed waiting for leader lease of tablet "
+        LOG_WITH_FUNC(WARNING) << ServiceName() << " failed waiting for leader lease of tablet "
                                << tablet_id << ": " << status;
         return OpId::kUnknownTerm;
       }
 
-      YB_LOG_EVERY_N_SECS(INFO, 10)
-          << name() << " waiting for new leader of tablet " << tablet_id << " to acquire the lease";
+      YB_LOG_EVERY_N_SECS(INFO, 10) << ServiceName() << " waiting for new leader of tablet "
+                                    << tablet_id << " to acquire the lease";
     }
-    VLOG_WITH_FUNC(1) << name() << " completed waiting for leader lease of tablet " << tablet_id
-                      << " due to shutdown";
+    VLOG_WITH_FUNC(1) << ServiceName() << " completed waiting for leader lease of tablet "
+                      << tablet_id << " due to shutdown";
   } else {
-    VLOG_WITH_FUNC(1) << name() << " tablet " << tablet_id << " is a follower";
+    VLOG_WITH_FUNC(1) << ServiceName() << " tablet " << tablet_id << " is a follower";
   }
 
   return OpId::kUnknownTerm;
@@ -283,7 +291,7 @@ void StatefulServiceBase::StartPeriodicTaskIfNeeded() {
         std::bind(&StatefulServiceBase::ProcessTaskPeriodically, this));
     if (!s.ok()) {
       task_enqueued_ = false;
-      LOG(ERROR) << "Failed to schedule " << name_ << " periodic task :" << s;
+      LOG(ERROR) << "Failed to schedule " << ServiceName() << " periodic task :" << s;
     }
   }
 
@@ -313,7 +321,7 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
   auto further_computation_needed_result = RunPeriodicTask();
 
   if (!further_computation_needed_result.ok()) {
-    LOG_WITH_FUNC(WARNING) << name_ << " periodic task failed: "
+    LOG_WITH_FUNC(WARNING) << ServiceName() << " periodic task failed: "
                            << further_computation_needed_result.status();
   } else {
     LOG_TASK_IDLE_AND_RETURN_IF(!further_computation_needed_result.get(), "No more work left");
@@ -329,5 +337,22 @@ void StatefulServiceBase::ProcessTaskPeriodically() {
   StartPeriodicTaskIfNeeded();
 }
 
+Result<client::TableHandle*> StatefulServiceBase::GetServiceTable() {
+  std::lock_guard l(table_handle_mutex_);
+
+  if (!table_handle_) {
+    auto table = std::make_unique<client::TableHandle>();
+    RETURN_NOT_OK(table->Open(TableName(), GetYBClient()));
+    table_handle_.swap(table);
+  }
+
+  return table_handle_.get();
+}
+
+client::YBTableName GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
+  return client::YBTableName(
+      YQL_DATABASE_CQL, master::kSystemNamespaceName,
+      ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table");
+}
 }  // namespace stateful_service
 }  // namespace yb

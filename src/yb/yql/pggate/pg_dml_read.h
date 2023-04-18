@@ -145,14 +145,14 @@ class PgDmlRead : public PgDml {
   bool CanBuildYbctidsFromPrimaryBinds();
   Result<std::vector<std::string>> BuildYbctidsFromPrimaryBinds();
   Status SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec_params);
-  Result<docdb::DocKey> EncodeRowKeyForBound(
+  Result<dockv::DocKey> EncodeRowKeyForBound(
       YBCPgStatement handle, size_t n_col_values, PgExpr **col_values, bool for_lower_bound);
   Status MoveBoundKeyInOperator(PgColumn* col, const LWPgsqlConditionPB& in_operator);
   Result<LWQLValuePB*> GetBoundValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src) const;
-  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
+  Result<dockv::KeyEntryValue> BuildKeyColumnValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src, LWQLValuePB** dest);
-  Result<docdb::KeyEntryValue> BuildKeyColumnValue(
+  Result<dockv::KeyEntryValue> BuildKeyColumnValue(
       const PgColumn& col, const LWPgsqlExpressionPB& src);
 
   // Holds original doc_op_ object after call of the UpgradeDocOp method.

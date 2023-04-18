@@ -106,6 +106,7 @@
 #include <boost/preprocessor/seq/transform.hpp>
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
+#include <boost/ptr_container/ptr_vector.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
@@ -136,6 +137,7 @@
 #include <google/protobuf/map_field_inl.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/metadata.h>
+#include <google/protobuf/repeated_field.h>
 #include <google/protobuf/stubs/common.h>
 #include <google/protobuf/unknown_field_set.h>
 #include <google/protobuf/wire_format_lite.h>
@@ -165,6 +167,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/fastmem.h"
+#include "yb/gutil/strings/human_readable.h"
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
@@ -207,6 +210,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/logging_callback.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/math_util.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/memory/arena.h"
@@ -215,6 +219,7 @@
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/memory/memory_usage.h"
+#include "yb/util/memory/memory_usage_test_util.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/metrics.h"
 #include "yb/util/metrics_fwd.h"
@@ -249,6 +254,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/std_util.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -256,6 +262,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/tostring.h"
@@ -265,3 +272,4 @@
 #include "yb/util/ulimit.h"
 #include "yb/util/unique_lock.h"
 #include "yb/util/user.h"
+#include "yb/util/write_buffer.h"

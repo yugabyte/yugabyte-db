@@ -25,11 +25,11 @@
 #include "yb/consensus/raft_consensus.h"
 #include "yb/consensus/replicate_msgs_holder.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/master/master_defaults.h"
 
@@ -72,7 +72,7 @@ namespace cdc {
 using namespace std::chrono_literals;
 using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
-using docdb::PrimitiveValue;
+using dockv::PrimitiveValue;
 using tablet::TransactionParticipant;
 
 std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletMetadata(
@@ -96,13 +96,13 @@ std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletM
 }
 
 void AddColumnToMap(const ColumnSchema& col_schema,
-                    const docdb::KeyEntryValue& col,
+                    const dockv::KeyEntryValue& col,
                     cdc::KeyValuePairPB* kv_pair) {
   kv_pair->set_key(col_schema.name());
   col.ToQLValuePB(col_schema.type(), kv_pair->mutable_value());
 }
 
-void AddPrimaryKey(const docdb::SubDocKey& decoded_key,
+void AddPrimaryKey(const dockv::SubDocKey& decoded_key,
                    const Schema& tablet_schema,
                    CDCRecordPB* record) {
   size_t i = 0;
@@ -356,11 +356,11 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
     const auto key_size = VERIFY_RESULT(
-        docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::kWholeDocKey));
+        dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
 
     Slice value_slice = write_pair.value();
-    RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
-    auto value_type = docdb::DecodeValueEntryType(value_slice);
+    RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
+    auto value_type = dockv::DecodeValueEntryType(value_slice);
 
     // Compare key hash with previously seen key hash to determine whether the write pair
     // is part of the same row or not.
@@ -369,8 +369,8 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       record = resp->add_records();
       Slice sub_doc_key = key;
-      docdb::SubDocKey decoded_key;
-      RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
+      dockv::SubDocKey decoded_key;
+      RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
 
       if (metadata.record_format == CDCRecordFormat::WAL) {
         // For xCluster, populate serialized data from WAL, to avoid unnecessary deserializing on
@@ -379,7 +379,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
         if (decoded_key.doc_key().has_hash()) {
           // TODO: is there another way of getting this? Perhaps using kUpToHashOrFirstRange?
           kv_pair->set_key(
-              PartitionSchema::EncodeMultiColumnHashValue(decoded_key.doc_key().hash()));
+              dockv::PartitionSchema::EncodeMultiColumnHashValue(decoded_key.doc_key().hash()));
         } else {
           kv_pair->set_key(decoded_key.doc_key().Encode().ToStringBuffer());
         }
@@ -389,7 +389,7 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       }
 
       // Check whether operation is WRITE or DELETE.
-      if (value_type == docdb::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
+      if (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         record->set_operation(CDCRecordPB::DELETE);
       } else {
         record->set_operation(CDCRecordPB::WRITE);
@@ -420,16 +420,16 @@ Status PopulateWriteRecord(const ReplicateMsgPtr& msg,
       kv_pair->set_key(write_pair.key().ToBuffer());
       kv_pair->mutable_value()->set_binary_value(write_pair.value().ToBuffer());
     } else if (record->operation() == CDCRecordPB_OperationType_WRITE) {
-      docdb::KeyEntryValue column_id;
+      dockv::KeyEntryValue column_id;
       Slice key_column = write_pair.key().WithoutPrefix(key_size);
       RETURN_NOT_OK(column_id.DecodeFromKey(&key_column));
-      if (column_id.type() == docdb::KeyEntryType::kColumnId) {
-        docdb::Value decoded_value;
+      if (column_id.type() == dockv::KeyEntryType::kColumnId) {
+        dockv::Value decoded_value;
         RETURN_NOT_OK(decoded_value.Decode(write_pair.value()));
 
         const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
         AddColumnToMap(col, decoded_value.primitive_value(), record->add_changes());
-      } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
+      } else if (column_id.type() != dockv::KeyEntryType::kSystemColumnId) {
         LOG(DFATAL) << "Unexpected value type in key: " << column_id.type();
       }
     }

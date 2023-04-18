@@ -1,4 +1,4 @@
-import React, { FC, useRef } from 'react';
+import React, { FC, useEffect, useRef } from 'react';
 import { useQuery } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
@@ -84,7 +84,10 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const provider = useWatch({ name: PROVIDER_FIELD });
 
   //fetch run time configs
-  const { data: providerRuntimeConfigs } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
+  const {
+    data: providerRuntimeConfigs,
+    refetch: providerConfigsRefetch
+  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
     api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
@@ -100,18 +103,27 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
 
   //update volume info after istance changes
-  useUpdateEffect(() => {
+  useEffect(() => {
     if (!instance) return;
-    let deviceInfo = getDeviceInfoFromInstance(instance, providerRuntimeConfigs);
+    const getProviderRuntimeConfigs = async () => {
+      const providerRuntimeConfigsRefetch = await providerConfigsRefetch();
+      let deviceInfo = getDeviceInfoFromInstance(
+        instance,
+        providerRuntimeConfigsRefetch.isError
+          ? providerRuntimeConfigs
+          : providerRuntimeConfigsRefetch.data
+      );
 
-    //retain old volume size if its edit mode or not ephemeral storage
-    if (fieldValue && deviceInfo && !isEphemeralAwsStorageInstance(instance) && isEditMode) {
-      deviceInfo.volumeSize = fieldValue.volumeSize;
-      deviceInfo.numVolumes = fieldValue.numVolumes;
-    }
+      //retain old volume size if its edit mode or not ephemeral storage
+      if (fieldValue && deviceInfo && !isEphemeralAwsStorageInstance(instance) && isEditMode) {
+        deviceInfo.volumeSize = fieldValue.volumeSize;
+        deviceInfo.numVolumes = fieldValue.numVolumes;
+      }
 
-    setValue(UPDATE_FIELD, deviceInfo ?? null);
-  }, [instanceType]);
+      setValue(UPDATE_FIELD, deviceInfo ?? null);
+    };
+    getProviderRuntimeConfigs();
+  }, [instanceType, provider?.uuid]);
 
   //mark instance changed once only in edit mode
   useUpdateEffect(() => {

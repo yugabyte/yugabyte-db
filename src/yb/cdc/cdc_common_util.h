@@ -26,9 +26,9 @@
 #include "yb/consensus/replicate_msgs_holder.h"
 
 #include "yb/docdb/docdb.h"
-#include "yb/docdb/primitive_value.h"
+#include "yb/dockv/primitive_value.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"
@@ -62,7 +62,7 @@ void AddColumnToMap(
 
 void AddProtoRecordColumnToMap(
     const ColumnSchema &col_schema,
-    const docdb::PrimitiveValue &col,
+    const dockv::PrimitiveValue &col,
     cdc::KeyValuePairPB *kv_pair,
     bool is_proto_record,
     DatumMessagePB *cdc_datum_message = nullptr);

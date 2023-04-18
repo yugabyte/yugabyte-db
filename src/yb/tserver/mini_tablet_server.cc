@@ -40,7 +40,7 @@
 #include <glog/logging.h>
 
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.pb.h"
@@ -310,7 +310,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
                                        TableType table_type) {
   CHECK(started_) << "Must Start()";
   Schema schema_with_ids = SchemaBuilder(schema).Build();
-  pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(schema_with_ids);
+  auto partition = tablet::CreateDefaultPartition(schema_with_ids);
 
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,

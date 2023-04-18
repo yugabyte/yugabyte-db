@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <time.h>
@@ -60,8 +61,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/asio/ip/address.hpp>
 #include <boost/asio/ip/address_v4.hpp>
@@ -78,14 +81,17 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
+#include <boost/lexical_cast.hpp>
 #include <boost/lockfree/queue.hpp>
 #include <boost/mpl/and.hpp>
 #include <boost/mpl/if.hpp>
 #include <boost/multi_index/hashed_index.hpp>
 #include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/member.hpp>
+#include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/optional.hpp>
 #include <boost/optional/optional.hpp>
@@ -146,6 +152,7 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
+#include "yb/gutil/map-util.h"
 #include "yb/gutil/mathlimits.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/port.h"
@@ -181,6 +188,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/clone_ptr.h"
 #include "yb/util/coding_consts.h"
+#include "yb/util/col_group.h"
 #include "yb/util/compare_util.h"
 #include "yb/util/concurrent_pod.h"
 #include "yb/util/condition_variable.h"
@@ -244,9 +252,12 @@
 #include "yb/util/rw_semaphore.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
+#include "yb/util/stack_trace.h"
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 #include "yb/util/status_ec.h"
@@ -260,6 +271,8 @@
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/strongly_typed_string.h"
 #include "yb/util/strongly_typed_uuid.h"
+#include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
@@ -271,4 +284,5 @@
 #include "yb/util/uuid.h"
 #include "yb/util/varint.h"
 #include "yb/util/web_callback_registry.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"

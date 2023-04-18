@@ -288,7 +288,6 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetUDTypeMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetTableSchemaFromSysCatalog);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerSplit);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterEstimatedDataLoss);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 
 YBClient::Data::Data()
@@ -490,12 +489,11 @@ Status YBClient::Data::CreateTable(YBClient* client,
       // The partition schema in the request can be empty.
       // If there are user partition schema in the request - compare it with the received one.
       if (req.partition_schema().hash_bucket_schemas_size() > 0) {
-        PartitionSchema partition_schema;
+        dockv::PartitionSchema partition_schema;
         // We need to use the schema received from the server, because the user-constructed
         // schema might not have column ids.
-        RETURN_NOT_OK(PartitionSchema::FromPB(req.partition_schema(),
-                                              internal::GetSchema(info.schema),
-                                              &partition_schema));
+        RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+            req.partition_schema(), internal::GetSchema(info.schema), &partition_schema));
         if (!partition_schema.Equals(info.partition_schema)) {
           string msg = Substitute("Table $0 already exists with a different partition schema. "
               "Requested partition schema was: $1, actual partition schema is: $2",
@@ -1311,9 +1309,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   info->schema.set_version(resp.version());
   info->schema.set_is_compatible_with_previous_version(
       resp.is_compatible_with_previous_version());
-  RETURN_NOT_OK(PartitionSchema::FromPB(resp.partition_schema(),
-                                        internal::GetSchema(&info->schema),
-                                        &info->partition_schema));
+  RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+      resp.partition_schema(), internal::GetSchema(&info->schema), &info->partition_schema));
 
   info->table_name.GetFromTableIdentifierPB(resp.identifier());
   info->table_id = resp.identifier().table_id();

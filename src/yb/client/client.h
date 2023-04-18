@@ -56,6 +56,8 @@
 #include "yb/common/retryable_request.h"
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
@@ -311,7 +313,7 @@ class YBClient {
 
   Status GetTableSchema(const YBTableName& table_name,
                         YBSchema* schema,
-                        PartitionSchema* partition_schema);
+                        dockv::PartitionSchema* partition_schema);
   Status GetYBTableInfo(const YBTableName& table_name, std::shared_ptr<YBTableInfo> info,
                         StatusCallback callback);
   Result<YBTableInfo> GetYBTableInfo(const YBTableName& table_name);

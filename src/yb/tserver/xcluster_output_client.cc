@@ -27,7 +27,7 @@
 #include "yb/client/meta_cache.h"
 #include "yb/client/table.h"
 #include "yb/client/transaction.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 
 #include "yb/gutil/strings/join.h"
@@ -557,7 +557,7 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
     const cdc::CDCRecordPB& record) {
   cdc::XClusterSchemaVersionMap* cached_schema_versions = nullptr;
   auto& kv_pair = record.changes(0);
-  auto decoder = docdb::DocKeyDecoder(kv_pair.key());
+  auto decoder = dockv::DocKeyDecoder(kv_pair.key());
   ColocationId colocationId = kColocationIdNotSet;
   if (VERIFY_RESULT(decoder.DecodeColocationId(&colocationId))) {
     // Can't find the table, so we most likely need an update

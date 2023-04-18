@@ -19,6 +19,8 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/dockv/dockv_fwd.h"
+
 #include "yb/master/master_fwd.h"
 
 #include "yb/util/locks.h"
@@ -83,7 +85,7 @@ class YBTable : public std::enable_shared_from_this<YBTable> {
 
   const YBSchema& schema() const;
   const Schema& InternalSchema() const;
-  const PartitionSchema& partition_schema() const;
+  const dockv::PartitionSchema& partition_schema() const;
   bool IsHashPartitioned() const;
   bool IsRangePartitioned() const;
 

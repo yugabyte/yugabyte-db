@@ -19,7 +19,7 @@
 //
 
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/tablet/kv_formatter.h"
 

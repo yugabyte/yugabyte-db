@@ -532,8 +532,8 @@ Status TabletServer::RegisterServices() {
       FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
-    auto test_echo_service =
-        std::make_shared<stateful_service::TestEchoService>(permanent_uuid(), metric_entity());
+    auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
+        permanent_uuid(), metric_entity(), client_future());
     LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
               << test_echo_service.get();
     RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
@@ -542,7 +542,7 @@ Status TabletServer::RegisterServices() {
   }
 
   auto pg_auto_analyze_service =
-      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity());
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future());
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));

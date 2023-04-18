@@ -15,14 +15,14 @@
 
 #include <boost/algorithm/string/join.hpp>
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -95,7 +95,7 @@ boost::optional<docdb::DocKeyHash> PartitionKeyToHash(const std::string& partiti
   if (partition_key.empty()) {
     return boost::none;
   } else {
-    return PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    return dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
   }
 }
 
@@ -129,7 +129,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
 
   VLOG(1) << "Source tablet:" << std::endl
           << docdb::DocDBDebugDumpToStr(
-                 tablet()->doc_db(), docdb::SchemaPackingStorage(tablet()->table_type()),
+                 tablet()->doc_db(), dockv::SchemaPackingStorage(tablet()->table_type()),
                  docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
@@ -143,7 +143,7 @@ TEST_F(TabletSplitTest, SplitTablet) {
 
   std::vector<TabletPtr> split_tablets;
 
-  std::shared_ptr<Partition> partition = tablet()->metadata()->partition();
+  std::shared_ptr<dockv::Partition> partition = tablet()->metadata()->partition();
   docdb::KeyBounds key_bounds;
   for (auto i = 1; i <= kNumSplits + 1; ++i) {
     const auto subtablet_id = Format("$0-sub-$1", tablet()->tablet_id(), yb::ToString(i));
@@ -153,10 +153,11 @@ TEST_F(TabletSplitTest, SplitTablet) {
       const docdb::DocKeyHash split_hash_code =
           min_hash_code + i * static_cast<uint32>(max_hash_code - min_hash_code) / kNumSplits;
       LOG(INFO) << "Split hash code: " << split_hash_code;
-      const auto partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
-      docdb::KeyBytes encoded_doc_key;
-      docdb::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
-          split_hash_code, std::vector<docdb::KeyEntryValue>());
+      const auto partition_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(
+          split_hash_code);
+      dockv::KeyBytes encoded_doc_key;
+      dockv::DocKeyEncoderAfterTableIdStep(&encoded_doc_key).Hash(
+          split_hash_code, dockv::KeyEntryValues());
       partition->set_partition_key_end(partition_key);
       key_bounds.upper = encoded_doc_key;
     } else {

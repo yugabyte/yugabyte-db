@@ -98,11 +98,12 @@ using std::string;
 
 using strings::Substitute;
 
-using yb::util::DereferencedEqual;
-using yb::util::MapsEqual;
-
 namespace yb {
 namespace tablet {
+
+using dockv::Partition;
+using util::DereferencedEqual;
+using util::MapsEqual;
 
 namespace {
 
@@ -142,7 +143,7 @@ TableInfo::TableInfo(const std::string& tablet_log_prefix,
                      const IndexMap& index_map,
                      const boost::optional<IndexInfo>& index_info,
                      const SchemaVersion schema_version,
-                     PartitionSchema partition_schema)
+                     dockv::PartitionSchema partition_schema)
     : table_id(std::move(table_id_)),
       namespace_name(std::move(namespace_name)),
       table_name(std::move(table_name)),
@@ -226,7 +227,7 @@ Status TableInfo::DoLoadFromPB(Primary primary, const TableInfoPB& pb) {
     wal_retention_secs = pb.wal_retention_secs();
   }
 
-  RETURN_NOT_OK(PartitionSchema::FromPB(pb.partition_schema(), schema(), &partition_schema));
+  RETURN_NOT_OK(dockv::PartitionSchema::FromPB(pb.partition_schema(), schema(), &partition_schema));
 
   for (const DeletedColumnPB& deleted_col : pb.deleted_cols()) {
     DeletedColumn col;
@@ -244,7 +245,7 @@ Result<SchemaVersion> TableInfo::GetSchemaPackingVersion(
 }
 
 Status TableInfo::MergeSchemaPackings(
-    const TableInfoPB& pb, docdb::OverwriteSchemaPacking overwrite) {
+    const TableInfoPB& pb, dockv::OverwriteSchemaPacking overwrite) {
   // If we are merging in the case of an out of cluster restore,
   // the schema version should already have been incremented to
   // match the snapshot.
@@ -258,7 +259,7 @@ Status TableInfo::MergeSchemaPackings(
   RETURN_NOT_OK(doc_read_context->MergeWithRestored(pb, overwrite));
   // After the merge, the latest packing should be in sync with
   // the latest schema.
-  const docdb::SchemaPacking& latest_packing = VERIFY_RESULT(
+  const dockv::SchemaPacking& latest_packing = VERIFY_RESULT(
       doc_read_context->schema_packing_storage.GetPacking(schema_version));
   LOG_IF_WITH_PREFIX(DFATAL,
                      !latest_packing.SchemaContainsPacking(table_type, doc_read_context->schema))
@@ -387,7 +388,7 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
 
 Status KvStoreInfo::MergeWithRestored(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
-    docdb::OverwriteSchemaPacking overwrite) {
+    dockv::OverwriteSchemaPacking overwrite) {
   lower_bound_key = snapshot_kvstoreinfo.lower_bound_key();
   upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
   has_been_fully_compacted = snapshot_kvstoreinfo.has_been_fully_compacted();
@@ -397,7 +398,7 @@ Status KvStoreInfo::MergeWithRestored(
 
 Status KvStoreInfo::MergeTableSchemaPackings(
     const KvStoreInfoPB& snapshot_kvstoreinfo, const TableId& primary_table_id, bool colocated,
-    docdb::OverwriteSchemaPacking overwrite) {
+    dockv::OverwriteSchemaPacking overwrite) {
   if (!colocated) {
     SCHECK(
         snapshot_kvstoreinfo.tables_size() == 1 && tables.size() == 1, Corruption,
@@ -992,7 +993,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
 }
 
 Status RaftGroupMetadata::MergeWithRestored(
-    const std::string& path, docdb::OverwriteSchemaPacking overwrite) {
+    const std::string& path, dockv::OverwriteSchemaPacking overwrite) {
   RaftGroupReplicaSuperBlockPB snapshot_superblock;
   RETURN_NOT_OK(ReadSuperBlockFromDisk(&snapshot_superblock, path));
   std::lock_guard<MutexType> lock(data_mutex_);
@@ -1154,7 +1155,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
   OnChangeMetadataOperationAppliedUnlocked(op_id);
 }
 
-void RaftGroupMetadata::SetPartitionSchema(const PartitionSchema& partition_schema) {
+void RaftGroupMetadata::SetPartitionSchema(const dockv::PartitionSchema& partition_schema) {
   std::lock_guard<MutexType> lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto it = tables.find(primary_table_id_);
@@ -1198,7 +1199,7 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
                                  const TableType table_type,
                                  const Schema& schema,
                                  const IndexMap& index_map,
-                                 const PartitionSchema& partition_schema,
+                                 const dockv::PartitionSchema& partition_schema,
                                  const boost::optional<IndexInfo>& index_info,
                                  const SchemaVersion schema_version,
                                  const OpId& op_id) {

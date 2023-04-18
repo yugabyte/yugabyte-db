@@ -16,7 +16,7 @@
 #include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/docdb/doc_expr.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
@@ -68,7 +68,7 @@ class PgsqlWriteOperation :
       ReadHybridTime read_time);
   Result<HybridTime> FindOldestOverwrittenTimestamp(
       IntentAwareIterator* iter,
-      const SubDocKey& sub_doc_key,
+      const dockv::SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
   // Execute write.
@@ -89,7 +89,7 @@ class PgsqlWriteOperation :
   Status ApplyTruncateColocated(const DocOperationApplyData& data);
   Status ApplyFetchSequence(const DocOperationApplyData& data);
 
-  Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+  Status DeleteRow(const dockv::DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   // Reading current row before operating on it.
@@ -125,7 +125,7 @@ class PgsqlWriteOperation :
   // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
 
   // Doc key and encoded doc key for the primary key.
-  boost::optional<DocKey> doc_key_;
+  boost::optional<dockv::DocKey> doc_key_;
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.

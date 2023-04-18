@@ -17,7 +17,7 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
 
@@ -28,7 +28,7 @@ struct YBTableInfo {
   YBTableName table_name;
   std::string table_id;
   YBSchema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   IndexMap index_map;
   boost::optional<IndexInfo> index_info;
   YBTableType table_type;

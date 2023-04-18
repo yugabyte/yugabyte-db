@@ -50,7 +50,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/algorithm.h"
 
@@ -147,7 +147,7 @@ class MasterReplicationTest : public YBMiniClusterTestBase<MiniCluster> {
     std::unique_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema)
-        .hash_schema(YBHashSchema::kMultiColumnHash)
+        .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
         .Create();
   }
 

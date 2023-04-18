@@ -740,7 +740,7 @@ TSTabletManager::StartTabletStateTransitionForCreation(const TabletId& tablet_id
 Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const tablet::TableInfoPtr& table_info,
     const string& tablet_id,
-    const Partition& partition,
+    const dockv::Partition& partition,
     RaftConfigPB config,
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
@@ -805,7 +805,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
 struct TabletCreationMetaData {
   TabletId tablet_id;
   scoped_refptr<TransitionInProgressDeleter> transition_deleter;
-  Partition partition;
+  dockv::Partition partition;
   docdb::KeyBounds key_bounds;
   RaftGroupMetadataPtr raft_group_metadata;
 };
@@ -820,7 +820,7 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   const auto& split_partition_key = request.split_partition_key();
   const auto& split_encoded_key = request.split_encoded_key();
 
-  std::shared_ptr<Partition> source_partition = tablet.metadata()->partition();
+  auto source_partition = tablet.metadata()->partition();
   const auto source_key_bounds = *tablet.doc_db().key_bounds;
 
   {

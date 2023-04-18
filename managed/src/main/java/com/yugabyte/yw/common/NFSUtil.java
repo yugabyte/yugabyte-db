@@ -2,11 +2,18 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.google.inject.Singleton;
+import com.google.inject.Inject;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.Universe;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -19,6 +26,8 @@ public class NFSUtil implements StorageUtil {
 
   public static final String DEFAULT_YUGABYTE_NFS_BUCKET = "yugabyte_backup";
   private static final String YBC_NFS_DIR_FIELDNAME = "YBC_NFS_DIR";
+
+  @Inject NodeUniverseManager nodeUniverseManager;
 
   @Override
   // storageLocation parameter is unused here.
@@ -74,11 +83,33 @@ public class NFSUtil implements StorageUtil {
     return regionLocationsMap;
   }
 
+  public void validateDirectory(CustomerConfigData customerConfigData, Universe universe) {
+    for (NodeDetails node : universe.getTServersInPrimaryCluster()) {
+      String backupDirectory = ((CustomerConfigStorageNFSData) customerConfigData).backupLocation;
+      if (!backupDirectory.endsWith("/")) {
+        backupDirectory += "/";
+      }
+      if (!nodeUniverseManager.isDirectoryWritable(backupDirectory, node, universe)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "NFS Storage Config Location: "
+                + backupDirectory
+                + " is not writable in Node: "
+                + node.getNodeName());
+      }
+    }
+  }
+
   private String getNfsLocationString(String backupLocation, String bucket, String configLocation) {
     String location =
         StringUtils.removeStart(
             backupLocation, BackupUtil.getCloudpathWithConfigSuffix(configLocation, bucket));
     location = StringUtils.removeStart(location, "/");
     return location;
+  }
+
+  @Override
+  public void validateStorageConfigOnUniverse(CustomerConfig config, Universe universe) {
+    validateDirectory(config.getDataObject(), universe);
   }
 }

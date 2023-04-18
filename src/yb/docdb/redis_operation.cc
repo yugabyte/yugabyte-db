@@ -16,14 +16,14 @@
 #include "yb/common/value.pb.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_reader_redis.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/doc_write_batch_cache.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/subdocument.h"
+#include "yb/dockv/subdocument.h"
 
 #include "yb/server/hybrid_clock.h"
 
@@ -45,6 +45,17 @@ DEFINE_UNKNOWN_bool(emulate_redis_responses,
 
 namespace yb {
 namespace docdb {
+
+using dockv::DocKey;
+using dockv::DocPath;
+using dockv::Expiration;
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryValue;
+using dockv::SubDocKey;
+using dockv::SubDocument;
+using dockv::ValueControlFields;
+using dockv::ValueEntryType;
 
 // A simple conversion from RedisDataTypes to ValueTypes
 // Note: May run into issues if we want to support ttl on individual set elements,
@@ -258,7 +269,7 @@ Result<RedisValue> GetRedisValue(
     return RedisValue{.type = REDIS_TYPE_NONE, .value = "", .exp = {}};
   }
 
-  if (HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iterator->read_time().read)) {
+  if (dockv::HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iterator->read_time().read)) {
     return RedisValue{.type = REDIS_TYPE_NONE, .value = "", .exp = {}};
   }
 
@@ -313,8 +324,8 @@ bool VerifyTypeAndSetCode(
 }
 
 bool VerifyTypeAndSetCode(
-    const docdb::ValueEntryType expected_type,
-    const docdb::ValueEntryType actual_type,
+    const dockv::ValueEntryType expected_type,
+    const dockv::ValueEntryType actual_type,
     RedisResponsePB *response) {
   if (actual_type != expected_type) {
     response->set_code(RedisResponsePB::WRONG_TYPE);
@@ -325,7 +336,7 @@ bool VerifyTypeAndSetCode(
   return true;
 }
 
-Status AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
+Status AddPrimitiveValueToResponseArray(const dockv::PrimitiveValue& value,
                                         RedisArrayPB* redis_array) {
   switch (value.value_type()) {
     case ValueEntryType::kCollString:
@@ -637,7 +648,7 @@ Status RedisWriteOperation::ApplySet(const DocOperationApplyData& data) {
         ValueRef value_ref(kv_entries);
         if (kv.type() == REDIS_TYPE_TIMESERIES) {
           value_ref.set_custom_value_type(ValueEntryType::kRedisTS);
-          value_ref.set_list_extend_order(ListExtendOrder::PREPEND);
+          value_ref.set_list_extend_order(dockv::ListExtendOrder::PREPEND);
         }
 
         if (data_type == REDIS_TYPE_NONE && kv.type() == REDIS_TYPE_TIMESERIES) {
@@ -1005,7 +1016,7 @@ Status RedisWriteOperation::ApplyDel(const DocOperationApplyData& data) {
       if (data_type == REDIS_TYPE_NONE) {
         return Status::OK();
       }
-      value_ref.set_list_extend_order(ListExtendOrder::PREPEND);
+      value_ref.set_list_extend_order(dockv::ListExtendOrder::PREPEND);
       value_ref.set_write_instruction(bfql::TSOpcode::kSetRemove);
       for (int i = 0; i < kv.subkey_size(); i++) {
         RETURN_NOT_OK(QLValueFromSubKeyStrict(
@@ -1237,7 +1248,7 @@ Status RedisWriteOperation::ApplyPush(const DocOperationApplyData& data) {
 
   ValueRef value_ref(list);
   if (request_.push_request().side() == REDIS_SIDE_LEFT) {
-    value_ref.set_list_extend_order(ListExtendOrder::PREPEND);
+    value_ref.set_list_extend_order(dockv::ListExtendOrder::PREPEND);
   }
   value_ref.set_custom_value_type(ValueEntryType::kRedisList);
   if (data_type == REDIS_TYPE_NONE) {
@@ -1707,14 +1718,14 @@ namespace {
 Result<boost::optional<Expiration>> GetTtl(
     const Slice& encoded_subdoc_key, IntentAwareIterator* iter) {
   auto dockey_size =
-    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, DocKeyPart::kWholeDocKey));
+    VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, dockv::DocKeyPart::kWholeDocKey));
   Slice key_slice(encoded_subdoc_key.data(), dockey_size);
   iter->Seek(key_slice);
   if (iter->IsOutOfRecords())
     return boost::none;
   auto key_data = VERIFY_RESULT(iter->FetchKey());
   if (!key_data.key.compare(key_slice)) {
-    Value doc_value = Value(PrimitiveValue(ValueEntryType::kInvalid));
+    dockv::Value doc_value{dockv::PrimitiveValue(ValueEntryType::kInvalid)};
     RETURN_NOT_OK(doc_value.Decode(iter->value()));
     if (doc_value.value_type() != ValueEntryType::kTombstone) {
       return Expiration(VERIFY_RESULT(key_data.write_time.Decode()).hybrid_time(), doc_value.ttl());

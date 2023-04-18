@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/rocksdb/sst_dump_tool.h"
 
@@ -27,7 +27,7 @@ class KVFormatter : public rocksdb::DocDBKVFormatter {
   Status ProcessArgument(const std::string& argument) override;
 
  private:
-  docdb::SchemaPackingStorage schema_packing_storage_{TableType::YQL_TABLE_TYPE};
+  dockv::SchemaPackingStorage schema_packing_storage_{TableType::YQL_TABLE_TYPE};
 };
 
 } // namespace yb::tablet
