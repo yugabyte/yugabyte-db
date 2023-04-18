@@ -15,12 +15,12 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/casts.h"
 
@@ -51,7 +51,7 @@ Status PgTableDesc::Init() {
   if (resp_.has_tablegroup_id()) {
     tablegroup_oid_ = VERIFY_RESULT(GetPgsqlTablegroupOid(resp_.tablegroup_id()));
   }
-  return PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
+  return dockv::PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
 
 Result<size_t> PgTableDesc::FindColumn(int attr_num) const {
@@ -157,8 +157,8 @@ Result<string> PgTableDesc::DecodeYbctid(const Slice& ybctid) const {
 
   // Decoding using hash partitioning method.
   // Do not check with predicate IsHashPartitioning() for now to use existing behavior by default.
-  uint16 hash_code = VERIFY_RESULT(docdb::DocKey::DecodeHash(ybctid));
-  return PartitionSchema::EncodeMultiColumnHashValue(hash_code);
+  uint16 hash_code = VERIFY_RESULT(dockv::DocKey::DecodeHash(ybctid));
+  return dockv::PartitionSchema::EncodeMultiColumnHashValue(hash_code);
 }
 
 Result<size_t> PgTableDesc::FindPartitionIndex(const Slice& ybctid) const {
@@ -235,7 +235,7 @@ size_t PgTableDesc::num_columns() const {
   return schema().num_columns();
 }
 
-const PartitionSchema& PgTableDesc::partition_schema() const {
+const dockv::PartitionSchema& PgTableDesc::partition_schema() const {
   return partition_schema_;
 }
 

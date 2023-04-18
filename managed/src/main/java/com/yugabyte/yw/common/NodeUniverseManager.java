@@ -136,6 +136,24 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   /**
+   * Runs a script on the node to test if the given directory is writable
+   *
+   * @param directoryPath Full directory path ending in '/'
+   * @param node Node on which to test the directory
+   * @param universe Universe in which the node exists
+   * @return Whether the given directory can be written to.
+   */
+  public boolean isDirectoryWritable(String directoryPath, NodeDetails node, Universe universe) {
+    List<String> actionArgs = new ArrayList<>();
+    actionArgs.add("--test_directory");
+    actionArgs.add(directoryPath);
+    return executeNodeAction(
+            UniverseNodeAction.TEST_DIRECTORY, universe, node, actionArgs, DEFAULT_CONTEXT)
+        .getMessage()
+        .equals("Directory is writable");
+  }
+
+  /**
    * Runs a local script with parameters passed in a list
    *
    * @param node
@@ -414,6 +432,7 @@ public class NodeUniverseManager extends DevopsBase {
     RUN_SCRIPT,
     DOWNLOAD_LOGS,
     DOWNLOAD_FILE,
-    UPLOAD_FILE
+    UPLOAD_FILE,
+    TEST_DIRECTORY
   }
 }

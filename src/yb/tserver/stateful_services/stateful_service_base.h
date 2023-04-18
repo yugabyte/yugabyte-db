@@ -13,13 +13,16 @@
 
 #pragma once
 
-#include <string>
 #include <atomic>
+#include <string>
+#include "yb/client/client_fwd.h"
+#include "yb/client/table_handle.h"
+#include "yb/client/yb_table_name.h"
+#include "yb/common/wire_protocol.h"
+#include "yb/rpc/rpc_context.h"
 #include "yb/tablet/metadata.pb.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/result.h"
-#include "yb/rpc/rpc_context.h"
-#include "yb/common/wire_protocol.h"
 
 namespace yb {
 
@@ -48,7 +51,9 @@ namespace stateful_service {
 
 class StatefulServiceBase {
  public:
-  explicit StatefulServiceBase(const StatefulServiceKind service_kind);
+  explicit StatefulServiceBase(
+      const StatefulServiceKind service_kind,
+      const std::shared_future<client::YBClient*>& client_future);
 
   virtual ~StatefulServiceBase();
 
@@ -58,9 +63,11 @@ class StatefulServiceBase {
 
   void RaftConfigChangeCallback(tablet::TabletPeerPtr peer) EXCLUDES(service_state_mutex_);
 
-  const std::string& name() const { return name_; }
+  const std::string& ServiceName() const { return service_name_; }
 
-  StatefulServiceKind service_kind() const { return service_kind_; }
+  StatefulServiceKind ServiceKind() const { return service_kind_; }
+
+  const client::YBTableName& TableName() const { return table_name_; }
 
   bool IsActive() const EXCLUDES(service_state_mutex_);
 
@@ -98,7 +105,7 @@ class StatefulServiceBase {
 
     // Term should still be valid after the method_impl() call.
     if (term == OpId::kUnknownTerm || term != GetLeaderTerm()) {
-      status = STATUS(ServiceUnavailable, Format(name() + " is not active on this server"));
+      status = STATUS(ServiceUnavailable, Format(ServiceName() + " is not active on this server"));
     }
 
     if (!status.ok()) {
@@ -108,13 +115,17 @@ class StatefulServiceBase {
     rpc->RespondSuccess();
   }
 
+  std::shared_ptr<client::YBSession> GetYBSession() { return GetYBClient()->NewSession(); }
+  Result<client::TableHandle*> GetServiceTable() EXCLUDES(table_handle_mutex_);
+
  private:
   void ProcessTaskPeriodically() EXCLUDES(service_state_mutex_);
   void ActivateOrDeactivateServiceIfNeeded() EXCLUDES(service_state_mutex_);
   int64_t WaitForLeaderLeaseAndGetTerm(tablet::TabletPeerPtr tablet_peer);
   void DoDeactivate();
+  client::YBClient* GetYBClient() { return client_future_.get(); }
 
-  const std::string name_;
+  const std::string service_name_;
   const StatefulServiceKind service_kind_;
 
   std::atomic_bool shutdown_ = false;
@@ -131,6 +142,31 @@ class StatefulServiceBase {
   std::unique_ptr<ThreadPoolToken> thread_pool_token_;
 
   FlagCallbackRegistration task_interval_ms_flag_callback_reg_;
+
+  const client::YBTableName table_name_;
+  const std::shared_future<client::YBClient*>& client_future_;
+  std::mutex table_handle_mutex_;
+  std::unique_ptr<client::TableHandle> table_handle_ GUARDED_BY(table_handle_mutex_);
+
+  DISALLOW_COPY_AND_ASSIGN(StatefulServiceBase);
 };
+
+template <class RpcServiceIf>
+class StatefulRpcServiceBase : public StatefulServiceBase, public RpcServiceIf {
+ public:
+  explicit StatefulRpcServiceBase(
+      const StatefulServiceKind service_kind,
+      const scoped_refptr<MetricEntity>& metric_entity,
+      const std::shared_future<client::YBClient*>& client_future)
+      : StatefulServiceBase(service_kind, client_future), RpcServiceIf(metric_entity) {}
+
+  void Shutdown() override {
+    RpcServiceIf::Shutdown();
+    StatefulServiceBase::Shutdown();
+  }
+};
+
+client::YBTableName GetStatefulServiceTableName(const StatefulServiceKind& service_kind);
+
 }  // namespace stateful_service
 }  // namespace yb

@@ -95,6 +95,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     VOLUME_DELETE,
     NAMESPACE_DELETE,
     POD_DELETE,
+    DELETE_ALL_SERVER_TYPE_PODS,
     POD_INFO,
     STS_DELETE,
     PVC_EXPAND_SIZE,
@@ -123,6 +124,8 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.KubernetesNamespaceDelete.name();
         case POD_DELETE:
           return UserTaskDetails.SubTaskGroupType.RebootingNode.name();
+        case DELETE_ALL_SERVER_TYPE_PODS:
+          return UserTaskDetails.SubTaskGroupType.DeleteAllServerTypePods.name();
         case POD_INFO:
           return UserTaskDetails.SubTaskGroupType.KubernetesPodInfo.name();
         case COPY_PACKAGE:
@@ -136,6 +139,21 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
           return UserTaskDetails.SubTaskGroupType.ResizingDisk.name();
       }
       return null;
+    }
+  }
+
+  public enum UpdateStrategy {
+    RollingUpdate("RollingUpdate"),
+    OnDelete("OnDelete");
+
+    public final String value;
+
+    UpdateStrategy(String value) {
+      this.value = value;
+    }
+
+    public String toString() {
+      return this.value;
     }
   }
 
@@ -184,6 +202,9 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // as well as to control the replicas for each deployment.
     public PlacementInfo placementInfo = null;
 
+    // RollingUpdate vs OnDelete upgrade strategy for K8s statefulset.
+    public UpdateStrategy updateStrategy = KubernetesCommandExecutor.UpdateStrategy.RollingUpdate;
+
     // The target cluster's config.
     public Map<String, String> config = null;
 
@@ -211,7 +232,26 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   public void run() {
     String overridesFile;
 
-    Map<String, String> config = getConfig();
+    Map<String, String> config;
+    if (taskParams().commandType.equals(CommandType.COPY_PACKAGE)
+        || taskParams().commandType.equals(CommandType.YBC_ACTION)) {
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      PlacementInfo pi;
+      if (taskParams().isReadOnlyCluster) {
+        pi = universe.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
+      } else {
+        pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
+      }
+      Map<String, Map<String, String>> k8sConfigMap =
+          KubernetesUtil.getKubernetesConfigPerPodName(
+              pi, Collections.singleton(universe.getNode(taskParams().ybcServerName)));
+      config = k8sConfigMap.get(taskParams().ybcServerName);
+      if (config == null) {
+        config = getConfig();
+      }
+    } else {
+      config = getConfig();
+    }
 
     if (!skipNamespaceCommands.contains(taskParams().commandType)
         && taskParams().namespace == null) {
@@ -293,11 +333,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .getManager()
             .deletePod(config, taskParams().namespace, taskParams().podName);
         break;
+      case DELETE_ALL_SERVER_TYPE_PODS:
+        Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        kubernetesManagerFactory
+            .getManager()
+            .deleteAllServerTypePods(
+                config,
+                taskParams().namespace,
+                taskParams().serverType,
+                taskParams().helmReleaseName,
+                u.getUniverseDetails().useNewHelmNamingStyle);
+        break;
       case POD_INFO:
         processNodeInfo();
         break;
       case STS_DELETE:
-        Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
         boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
         // Ideally we should have called KubernetesUtil.getHelmFullNameWithSuffix()
         String appName = (newNamingStyle ? taskParams().helmReleaseName + "-" : "") + "yb-tserver";
@@ -906,10 +957,17 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       overrides.put("ip_version_support", "v6_only");
     }
 
-    Map<String, Object> partition = new HashMap<>();
-    partition.put("tserver", taskParams().tserverPartition);
-    partition.put("master", taskParams().masterPartition);
-    overrides.put("partition", partition);
+    UpdateStrategy updateStrategyParam = taskParams().updateStrategy;
+    if (updateStrategyParam.equals(UpdateStrategy.RollingUpdate)) {
+      Map<String, Object> partition = new HashMap<>();
+      partition.put("tserver", taskParams().tserverPartition);
+      partition.put("master", taskParams().masterPartition);
+      overrides.put("partition", partition);
+    } else if (updateStrategyParam.equals(UpdateStrategy.OnDelete)) {
+      Map<String, Object> updateStrategy = new HashMap<>();
+      updateStrategy.put("type", KubernetesCommandExecutor.UpdateStrategy.OnDelete.toString());
+      overrides.put("updateStrategy", updateStrategy);
+    }
 
     UUID placementUuid = cluster.uuid;
     Map<String, Object> gflagOverrides = new HashMap<>();

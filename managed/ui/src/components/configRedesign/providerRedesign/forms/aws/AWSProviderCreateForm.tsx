@@ -123,11 +123,6 @@ const VALIDATION_SCHEMA = object().shape({
     is: AWSProviderCredentialType.ACCESS_KEY,
     then: string().required('Secret access key id is required.')
   }),
-  // Specified ssh keys
-  sshKeypairName: string().when('sshKeypairManagement', {
-    is: KeyPairManagement.SELF_MANAGED,
-    then: string().required('SSH keypair name is required.')
-  }),
   sshPrivateKeyContent: mixed().when('sshKeypairManagement', {
     is: KeyPairManagement.SELF_MANAGED,
     then: mixed().required('SSH private key is required.')
@@ -148,6 +143,8 @@ const VALIDATION_SCHEMA = object().shape({
   }),
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
+
+const FORM_NAME = 'AWSProviderCreateForm';
 
 export const AWSProviderCreateForm = ({
   onBack,
@@ -242,8 +239,8 @@ export const AWSProviderCreateForm = ({
       } catch (_) {
         // Request errors are handled by the onError callback
       }
-    } catch (error) {
-      toast.error(error);
+    } catch (error: any) {
+      toast.error(error.message ?? error);
     }
   };
   const onFormValidateAndSubmit: SubmitHandler<AWSProviderCreateFormFieldValues> = async (
@@ -258,7 +255,7 @@ export const AWSProviderCreateForm = ({
     setIsRegionFormModalOpen(true);
   };
   const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT);
+    setRegionOperation(RegionOperation.EDIT_NEW);
     setIsRegionFormModalOpen(true);
   };
   const showDeleteRegionModal = () => {
@@ -308,7 +305,7 @@ export const AWSProviderCreateForm = ({
   const enableHostedZone = formMethods.watch('enableHostedZone', defaultValues.enableHostedZone);
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType', defaultValues.ybImageType);
-  const isFormDisabled = formMethods.formState.isSubmitting;
+  const isFormDisabled = formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -329,10 +326,14 @@ export const AWSProviderCreateForm = ({
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup
               heading="Cloud Info"
+              infoTitle="Cloud Info"
               infoContent="Enter your cloud credentials and specify how Yugabyte should leverage cloud services."
             >
               <FormField>
-                <FieldLabel infoContent="For public cloud Providers YBA creates compute instances, and therefore requires sufficient permissions to do so.">
+                <FieldLabel
+                  infoTitle="Credential Type"
+                  infoContent="For public cloud Providers YBA creates compute instances, and therefore requires sufficient permissions to do so."
+                >
                   Credential Type
                 </FieldLabel>
                 <YBRadioGroupField
@@ -382,16 +383,20 @@ export const AWSProviderCreateForm = ({
             </FieldGroup>
             <FieldGroup
               heading="Regions"
+              infoTitle="Regions"
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <FormField>
@@ -430,6 +435,7 @@ export const AWSProviderCreateForm = ({
             </FieldGroup>
             <FieldGroup
               heading="SSH Key Pairs"
+              infoTitle="SSH Key Pairs"
               infoContent="YBA requires SSH access to DB nodes. For public clouds, YBA provisions the VM instances as part of the DB node provisioning. The OS images come with a preprovisioned user."
             >
               <FormField>
@@ -487,10 +493,17 @@ export const AWSProviderCreateForm = ({
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
-                <FieldLabel infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance.">
+                <FieldLabel
+                  infoTitle="DB Nodes have public internet access?"
+                  infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance."
+                >
                   DB Nodes have public internet access?
                 </FieldLabel>
-                <YBToggleField name="dbNodePublicInternetAccess" control={formMethods.control} />
+                <YBToggleField
+                  name="dbNodePublicInternetAccess"
+                  control={formMethods.control}
+                  disabled={isFormDisabled}
+                />
               </FormField>
               <FormField>
                 <FieldLabel>NTP Setup</FieldLabel>
@@ -517,7 +530,7 @@ export const AWSProviderCreateForm = ({
                 <YBRedesignedButton
                   variant="secondary"
                   onClick={skipValidationAndSubmit}
-                  data-testid="AWSProviderCreateForm-SkipValidationButton"
+                  data-testid={`${FORM_NAME}-SkipValidationButton`}
                 >
                   Ignore and save provider configuration anyway
                 </YBRedesignedButton>
@@ -544,14 +557,14 @@ export const AWSProviderCreateForm = ({
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled}
-              data-testid="AWSProviderCreateForm-SubmitButton"
+              data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
               btnText="Back"
               btnClass="btn btn-default"
               onClick={onBack}
               disabled={isFormDisabled}
-              data-testid="AWSProviderCreateForm-BackButton"
+              data-testid={`${FORM_NAME}-BackButton`}
             />
           </Box>
         </FormContainer>
@@ -582,50 +595,63 @@ export const AWSProviderCreateForm = ({
 
 const constructProviderPayload = async (
   formValues: AWSProviderCreateFormFieldValues
-): Promise<YBProviderMutation> => ({
-  code: ProviderCode.AWS,
-  name: formValues.providerName,
-  ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-    ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-    ...(formValues.sshPrivateKeyContent && {
-      sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-    })
-  }),
-  details: {
-    airGapInstall: !formValues.dbNodePublicInternetAccess,
-    cloudInfo: {
-      [ProviderCode.AWS]: {
-        ...(formValues.providerCredentialType === AWSProviderCredentialType.ACCESS_KEY && {
-          awsAccessKeyID: formValues.accessKeyId,
-          awsAccessKeySecret: formValues.secretAccessKey
-        }),
-        ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
-      }
-    },
-    ntpServers: formValues.ntpServers,
-    setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-    sshPort: formValues.sshPort,
-    sshUser: formValues.sshUser
-  },
-  regions: formValues.regions.map<AWSRegionMutation>((regionFormValues) => ({
-    code: regionFormValues.code,
+): Promise<YBProviderMutation> => {
+  let sshPrivateKeyContent = '';
+  try {
+    sshPrivateKeyContent =
+      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+      formValues.sshPrivateKeyContent
+        ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+        : '';
+  } catch (error) {
+    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  }
+
+  return {
+    code: ProviderCode.AWS,
+    name: formValues.providerName,
+    ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
+      ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+      ...(formValues.sshPrivateKeyContent && {
+        sshPrivateKeyContent: sshPrivateKeyContent
+      })
+    }),
     details: {
+      airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.AWS]: {
-          ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
-            ? {
-                ybImage: regionFormValues.ybImage
-              }
-            : { arch: formValues.ybImageType }),
-          securityGroupId: regionFormValues.securityGroupId,
-          vnet: regionFormValues.vnet
+          ...(formValues.providerCredentialType === AWSProviderCredentialType.ACCESS_KEY && {
+            awsAccessKeyID: formValues.accessKeyId,
+            awsAccessKeySecret: formValues.secretAccessKey
+          }),
+          ...(formValues.enableHostedZone && { awsHostedZoneId: formValues.hostedZoneId })
         }
-      }
+      },
+      ntpServers: formValues.ntpServers,
+      setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+      sshPort: formValues.sshPort,
+      sshUser: formValues.sshUser
     },
-    zones: regionFormValues.zones?.map<AWSAvailabilityZoneMutation>((azFormValues) => ({
-      code: azFormValues.code,
-      name: azFormValues.code,
-      subnet: azFormValues.subnet
+    regions: formValues.regions.map<AWSRegionMutation>((regionFormValues) => ({
+      code: regionFormValues.code,
+      details: {
+        cloudInfo: {
+          [ProviderCode.AWS]: {
+            ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
+              ? {
+                  ybImage: regionFormValues.ybImage
+                }
+              : { arch: formValues.ybImageType }),
+            securityGroupId: regionFormValues.securityGroupId,
+            vnet: regionFormValues.vnet
+          }
+        }
+      },
+      zones: regionFormValues.zones?.map<AWSAvailabilityZoneMutation>((azFormValues) => ({
+        code: azFormValues.code,
+        name: azFormValues.code,
+        subnet: azFormValues.subnet
+      }))
     }))
-  }))
-});
+  };
+};

@@ -9,9 +9,9 @@
 
 import ReactDOM from 'react-dom';
 import { head } from 'lodash';
-import { Editor, Transforms, Element as SlateElement, Range, Element } from 'slate';
+import { Editor, Transforms, Element as SlateElement, Range, Element, Node } from 'slate';
 import { ReactEditor } from 'slate-react';
-import { CustomElement, IYBEditor, Paragraph, TextDecorators } from './custom-types';
+import { CustomElement, CustomText, IYBEditor, JSONCodeBlock, Paragraph, TextDecorators } from './custom-types';
 import {
   IYBSlatePluginReturnProps,
   SlateRenderElementProps,
@@ -24,6 +24,12 @@ export const DefaultElement: Paragraph = {
   children: [{ text: '' }]
 };
 
+export const DefaultJSONElement: JSONCodeBlock = {
+  type: 'jsonCode',
+  children: [{ text: '' }]
+};
+
+export const ALERT_VARIABLE_REGEX = /{{\s*\w+\s*}}/g;
 /**
  * common function which can be used to return for non enabled plugins.
  */
@@ -44,7 +50,8 @@ const TEXT_ALIGN_TYPES = ['left', 'center', 'right', 'justify'];
 /**
  * check if the current block is active
  */
-export const isBlockActive = (editor: IYBEditor, format: string, blockType = 'type') => {
+export const isBlockActive = (editor: IYBEditor | null, format: string, blockType = 'type') => {
+  if (!editor) return false;
   const { selection } = editor;
   if (!selection) return false;
 
@@ -58,7 +65,8 @@ export const isBlockActive = (editor: IYBEditor, format: string, blockType = 'ty
   return !!match;
 };
 
-export const isMarkActive = (editor: IYBEditor, mark: TextDecorators) => {
+export const isMarkActive = (editor: IYBEditor | null, mark: TextDecorators) => {
+  if (!editor) return false;
   const marks = Editor.marks(editor);
   return marks ? marks[mark] === true : false;
 };
@@ -163,3 +171,28 @@ export const isEmptyElement = (element: Element): boolean => {
 
   return isEmptyElement(head(element.children) as any);
 };
+
+/**
+ * returns if editor is empty. (i.e) even if it has elements, it should be empty
+ */
+export const isEditorEmpty = (editor: IYBEditor | null): boolean => {
+  if (!editor) return false;
+  return editor.children.every(child => isEmptyElement(child as CustomElement))
+}
+
+/**
+ * extract text from the element
+ */
+export const serializeToText = (node: CustomText | CustomElement) => {
+  return Node.string(node)
+}
+
+/**
+ * reset the editor history
+ */
+export const resetEditorHistory = (editor: IYBEditor) => {
+  editor.history = {
+    redos: [],
+    undos: [],
+  };
+} 

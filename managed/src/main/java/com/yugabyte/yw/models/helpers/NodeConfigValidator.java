@@ -19,6 +19,7 @@ import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AccessKey.MigratedKeyInfoFields;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.NodeConfig.Operation;
 import com.yugabyte.yw.models.helpers.NodeConfig.Type;
@@ -29,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -84,6 +86,7 @@ public class NodeConfigValidator {
     private final NodeConfig nodeConfig;
     private final NodeInstanceData nodeInstanceData;
     private final Operation operation;
+    private final boolean isDetached;
   }
 
   private final Function<Provider, Config> PROVIDER_CONFIG =
@@ -102,14 +105,32 @@ public class NodeConfigValidator {
       key -> PROVIDER_CONFIG.apply(key.provider).getBoolean(key.path);
 
   /**
+   * Validates the node configs for an existing node instance.
+   *
+   * @param provider the provider.
+   * @param nodeInstanceUuid the node instance UUID.
+   * @param nodeConfigs the node configs to be validated.
+   * @param isDetached true if the validation is not tied to a universe.
+   * @return a map of config type to validation result.
+   */
+  public Map<Type, ValidationResult> validateNodeConfigs(
+      Provider provider, UUID nodeInstanceUuid, Set<NodeConfig> nodeConfigs, boolean isDetached) {
+    NodeInstance nodeInstance = NodeInstance.getOrBadRequest(nodeInstanceUuid);
+    NodeInstanceData instanceData = nodeInstance.getDetails();
+    instanceData.nodeConfigs = nodeConfigs;
+    return validateNodeConfigs(provider, instanceData, isDetached);
+  }
+
+  /**
    * Validates the node configs in the instance data.
    *
    * @param provider the provider.
    * @param nodeData the node instance data.
+   * @param isDetached true if the validation is not tied to a universe.
    * @return a map of config type to validation result.
    */
   public Map<Type, ValidationResult> validateNodeConfigs(
-      Provider provider, NodeInstanceData nodeData) {
+      Provider provider, NodeInstanceData nodeData, boolean isDetached) {
     InstanceType instanceType =
         InstanceType.getOrBadRequest(provider.getUuid(), nodeData.instanceType);
     AccessKey accessKey = AccessKey.getLatestKey(provider.getUuid());
@@ -137,6 +158,7 @@ public class NodeConfigValidator {
               .nodeConfig(nodeConfig)
               .nodeInstanceData(nodeData)
               .operation(operation)
+              .isDetached(isDetached)
               .build();
       boolean isValid = isNodeConfigValid(input);
       boolean isRequired = isNodeConfigRequired(input);
@@ -218,10 +240,6 @@ public class NodeConfigValidator {
           int value = getFromConfig(CONFIG_INT_SUPPLIER, provider, "min_mount_point_dir_space_mb");
           return checkJsonFieldsGreaterEquals(nodeConfig.getValue(), value);
         }
-      case NODE_EXPORTER_PORT:
-        {
-          return Integer.parseInt(nodeConfig.getValue()) == keyInfo.nodeExporterPort;
-        }
       case ULIMIT_CORE:
         {
           String value = getFromConfig(CONFIG_STRING_SUPPLIER, provider, "ulimit_core");
@@ -257,11 +275,12 @@ public class NodeConfigValidator {
       case YB_CONTROLLER_RPC_PORT:
       case REDIS_SERVER_HTTP_PORT:
       case REDIS_SERVER_RPC_PORT:
-      case YQL_SERVER_HTTP_PORT:
-      case YQL_SERVER_RPC_PORT:
+      case YCQL_SERVER_HTTP_PORT:
+      case YCQL_SERVER_RPC_PORT:
       case YSQL_SERVER_HTTP_PORT:
       case YSQL_SERVER_RPC_PORT:
       case SSH_PORT:
+      case NODE_EXPORTER_PORT:
         {
           return checkJsonFieldsEqual(nodeConfig.getValue(), "true");
         }
@@ -327,20 +346,33 @@ public class NodeConfigValidator {
       case S3CMD:
       case SWAPPINESS:
       case SYSTEMD_SUDOER_ENTRY:
+        {
+          return false;
+        }
       case MASTER_HTTP_PORT:
       case MASTER_RPC_PORT:
       case TSERVER_HTTP_PORT:
       case TSERVER_RPC_PORT:
-      case YB_CONTROLLER_HTTP_PORT:
-      case YB_CONTROLLER_RPC_PORT:
       case REDIS_SERVER_HTTP_PORT:
       case REDIS_SERVER_RPC_PORT:
-      case YQL_SERVER_HTTP_PORT:
-      case YQL_SERVER_RPC_PORT:
+      case YCQL_SERVER_HTTP_PORT:
+      case YCQL_SERVER_RPC_PORT:
       case YSQL_SERVER_HTTP_PORT:
       case YSQL_SERVER_RPC_PORT:
         {
+          return !input.isDetached();
+        }
+      case YB_CONTROLLER_HTTP_PORT:
+      case YB_CONTROLLER_RPC_PORT:
+        {
+          // TODO change this to !input.isDetached() once the issue of not cleaning up yb_controller
+          // is fixed.
           return false;
+        }
+      case NODE_EXPORTER_PORT:
+        {
+          return input.getOperation() == Operation.PROVISION
+              && provider.getDetails().isInstallNodeExporter();
         }
       default:
         return true;

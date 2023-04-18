@@ -11,9 +11,13 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -23,8 +27,11 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -34,9 +41,11 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -952,6 +961,74 @@ public class GFlagsUpgradeTest extends UpgradeTaskTest {
     assertEquals(
         new HashMap<>(Collections.singletonMap("master-flag", "m1")),
         getGflagsForNode(subTasks, third, MASTER));
+  }
+
+  @Test
+  public void testUpgradeAutoFlags() {
+    GFlagsUpgradeParams taskParams = new GFlagsUpgradeParams();
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        universe -> {
+          SpecificGFlags specificGFlags =
+              SpecificGFlags.construct(ImmutableMap.of("master-flag", "m1"), ImmutableMap.of());
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+              specificGFlags;
+        });
+    expectedUniverseVersion++;
+
+    SpecificGFlags specificGFlags =
+        SpecificGFlags.construct(ImmutableMap.of("master-flag", "m2"), ImmutableMap.of());
+    taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
+    taskParams.getPrimaryCluster().userIntent.specificGFlags = specificGFlags;
+
+    Universe xClusterUniverse = ModelFactory.createUniverse("univ-2");
+    XClusterConfig xClusterConfig =
+        XClusterConfig.create(
+            "test-1", defaultUniverse.getUniverseUUID(), xClusterUniverse.getUniverseUUID());
+    xClusterConfig.updateStatus(XClusterConfig.XClusterConfigStatusType.Running);
+    TestHelper.updateUniverseVersion(xClusterUniverse, "2.14.0.0-b1");
+
+    try {
+      when(mockGFlagsValidation.getFilteredAutoFlagsWithNonInitialValue(
+              anyMap(), anyString(), any()))
+          .thenReturn(ImmutableMap.of("master-flag", "m2"));
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      GFlagsValidation.AutoFlagDetails flag = new GFlagsValidation.AutoFlagDetails();
+      flag.name = "master-flag-2";
+      autoFlagsPerServer.autoFlagDetails = Collections.singletonList(flag);
+      GFlagsValidation.AutoFlagDetails flag2 = new GFlagsValidation.AutoFlagDetails();
+      flag2.name = "master-flag";
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer2 =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer2.autoFlagDetails = Collections.singletonList(flag2);
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer)
+          .thenReturn(autoFlagsPerServer2);
+    } catch (IOException e) {
+      fail();
+    }
+
+    TaskInfo taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertThat(
+        taskInfo.getErrorMessage(),
+        containsString(
+            "Cannot upgrade auto flags as an XCluster linked universe "
+                + xClusterUniverse.getUniverseUUID()
+                + " does not support auto flags"));
+
+    TestHelper.updateUniverseVersion(xClusterUniverse, "2.17.0.0-b1");
+    taskInfo = submitTask(taskParams);
+    assertEquals(Failure, taskInfo.getTaskState());
+    assertThat(
+        taskInfo.getErrorMessage(),
+        containsString(
+            "master-flag is not present in the xCluster linked universe: "
+                + xClusterUniverse.getUniverseUUID()));
+
+    taskInfo = submitTask(taskParams);
+    assertEquals(Success, taskInfo.getTaskState());
   }
 
   private Map<String, String> getGflagsForNode(

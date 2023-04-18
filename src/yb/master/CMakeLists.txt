@@ -55,7 +55,8 @@ set(MASTER_YRPC_LIBS
   tablet_proto
   tserver_proto
   cdc_consumer_proto
-  xcluster_producer_proto)
+  xcluster_producer_proto
+  consensus_proto)
 ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
@@ -143,6 +144,7 @@ set(MASTER_SRCS
   yql_views_vtable.cc
   yql_virtual_table.cc
   yql_vtable_iterator.cc
+  ysql_backends_manager.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
   ysql_transaction_ddl.cc)

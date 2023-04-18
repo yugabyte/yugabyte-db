@@ -66,6 +66,9 @@ public class CustomerTask extends Model {
     @EnumValue("Backup")
     Backup(false),
 
+    @EnumValue("Schedule")
+    Schedule(false),
+
     @EnumValue("Customer Configuration")
     CustomerConfiguration(false),
 
@@ -73,7 +76,13 @@ public class CustomerTask extends Model {
     KMSConfiguration(false),
 
     @EnumValue("XCluster Configuration")
-    XClusterConfig(true);
+    XClusterConfig(true),
+
+    @EnumValue("Universe Key")
+    UniverseKey(true),
+
+    @EnumValue("Master Key")
+    MasterKey(true);
 
     private final boolean universeTarget;
 
@@ -366,9 +375,7 @@ public class CustomerTask extends Model {
         case SetActiveUniverseKeys:
           return completed ? "Set active universe keys" : "Setting active universe keys";
         case RotateEncryptionKey:
-          return completed
-              ? "Rotated encryption at rest universe key"
-              : "Rotating encryption at rest universe key";
+          return completed ? "Rotated encryption at rest" : "Rotating encryption at rest";
         case DisableEncryptionAtRest:
           return completed ? "Disabled encryption at rest" : "Disabling encryption at rest";
         case StartMaster:

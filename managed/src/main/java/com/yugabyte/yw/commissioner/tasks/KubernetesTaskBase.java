@@ -33,6 +33,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -405,6 +407,272 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         commandType,
         false,
         null);
+  }
+
+  public void upgradePodsNonRolling(
+      String universeName,
+      KubernetesPlacement placement,
+      String masterAddresses,
+      ServerType serverType,
+      String softwareVersion,
+      String universeOverridesStr,
+      Map<String, String> azsOverrides,
+      boolean newNamingStyle,
+      boolean isReadOnlyCluster,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
+          Universe.getOrBadRequest(taskParams().getUniverseUUID())
+              .getUniverseDetails()
+              .getPrimaryCluster();
+    }
+    String providerStr =
+        isReadOnlyCluster
+            ? taskParams().getReadOnlyClusters().get(0).userIntent.provider
+            : primaryCluster.userIntent.provider;
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(providerStr));
+    boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
+    String nodePrefix = taskParams().nodePrefix;
+
+    Map<UUID, ServerType> serversToUpdate = getServersToUpdateAzMap(placement, serverType);
+
+    Map<String, Object> universeOverrides = HelmUtils.convertYamlToMap(universeOverridesStr);
+    SubTaskGroup helmUpgrade =
+        createSubTaskGroup(CommandType.HELM_UPGRADE.getSubTaskGroupName(), true);
+    SubTaskGroup allPodsDelete =
+        createSubTaskGroup(CommandType.DELETE_ALL_SERVER_TYPE_PODS.getSubTaskGroupName(), true);
+    SubTaskGroup waitForPodsLive =
+        createSubTaskGroup(
+            KubernetesWaitForPod.CommandType.WAIT_FOR_POD.getSubTaskGroupName(), true);
+    SubTaskGroup restoreUpdateStrategy =
+        createSubTaskGroup(CommandType.HELM_UPGRADE.getSubTaskGroupName(), true);
+    List<NodeDetails> tserverNodes = new ArrayList<>();
+    List<NodeDetails> masterNodes = new ArrayList<>();
+    serversToUpdate
+        .entrySet()
+        .stream()
+        .forEach(
+            serverEntry -> {
+              UUID azUUID = serverEntry.getKey();
+              ServerType sType = serverEntry.getValue();
+              PlacementInfo tempPI = new PlacementInfo();
+              PlacementInfoUtil.addPlacementZone(azUUID, tempPI);
+              int numTservers = placement.tservers.getOrDefault(azUUID, 0);
+              int numMasters = placement.masters.getOrDefault(azUUID, 0);
+              tempPI.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numTservers;
+              tempPI.cloudList.get(0).regionList.get(0).azList.get(0).replicationFactor =
+                  numMasters;
+              String azCode = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
+              Map<String, String> config = placement.configs.get(azUUID);
+              String azOverridesStr =
+                  azsOverrides.get(PlacementInfoUtil.getAZNameFromUUID(provider, azUUID));
+              Map<String, Object> azOverrides = HelmUtils.convertYamlToMap(azOverridesStr);
+              helmUpgrade.addSubTask(
+                  getSingleNonRollingKubernetesExecutorTaskForServerTypeTask(
+                      universeName,
+                      CommandType.HELM_UPGRADE,
+                      tempPI,
+                      azCode,
+                      masterAddresses,
+                      softwareVersion,
+                      sType,
+                      config,
+                      universeOverrides,
+                      azOverrides,
+                      isReadOnlyCluster,
+                      enableYbc));
+              allPodsDelete.addSubTask(
+                  getSingleKubernetesExecutorTaskForServerTypeTask(
+                      universeName,
+                      CommandType.DELETE_ALL_SERVER_TYPE_PODS,
+                      null,
+                      azCode,
+                      masterAddresses,
+                      null,
+                      sType,
+                      config,
+                      0,
+                      0,
+                      null,
+                      null,
+                      isReadOnlyCluster,
+                      null,
+                      null,
+                      false,
+                      false,
+                      null));
+
+              if (sType.equals(ServerType.EITHER)) {
+                waitForAllServerTypePodsTask(
+                    tserverNodes,
+                    waitForPodsLive,
+                    numTservers,
+                    ServerType.TSERVER,
+                    azCode,
+                    nodePrefix,
+                    isMultiAz,
+                    newNamingStyle,
+                    universeName,
+                    isReadOnlyCluster,
+                    config);
+                waitForAllServerTypePodsTask(
+                    masterNodes,
+                    waitForPodsLive,
+                    numMasters,
+                    ServerType.MASTER,
+                    azCode,
+                    nodePrefix,
+                    isMultiAz,
+                    newNamingStyle,
+                    universeName,
+                    isReadOnlyCluster,
+                    config);
+              } else if (sType.equals(ServerType.MASTER)) {
+                waitForAllServerTypePodsTask(
+                    masterNodes,
+                    waitForPodsLive,
+                    numMasters,
+                    ServerType.MASTER,
+                    azCode,
+                    nodePrefix,
+                    isMultiAz,
+                    newNamingStyle,
+                    universeName,
+                    isReadOnlyCluster,
+                    config);
+              } else if (sType.equals(ServerType.TSERVER)) {
+                waitForAllServerTypePodsTask(
+                    tserverNodes,
+                    waitForPodsLive,
+                    numTservers,
+                    ServerType.TSERVER,
+                    azCode,
+                    nodePrefix,
+                    isMultiAz,
+                    newNamingStyle,
+                    universeName,
+                    isReadOnlyCluster,
+                    config);
+              }
+              restoreUpdateStrategy.addSubTask(
+                  getSingleKubernetesExecutorTaskForServerTypeTask(
+                      universeName,
+                      CommandType.HELM_UPGRADE,
+                      tempPI,
+                      azCode,
+                      masterAddresses,
+                      softwareVersion,
+                      sType,
+                      config,
+                      0,
+                      0,
+                      universeOverrides,
+                      azOverrides,
+                      isReadOnlyCluster,
+                      null,
+                      null,
+                      true,
+                      enableYbc,
+                      null));
+            });
+    getRunnableTask().addSubTaskGroup(helmUpgrade);
+    getRunnableTask().addSubTaskGroup(allPodsDelete);
+    getRunnableTask().addSubTaskGroup(waitForPodsLive);
+    getRunnableTask().addSubTaskGroup(restoreUpdateStrategy);
+    createTransferXClusterCertsCopyTasks(
+        Stream.concat(tserverNodes.stream(), masterNodes.stream()).collect(Collectors.toList()),
+        getUniverse(),
+        SubTaskGroupType.ConfigureUniverse);
+    if (serverType.equals(ServerType.EITHER)) {
+      createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      createWaitForServersTasks(masterNodes, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    } else if (serverType.equals(ServerType.TSERVER)) {
+      createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    } else if (serverType.equals(ServerType.TSERVER)) {
+      createWaitForServersTasks(masterNodes, ServerType.MASTER)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+  }
+
+  private Map<UUID, ServerType> getServersToUpdateAzMap(
+      KubernetesPlacement placement, ServerType serverType) {
+    Map<UUID, ServerType> serversToUpdate = new HashMap<>();
+    if (serverType.equals(ServerType.EITHER)) {
+      placement
+          .masters
+          .keySet()
+          .parallelStream()
+          .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
+      placement
+          .tservers
+          .keySet()
+          .parallelStream()
+          .forEach(
+              azUUID -> {
+                if (serversToUpdate.containsKey(azUUID)) {
+                  serversToUpdate.put(azUUID, ServerType.EITHER);
+                } else {
+                  serversToUpdate.put(azUUID, ServerType.TSERVER);
+                }
+              });
+    } else {
+      if (serverType.equals(ServerType.MASTER)) {
+        placement
+            .masters
+            .keySet()
+            .parallelStream()
+            .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.MASTER));
+      } else {
+        placement
+            .tservers
+            .keySet()
+            .parallelStream()
+            .forEach(azUUID -> serversToUpdate.put(azUUID, ServerType.TSERVER));
+      }
+    }
+    return serversToUpdate;
+  }
+
+  private void waitForAllServerTypePodsTask(
+      List<NodeDetails> nodes,
+      SubTaskGroup waitForPodsLive,
+      int numPods,
+      ServerType serverType,
+      String azCode,
+      String nodePrefix,
+      boolean isMultiAz,
+      boolean newNamingStyle,
+      String universeName,
+      boolean isReadOnlyCluster,
+      Map<String, String> config) {
+    for (int podIndex = 0; podIndex <= numPods - 1; podIndex++) {
+      String podName =
+          getPodName(
+              podIndex,
+              azCode,
+              serverType,
+              nodePrefix,
+              isMultiAz,
+              newNamingStyle,
+              universeName,
+              isReadOnlyCluster);
+      NodeDetails node =
+          getKubernetesNodeName(podIndex, azCode, serverType, isMultiAz, isReadOnlyCluster);
+      waitForPodsLive.addSubTask(
+          getKubernetesWaitForPodTask(
+              universeName,
+              KubernetesWaitForPod.CommandType.WAIT_FOR_POD,
+              podName,
+              azCode,
+              config,
+              isReadOnlyCluster));
+      nodes.add(node);
+    }
   }
 
   public void upgradePodsTask(
@@ -884,6 +1152,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       params.commandType = commandType;
       params.setUniverseUUID(taskParams().getUniverseUUID());
       params.ybcServerName = node.nodeName;
+      params.isReadOnlyCluster = isReadOnlyCluster;
       params.providerUUID =
           isReadOnlyCluster
               ? UUID.fromString(readOnlyClusters.get(0).userIntent.provider)
@@ -1155,6 +1424,49 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean enableYbc,
       String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName(), ignoreErrors);
+    subTaskGroup.addSubTask(
+        getSingleKubernetesExecutorTaskForServerTypeTask(
+            universeName,
+            commandType,
+            pi,
+            az,
+            masterAddresses,
+            ybSoftwareVersion,
+            serverType,
+            config,
+            masterPartition,
+            tserverPartition,
+            universeOverrides,
+            azOverrides,
+            isReadOnlyCluster,
+            podName,
+            newDiskSize,
+            ignoreErrors,
+            enableYbc,
+            ybcSoftwareVersion));
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+  }
+
+  public KubernetesCommandExecutor getSingleKubernetesExecutorTaskForServerTypeTask(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      int masterPartition,
+      int tserverPartition,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      String podName,
+      String newDiskSize,
+      boolean ignoreErrors,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
@@ -1213,19 +1525,86 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.Provisioning);
+    return task;
   }
 
-  public void createKubernetesWaitForPodTask(
+  public KubernetesCommandExecutor getSingleNonRollingKubernetesExecutorTaskForServerTypeTask(
+      String universeName,
+      KubernetesCommandExecutor.CommandType commandType,
+      PlacementInfo pi,
+      String az,
+      String masterAddresses,
+      String ybSoftwareVersion,
+      ServerType serverType,
+      Map<String, String> config,
+      Map<String, Object> universeOverrides,
+      Map<String, Object> azOverrides,
+      boolean isReadOnlyCluster,
+      boolean enableYbc) {
+    KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
+    Cluster primaryCluster = taskParams().getPrimaryCluster();
+    if (primaryCluster == null) {
+      primaryCluster =
+          Universe.getOrBadRequest(taskParams().getUniverseUUID())
+              .getUniverseDetails()
+              .getPrimaryCluster();
+    }
+    params.providerUUID =
+        isReadOnlyCluster
+            ? UUID.fromString(taskParams().getReadOnlyClusters().get(0).userIntent.provider)
+            : UUID.fromString(primaryCluster.userIntent.provider);
+    params.commandType = commandType;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            az,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
+    params.universeOverrides = universeOverrides;
+    params.azOverrides = azOverrides;
+    params.universeName = universeName;
+
+    if (masterAddresses != null) {
+      params.masterAddresses = masterAddresses;
+    }
+    if (ybSoftwareVersion != null) {
+      params.ybSoftwareVersion = ybSoftwareVersion;
+    }
+    if (pi != null) {
+      params.placementInfo = pi;
+    }
+    if (config != null) {
+      params.config = config;
+      // This assumes that the config is az config.
+      // params.namespace remains null if config is not passed.
+      params.namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              taskParams().nodePrefix,
+              az,
+              config,
+              taskParams().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+    }
+    params.enableNodeToNodeEncrypt = primaryCluster.userIntent.enableNodeToNodeEncrypt;
+    params.enableClientToNodeEncrypt = primaryCluster.userIntent.enableClientToNodeEncrypt;
+    params.serverType = serverType;
+    params.isReadOnlyCluster = isReadOnlyCluster;
+    params.updateStrategy = KubernetesCommandExecutor.UpdateStrategy.OnDelete;
+    params.setEnableYbc(enableYbc);
+    KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
+    task.initialize(params);
+    return task;
+  }
+
+  public KubernetesWaitForPod getKubernetesWaitForPodTask(
       String universeName,
       KubernetesWaitForPod.CommandType commandType,
       String podName,
       String az,
       Map<String, String> config,
       boolean isReadOnlyCluster) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName());
     KubernetesWaitForPod.Params params = new KubernetesWaitForPod.Params();
     Cluster primaryCluster = taskParams().getPrimaryCluster();
     if (primaryCluster == null) {
@@ -1259,7 +1638,20 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     params.podName = podName;
     KubernetesWaitForPod task = createTask(KubernetesWaitForPod.class);
     task.initialize(params);
-    subTaskGroup.addSubTask(task);
+    return task;
+  }
+
+  public void createKubernetesWaitForPodTask(
+      String universeName,
+      KubernetesWaitForPod.CommandType commandType,
+      String podName,
+      String az,
+      Map<String, String> config,
+      boolean isReadOnlyCluster) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup(commandType.getSubTaskGroupName());
+    subTaskGroup.addSubTask(
+        getKubernetesWaitForPodTask(
+            universeName, commandType, podName, az, config, isReadOnlyCluster));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     subTaskGroup.setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.KubernetesWaitForPod);
   }

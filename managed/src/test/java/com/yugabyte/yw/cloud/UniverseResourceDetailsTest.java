@@ -15,6 +15,8 @@ import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.BeingDecommis
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Decommissioned;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Stopped;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.Terminating;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeAdded;
+import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.ToBeRemoved;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -119,6 +121,11 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   private UniverseDefinitionTaskParams setUpValidEBS(PublicCloudConstants.StorageType storageType) {
+    return setUpValidEBS(storageType, false);
+  }
+
+  private UniverseDefinitionTaskParams setUpValidEBS(
+      PublicCloudConstants.StorageType storageType, boolean createEdit) {
 
     // Set up instance type
     InstanceType.upsert(provider.getUuid(), testInstanceType, 10, 5.5, null);
@@ -175,7 +182,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     sampleNodeDetails.placementUuid = params.getPrimaryCluster().uuid;
     params.nodeDetailsSet = setUpNodeDetailsSet();
 
-    context = new Context(null, customer, params);
+    context = new Context(null, customer, params, createEdit);
     return params;
   }
 
@@ -259,7 +266,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCreate() throws Exception {
+  public void testCreate() {
     UniverseDefinitionTaskParams params = setUpValidSSD(3);
     Context context = new Context(getApp().config(), customer, params);
     UniverseResourceDetails details =
@@ -272,7 +279,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPriceToDetailsSSD() throws Exception {
+  public void testAddPriceToDetailsSSD() {
     Iterator<NodeDetails> mockIterator = mock(Iterator.class);
     UniverseDefinitionTaskParams params = setUpValidSSD();
 
@@ -284,7 +291,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPriceToDetailsIO1() throws Exception {
+  public void testAddPriceToDetailsIO1() {
     UniverseDefinitionTaskParams params = setUpValidEBS(PublicCloudConstants.StorageType.IO1);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
@@ -300,7 +307,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPriceToDetailsGP2() throws Exception {
+  public void testAddPriceToDetailsGP2() {
     UniverseDefinitionTaskParams params = setUpValidEBS(PublicCloudConstants.StorageType.GP2);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
@@ -314,7 +321,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPriceToDetailsGP3() throws Exception {
+  public void testAddPriceToDetailsGP3() {
     UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3);
 
     UniverseResourceDetails details = new UniverseResourceDetails();
@@ -337,7 +344,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPricePausedUniverse() throws Exception {
+  public void testAddPricePausedUniverse() {
     UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3);
     params.universePaused = true;
     params.nodeDetailsSet.forEach(node -> node.state = Stopped);
@@ -361,7 +368,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPriceWithTerminatedNode() throws Exception {
+  public void testAddPriceWithTerminatedNode() {
     UniverseDefinitionTaskParams params =
         setUpValidSSD(
             4,
@@ -382,7 +389,7 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
   }
 
   @Test
-  public void testAddPriceWithDecommissionedNode() throws Exception {
+  public void testAddPriceWithDecommissionedNode() {
     UniverseDefinitionTaskParams params =
         setUpValidSSD(
             4,
@@ -400,6 +407,85 @@ public class UniverseResourceDetailsTest extends FakeDBApplication {
     assertThat(details.ebsPricePerHour, equalTo(0.0));
     double expectedPrice = Double.parseDouble(String.format("%.4f", 2 * instancePrice));
     assertThat(details.pricePerHour, equalTo(expectedPrice));
+  }
+
+  @Test
+  public void testAddPriceWithToBeAdded() {
+    // ToBeAdded nodes are not counted - as node is not created yet
+    UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3);
+    params.nodeDetailsSet.forEach(node -> node.state = ToBeAdded);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.gp3FreePiops = 3000;
+    details.gp3FreeThroughput = 125;
+    details.addPrice(params, context);
+    assertThat(details.ebsPricePerHour, equalTo(0.0));
+    assertThat(details.pricePerHour, equalTo(0.0));
+  }
+
+  @Test
+  public void testAddPriceWithToBeRemoved() {
+    // ToBeRemoved nodes are not counted - as node is still running
+    UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3);
+    params.nodeDetailsSet.forEach(node -> node.state = ToBeRemoved);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.gp3FreePiops = 3000;
+    details.gp3FreeThroughput = 125;
+    details.addPrice(params, context);
+    double expectedEbsPrice =
+        Double.parseDouble(
+            String.format(
+                "%.4f",
+                3
+                    * (numVolumes
+                        * (((diskIops - 3000) * piopsPrice)
+                            + (volumeSize * sizePrice)
+                            + ((throughput - 125) * throughputPrice / 1024)))));
+    assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
+    double expectedPrice =
+        Double.parseDouble(String.format("%.4f", 3 * instancePrice + expectedEbsPrice));
+    assertThat(details.pricePerHour, equalTo(expectedPrice));
+  }
+
+  @Test
+  public void testAddPriceWithToBeAddedOnCreateEdit() {
+    // ToBeAdded nodes are counted during create or edit - to show estimate for future universe
+    UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3, true);
+    params.nodeDetailsSet.forEach(node -> node.state = ToBeAdded);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.gp3FreePiops = 3000;
+    details.gp3FreeThroughput = 125;
+    details.addPrice(params, context);
+    double expectedEbsPrice =
+        Double.parseDouble(
+            String.format(
+                "%.4f",
+                3
+                    * (numVolumes
+                        * (((diskIops - 3000) * piopsPrice)
+                            + (volumeSize * sizePrice)
+                            + ((throughput - 125) * throughputPrice / 1024)))));
+    assertThat(details.ebsPricePerHour, equalTo(expectedEbsPrice));
+    double expectedPrice =
+        Double.parseDouble(String.format("%.4f", 3 * instancePrice + expectedEbsPrice));
+    assertThat(details.pricePerHour, equalTo(expectedPrice));
+  }
+
+  @Test
+  public void testAddPriceWithToBeRemovedOnCreateEdit() {
+    // ToBeRemoved nodes are not counted during create or edit
+    // - to show estimate for future universe
+    UniverseDefinitionTaskParams params = setUpValidEBS(StorageType.GP3, true);
+    params.nodeDetailsSet.forEach(node -> node.state = ToBeRemoved);
+
+    UniverseResourceDetails details = new UniverseResourceDetails();
+    details.gp3FreePiops = 3000;
+    details.gp3FreeThroughput = 125;
+    details.addPrice(params, context);
+    assertThat(details.ebsPricePerHour, equalTo(0.0));
+    assertThat(details.pricePerHour, equalTo(0.0));
   }
 
   @Test

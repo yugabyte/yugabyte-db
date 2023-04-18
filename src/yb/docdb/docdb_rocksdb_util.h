@@ -16,6 +16,7 @@
 #include <boost/optional.hpp>
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
+#include "yb/docdb/docdb_statistics.h"
 
 #include "yb/rocksdb/cache.h"
 #include "yb/rocksdb/db.h"
@@ -36,9 +37,9 @@ class IntentAwareIterator;
 
 // See to a rocksdb point that is at least sub_doc_key.
 // If the iterator is already positioned far enough, does not perform a seek.
-void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter);
+void SeekForward(const Slice& slice, rocksdb::Iterator *iter);
 
-void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter);
+void SeekForward(const dockv::KeyBytes& key_bytes, rocksdb::Iterator *iter);
 
 struct SeekStats {
   int next = 0;
@@ -56,9 +57,9 @@ void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter);
 // Seek out of the given SubDocKey. For efficiency, the method that takes a non-const KeyBytes
 // pointer avoids memory allocation by using the KeyBytes buffer to prepare the key to seek to by
 // appending an extra byte. The appended byte is removed when the method returns.
-void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter);
+void SeekOutOfSubKey(dockv::KeyBytes* key_bytes, rocksdb::Iterator* iter);
 
-KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht);
+dockv::KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht);
 
 // A wrapper around the RocksDB seek operation that uses Next() up to the configured number of
 // times to avoid invalidating iterator state. In debug mode it also allows printing detailed
@@ -93,7 +94,8 @@ BoundedRocksDbIterator CreateRocksDBIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
-    const Slice* iterate_upper_bound = nullptr);
+    const Slice* iterate_upper_bound = nullptr,
+    rocksdb::Statistics* statistics = nullptr);
 
 // Values and transactions committed later than high_ht can be skipped, so we won't spend time
 // for re-requesting pending transaction status if we already know it wasn't committed at high_ht.
@@ -106,7 +108,8 @@ std::unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr,
-    const Slice* iterate_upper_bound = nullptr);
+    const Slice* iterate_upper_bound = nullptr,
+    const DocDBStatistics* statistics = nullptr);
 
 std::shared_ptr<rocksdb::RocksDBPriorityThreadPoolMetrics> CreateRocksDBPriorityThreadPoolMetrics(
     scoped_refptr<yb::MetricEntity> entity);

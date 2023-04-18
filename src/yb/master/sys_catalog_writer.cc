@@ -51,6 +51,20 @@ Status SetColumnId(
   return Status::OK();
 }
 
+Status ReadNextSysCatalogRow(
+    const QLTableRow& value_map, const Schema& schema, int8_t entry_type,
+    ssize_t type_col_idx, ssize_t entry_id_col_idx, ssize_t metadata_col_idx,
+    const EnumerationCallback& callback) {
+  QLValue found_entry_type, entry_id, metadata;
+  RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
+  SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
+  RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
+  RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+  SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
+  RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
+  return Status::OK();
+}
+
 } // namespace
 
 bool IsWrite(QLWriteRequestPB::QLStmtType op_type) {
@@ -189,35 +203,20 @@ Status EnumerateSysCatalog(
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, entry_type);
-  const std::vector<docdb::KeyEntryValue> empty_hash_components;
+  const dockv::KeyEntryValues empty_hash_components;
   docdb::DocQLScanSpec spec(
       schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
       empty_hash_components, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
-  while (VERIFY_RESULT(doc_iter->HasNext())) {
+  QLTableRow value_map;
+  while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
     YB_RETURN_NOT_OK_PREPEND(
         ReadNextSysCatalogRow(
-            doc_iter, schema, entry_type,
+            value_map, schema, entry_type,
             type_col_idx, entry_id_col_idx, metadata_col_idx, callback),
         "System catalog snapshot is corrupted or built using different build type");
   }
-  return Status::OK();
-}
-
-Status ReadNextSysCatalogRow(
-    docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
-    ssize_t type_col_idx, ssize_t entry_id_col_idx, ssize_t metadata_col_idx,
-    const EnumerationCallback& callback) {
-  QLTableRow value_map;
-  QLValue found_entry_type, entry_id, metadata;
-  RETURN_NOT_OK(doc_iter->NextRow(&value_map));
-  RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
-  SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
-  RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
-  RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
-  SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
-  RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
   return Status::OK();
 }
 

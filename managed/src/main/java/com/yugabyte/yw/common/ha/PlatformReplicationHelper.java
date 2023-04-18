@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.ConfigException;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.ShellResponse;
@@ -70,6 +71,7 @@ public class PlatformReplicationHelper {
   static final String DB_PASSWORD_CONFIG_KEY = "db.default.password";
   static final String DB_HOST_CONFIG_KEY = "db.default.host";
   static final String DB_PORT_CONFIG_KEY = "db.default.port";
+  static final String YBA_INSTALLATION_KEY = "yb.installation";
 
   private final RuntimeConfGetter confGetter;
 
@@ -130,6 +132,37 @@ public class PlatformReplicationHelper {
 
   int getDBPort() {
     return confGetter.getStaticConf().getInt(DB_PORT_CONFIG_KEY);
+  }
+
+  String getPGDumpPath() {
+    try {
+      return confGetter.getGlobalConf(GlobalConfKeys.pgDumpPath);
+    } catch (ConfigException e) {
+      throw new RuntimeException("Could not find pg_dump path.");
+    }
+  }
+
+  String getPGRestorePath() {
+    try {
+      return confGetter.getGlobalConf(GlobalConfKeys.pgRestorePath);
+    } catch (ConfigException e) {
+      throw new RuntimeException("Could not find pg_restore path.");
+    }
+  }
+
+  String getInstallationType() {
+    try {
+      return confGetter.getStaticConf().getString(YBA_INSTALLATION_KEY);
+    } catch (ConfigException e) {
+      return "";
+    }
+  }
+
+  String getBaseInstall() {
+    return Paths.get(confGetter.getStaticConf().getString(STORAGE_PATH_KEY))
+        .getParent()
+        .getParent()
+        .toString();
   }
 
   boolean isBackupScheduleEnabled() {

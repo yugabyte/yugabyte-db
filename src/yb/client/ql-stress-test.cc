@@ -34,7 +34,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/rocksdb/metadata.h"
@@ -328,8 +328,8 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
         auto emplace_result = keys.emplace(key.ToBuffer(), iter->key().ToBuffer());
         if (!emplace_result.second) {
           LOG(ERROR)
-              << "Duplicate key: " << docdb::SubDocKey::DebugSliceToString(iter->key())
-              << " vs " << docdb::SubDocKey::DebugSliceToString(emplace_result.first->second);
+              << "Duplicate key: " << dockv::SubDocKey::DebugSliceToString(iter->key())
+              << " vs " << dockv::SubDocKey::DebugSliceToString(emplace_result.first->second);
         }
       }
     }

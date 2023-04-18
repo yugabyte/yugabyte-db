@@ -33,10 +33,13 @@ YQLVTableIterator::YQLVTableIterator(
   Advance(false /* increment */);
 }
 
-Status YQLVTableIterator::DoNextRow(
-    boost::optional<const Schema&> projection, QLTableRow* table_row) {
+Result<bool> YQLVTableIterator::DoFetchNext(
+    QLTableRow* table_row,
+    const Schema* projection,
+    QLTableRow* static_row,
+    const Schema* static_projection) {
   if (vtable_index_ >= vtable_->row_count()) {
-    return STATUS(NotFound, "No more rows left!");
+    return false;
   }
 
   // TODO: return columns in projection only.
@@ -45,17 +48,7 @@ Status YQLVTableIterator::DoNextRow(
     table_row->AllocColumn(row.schema().column_id(i), down_cast<const QLValue&>(row.column(i)));
   }
   Advance(true /* increment */);
-  return Status::OK();
-}
-
-void YQLVTableIterator::SkipRow() {
-  if (vtable_index_ < vtable_->row_count()) {
-    Advance(true /* increment */);
-  }
-}
-
-Result<bool> YQLVTableIterator::HasNext() {
-  return vtable_index_ < vtable_->row_count();
+  return true;
 }
 
 std::string YQLVTableIterator::ToString() const {

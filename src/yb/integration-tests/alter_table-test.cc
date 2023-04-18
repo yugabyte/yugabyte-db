@@ -99,28 +99,20 @@ namespace yb {
 
 using client::YBClient;
 using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBError;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTableType;
-using client::YBValue;
 using std::shared_ptr;
-using master::AlterTableRequestPB;
-using master::AlterTableResponsePB;
-using master::MiniMaster;
 using std::map;
 using std::pair;
 using std::vector;
 using std::string;
 using std::max;
 using tablet::TabletPeer;
-using tserver::MiniTabletServer;
 
 class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
                        public ::testing::WithParamInterface<int> {
@@ -369,7 +361,7 @@ TEST_P(AlterTableTest, TestAlterOnTSRestart) {
   LOG(INFO) << "Original " << schema_.ToString();
   // Verify that the Schema is the new one.
   YBSchema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   bool alter_in_progress = false;
   string table_id;
   ASSERT_OK(client_->GetTableSchema(kTableName, &schema, &partition_schema));
@@ -430,7 +422,7 @@ TEST_P(AlterTableTest, TestGetSchemaAfterAlterTable) {
   ASSERT_OK(AddNewI32Column(kTableName, "new-i32"));
 
   YBSchema s;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   ASSERT_OK(client_->GetTableSchema(kTableName, &s, &partition_schema));
 }
 
@@ -925,7 +917,7 @@ TEST_P(AlterTableTest, TestMultipleAlters) {
 
   // All new columns should be present.
   YBSchema new_schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   ASSERT_OK(client_->GetTableSchema(kSplitTableName, &new_schema, &partition_schema));
   ASSERT_EQ(kNumNewCols + schema_.num_columns(), new_schema.num_columns());
 }

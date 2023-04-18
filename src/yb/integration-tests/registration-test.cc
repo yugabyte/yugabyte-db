@@ -74,7 +74,6 @@ namespace yb {
 using std::vector;
 using std::shared_ptr;
 using std::string;
-using master::MiniMaster;
 using master::TSDescriptor;
 using master::TabletLocationsPB;
 using tserver::MiniTabletServer;
@@ -203,10 +202,10 @@ TEST_F(RegistrationTest, TestTabletReports) {
   auto after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
   // Check that we inserted the right number of rows for the first table:
   // - 2 for the namespace
-  // - 1 for the table
+  // - 2 for the table
   // - 3 * FLAGS_yb_num_shards_per_tserver for the tablets:
   //    PREPARING, first heartbeat, leader election heartbeat
-  int64_t expected_rows = 2 + 1 + FLAGS_yb_num_shards_per_tserver * 3;
+  int64_t expected_rows = 2 + 2 + FLAGS_yb_num_shards_per_tserver * 3;
   EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
 
   // Add another tablet, make sure it is reported via incremental.
@@ -225,8 +224,8 @@ TEST_F(RegistrationTest, TestTabletReports) {
   SleepFor(sleep_duration_sec);
   LOG(INFO) << "Finish calculating sys catalog rows inserted (2)";
   after_create_rows_inserted = GetCatalogMetric(METRIC_rows_inserted);
-  // We expect 3 writes per tablet. and 1 write for the table.
-  expected_rows = 1 + FLAGS_yb_num_shards_per_tserver * 3;
+  // We expect 3 writes per tablet. and 2 write for the table.
+  expected_rows = 2 + FLAGS_yb_num_shards_per_tserver * 3;
   EXPECT_EQ(expected_rows, after_create_rows_inserted - before_rows_inserted);
   ASSERT_OK(cluster_->WaitForReplicaCount(tablet_id_2, 1, &locs));
 

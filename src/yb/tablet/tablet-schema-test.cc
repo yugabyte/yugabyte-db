@@ -39,7 +39,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 
@@ -143,7 +143,7 @@ TEST_F(TestTabletSchema, TestRowIteratorWithAlterSchema) {
       SleepFor(MonoDelta::FromMilliseconds(100));
     }
     // 3. Previous schema context should be preserved even after schema change.
-    iter->IsNextStaticColumn();
+    iter->IsFetchedRowStatic();
   });
   SchemaBuilder builder2(*tablet()->metadata()->schema());
   ASSERT_OK(builder2.RenameColumn("c1", "c1_renamed"));

@@ -106,7 +106,7 @@ class SnapshotState : public StateWithTablets {
   void DeleteAborted(const Status& status);
 
  private:
-  bool IsTerminalFailure(const Status& status) override;
+  std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
@@ -122,7 +122,7 @@ class SnapshotState : public StateWithTablets {
   AsyncTaskThrottler throttler_;
 };
 
-Result<docdb::KeyBytes> EncodedSnapshotKey(
+Result<dockv::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context);
 
 } // namespace master

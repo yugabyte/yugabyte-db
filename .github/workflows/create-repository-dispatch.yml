@@ -87,11 +87,11 @@ jobs:
                     "release": "${{github.event.release.tag_name}}",
                     "yb_release_train": ${{steps.yb_train.outputs.yb_train}} } }'
       
-      - name: "Trigger Repository Dispatch - yugabyte/homebrew-yugabytedb"
+      - name: "Trigger Repository Dispatch - yugabyte/homebrew-tap"
         run: |
           curl -XPOST -u "${{ secrets.PAT_USERNAME}}:${{secrets.PAT_TOKEN}}" \
           -H "Accept: application/vnd.github.everest-preview+json" \
-          -H "Content-Type: application/json" https://api.github.com/repos/yugabyte/homebrew-yugabytedb/dispatches \
+          -H "Content-Type: application/json" https://api.github.com/repos/yugabyte/homebrew-tap/dispatches \
           --data '{"event_type": "update-on-release", "client_payload":
                    {"prerelease": "${{ github.event.release.prerelease }}",
                     "release": "${{github.event.release.tag_name}}",

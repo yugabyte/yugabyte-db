@@ -19,12 +19,10 @@
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flags.h"
 
 using namespace std::chrono_literals;
 using namespace std::literals;
 
-DECLARE_bool(ysql_enable_packed_row);
 DECLARE_int32(TEST_partitioning_version);
 
 namespace {
@@ -57,7 +55,6 @@ class YBBackupTestNumTablets : public YBBackupTest {
     options->extra_tserver_flags.push_back("--ycql_num_tablets=3");
     options->extra_tserver_flags.push_back("--ysql_num_tablets=3");
     options->extra_tserver_flags.push_back("--cleanup_split_tablets_interval_sec=1");
-    options->extra_tserver_flags.push_back("--ysql_enable_packed_row=false");
   }
 
   string default_db_ = "yugabyte";
@@ -121,6 +118,47 @@ TEST_F_EX(YBBackupTest,
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
+// Test delete_snapshot operation, where one of the tablets involved in the delete snapshot
+// operation is already deleted (For example: due to tablet splitting).
+// 1. create a table with 3 pre-split tablets.
+// 2. create a database snapshot
+// 3. split one of the tablets to make 4 tablets
+// 4. delete the snapshot created at 2
+TEST_F(YBBackupTest, DeleteSnapshotAfterTabletSplitting) {
+  const string table_name = "mytbl";
+  const string default_db = "yugabyte";
+  LOG(INFO) << Format("Create table '$0'", table_name);
+  ASSERT_NO_FATALS(CreateTable(Format("CREATE TABLE $0 (k INT, v INT)", table_name)));
+  LOG(INFO) << "Insert values";
+  ASSERT_NO_FATALS(InsertRows(
+      Format("INSERT INTO $0 (k,v) SELECT i,i FROM generate_series(1,10000) AS i", table_name),
+      10000));
+  // Verify tablets count and get table_id
+  auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), 3);
+  constexpr int middle_index = 1;
+  TableId table_id = tablets[0].table_id();
+  LOG(INFO) << "Create snapshot";
+  auto snapshot_id = ASSERT_RESULT(snapshot_util_->CreateSnapshot(table_id));
+  LOG(INFO) << "Split one tablet Manually and wait for parent tablet to be deleted.";
+  string tablet_id = tablets[middle_index].tablet_id();
+  // Split it && Wait for split to complete.
+  constexpr int num_tablets = 4;
+  ASSERT_OK(test_admin_client_->SplitTabletAndWait(
+      default_db, table_name, /* wait_for_parent_deletion */ true, tablet_id));
+  LOG(INFO) << "Finish tablet splitting";
+  tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db, table_name));
+  LogTabletsInfo(tablets);
+  ASSERT_EQ(tablets.size(), num_tablets);
+  // Delete the snapshot after the parent tablet has been deleted
+  LOG(INFO) << "Delete snapshot";
+  ASSERT_OK(snapshot_util_->DeleteSnapshot(snapshot_id));
+  // Make sure the snapshot has been deleted
+  LOG(INFO) << "Wait snapshot to be Deleted";
+  ASSERT_OK(snapshot_util_->WaitAllSnapshotsDeleted());
+}
+
 // Test backup/restore when a hash-partitioned table undergoes manual tablet splitting.  Most
 // often, if tablets are split after creation, the partition boundaries will not be evenly spaced.
 // This then differs from the boundaries of a hash table that is pre-split with the same number of
@@ -176,7 +214,8 @@ TEST_F_EX(YBBackupTest,
   auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 3);
-  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xaa\xaa"}));
+  const std::vector<std::string> initial_split_points = {"\x55\x55", "\xaa\xaa"};
+  ASSERT_EQ(ASSERT_RESULT(GetSplitPoints(tablets)), initial_split_points);
 
   // Choose the middle tablet among
   // -       -0x5555
@@ -197,16 +236,18 @@ TEST_F_EX(YBBackupTest,
 
   // Verify that it has these four tablets:
   // -       -0x5555
-  // - 0x5555-0xa6e8
-  // - 0xa6e8-0xaaaa
+  // - 0x5555-?
+  // - ?-0xaaaa
   // - 0xaaaa-
-  // 0xa6e8 just happens to be what tablet splitting chooses.  Tablet splitting should choose the
-  // split point based on the existing data.  Don't verify that it chose the right split point: that
-  // is out of scope of this test.  Just trust what it chose.
+  // Tablet splitting should choose the split point based on the existing data. Don't verify that
+  // it chose the right split point: that is out of scope of this test. Just trust what it chose.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xa6\xe8", "\xaa\xaa"}));
+  auto three_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(three_split_points[0], initial_split_points[0]);
+  ASSERT_EQ(three_split_points[2], initial_split_points[1]);
+
 
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
@@ -217,19 +258,13 @@ TEST_F_EX(YBBackupTest,
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Before performing restore, demonstrate that the table that would be created by the ysql_dump
-  // file will have the following even splits:
-  // -       -0x3fff
-  // - 0x3fff-0x7ffe
-  // - 0x7ffe-0xbffd
-  // - 0xbffd-
-  // Note: If this test starts failing because of this, the default splits probably changed to
-  // something more even like -0x4000, 0x4000-0x8000, and so forth.  Simply adjust the test
-  // expectation here.
+  // file will have different splits.
   ASSERT_NO_FATALS(CreateTable(
       Format("CREATE TABLE $0 (k INT PRIMARY KEY) SPLIT INTO 4 TABLETS", table_name)));
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"\x3f\xff", "\x7f\xfe", "\xbf\xfd"}));
+  auto default_table_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_NE(three_split_points, default_table_split_points);
   ASSERT_NO_FATALS(RunPsqlCommand(Format("DROP TABLE $0", table_name), "DROP TABLE"));
 
   // Restore should notice that the table it creates from ysql_dump file has different partition
@@ -240,7 +275,8 @@ TEST_F_EX(YBBackupTest,
   // Validate.
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"\x55\x55", "\xa6\xe8", "\xaa\xaa"}));
+  auto post_restore_splits = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(post_restore_splits, three_split_points);
   ASSERT_NO_FATALS(RunPsqlCommand(select_query, select_output));
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
@@ -519,7 +555,8 @@ TEST_F_EX(YBBackupTest,
   // "4a" is the split point value.
   // two '\0' terminate a string value.
   // '!' indicates the end of the range group of a key.
-  ASSERT_TRUE(CheckPartitions(tablets, {"S4a\0\0!"s}));
+  const std::string initial_split_point = "S4a\0\0!"s;
+  ASSERT_TRUE(CheckPartitions(tablets, {initial_split_point}));
 
   // Insert data
   ASSERT_NO_FATALS(InsertRows(
@@ -533,7 +570,7 @@ TEST_F_EX(YBBackupTest,
   // Choose the first tablet among tablets: "" --- "4a" and "4a" --- ""
   int split_index = 0;
   ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
-  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "S4a\0\0!"s);
+  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), initial_split_point);
   string tablet_id = tablets[split_index].tablet_id();
 
   // Split it && Wait for split to complete.
@@ -545,16 +582,14 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S150a\0\0!"s, "S4a\0\0!"s}));
+  auto two_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(two_split_points[1], initial_split_point);
 
   // Further split at split depth 1
-  // Choose the first tablet among tablets: "" --- "150a", "150a" --- "4a", and "4a" --- ""
   split_index = 0;
-  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
-  ASSERT_EQ(tablets[split_index].partition().partition_key_end(), "S150a\0\0!"s);
   tablet_id = tablets[split_index].tablet_id();
 
-  // Split it && Wait for split to complete.
+  // Split it && wait for split to complete.
   num_tablets = 4;
   ASSERT_OK(test_admin_client_->SplitTabletAndWait(
       default_db_, table_name, /* wait_for_parent_deletion */ false, tablet_id));
@@ -563,7 +598,12 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
+  auto three_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  // Verify the 3 split points contain as suffix the earlier 2 split points.
+  ASSERT_TRUE(std::equal(three_split_points.begin() + 1,
+                         three_split_points.end(),
+                         two_split_points.begin(),
+                         two_split_points.end()));
 
   // Backup
   const string backup_dir = GetTempDir("backup");
@@ -579,8 +619,9 @@ TEST_F_EX(YBBackupTest,
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, table_name));
   ASSERT_EQ(tablets.size(), 4);
-  ASSERT_TRUE(CheckPartitions(tablets, {"S133a\0\0!"s, "S150a\0\0!"s, "S4a\0\0!"s}));
-
+  auto post_restore_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(post_restore_split_points,
+            three_split_points);
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
 
@@ -608,7 +649,8 @@ TEST_F_EX(YBBackupTest,
   auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 1);
-  ASSERT_TRUE(CheckPartitions(tablets, {}));
+  // Use this function for side effects. It validates the begin and end partitions are empty.
+  ASSERT_RESULT(GetSplitPoints(tablets));
 
   // Insert data
   ASSERT_NO_FATALS(InsertRows(
@@ -638,14 +680,10 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  // '|' represents kNullHigh
-  ASSERT_TRUE(CheckPartitions(tablets, {"|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+  auto one_split_point = ASSERT_RESULT(GetSplitPoints(tablets));
 
   // Further split at split depth 1
   split_index = 0;
-  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
-  ASSERT_EQ(tablets[split_index].partition().partition_key_end(),
-            "|SG\230lH\200\000\001\000\001\027!!\000\000!"s);
   tablet_id = tablets[split_index].tablet_id();
 
   // Split it && Wait for split to complete.
@@ -657,8 +695,8 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
-                                        "|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+  auto two_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(two_split_points[1], one_split_point[0]);
 
   // Verify yb_get_range_split_clause returns an empty string because null values are present
   // in split points.
@@ -686,8 +724,8 @@ TEST_F_EX(YBBackupTest,
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
-  ASSERT_TRUE(CheckPartitions(tablets, {"|SGYUH\200\000\001\000\0010!!\000\000!"s,
-                                        "|SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+  auto post_restore_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(post_restore_split_points, two_split_points);
 
   // Verify yb_get_range_split_clause returns an empty string because null values are present
   // in split points.
@@ -727,7 +765,8 @@ TEST_F_EX(YBBackupTest,
   auto tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), 1);
-  ASSERT_TRUE(CheckPartitions(tablets, {}));
+  // Use this function for side effects. It validates the begin and end partitions are empty.
+  ASSERT_RESULT(GetSplitPoints(tablets));
 
   // Insert data
   ASSERT_NO_FATALS(InsertRows(
@@ -756,15 +795,10 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  // H\200\000\000\310 represents ascending-order integer value 200
-  ASSERT_TRUE(CheckPartitions(tablets,
-                              {"H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+  auto one_split_point = ASSERT_RESULT(GetSplitPoints(tablets));
 
   // Further split at split depth 1
   split_index = 0;
-  ASSERT_EQ(tablets[split_index].partition().partition_key_start(), "");
-  ASSERT_EQ(tablets[split_index].partition().partition_key_end(),
-            "H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s);
   tablet_id = tablets[split_index].tablet_id();
 
   // Split it && Wait for split to complete.
@@ -776,9 +810,8 @@ TEST_F_EX(YBBackupTest,
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   LogTabletsInfo(tablets);
   ASSERT_EQ(tablets.size(), num_tablets);
-  ASSERT_TRUE(CheckPartitions(tablets,
-                              {"H\200\000\000\310SGq\317H\200\000\001\000\001\n!!\000\000!"s,
-                               "H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+  auto two_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(two_split_points[1], one_split_point[0]);
 
   // Backup
   const string backup_dir = GetTempDir("backup");
@@ -794,9 +827,9 @@ TEST_F_EX(YBBackupTest,
   // Validate
   tablets = ASSERT_RESULT(test_admin_client_->GetTabletLocations(default_db_, index_name));
   ASSERT_EQ(tablets.size(), 3);
-  ASSERT_TRUE(CheckPartitions(tablets,
-                              {"H\200\000\000\310SGq\317H\200\000\001\000\001\n!!\000\000!"s,
-                               "H\200\000\000\310SG\230lH\200\000\001\000\001\027!!\000\000!"s}));
+  auto post_restore_split_points = ASSERT_RESULT(GetSplitPoints(tablets));
+  ASSERT_EQ(two_split_points,
+            post_restore_split_points);
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }

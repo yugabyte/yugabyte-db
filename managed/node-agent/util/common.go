@@ -2,15 +2,20 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	pb "node-agent/generated/service"
 	"os"
 	"os/user"
+	"reflect"
 	"strconv"
 	"sync"
 
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -89,6 +94,8 @@ var (
 type ContextKey string
 
 type Handler func(context.Context) (any, error)
+
+type RPCResponseConverter func(any) (*pb.DescribeTaskResponse, error)
 
 func NewUUID() uuid.UUID {
 	return uuid.New()
@@ -289,4 +296,23 @@ func CorrelationID(ctx context.Context) string {
 // WithCorrelationID creates a child context with correlation ID.
 func WithCorrelationID(ctx context.Context, corrId string) context.Context {
 	return context.WithValue(ctx, CorrelationId, corrId)
+}
+
+// ConvertType converts a type from one to another.
+func ConvertType(from any, to any) error {
+	kind := reflect.TypeOf(to).Kind()
+	if kind != reflect.Pointer {
+		return fmt.Errorf("Target type (%v) is not a pointer", kind)
+	}
+	var b []byte
+	var err error
+	if msg, ok := from.(proto.Message); ok {
+		b, err = protojson.Marshal(msg)
+	} else {
+		b, err = json.Marshal(from)
+	}
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, to)
 }

@@ -20,11 +20,11 @@
 
 #include "yb/common/common.pb.h"
 
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/intent.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 
@@ -51,11 +51,8 @@ DEFINE_UNKNOWN_uint64(intents_compaction_filter_max_errors_to_log, 100,
 
 DECLARE_uint32(external_transaction_retention_window_secs);
 
-using std::shared_ptr;
 using std::unique_ptr;
-using std::unordered_set;
 using rocksdb::CompactionFilter;
-using rocksdb::VectorToString;
 
 namespace yb {
 namespace docdb {
@@ -200,7 +197,8 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
 
   Slice key_slice = key;
   return VERIFY_RESULT_PREPEND(
-      DecodeTransactionIdFromIntentValue(&key_slice), "Could not decode Transaction metadata");
+      dockv::DecodeTransactionIdFromIntentValue(&key_slice),
+      "Could not decode Transaction metadata");
 }
 
 Result<rocksdb::FilterDecision>
@@ -213,7 +211,7 @@ DocDBIntentsCompactionFilter::FilterExternalIntent(const Slice& key) {
   RETURN_NOT_OK_PREPEND(
       DecodeTransactionId(&key_slice), "Could not decode external transaction id");
   auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
-      DecodeInvertedDocHt(key_slice), "Could not decode hybrid time");
+      dockv::DecodeInvertedDocHt(key_slice), "Could not decode hybrid time");
   auto write_time_micros = doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
   int64_t delta_micros = compaction_start_time_ - write_time_micros;
   if (delta_micros >

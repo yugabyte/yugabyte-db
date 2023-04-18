@@ -145,7 +145,7 @@ public class AvailabilityZone extends Model {
   public boolean shouldBeUpdated(AvailabilityZone zone) {
     return !Objects.equals(this.getSubnet(), zone.getSubnet())
         || !Objects.equals(this.getSecondarySubnet(), zone.getSecondarySubnet())
-        || !Objects.equals(this.getAvailabilityZoneDetails(), zone.getAvailabilityZoneDetails());
+        || !Objects.equals(this.getDetails(), zone.getDetails());
   }
 
   /** Query Helper for Availability Zone with primary key */

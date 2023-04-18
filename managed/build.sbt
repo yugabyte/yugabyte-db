@@ -147,7 +147,7 @@ libraryDependencies ++= Seq(
   "org.flywaydb" %% "flyway-play" % "7.37.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
-  "org.yaml" % "snakeyaml" % "1.33",
+  "org.yaml" % "snakeyaml" % "2.0",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.1",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
@@ -195,7 +195,10 @@ libraryDependencies ++= Seq(
   "org.unix4j" % "unix4j-command" % "0.6",
   "com.bettercloud" % "vault-java-driver" % "5.1.0",
   "org.apache.directory.api" % "api-all" % "2.1.0",
-  "io.fabric8" % "kubernetes-client" % "5.10.2",
+  "io.fabric8" % "kubernetes-client" % "6.4.1",
+  "io.fabric8" % "kubernetes-client-api" % "6.4.1",
+  "io.fabric8" % "kubernetes-model" % "4.9.2",
+  "io.fabric8" % "kubernetes-api" % "3.0.12",
   "io.jsonwebtoken" % "jjwt-api" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-impl" % "0.11.5",
   "io.jsonwebtoken" % "jjwt-jackson" % "0.11.5",
@@ -440,9 +443,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b18"
-libraryDependencies += "org.yb" % "yb-client" % "0.8.50-SNAPSHOT"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b21"
+libraryDependencies += "org.yb" % "ybc-client" % "1.0.0-b23"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.51-SNAPSHOT"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b22"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",

@@ -734,7 +734,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertValue(json, "name", "Kubernetes-Provider");
     Provider provider =
         Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
-    provider.getDetails().cloudInfo.kubernetes.kubernetesStorageClass = "slow";
+    provider.getDetails().cloudInfo.kubernetes.setKubernetesStorageClass("slow");
 
     result = editProvider(Json.toJson(provider), provider.getUuid());
     assertOk(result);
@@ -756,8 +756,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertValue(json, "name", "Kubernetes-Provider");
     Provider provider =
         Provider.get(customer.getUuid(), UUID.fromString(json.path("uuid").asText()));
-    provider.getDetails().cloudInfo.kubernetes.kubeConfigName = "test2.conf";
-    provider.getDetails().cloudInfo.kubernetes.kubeConfigContent = "test5678";
+    provider.getDetails().cloudInfo.kubernetes.setKubeConfigName("test2.conf");
+    provider.getDetails().cloudInfo.kubernetes.setKubeConfigContent("test5678");
 
     result = editProvider(Json.toJson(provider), provider.getUuid());
     assertOk(result);
@@ -766,7 +766,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     assertEquals(provider.getUuid(), UUID.fromString(json.get("resourceUUID").asText()));
     provider.refresh();
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
-    assertTrue(config.get("KUBECONFIG_NAME").contains("test2.conf"));
     Path path = Paths.get(config.get("KUBECONFIG"));
     try {
       List<String> contents = Files.readAllLines(path);

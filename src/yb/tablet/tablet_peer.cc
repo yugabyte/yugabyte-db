@@ -146,12 +146,10 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
-using consensus::OpIdType;
 using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
 using consensus::RaftConsensus;
 using consensus::RaftPeerPB;
-using consensus::ReplicateMsg;
 using consensus::StateChangeContext;
 using consensus::StateChangeReason;
 using log::Log;
@@ -698,6 +696,13 @@ Status TabletPeer::SubmitUpdateTransaction(
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);
   }
+  auto scoped_read_operation =
+      VERIFY_RESULT(operation->tablet_safe())->CreateNonAbortableScopedRWOperation();
+  if (!scoped_read_operation.ok()) {
+    auto status = MoveStatus(scoped_read_operation);
+    operation->CompleteWithStatus(status);
+    return status;
+  }
   Submit(std::move(operation), term);
   return Status::OK();
 }
@@ -1001,6 +1006,21 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
       if (details) {
         *details += Format("Max persistent intents op id: $0\n", max_persistent_op_id.intents);
       }
+    }
+  }
+
+  if (meta_->IsLazySuperblockFlushEnabled()) {
+    // Unapplied change metadata operations, if any, are taken into account above. The below
+    // takes into accounts any applied but unflushed change metadata operations.
+
+    // TODO(lazy_sb_flush): MinUnflushedChangeMetadataOpId() requires flush_lock_ which can be
+    // expensive to get during a superblock flush. Get rid of the below logic, if possible, post
+    // https://github.com/yugabyte/yugabyte-db/issues/16684.
+    auto min_unflushed_change_metadata_index = meta_->MinUnflushedChangeMetadataOpId().index;
+    min_index = std::min(min_index, min_unflushed_change_metadata_index);
+    if (details) {
+      *details += Format(
+          "Min unflushed CHANGE_METADATA_OP index: $0\n", min_unflushed_change_metadata_index);
     }
   }
 

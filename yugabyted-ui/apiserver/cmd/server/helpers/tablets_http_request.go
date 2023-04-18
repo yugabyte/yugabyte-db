@@ -1,6 +1,7 @@
 package helpers
 
 import (
+    "apiserver/cmd/server/logger"
     "fmt"
     "io/ioutil"
     "net/http"
@@ -48,6 +49,11 @@ func parseTabletsFromHtml(body string) (map[string]TabletInfo, error) {
         return tablets, err
     }
     for _, row := range rowMatches {
+        defer func() {
+            if r := recover(); r != nil {
+                logger.Log.Debugf("Recovered from index out of range error: ", row)
+            }
+        }()
         namespace := row[1]
         tableName := row[2]
         tableUuid := row[3]

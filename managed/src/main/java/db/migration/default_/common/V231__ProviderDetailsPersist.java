@@ -7,11 +7,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.migrations.V231.AvailabilityZone;
+import com.yugabyte.yw.models.migrations.V231.Customer;
+import com.yugabyte.yw.models.migrations.V231.Provider;
+import com.yugabyte.yw.models.migrations.V231.Region;
+import com.yugabyte.yw.models.migrations.V231.CloudInfoInterface_Clone;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import io.ebean.Ebean;
 import java.util.HashMap;
@@ -29,7 +29,7 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
   }
 
   public static void migrateConfigToDetails() {
-    for (Customer customer : Customer.getAll()) {
+    for (Customer customer : Customer.find.all()) {
       for (Provider provider : Provider.getAll(customer.getUuid())) {
         Map<String, String> config = provider.getConfig();
         if (config == null) {
@@ -45,13 +45,13 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
         for (Region region : provider.getRegions()) {
           V231__ProviderDetailsPersist.migrateRegionDetails(region);
           for (AvailabilityZone az : region.getZones()) {
-            CloudInfoInterface.setCloudProviderInfoFromConfig(az, az.getConfig());
+            CloudInfoInterface_Clone.setCloudProviderInfoFromConfig(az, az.getConfig());
             az.save();
           }
           region.save();
         }
 
-        CloudInfoInterface.setCloudProviderInfoFromConfig(provider, providerConfig);
+        CloudInfoInterface_Clone.setCloudProviderInfoFromConfig(provider, providerConfig);
         provider.save();
         if (provider.getCloudCode().equals(CloudType.gcp)) {
           V231__ProviderDetailsPersist.populateGCPCredential(provider, config);
@@ -62,8 +62,8 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
   }
 
   private static void migrateRegionDetails(Region region) {
-    if (region.getYbImageDeprecated() != null) {
-      region.setYbImage(region.getYbImageDeprecated());
+    if (region.ybImage != null) {
+      region.setYbImage(region.ybImage);
     }
     if (region.getDetails() != null) {
       if (region.getDetails().sg_id != null) {

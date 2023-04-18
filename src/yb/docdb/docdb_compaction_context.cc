@@ -18,14 +18,14 @@
 #include <glog/logging.h>
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/packed_row.h"
+#include "yb/dockv/packed_row.h"
 #include "yb/docdb/pgsql_operation.h"
-#include "yb/docdb/schema_packing.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 
@@ -39,8 +39,6 @@
 using namespace std::literals;
 using std::shared_ptr;
 using std::unique_ptr;
-using std::unordered_set;
-using rocksdb::VectorToString;
 
 DECLARE_bool(ycql_enable_packed_row);
 
@@ -49,6 +47,9 @@ DECLARE_uint64(ysql_packed_row_size_limit);
 
 namespace yb {
 namespace docdb {
+
+using dockv::Expiration;
+using dockv::ValueControlFields;
 
 namespace {
 
@@ -198,8 +199,8 @@ class PackedRowData {
   // lazy_ht - in/out parameter to access entry hybrid time.
   Result<bool> ProcessColumn(
       ColumnId column_id, const Slice& value, const EncodedDocHybridTime& column_doc_ht,
-      const ValueControlFields& control_fields, size_t encoded_control_fields_size,
-      LazyHybridTime* lazy_ht) {
+      const ValueControlFields& control_fields, bool has_intent_doc_ht,
+      size_t encoded_control_fields_size, LazyHybridTime* lazy_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
@@ -228,7 +229,7 @@ class PackedRowData {
       }
     }
 
-    if (!value.empty() && value[0] == ValueEntryTypeAsChar::kTombstone &&
+    if (!value.empty() && value[0] == dockv::ValueEntryTypeAsChar::kTombstone &&
         new_packing_.table_type == TableType::PGSQL_TABLE_TYPE) {
       // In a YSQL table, a tombstone for a specific column could be added only during PITR,
       // and we should just ignore all column updates for it.
@@ -238,9 +239,8 @@ class PackedRowData {
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
     std::optional<ValueControlFields> control_fields_copy;
-    if (control_fields.intent_doc_ht.is_valid()) {
+    if (has_intent_doc_ht) {
       control_fields_copy = control_fields;
-      control_fields_copy->intent_doc_ht = DocHybridTime::kInvalid;
     }
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
       if (!control_fields_copy) {
@@ -282,7 +282,7 @@ class PackedRowData {
     if (!active()) {
       return Status::OK();
     }
-    key_.PushBack(KeyEntryTypeAsChar::kHybridTime);
+    key_.PushBack(dockv::KeyEntryTypeAsChar::kHybridTime);
     key_.Append(encoded_doc_ht_.AsSlice());
     key_.Append(last_internal_component_, sizeof(last_internal_component_));
 
@@ -312,7 +312,7 @@ class PackedRowData {
         ? std::optional<Slice>()
         : old_packing_.schema_packing->GetValue(column_id, old_value_slice_);
     if (!column_value) {
-      const ColumnPackingData& column_data = VERIFY_RESULT(packer_->NextColumnData());
+      const auto& column_data = VERIFY_RESULT_REF(packer_->NextColumnData());
       RSTATUS_DCHECK(column_data.varlen(), Corruption, Format(
           "Don't have value for fixed size column: $0, in $1, schema_version: $2",
           column_id, old_value_slice_.ToDebugHexString(), old_packing_.schema_version));
@@ -372,14 +372,14 @@ class PackedRowData {
     if (coprefix.empty()) {
       return schema_packing_provider_->CotablePacking(
           Uuid::Nil(), kLatestSchemaVersion, history_cutoff_);
-    } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kColocationId)) {
+    } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kColocationId)) {
       if (coprefix.size() != sizeof(ColocationId)) {
         return STATUS_FORMAT(Corruption, "Wrong colocation size: $0", coprefix.ToDebugHexString());
       }
       uint32_t colocation_id = BigEndian::Load32(coprefix.data());
       return schema_packing_provider_->ColocationPacking(
           colocation_id, kLatestSchemaVersion, history_cutoff_);
-    } else if (coprefix.TryConsumeByte(KeyEntryTypeAsChar::kTableId)) {
+    } else if (coprefix.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTableId)) {
       auto cotable_id = VERIFY_RESULT(Uuid::FromComparable(coprefix));
       return schema_packing_provider_->CotablePacking(
           cotable_id, kLatestSchemaVersion, history_cutoff_);
@@ -416,7 +416,7 @@ class PackedRowData {
   bool active_coprefix_dropped_ = false;
 
   CompactionSchemaInfo new_packing_;
-  boost::optional<RowPacker> packer_;
+  boost::optional<dockv::RowPacker> packer_;
   bool can_start_packing_ = false; // Whether we could start packing row with current schema.
 
   HybridTime history_cutoff_;
@@ -677,22 +677,22 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   auto key = internal_key.WithoutSuffix(rocksdb::kLastInternalComponentSize);
 
   VLOG(4) << "Feed: " << internal_key.ToDebugHexString() << "/"
-          << SubDocKey::DebugSliceToString(key) << " => " << value.ToDebugHexString();
+          << dockv::SubDocKey::DebugSliceToString(key) << " => " << value.ToDebugHexString();
 
   if (!IsWithinBounds(key_bounds_, key) &&
-      DecodeKeyEntryType(key) != KeyEntryType::kTransactionApplyState) {
+      dockv::DecodeKeyEntryType(key) != dockv::KeyEntryType::kTransactionApplyState) {
     // If we reach this point, then we're processing a record which should have been excluded by
     // proper use of GetLiveRanges(). We include this as a sanity check, but we should never get
     // here.
     LOG(DFATAL) << "Unexpectedly filtered out-of-bounds key during compaction: "
-        << SubDocKey::DebugSliceToString(key)
+        << dockv::SubDocKey::DebugSliceToString(key)
         << " with bounds: " << key_bounds_->ToString();
     return Status::OK();
   }
 
   // Just remove intent records from regular DB, because it was beta feature.
   // Currently intents are stored in separate DB.
-  if (DecodeKeyEntryType(key) == KeyEntryType::kObsoleteIntentPrefix) {
+  if (dockv::DecodeKeyEntryType(key) == dockv::KeyEntryType::kObsoleteIntentPrefix) {
     return Status::OK();
   }
 
@@ -727,7 +727,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   sub_key_ends_.resize(num_shared_components);
 
-  RETURN_NOT_OK(SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
+  RETURN_NOT_OK(dockv::SubDocKey::DecodeDocKeyAndSubKeyEnds(key, &sub_key_ends_));
   RETURN_NOT_OK(packed_row_.UpdateCoprefix(key.Prefix(sub_key_ends_[0])));
 
   if (packed_row_.active_coprefix_dropped()) {
@@ -782,7 +782,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // does not get cleaned up the same way as this one.
   //
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
-  bool is_ttl_row = IsMergeRecord(value);
+  bool is_ttl_row = dockv::IsMergeRecord(value);
   bool skip = encoded_doc_ht < prev_overwrite_ht && !is_ttl_row;
   VLOG_WITH_FUNC(4) << "Ht: " << encoded_doc_ht.ToString()
                     << ", prev_overwrite_ht: " << prev_overwrite_ht.ToString()
@@ -824,7 +824,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         << encoded_history_cutoff_.ToString();
     auto value_slice = value;
     RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
-    if (DecodeValueEntryType(value_slice) == ValueEntryType::kPackedRow) {
+    if (dockv::DecodeValueEntryType(value_slice) == dockv::ValueEntryType::kPackedRow) {
       // Check packed row version for rows left untouched.
       RETURN_NOT_OK(packed_row_.ProcessForwardedPackedRow(value_slice));
     }
@@ -832,7 +832,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   }
 
   Slice value_slice = value;
-  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+  Slice intent_doc_ht;
+  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::DecodeWithIntentDocHt(
+      &value_slice, &intent_doc_ht));
   LazyHybridTime lazy_ht(encoded_doc_ht);
 
   // Check for columns deleted from the schema. This is done regardless of whether this is a
@@ -846,9 +848,10 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     // 1 - end of doc key section.
     // Column ID is the first subkey in every row.
     auto doc_key_size = sub_key_ends_[1];
-    auto key_type = DecodeKeyEntryType(key[doc_key_size]);
+    auto key_type = dockv::DecodeKeyEntryType(key[doc_key_size]);
     VLOG_WITH_FUNC(4) << "First subkey type: " << key_type;
-    if (key_type == KeyEntryType::kColumnId || key_type == KeyEntryType::kSystemColumnId) {
+    if (key_type == dockv::KeyEntryType::kColumnId ||
+        key_type == dockv::KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
       ColumnId column_id;
@@ -861,7 +864,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
       bool start_packing =
           !packed_row_.active() &&
           packed_row_.can_start_packing() &&
-          !value_slice.starts_with(ValueEntryTypeAsChar::kTombstone) &&
+          !value_slice.starts_with(dockv::ValueEntryTypeAsChar::kTombstone) &&
           // Don't start packing if we already passed columns for this key.
           // Could happen because of history retention.
           doc_key_serial_ != last_passed_doc_key_serial_ &&
@@ -877,15 +880,15 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         AssignPrevSubDocKey(key.cdata(), same_bytes);
       }
       if (packed_row_.active()) {
-        if (key_type == KeyEntryType::kSystemColumnId &&
-            column_id == KeyEntryValue::kLivenessColumn.GetColumnId()) {
+        if (key_type == dockv::KeyEntryType::kSystemColumnId &&
+            column_id == dockv::KeyEntryValue::kLivenessColumn.GetColumnId()) {
           return Status::OK();
         }
         // Return if column was processed by packed row.
         auto encoded_control_fields_size = value_slice.data() - value.data();
         if (VERIFY_RESULT(packed_row_.ProcessColumn(
-                column_id, value, encoded_doc_ht, control_fields, encoded_control_fields_size,
-                &lazy_ht))) {
+                column_id, value, encoded_doc_ht, control_fields, !intent_doc_ht.empty(),
+                encoded_control_fields_size, &lazy_ht))) {
           return Status::OK();
         }
       }
@@ -895,8 +898,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   const auto& overwrite_ht = is_ttl_row || prev_overwrite_ht > encoded_doc_ht
       ? prev_overwrite_ht : encoded_doc_ht;
 
-  const auto value_type = static_cast<ValueEntryType>(
-      value_slice.FirstByteOr(ValueEntryTypeAsChar::kInvalid));
+  const auto value_type = static_cast<dockv::ValueEntryType>(
+      value_slice.FirstByteOr(dockv::ValueEntryTypeAsChar::kInvalid));
 
   // If within the merge block.
   //     If the row is a TTL row, delete it.
@@ -925,7 +928,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // compactions. However, we do need to update the overwrite hybrid time stack in this case (as we
   // just did), because this deletion (tombstone) entry might be the only reason for cleaning up
   // more entries appearing at earlier hybrid times.
-  if (value_type == ValueEntryType::kTombstone && !CanHaveOtherDataBefore(encoded_doc_ht)) {
+  if (value_type == dockv::ValueEntryType::kTombstone && !CanHaveOtherDataBefore(encoded_doc_ht)) {
     return Status::OK();
   }
 
@@ -937,8 +940,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
   // Only check for expiration if the current hybrid time is at or below history cutoff.
   // The key could not have possibly expired by history_cutoff_ otherwise.
-  MonoDelta true_ttl = ComputeTTL(expiration.ttl, retention_.table_ttl);
-  const auto has_expired = HasExpiredTTL(
+  MonoDelta true_ttl = dockv::ComputeTTL(expiration.ttl, retention_.table_ttl);
+  const auto has_expired = dockv::HasExpiredTTL(
       true_ttl == expiration.ttl ? expiration.write_ht : VERIFY_RESULT(lazy_ht.Get()),
       true_ttl,
       retention_.history_cutoff);
@@ -956,7 +959,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
 
     // During minor compactions, expired values are written back as tombstones because removing the
     // record might expose earlier values which would be incorrect.
-    new_value = Value::EncodedTombstone();
+    new_value = dockv::Value::EncodedTombstone();
   } else if (within_merge_block_) {
     if (expiration.ttl != ValueControlFields::kMaxTtl) {
       expiration.ttl += MonoDelta::FromMicroseconds(
@@ -972,15 +975,13 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
-  } else if (value_type == ValueEntryType::kPackedRow) {
+  } else if (value_type == dockv::ValueEntryType::kPackedRow) {
     return packed_row_.ProcessPackedRow(
         internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
         encoded_doc_ht, doc_key_serial_);
-  } else if (control_fields.intent_doc_ht.is_valid()) {
+  } else if (!intent_doc_ht.empty()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
-    control_fields.intent_doc_ht = DocHybridTime::kInvalid;
-
     new_value_buffer_.Clear();
 
     // We are reusing the existing encoded value without decoding/encoding it.
@@ -1068,7 +1069,7 @@ rocksdb::UserFrontierPtr DocDBCompactionContext::GetLargestUserFrontier() const 
 }
 
 std::vector<std::pair<Slice, Slice>> DocDBCompactionContext::GetLiveRanges() const {
-  static constexpr char kApplyStateEndChar = KeyEntryTypeAsChar::kTransactionApplyState + 1;
+  static constexpr char kApplyStateEndChar = dockv::KeyEntryTypeAsChar::kTransactionApplyState + 1;
   if (!key_bounds_ || (key_bounds_->lower.empty() && key_bounds_->upper.empty())) {
     return {};
   }

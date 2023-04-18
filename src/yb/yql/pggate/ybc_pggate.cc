@@ -26,7 +26,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ybc-internal.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/util/atomic.h"
@@ -37,9 +37,9 @@
 #include "yb/util/thread.h"
 #include "yb/util/yb_partition.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/server/skewed_clock.h"
 
@@ -83,8 +83,6 @@ DEFINE_UNKNOWN_bool(ysql_disable_server_file_access, false,
             "File access can be re-enabled if set to false.");
 
 DEFINE_NON_RUNTIME_bool(ysql_enable_profile, false, "Enable PROFILE feature.");
-TAG_FLAG(ysql_enable_profile, advanced);
-TAG_FLAG(ysql_enable_profile, hidden);
 
 DEFINE_NON_RUNTIME_bool(ysql_catalog_preload_additional_tables, false,
             "If true, YB catalog preloads additional tables upon "
@@ -626,10 +624,10 @@ static void DecodeCollationEncodedString(QLValuePB *ql_value) {
 
 // This function checks for the existence of next KeyEntryValue in decoder,
 // and decodes it if exists, or returns bad status if it doesn't exist.
-static Status CheckAndDecodeKeyEntryValue(docdb::DocKeyDecoder& decoder,
-                                          docdb::KeyEntryValue *v) {
+static Status CheckAndDecodeKeyEntryValue(dockv::DocKeyDecoder& decoder,
+                                          dockv::KeyEntryValue *v) {
   bool has_next_key_entry_value =
-      VERIFY_RESULT(decoder.HasPrimitiveValue(docdb::AllowSpecial::kTrue));
+      VERIFY_RESULT(decoder.HasPrimitiveValue(dockv::AllowSpecial::kTrue));
 
   if (has_next_key_entry_value) {
     RETURN_NOT_OK(decoder.DecodeKeyEntryValue(v));
@@ -649,28 +647,28 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
   const auto& column_ids = table_desc->partition_schema().range_schema().column_ids;
   size_t num_range_key_columns = table_desc->num_range_key_columns();
   size_t num_splits = table_desc->GetPartitionListSize() - 1;
-  docdb::KeyEntryValue v;
+  dockv::KeyEntryValue v;
 
   // decode DocKeys
   const auto& partitions_bounds = table_desc->GetPartitionList();
   for (size_t split_idx = 0; split_idx < num_splits; ++split_idx) {
     // +1 skip the first empty string lower bound partition key
     const auto& column_bounds = (partitions_bounds)[split_idx + 1];
-    docdb::DocKeyDecoder decoder(column_bounds);
+    dockv::DocKeyDecoder decoder(column_bounds);
 
     for (size_t col_idx = 0; col_idx < num_range_key_columns; ++col_idx) {
       RETURN_NOT_OK(CheckAndDecodeKeyEntryValue(decoder, &v));
       size_t split_datum_idx = split_idx * num_range_key_columns + col_idx;
       if (v.IsInfinity()) {
         // deal with boundary cases: MINVALUE and MAXVALUE
-        if (v.type() == docdb::KeyEntryType::kLowest) {
+        if (v.type() == dockv::KeyEntryType::kLowest) {
           split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MIN;
         } else {
-          CHECK(v.type() == docdb::KeyEntryType::kHighest);
+          CHECK(v.type() == dockv::KeyEntryType::kHighest);
           split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_LIMIT_MAX;
         }
       } else {
-        CHECK(!docdb::IsSpecialKeyEntryType(v.type()));
+        CHECK(!dockv::IsSpecialKeyEntryType(v.type()));
         split_datums[split_datum_idx].datum_kind = YB_YQL_DATUM_STANDARD_VALUE;
         // Convert from KeyEntryValue to QLValuePB
         auto column_schema_result = VERIFY_RESULT(schema.column_by_id(column_ids[col_idx]));
@@ -678,8 +676,8 @@ static Status GetSplitPoints(YBCPgTableDesc table_desc,
         v.ToQLValuePB(column_schema_result.get().type(), &ql_value);
 
         // Decode Collation
-        if (v.type() == docdb::KeyEntryType::kCollString ||
-            v.type() == docdb::KeyEntryType::kCollStringDescending) {
+        if (v.type() == dockv::KeyEntryType::kCollString ||
+            v.type() == dockv::KeyEntryType::kCollStringDescending) {
           DecodeCollationEncodedString(&ql_value);
         }
 
@@ -796,6 +794,12 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle) {
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->ExecDropTable(handle));
+}
+
+YBCStatus YBCPgWaitForBackendsCatalogVersion(YBCPgOid dboid, uint64_t version,
+                                             int* num_lagging_backends) {
+  return ExtractValueFromResult(pgapi->WaitForBackendsCatalogVersion(dboid, version),
+                                num_lagging_backends);
 }
 
 YBCStatus YBCPgBackfillIndex(

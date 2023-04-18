@@ -20,6 +20,7 @@
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/util/monotime.h"
@@ -44,7 +45,7 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const QLScanSpec& spec,
+      const dockv::QLScanSpec& spec,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status BuildYQLScanSpec(
@@ -53,8 +54,8 @@ class YQLStorageIf {
       const Schema& schema,
       bool include_static_columns,
       const Schema& static_projection,
-      std::unique_ptr<QLScanSpec>* spec,
-      std::unique_ptr<QLScanSpec>* static_row_spec) const = 0;
+      std::unique_ptr<dockv::QLScanSpec>* spec,
+      std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const = 0;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
@@ -74,7 +75,8 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
+      const DocDBStatistics* statistics = nullptr) const = 0;
 
   virtual Status InitIterator(
       DocRowwiseIterator* doc_iter,
@@ -90,9 +92,10 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const DocKey& start_doc_key,
+      const dockv::DocKey& start_doc_key,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      boost::optional<size_t> end_referenced_key_column_index = boost::none) const = 0;
+      boost::optional<size_t> end_referenced_key_column_index = boost::none,
+      const DocDBStatistics* statistics = nullptr) const = 0;
 
   // Create iterator for querying by ybctid.
   virtual Status GetIterator(
@@ -104,7 +107,8 @@ class YQLStorageIf {
       const ReadHybridTime& read_time,
       const QLValuePB& min_ybctid,
       const QLValuePB& max_ybctid,
-      std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
+      std::unique_ptr<YQLRowwiseIteratorIf>* iter,
+      const DocDBStatistics* statistics = nullptr) const = 0;
 };
 
 }  // namespace docdb

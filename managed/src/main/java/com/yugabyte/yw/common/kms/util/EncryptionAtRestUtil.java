@@ -304,6 +304,13 @@ public class EncryptionAtRestUtil {
         KmsHistoryId.TargetType.UNIVERSE_KEY);
   }
 
+  public static KmsHistory getKmsHistory(UUID targetUUID, byte[] keyRef) {
+    return KmsHistory.getKmsHistory(
+        targetUUID,
+        Base64.getEncoder().encodeToString(keyRef),
+        KmsHistoryId.TargetType.UNIVERSE_KEY);
+  }
+
   public static List<KmsHistory> getAllUniverseKeys(UUID universeUUID) {
     return KmsHistory.getAllUniverseKeysWithActiveMasterKey(universeUUID);
   }

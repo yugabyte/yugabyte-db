@@ -8,21 +8,28 @@
  */
 import React from 'react';
 import { useMount } from 'react-use';
+import { NodeEntry } from 'slate';
 
-import { useBasicPlugins } from './BasicPlugins';
-import { IYBEditor } from './custom-types';
-import { useAlertVariablesPlugin } from './AlertVariablesPlugin';
+import { useBasicPlugins } from './basic/BasicPlugins';
+import { CustomText, IYBEditor } from './custom-types';
+import { useAlertVariablesPlugin } from './alert/AlertVariablesPlugin';
 import {
   IYBSlatePluginReturnProps,
   SlateRenderElementProps,
   SlateRenderLeafProps
 } from './IPlugin';
 import { useSingleLinePlugin } from './SingleLinePlugin';
+import { useJSONPlugin } from './json/JSONPlugin';
+import { useDefaultPlugin } from './default/DefaultPlugin';
+import { useHighlightAlertVariablePlugin } from './alert/HighlightAlertVariablePlugin';
 
 export type LoadPlugins = {
   basic?: boolean;
   alertVariablesPlugin?: boolean;
   singleLine?: boolean;
+  jsonPlugin?: boolean;
+  defaultPlugin?: boolean;
+  highlightAlertVariablePlugin?: boolean;
 };
 
 /**
@@ -36,7 +43,10 @@ export function useEditorPlugin(editor: IYBEditor, loadPlugins: LoadPlugins) {
   let pluginsList: IYBSlatePluginReturnProps[] = [
     useBasicPlugins({ editor, enabled: loadPlugins.basic }),
     useAlertVariablesPlugin({ editor, enabled: loadPlugins.alertVariablesPlugin }),
-    useSingleLinePlugin({ editor, enabled: loadPlugins.singleLine })
+    useSingleLinePlugin({ editor, enabled: loadPlugins.singleLine }),
+    useJSONPlugin({ editor, enabled: loadPlugins.jsonPlugin }),
+    useHighlightAlertVariablePlugin({ editor, enabled: loadPlugins.highlightAlertVariablePlugin }),
+    useDefaultPlugin({ editor, enabled: loadPlugins.defaultPlugin ?? true })
   ];
 
   useMount(() => {
@@ -81,5 +91,9 @@ export function useEditorPlugin(editor: IYBEditor, loadPlugins: LoadPlugins) {
     return pluginsList.map((p) => p.defaultComponents);
   }
 
-  return { renderElement, onKeyDown, renderLeaf, getDefaultComponents };
+  function getDecorators(node: NodeEntry<CustomText>) {
+    return pluginsList.map((p) => p.decorator?.(node)).flat().filter(Boolean);
+  }
+
+  return { renderElement, onKeyDown, renderLeaf, getDefaultComponents, getDecorators };
 }

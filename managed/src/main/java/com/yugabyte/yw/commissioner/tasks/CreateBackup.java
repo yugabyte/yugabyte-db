@@ -17,6 +17,7 @@ import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_FAILURE_COUNTER;
 import static com.yugabyte.yw.commissioner.tasks.BackupUniverse.SCHEDULED_BACKUP_SUCCESS_COUNTER;
 import static com.yugabyte.yw.common.metrics.MetricService.buildMetricTemplate;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -25,6 +26,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.ybc.YbcManager;
@@ -59,15 +62,18 @@ public class CreateBackup extends UniverseTaskBase {
 
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
+  private final BackupUtil backupUtil;
 
   @Inject
   protected CreateBackup(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService customerConfigService,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      BackupUtil backupUtil) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
+    this.backupUtil = backupUtil;
   }
 
   protected BackupRequestParams params() {
@@ -107,6 +113,9 @@ public class CreateBackup extends UniverseTaskBase {
         }
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
+
+        StorageUtil.getStorageUtil(customerConfig.getName())
+            .validateStorageConfigOnUniverse(customerConfig, universe);
 
         if (ybcBackup
             && universe.isYbcEnabled()

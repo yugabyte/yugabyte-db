@@ -31,10 +31,25 @@ import {
   readFileAsText
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
-import { getNtpSetupType } from '../../utils';
+import {
+  findExistingRegion,
+  findExistingZone,
+  getDeletedRegions,
+  getDeletedZones,
+  getNtpSetupType
+} from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
+import { ON_PREM_UNLISTED_LOCATION } from '../../providerRegionsData';
+import { getOnPremLocationOption } from '../configureRegion/utils';
 
-import { OnPremProvider, OnPremRegionMutation, YBProviderMutation } from '../../types';
+import {
+  OnPremAvailabilityZone,
+  OnPremAvailabilityZoneMutation,
+  OnPremProvider,
+  OnPremRegion,
+  OnPremRegionMutation,
+  YBProviderMutation
+} from '../../types';
 
 interface OnPremProviderEditFormProps {
   editProvider: EditProvider;
@@ -87,6 +102,8 @@ const VALIDATION_SCHEMA = object().shape({
   regions: array().min(1, 'Provider configurations must contain at least one region.')
 });
 
+const FORM_NAME = 'OnPremProviderEditForm';
+
 export const OnPremProviderEditForm = ({
   editProvider,
   isProviderInUse,
@@ -113,14 +130,14 @@ export const OnPremProviderEditForm = ({
     }
 
     try {
-      const providerPayload = await constructProviderPayload(formValues);
+      const providerPayload = await constructProviderPayload(formValues, providerConfig);
       try {
         await editProvider(providerPayload);
       } catch (_) {
         // Handled with `mutateOptions.onError`
       }
-    } catch (error) {
-      toast.error(error);
+    } catch (error: any) {
+      toast.error(error.message ?? error);
     }
   };
 
@@ -133,7 +150,7 @@ export const OnPremProviderEditForm = ({
     setIsRegionFormModalOpen(true);
   };
   const showEditRegionFormModal = () => {
-    setRegionOperation(RegionOperation.EDIT);
+    setRegionOperation(RegionOperation.EDIT_NEW);
     setIsRegionFormModalOpen(true);
   };
   const hideRegionFormModal = () => {
@@ -170,7 +187,7 @@ export const OnPremProviderEditForm = ({
       <FormProvider {...formMethods}>
         <FormContainer name="OnPremProviderForm" onSubmit={formMethods.handleSubmit(onFormSubmit)}>
           {currentProviderVersion < providerConfig.version && (
-            <VersionWarningBanner onReset={onFormReset} />
+            <VersionWarningBanner onReset={onFormReset} dataTestIdPrefix={FORM_NAME} />
           )}
           <Typography variant="h3">Manage OnPrem Provider Configuration</Typography>
           <FormField providerNameField={true}>
@@ -186,14 +203,17 @@ export const OnPremProviderEditForm = ({
             <FieldGroup
               heading="Regions"
               headerAccessories={
-                <YBButton
-                  btnIcon="fa fa-plus"
-                  btnText="Add Region"
-                  btnClass="btn btn-default"
-                  btnType="button"
-                  onClick={showAddRegionFormModal}
-                  disabled={isFormDisabled}
-                />
+                regions.length > 0 ? (
+                  <YBButton
+                    btnIcon="fa fa-plus"
+                    btnText="Add Region"
+                    btnClass="btn btn-default"
+                    btnType="button"
+                    onClick={showAddRegionFormModal}
+                    disabled={isFormDisabled}
+                    data-testid={`${FORM_NAME}-AddRegionButton`}
+                  />
+                ) : null
               }
             >
               <RegionList
@@ -236,7 +256,7 @@ export const OnPremProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
                 <YBInput
-                  value={providerConfig.allAccessKeys[0].keyInfo.keyPairName}
+                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
                   disabled={true}
                   fullWidth
                 />
@@ -244,7 +264,7 @@ export const OnPremProviderEditForm = ({
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
                 <YBInput
-                  value={providerConfig.allAccessKeys[0].keyInfo.privateKey}
+                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
                   disabled={true}
                   fullWidth
                 />
@@ -284,7 +304,10 @@ export const OnPremProviderEditForm = ({
             </FieldGroup>
             <FieldGroup heading="Advanced">
               <FormField>
-                <FieldLabel infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance.">
+                <FieldLabel
+                  infoTitle="DB Nodes have public internet access?"
+                  infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance."
+                >
                   DB Nodes have public internet access?
                 </FieldLabel>
                 <YBToggleField
@@ -294,7 +317,10 @@ export const OnPremProviderEditForm = ({
                 />
               </FormField>
               <FormField>
-                <FieldLabel infoContent="If enabled, node provisioning will not be done when the universe is created. A pre-provision script will be provided to be run manually instead.">
+                <FieldLabel
+                  infoTitle="Manually Provision Nodes"
+                  infoContent="If enabled, node provisioning will not be done when the universe is created. A pre-provision script will be provided to be run manually instead."
+                >
                   Manually Provision Nodes
                 </FieldLabel>
                 <YBToggleField
@@ -353,12 +379,14 @@ export const OnPremProviderEditForm = ({
               btnClass="btn btn-default save-btn"
               btnType="submit"
               disabled={isFormDisabled}
+              data-testid={`${FORM_NAME}-SubmitButton`}
             />
             <YBButton
               btnText="Clear Changes"
               btnClass="btn btn-default"
               onClick={onFormReset}
               disabled={isFormDisabled}
+              data-testid={`${FORM_NAME}-ClearButton`}
             />
           </Box>
         </FormContainer>
@@ -391,26 +419,28 @@ const constructDefaultFormValues = (
   editSSHKeypair: false,
   installNodeExporter: !!providerConfig.details.installNodeExporter,
   nodeExporterPort: providerConfig.details.nodeExporterPort,
-  nodeExporterUser: providerConfig.details.nodeExporterUser,
+  nodeExporterUser: providerConfig.details.nodeExporterUser ?? '',
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
   providerName: providerConfig.name,
   regions: providerConfig.regions.map((region) => ({
     fieldId: generateLowerCaseAlphanumericId(),
     code: region.code,
+    location: getOnPremLocationOption(region.latitude, region.longitude),
     zones: region.zones.map((zone) => ({
       code: zone.code
     }))
   })),
   skipProvisioning: providerConfig.details.skipProvisioning,
-  sshPort: providerConfig.details.sshPort,
-  sshUser: providerConfig.details.sshUser,
+  sshPort: providerConfig.details.sshPort ?? '',
+  sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir
+  ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir ?? ''
 });
 
 const constructProviderPayload = async (
-  formValues: OnPremProviderEditFormFieldValues
+  formValues: OnPremProviderEditFormFieldValues,
+  providerConfig: OnPremProvider
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
   try {
@@ -450,11 +480,47 @@ const constructProviderPayload = async (
       sshPort: formValues.sshPort,
       sshUser: formValues.sshUser
     },
-    regions: formValues.regions.map<OnPremRegionMutation>((regionFormValues) => ({
-      code: regionFormValues.code,
-      name: regionFormValues.code,
-      zones: regionFormValues.zones.map((zone) => ({ code: zone.code, name: zone.code }))
-    })),
+    regions: [
+      ...formValues.regions.map<OnPremRegionMutation>((regionFormValues) => {
+        const existingRegion = findExistingRegion<OnPremProvider, OnPremRegion>(
+          providerConfig,
+          regionFormValues.code
+        );
+        return {
+          ...(existingRegion && {
+            active: existingRegion.active,
+            uuid: existingRegion.uuid,
+            details: existingRegion.details
+          }),
+          ...(regionFormValues.location.label !== ON_PREM_UNLISTED_LOCATION && {
+            latitude: regionFormValues.location.value.latitude,
+            longitude: regionFormValues.location.value.longitude
+          }),
+          code: regionFormValues.code,
+          name: regionFormValues.code,
+          zones: [
+            ...regionFormValues.zones.map((azFormValues) => {
+              const existingZone = findExistingZone<OnPremRegion, OnPremAvailabilityZone>(
+                existingRegion,
+                azFormValues.code
+              );
+              return {
+                ...(existingZone
+                  ? {
+                      active: existingZone.active,
+                      uuid: existingZone.uuid
+                    }
+                  : { active: true }),
+                code: azFormValues.code,
+                name: azFormValues.code
+              };
+            }),
+            ...getDeletedZones(existingRegion?.zones, regionFormValues.zones)
+          ] as OnPremAvailabilityZoneMutation[]
+        };
+      }),
+      ...getDeletedRegions(providerConfig.regions, formValues.regions)
+    ] as OnPremRegionMutation[],
     version: formValues.version
   };
 };

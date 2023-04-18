@@ -62,7 +62,6 @@
 #include "yb/util/status_fwd.h"
 
 using std::string;
-using std::unordered_set;
 
 DECLARE_string(flagfile);
 DECLARE_string(vmodule);

@@ -5,10 +5,13 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.PlacementInfoUtil.isMultiAZ;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
@@ -16,10 +19,13 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 
 public class KubernetesUtil {
@@ -55,6 +61,39 @@ public class KubernetesUtil {
     }
 
     return azToConfig;
+  }
+  /**
+   * For a k8s, finds all associated kubeconfig file paths related to each availability zone.
+   *
+   * @param provider
+   * @return a map where the key is the az uuid and value is kubeConfig path.
+   */
+  public static Map<UUID, String> getKubeConfigPerAZ(Provider provider) {
+    Map<UUID, String> azToKubeConfig = new HashMap<>();
+    String providerKubeConfig = null;
+    String regionKubeConfig = null;
+    String azKubeConfig = null;
+
+    if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
+      providerKubeConfig =
+          CloudInfoInterface.fetchEnvVars(provider).getOrDefault("KUBECONFIG", null);
+      List<Region> regions = Region.getByProvider(provider.getUuid());
+      for (Region region : regions) {
+        regionKubeConfig = CloudInfoInterface.fetchEnvVars(region).getOrDefault("KUBECONFIG", null);
+        List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
+        for (AvailabilityZone zone : zones) {
+          azKubeConfig = CloudInfoInterface.fetchEnvVars(zone).getOrDefault("KUBECONFIG", null);
+          String kubeConfig =
+              ObjectUtils.firstNonNull(providerKubeConfig, regionKubeConfig, azKubeConfig);
+          if (kubeConfig != null) {
+            azToKubeConfig.put(zone.getUuid(), kubeConfig);
+          } else {
+            throw new RuntimeException("No config found at any level");
+          }
+        }
+      }
+    }
+    return azToKubeConfig;
   }
 
   // This function decides the value of isMultiAZ based on the value
@@ -180,6 +219,51 @@ public class KubernetesUtil {
               kubeconfig));
     }
     return podToConfig;
+  }
+
+  public static Map<String, Map<String, String>> getKubernetesConfigPerPodName(
+      PlacementInfo pi, Set<NodeDetails> nodeDetailsSet) {
+    Map<String, Map<String, String>> podToConfig = new HashMap<>();
+    Map<UUID, String> azToKubeconfig = new HashMap<>();
+    Map<UUID, Map<String, String>> azToConfig = getConfigPerAZ(pi);
+    for (Map.Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
+      String kubeconfig = entry.getValue().get("KUBECONFIG");
+      if (kubeconfig == null) {
+        throw new NullPointerException("Couldn't find a kubeconfig for AZ " + entry.getKey());
+      }
+      azToKubeconfig.put(entry.getKey(), kubeconfig);
+    }
+
+    for (NodeDetails nd : nodeDetailsSet) {
+      String kubeconfig = azToKubeconfig.get(nd.azUuid);
+      if (kubeconfig == null) {
+        // Ignore such a node because its corresponding AZ is removed from the PlacementInfo and the
+        // node will be removed too.
+        continue;
+      }
+      podToConfig.put(nd.nodeName, ImmutableMap.of("KUBECONFIG", kubeconfig));
+    }
+    return podToConfig;
+  }
+
+  /**
+   * Returns a set of namespaces for the pods of the universe. Newer kubernetes universes will
+   * always have a single namespace for all of a universe's pods.
+   *
+   * @param universe
+   * @return a set of namespaces
+   */
+  public static Set<String> getUniverseNamespaces(Universe universe) {
+    Set<String> namespaces = new HashSet<>();
+    Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      Set<NodeDetails> nodes = universe.getUniverseDetails().getNodesInCluster(cluster.uuid);
+      PlacementInfo pi = cluster.placementInfo;
+      podAddrToConfig.putAll(KubernetesUtil.getKubernetesConfigPerPod(pi, nodes));
+    }
+    namespaces =
+        podAddrToConfig.values().stream().map(e -> e.get("namespace")).collect(Collectors.toSet());
+    return namespaces;
   }
 
   // Compute the master addresses of the pods in the deployment if multiAZ.
@@ -342,5 +426,31 @@ public class KubernetesUtil {
           "Pod address template generated an invalid DNS, check if placeholders are correct.");
     }
     return template;
+  }
+
+  /**
+   * Returns true if MCS is enabled on the current k8s universe, which is determined by whether the
+   * kubePodAddressTemplate field is set in the availabilityZone details.
+   *
+   * @param universe
+   * @return true if MCS is enabled.
+   */
+  public static boolean isMCSEnabled(Universe universe) {
+    UUID providerUUID =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUUID);
+    if (provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
+      List<Region> regions = Region.getByProvider(provider.getUuid());
+      for (Region region : regions) {
+        List<AvailabilityZone> zones = AvailabilityZone.getAZsForRegion(region.getUuid());
+        for (AvailabilityZone zone : zones) {
+          if (StringUtils.isNotBlank(
+              zone.getDetails().getCloudInfo().getKubernetes().getKubePodAddressTemplate())) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 }

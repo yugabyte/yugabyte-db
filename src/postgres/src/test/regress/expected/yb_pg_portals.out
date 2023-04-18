@@ -1,8 +1,6 @@
 --
 -- Cursor regression tests
--- yb_pg_copy must be scheduled to run before this suite.
 --
-INSERT INTO tenk2 SELECT * FROM tenk1;
 BEGIN;
 DECLARE foo1 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 DECLARE foo2 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;

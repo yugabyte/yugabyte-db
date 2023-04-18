@@ -2771,12 +2771,12 @@ Status RestartAllMasters(ExternalMiniCluster* cluster) {
   return Status::OK();
 }
 
-Status CompactTablets(ExternalMiniCluster* cluster) {
+Status CompactTablets(ExternalMiniCluster* cluster, const yb::MonoDelta& timeout) {
   for (auto* daemon : cluster->master_daemons()) {
     master::CompactSysCatalogRequestPB req;
     master::CompactSysCatalogResponsePB resp;
     rpc::RpcController controller;
-    controller.set_timeout(60s * kTimeMultiplier);
+    controller.set_timeout(timeout);
 
     auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
     RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
@@ -2834,4 +2834,11 @@ void StartSecure(
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK((**cluster).Start(messenger->get()));
 }
+
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster *cluster, const TableId&, MonoDelta timeout) {
+  // TODO(jhe) - Check for just table_id, currently checking for all intents.
+  return CHECK_NOTNULL(cluster)->WaitForAllIntentsApplied(timeout);
+}
+
 }  // namespace yb

@@ -1,6 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 
-import static com.yugabyte.yw.forms.AbstractTaskParams.platformVersion;
+import static com.yugabyte.yw.common.Util.setYbaVersion;
 import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
@@ -27,6 +27,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellLogsManager;
 import com.yugabyte.yw.common.SnapshotCleanup;
 import com.yugabyte.yw.common.YamlWrapper;
+import com.yugabyte.yw.common.operator.KubernetesOperator;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -95,6 +96,7 @@ public class AppInit {
       PerfAdvisorGarbageCollector perfRecGC,
       SnapshotCleanup snapshotCleanup,
       FileDataService fileDataService,
+      KubernetesOperator kubernetesOperator,
       @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
     log.info("Yugaware Application has started");
@@ -228,6 +230,10 @@ public class AppInit {
 
       ybcUpgrade.start();
 
+      if (config.getBoolean("yb.kubernetesOperator.enabled")) {
+        kubernetesOperator.init();
+      }
+
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
 
@@ -239,7 +245,7 @@ public class AppInit {
         log.info("Completed initialization in " + elapsedStr + " seconds.");
       }
 
-      platformVersion = ConfigHelper.getCurrentVersion(environment);
+      setYbaVersion(ConfigHelper.getCurrentVersion(environment));
 
       log.info("AppInit completed");
     }

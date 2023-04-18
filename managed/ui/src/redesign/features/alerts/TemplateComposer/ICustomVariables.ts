@@ -18,6 +18,8 @@ export interface CustomVariable {
   defaultValue: string;
 }
 
+export type AlertVariableType = 'CUSTOM' | 'SYSTEM';
+
 export interface IAlertVariablesList {
   systemVariables: SystemVariables[];
   customVariables: CustomVariable[];
@@ -106,4 +108,6 @@ export interface IAlertChannelTemplates {
   type: 'Email' | 'WebHook';
   titleTemplate?: string;
   textTemplate?: string;
+  defaultTextTemplate?: string;
+  defaultTitleTemplate?: string;
 }

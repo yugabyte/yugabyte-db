@@ -20,7 +20,7 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/intent_aware_iterator_interface.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/docdb/transaction_status_cache.h"
 
 #include "yb/rocksdb/db.h"
@@ -30,9 +30,6 @@
 
 namespace yb {
 namespace docdb {
-
-class Value;
-struct Expiration;
 
 YB_DEFINE_ENUM(ResolvedIntentState, (kNoIntent)(kInvalidPrefix)(kValid));
 YB_DEFINE_ENUM(SeekIntentIterNeeded, (kNoNeed)(kSeek)(kSeekForward));
@@ -60,13 +57,14 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
       const rocksdb::ReadOptions& read_opts,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const TransactionOperationContext& txn_op_context);
+      const TransactionOperationContext& txn_op_context,
+      rocksdb::Statistics* intentsdb_statistics = nullptr);
 
   IntentAwareIterator(const IntentAwareIterator& other) = delete;
   void operator=(const IntentAwareIterator& other) = delete;
 
   // Seek to the smallest key which is greater or equal than doc_key.
-  void Seek(const DocKey& doc_key);
+  void Seek(const dockv::DocKey& doc_key);
 
   // Seek to specified encoded key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
@@ -78,7 +76,7 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // append up to kMaxBytesPerEncodedHybridTime + 1 bytes of data to the buffer. The appended data
   // is removed when the method returns.
   void SeekForward(const Slice& key) override;
-  void SeekForward(KeyBytes* key) override;
+  void SeekForward(dockv::KeyBytes* key) override;
 
   // Seek past specified subdoc key (it is responsibility of caller to make sure it doesn't have
   // hybrid time).
@@ -90,17 +88,17 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   // For efficiency, this overload takes a non-const KeyBytes pointer avoids memory allocation by
   // using the KeyBytes buffer to prepare the key to seek to by appending an extra byte. The
   // appended byte is removed when the method returns.
-  void SeekOutOfSubDoc(KeyBytes* key_bytes) override;
+  void SeekOutOfSubDoc(dockv::KeyBytes* key_bytes) override;
 
   // Seek to last doc key.
   void SeekToLastDocKey();
 
   // Seek to previous SubDocKey as opposed to previous DocKey.
-  void PrevSubDocKey(const KeyBytes& key_bytes);
+  void PrevSubDocKey(const dockv::KeyBytes& key_bytes);
 
   // This method positions the iterator at the beginning of the DocKey found before the doc_key
   // provided.
-  void PrevDocKey(const DocKey& doc_key);
+  void PrevDocKey(const dockv::DocKey& doc_key);
   void PrevDocKey(const Slice& encoded_doc_key) override;
 
   // Fetches currently pointed key and also updates max_seen_ht to ht of this key. The key does not
@@ -289,30 +287,31 @@ class IntentAwareIterator : public IntentAwareIteratorIf {
   Slice upperbound_;
 
   // Buffer for holding the exclusive upper bound of the intent key.
-  KeyBytes intent_upperbound_keybytes_;
+  dockv::KeyBytes intent_upperbound_keybytes_;
 
   Slice intent_upperbound_;
 
   // Following fields contain information related to resolved suitable intent.
   ResolvedIntentState resolved_intent_state_ = ResolvedIntentState::kNoIntent;
   // SubDocKey (no HT).
-  KeyBytes resolved_intent_key_prefix_;
+  dockv::KeyBytes resolved_intent_key_prefix_;
   // DocHybridTime of resolved_intent_sub_doc_key_encoded_ is set to commit time or intent time in
   // case of intent is written by current transaction (stored in txn_op_context_).
   EncodedDocHybridTime resolved_intent_txn_dht_;
   EncodedDocHybridTime intent_dht_from_same_txn_{EncodedDocHybridTime::kMin};
-  KeyBytes resolved_intent_sub_doc_key_encoded_;
-  KeyBytes resolved_intent_value_;
+  dockv::KeyBytes resolved_intent_sub_doc_key_encoded_;
+  dockv::KeyBytes resolved_intent_value_;
 
   std::vector<Slice> prefix_stack_;
   TransactionStatusCache transaction_status_cache_;
 
   bool skip_future_records_needed_ = false;
   bool skip_future_intents_needed_ = false;
+  bool reset_intent_upperbound_during_skip_ = false;
   SeekIntentIterNeeded seek_intent_iter_needed_ = SeekIntentIterNeeded::kNoNeed;
 
   // Reusable buffer to prepare seek key to avoid reallocating temporary buffers in critical paths.
-  KeyBytes seek_key_buffer_;
+  dockv::KeyBytes seek_key_buffer_;
   Slice seek_key_prefix_;
 };
 

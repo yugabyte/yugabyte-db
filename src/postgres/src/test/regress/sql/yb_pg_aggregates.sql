@@ -638,7 +638,6 @@ select pg_collation_for(percentile_disc(1) within group (order by x collate "POS
   from (values ('fred'),('jim')) v(x);
 
 -- ordered-set aggs created with CREATE AGGREGATE
--- TODO(jason): uncomment when issue #2172 is closed or closing.
 select test_rank(3) within group (order by x)
 from (values (1),(1),(2),(2),(3),(3),(4)) v(x);
 select test_percentile_disc(0.5) within group (order by thousand) from tenk1;

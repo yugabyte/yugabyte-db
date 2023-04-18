@@ -70,27 +70,9 @@ using std::string;
 
 namespace yb {
 
-using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
-using client::YBError;
-using client::YBSchema;
-using client::YBSchemaBuilder;
-using client::YBSession;
-using client::YBTable;
-using client::YBTableAlterer;
-using client::YBTableCreator;
 using client::YBTableName;
-using client::YBTableType;
-using master::GetNamespaceInfoResponsePB;
-using master::MiniMaster;
-using tserver::MiniTabletServer;
 
-using pgwrapper::GetInt32;
-using pgwrapper::PGConn;
 using pgwrapper::PGResultPtr;
-using pgwrapper::PgSupervisor;
-using pgwrapper::ToString;
 
 using rpc::RpcController;
 

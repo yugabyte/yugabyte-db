@@ -283,6 +283,20 @@ message UpgradeYsqlResponsePB {
   optional TabletServerErrorPB error = 1;
 }
 
+message WaitForYsqlBackendsCatalogVersionRequestPB {
+  optional uint32 database_oid = 1; // required
+  optional uint64 catalog_version = 2; // required
+  // Previously known number of YSQL backends that have not reached the requested catalog version.
+  // -1 means unknown.
+  optional int32 prev_num_lagging_backends = 3; // required
+}
+
+message WaitForYsqlBackendsCatalogVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+  // Number of YSQL backends that have not reached the requested catalog version.
+  optional int32 num_lagging_backends = 2;
+}
+
 message TestRetryRequestPB {
   // UUID of server this request is addressed to.
   optional bytes dest_uuid = 2;
@@ -344,6 +358,9 @@ service TabletServerAdminService {
   rpc SplitTablet(tablet.SplitTabletRequestPB) returns (SplitTabletResponsePB);
 
   rpc UpgradeYsql(UpgradeYsqlRequestPB) returns (UpgradeYsqlResponsePB);
+
+  rpc WaitForYsqlBackendsCatalogVersion(WaitForYsqlBackendsCatalogVersionRequestPB)
+      returns (WaitForYsqlBackendsCatalogVersionResponsePB);
 
   rpc UpdateTransactionTablesVersion(UpdateTransactionTablesVersionRequestPB)
       returns (UpdateTransactionTablesVersionResponsePB);

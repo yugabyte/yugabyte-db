@@ -1562,18 +1562,19 @@ select pg_collation_for(percentile_disc(1) within group (order by x collate "POS
 (1 row)
 
 -- ordered-set aggs created with CREATE AGGREGATE
--- TODO(jason): uncomment when issue #2172 is closed or closing.
 select test_rank(3) within group (order by x)
 from (values (1),(1),(2),(2),(3),(3),(4)) v(x);
-ERROR:  function test_rank(integer, integer) does not exist
-LINE 1: select test_rank(3) within group (order by x)
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ test_rank
+-----------
+         5
+(1 row)
+
 select test_percentile_disc(0.5) within group (order by thousand) from tenk1;
-ERROR:  function test_percentile_disc(numeric, integer) does not exist
-LINE 1: select test_percentile_disc(0.5) within group (order by thou...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ test_percentile_disc
+----------------------
+                  499
+(1 row)
+
 -- ordered-set aggs can't use ungrouped vars in direct args:
 select rank(x) within group (order by x) from generate_series(1,5) x;
 ERROR:  column "x.x" must appear in the GROUP BY clause or be used in an aggregate function

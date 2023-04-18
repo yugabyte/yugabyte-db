@@ -65,6 +65,8 @@ class CreateTableITest : public CreateTableITestBase {
       .dbname = dbname
     }).Connect(simple_query_protocol);
   }
+
+  void TestLazySuperblockFlushPersistence(int num_tables, int iterations);
 };
 
 // TODO(bogdan): disabled until ENG-2687
@@ -618,11 +620,12 @@ TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
 
   // Allocate the partitions.
-  Partition partitions[kNumPartitions];
-  const uint16_t interval = PartitionSchema::kMaxPartitionKey / (kNumPartitions + 1);
+  dockv::Partition partitions[kNumPartitions];
+  const uint16_t interval = dockv::PartitionSchema::kMaxPartitionKey / (kNumPartitions + 1);
 
-  partitions[0].set_partition_key_end(PartitionSchema::EncodeMultiColumnHashValue(interval));
-  partitions[1].set_partition_key_start(PartitionSchema::EncodeMultiColumnHashValue(interval));
+  partitions[0].set_partition_key_end(dockv::PartitionSchema::EncodeMultiColumnHashValue(interval));
+  partitions[1].set_partition_key_start(
+      dockv::PartitionSchema::EncodeMultiColumnHashValue(interval));
 
   // create a table
   ASSERT_OK(table_creator->table_name(kTableName)
@@ -637,8 +640,8 @@ TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
       kTableName, -1, &tablets, /* partition_list_version =*/ nullptr,
       RequireTabletsRunning::kFalse));
   for (int i = 0 ; i < kNumPartitions; ++i) {
-    Partition p;
-    Partition::FromPB(tablets[i].partition(), &p);
+    dockv::Partition p;
+    dockv::Partition::FromPB(tablets[i].partition(), &p);
     ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
   }
 }
@@ -1023,6 +1026,75 @@ TEST_F(CreateTableITest, OnlyMajorityReplicasWithPlacement) {
     }
     return true;
   }, 120s * kTimeMultiplier, "Are tablets running", 1s));
+}
+
+void CreateTableITest::TestLazySuperblockFlushPersistence(int num_tables, int iterations) {
+  const string database = "test_db";
+  const string table_prefix = "foo";
+  for (int itr = 0; itr < iterations; ++itr) {
+    auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
+    ASSERT_OK(conn.ExecuteFormat("DROP DATABASE IF EXISTS $0", database));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database));
+    auto db_conn = ASSERT_RESULT(ConnectToDB(database));
+    for (int i = 0; i < num_tables; ++i) {
+      ASSERT_OK(db_conn.ExecuteFormat("CREATE TABLE $0$1 (i int)", table_prefix, i));
+      ASSERT_OK(db_conn.Execute("BEGIN"));
+      ASSERT_OK(db_conn.ExecuteFormat("INSERT INTO $0$1 values (1)", table_prefix, i));
+      ASSERT_OK(db_conn.Execute("COMMIT"));
+    }
+    ASSERT_OK(cluster_->WaitForAllIntentsApplied(30s));
+
+    // Flush rocksdb (but not superblock) so that the rocksdb flush OpId is ahead of superblock
+    // flush OpId.
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    auto table_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), database, table_prefix + "0"));
+    ASSERT_OK(client->FlushTables(
+        {table_id}, /* add_indexes = */ false, 30, /* is_compaction = */ false));
+
+    // Restart tservers.
+    cluster_->Shutdown(ExternalMiniCluster::NodeSelectionMode::TS_ONLY);
+    ASSERT_OK(cluster_->Restart());
+
+    // Check persistence after restart.
+    auto new_conn = ASSERT_RESULT(ConnectToDB(database));
+    for (int i = 0; i < num_tables; ++i) {
+      auto res = ASSERT_RESULT(
+          new_conn.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
+      ASSERT_EQ(res, 1);
+    }
+  }
+}
+
+TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(LazySuperblockFlushSingleTablePersistence)) {
+  std::vector<string> ts_flags;
+  // Enable lazy superblock flush.
+  ts_flags.push_back("--lazily_flush_superblock=true");
+  ASSERT_NO_FATALS(StartCluster(ts_flags, {} /* master_flags */, 3, 1, true));
+  TestLazySuperblockFlushPersistence(1, 1);
+}
+
+TEST_F(CreateTableITest, YB_DISABLE_TEST_IN_TSAN(LazySuperblockFlushMultiTablePersistence)) {
+  std::vector<string> ts_flags;
+  // Enable lazy superblock flush.
+  ts_flags.push_back("--lazily_flush_superblock=true");
+
+  // Minimize log retention.
+  ts_flags.push_back("--log_min_segments_to_retain=1");
+  ts_flags.push_back("--log_min_seconds_to_retain=0");
+
+  // Minimize log replay.
+  ts_flags.push_back("--retryable_request_timeout_secs=0");
+
+  // Reduce the WAL segment size so that the number of WAL segments are > 1.
+  ts_flags.push_back("--initial_log_segment_size_bytes=1024");
+  ts_flags.push_back("--log_segment_size_bytes=1024");
+
+  // Skip flushing superblock on table flush.
+  ts_flags.push_back("--TEST_skip_force_superblock_flush=true");
+
+  ASSERT_NO_FATALS(StartCluster(ts_flags, {} /* master_flags */, 3, 1, true));
+  TestLazySuperblockFlushPersistence(/* num_tables = */ 20, /* num_iterations = */ 2);
 }
 
 }  // namespace yb

@@ -15,7 +15,6 @@
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/logging.h"
 
-using yb::FormatSliceAsStr;
 using yb::Format;
 
 namespace rocksdb {

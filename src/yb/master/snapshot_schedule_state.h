@@ -88,8 +88,8 @@ class SnapshotScheduleState {
   Result<SnapshotScheduleOperation> ForceCreateSnapshot(HybridTime last_snapshot_time);
   void SnapshotFinished(const TxnSnapshotId& snapshot_id, const Status& status);
 
-  Result<docdb::KeyBytes> EncodedKey() const;
-  static Result<docdb::KeyBytes> EncodedKey(
+  Result<dockv::KeyBytes> EncodedKey() const;
+  static Result<dockv::KeyBytes> EncodedKey(
       const SnapshotScheduleId& schedule_id, SnapshotCoordinatorContext* context);
 
   Status StoreToWriteBatch(docdb::KeyValueWriteBatchPB* write_batch) const;

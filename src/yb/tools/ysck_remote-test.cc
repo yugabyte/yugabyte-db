@@ -60,14 +60,12 @@ DECLARE_int32(heartbeat_interval_ms);
 namespace yb {
 namespace tools {
 
-using client::YBColumnSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
 using std::shared_ptr;
-using std::static_pointer_cast;
 using std::string;
 using std::vector;
 using strings::Substitute;

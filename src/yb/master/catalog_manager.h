@@ -47,7 +47,7 @@
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/client/client_fwd.h"
 #include "yb/gutil/macros.h"
@@ -75,6 +75,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 #include "yb/master/ysql_tablespace_manager.h"
+#include "yb/master/master_heartbeat.pb.h"
 
 #include "yb/rpc/rpc.h"
 #include "yb/rpc/scheduler.h"
@@ -196,7 +197,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // add the ysql sys table into the raft metadata but adds it in the request
   // pb. The caller is then responsible for performing the ChangeMetadataOperation.
   Status CreateYsqlSysTable(
-      const CreateTableRequestPB* req, CreateTableResponsePB* resp,
+      const CreateTableRequestPB* req, CreateTableResponsePB* resp, int64_t term,
       tablet::ChangeMetadataRequestPB* change_meta_req = nullptr,
       SysCatalogWriter* writer = nullptr);
 
@@ -214,7 +215,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Copy Postgres sys catalog tables into a new namespace.
   Status CopyPgsqlSysTables(const NamespaceId& namespace_id,
-                            const std::vector<scoped_refptr<TableInfo>>& tables);
+                            const std::vector<scoped_refptr<TableInfo>>& tables, int64_t term);
 
   // Create a new Table with the specified attributes.
   //
@@ -1001,9 +1002,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
 
-  void ProcessTabletStorageMetadata(
+  void ProcessTabletMetadata(
       const std::string& ts_uuid,
-      const TabletDriveStorageMetadataPB& storage_metadata);
+      const TabletDriveStorageMetadataPB& storage_metadata,
+      const std::optional<TabletLeaderMetricsPB>& leader_metrics);
 
   Status ProcessTabletReplicationStatus(const TabletReplicationStatusPB& replication_state)
       EXCLUDES(mutex_);
@@ -1032,10 +1034,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<XClusterNamespaceToSafeTimeMap> GetXClusterNamespaceToSafeTimeMap();
   Status SetXClusterNamespaceToSafeTimeMap(
       const int64_t leader_term, const XClusterNamespaceToSafeTimeMap& safe_time_map);
-
-  Status GetXClusterEstimatedDataLoss(
-      const GetXClusterEstimatedDataLossRequestPB* req,
-      GetXClusterEstimatedDataLossResponsePB* resp);
 
   Status GetXClusterSafeTime(
       const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp);
@@ -1359,6 +1357,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackfillTable;
   friend class BackfillTablet;
   friend class XClusterConfigLoader;
+  friend class YsqlBackendsManager;
+  friend class BackendsCatalogVersionJob;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
@@ -1450,10 +1450,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // catalog manager maps.
   Status CreateTableInMemory(const CreateTableRequestPB& req,
                              const Schema& schema,
-                             const PartitionSchema& partition_schema,
+                             const dockv::PartitionSchema& partition_schema,
                              const NamespaceId& namespace_id,
                              const NamespaceName& namespace_name,
-                             const std::vector<Partition>& partitions,
+                             const std::vector<dockv::Partition>& partitions,
                              bool colocated,
                              IsSystemObject system_table,
                              IndexInfoPB* index_info,
@@ -1461,7 +1461,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                              CreateTableResponsePB* resp,
                              scoped_refptr<TableInfo>* table) REQUIRES(mutex_);
 
-  Result<TabletInfos> CreateTabletsFromTable(const std::vector<Partition>& partitions,
+  Result<TabletInfos> CreateTabletsFromTable(const std::vector<dockv::Partition>& partitions,
                                              const TableInfoPtr& table) REQUIRES(mutex_);
 
   // Check that local host is present in master addresses for normal master process start.
@@ -1483,7 +1483,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // "dirty" state field.
   scoped_refptr<TableInfo> CreateTableInfo(const CreateTableRequestPB& req,
                                            const Schema& schema,
-                                           const PartitionSchema& partition_schema,
+                                           const dockv::PartitionSchema& partition_schema,
                                            const NamespaceId& namespace_id,
                                            const NamespaceName& namespace_name,
                                            bool colocated,
@@ -2292,7 +2292,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateTableRequestPB& request, const Schema& schema,
       const PlacementInfoPB& placement_info);
 
-  Result<std::pair<PartitionSchema, std::vector<Partition>>> CreatePartitions(
+  Result<std::pair<dockv::PartitionSchema, std::vector<dockv::Partition>>> CreatePartitions(
       const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
       CreateTableRequestPB* request, CreateTableResponsePB* resp);
 

@@ -57,6 +57,11 @@ namespace yb {
 namespace docdb {
 
 using server::HybridClock;
+using dockv::DocKey;
+using dockv::DocPath;
+using dockv::KeyEntryValue;
+using dockv::KeyEntryValues;
+using dockv::ValueEntryType;
 
 namespace {
 
@@ -379,7 +384,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
   // Read key from rocksdb.
-  const KeyBytes doc_key = DocKey::FromRedisKey(123, "abc").Encode();
+  const auto doc_key = DocKey::FromRedisKey(123, "abc").Encode();
   rocksdb::ReadOptions read_opts;
   auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
   ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());
@@ -387,7 +392,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
 
   // Verify correct ttl.
   auto value = iter->value();
-  auto ttl = ASSERT_RESULT(ValueControlFields::Decode(&value)).ttl;
+  auto ttl = ASSERT_RESULT(dockv::ValueControlFields::Decode(&value)).ttl;
   EXPECT_EQ(2000, ttl.ToMilliseconds());
 }
 
@@ -545,8 +550,8 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
 }
 
 TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {
-  const DocKey doc_key(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
-  KeyBytes encoded_doc_key(doc_key.Encode());
+  const DocKey doc_key(kFixedHashCode, dockv::MakeKeyEntryValues(100), KeyEntryValues());
+  auto encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          QLValue::Primitive(2), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
@@ -572,8 +577,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 }
 
 TEST_F(DocOperationTest, TestQLReadWithTombstone) {
-  DocKey doc_key(0, KeyEntryValues(100), KeyEntryValues());
-  KeyBytes encoded_doc_key(doc_key.Encode());
+  DocKey doc_key(0, dockv::MakeKeyEntryValues(100), KeyEntryValues());
+  auto encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
@@ -593,15 +598,15 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
   iter.Init(YQL_TABLE_TYPE);
-  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+  ASSERT_FALSE(ASSERT_RESULT(iter.FetchNext(nullptr)));
 
   // Now verify row exists even with one valid column.
-  doc_key = DocKey(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
+  doc_key = DocKey(kFixedHashCode, dockv::MakeKeyEntryValues(100), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
-                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         dockv::ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
                          ValueRef(QLValue::Primitive(2)),
                          HybridTime(2001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
@@ -617,7 +622,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3001
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
-  std::vector<KeyEntryValue> hashed_components({KeyEntryValue::Int32(100)});
+  KeyEntryValues hashed_components({KeyEntryValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
       /* req */ nullptr, /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
@@ -625,9 +630,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
-  ASSERT_TRUE(ASSERT_RESULT(ql_iter.HasNext()));
   QLTableRow value_map;
-  ASSERT_OK(ql_iter.NextRow(&value_map));
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter.FetchNext(&value_map)));
   ASSERT_EQ(4, value_map.ColumnCount());
   EXPECT_EQ(100, value_map.TestValue(0).value.int32_value());
   EXPECT_TRUE(IsNull(value_map.TestValue(1).value));
@@ -635,7 +639,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   EXPECT_EQ(101, value_map.TestValue(3).value.int32_value());
 
   // Now verify row exists as long as liveness system column exists.
-  doc_key = DocKey(kFixedHashCode, KeyEntryValues(101), KeyEntryValues());
+  doc_key = DocKey(kFixedHashCode, dockv::MakeKeyEntryValues(101), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn),
                          ValueRef(ValueEntryType::kNullLow),
@@ -643,7 +647,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
-                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         dockv::ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
                          ValueRef(QLValue::Primitive(2)),
                          HybridTime(2000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
@@ -673,9 +677,8 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
-  ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.HasNext()));
   QLTableRow value_map_system;
-  ASSERT_OK(ql_iter_system.NextRow(&value_map_system));
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.FetchNext(&value_map_system)));
   ASSERT_EQ(4, value_map_system.ColumnCount());
   EXPECT_EQ(101, value_map_system.TestValue(0).value.int32_value());
   EXPECT_TRUE(IsNull(value_map_system.TestValue(1).value));
@@ -846,9 +849,11 @@ class DocOperationScanTest : public DocOperationTest {
             ResetCurrentTransactionId();
           }
         }
+        auto row_values = { row_data.k, row_data.r, row_data.v };
+        LOG(INFO) << "Writing row: " << AsString(row_values) << ", ht: " << ht;
         WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
                    doc_read_context().schema,
-                   { row_data.k, row_data.r, row_data.v },
+                   row_values,
                    1000,
                    ht,
                    txn_op_context ? *txn_op_context : kNonTransactionalOperationContext);
@@ -929,9 +934,8 @@ class DocOperationScanTest : public DocOperationTest {
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << AsString(expected_rows);
           it = expected_rows.begin();
-          while (ASSERT_RESULT(ql_iter.HasNext())) {
-            QLTableRow value_map;
-            ASSERT_OK(ql_iter.NextRow(&value_map));
+          QLTableRow value_map;
+          while (ASSERT_RESULT(ql_iter.FetchNext(&value_map))) {
             ASSERT_EQ(3, value_map.ColumnCount());
 
             RowData fetched_row = {value_map.TestValue(0_ColId).value.int32_value(),
@@ -942,7 +946,7 @@ class DocOperationScanTest : public DocOperationTest {
             ASSERT_EQ(fetched_row, it->data);
             it++;
           }
-          ASSERT_EQ(expected_rows.end(), it);
+          ASSERT_EQ(expected_rows.end(), it) << "Missing row: " << AsString(*it);
 
           after_scan_callback(keys_in_range);
         }

@@ -484,7 +484,7 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Performance Advisor query skew threshold",
           "Defines max difference between avg queries count and"
-              + " node queries count before cpu skew recommendation is raised",
+              + " node queries count before query skew recommendation is raised",
           ConfDataType.DoubleType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> perfAdvisorQuerySkewMinQueries =
@@ -627,5 +627,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Promote AutoFlags Forcefully",
           "Promote AutoFlags Forcefully during software upgrade",
           ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Long> minIncrementalScheduleFrequencyInSecs =
+      new ConfKeyInfo<>(
+          "yb.backup.minIncrementalScheduleFrequencyInSecs",
+          ScopeType.UNIVERSE,
+          "Minimum Incremental backup schedule frequency",
+          "Minimum Incremental backup schedule frequency in seconds",
+          ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 }

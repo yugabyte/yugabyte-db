@@ -46,10 +46,6 @@
 #include "yb/util/metrics.h"
 #include "yb/util/trace.h"
 
-using std::shared_ptr;
-using std::vector;
-using strings::Substitute;
-
 DEFINE_RUNTIME_bool(rpc_dump_all_traces, false, "If true, dump all RPC traces at INFO level");
 TAG_FLAG(rpc_dump_all_traces, advanced);
 

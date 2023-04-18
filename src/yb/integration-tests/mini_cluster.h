@@ -205,7 +205,7 @@ class MiniCluster : public MiniClusterBase {
   // Requires that the master has started;
   // Returns a bad Status if the tablet does not reach the required count
   // within kTabletReportWaitTimeSeconds.
-  Status WaitForReplicaCount(const std::string& tablet_id,
+  Status WaitForReplicaCount(const TableId& tablet_id,
                              int expected_count,
                              master::TabletLocationsPB* locations);
 
@@ -387,6 +387,10 @@ Status WaitForAnySstFiles(
 Status WaitForPeersAreFullyCompacted(
     MiniCluster* cluster, const std::vector<TabletId>& tablet_ids,
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
+
+Status WaitForTableIntentsApplied(
+    MiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.

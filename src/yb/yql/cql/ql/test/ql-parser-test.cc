@@ -18,7 +18,6 @@
 namespace yb {
 namespace ql {
 
-using std::make_shared;
 using std::string;
 
 class QLTestParser : public QLTestBase {

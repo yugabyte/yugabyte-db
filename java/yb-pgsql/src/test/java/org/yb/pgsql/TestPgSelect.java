@@ -1250,7 +1250,7 @@ public class TestPgSelect extends BasePgSQLTest {
         // So there are m*(n*(p+1) + 1) = 48 seeks
         // Actual number of seeks could be lower because there is Next instead of Seek optimisation
         // in DocDB (see SeekPossiblyUsingNext).
-        assertLessThanOrEqualTo(metrics.seekCount, 16);
+        assertLessThanOrEqualTo(metrics.seekCount, 48);
       }
 
       {
@@ -1282,7 +1282,7 @@ public class TestPgSelect extends BasePgSQLTest {
         // So there are m*(n*(p+1) + 1) = 48 seeks
         // Actual number of seeks could be lower because there is Next instead of Seek optimisation
         // in DocDB (see SeekPossiblyUsingNext).
-        assertLessThanOrEqualTo(metrics.seekCount, 16);
+        assertLessThanOrEqualTo(metrics.seekCount, 48);
       }
 
       {

@@ -34,6 +34,7 @@ const useStyles = makeStyles((theme) => ({
   },
   zoneConfigContainer: {
     display: 'flex',
+    alignItems: 'flex-start',
     gap: theme.spacing(1)
   },
   removeZoneButton: {
@@ -55,14 +56,14 @@ export const ConfigureAvailabilityZoneField = ({
   const { control, watch } = useFormContext<ConfigureRegionFormValues>();
   const { fields, append, remove } = useFieldArray({ control, name: 'zones' });
   const addZoneField = () => {
-    append({ code: { value: '', label: '', isDisabled: true }, subnet: '' });
+    append({ code: undefined, subnet: '' });
   };
 
   const zones = watch('zones');
   const selectZoneCodeOptions = zoneCodeOptions?.map((zoneCode) => ({
     value: zoneCode,
     label: zoneCode,
-    isDisabled: zones?.find((zone) => zone.code.value === zoneCode) !== undefined
+    isDisabled: zones?.find((zone) => zone.code?.value === zoneCode) !== undefined
   }));
   return (
     <div className={clsx(className)}>
@@ -84,6 +85,7 @@ export const ConfigureAvailabilityZoneField = ({
               control={control}
               name={`zones.${index}.code`}
               options={selectZoneCodeOptions}
+              placeholder="Zone"
             />
             <YBInputField
               control={control}

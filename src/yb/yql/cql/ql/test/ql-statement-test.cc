@@ -25,9 +25,6 @@
 #include "yb/yql/cql/ql/util/errcodes.h"
 
 using std::string;
-using std::unique_ptr;
-using std::shared_ptr;
-using strings::Substitute;
 
 namespace yb {
 namespace ql {

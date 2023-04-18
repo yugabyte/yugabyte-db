@@ -4,7 +4,9 @@ package com.yugabyte.yw.common;
 
 import static com.cronutils.model.CronType.UNIX;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 import static java.lang.Math.abs;
+import static java.lang.Math.max;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -19,6 +21,8 @@ import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
@@ -83,6 +87,8 @@ public class BackupUtil {
   @Inject YBClientService ybService;
 
   @Inject CustomerConfigService customerConfigService;
+
+  @Inject RuntimeConfGetter confGetter;
 
   public static final Logger LOG = LoggerFactory.getLogger(BackupUtil.class);
 
@@ -207,11 +213,20 @@ public class BackupUtil {
     }
   }
 
-  public static void validateIncrementalScheduleFrequency(
-      long frequency, long fullBackupFrequency) {
-    if (frequency < MIN_INCREMENTAL_SCHEDULE_DURATION_IN_MILLIS) {
+  public void validateIncrementalScheduleFrequency(
+      long frequency, long fullBackupFrequency, Universe universe) {
+    long minimumIncrementalBackupScheduleFrequency =
+        max(
+            confGetter.getConfForScope(
+                    universe, UniverseConfKeys.minIncrementalScheduleFrequencyInSecs)
+                * 1000L,
+            Util.YB_SCHEDULER_INTERVAL * 60 * 1000L);
+    if (frequency < minimumIncrementalBackupScheduleFrequency) {
       throw new PlatformServiceException(
-          BAD_REQUEST, "Minimum incremental backup schedule duration is 30 mins");
+          BAD_REQUEST,
+          "Minimum incremental backup schedule duration is "
+              + minimumIncrementalBackupScheduleFrequency
+              + " milliseconds");
     }
     if (frequency >= fullBackupFrequency) {
       throw new PlatformServiceException(
@@ -536,7 +551,8 @@ public class BackupUtil {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
       if (!backupInfo.backupType.equals(TableType.REDIS_TABLE_TYPE)) {
-        if (CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
+        if (backupInfo.backupType.equals(TableType.YQL_TABLE_TYPE)
+            && CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()
@@ -552,8 +568,7 @@ public class BackupUtil {
                     "Keyspace %s contains tables with same names, overwriting data is not allowed",
                     backupInfo.keyspace));
           }
-        } else if (category.equals(Backup.BackupCategory.YB_BACKUP_SCRIPT)
-            && backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
+        } else if (backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()
@@ -772,7 +787,7 @@ public class BackupUtil {
 
           mergeParallelTimes.add(
               new Pair<Long, Long>(
-                  peek.getFirst(), Math.max(peek.getSecond(), subTaskTime.getSecond())));
+                  peek.getFirst(), max(peek.getSecond(), subTaskTime.getSecond())));
         } else {
           mergeParallelTimes.add(subTaskTime);
         }

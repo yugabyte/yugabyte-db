@@ -39,7 +39,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.messages.h"
@@ -93,7 +93,6 @@ using consensus::kInvalidOpIdIndex;
 using consensus::RaftConfigPB;
 using consensus::ConsensusRound;
 using consensus::ConsensusRoundPtr;
-using consensus::ReplicateMsg;
 using docdb::RateLimiterSharingMode;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
@@ -167,7 +166,7 @@ class TsTabletManagerTest : public YBTest {
                          const Schema& schema,
                          std::shared_ptr<tablet::TabletPeer>* out_tablet_peer) {
     Schema full_schema = SchemaBuilder(schema).Build();
-    std::pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(full_schema);
+    auto partition = tablet::CreateDefaultPartition(full_schema);
 
     auto table_info = std::make_shared<tablet::TableInfo>(
         "TEST: ", tablet::Primary::kTrue, table_id, tablet_id, tablet_id,

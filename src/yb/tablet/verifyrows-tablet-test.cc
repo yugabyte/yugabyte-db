@@ -82,12 +82,12 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     // Warm up code cache with all the projections we'll be using.
     auto iter = ASSERT_RESULT(tablet()->NewRowIterator(client_schema_));
-    ASSERT_OK(iter->HasNext());
+    ASSERT_OK(iter->FetchNext(nullptr));
     const SchemaPtr schema = tablet()->schema();
     ColumnSchema valcol = schema->column(schema->find_column("val"));
     valcol_projection_ = Schema({ valcol }, 0);
     iter = ASSERT_RESULT(tablet()->NewRowIterator(valcol_projection_));
-    ASSERT_OK(iter->HasNext());
+    ASSERT_OK(iter->FetchNext(nullptr));
 
     ts_collector_.StartDumperThread();
   }
@@ -124,7 +124,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     int col_idx = schema.num_key_columns() == 1 ? 2 : 3;
     LOG(INFO) << "Update thread using schema: " << schema.ToString();
 
-    YBPartialRow row(&client_schema_);
+    dockv::YBPartialRow row(&client_schema_);
 
     QLTableRow value_map;
 
@@ -132,9 +132,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
       auto iter = tablet()->NewRowIterator(client_schema_);
       CHECK_OK(iter);
 
-      while (ASSERT_RESULT((**iter).HasNext()) && running_insert_count_.count() > 0) {
-        CHECK_OK((**iter).NextRow(&value_map));
-
+      while (ASSERT_RESULT((**iter).FetchNext(&value_map)) && running_insert_count_.count() > 0) {
         unsigned int seed = 1234;
         if (rand_r(&seed) % 10 == 7) {
           // Increment the "val"
@@ -173,9 +171,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
       auto iter = tablet()->NewRowIterator(client_schema_);
       ASSERT_OK(iter);
 
-      for (int i = 0; i < max_iters && ASSERT_RESULT((**iter).HasNext()); i++) {
-        ASSERT_OK((**iter).NextRow(&row));
-
+      for (int i = 0; i < max_iters && ASSERT_RESULT((**iter).FetchNext(&row)); i++) {
         if (running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(1))) {
           return;
         }
@@ -200,9 +196,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     CHECK_OK(iter);
 
     QLTableRow row;
-    while (CHECK_RESULT((**iter).HasNext())) {
-      CHECK_OK((**iter).NextRow(&row));
-
+    while (CHECK_RESULT((**iter).FetchNext(&row))) {
       QLValue value;
       CHECK_OK(row.GetValue(schema_.column_id(2), &value));
       if (!value.IsNull()) {

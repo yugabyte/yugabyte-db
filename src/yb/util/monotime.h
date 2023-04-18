@@ -239,6 +239,12 @@ inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
   return lhs;
 }
 
+template <class Clock>
+inline auto operator+=(std::chrono::time_point<Clock>& lhs, const MonoDelta& rhs) { // NOLINT
+  lhs += rhs.ToSteadyDuration();
+  return lhs;
+}
+
 inline MonoTime operator+(MonoTime lhs, const MonoDelta& rhs) {
   lhs += rhs;
   return lhs;
@@ -251,6 +257,11 @@ inline auto operator+(const std::chrono::time_point<Clock>& lhs, const MonoDelta
 
 inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
   return lhs.GetDeltaSince(rhs);
+}
+
+template <class Clock>
+inline auto operator-(const std::chrono::time_point<Clock>& lhs, const MonoDelta& rhs) {
+  return lhs - rhs.ToSteadyDuration();
 }
 
 inline MonoTime& operator-=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT

@@ -40,7 +40,6 @@ namespace ql {
 using std::shared_ptr;
 using std::unique_ptr;
 using std::string;
-using std::set;
 using std::vector;
 using std::unordered_map;
 using strings::Substitute;

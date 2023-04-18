@@ -58,10 +58,12 @@ const renderOption = (option: Record<string, string>) => {
 };
 
 interface InstanceTypeFieldProps {
+  isEditMode?: boolean;
   isDedicatedMasterField?: boolean;
 }
 
 export const InstanceTypeField = ({
+  isEditMode,
   isDedicatedMasterField
 }: InstanceTypeFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
@@ -202,24 +204,28 @@ export const InstanceTypeField = ({
                 )}
               </Box>
             </Box>
-            {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) 
-            && canUseSpotInstance(providerRuntimeConfigs) && (
-              <Box display="flex" width="100%" mt={2}>
-                <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
-                  {t('universeForm.instanceConfig.useSpotInstance')}
-                </YBLabel>
-                <Box
-                  flex={1}
-                  className={
-                    masterPlacement === MasterPlacementMode.COLOCATED
-                      ? classes.defaultTextBox
-                      : classes.instanceConfigTextBox
-                  }
-                >
-                  <YBToggleField name={SPOT_INSTANCE_FIELD} control={control} />
+            {[CloudType.aws, CloudType.gcp, CloudType.azu].includes(provider?.code) &&
+              canUseSpotInstance(providerRuntimeConfigs) && (
+                <Box display="flex" width="100%" mt={2}>
+                  <YBLabel dataTestId={`SpotInstanceField-${nodeTypeTag}-Label`}>
+                    {t('universeForm.instanceConfig.useSpotInstance')}
+                  </YBLabel>
+                  <Box
+                    flex={1}
+                    className={
+                      masterPlacement === MasterPlacementMode.COLOCATED
+                        ? classes.defaultTextBox
+                        : classes.instanceConfigTextBox
+                    }
+                  >
+                    <YBToggleField
+                      disabled={isEditMode}
+                      name={SPOT_INSTANCE_FIELD}
+                      control={control}
+                    />
+                  </Box>
                 </Box>
-              </Box>
-            )}
+              )}
           </>
         );
       }}

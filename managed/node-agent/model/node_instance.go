@@ -132,6 +132,29 @@ type NodeDetails struct {
 	NodeConfigs  []NodeConfig `json:"nodeConfigs"`
 }
 
+// PreflightCheckParam is the param for PreflightCheckHandler.
+type PreflightCheckParam struct {
+	SkipProvisioning     bool     `json:"skipProvisioning"`
+	AirGapInstall        bool     `json:"airGapInstall"`
+	InstallNodeExporter  bool     `json:"installNodeExporter"`
+	YbHomeDir            string   `json:"ybHomeDir"`
+	SshPort              int      `json:"sshPort"`
+	MountPaths           []string `json:"mountPaths"`
+	MasterHttpPort       int      `json:"masterHttpPort"`
+	MasterRpcPort        int      `json:"masterRpcPort"`
+	TserverHttpPort      int      `json:"tserverHttpPort"`
+	TserverRpcPort       int      `json:"tserverRpcPort"`
+	RedisServerHttpPort  int      `json:"redisServerHttpPort"`
+	RedisServerRpcPort   int      `json:"redisServerRpcPort"`
+	NodeExporterPort     int      `json:"nodeExporterPort"`
+	YcqlServerHttpPort   int      `json:"ycqlServerHttpPort"`
+	YcqlServerRpcPort    int      `json:"ycqlServerRpcPort"`
+	YsqlServerHttpPort   int      `json:"ysqlServerHttpPort"`
+	YsqlServerRpcPort    int      `json:"ysqlServerRpcPort"`
+	YbControllerHttpPort int      `json:"ybControllerHttpPort"`
+	YbControllerRpcPort  int      `json:"ybControllerRpcPort"`
+}
+
 type NodeConfig struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`

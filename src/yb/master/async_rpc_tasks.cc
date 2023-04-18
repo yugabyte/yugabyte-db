@@ -24,6 +24,7 @@
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
 
@@ -62,6 +63,8 @@ TAG_FLAG(retrying_ts_rpc_max_delay_ms, advanced);
 
 DEFINE_test_flag(int32, slowdown_master_async_rpc_tasks_by_ms, 0,
                  "For testing purposes, slow down the run method to take longer.");
+
+DEFINE_test_flag(bool, stuck_add_tablet_to_table_task_enabled, false, "description");
 
 // The flags are defined in catalog_manager.cc.
 DECLARE_int32(master_ts_rpc_timeout_ms);
@@ -316,11 +319,26 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
-    if (!target_ts_desc_->IsLive() && type() == MonitoredTaskType::kDeleteReplica) {
-      LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
-          << tablet_id() << ". TS is DEAD. No further retry.";
-      TransitionToCompleteState();
+    if (!target_ts_desc_->IsLive()) {
+      switch (type()) {
+        case MonitoredTaskType::kBackendsCatalogVersionTs:
+          // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
+          // when this RPC failed and tserver is dead.  That check is hit when this RPC succeeded
+          // and tserver is dead.
+          LOG_WITH_PREFIX(WARNING)
+              << "TS " << target_ts_desc_->permanent_uuid() << "is DEAD. Assume backends on that TS"
+              << " will be resolved to sufficient catalog version";
+          TransitionToCompleteState();
+          break;
+        case MonitoredTaskType::kDeleteReplica:
+          LOG_WITH_PREFIX(WARNING)
+              << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
+              << tablet_id() << ". TS is DEAD. No further retry.";
+          TransitionToCompleteState();
+          break;
+        default:
+          break;
+      }
     }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.
@@ -1339,10 +1357,32 @@ void AsyncAddTableToTablet::HandleResponse(int attempt) {
     return;
   }
 
+  auto l = table_->LockForWrite();
+  auto tablet_l = tablet_->LockForWrite();
+  std::unordered_map<TabletId, const TabletInfo::WriteLock*> tablet_locks = {
+      {tablet_->id(), &tablet_l}};
+  if (table_->TransitionTableFromPreparingToRunning(tablet_locks)) {
+    VLOG_WITH_FUNC(1) << "Marking table " << table_->ToString() << " as RUNNING";
+    Status s = master_->catalog_manager()->sys_catalog()->Upsert(
+        master_->catalog_manager()->leader_ready_term(), table_);
+    if (!s.ok()) {
+      LOG(WARNING) << "Error updating table " << table_->ToString() << ": " << s;
+      TransitionToFailedState(MonitoredTaskState::kRunning, s);
+      return;
+    }
+    tablet_l.Unlock();
+    l.Commit();
+  }
+
   TransitionToCompleteState();
 }
 
 bool AsyncAddTableToTablet::SendRequest(int attempt) {
+  if (PREDICT_FALSE(FLAGS_TEST_stuck_add_tablet_to_table_task_enabled)) {
+    LOG_WITH_FUNC(WARNING) << "Causing the task to get stuck";
+    return true;
+  }
+
   ts_admin_proxy_->AddTableToTabletAsync(req_, &resp_, &rpc_, BindRpcCallback());
   VLOG_WITH_PREFIX(1)
       << "Send AddTableToTablet request (attempt " << attempt << "):\n" << req_.DebugString();

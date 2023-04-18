@@ -22,11 +22,11 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
@@ -106,9 +106,7 @@ DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 DEFINE_UNKNOWN_int32(rocksdb_max_write_buffer_number, 2,
              "Maximum number of write buffers that are built up in memory.");
-
-DEFINE_UNKNOWN_int64(db_block_size_bytes, 32_KB,
-             "Size of RocksDB data block (in bytes).");
+DECLARE_int64(db_block_size_bytes);
 
 DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
              "Size of RocksDB filter block (in bytes).");
@@ -247,6 +245,8 @@ using strings::Substitute;
 namespace yb {
 namespace docdb {
 
+using dockv::KeyBytes;
+
 std::shared_ptr<rocksdb::BoundaryValuesExtractor> DocBoundaryValuesExtractorInstance();
 
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
@@ -255,35 +255,51 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
   char buf[kMaxBytesPerEncodedHybridTime + 1];
-  buf[0] = KeyEntryTypeAsChar::kHybridTime;
+  buf[0] = dockv::KeyEntryTypeAsChar::kHybridTime;
   auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
   return KeyBytes(key, Slice(buf, end));
 }
 
 void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
-  char ch = KeyEntryTypeAsChar::kHybridTime + 1;
+  char ch = dockv::KeyEntryTypeAsChar::kHybridTime + 1;
   SeekForward(KeyBytes(key, Slice(&ch, 1)), iter);
 }
 
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
-  key_bytes->AppendKeyEntryType(KeyEntryType::kMaxByte);
+  key_bytes->AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
   SeekForward(*key_bytes, iter);
-  key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
+  key_bytes->RemoveKeyEntryTypeSuffix(dockv::KeyEntryType::kMaxByte);
 }
 
-SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
+namespace  {
+
+inline bool IsIterAfterOrAtKey(rocksdb::Iterator* iter, const Slice& key) {
+  if (PREDICT_FALSE(!iter->Valid())) {
+    if (PREDICT_FALSE(!iter->status().ok())) {
+      VLOG(3) << "Iterator " << iter << " error: " << iter->status();
+      // Caller should check Valid() after doing Seek*() and then check status() since
+      // Valid() == false.
+      // TODO(#16730): Add sanity check for RocksDB iterator Valid() to be checked after it is set.
+    }
+    return true;
+  }
+  return iter->key().compare(key) >= 0;
+}
+
+inline SeekStats SeekPossiblyUsingNext(
+    rocksdb::Iterator* iter, const Slice& seek_key, int max_nexts) {
   SeekStats result;
-  for (int nexts = FLAGS_max_nexts_to_avoid_seek; nexts-- > 0;) {
-    if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
+  for (int nexts = max_nexts; nexts-- > 0;) {
+    if (IsIterAfterOrAtKey(iter, seek_key)) {
       VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
       return result;
     }
-    VLOG(4) << "Skipping: " << SubDocKey::DebugSliceToString(iter->key());
+    VLOG(4) << "Skipping: " << dockv::SubDocKey::DebugSliceToString(iter->key());
 
     iter->Next();
     ++result.next;
   }
-  if (!iter->Valid() || iter->key().compare(seek_key) >= 0) {
+  if (IsIterAfterOrAtKey(iter, seek_key)) {
     VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
     return result;
   }
@@ -292,6 +308,12 @@ SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) 
   iter->Seek(seek_key);
   ++result.seek;
   return result;
+}
+
+} // namespace
+
+SeekStats SeekPossiblyUsingNext(rocksdb::Iterator* iter, const Slice& seek_key) {
+  return SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek);
 }
 
 void PerformRocksDBSeek(
@@ -303,11 +325,26 @@ void PerformRocksDBSeek(
   if (seek_key.size() == 0) {
     iter->SeekToFirst();
     ++stats.seek;
-  } else if (!iter->Valid() || iter->key().compare(seek_key) > 0) {
+  } else if (PREDICT_FALSE(!iter->Valid())) {
+    if (!iter->status().ok()) {
+      VLOG(3) << "Iterator " << iter << " error: " << iter->status();
+      // Caller should check Valid() after doing PerformRocksDBSeek() and then check status()
+      // since Valid() == false.
+      // TODO(#16730): Add sanity check for RocksDB iterator Valid() to be checked after it is set.
+      return;
+    }
     iter->Seek(seek_key);
     ++stats.seek;
   } else {
-    stats = SeekPossiblyUsingNext(iter, seek_key);
+    const auto cmp = iter->key().compare(seek_key);
+    if (cmp > 0) {
+      iter->Seek(seek_key);
+      ++stats.seek;
+    } else if (cmp < 0) {
+      iter->Next();
+      stats = SeekPossiblyUsingNext(iter, seek_key, FLAGS_max_nexts_to_avoid_seek - 1);
+      ++stats.next;
+    }
   }
   VLOG(4) << Substitute(
       "PerformRocksDBSeek at $0:$1:\n"
@@ -319,9 +356,9 @@ void PerformRocksDBSeek(
       "    Next() calls:     $7\n"
       "    Seek() calls:     $8\n",
       file_name, line,
-      BestEffortDocDBKeyToStr(seek_key),
+      dockv::BestEffortDocDBKeyToStr(seek_key),
       FormatSliceAsStr(seek_key),
-      iter->Valid()         ? BestEffortDocDBKeyToStr(KeyBytes(iter->key()))
+      iter->Valid()         ? dockv::BestEffortDocDBKeyToStr(KeyBytes(iter->key()))
       : iter->status().ok() ? "N/A"
                             : iter->status().ToString(),
       iter->Valid()         ? FormatSliceAsStr(iter->key())
@@ -342,7 +379,8 @@ rocksdb::ReadOptions PrepareReadOptions(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
-    const Slice* iterate_upper_bound) {
+    const Slice* iterate_upper_bound,
+    rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = query_id;
   if (FLAGS_use_docdb_aware_bloom_filter &&
@@ -353,6 +391,7 @@ rocksdb::ReadOptions PrepareReadOptions(
   }
   read_opts.file_filter = std::move(file_filter);
   read_opts.iterate_upper_bound = iterate_upper_bound;
+  read_opts.statistics = statistics;
   return read_opts;
 }
 
@@ -365,9 +404,10 @@ BoundedRocksDbIterator CreateRocksDBIterator(
     const boost::optional<const Slice>& user_key_for_filter,
     const rocksdb::QueryId query_id,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
-    const Slice* iterate_upper_bound) {
+    const Slice* iterate_upper_bound,
+    rocksdb::Statistics* statistics) {
   rocksdb::ReadOptions read_opts = PrepareReadOptions(rocksdb, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
+      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound, statistics);
   return BoundedRocksDbIterator(rocksdb, read_opts, docdb_key_bounds);
 }
 
@@ -380,12 +420,15 @@ unique_ptr<IntentAwareIterator> CreateIntentAwareIterator(
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     std::shared_ptr<rocksdb::ReadFileFilter> file_filter,
-    const Slice* iterate_upper_bound) {
+    const Slice* iterate_upper_bound,
+    const DocDBStatistics* statistics) {
   // TODO(dtxn) do we need separate options for intents db?
   rocksdb::ReadOptions read_opts = PrepareReadOptions(doc_db.regular, bloom_filter_mode,
-      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound);
+      user_key_for_filter, query_id, std::move(file_filter), iterate_upper_bound,
+      statistics ? statistics->RegularDBStatistics() : nullptr);
   return std::make_unique<IntentAwareIterator>(
-      doc_db, read_opts, deadline, read_time, txn_op_context);
+      doc_db, read_opts, deadline, read_time, txn_op_context,
+      statistics ? statistics->IntentsDBStatistics() : nullptr);
 }
 
 namespace {
@@ -1009,7 +1052,7 @@ std::shared_ptr<rocksdb::RateLimiter> CreateRocksDBRateLimiter() {
 }
 
 void SeekForward(const rocksdb::Slice& slice, rocksdb::Iterator *iter) {
-  if (!iter->Valid() || iter->key().compare(slice) >= 0) {
+  if (IsIterAfterOrAtKey(iter, slice)) {
     return;
   }
 

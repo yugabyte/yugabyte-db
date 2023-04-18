@@ -39,9 +39,11 @@
 #include <sstream>
 #include <unordered_set>
 
+#include <boost/date_time/posix_time/time_formatters.hpp>
+
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -88,6 +90,12 @@ DEFINE_UNKNOWN_int32(
 
 DEFINE_RUNTIME_bool(master_webserver_require_https, false,
     "Require HTTPS when redirecting master UI requests to the leader.");
+
+DEFINE_RUNTIME_uint64(master_maximum_heartbeats_without_lease, 10,
+    "After this number of heartbeats without a valid lease for a tablet, treat it as leaderless.");
+
+DEFINE_test_flag(bool, master_ui_redirect_to_leader, true,
+                 "Redirect master UI requests to the master leader");
 
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
@@ -231,7 +239,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
     // If we are not the master leader, redirect the URL.
-    if (!l.IsInitializedAndIsLeader()) {
+    if (!l.IsInitializedAndIsLeader() && PREDICT_TRUE(FLAGS_TEST_master_ui_redirect_to_leader)) {
       RedirectToLeader(req, resp);
       return;
     }
@@ -1331,7 +1339,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   Schema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   NamespaceName keyspace_name;
   TableName table_name;
   TabletInfos tablets;
@@ -1428,7 +1436,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
     if (s.ok()) {
-      s = PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
@@ -1450,8 +1458,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     auto l = tablet->LockForRead();
 
-    Partition partition;
-    Partition::FromPB(l->pb.partition(), &partition);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(l->pb.partition(), &partition);
 
     string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);
@@ -1554,7 +1562,13 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
 
     auto has_leader = std::any_of(
       rm->begin(), rm->end(),
-      [](const auto &item) { return item.second.role == PeerRole::LEADER; });
+      [](const auto &item) {
+        auto leader_lease_info = item.second.leader_lease_info;
+        return item.second.role == PeerRole::LEADER &&
+               (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE ||
+                    leader_lease_info.heartbeats_without_leader_lease <
+                        GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease));
+      });
 
     if (!has_leader) {
       leaderless_tablets.push_back(t);
@@ -2579,7 +2593,26 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
   for (const TabletReplica& location : locations) {
     string location_html = TSDescriptorToHtml(*location.ts_desc, tablet_id);
     if (location.role == PeerRole::LEADER) {
-      html << Format("  <li><b>LEADER: $0</b></li>\n", location_html);
+      auto leader_lease_info = location.leader_lease_info;
+      // The master might haven't received any heartbeats containing this leader yet.
+      // Set the status to UNKNOWN.
+      auto leader_lease_status = leader_lease_info.initialized
+          ? LeaderLeaseStatus_Name(leader_lease_info.leader_lease_status)
+          : "UNKNOWN";
+      html << Format("  <li><b>LEADER: $0 ($1)</b></li>\n", location_html, leader_lease_status);
+      if (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
+        // Get the remaining milliseconds of the current valid lease.
+        boost::posix_time::ptime start(boost::gregorian::date(1970, 1, 1));
+        auto now_utc = boost::posix_time::microsec_clock::universal_time();
+        auto ht_lease_usec = boost::posix_time::microseconds(leader_lease_info.ht_lease_expiration);
+        auto diff = ht_lease_usec - (now_utc - start);
+        html << Format("Remaining ht_lease (may be stale): $0 ms<br>\n", diff.total_milliseconds());
+      } else if (leader_lease_info.heartbeats_without_leader_lease >=
+                     GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease)) {
+        html << Format(
+            "Cannot replicate lease for past <b><font color='red'>$0</font></b> heartbeats<br>",
+            leader_lease_info.heartbeats_without_leader_lease);
+      }
     } else {
       html << Format("  <li>$0: $1</li>\n",
                          PeerRole_Name(location.role), location_html);

@@ -847,7 +847,7 @@ public class UniverseCRUDHandler {
     }
   }
 
-  private UUID updatePrimaryCluster(
+  public UUID updatePrimaryCluster(
       Customer customer, Universe u, UniverseDefinitionTaskParams taskParams) {
 
     checkGeoPartitioningParameters(customer, taskParams, OpType.UPDATE);

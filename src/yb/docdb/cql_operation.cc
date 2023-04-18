@@ -25,13 +25,13 @@
 #include "yb/common/index.h"
 #include "yb/common/index_column.h"
 #include "yb/common/jsonb.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -39,8 +39,8 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/packed_row.h"
-#include "yb/docdb/primitive_value_util.h"
+#include "yb/dockv/packed_row.h"
+#include "yb/dockv/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
 
 #include "yb/util/debug-util.h"
@@ -84,10 +84,12 @@ DEFINE_UNKNOWN_uint64(
 namespace yb {
 namespace docdb {
 
-using std::pair;
 using std::unordered_map;
 using std::unordered_set;
 using std::vector;
+using dockv::DocPath;
+using dockv::KeyEntryValue;
+using dockv::ValueControlFields;
 
 namespace {
 
@@ -271,7 +273,7 @@ struct QLWriteOperation::ApplyContext {
   const DocOperationApplyData* data;
   ValueControlFields control_fields;
   ValueBuffer column_control_fields;
-  RowPacker* row_packer = nullptr;
+  dockv::RowPacker* row_packer = nullptr;
 };
 
 QLWriteOperation::QLWriteOperation(
@@ -350,8 +352,8 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
   // Populate the hashed and range components in the same order as they are in the table schema.
   const auto& hashed_column_values = request_.hashed_column_values();
   const auto& range_column_values = request_.range_column_values();
-  std::vector<KeyEntryValue> hashed_components;
-  std::vector<KeyEntryValue> range_components;
+  dockv::KeyEntryValues hashed_components;
+  dockv::KeyEntryValues range_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       hashed_column_values, doc_read_context_->schema, 0,
       doc_read_context_->schema.num_hash_key_columns(),
@@ -401,7 +403,7 @@ Status QLWriteOperation::GetDocPaths(
       paths->push_back(encoded_pk_doc_key_);
     }
   } else {
-    KeyBytes buffer;
+    dockv::KeyBytes buffer;
     for (const auto& column_value : request_.column_values()) {
       ColumnId column_id(column_value.column_id());
       const ColumnSchema& column = VERIFY_RESULT(doc_read_context_->schema.column_by_id(column_id));
@@ -409,7 +411,7 @@ Status QLWriteOperation::GetDocPaths(
       Slice doc_key = column.is_static() ? encoded_hashed_doc_key_.as_slice()
                                          : encoded_pk_doc_key_.as_slice();
       buffer.Clear();
-      buffer.AppendKeyEntryType(KeyEntryType::kColumnId);
+      buffer.AppendKeyEntryType(dockv::KeyEntryType::kColumnId);
       buffer.AppendColumnId(column_id);
       RefCntBuffer path(doc_key.size() + buffer.size());
       memcpy(path.data(), doc_key.data(), doc_key.size());
@@ -462,9 +464,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
         *static_projection, *doc_read_context_, txn_op_context_,
         data.doc_write_batch->doc_db(), data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (VERIFY_RESULT(iterator.HasNext())) {
-      RETURN_NOT_OK(iterator.NextRow(table_row));
-    }
+    RETURN_NOT_OK(iterator.FetchNext(table_row));
     data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
   }
   if (pk_doc_key_) {
@@ -473,8 +473,7 @@ Status QLWriteOperation::ReadColumns(const DocOperationApplyData& data,
         *non_static_projection, *doc_read_context_, txn_op_context_,
         data.doc_write_batch->doc_db(), data.deadline, data.read_time);
     RETURN_NOT_OK(iterator.Init(spec));
-    if (VERIFY_RESULT(iterator.HasNext())) {
-      RETURN_NOT_OK(iterator.NextRow(table_row));
+    if (VERIFY_RESULT(iterator.FetchNext(table_row))) {
       // If there are indexes to update, check if liveness column exists for update/delete because
       // that will affect whether the row will still exist after the DML and whether we need to
       // remove the key from the indexes.
@@ -563,7 +562,7 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
 // Check if a duplicate value is inserted into a unique index.
 Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(const DocOperationApplyData& data) {
   VLOG(3) << "Looking for collisions in\n" << docdb::DocDBDebugDumpToStr(
-      data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+      data.doc_write_batch->doc_db(), dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
   // We need to check backwards only for backfilled entries.
   bool ret =
       VERIFY_RESULT(HasDuplicateUniqueIndexValue(data, Direction::kForward)) ||
@@ -594,11 +593,11 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
       ReadHybridTime::Max());
 
   HybridTime oldest_past_min_ht = VERIFY_RESULT(FindOldestOverwrittenTimestamp(
-      iter.get(), SubDocKey(*pk_doc_key_), requested_read_time.read));
+      iter.get(), dockv::SubDocKey(*pk_doc_key_), requested_read_time.read));
   const HybridTime oldest_past_min_ht_liveness =
       VERIFY_RESULT(FindOldestOverwrittenTimestamp(
           iter.get(),
-          SubDocKey(*pk_doc_key_, KeyEntryValue::kLivenessColumn),
+          dockv::SubDocKey(*pk_doc_key_, KeyEntryValue::kLivenessColumn),
           requested_read_time.read));
   oldest_past_min_ht.MakeAtMost(oldest_past_min_ht_liveness);
   if (!oldest_past_min_ht.is_valid()) {
@@ -623,12 +622,11 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
 
   // It is a duplicate value if the index key exists already and the index value (corresponding to
   // the indexed table's primary key) is not the same.
-  if (!VERIFY_RESULT(iterator.HasNext())) {
+  QLTableRow table_row;
+  if (!VERIFY_RESULT(iterator.FetchNext(&table_row))) {
     VLOG(2) << "No collision found while checking at " << yb::ToString(read_time);
     return false;
   }
-  QLTableRow table_row;
-  RETURN_NOT_OK(iterator.NextRow(&table_row));
   std::unordered_set<ColumnId> key_column_ids(unique_index_key_schema_->column_ids().begin(),
                                               unique_index_key_schema_->column_ids().end());
   for (const auto& column_value : request_.column_values()) {
@@ -642,7 +640,7 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
                 << " vs New: " << yb::ToString(new_value)
                 << "\nUsed read time as " << yb::ToString(data.read_time);
         DVLOG(3) << "DocDB is now:\n" << docdb::DocDBDebugDumpToStr(
-            data.doc_write_batch->doc_db(), SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+            data.doc_write_batch->doc_db(), dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
         return true;
       }
     }
@@ -654,18 +652,18 @@ Result<bool> QLWriteOperation::HasDuplicateUniqueIndexValue(
 
 Result<HybridTime> QLWriteOperation::FindOldestOverwrittenTimestamp(
     IntentAwareIterator* iter,
-    const SubDocKey& sub_doc_key,
+    const dockv::SubDocKey& sub_doc_key,
     HybridTime min_read_time) {
   HybridTime result;
   VLOG(3) << "Doing iter->Seek " << *pk_doc_key_;
   iter->Seek(*pk_doc_key_);
   if (!iter->IsOutOfRecords()) {
-    const KeyBytes bytes = sub_doc_key.EncodeWithoutHt();
+    const auto bytes = sub_doc_key.EncodeWithoutHt();
     const Slice& sub_key_slice = bytes.AsSlice();
     result = VERIFY_RESULT(
         iter->FindOldestRecord(sub_key_slice, min_read_time));
     VLOG(2) << "iter->FindOldestRecord returned " << result << " for "
-            << SubDocKey::DebugSliceToString(sub_key_slice);
+            << dockv::SubDocKey::DebugSliceToString(sub_key_slice);
   } else {
     VLOG(3) << "iter->Seek " << *pk_doc_key_ << " turned out to be out of records";
   }
@@ -859,7 +857,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
         request_.query_id(), context.control_fields.ttl));
       break;
     case TSOpcode::kListPrepend:
-      value.set_list_extend_order(ListExtendOrder::PREPEND_BLOCK);
+      value.set_list_extend_order(dockv::ListExtendOrder::PREPEND_BLOCK);
       FALLTHROUGH_INTENDED;
     case TSOpcode::kListAppend:
       RETURN_NOT_OK(CheckUserTimestampForCollections(context.control_fields.timestamp));
@@ -997,7 +995,7 @@ Status QLWriteOperation::ApplyUpsert(
   // ensure our write path is fast while complicating the read path a bit.
   IsInsert is_insert(request_.type() == QLWriteRequestPB::QL_STMT_INSERT);
 
-  std::optional<RowPacker> row_packer;
+  std::optional<dockv::RowPacker> row_packer;
   std::optional<IntraTxnWriteId> packed_row_write_id;
 
   auto se = ScopeExit([&packed_row_write_id, doc_write_batch = data.doc_write_batch]() {
@@ -1009,7 +1007,7 @@ Status QLWriteOperation::ApplyUpsert(
   if (is_insert && encoded_pk_doc_key_) {
     bool pack_row = FLAGS_ycql_enable_packed_row;
     if (pack_row) {
-      const SchemaPacking& schema_packing = VERIFY_RESULT(
+      const auto& schema_packing = VERIFY_RESULT_REF(
           doc_read_context_->schema_packing_storage.GetPacking(schema_version_));
       // In YCQL user could specify timestamp that is used by inserted row.
       // As result there could be more recent data.
@@ -1031,7 +1029,7 @@ Status QLWriteOperation::ApplyUpsert(
     if (!pack_row) {
       const DocPath sub_path(encoded_pk_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn);
       RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
-          sub_path, context.control_fields, ValueRef(ValueEntryType::kNullLow),
+          sub_path, context.control_fields, ValueRef(dockv::ValueEntryType::kNullLow),
           data.read_time, data.deadline, request_.query_id()));
     }
   }
@@ -1174,10 +1172,7 @@ Status QLWriteOperation::ApplyDelete(
     // Iterate through rows and delete those that match the condition.
     // TODO(mihnea): We do not lock here, so other write transactions coming in might appear
     // partially applied if they happen in the middle of a ranged delete.
-    while (VERIFY_RESULT(iterator.HasNext())) {
-      existing_row->Clear();
-      RETURN_NOT_OK(iterator.NextRow(existing_row));
-
+    while (VERIFY_RESULT(iterator.FetchNext(existing_row))) {
       // Match the row with the where condition before deleting it.
       bool match = false;
       RETURN_NOT_OK(spec.Match(*existing_row, &match));
@@ -1231,7 +1226,7 @@ Status QLWriteOperation::DeleteSubscriptedColumnElement(
       const int target_cql_index = column_value.subscript_args(0).value().int32_value();
       // Replace value at target_cql_index with a tombstone.
       RETURN_NOT_OK(data.doc_write_batch->ReplaceCqlInList(
-          sub_path, target_cql_index, ValueRef(ValueEntryType::kTombstone), data.read_time,
+          sub_path, target_cql_index, ValueRef(dockv::ValueEntryType::kTombstone), data.read_time,
           data.deadline, request_.query_id(), default_ttl, ValueControlFields::kMaxTtl));
       break;
     }
@@ -1638,6 +1633,8 @@ Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
   return nullptr; // The index updating was skipped.
 }
 
+YB_DEFINE_ENUM(NextRowState, (kNone)(kFound)(kNotFound));
+
 Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
                                 CoarseTimePoint deadline,
                                 const ReadHybridTime& read_time,
@@ -1680,7 +1677,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   const bool read_distinct_columns = request_.distinct();
 
   std::unique_ptr<YQLRowwiseIteratorIf> iter;
-  std::unique_ptr<QLScanSpec> spec, static_row_spec;
+  std::unique_ptr<dockv::QLScanSpec> spec, static_row_spec;
   RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(
       request_, read_time, schema, read_static_columns, static_projection, &spec,
       &static_row_spec));
@@ -1690,6 +1687,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   VTRACE(1, "Initialized iterator");
 
   QLTableRow static_row;
+  QLTableRow next_static_row;
   QLTableRow non_static_row;
   QLTableRow& selected_row = read_distinct_columns ? static_row : non_static_row;
 
@@ -1701,32 +1699,31 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
     RETURN_NOT_OK(ql_storage.GetIterator(
         request_, static_projection, doc_read_context, txn_op_context_, deadline,
         read_time, *static_row_spec, &static_row_iter));
-    if (VERIFY_RESULT(static_row_iter->HasNext())) {
-      RETURN_NOT_OK(static_row_iter->NextRow(&static_row));
-    }
+    RETURN_NOT_OK(static_row_iter->FetchNext(&static_row));
   }
 
   // Begin the normal fetch.
   int match_count = 0;
   bool static_dealt_with = true;
-  while (resultset->rsrow_count() < row_count_limit && VERIFY_RESULT(iter->HasNext())) {
-    const bool last_read_static = iter->IsNextStaticColumn();
+  NextRowState next_row_state = NextRowState::kNone;
+  while (resultset->rsrow_count() < row_count_limit) {
+    if (next_row_state == NextRowState::kNone) {
+      if (!VERIFY_RESULT(iter->FetchNext(
+             &non_static_row, &non_static_projection, &static_row, &static_projection))) {
+        break;
+      }
+    } else if (next_row_state == NextRowState::kNotFound) {
+      break;
+    } else {
+      next_row_state = NextRowState::kNone;
+    }
+    const bool last_read_static = iter->IsFetchedRowStatic();
 
     // Note that static columns are sorted before non-static columns in DocDB as follows. This is
     // because "<empty_range_components>" is empty and terminated by kGroupEnd which sorts before
     // all other ValueType characters in a non-empty range component.
     //   <hash_code><hash_components><empty_range_components><static_column_id> -> value;
     //   <hash_code><hash_components><range_components><non_static_column_id> -> value;
-    if (last_read_static) {
-      static_row.Clear();
-      RETURN_NOT_OK(iter->NextRow(static_projection, &static_row));
-    } else { // Reading a regular row that contains non-static columns.
-      // Read this regular row.
-      // TODO(omer): this is quite inefficient if read_distinct_column. A better way to do this
-      // would be to only read the first non-static column for each hash key, and skip the rest
-      non_static_row.Clear();
-      RETURN_NOT_OK(iter->NextRow(non_static_projection, &non_static_row));
-    }
 
     // We have two possible cases: whether we use distinct or not
     // If we use distinct, then in general we only need to add the static rows
@@ -1752,14 +1749,19 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
         // the non-static row corresponds to this static row; if the non-static row doesn't
         // correspond to this static row, we will have to add it later, so set static_dealt_with to
         // false
-        if (VERIFY_RESULT(iter->HasNext()) && !iter->IsNextStaticColumn()) {
+        next_row_state = VERIFY_RESULT(iter->FetchNext(
+                &non_static_row, &non_static_projection, &next_static_row, &static_projection))
+            ? NextRowState::kFound : NextRowState::kNotFound;
+        if (next_row_state == NextRowState::kFound && !iter->IsFetchedRowStatic()) {
           static_dealt_with = false;
           continue;
         }
-
         AddProjection(non_static_projection, &static_row);
         RETURN_NOT_OK(AddRowToResult(spec, static_row, row_count_limit, offset, resultset,
                                      &match_count, &num_rows_skipped));
+        if (next_row_state == NextRowState::kFound) {
+          static_row = next_static_row;
+        }
       } else {
         // We also have to do the join if we are not reading any static columns, as Cassandra
         // reports nulls for static rows with no corresponding non-static row
@@ -1805,7 +1807,7 @@ Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                                   const ReadHybridTime& read_time) {
   if ((resultset->rsrow_count() >= row_count_limit || request_.has_offset()) &&
       !request_.is_aggregate()) {
-    SubDocKey next_row_key;
+    dockv::SubDocKey next_row_key;
     RETURN_NOT_OK(iter->GetNextReadSubDocKey(&next_row_key));
     // When the "limit" number of rows are returned and we are asked to return the paging state,
     // return the partition key and row key of the next row to read in the paging state if there are
@@ -1815,7 +1817,7 @@ Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
       if (!next_row_key.doc_key().empty()) {
         QLPagingStatePB* paging_state = response_.mutable_paging_state();
         paging_state->set_next_partition_key(
-            PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
+            dockv::PartitionSchema::EncodeMultiColumnHashValue(next_row_key.doc_key().hash()));
         paging_state->set_next_row_key(next_row_key.Encode().ToStringBuffer());
         paging_state->set_total_rows_skipped(request_.paging_state().total_rows_skipped() +
             num_rows_skipped);
@@ -1841,7 +1843,7 @@ Status QLReadOperation::SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
 }
 
 Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out) {
-  std::vector<KeyEntryValue> hashed_components;
+  dockv::KeyEntryValues hashed_components;
   RETURN_NOT_OK(QLKeyColumnValuesToPrimitiveValues(
       request_.hashed_column_values(), schema, 0, schema.num_hash_key_columns(),
       &hashed_components));
@@ -1850,12 +1852,12 @@ Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB*
     // Empty hashed components mean that we don't have primary key at all, but request
     // could still contain hash_code as part of tablet routing.
     // So we should ignore it.
-    pair->dup_key(std::string(1, KeyEntryTypeAsChar::kGroupEnd));
+    pair->dup_key(std::string(1, dockv::KeyEntryTypeAsChar::kGroupEnd));
   } else {
-    DocKey doc_key(request_.hash_code(), hashed_components);
+    dockv::DocKey doc_key(request_.hash_code(), hashed_components);
     pair->dup_key(doc_key.Encode().AsSlice());
   }
-  pair->dup_value(std::string(1, ValueEntryTypeAsChar::kNullLow));
+  pair->dup_value(std::string(1, dockv::ValueEntryTypeAsChar::kNullLow));
   // Wait policies make sense only for YSQL to support different modes like waiting, skipping, or
   // failing on detecting intent conflicts. YCQL behaviour matches Fail-on-Conflict always (see
   // proto for details).
@@ -1863,7 +1865,7 @@ Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB*
   return Status::OK();
 }
 
-Status QLReadOperation::PopulateResultSet(const std::unique_ptr<QLScanSpec>& spec,
+Status QLReadOperation::PopulateResultSet(const std::unique_ptr<dockv::QLScanSpec>& spec,
                                           const QLTableRow& table_row,
                                           QLResultSet *resultset) {
   resultset->AllocateRow();
@@ -1900,7 +1902,7 @@ Status QLReadOperation::PopulateAggregate(const QLTableRow& table_row, QLResultS
   return Status::OK();
 }
 
-Status QLReadOperation::AddRowToResult(const std::unique_ptr<QLScanSpec>& spec,
+Status QLReadOperation::AddRowToResult(const std::unique_ptr<dockv::QLScanSpec>& spec,
                                        const QLTableRow& row,
                                        const size_t row_count_limit,
                                        const size_t offset,

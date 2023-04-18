@@ -25,7 +25,7 @@
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/jsonb.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
@@ -191,7 +191,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
     CsvTokenizer tokenizer = Tokenize(row);
     RETURN_NOT_OK(partition_generator_->LookupTabletIdWithTokenizer(
         tokenizer, {}, &tablet_id, &partition_key));
-    uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    uint16_t hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     req->set_hash_code(hash_code);
     req->set_max_hash_code(hash_code);
 

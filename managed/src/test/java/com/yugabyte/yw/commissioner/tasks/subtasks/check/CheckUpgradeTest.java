@@ -138,8 +138,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     flag.name = "FLAG_2";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
     flagsPerServer.autoFlagDetails = Arrays.asList(flag);
-    System.out.println(flagsPerServer);
-    when(mockGFlagsValidation.extractAutoFlags(any(), any(), any())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.extractAutoFlags(any(), any())).thenReturn(flagsPerServer);
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     PlatformServiceException exception =
@@ -179,8 +178,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     flag.name = "FLAG_1";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
     flagsPerServer.autoFlagDetails = Arrays.asList(flag);
-    System.out.println(flagsPerServer);
-    when(mockGFlagsValidation.extractAutoFlags(any(), any(), any())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.extractAutoFlags(any(), any())).thenReturn(flagsPerServer);
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     task.run();

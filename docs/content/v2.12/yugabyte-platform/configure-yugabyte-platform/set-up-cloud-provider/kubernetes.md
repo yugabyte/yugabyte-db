@@ -14,47 +14,47 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
+    <a href="../aws" class="nav-link">
       <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
+    <a href="../gcp" class="nav-link">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link active">
+    <a href="../kubernetes" class="nav-link active">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
+    <a href="../vmware-tanzu" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
+    <a href="../openshift" class="nav-link">
       <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
+    <a href="../on-premises" class="nav-link">
       <i class="fa-solid fa-building"></i>
       On-premises
     </a>
@@ -93,6 +93,7 @@ serviceaccount/yugabyte-platform-universe-management created
 ```
 
 You need to grant access to this ServiceAccount using ClusterRoles and Roles, as well as ClusterRoleBindings and RoleBindings, thus allowing it to manage the YugabyteDB universe's resources for you.
+
 Ensure that you have replaced the `namespace` from the commands with the correct namespace of the previously created ServiceAccount.
 
 The tasks you can perform depend on your access level.
@@ -191,7 +192,8 @@ You can create a `kubeconfig` file for previously created `yugabyte-platform-uni
 
 You can use the Pivotal Container Service or Managed Kubernetes Service.
 
-Select the tab for the service you are using, as per the following illustration:<br><br>
+Select the tab for the service you are using, as per the following illustration:
+
 <img title="K8s Configuration -- Tabs" alt="K8s Configuration -- Tabs" class="expandable-image" src="/images/ee/k8s-setup/k8s-provider-tabs.png" />
 
 Use the configuration form shown in the following illustration to select the Kubernetes provider type from **Type** (Pivotal Container Service is the default):
@@ -203,7 +205,7 @@ Use the configuration form shown in the following illustration to select the Kub
 Continue configuring your Kubernetes provider as follows:
 
 - Give a meaningful name for your configuration.
-- Choose one of the folloiwng ways to specify **Kube Config** for an availability zone:
+- Choose one of the following ways to specify **Kube Config** for an availability zone:
   - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
   - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments.
 - Use **Service Account** to provide the name of the service account which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
@@ -299,7 +301,7 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
 
   - Overrides to publish Node-IP as the server broadcast address.
 
-    By default, Master and T-Server pod fully-qualified domain names (FQDNs) are used within the cluster as the server broadcast address. To publish the IPs of the nodes on which YugabyteDB TServer pods are deployed, add the following YAML to each zone override configuration:
+    By default, Master and T-Server pod fully-qualified domain names (FQDNs) are used in the cluster as the server broadcast address. To publish the IPs of the nodes on which YugabyteDB TServer pods are deployed, add the following YAML to each zone override configuration:
 
     ```yml
     tserver:
@@ -346,7 +348,6 @@ Continue configuring your Kubernetes provider by clicking **Add Region** and com
           tcp-yedis-port: "6379"
           tcp-ysql-port: "5433"
     ```
-
 
 Continue configuring your Kubernetes provider by clicking **Add Zone** and notice that there are might be multiple zones, as per the following illustration:
 

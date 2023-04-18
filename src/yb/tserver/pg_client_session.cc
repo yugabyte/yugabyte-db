@@ -652,6 +652,17 @@ Status PgClientSession::TruncateTable(
   return client().TruncateTable(PgObjectId::GetYbTableIdFromPB(req.table_id()));
 }
 
+Status PgClientSession::WaitForBackendsCatalogVersion(
+    const PgWaitForBackendsCatalogVersionRequestPB& req,
+    PgWaitForBackendsCatalogVersionResponsePB* resp,
+    rpc::RpcContext* context) {
+  // TODO(jason): send deadline to client.
+  const int num_lagging_backends = VERIFY_RESULT(client().WaitForYsqlBackendsCatalogVersion(
+      req.database_oid(), req.catalog_version(), context->GetClientDeadline()));
+  resp->set_num_lagging_backends(num_lagging_backends);
+  return Status::OK();
+}
+
 Status PgClientSession::BackfillIndex(
     const PgBackfillIndexRequestPB& req, PgBackfillIndexResponsePB* resp,
     rpc::RpcContext* context) {
@@ -1098,10 +1109,13 @@ PgClientSession::SetupSession(
   }
 
   session->SetDeadline(deadline);
-
   if (transaction) {
-    DCHECK_GE(options.active_sub_transaction_id(), 0);
-    transaction->SetActiveSubTransaction(options.active_sub_transaction_id());
+    const auto active_subtxn_id = options.active_sub_transaction_id();
+    RSTATUS_DCHECK_GE(
+        active_subtxn_id, kMinSubTransactionId, InvalidArgument,
+        Format("Expected active_sub_transaction_id ($0) to be greater than ($1)",
+               active_subtxn_id, kMinSubTransactionId));
+    transaction->SetActiveSubTransaction(active_subtxn_id);
   }
 
   return std::make_pair(sessions_[to_underlying(kind)], used_read_time);
@@ -1170,7 +1184,6 @@ Status PgClientSession::BeginTransactionIfNecessary(
   }
   txn->SetPriority(priority);
   session->SetTransaction(txn);
-
   return Status::OK();
 }
 

@@ -125,6 +125,7 @@ DECLARE_bool(TEST_cdc_skip_replication_poll);
 DECLARE_int32(rpc_workers_limit);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_uint32(external_transaction_retention_window_secs);
+DECLARE_bool(xcluster_consistent_wal);
 
 namespace yb {
 
@@ -671,26 +672,7 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
   }
 };
 
-struct XClusterYsqlTestParams {
-  explicit XClusterYsqlTestParams(int batch_size_) : batch_size(batch_size_) {}
-
-  int batch_size;
-};
-
-class XClusterYsqlTestToggleBatching : public XClusterYsqlTest,
-                                       public testing::WithParamInterface<XClusterYsqlTestParams> {
- public:
-  void SetUp() override {
-    FLAGS_cdc_max_apply_batch_num_records = GetParam().batch_size;
-    XClusterYsqlTest::SetUp();
-  }
-};
-
-INSTANTIATE_TEST_CASE_P(XClusterYsqlTestParams, XClusterYsqlTestToggleBatching,
-                        ::testing::Values(XClusterYsqlTestParams(0 /* batch_size */),
-                                          XClusterYsqlTestParams(1 /* batch_size */)));
-
-TEST_P(XClusterYsqlTestToggleBatching, GenerateSeries) {
+TEST_F(XClusterYsqlTest, GenerateSeries) {
   auto tables = ASSERT_RESULT(SetUpWithParams({4}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
 
@@ -792,7 +774,7 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     });
   }
 
-  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
+  virtual Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
       int num_masters = 3) {
     FLAGS_enable_replicate_transaction_status_table = true;
     auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
@@ -822,9 +804,14 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
   }
 
   Status WaitForIntentsCleanedUpOnConsumer() {
-    return WaitFor([&]() {
-      return CountIntents(consumer_cluster()) == 0;
-    }, MonoDelta::FromSeconds(30), "Intents cleaned up");
+    if (FLAGS_xcluster_consistent_wal) {
+      // There is nothing to cleanup in this mode.
+      return Status::OK();
+    }
+
+    return WaitFor(
+        [&]() { return CountIntents(consumer_cluster()) == 0; }, MonoDelta::FromSeconds(30),
+        "Intents cleaned up");
   }
 };
 
@@ -832,6 +819,28 @@ constexpr uint32_t kTransactionSize = 50;
 constexpr uint32_t kNumTransactions = 100;
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
+  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
+
+  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
+      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
+      true /* commit_all_transactions */));
+
+  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
+}
+
+class XClusterYSqlTestConsistentWAL : public XClusterYSqlTestConsistentTransactionsTest {
+ public:
+  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
+      int num_masters = 3) override {
+    FLAGS_xcluster_consistent_wal = true;
+    auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
+    auto producer_table = tables[0];
+    auto consumer_table = tables[1];
+    return std::make_pair(producer_table, consumer_table);
+  }
+};
+
+TEST_F(XClusterYSqlTestConsistentWAL, ConsistentTransactions) {
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -1341,7 +1350,7 @@ TEST_F(XClusterYSqlTestStressTest, ApplyTranasctionThrottling) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_P(XClusterYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
+TEST_F(XClusterYsqlTest, GenerateSeriesMultipleTransactions) {
   // Use a 4 -> 1 mapping to ensure that multiple transactions are processed by the same tablet.
   auto tables = ASSERT_RESULT(SetUpWithParams({1}, {4}, 3, 1));
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
@@ -1363,7 +1372,7 @@ TEST_P(XClusterYsqlTestToggleBatching, GenerateSeriesMultipleTransactions) {
   ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
 }
 
-TEST_P(XClusterYsqlTestToggleBatching, ChangeRole) {
+TEST_F(XClusterYsqlTest, ChangeRole) {
   // 1. Test that an existing universe without replication of txn status table cannot become a
   // STANDBY.
   FLAGS_enable_replicate_transaction_status_table = false;
@@ -2075,6 +2084,72 @@ TEST_F(XClusterYsqlTest, LegacyColocatedDatabaseReplicationWithPacked) {
   FLAGS_ysql_legacy_colocated_database_creation = true;
   TestColocatedDatabaseReplication();
 }
+
+TEST_F(XClusterYsqlTest, TestColocatedTablesReplicationWithLargeTableCount) {
+    constexpr int kNTabletsPerColocatedTable = 1;
+    std::vector<uint32_t> tables_vector;
+    for (int i = 0; i < 30; i++) {
+        tables_vector.push_back(kNTabletsPerColocatedTable);
+    }
+
+    // Create colocated tables on each cluster
+    auto colocated_tables =
+        ASSERT_RESULT(SetUpWithParams(tables_vector, tables_vector, 3, 1, true /* colocated */));
+    const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
+
+    // colocated_tables contains both producer and consumer universe tables (alternately).
+    // Pick out just the producer tables from the list.
+    std::vector<std::shared_ptr<client::YBTable>> producer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> consumer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> colocated_producer_tables;
+    std::vector<std::shared_ptr<client::YBTable>> colocated_consumer_tables;
+    producer_tables.reserve(colocated_tables.size() / 2 + 1);
+    consumer_tables.reserve(colocated_tables.size() / 2 + 1);
+    for (size_t i = 0; i < colocated_tables.size(); ++i) {
+      if (i % 2 == 0) {
+        producer_tables.push_back(colocated_tables[i]);
+      } else {
+        consumer_tables.push_back(colocated_tables[i]);
+      }
+    }
+
+    auto producer_table = producer_tables[0];
+    auto consumer_table = consumer_tables[0];
+    WriteWorkload(0, 50, &producer_cluster_, producer_table->name());
+
+    // 2. Setup replication for only the colocated tables.
+    // Get the producer colocated parent table id.
+    auto colocated_parent_table_id = ASSERT_RESULT(GetColocatedDatabaseParentTableId());
+
+    rpc::RpcController rpc;
+    master::SetupUniverseReplicationRequestPB setup_universe_req;
+    master::SetupUniverseReplicationResponsePB setup_universe_resp;
+    setup_universe_req.set_producer_id(kUniverseId);
+    string master_addr = producer_cluster()->GetMasterAddresses();
+    auto hp_vec = ASSERT_RESULT(HostPort::ParseStrings(master_addr, 0));
+    HostPortsToPBs(hp_vec, setup_universe_req.mutable_producer_master_addresses());
+    // Only need to add the colocated parent table id.
+    setup_universe_req.mutable_producer_table_ids()->Reserve(1);
+    setup_universe_req.add_producer_table_ids(colocated_parent_table_id);
+    auto* consumer_leader_mini_master = ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster());
+    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+        &consumer_client()->proxy_cache(),
+        consumer_leader_mini_master->bound_rpc_addr());
+
+    rpc.Reset();
+    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+    ASSERT_OK(master_proxy->SetupUniverseReplication(setup_universe_req, &setup_universe_resp,
+                                                     &rpc));
+    ASSERT_FALSE(setup_universe_resp.has_error());
+
+    // 3. Verify everything is setup correctly.
+    master::GetUniverseReplicationResponsePB get_universe_replication_resp;
+    ASSERT_OK(VerifyUniverseReplication(kUniverseId, &get_universe_replication_resp));
+    ASSERT_OK(CorrectlyPollingAllTablets(consumer_cluster(), kNTabletsPerColocatedTable));
+    ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
+
+}
+
 
 TEST_F(XClusterYsqlTest, ColocatedDatabaseDifferentColocationIds) {
   auto colocated_tables = ASSERT_RESULT(SetUpWithParams({}, {}, 3, 1, true /* colocated */));

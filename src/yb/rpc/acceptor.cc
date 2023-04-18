@@ -61,8 +61,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
 
-using google::protobuf::Message;
-
 METRIC_DEFINE_counter(server, rpc_connections_accepted,
                       "RPC Connections Accepted",
                       yb::MetricUnit::kConnections,

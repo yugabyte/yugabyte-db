@@ -78,7 +78,7 @@ export const QueryLoadSkew: FC<QueryLoadRecommendation> = ({ data, summary }) =>
             <a
               target="_blank"
               rel="noopener noreferrer"
-              className="learnSchemaSuggestion"
+              className="learnRecommendationSuggestions"
               href={EXTERNAL_LINKS.QUERY_LOAD_SKEW}
             >
               {t('clusterDetail.performance.advisor.LearnHow')}

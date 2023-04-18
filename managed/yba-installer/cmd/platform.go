@@ -29,9 +29,11 @@ type platformDirectories struct {
 	templateFileName    string
 	DataDir             string
 	cronScript          string
+	PgBin               string
+	PlatformPackages    string
 }
 
-func newPlatDirectories() platformDirectories {
+func newPlatDirectories(version string) platformDirectories {
 	return platformDirectories{
 		SystemdFileLocation: common.SystemdDir + "/yb-platform.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/yb-platform/conf/yb-platform.conf",
@@ -39,6 +41,8 @@ func newPlatDirectories() platformDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/yb-platform",
 		cronScript: filepath.Join(
 			common.GetInstallerSoftwareDir(), common.CronDir, "managePlatform.sh"),
+		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
+		PlatformPackages: common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
 	}
 }
 
@@ -54,17 +58,17 @@ func NewPlatform(version string) Platform {
 	return Platform{
 		name:                "yb-platform",
 		version:             version,
-		platformDirectories: newPlatDirectories(),
+		platformDirectories: newPlatDirectories(version),
 	}
 }
 
 func (plat Platform) devopsDir() string {
-	return plat.yugabyteDir() + "/devops"
+	return plat.PlatformPackages + "/devops"
 }
 
 // yugaware dir has actual yugaware binary and JARs
 func (plat Platform) yugawareDir() string {
-	return plat.yugabyteDir() + "/yugaware"
+	return plat.PlatformPackages + "/yugaware"
 }
 
 func (plat Platform) packageFolder() string {
@@ -95,7 +99,6 @@ func (plat Platform) Install() error {
 	config.GenerateTemplate(plat)
 	plat.createNecessaryDirectories()
 	plat.untarDevopsAndYugawarePackages()
-	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
 	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
@@ -123,15 +126,22 @@ func (plat Platform) Install() error {
 }
 
 func (plat Platform) createNecessaryDirectories() {
-
-	common.MkdirAll(common.GetSoftwareRoot()+"/yb-platform", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/release", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/releases", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/node-agent/releases", os.ModePerm)
-
-	common.MkdirAll(plat.devopsDir(), os.ModePerm)
-	common.MkdirAll(plat.yugawareDir(), os.ModePerm)
+	dirs := []string{
+		common.GetSoftwareRoot() + "/yb-platform",
+		common.GetBaseInstall() + "/data/yb-platform/releases",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/release",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/releases",
+		common.GetBaseInstall() + "/data/yb-platform/node-agent/releases",
+		plat.devopsDir(),
+		plat.yugawareDir(),
+	}
+	userName := viper.GetString("service_username")
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+			common.MkdirAll(dir, os.ModePerm)
+			common.Chown(dir, userName, userName, true)
+		}
+	}
 }
 
 func (plat Platform) untarDevopsAndYugawarePackages() {
@@ -185,36 +195,14 @@ func (plat Platform) untarDevopsAndYugawarePackages() {
 
 }
 
-func (plat Platform) copyYugabyteReleaseFile() {
-
-	packageFolderPath := plat.yugabyteDir()
-
-	files, err := os.ReadDir(packageFolderPath)
-	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
-	}
-
-	for _, f := range files {
-		if strings.Contains(f.Name(), "yugabyte") {
-
-			yugabyteTgzName := f.Name()
-			yugabyteTgzPath := packageFolderPath + "/" + yugabyteTgzName
-			common.CopyFile(yugabyteTgzPath,
-				common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version+"/"+yugabyteTgzName)
-
-		}
-	}
-}
-
 func (plat Platform) copyYbcPackages() {
-	packageFolderPath := common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + plat.version
-	ybcPattern := packageFolderPath + "/**/ybc/ybc*.tar.gz"
+	ybcPattern := plat.PlatformPackages + "/**/ybc/ybc*.tar.gz"
 
 	matches, err := filepath.Glob(ybcPattern)
 	if err != nil {
 		log.Fatal(
 			fmt.Sprintf("Could not find ybc components in %s. Failed with err %s",
-				packageFolderPath, err.Error()))
+				plat.PlatformPackages, err.Error()))
 	}
 
 	for _, f := range matches {
@@ -240,14 +228,13 @@ func (plat Platform) deleteNodeAgentPackages() {
 
 func (plat Platform) copyNodeAgentPackages() {
 	// Node-agent package is under yugabundle folder.
-	packageFolderPath := common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + plat.version
-	nodeAgentPattern := packageFolderPath + "/node_agent-*.tar.gz"
+	nodeAgentPattern := plat.PlatformPackages + "/node_agent-*.tar.gz"
 
 	matches, err := filepath.Glob(nodeAgentPattern)
 	if err != nil {
 		log.Fatal(
 			fmt.Sprintf("Could not find node-agent components in %s. Failed with err %s",
-				packageFolderPath, err.Error()))
+				plat.PlatformPackages, err.Error()))
 	}
 
 	for _, f := range matches {
@@ -259,8 +246,8 @@ func (plat Platform) copyNodeAgentPackages() {
 
 func (plat Platform) renameAndCreateSymlinks() {
 
-	common.CreateSymlink(plat.yugabyteDir(), common.GetSoftwareRoot()+"/yb-platform", "yugaware")
-	common.CreateSymlink(plat.yugabyteDir(), common.GetSoftwareRoot()+"/yb-platform", "devops")
+	common.CreateSymlink(plat.PlatformPackages, common.GetSoftwareRoot()+"/yb-platform", "yugaware")
+	common.CreateSymlink(plat.PlatformPackages, common.GetSoftwareRoot()+"/yb-platform", "devops")
 
 }
 
@@ -438,11 +425,10 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will upgrade the platform and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
-	plat.platformDirectories = newPlatDirectories()
+	plat.platformDirectories = newPlatDirectories(plat.version)
 	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
 	plat.createNecessaryDirectories()
 	plat.untarDevopsAndYugawarePackages()
-	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
 	plat.deleteNodeAgentPackages()
 	plat.copyNodeAgentPackages()
@@ -458,10 +444,6 @@ func (plat Platform) Upgrade() error {
 	//Crontab based monitoring for non-root installs.
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
-	} else {
-		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
-		userName := viper.GetString("service_username")
-		common.Chown(common.GetBaseInstall(), userName, userName, true)
 	}
 	err := plat.Start()
 	return err

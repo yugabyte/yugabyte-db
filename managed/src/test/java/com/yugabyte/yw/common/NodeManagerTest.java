@@ -1172,6 +1172,16 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--volume_size");
           expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
         }
+        if (type == NodeManager.NodeCommandType.Disk_Update) {
+          if (deviceInfo.diskIops != null) {
+            expectedCommand.add("--disk_iops");
+            expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+          }
+          if (deviceInfo.throughput != null) {
+            expectedCommand.add("--disk_throughput");
+            expectedCommand.add(Integer.toString(deviceInfo.throughput));
+          }
+        }
       }
 
       if (type == NodeManager.NodeCommandType.Provision
@@ -1182,12 +1192,12 @@ public class NodeManagerTest extends FakeDBApplication {
               || type == NodeManager.NodeCommandType.Create_Root_Volumes) {
             expectedCommand.add("--volume_type");
             expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-            if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
+            if (deviceInfo.diskIops != null && deviceInfo.storageType.isIopsProvisioning()) {
               expectedCommand.add("--disk_iops");
               expectedCommand.add(Integer.toString(deviceInfo.diskIops));
             }
-            if (deviceInfo.storageType.isThroughputProvisioning()
-                && deviceInfo.throughput != null) {
+            if (deviceInfo.throughput != null
+                && deviceInfo.storageType.isThroughputProvisioning()) {
               expectedCommand.add("--disk_throughput");
               expectedCommand.add(Integer.toString(deviceInfo.throughput));
             }
@@ -2858,6 +2868,11 @@ public class NodeManagerTest extends FakeDBApplication {
       params.deviceInfo.numVolumes = 1;
       if (t.cloudType == CloudType.onprem) {
         params.deviceInfo.mountPoints = fakeMountPaths;
+      }
+      if (t.cloudType == CloudType.aws) {
+        params.deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
+        params.deviceInfo.diskIops = 5000;
+        params.deviceInfo.throughput = 500;
       }
       params.deviceInfo.volumeSize = 500;
       List<String> expectedCommand = t.baseCommand;

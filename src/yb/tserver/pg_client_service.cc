@@ -28,7 +28,7 @@
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -562,6 +562,8 @@ class PgClientServiceImpl::Impl {
   }
 
   Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
+    // GetSession ensures that there is at most one thread running PgClientSession::Perform, for a
+    // given session. Refer PgClientSessionLocker for details.
     return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 

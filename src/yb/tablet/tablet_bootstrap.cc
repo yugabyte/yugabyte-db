@@ -56,7 +56,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -154,7 +154,6 @@ using std::string;
 using std::vector;
 
 using log::Log;
-using log::LogEntryPB;
 using log::LogOptions;
 using log::LogReader;
 using log::ReadableLogSegment;
@@ -162,18 +161,12 @@ using log::LogEntryMetadata;
 using log::LogIndex;
 using log::CreateNewSegment;
 using log::SegmentSequence;
-using consensus::ChangeConfigRecordPB;
 using consensus::RaftConfigPB;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
-using consensus::OpIdEquals;
-using consensus::OpIdToString;
-using consensus::ReplicateMsg;
 using consensus::MakeOpIdPB;
 using strings::Substitute;
-using tserver::WriteRequestPB;
-using tserver::TabletSnapshotOpRequestPB;
 
 static string DebugInfo(const string& tablet_id,
                         uint64_t segment_seqno,
@@ -417,6 +410,7 @@ ReplayDecision ShouldReplayOperation(
     const int64_t index,
     const int64_t regular_flushed_index,
     const int64_t intents_flushed_index,
+    const int64_t metadata_flushed_index,
     TransactionStatus txn_status,
     bool write_op_has_transaction) {
   if (op_type == consensus::UPDATE_TRANSACTION_OP) {
@@ -435,6 +429,13 @@ ReplayDecision ShouldReplayOperation(
                       << "regular_flushed_index: " << regular_flushed_index;
     return {index > regular_flushed_index};
   }
+
+  if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
+    VLOG_WITH_FUNC(3) << "CHANGE_METADATA_OP - index: " << index
+                      << " metadata_flushed_index: " << metadata_flushed_index;
+    return {index > metadata_flushed_index};
+  }
+  // For upgrade scenarios where metadata_flushed_index < 0, follow the pre-existing logic.
 
   // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
   // trying to be resilient to violations of that assumption.
@@ -478,7 +479,7 @@ bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
     return true;
   }
   for (const auto& pair : write_batch.write_pairs()) {
-    if (!pair.key().empty() && pair.key()[0] == docdb::KeyEntryTypeAsChar::kExternalTransactionId) {
+    if (!pair.key().empty() && pair.key()[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
     }
   }
@@ -819,6 +820,18 @@ class TabletBootstrap {
         log_options.segment_size_bytes = log_segment_size;
       }
     }
+
+    // When lazy superblock flush is enabled, instead of flushing the superblock on every
+    // CHANGE_METADATA_OP, we update the metadata only in-memory and flush it to disk when a new WAL
+    // segment is allocated. This reduces the latency of applying a CHANGE_METADATA_OP.
+    //
+    // Currently, this feature is applicable only on colocated table creation.
+    // Reference: https://github.com/yugabyte/yugabyte-db/issues/16116
+    log::NewSegmentAllocationCallback noop = {};
+    auto new_segment_allocation_callback =
+        metadata.IsLazySuperblockFlushEnabled()
+            ? std::bind(&RaftGroupMetadata::Flush, tablet_->metadata(), OnlyIfDirty::kTrue)
+            : noop;
     RETURN_NOT_OK(Log::Open(
         log_options,
         tablet_->tablet_id(),
@@ -833,6 +846,7 @@ class TabletBootstrap {
         log_sync_pool_,
         metadata.cdc_min_replicated_index(),
         &log_,
+        new_segment_allocation_callback,
         create_new_segment));
     // Disable sync temporarily in order to speed up appends during the bootstrap process.
     log_->DisableSync();
@@ -1076,6 +1090,7 @@ class TabletBootstrap {
         replicate.id().index(),
         replay_state_->stored_op_ids.regular.index,
         replay_state_->stored_op_ids.intents.index,
+        meta_->LastFlushedChangeMetadataOperationOpId().index,
         // txn_status
         replicate.has_transaction_state()
             ? replicate.transaction_state().status()
@@ -1182,9 +1197,41 @@ class TabletBootstrap {
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
     boost::optional<RestartSafeCoarseTimePoint> replay_from_this_or_earlier_time;
-    const RestartSafeCoarseDuration min_seconds_to_retain_logs = data_.bootstrap_retryable_requests
-        ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
-        : 0s;
+    RestartSafeCoarseDuration min_duration_to_retain_logs = data_.bootstrap_retryable_requests
+          ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
+          : 0s;
+
+    // When lazy superblock flush is enabled, superblock is flushed on a new segment allocation
+    // instead of doing it for every CHANGE_METADATA_OP. This reduces the latency of applying
+    // a CHANGE_METADATA_OP. In this approach, the committed but unflushed CHANGE_METADATA_OP WAL
+    // entries are guaranteed to be limited to the last two segments:
+    //  1. Say there are two wal segments: seg0, seg1 (active segment).
+    //  2. When seg1 is about to exceed the max size, seg2 is asynchronously allocated. Writes
+    //     continue to go seg1 in the meantime.
+    //  3. Before completing the seg2 allocation, we flush the superblock. This guarantees
+    //     that all the CHANGE_METADATA_OPs in seg0 are flushed to superblock on disk (as
+    //     seg0 closed). We can't say the same about seg1 as it is still open and potentially
+    //     appending entries.
+    //  4. Log rolls over, seg1 is closed and writes now go to seg2.
+    //  At this point, the committed unflushed metadata entries are limited to seg1 and seg2.
+    //
+    // To ensure persistence of such unflushed operations, we replay a minimum of two WAL segments
+    // (if present) on tablet bootstrap. Currently, this feature is applicable only on colocated
+    // table creation. Reference: https://github.com/yugabyte/yugabyte-db/issues/16116.
+    //
+    // We should be able to get rid of this requirement when we address:
+    // https://github.com/yugabyte/yugabyte-db/issues/16684.
+    if (min_duration_to_retain_logs == 0s && meta_->IsLazySuperblockFlushEnabled() &&
+        segments.size() > 1) {
+      // The below ensures atleast two segments are replayed. This is because to find the segment to
+      // start replay from we take the last segment's first operation's restart-safe time, subtract
+      // min_duration_to_retain_logs from it, and find the segment that has that time or earlier as
+      // its first operation's restart-safe time. Please refer to the function comment for more
+      // details.
+      min_duration_to_retain_logs = std::chrono::nanoseconds(1);
+    }
+
+    const RestartSafeCoarseDuration const_min_duration_to_retain_logs = min_duration_to_retain_logs;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {
@@ -1215,7 +1262,7 @@ class TabletBootstrap {
           replay_from_this_or_earlier_time.is_initialized();
 
       if (!replay_from_this_or_earlier_time_was_initialized) {
-        replay_from_this_or_earlier_time = first_op_time - min_seconds_to_retain_logs;
+        replay_from_this_or_earlier_time = first_op_time - const_min_duration_to_retain_logs;
       }
 
       const auto is_first_op_id_low_enough = op_id <= op_id_replay_lowest;
@@ -1225,7 +1272,7 @@ class TabletBootstrap {
         std::ostringstream ss;
         ss << EXPR_VALUE_FOR_LOG(op_id_replay_lowest) << ", "
            << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
-           << EXPR_VALUE_FOR_LOG(min_seconds_to_retain_logs) << ", "
+           << EXPR_VALUE_FOR_LOG(const_min_duration_to_retain_logs) << ", "
            << EXPR_VALUE_FOR_LOG(replay_from_this_or_earlier_time_was_initialized) << ", "
            << EXPR_VALUE_FOR_LOG(*replay_from_this_or_earlier_time);
         return ss.str();
@@ -1446,10 +1493,11 @@ class TabletBootstrap {
     // takes advantage of the feature. After bootstrap, when orphaned replicates are applied,
     // we are sure that we are no worse than existing since their "Apply" goes
     // through the non-tablet-bootstrap change metadata route which is the same before/after.
-    if (!tablet_->metadata()->LastChangeMetadataOperationOpId().valid()) {
+    if (!tablet_->metadata()->LastFlushedChangeMetadataOperationOpId().valid()) {
       LOG(INFO) << "Updating last_change_metadata_op_id to " << replay_state_->committed_op_id
                 << " so that subsequent bootstraps can start leveraging it";
-      tablet_->metadata()->SetLastChangeMetadataOperationOpId(replay_state_->committed_op_id);
+      tablet_->metadata()->SetLastAppliedChangeMetadataOperationOpId(
+          replay_state_->committed_op_id);
       RETURN_NOT_OK(tablet_->metadata()->Flush());
     }
 
@@ -1545,21 +1593,13 @@ class TabletBootstrap {
     // This is to handle the upgrade case when new code runs against old data.
     // In such cases, last_change_metadata_op_id won't be set and we want
     // to ensure that we are no worse than the behavior as of the older version.
-    if (!meta_->LastChangeMetadataOperationOpId().valid()) {
+    if (!meta_->LastFlushedChangeMetadataOperationOpId().valid()) {
       return PlayChangeMetadataRequestDeprecated(replicate_msg);
     }
 
     // If last_change_metadata_op_id is valid then new code gets executed
     // wherein we replay everything.
     const auto op_id = OpId::FromPB(replicate_msg->id());
-    // If current metadata is already more recent then skip this replay.
-    if (op_id <= meta_->LastChangeMetadataOperationOpId()) {
-      LOG_WITH_PREFIX(INFO) << "Skipping replay of operation with op id " << op_id
-                            << ", since tablet metadata is more recent. Op Id of last change"
-                            << " metadata operation flushed is "
-                            << meta_->LastChangeMetadataOperationOpId();
-      return Status::OK();
-    }
 
     // Otherwise play.
     auto* request = replicate_msg->mutable_change_metadata_request();

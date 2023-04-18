@@ -339,7 +339,7 @@ public class BackupsController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.BackupRequestParams",
           required = true))
   public Result createBackupSchedule(UUID customerUUID, Http.Request request) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     BackupRequestParams taskParams = parseJsonAndValidate(request, BackupRequestParams.class);
     if (taskParams.storageConfigUUID == null) {
@@ -412,24 +412,22 @@ public class BackupsController extends AuthenticatedController {
           (StringUtils.isEmpty(taskParams.cronExpression))
               ? taskParams.schedulingFrequency
               : BackupUtil.getCronExpressionTimeInterval(taskParams.cronExpression);
-      BackupUtil.validateIncrementalScheduleFrequency(
-          taskParams.incrementalBackupFrequency, schedulingFrequency);
+      backupUtil.validateIncrementalScheduleFrequency(
+          taskParams.incrementalBackupFrequency, schedulingFrequency, universe);
     }
-    Schedule schedule =
-        Schedule.create(
-            customerUUID,
-            taskParams.getUniverseUUID(),
-            taskParams,
-            TaskType.CreateBackup,
-            taskParams.schedulingFrequency,
-            taskParams.cronExpression,
-            taskParams.frequencyTimeUnit,
-            taskParams.scheduleName);
-    UUID scheduleUUID = schedule.getScheduleUUID();
-    LOG.info(
-        "Created backup schedule for customer {}, schedule uuid = {}.", customerUUID, scheduleUUID);
-    auditService().createAuditEntryWithReqBody(request);
-    return PlatformResults.withData(schedule);
+
+    UUID taskUUID = commissioner.submit(TaskType.CreateBackupSchedule, taskParams);
+    LOG.info("Submitted task to universe {}, task uuid = {}.", universe.getName(), taskUUID);
+    CustomerTask.create(
+        customer,
+        taskParams.getUniverseUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Schedule,
+        CustomerTask.TaskType.Create,
+        universe.getName());
+    LOG.info("Saved task uuid {} in customer tasks for universe {}", taskUUID, universe.getName());
+    auditService().createAuditEntry(request, Json.toJson(taskParams), taskUUID);
+    return new YBPTask(taskUUID).asResult();
   }
 
   @ApiOperation(

@@ -8,6 +8,7 @@ import glob
 import logging
 import os
 import pipes
+import psutil
 import shutil
 import signal
 import subprocess
@@ -84,6 +85,15 @@ class YBC:
             logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
             raise ex
 
+    def read_pid_file(self, pid_file_path):
+        if os.path.exists(pid_file_path):
+            pidfile = open(pid_file_path, 'r')
+            line = pidfile.readline().strip()
+            pid = int(line)
+            return pid
+        else:
+            return None
+
     # Fetch the latest ybc package from the PV_CONTROLLER_DIR + "/tmp", untar it and
     # move it to the PV_CONTROLLER_DIR + "/bin" directory.
     def configure(self):
@@ -117,9 +127,7 @@ class YBC:
 
     def stop(self):
         if os.path.exists(CONTROLLER_PID_FILE):
-            pidfile = open(CONTROLLER_PID_FILE, 'r')
-            line = pidfile.readline().strip()
-            pid = int(line)
+            pid = self.read_pid_file(CONTROLLER_PID_FILE)
             try:
                 os.kill(pid, 0)
                 os.kill(pid, signal.SIGKILL)
@@ -130,7 +138,17 @@ class YBC:
 
     def status(self):
         if os.path.exists(CONTROLLER_PID_FILE):
-            exit(0)
+            pid = None
+            try:
+                pid = self.read_pid_file(CONTROLLER_PID_FILE)
+                if pid is not None and psutil.pid_exists(pid):
+                    exit(0)
+                else:
+                    os.remove(CONTROLLER_PID_FILE)
+                    exit(1)
+            except Exception:
+                os.remove(CONTROLLER_PID_FILE)
+                exit(1)
         else:
             exit(1)
 

@@ -42,7 +42,7 @@ struct ProcessRecordInfo {
 class XClusterWriteInterface {
  public:
   virtual ~XClusterWriteInterface() {}
-  virtual std::unique_ptr<WriteRequestPB> GetNextWriteRequest() = 0;
+  virtual std::unique_ptr<WriteRequestPB> FetchNextRequest() = 0;
   virtual Status ProcessRecord(
       const ProcessRecordInfo& process_record_info, const cdc::CDCRecordPB& record) = 0;
   virtual Status ProcessCreateRecord(
