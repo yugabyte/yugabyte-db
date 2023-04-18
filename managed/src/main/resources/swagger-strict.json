@@ -8820,6 +8820,18 @@
           "enum" : [ "NANOSECONDS", "MICROSECONDS", "MILLISECONDS", "SECONDS", "MINUTES", "HOURS", "DAYS", "MONTHS", "YEARS" ],
           "type" : "string"
         },
+        "incrementBacklogStatus" : {
+          "description" : "Backlog status of schedule of incremental backups arose due to conflicts",
+          "readOnly" : true,
+          "type" : "boolean"
+        },
+        "nextIncrementScheduleTaskTime" : {
+          "description" : "Time on which schedule is expected to run for incremental backups",
+          "example" : "2022-12-12T13:07:18Z",
+          "format" : "date-time",
+          "readOnly" : true,
+          "type" : "string"
+        },
         "nextScheduleTaskTime" : {
           "description" : "Time on which schedule is expected to run",
           "example" : "2022-12-12T13:07:18Z",
