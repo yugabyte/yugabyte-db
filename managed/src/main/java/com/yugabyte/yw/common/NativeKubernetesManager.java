@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.common;
 
-import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
@@ -44,6 +43,7 @@ import javax.inject.Inject;
 import okhttp3.Response;
 
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 
 @Singleton
 @Slf4j
@@ -488,5 +488,15 @@ public class NativeKubernetesManager extends KubernetesManager {
       boolean newNamingStyle) {
     // TODO Auto-generated method stub
     throw new UnsupportedOperationException("Unimplemented method 'getPods'");
+  }
+
+  public void deleteAllServerTypePods(
+      Map<String, String> config,
+      String namespace,
+      ServerType serverType,
+      String releaseName,
+      boolean newNamingStyle) {
+    // TODO Auto-generated method stub
+    throw new UnsupportedOperationException("Unimplemented method 'deleteAllServerTypePods'");
   }
 }
