@@ -1,9 +1,9 @@
  -- Copyright (c) YugaByte, Inc.
 
  -- Modify duplicate kms_config names per customer uuid by appending a unique suffix to it's end.
- CREATE VIEW helper AS 
+ CREATE VIEW helper AS
      SELECT config_uuid, name, row_number() OVER (
-             PARTITION BY kms_config.customer_uuid, kms_config.name 
+             PARTITION BY kms_config.customer_uuid, kms_config.name
              ORDER BY config_uuid
          ) AS row_number  FROM kms_config;
 

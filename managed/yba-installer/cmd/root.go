@@ -15,6 +15,7 @@ const (
 	YbPlatformServiceName string = "yb-platform"
 	PostgresServiceName   string = "postgres"
 	PrometheusServiceName string = "prometheus"
+	YbdbServiceName       string = "ybdb"
 )
 
 var (

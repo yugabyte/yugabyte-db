@@ -39,6 +39,15 @@ services:
             pg_dump_path="{{ .PgBin }}/pg_dump"
             pg_restore_path="{{ .PgBin }}/pg_restore"
             {{end}}
+
+            {{if eq (yamlPath "ybdb.install.enabled") "true" }}
+            username="yugabyte"
+            password=""
+            host="localhost"
+            port="{{ yamlPath "ybdb.install.port" }}"
+            dbname="yugaware"
+            {{end}}
+
             username=${?DB_USERNAME}
             password=${?DB_PASSWORD}
             driver="org.postgresql.Driver"
