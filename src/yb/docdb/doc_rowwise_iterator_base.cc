@@ -49,6 +49,11 @@ using std::string;
 DEFINE_RUNTIME_bool(
     use_offset_based_key_decoding, false, "Use Offset based key decoding for reader.");
 
+#define ASSIGN_AND_RETURN_NOT_OK(s) do { \
+    auto&& _s = (s); \
+    if (PREDICT_FALSE(!_s.ok())) return AssignHasNextStatus(MoveStatus(std::move(_s))); \
+  } while (false)
+
 namespace yb::docdb {
 
 using dockv::DocKey;
@@ -71,7 +76,6 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
       read_time_(read_time),
       doc_db_(doc_db),
       pending_op_(pending_op_counter),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
       end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
           doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
@@ -96,7 +100,6 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
       read_time_(read_time),
       doc_db_(doc_db),
       pending_op_(pending_op_counter),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
       end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
           doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
@@ -122,7 +125,6 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
       read_time_(read_time),
       doc_db_(doc_db),
       pending_op_(pending_op_counter),
-      doc_key_offsets_(doc_read_context_.schema.doc_key_offsets()),
       end_referenced_key_column_index_(end_referenced_key_column_index.get_value_or(
           doc_read_context_.schema.num_key_columns())) {
   SetupProjectionSubkeys();
@@ -165,7 +167,6 @@ void DocRowwiseIteratorBase::Init(TableType table_type, const Slice& sub_doc_key
     dockv::DocKeyEncoder(&iter_key_).Schema(doc_read_context_.schema);
     row_key_ = iter_key_;
   }
-  row_hash_key_ = row_key_;
   Seek(row_key_);
   has_bound_key_ = false;
 }
@@ -260,7 +261,7 @@ void DocRowwiseIteratorBase::Done() {
 }
 
 bool DocRowwiseIteratorBase::IsFetchedRowStatic() const {
-  return doc_read_context_.schema.has_statics() && row_hash_key_.end() + 1 == row_key_.end();
+  return fetched_row_static_;
 }
 
 Status DocRowwiseIteratorBase::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) {
@@ -326,40 +327,55 @@ Result<bool> DocRowwiseIteratorBase::FetchTuple(const Slice& tuple_id, QLTableRo
   return VERIFY_RESULT(FetchNext(row)) && VERIFY_RESULT(GetTupleId()) == tuple_id;
 }
 
-Status DocRowwiseIteratorBase::InitIterKey(const Slice& key) {
+Status DocRowwiseIteratorBase::AssignHasNextStatus(const Status& status) {
+  has_next_status_ = status;
+  return status;
+}
+
+Status DocRowwiseIteratorBase::InitIterKey(const Slice& key, bool full_row) {
   iter_key_.Reset(key);
-  VLOG_WITH_FUNC(4) << " Current iter_key_ is " << iter_key_;
+  VLOG_WITH_FUNC(4) << " Current iter_key_ is " << iter_key_ << ", full_row: " << full_row;
 
-  if (FLAGS_use_offset_based_key_decoding && doc_key_offsets_.has_value() &&
-      iter_key_.size() >= doc_key_offsets_->doc_key_size) {
-    row_hash_key_ = iter_key_.AsSlice().Prefix(doc_key_offsets_->hash_part_size);
-    row_key_ = iter_key_.AsSlice().Prefix(doc_key_offsets_->doc_key_size);
+  constexpr auto kUninitializedHashPartSize = std::numeric_limits<size_t>::max();
 
-    DCHECK(ValidateDocKeyOffsets(iter_key_));
+  size_t hash_part_size = kUninitializedHashPartSize;
+  if (full_row) {
+    row_key_ = iter_key_.AsSlice();
   } else {
     const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
-    if (!dockey_sizes.ok()) {
-      has_next_status_ = dockey_sizes.status();
-      return has_next_status_;
-    }
-    row_hash_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->hash_part_size);
+    ASSIGN_AND_RETURN_NOT_OK(dockey_sizes);
     row_key_ = iter_key_.AsSlice().Prefix(dockey_sizes->doc_key_size);
+    hash_part_size = dockey_sizes->hash_part_size;
+  }
+
+  if (!doc_read_context_.schema.has_statics()) {
+    fetched_row_static_ = false;
+  } else {
+    // There are hash group part finished with kGroupEnd and range group part finished with
+    // kGroupEnd.
+    // Static row has empty range group.
+    // So there are no bytes between hash group end and range groups end.
+    // And we have 2 kGroupEnds at the end.
+    // So row_key_ always has one kGroupEnd mark at the end. So we are checking only for
+    // previous mark, that would mean that we 2 kGroupEnd at the end.
+    if (row_key_.size() < 2 || row_key_.end()[-2] != dockv::KeyEntryTypeAsChar::kGroupEnd) {
+      fetched_row_static_ = false;
+    } else {
+      // It is not guaranteed that previous mark belongs to key entry type, it could be
+      // just the last part of the range column value. So have to decode key from the start to be
+      // sure that we have empty range part.
+      if (hash_part_size == kUninitializedHashPartSize) {
+        auto sizes = DocKey::EncodedHashPartAndDocKeySizes(row_key_);
+        ASSIGN_AND_RETURN_NOT_OK(sizes);
+        hash_part_size = sizes->hash_part_size;
+      }
+
+      // If range group is empty, then it contains just kGroupEnd.
+      fetched_row_static_ = hash_part_size + 1 == row_key_.size();
+    }
   }
 
   return Status::OK();
-}
-
-bool DocRowwiseIteratorBase::ValidateDocKeyOffsets(const Slice& iter_key) {
-  const auto dockey_sizes = DocKey::EncodedHashPartAndDocKeySizes(iter_key_);
-  if (!dockey_sizes.ok()) {
-    LOG(INFO) << "Failed to decode the DocKey: " << dockey_sizes.status();
-    return false;
-  }
-
-  DCHECK_EQ(dockey_sizes->hash_part_size, doc_key_offsets_->hash_part_size);
-  DCHECK_EQ(dockey_sizes->doc_key_size, doc_key_offsets_->doc_key_size);
-
-  return true;
 }
 
 namespace {
