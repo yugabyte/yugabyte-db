@@ -334,6 +334,12 @@ public class CloudProviderHandler {
       }
     }
 
+    Provider existentProvider = Provider.get(customer.getUuid(), reqProvider.name, providerCode);
+    if (existentProvider != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, String.format("Provider with the name %s already exists", reqProvider.name));
+    }
+
     Provider provider =
         Provider.create(customer.uuid, providerCode, reqProvider.name, reqProvider.details);
 
@@ -891,12 +897,6 @@ public class CloudProviderHandler {
   public UUID addRegions(
       Customer customer, Provider provider, Set<Region> regionsToAdd, boolean skipBootstrap) {
     // Perform validation for necessary fields
-    if (provider.getCloudCode() == gcp) {
-      // TODO: Remove once we allow vpc creation for added regions
-      if (skipBootstrap && provider.destVpcId == null) {
-        throw new PlatformServiceException(BAD_REQUEST, "Required field dest vpc id for GCP");
-      }
-    }
     regionsToAdd.forEach(
         region -> {
           // TODO: Remove once we allow vpc creation for added regions
@@ -927,7 +927,22 @@ public class CloudProviderHandler {
     taskParams.skipKeyPairValidate =
         runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
     taskParams.providerUUID = provider.uuid;
-    taskParams.destVpcId = provider.destVpcId;
+    String destVpcId = null;
+    String hostVpcId = null;
+    String hostVpcRegion = null;
+    CloudType cloudType = provider.getCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
+      AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+      hostVpcId = awsCloudInfo.getHostVpcId();
+      hostVpcRegion = awsCloudInfo.getHostVpcRegion();
+    } else if (cloudType.equals(CloudType.gcp)) {
+      GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+      hostVpcId = gcpCloudInfo.getHostVpcId();
+      destVpcId = gcpCloudInfo.getDestVpcId();
+    }
+    taskParams.destVpcId = destVpcId;
+    taskParams.hostVpcId = hostVpcId;
+    taskParams.hostVpcRegion = hostVpcRegion;
     List<Region> allRegions = new ArrayList<>(provider.regions);
     allRegions.addAll(regionsToAdd);
     taskParams.perRegionMetadata =
@@ -935,9 +950,13 @@ public class CloudProviderHandler {
             .stream()
             .collect(
                 Collectors.toMap(
-                    region -> region.name, CloudBootstrap.Params.PerRegionMetadata::fromRegion));
+                    region -> region.code, CloudBootstrap.Params.PerRegionMetadata::fromRegion));
     taskParams.addedRegionCodes =
         regionsToAdd.stream().map(r -> r.code).collect(Collectors.toSet());
+
+    // skipBootstrapRegion needs to be done always as part of edit for GCP provider
+    // as GCP has a global network where all the regions are "peered" by default which
+    // would have been handled as part of provider creation.
     taskParams.skipBootstrapRegion = skipBootstrap;
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(
