@@ -25,6 +25,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.ScheduleUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.ybc.YbcManager;
@@ -243,11 +244,13 @@ public class CreateBackup extends UniverseTaskBase {
     if (alreadyRunning || !shouldTakeBackup || universe.getUniverseDetails().updateInProgress) {
       if (shouldTakeBackup) {
         if (baseBackupUUID == null) {
-          // Update backlog status only for full backup as we don't store expected task time
-          // for incremental backups and check its requirement in every 2 minutes.
           schedule.updateBacklogStatus(true);
+          log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
+        } else {
+          schedule.updateIncrementBacklogStatus(true);
+          log.debug(
+              "Schedule {} increment backlog status is set to true", schedule.getScheduleUUID());
         }
-        log.debug("Schedule {} backlog status is set to true", schedule.getScheduleUUID());
         SCHEDULED_BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.SCHEDULE_BACKUP_STATUS, universe));
@@ -263,7 +266,13 @@ public class CreateBackup extends UniverseTaskBase {
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
+      schedule.updateIncrementBacklogStatus(false);
       log.debug("Schedule {} backlog status is set to false", schedule.getScheduleUUID());
+    }
+    if (ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())
+        && schedule.isIncrementBacklogStatus()) {
+      schedule.updateIncrementBacklogStatus(false);
+      log.debug("Schedule {} increment backlog status is set to false", schedule.getScheduleUUID());
     }
     log.info(
         "Submitted backup for universe: {}, task uuid = {}.",

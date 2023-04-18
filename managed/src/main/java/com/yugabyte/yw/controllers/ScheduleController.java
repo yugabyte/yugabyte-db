@@ -181,6 +181,8 @@ public class ScheduleController extends AuthenticatedController {
               Universe.getOrBadRequest(schedule.getOwnerUUID()));
           schedule.updateIncrementalBackupFrequencyAndTimeUnit(
               params.incrementalBackupFrequency, params.incrementalBackupFrequencyTimeUnit);
+          schedule.updateNextIncrementScheduleTaskTime(
+              ScheduleUtil.nextExpectedIncrementTaskTime(schedule));
         } else {
           throw new PlatformServiceException(
               BAD_REQUEST,
