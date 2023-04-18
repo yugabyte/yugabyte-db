@@ -78,7 +78,7 @@ To create a universe with dedicated YB-Master nodes, do the following:
 
     - In the **Total Nodes** field, enter **3** for **TServer**. The **Master** field is always disabled because the number of master nodes is always equal to the **Replication Factor**.
 
-    ![Create dedicated universe](/images/ee/create-dedicated-universe.png)
+    ![Create dedicated universe](/images/yp/create-deployments/create-dedicated-universe.png)
 
     - For **Instance Configuration**,
 
@@ -98,7 +98,7 @@ To create a universe with dedicated YB-Master nodes, do the following:
 
 At this point, YugabyteDB Anywhere begins to provision your new universe in a dedicated mode where you will be able to view separate YB-Master and YB-Tserver nodes. When the universe is provisioned, it appears on the **Dashboard** and **Universes**. You can click the universe name to open its **Overview**.
 
-![Dedicated universe overview](/images/ee/dedicated-universe-overview.png)
+![Dedicated universe overview](/images/yp/create-deployments/dedicated-universe-overview.png)
 
 ## Examine the universe
 
@@ -106,8 +106,8 @@ When the universe is created, you can access it via **Universes** or **Dashboard
 
 To see a list of nodes that belong to this universe, select **Nodes**. You can also filter the nodes by selecting an option from the **Type** dropdown.
 
-![Dedicated universe nodes](/images/ee/dedicated-universe-nodes.png)
+![Dedicated universe nodes](/images/yp/create-deployments/dedicated-universe-nodes.png)
 
 You can verify the overall performance of the dedicated nodes universe by navigating to [Metrics](../../../yugabyte-platform/troubleshoot/universe-issues/#use-metrics).
 
-![Dedicated universe metrics](/images/ee/dedicated-universe-metrics.png)
+![Dedicated universe metrics](/images/yp/create-deployments/dedicated-universe-metrics.png)
