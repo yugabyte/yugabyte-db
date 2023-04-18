@@ -62,6 +62,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   private static final Set<String> AWS_INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY =
       ImmutableSet.of("i3.", "c5d.", "c6gd.");
 
+  public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
+
   @Constraints.Required()
   @Constraints.MinLength(1)
   public List<Cluster> clusters = new LinkedList<>();

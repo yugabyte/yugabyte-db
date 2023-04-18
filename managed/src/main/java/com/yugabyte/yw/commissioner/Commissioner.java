@@ -18,11 +18,13 @@ import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -181,7 +183,8 @@ public class Commissioner {
             () -> new PlatformServiceException(BAD_REQUEST, "Not able to find task " + taskUUID));
   }
 
-  public Optional<ObjectNode> buildTaskStatus(CustomerTask task, TaskInfo taskInfo) {
+  public Optional<ObjectNode> buildTaskStatus(
+      CustomerTask task, TaskInfo taskInfo, Map<UUID, String> updatingTasks) {
     if (task == null || taskInfo == null) {
       return Optional.empty();
     }
@@ -205,19 +208,14 @@ public class Commissioner {
       // Task is abortable only when it is running.
       responseJson.put("abortable", isTaskAbortable(taskInfo.getTaskType()));
     }
+    boolean retryable = false;
     // Set retryable if eligible.
-    responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
         && task.getTarget().isUniverseTarget()
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      // Retryable depends on the updating task UUID in the Universe.
-      Universe.getUniverseDetailsField(String.class, task.getTargetUUID(), "updatingTaskUUID")
-          .ifPresent(
-              updatingTaskUUID -> {
-                responseJson.put(
-                    "retryable", taskInfo.getTaskUUID().equals(UUID.fromString(updatingTaskUUID)));
-              });
+      retryable = taskInfo.getTaskUUID().toString().equals(updatingTasks.get(task.getTargetUUID()));
     }
+    responseJson.put("retryable", retryable);
     if (pauseLatches.containsKey(taskInfo.getTaskUUID())) {
       // Set this only if it is true. The thread is just parking. From the task state
       // perspective, it is still running.
@@ -235,7 +233,19 @@ public class Commissioner {
       LOG.error("Error fetching task progress for {}. TaskInfo is not found", taskUUID);
       return Optional.empty();
     }
-    return buildTaskStatus(task, taskInfo);
+    Map<UUID, String> updatingTaskByTargetMap = new HashMap<>();
+    Universe.getUniverseDetailsField(
+            String.class,
+            task.getTargetUUID(),
+            UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD)
+        .ifPresent(id -> updatingTaskByTargetMap.put(task.getTargetUUID(), id));
+    return buildTaskStatus(task, taskInfo, updatingTaskByTargetMap);
+  }
+
+  // Returns a map of target to updating task UUID.
+  public Map<UUID, String> getUpdatingTaskUUIDsForTargets() {
+    return Universe.getUniverseDetailsFields(
+        String.class, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
