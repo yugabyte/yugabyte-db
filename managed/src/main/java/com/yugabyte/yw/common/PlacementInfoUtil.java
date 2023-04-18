@@ -2331,6 +2331,7 @@ public class PlacementInfoUtil {
         .filter(
             node ->
                 node.isActive()
+                    && node.isTserver
                     && node.cloudInfo.cloud.equals(cloud)
                     && node.cloudInfo.region.equals(region)
                     && node.cloudInfo.az.equals(zone))
