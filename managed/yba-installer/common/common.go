@@ -378,8 +378,10 @@ func WaitForYBAReady() {
 
 	var resp *http.Response
 	var err error
-	// Check YBA version every 10 seconds for 2 minutes
-	for i := 0; i < 12; i++ {
+	// Check YBA version every 10 seconds
+	retriesCount := 20
+
+	for i := 0; i < retriesCount; i++ {
 		resp, err = http.Get(url)
 		if err != nil {
 			log.Info(fmt.Sprintf("YBA at %s not ready. Checking again in 10 seconds.", url))
