@@ -277,6 +277,8 @@ DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
 DECLARE_int64(cdc_intent_retention_ms);
 
+DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
+                 "Sleep before applying write batches");
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
                  "Sleep before applying intents to docdb after transaction commit");
 
@@ -1240,6 +1242,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
 Status Tablet::ApplyRowOperations(
     WriteOperation* operation, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_write_batch_ms);
   const auto& write_request =
       operation->consensus_round() && operation->consensus_round()->replicate_msg()
           // Online case.
