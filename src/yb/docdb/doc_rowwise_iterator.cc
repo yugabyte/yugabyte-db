@@ -230,7 +230,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
       return false;
     }
 
-    RETURN_NOT_OK(InitIterKey(key_data.key));
+    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
 
     if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
       Done();

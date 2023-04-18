@@ -107,9 +107,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
 
   void set_debug_dump(bool value) { debug_dump_ = value; }
 
-  // Used only in debug mode to ensure that generated key offsets are correct for provided key.
-  bool ValidateDocKeyOffsets(const Slice& iter_key);
-
  private:
   virtual void InitIterator(
       BloomFilterMode bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -125,8 +122,9 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status DoInit(const T& spec);
 
  protected:
-  // Initialize iter_key_ and update the row_key_/row_hash_key_.
-  Status InitIterKey(const Slice& key);
+  // Initialize iter_key_ and update the row_key_.
+  // full_row - whether is keys is related to full row value. For instance packed row.
+  Status InitIterKey(const Slice& key, bool full_row);
 
   // Parse the row_key_ and copy key required key columns to row.
   Status CopyKeyColumnsToQLTableRow(QLTableRow* row);
@@ -144,6 +142,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void IncrementKeyFoundStats(const bool obsolete, const EncodedDocHybridTime& write_time);
 
   void Done();
+
+  Status AssignHasNextStatus(const Status& status);
 
   bool is_initialized_ = false;
 
@@ -183,10 +183,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Indicates whether we've already finished iterating.
   bool done_ = false;
 
-  // Reference to object owned by Schema (DocReadContext schema object) for easier access.
-  // This is only set when DocKey offsets are present in schema.
-  const std::optional<DocKeyOffsets>& doc_key_offsets_;
-
   // The next index of last referenced key column index. Restricts the number of key columns present
   // in output row.
   const size_t end_referenced_key_column_index_;
@@ -194,8 +190,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // The current row's primary key. It is set to lower bound in the beginning.
   Slice row_key_;
 
-  // The current row's hash part of primary key.
-  Slice row_hash_key_;
+  bool fetched_row_static_ = false;
 
   // The current row's iterator key.
   dockv::KeyBytes iter_key_;
