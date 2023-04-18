@@ -41,6 +41,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -133,7 +134,8 @@ public class CustomerTaskController extends AuthenticatedController {
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
       JsonNode taskDetails = taskInfo.getDetails();
-      if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
+      if (Objects.equals(taskData.type, "UpgradeSoftware")
+          && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
         versionNumbers.put(
             YB_PREV_SOFTWARE_VERSION, taskDetails.get(YB_PREV_SOFTWARE_VERSION).asText());
         versionNumbers.put(YB_SOFTWARE_VERSION, taskDetails.get(YB_SOFTWARE_VERSION).asText());
