@@ -63,7 +63,11 @@ public class AuditService {
           "$..GCP_CONFIG.private_key_id",
           "$..GCP_CONFIG.private_key",
           // Azure client secret
-          "$..['config.AZURE_CLIENT_SECRET']",
+          "$..AZURE_CLIENT_ID",
+          "$..AZURE_CLIENT_SECRET",
+          "$..AZURE_TENANT_ID",
+          "$..AZURE_SUBSCRIPTION_ID",
+          "$..AZURE_RG",
           "$..CLIENT_SECRET",
           // Kubernetes secrets
           "$..KUBECONFIG_PULL_SECRET_CONTENT",
