@@ -32,7 +32,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -121,7 +120,8 @@ public class CustomerTaskController extends AuthenticatedController {
       if (!Strings.isNullOrEmpty(correlationId)) taskData.correlationId = correlationId;
       ObjectNode versionNumbers = Json.newObject();
       JsonNode taskDetails = taskInfo.getTaskDetails();
-      if (taskData.type == "UpgradeSoftware" && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
+      if (task.getType() == CustomerTask.TaskType.SoftwareUpgrade
+          && taskDetails.has(YB_PREV_SOFTWARE_VERSION)) {
         versionNumbers.put(
             YB_PREV_SOFTWARE_VERSION, taskDetails.get(YB_PREV_SOFTWARE_VERSION).asText());
         versionNumbers.put(YB_SOFTWARE_VERSION, taskDetails.get(YB_SOFTWARE_VERSION).asText());
@@ -162,21 +162,21 @@ public class CustomerTaskController extends AuthenticatedController {
         TaskInfo.find(taskUuids)
             .stream()
             .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
+    Map<UUID, String> updatingTaskByTargetMap = commissioner.getUpdatingTaskUUIDsForTargets();
     for (CustomerTask task : customerTaskList) {
-      Optional<ObjectNode> optTaskProgress =
-          commissioner.buildTaskStatus(task, taskInfoMap.get(task.getTaskUUID()));
-
-      optTaskProgress.ifPresent(
-          taskProgress -> {
-            CustomerTaskFormData taskData =
-                buildCustomerTaskFromData(task, taskProgress, taskInfoMap.get(task.getTaskUUID()));
-            if (taskData != null) {
-              List<CustomerTaskFormData> taskList =
-                  taskListMap.getOrDefault(task.getTargetUUID(), new ArrayList<>());
-              taskList.add(taskData);
-              taskListMap.putIfAbsent(task.getTargetUUID(), taskList);
-            }
-          });
+      TaskInfo taskInfo = taskInfoMap.get(task.getTaskUUID());
+      commissioner
+          .buildTaskStatus(task, taskInfo, updatingTaskByTargetMap)
+          .ifPresent(
+              taskProgress -> {
+                CustomerTaskFormData taskData =
+                    buildCustomerTaskFromData(task, taskProgress, taskInfo);
+                if (taskData != null) {
+                  List<CustomerTaskFormData> taskList =
+                      taskListMap.computeIfAbsent(task.getTargetUUID(), k -> new ArrayList<>());
+                  taskList.add(taskData);
+                }
+              });
     }
     return taskListMap;
   }

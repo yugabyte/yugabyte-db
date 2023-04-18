@@ -44,6 +44,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Model;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -113,7 +114,9 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
             percentComplete,
             responseJson);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(task.getTaskUUID());
-    when(mockCommissioner.buildTaskStatus(task, taskInfo)).thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.buildTaskStatus(task, taskInfo, Collections.emptyMap()))
+        .thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.getUpdatingTaskUUIDsForTargets()).thenReturn(Collections.emptyMap());
     return task.getTaskUUID();
   }
 
@@ -663,7 +666,8 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         99.0,
         "TLS Toggle ON",
         responseJson);
-    when(mockCommissioner.buildTaskStatus(any(), any())).thenReturn(Optional.of(responseJson));
+    when(mockCommissioner.buildTaskStatus(any(), any(), any()))
+        .thenReturn(Optional.of(responseJson));
     Result result =
         FakeApiHelper.doRequestWithAuthToken(
             "GET", "/api/customers/" + customer.uuid + "/tasks", authToken);
