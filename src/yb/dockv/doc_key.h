@@ -214,8 +214,6 @@ class DocKey {
   static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
       Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
 
-  static DocKeyOffsets ComputeKeyColumnOffsets(const Schema& schema);
-
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
   Status FullyDecodeFrom(const Slice& slice);
