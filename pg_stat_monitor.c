@@ -692,9 +692,30 @@ pgsm_ExecutorEnd(QueryDesc *queryDesc)
 	/* Extract the plan information in case of SELECT statement */
 	if (queryDesc->operation == CMD_SELECT && pgsm_enable_query_plan)
 	{
-		plan_info.plan_len = snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgsm_explain(queryDesc));
-		plan_info.planid = pgsm_hash_string(plan_info.plan_text, plan_info.plan_len);
-		plan_ptr = &plan_info;
+		int rv;
+		MemoryContext oldctx;
+
+		/*
+		 * Making sure it is a per query context so that there's no memory
+		 * leak when executor ends.
+		 */
+		oldctx = MemoryContextSwitchTo(queryDesc->estate->es_query_cxt);
+
+		rv = snprintf(plan_info.plan_text, PLAN_TEXT_LEN, "%s", pgsm_explain(queryDesc));
+
+		/*
+		 * If snprint didn't write anything or there was an error, let's keep
+		 * planinfo as NULL.
+		 */
+		if (rv > 0)
+		{
+			plan_info.plan_len = (rv < PLAN_TEXT_LEN) ? rv : PLAN_TEXT_LEN - 1;
+			plan_info.planid = pgsm_hash_string(plan_info.plan_text, plan_info.plan_len);
+			plan_ptr = &plan_info;
+		}
+
+		/* Switch back to old context */
+		MemoryContextSwitchTo(oldctx);
 	}
 
 	if (queryId != UINT64CONST(0) && queryDesc->totaltime && pgsm_enabled(exec_nested_level))
