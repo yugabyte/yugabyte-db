@@ -11,6 +11,7 @@ package com.yugabyte.yw.common.alerts;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.cronutils.utils.StringUtils;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.utils.FileUtils;
@@ -31,6 +32,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import play.Environment;
+import play.libs.Json;
 
 @Singleton
 @Slf4j
@@ -144,6 +146,18 @@ public class AlertChannelTemplateService {
                     .throwError();
               }
             });
+    if (templates.getType() == ChannelType.WebHook) {
+      if (!StringUtils.isEmpty(templates.getTextTemplate())) {
+        try {
+          Json.parse(templates.getTextTemplate());
+        } catch (Exception e) {
+          beanValidator
+              .error()
+              .forField("textTemplate", "Only JSON body is supported for WebHook template")
+              .throwError();
+        }
+      }
+    }
   }
 
   public AlertChannelTemplatesExt appendDefaults(
