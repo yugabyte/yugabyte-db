@@ -526,12 +526,12 @@ export const GCPProviderCreateForm = ({
                 <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.GCP} />
               </FormField>
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
-          {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-            <Box display="flex" gridGap="5px" marginLeft="auto">
-              <CircularProgress size={16} color="primary" thickness={5} />
-            </Box>
-          )}
           <Box marginTop="16px">
             <YBButton
               btnText="Create Provider Configuration"
