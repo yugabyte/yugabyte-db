@@ -132,7 +132,8 @@ Enter the following command:
 ```sh
 aws ec2 create-vpc-endpoint --vpc-id <application_vpc_id> \
   --region <region> --service-name <pse_service_name> \
-  --vpc-endpoint-type Interface --subnet-ids <subnet_ids>
+  --vpc-endpoint-type Interface --subnet-ids <subnet_ids> \
+  --private-dns-enabled
 ```
 
 Replace values as follows:
