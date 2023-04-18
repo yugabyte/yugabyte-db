@@ -898,9 +898,9 @@ struct RpcPerformQuery : public PerformData {
 Status PgClientSession::Perform(
     PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
   auto& options = *req->mutable_options();
-  nostd::shared_ptr<trace_api::Span> span(new trace_api::DefaultSpan(trace_api::SpanContext::GetInvalid()));
+  nostd::shared_ptr<trace_api::Span> span(INVALID_SPAN);
   if (options.has_trace_context()) {
-    span = CreateSpanFromParentId(
+    span = StartSpanFromParentId(
         options.trace_context().trace_id(), options.trace_context().span_id(), "PerformRequest");
     LOG_WITH_PREFIX_AND_FUNC(INFO) << "Created a span from a parent";
   }

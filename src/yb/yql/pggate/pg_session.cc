@@ -456,8 +456,6 @@ Status PgSession::StartTraceForQuery(const char* query_string) {
       }
       );
   this->spans_.push(span);
-  this->tokens_.push(opentelemetry::context::RuntimeContext::Attach(
-      opentelemetry::context::RuntimeContext::GetCurrent().SetValue(opentelemetry::trace::kSpanKey, span)));
   return Status::OK();
 }
 
@@ -465,26 +463,23 @@ Status PgSession::StopTraceForQuery() {
   nostd::shared_ptr<opentelemetry::trace::Span> span = this->spans_.top();
   span->SetStatus(opentelemetry::trace::StatusCode::kOk);
   span->End();
-  this->tokens_.pop();
   this->spans_.pop();
   this->query_tracer_ = nullptr;
   return Status::OK();
 }
 
 Status PgSession::StartQueryEvent(const char* event_name) {
-  if(this->query_tracer_) {
+  if (this->query_tracer_) {
+    opentelemetry::trace::StartSpanOptions options;
+    options.parent = this->spans_.top()->GetContext();
+
     auto span = this->query_tracer_->StartSpan(
         event_name,
-        {
-          {opentelemetry::trace::SemanticConventions::kCodeFunction, __FILE_NAME__}, {
-            opentelemetry::trace::SemanticConventions::kCodeLineno, __LINE__
-          }
-        }
+        {{opentelemetry::trace::SemanticConventions::kCodeFunction, __FILE_NAME__},
+         {opentelemetry::trace::SemanticConventions::kCodeLineno, __LINE__}},
+        options
       );
     this->spans_.push(span);
-    this->tokens_.push(
-        opentelemetry::context::RuntimeContext::Attach(
-            opentelemetry::context::RuntimeContext::GetCurrent().SetValue(opentelemetry::trace::kSpanKey, span)));
   }
   return Status::OK();
 }
@@ -494,7 +489,6 @@ Status PgSession::StopQueryEvent(const char* event_name) {
     nostd::shared_ptr<opentelemetry::trace::Span> span = this->spans_.top();
     span->SetStatus(opentelemetry::trace::StatusCode::kOk);
     span->End();
-    this->tokens_.pop();
     this->spans_.pop();
   }
   return Status::OK();
@@ -670,6 +664,21 @@ Result<PerformFuture> PgSession::FlushOperations(BufferableOperations ops, bool 
       std::move(ops), {.ensure_read_time_is_set = EnsureReadTimeIsSet(!transactional)});
 }
 
+void PgSession::SetTraceContext(TraceContext& trace_context, nostd::shared_ptr<trace_api::Span> parent) {
+  opentelemetry::trace::SpanContext span_context = parent->GetContext();
+  char trace_id[kTraceIdSize];
+  span_context.trace_id().ToLowerBase16(
+      nostd::span<char, 2 * opentelemetry::trace::TraceId::kSize>{trace_id, kTraceIdSize});
+  char span_id[kSpanIdSize];
+  span_context.span_id().ToLowerBase16(nostd::span<char, 2 * opentelemetry::trace::SpanId::kSize>{span_id, kSpanIdSize});
+
+  trace_context.set_trace_id(trace_id, kTraceIdSize);
+  trace_context.set_span_id(span_id, kSpanIdSize);
+  LOG(INFO) << "Set trace context. Trace ID: "
+            << std::string_view(trace_id, kTraceIdSize)
+            << ", Span ID:" << std::string_view(span_id, kSpanIdSize);
+}
+
 Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOptions&& ops_options) {
   DCHECK(!ops.empty());
   tserver::PgPerformOptionsPB options;
@@ -725,23 +734,9 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
   options.set_trace_requested(pg_txn_manager_->ShouldEnableTracing());
 
-  if (pg_txn_manager_->ShouldEnableTracing()) {
-    auto current_ctx = opentelemetry::context::RuntimeContext::GetCurrent();
-    opentelemetry::trace::SpanContext span_context = opentelemetry::trace::GetSpan(current_ctx)->GetContext();
-    if (span_context.IsValid()) {
-      auto& trace_context = *options.mutable_trace_context();
-      char trace_id[kTraceIdSize];
-      span_context.trace_id().ToLowerBase16(
-          nostd::span<char, 2 * opentelemetry::trace::TraceId::kSize>{trace_id, kTraceIdSize});
-      char span_id[kSpanIdSize];
-      span_context.span_id().ToLowerBase16(nostd::span<char, 2 * opentelemetry::trace::SpanId::kSize>{span_id, kSpanIdSize});
-
-      trace_context.set_trace_id(trace_id, kTraceIdSize);
-      trace_context.set_span_id(span_id, kSpanIdSize);
-      LOG(INFO) << "Set trace context. Trace ID: "
-                << std::string_view(trace_id, kTraceIdSize)
-                << ", Span ID:" << std::string_view(span_id, kSpanIdSize);
-    }
+  if (pg_txn_manager_->ShouldEnableTracing() && !this->spans_.empty()) {
+    auto& trace_context = *options.mutable_trace_context();
+    SetTraceContext(trace_context, this->spans_.top());
   }
 
   if (ops_options.cache_options) {
