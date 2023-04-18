@@ -10,9 +10,9 @@
 import moment from "moment"
 
 export const YBTimeFormats = {
-    YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY hh:mm:ss ZZ',
+    YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY HH:mm:ss ZZ',
     YB_DATE_ONLY_TIMESTAMP: 'MMM-DD-YYYY',
-    YB_HOURS_FIRST_TIMESTAMP: 'hh:mm:ss MMM-DD-YYYY [UTC]ZZ',
+    YB_HOURS_FIRST_TIMESTAMP: 'HH:mm:ss MMM-DD-YYYY [UTC]ZZ',
     YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ'
 } as const;
 
