@@ -13,7 +13,6 @@
 package org.yb.cql;
 
 import java.util.HashMap;
-import java.util.Map;
 
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
