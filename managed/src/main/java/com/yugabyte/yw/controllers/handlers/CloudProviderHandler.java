@@ -462,9 +462,6 @@ public class CloudProviderHandler {
         k8sMetadata.setKubernetesPullSecret(pullSecretFile);
         k8sMetadata.setKubernetesPullSecretName(null);
         k8sMetadata.setKubernetesPullSecretContent(null);
-
-        // In case the pull secret is specified.
-        return true;
       }
     }
     return hasKubeConfig;
@@ -1036,6 +1033,9 @@ public class CloudProviderHandler {
 
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
     boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, edit);
+    // We will update the pull secret related infotmation for the provider.
+    Map<String, String> updatedProviderConfig = CloudInfoInterface.fetchEnvVars(provider);
+
     Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
     Region region = Region.getByCode(provider, rd.getCode());
     if (region == null) {
@@ -1085,7 +1085,7 @@ public class CloudProviderHandler {
     if (regionUpdateNeeded || isConfigInRegion) {
       region.save();
     }
-    if (isConfigInProvider) {
+    if (isConfigInProvider || !providerConfig.equals(updatedProviderConfig)) {
       // Top level provider properties are handled in `updateProviderData` with other provider
       // types.
       provider.save();
