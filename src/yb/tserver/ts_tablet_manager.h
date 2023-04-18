@@ -90,6 +90,7 @@ class HostPort;
 class Partition;
 class Schema;
 class BackgroundTask;
+class XClusterSafeTimeTest;
 
 namespace consensus {
 class RaftConfigPB;
@@ -366,8 +367,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status TriggerAdminCompactionAndWait(const TabletPtrs& tablets);
 
  private:
-  FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
+  friend class ::yb::XClusterSafeTimeTest;
 
   // Flag specified when registering a TabletPeer.
   enum RegisterTabletPeerMode {

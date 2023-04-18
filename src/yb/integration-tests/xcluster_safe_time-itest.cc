@@ -29,6 +29,7 @@
 #include "yb/master/mini_master.h"
 #include "yb/master/xcluster/xcluster_consumer_metrics.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
+#include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
@@ -208,6 +209,27 @@ class XClusterSafeTimeTest : public XClusterTestBase {
         Format("Wait for safe_time to get removed"));
   }
 
+  void VerifyHistoryCutoffTime() {
+    tserver::TSTabletManager::TabletPtrs tablet_ptrs;
+    for (auto& mini_tserver : consumer_cluster()->mini_tablet_servers()) {
+      auto* ts_manager = mini_tserver->server()->tablet_manager();
+      auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
+      /*auto tablet_peers =*/ts_manager->GetTabletPeers(&tablet_ptrs);
+      auto safe_time_result = GetSafeTime(tserver, namespace_id_);
+      if (!safe_time_result) {
+        FAIL() << "Expected safe time should be present.";
+        return;
+      }
+      ASSERT_TRUE(safe_time_result.get().has_value());
+      auto safe_time = *safe_time_result.get();
+      for (auto& tablet : tablet_ptrs) {
+        if (tablet->metadata()->namespace_id() == namespace_id_) {
+          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(tablet->metadata()));
+        }
+      }
+    }
+  }
+
  protected:
   YBTableName producer_table_name_;
   YBTableName consumer_table_name_;
@@ -283,6 +305,38 @@ TEST_F(XClusterSafeTimeTest, LagInSafeTime) {
   // 4. Make sure safe time has progressed.
   SetAtomicFlag(0, &FLAGS_TEST_xcluster_simulated_lag_ms);
   ASSERT_OK(WaitForSafeTime(ht_2));
+}
+
+TEST_F(XClusterSafeTimeTest, ConsumerHistoryCutoff) {
+  // Make sure safe time is initialized.
+  auto ht_1 = GetProducerSafeTime();
+  ASSERT_OK(WaitForSafeTime(ht_1));
+
+  // Insert some data to producer.
+  WriteWorkload(0, 10, producer_client(), producer_table_->name());
+  auto ht_2 = GetProducerSafeTime();
+
+  // Make sure safe time has progressed, this helps ensures that there is some safetime present on
+  // the tservers.
+  ASSERT_OK(WaitForSafeTime(ht_2));
+
+  // Simulate replication lag and make sure safe time does not move.
+  ASSERT_OK(SET_FLAG(TEST_xcluster_simulated_lag_ms, -1));
+  WriteWorkload(10, 20, producer_client(), producer_table_->name());
+  auto ht_3 = GetProducerSafeTime();
+
+  // 5. Make sure safe time has not progressed beyond the write.
+  ASSERT_NOK(WaitForSafeTime(ht_3));
+
+  // Verify the history cutoff is adjusted based on the lag time.
+  VerifyHistoryCutoffTime();
+
+  // Make sure safe time has progressed.
+  ASSERT_OK(SET_FLAG(TEST_xcluster_simulated_lag_ms, 0));
+  ASSERT_OK(WaitForSafeTime(ht_3));
+
+  // Ensure history cutoff time has progressed.
+  VerifyHistoryCutoffTime();
 }
 
 class XClusterConsistencyTest : public XClusterYsqlTestBase {
