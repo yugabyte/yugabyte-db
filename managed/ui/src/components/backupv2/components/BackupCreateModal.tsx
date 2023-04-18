@@ -645,9 +645,21 @@ function BackupConfigurationForm({
                 </>
               ))}
             </Col>
+            {(featureFlags.test.enableTableByTableBackup || featureFlags.released.enableTableByTableBackup) && values['api_type'].value === BACKUP_API_TYPES.YCQL && (
+              <Row>
+                <Col>
+                  <Field
+                    name="isTableByTableBackup"
+                    component={YBCheckBox}
+                    disabled={isEditMode}
+                    checkState={values['isTableByTableBackup']}
+                  />
+                  Take table by table backup
+                </Col>
+              </Row>
+            )}
           </Row>
         )}
-
       <Row>
         <div>Select backup retention period</div>
         <Col lg={12} className="no-padding">
@@ -706,19 +718,6 @@ function BackupConfigurationForm({
             {errors['parallel_threads'] && (
               <span className="standard-error">{errors['parallel_threads']}</span>
             )}
-          </Col>
-        </Row>
-      )}
-      {(featureFlags.test.enableTableByTableBackup || featureFlags.released.enableTableByTableBackup) && values['api_type'].value === BACKUP_API_TYPES.YCQL && (
-        <Row>
-          <Col>
-            <Field
-              name="isTableByTableBackup"
-              component={YBCheckBox}
-              disabled={isEditMode}
-              checkState={values['isTableByTableBackup']}
-            />
-            Take table by table backup
           </Col>
         </Row>
       )}
