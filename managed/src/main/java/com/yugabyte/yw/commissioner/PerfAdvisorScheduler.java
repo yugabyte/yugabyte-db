@@ -120,8 +120,10 @@ public class PerfAdvisorScheduler {
 
   private RunResult run(Customer customer, Universe universe, boolean scheduled) {
     // Check status of universe
-    if (universe.getUniverseDetails().updateInProgress) {
-      return RunResult.builder().failureReason("Universe update in progress").build();
+    if (universe.getUniverseDetails().isUniverseBusyByTask()) {
+      return RunResult.builder()
+          .failureReason("Universe task, which may affect performance, is in progress")
+          .build();
     }
     if (universesLock.containsKey(universe.getUniverseUUID())) {
       UniversePerfAdvisorRun currentRun =
