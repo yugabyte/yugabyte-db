@@ -12947,6 +12947,13 @@ Status CatalogManager::PromoteAutoFlags(
       ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
       "Invalid value provided for flag class");
 
+  // It is expected PromoteAutoFlags RPC is triggered only for upgrades, hence it is required
+  // to avoid promotion of flags with AutoFlagClass::kNewInstallsOnly class.
+  SCHECK_LT(
+      max_class, AutoFlagClass::kNewInstallsOnly, InvalidArgument,
+      Format("It is not allowed to promote with max_class set to $0.",
+      ToString(AutoFlagClass::kNewInstallsOnly)));
+
   RETURN_NOT_OK(master::PromoteAutoFlags(
       max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
       *master_->auto_flags_manager(), this, &new_config_version, &non_runtime_flags_promoted));
