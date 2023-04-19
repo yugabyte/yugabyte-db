@@ -147,7 +147,7 @@ libraryDependencies ++= Seq(
   "org.flywaydb" %% "flyway-play" % "7.37.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
-  "org.yaml" % "snakeyaml" % "1.33",
+  "org.yaml" % "snakeyaml" % "2.0",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.1",
   "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
@@ -446,6 +446,7 @@ libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b21"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
+  "io.netty" % "netty-codec-haproxy" % "4.1.89.Final",
   "org.slf4j" % "slf4j-ext" % "1.7.26",
   "net.minidev" % "json-smart" % "2.4.8",
   "com.nimbusds" % "nimbus-jose-jwt" % "7.9",
