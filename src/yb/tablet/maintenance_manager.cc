@@ -51,7 +51,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
 
-using std::pair;
 using std::shared_ptr;
 using std::string;
 using strings::Substitute;

@@ -94,7 +94,6 @@ using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 using yb::integration_tests::RedisTableTestBase;
-using yb::util::ToRepeatedPtrField;
 
 #if defined(ADDRESS_SANITIZER) || defined(THREAD_SANITIZER)
 constexpr int kDefaultTimeoutMs = 100000;

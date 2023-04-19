@@ -31,7 +31,12 @@ export const IndexSuggestion: FC<IndexSchemaRecommendation> = ({ data, summary }
       <div className="recommendationBox">
         <div className="recommendationBoxContent">
           <span> {summary} </span>
-          <a className="learnPerfAdvisor" href={EXTERNAL_LINKS.UNUSED_INDEX}>
+          <a
+            className="learnPerfAdvisor"
+            href={EXTERNAL_LINKS.UNUSED_INDEX}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <img src={documentationIcon} alt="more" className="learnMoreImage" />
             <p className="learnPerfAdvisorText">
               {t('clusterDetail.performance.advisor.IndexPerformanceTuning')}

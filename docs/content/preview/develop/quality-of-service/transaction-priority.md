@@ -189,7 +189,7 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
 1. In a transaction block, perform an insert and view the transaction priority as follows:
 
     ```sql
-    BEGIN TRANSACTION ISOLATION REPEATABLE READ;
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     INSERT INTO test_scan (i, j) values (1, 1), (2, 2), (3, 3);
     SELECT yb_get_current_transaction_priority();
     COMMIT;
@@ -207,7 +207,7 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
     ```sql
     set yb_transaction_priority_lower_bound = 0.1;
     set yb_transaction_priority_lower_bound = 0.4;
-    BEGIN TRANSACTION ISOLATION REPEATABLE READ;
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
     SELECT yb_get_current_transaction_priority();
     COMMIT;
@@ -227,15 +227,15 @@ The `yb_get_current_transaction_priority` function shows the transaction priorit
     ```sql
     set yb_transaction_priority_upper_bound = 1;
     set yb_transaction_priority_lower_bound = 1;
-    BEGIN TRANSACTION ISOLATION REPEATABLE READ;
+    BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
     SELECT i, j FROM test_scan WHERE i = 1 FOR UPDATE;
-    show yb_transaction_priority;
+    SELECT yb_get_current_transaction_priority();
     COMMIT;
     ```
 
     ```output
-        yb_transaction_priority
-    -------------------------------------------
+    yb_get_current_transaction_priority
+    -------------------------------------
     Highest priority transaction
     (1 row)
     ```

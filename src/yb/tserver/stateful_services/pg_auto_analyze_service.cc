@@ -18,9 +18,10 @@
 namespace yb {
 
 namespace stateful_service {
-PgAutoAnalyzeService::PgAutoAnalyzeService(const scoped_refptr<MetricEntity>& metric_entity)
-    : StatefulServiceBase(StatefulServiceKind::PG_AUTO_ANALYZE),
-      PgAutoAnalyzeServiceIf(metric_entity) {}
+PgAutoAnalyzeService::PgAutoAnalyzeService(
+    const scoped_refptr<MetricEntity>& metric_entity,
+    const std::shared_future<client::YBClient*>& client_future)
+    : StatefulRpcServiceBase(StatefulServiceKind::PG_AUTO_ANALYZE, metric_entity, client_future) {}
 
 void PgAutoAnalyzeService::Activate(const int64_t leader_term) {
   LOG(INFO) << "PgAutoAnalyzeService activated on term: " << leader_term;
@@ -32,11 +33,6 @@ Result<bool> PgAutoAnalyzeService::RunPeriodicTask() {
   VLOG(5) << "PgAutoAnalyzeService Running";
   // TODO: Trigger ANALYZE for tables if their mutation count has reached specific thresholds.
   return true;
-}
-
-void PgAutoAnalyzeService::Shutdown() {
-  PgAutoAnalyzeServiceIf::Shutdown();
-  StatefulServiceBase::Shutdown();
 }
 
 Status PgAutoAnalyzeService::IncreaseMutationCountersImpl(

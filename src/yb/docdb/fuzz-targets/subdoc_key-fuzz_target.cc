@@ -20,8 +20,8 @@ namespace fuzz {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   FuzzedDataProvider fdp(data, size);
 
-  DocKey dockey = GetDocKey(&fdp, /* consume_all */ false);
-  SubDocKey subdockey = SubDocKey(dockey);
+  auto dockey = GetDocKey(&fdp, /* consume_all */ false);
+  dockv::SubDocKey subdockey(dockey);
 
   constexpr int kMaxNumSubKeys = 30;
   for (size_t i = 0; i < fdp.ConsumeIntegralInRange<uint8_t>(1, kMaxNumSubKeys);
@@ -34,11 +34,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
       kMinHybridTimeValue, kMaxHybridTimeValue - 2);
   subdockey.set_hybrid_time(DocHybridTime(HybridTime(hybrid_time)));
 
-  KeyBytes encoded_key = subdockey.Encode();
-  SubDocKey decoded_key;
+  auto encoded_key = subdockey.Encode();
+  dockv::SubDocKey decoded_key;
   CHECK_OK(decoded_key.FullyDecodeFrom(encoded_key.AsSlice()));
   CHECK_EQ(subdockey, decoded_key);
-  KeyBytes reencoded_doc_key = decoded_key.Encode();
+  auto reencoded_doc_key = decoded_key.Encode();
   CHECK_EQ(encoded_key, reencoded_doc_key);
   return 0;
 }

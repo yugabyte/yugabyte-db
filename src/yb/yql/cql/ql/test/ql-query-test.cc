@@ -20,7 +20,7 @@
 #include "yb/client/table.h"
 
 #include "yb/common/jsonb.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_serialization.h"
 #include "yb/common/ql_type.h"
@@ -39,7 +39,6 @@
 #include "yb/yql/cql/ql/test/ql-test-base.h"
 
 using std::string;
-using std::unique_ptr;
 using std::shared_ptr;
 using strings::Substitute;
 
@@ -183,7 +182,7 @@ class TestQLQuery : public QLTestBase {
 
       std::string part_key;
       CHECK_OK(table->partition_schema().EncodeKey(row, &part_key));
-      uint16_t hash_code = PartitionSchema::DecodeMultiColumnHashValue(part_key);
+      uint16_t hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(part_key);
 
       int64_t cql_hash = func_name == "token" ? YBPartition::YBToCqlHashCode(hash_code) : hash_code;
       std::tuple<int64_t, int, string, int, int> values(cql_hash, i, i_str, i, i);
@@ -1759,7 +1758,7 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
   std::vector<std::tuple<int, int, int>> rows;
   for (int i = 0; i < 5; i++) {
     std::string i_str = std::to_string(i);
-    YBPartialRow row(&table->InternalSchema());
+    dockv::YBPartialRow row(&table->InternalSchema());
     CHECK_OK(row.SetInt32(0, i));
     CHECK_OK(row.SetInt32(1, i));
     CHECK_OK(row.SetInt32(2, i));
@@ -1772,7 +1771,7 @@ TEST_F(TestQLQuery, TestTtlWritetimeInWhereClauseOfSelectStatements) {
 
   for (int i = 5; i < 10; i++) {
     std::string i_str = std::to_string(i);
-    YBPartialRow row(&table->InternalSchema());
+    dockv::YBPartialRow row(&table->InternalSchema());
     CHECK_OK(row.SetInt32(0, i));
     CHECK_OK(row.SetInt32(1, i));
     CHECK_OK(row.SetInt32(2, i));

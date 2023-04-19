@@ -22,11 +22,11 @@
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/key_bounds.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/sysinfo.h"
@@ -106,9 +106,7 @@ DEFINE_UNKNOWN_uint64(rocksdb_max_file_size_for_compaction, 0,
              "Maximal allowed file size to participate in RocksDB compaction. 0 - unlimited.");
 DEFINE_UNKNOWN_int32(rocksdb_max_write_buffer_number, 2,
              "Maximum number of write buffers that are built up in memory.");
-
-DEFINE_UNKNOWN_int64(db_block_size_bytes, 32_KB,
-             "Size of RocksDB data block (in bytes).");
+DECLARE_int64(db_block_size_bytes);
 
 DEFINE_UNKNOWN_int64(db_filter_block_size_bytes, 64_KB,
              "Size of RocksDB filter block (in bytes).");
@@ -247,6 +245,8 @@ using strings::Substitute;
 namespace yb {
 namespace docdb {
 
+using dockv::KeyBytes;
+
 std::shared_ptr<rocksdb::BoundaryValuesExtractor> DocBoundaryValuesExtractorInstance();
 
 void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
@@ -255,20 +255,20 @@ void SeekForward(const KeyBytes& key_bytes, rocksdb::Iterator *iter) {
 
 KeyBytes AppendDocHt(const Slice& key, const DocHybridTime& doc_ht) {
   char buf[kMaxBytesPerEncodedHybridTime + 1];
-  buf[0] = KeyEntryTypeAsChar::kHybridTime;
+  buf[0] = dockv::KeyEntryTypeAsChar::kHybridTime;
   auto end = doc_ht.EncodedInDocDbFormat(buf + 1);
   return KeyBytes(key, Slice(buf, end));
 }
 
 void SeekPastSubKey(const Slice& key, rocksdb::Iterator* iter) {
-  char ch = KeyEntryTypeAsChar::kHybridTime + 1;
+  char ch = dockv::KeyEntryTypeAsChar::kHybridTime + 1;
   SeekForward(KeyBytes(key, Slice(&ch, 1)), iter);
 }
 
 void SeekOutOfSubKey(KeyBytes* key_bytes, rocksdb::Iterator* iter) {
-  key_bytes->AppendKeyEntryType(KeyEntryType::kMaxByte);
+  key_bytes->AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
   SeekForward(*key_bytes, iter);
-  key_bytes->RemoveKeyEntryTypeSuffix(KeyEntryType::kMaxByte);
+  key_bytes->RemoveKeyEntryTypeSuffix(dockv::KeyEntryType::kMaxByte);
 }
 
 namespace  {
@@ -294,7 +294,7 @@ inline SeekStats SeekPossiblyUsingNext(
       VTRACE(3, "Did $0 Next(s) instead of a Seek", result.next);
       return result;
     }
-    VLOG(4) << "Skipping: " << SubDocKey::DebugSliceToString(iter->key());
+    VLOG(4) << "Skipping: " << dockv::SubDocKey::DebugSliceToString(iter->key());
 
     iter->Next();
     ++result.next;
@@ -356,9 +356,9 @@ void PerformRocksDBSeek(
       "    Next() calls:     $7\n"
       "    Seek() calls:     $8\n",
       file_name, line,
-      BestEffortDocDBKeyToStr(seek_key),
+      dockv::BestEffortDocDBKeyToStr(seek_key),
       FormatSliceAsStr(seek_key),
-      iter->Valid()         ? BestEffortDocDBKeyToStr(KeyBytes(iter->key()))
+      iter->Valid()         ? dockv::BestEffortDocDBKeyToStr(KeyBytes(iter->key()))
       : iter->status().ok() ? "N/A"
                             : iter->status().ToString(),
       iter->Valid()         ? FormatSliceAsStr(iter->key())

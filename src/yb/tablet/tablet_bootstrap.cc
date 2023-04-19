@@ -56,7 +56,7 @@
 #include "yb/consensus/retryable_requests.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/ref_counted.h"
@@ -154,7 +154,6 @@ using std::string;
 using std::vector;
 
 using log::Log;
-using log::LogEntryPB;
 using log::LogOptions;
 using log::LogReader;
 using log::ReadableLogSegment;
@@ -162,18 +161,12 @@ using log::LogEntryMetadata;
 using log::LogIndex;
 using log::CreateNewSegment;
 using log::SegmentSequence;
-using consensus::ChangeConfigRecordPB;
 using consensus::RaftConfigPB;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::MinimumOpId;
-using consensus::OpIdEquals;
-using consensus::OpIdToString;
-using consensus::ReplicateMsg;
 using consensus::MakeOpIdPB;
 using strings::Substitute;
-using tserver::WriteRequestPB;
-using tserver::TabletSnapshotOpRequestPB;
 
 static string DebugInfo(const string& tablet_id,
                         uint64_t segment_seqno,
@@ -486,7 +479,7 @@ bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
     return true;
   }
   for (const auto& pair : write_batch.write_pairs()) {
-    if (!pair.key().empty() && pair.key()[0] == docdb::KeyEntryTypeAsChar::kExternalTransactionId) {
+    if (!pair.key().empty() && pair.key()[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
       return true;
     }
   }

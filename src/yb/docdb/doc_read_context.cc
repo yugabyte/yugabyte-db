@@ -53,7 +53,7 @@ void DocReadContext::LogAfterLoad() {
   LOG_WITH_PREFIX(INFO) << __func__ << ": " << schema_packing_storage.VersionsToString();
 }
 
-void DocReadContext::LogAfterMerge(OverwriteSchemaPacking overwrite) {
+void DocReadContext::LogAfterMerge(dockv::OverwriteSchemaPacking overwrite) {
   LOG_WITH_PREFIX(INFO)
       << __func__ << ": " << schema_packing_storage.VersionsToString() << ", overwrite: "
       << overwrite;

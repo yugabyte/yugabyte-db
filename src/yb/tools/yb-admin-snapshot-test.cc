@@ -60,8 +60,6 @@ using master::ListSnapshotRestorationsResponsePB;
 using master::ListSnapshotsRequestPB;
 using master::ListSnapshotsResponsePB;
 using master::MasterBackupProxy;
-using master::MasterReplicationProxy;
-using master::SysCDCStreamEntryPB;
 using master::SysSnapshotEntryPB;
 using rpc::RpcController;
 

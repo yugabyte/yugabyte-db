@@ -114,14 +114,10 @@ DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be di
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
-using google::protobuf::RepeatedPtrField;
-using yb::HostPortPB;
-using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 namespace tserver {

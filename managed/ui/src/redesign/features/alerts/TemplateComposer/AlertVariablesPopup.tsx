@@ -82,6 +82,7 @@ export const AddAlertVariablesPopup: FC<AddAlertVariablesPopupProps> = ({
               onClick={() => {
                 onCustomVariableSelect(variable);
               }}
+              data-testid={`alert-custom-variable-${variable.name}`} 
             >
               <Typography variant="body2">{variable.name}</Typography>
             </Grid>
@@ -97,6 +98,7 @@ export const AddAlertVariablesPopup: FC<AddAlertVariablesPopupProps> = ({
               item
               key={variable.name}
               className={classes.variable}
+              data-testid={`alert-system-variable-${variable.name}`}
               onClick={() => {
                 onSystemVariableSelect(variable);
               }}

@@ -3158,3 +3158,15 @@ automatic_split_manager_time:
       alias:
         "automatic_split_manager_time": "Runtime"
       ticksuffix: "&nbsp;ms"
+
+raft_leader:
+  metric: "is_raft_leader"
+  function: "sum"
+  panel_group: "Tablet Server"
+  layout:
+    "title": "Raft Leader"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "is_raft_leader": "Raft Leader"

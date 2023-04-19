@@ -57,6 +57,10 @@ public class ValidatingFormFactory {
       throw new PlatformServiceException(
           BAD_REQUEST, "Failed to parse " + clazz.getSimpleName() + " object: " + e.getMessage());
     }
+    if (bean == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Request payload is empty, expected " + clazz.getSimpleName() + " object");
+    }
     // Do this so that constraint get validated
     validator.validate(bean);
     return bean;

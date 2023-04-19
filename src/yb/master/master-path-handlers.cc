@@ -43,7 +43,7 @@
 
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -93,6 +93,9 @@ DEFINE_RUNTIME_bool(master_webserver_require_https, false,
 
 DEFINE_RUNTIME_uint64(master_maximum_heartbeats_without_lease, 10,
     "After this number of heartbeats without a valid lease for a tablet, treat it as leaderless.");
+
+DEFINE_test_flag(bool, master_ui_redirect_to_leader, true,
+                 "Redirect master UI requests to the master leader");
 
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
@@ -236,7 +239,7 @@ void MasterPathHandlers::CallIfLeaderOrPrintRedirect(
     SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
     // If we are not the master leader, redirect the URL.
-    if (!l.IsInitializedAndIsLeader()) {
+    if (!l.IsInitializedAndIsLeader() && PREDICT_TRUE(FLAGS_TEST_master_ui_redirect_to_leader)) {
       RedirectToLeader(req, resp);
       return;
     }
@@ -1336,7 +1339,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   Schema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   NamespaceName keyspace_name;
   TableName table_name;
   TabletInfos tablets;
@@ -1433,7 +1436,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
     if (s.ok()) {
-      s = PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
@@ -1455,8 +1458,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     auto l = tablet->LockForRead();
 
-    Partition partition;
-    Partition::FromPB(l->pb.partition(), &partition);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(l->pb.partition(), &partition);
 
     string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);

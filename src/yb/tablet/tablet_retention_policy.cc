@@ -25,7 +25,7 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -43,7 +43,6 @@
 #include "yb/util/flags.h"
 
 using namespace std::literals;
-using std::min;
 
 DEFINE_UNKNOWN_int32(timestamp_history_retention_interval_sec, 900,
              "The time interval in seconds to retain DocDB history for. Point-in-time reads at a "
@@ -69,7 +68,6 @@ DEFINE_test_flag(uint64, committed_history_cutoff_initial_value_usec, 0,
 namespace yb {
 namespace tablet {
 
-using docdb::TableTTL;
 using docdb::HistoryRetentionDirective;
 
 namespace {
@@ -117,7 +115,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  return {history_cutoff, TableTTL(*metadata_.schema()),
+  return {history_cutoff, dockv::TableTTL(*metadata_.schema()),
           docdb::ShouldRetainDeleteMarkersInMajorCompaction(
               ShouldRetainDeleteMarkersInMajorCompaction())};
 }

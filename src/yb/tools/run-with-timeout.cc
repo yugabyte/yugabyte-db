@@ -38,7 +38,6 @@ constexpr int kWaitSecAfterSigSegv = 30;
 
 using std::cerr;
 using std::condition_variable;
-using std::cout;
 using std::endl;
 using std::invalid_argument;
 using std::mutex;
@@ -51,7 +50,6 @@ using std::chrono::steady_clock;
 
 using yb::Subprocess;
 using yb::Status;
-using yb::Result;
 using yb::GetHostname;
 
 bool SendSignalAndWait(Subprocess* subprocess, int signal, const string& signal_str, int wait_sec) {

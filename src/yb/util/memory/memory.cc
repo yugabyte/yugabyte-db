@@ -44,12 +44,7 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
 
-using std::copy;
-using std::max;
 using std::min;
-using std::reverse;
-using std::sort;
-using std::swap;
 
 namespace yb {
 

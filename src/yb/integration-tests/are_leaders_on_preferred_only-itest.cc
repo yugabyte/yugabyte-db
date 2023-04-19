@@ -64,7 +64,7 @@ class AreLeadersOnPreferredOnlyTest : public MiniClusterTestWithClient<MiniClust
     ASSERT_OK(table_creator->table_name(client::YBTableName(*yb_table_name))
                   .replication_info(replication_info)
                   .schema(&schema)
-                  .hash_schema(YBHashSchema::kMultiColumnHash)
+                  .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
                   .num_tablets(1)
                   .Create());
   }

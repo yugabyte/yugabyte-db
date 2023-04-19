@@ -114,12 +114,9 @@ namespace yb {
 namespace tserver {
 
 using consensus::ConsensusMetadata;
-using consensus::ConsensusStatePB;
 using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
-using consensus::RaftPeerPB;
 using env_util::CopyFile;
-using rpc::Messenger;
 using std::shared_ptr;
 using std::string;
 using std::vector;
@@ -130,7 +127,6 @@ using tablet::TabletDataState_Name;
 using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletStatusListener;
-using tablet::RaftGroupReplicaSuperBlockPB;
 
 std::atomic<int32_t> remote_bootstrap_clients_started_{0};
 
@@ -345,10 +341,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                         wal_root_dir);
     }
   } else {
-    Partition partition;
-    Partition::FromPB(superblock_->partition(), &partition);
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(table.partition_schema(), schema, &partition_schema));
+    dockv::Partition partition;
+    dockv::Partition::FromPB(superblock_->partition(), &partition);
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+        table.partition_schema(), schema, &partition_schema));
     // Create the superblock on disk.
     if (ts_manager != nullptr) {
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),

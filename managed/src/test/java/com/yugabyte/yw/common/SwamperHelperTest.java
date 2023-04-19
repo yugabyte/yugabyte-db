@@ -203,8 +203,11 @@ public class SwamperHelperTest extends FakeDBApplication {
     when(appConfig.getString("yb.swamper.rulesPath")).thenReturn(SWAMPER_TMP_PATH);
     Universe universe = createUniverse(defaultCustomer.getId());
     AlertConfiguration configuration = createAlertConfiguration(defaultCustomer, universe);
+    configuration.setName("[Possibly] wrong \"name\"");
     AlertDefinition definition = createAlertDefinition(defaultCustomer, universe, configuration);
     AlertTemplateSettings templateSettings = ModelFactory.createTemplateSettings(defaultCustomer);
+    definition.setQuery("query{label=\"value\"} {{ query_condition }} {{ query_threshold }}");
+    definition.save();
 
     swamperHelper.writeAlertDefinition(configuration, definition, templateSettings);
     BufferedReader br =

@@ -148,8 +148,6 @@ METRIC_DEFINE_counter(tablet, docdb_obsolete_keys_found_past_cutoff,
     yb::MetricUnit::kKeys,
     "Number of obsolete keys found in RocksDB searches that were past history cutoff");
 
-using strings::Substitute;
-
 namespace yb {
 namespace tablet {
 

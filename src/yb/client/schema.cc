@@ -38,7 +38,7 @@
 
 #include "yb/client/schema-internal.h"
 
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 #include "yb/common/ql_wire_protocol.h"
@@ -53,7 +53,6 @@ using std::shared_ptr;
 using std::unordered_map;
 using std::vector;
 using std::string;
-using strings::Substitute;
 
 namespace yb {
 namespace client {
@@ -600,8 +599,8 @@ int32_t YBSchema::ColumnId(size_t idx) const {
   return schema_->column_id(idx);
 }
 
-std::unique_ptr<YBPartialRow> YBSchema::NewRow() const {
-  return std::make_unique<YBPartialRow>(schema_.get());
+std::unique_ptr<dockv::YBPartialRow> YBSchema::NewRow() const {
+  return std::make_unique<dockv::YBPartialRow>(schema_.get());
 }
 
 const std::vector<ColumnSchema>& YBSchema::columns() const {

@@ -16,17 +16,17 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_read_context.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
-#include "yb/docdb/schema_packing.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/schema_packing.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
@@ -45,12 +45,16 @@
 using std::numeric_limits;
 using std::string;
 
-using yb::BinaryOutputFormat;
-
-using yb::server::HybridClock;
-
 namespace yb {
 namespace docdb {
+
+using dockv::DocPath;
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryValue;
+using dockv::SubDocKey;
+using dockv::ValueControlFields;
+using dockv::ValueEntryType;
 
 // Lazily creates iterator on demand.
 struct DocWriteBatch::LazyIterator {
@@ -158,8 +162,8 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     auto value_copy = recent_value;
     control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
     current_entry_.user_timestamp = control_fields.timestamp;
-    current_entry_.value_type = DecodeValueEntryType(value_copy);
-    if (doc_read_context_ && value_copy.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+    current_entry_.value_type = dockv::DecodeValueEntryType(value_copy);
+    if (doc_read_context_ && value_copy.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow)) {
       packed_row_key_.Assign(key_data.key);
       packed_row_packing_ = &VERIFY_RESULT_REF(
           doc_read_context_->schema_packing_storage.GetPacking(&value_copy));
@@ -173,7 +177,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     }
   }
 
-  bool expired = VERIFY_RESULT(HasExpiredTTL(
+  bool expired = VERIFY_RESULT(dockv::HasExpiredTTL(
       key_data.write_time, control_fields.ttl, doc_iter->read_time().read));
 
   VLOG_WITH_FUNC(4)
@@ -208,7 +212,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
       auto value_copy = value;
       current_entry_.user_timestamp = VERIFY_RESULT(
           ValueControlFields::Decode(&value_copy)).timestamp;
-      current_entry_.value_type = DecodeValueEntryType(value_copy);
+      current_entry_.value_type = dockv::DecodeValueEntryType(value_copy);
     }
     current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
     current_entry_.doc_hybrid_time = key_data.write_time;
@@ -225,7 +229,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     // Cache the results of reading from RocksDB so that we don't have to read again in a later
     // operation in the same DocWriteBatch.
     DOCDB_DEBUG_LOG("Writing to DocWriteBatchCache: $0",
-                    BestEffortDocDBKeyToStr(key_prefix_));
+                    dockv::BestEffortDocDBKeyToStr(key_prefix_));
 
     if (has_ancestor && prev_subdoc_ht > current_entry_.doc_hybrid_time &&
         prev_key_prefix_exact) {
@@ -424,7 +428,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
       // RocksDB.)
       put_batch_.push_back({
         .key = key_prefix_.ToStringBuffer(),
-        .value = std::string(1, ValueEntryTypeAsChar::kObject),
+        .value = std::string(1, dockv::ValueEntryTypeAsChar::kObject),
       });
 
       // Update our local cache to record the fact that we're adding this subdocument, so that
@@ -455,7 +459,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
     if (value.encoded_value()) {
       encoded_value.assign(value.encoded_value()->cdata(), value.encoded_value()->size());
     } else {
-      AppendEncodedValue(value.value_pb(), &encoded_value);
+      dockv::AppendEncodedValue(value.value_pb(), &encoded_value);
       if (value.custom_value_type() != ValueEntryType::kInvalid) {
         encoded_value[prefix_len] = static_cast<char>(value.custom_value_type());
       }
@@ -574,7 +578,7 @@ Status DocWriteBatch::ExtendSubDocument(
       if (key.value_case() != QLValuePB::kVirtualValue ||
           key.virtual_value() != QLVirtualValuePB::ARRAY) {
         auto sorting_type =
-            value.list_extend_order() == ListExtendOrder::APPEND
+            value.list_extend_order() == dockv::ListExtendOrder::APPEND
             ? value.sorting_type() : SortingType::kDescending;
         if (value.write_instruction() == bfql::TSOpcode::kListAppend &&
             key.value_case() == QLValuePB::kInt64Value) {
@@ -638,7 +642,7 @@ Status DocWriteBatch::ExtendList(
   // No additional lock is required.
   int64_t index = std::atomic_fetch_add(monotonic_counter_, static_cast<int64_t>(array.size()));
   // PREPEND - adding in reverse order with negated index
-  if (value.list_extend_order() == ListExtendOrder::PREPEND_BLOCK) {
+  if (value.list_extend_order() == dockv::ListExtendOrder::PREPEND_BLOCK) {
     for (auto i = array.size(); i-- > 0;) {
       DocPath child_doc_path = doc_path;
       index++;
@@ -652,7 +656,7 @@ Status DocWriteBatch::ExtendList(
       DocPath child_doc_path = doc_path;
       index++;
       child_doc_path.AddSubKey(KeyEntryValue::ArrayIndex(
-          value.list_extend_order() == ListExtendOrder::APPEND ? index : -index));
+          value.list_extend_order() == dockv::ListExtendOrder::APPEND ? index : -index));
       RETURN_NOT_OK(ExtendSubDocument(
           child_doc_path, ValueRef(elem, value), read_ht, deadline, query_id, ttl,
           user_timestamp));
@@ -709,9 +713,9 @@ Status DocWriteBatch::ReplaceRedisInList(
           current_index);
     }
 
-    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
+    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
 
-    if (VERIFY_RESULT(Value::IsTombstoned(iter->value()))) {
+    if (VERIFY_RESULT(dockv::Value::IsTombstoned(iter->value()))) {
       found_key.KeepPrefix(sub_doc_key.num_subkeys() + 1);
       if (dir == Direction::kForward) {
         iter->SeekPastSubKey(key_data.key);
@@ -724,7 +728,7 @@ Status DocWriteBatch::ReplaceRedisInList(
     // TODO (rahul): it may be cleaner to put this in the read path.
     // The code below is meant specifically for POP functionality in Redis lists.
     if (results) {
-      Value v;
+      dockv::Value v;
       RETURN_NOT_OK(v.Decode(iter->value()));
       results->push_back(v.primitive_value().GetString());
     }
@@ -823,18 +827,19 @@ Status DocWriteBatch::ReplaceCqlInList(
           current_cql_index);
     }
 
-    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
+    RETURN_NOT_OK(found_key.FullyDecodeFrom(key_data.key, dockv::HybridTimeRequired::kFalse));
 
     value_slice = iter->value();
     auto entry_ttl = VERIFY_RESULT(ValueControlFields::Decode(&value_slice)).ttl;
-    auto value_type = DecodeValueEntryType(value_slice);
+    auto value_type = dockv::DecodeValueEntryType(value_slice);
 
     bool has_expired = false;
     if (value_type == ValueEntryType::kTombstone || key_data.write_time < collection_write_time) {
       has_expired = true;
     } else {
-      entry_ttl = ComputeTTL(entry_ttl, default_ttl);
-      has_expired = VERIFY_RESULT(HasExpiredTTL(key_data.write_time, entry_ttl, read_ht.read));
+      entry_ttl = dockv::ComputeTTL(entry_ttl, default_ttl);
+      has_expired = VERIFY_RESULT(dockv::HasExpiredTTL(
+          key_data.write_time, entry_ttl, read_ht.read));
     }
 
     if (has_expired) {
@@ -925,7 +930,7 @@ std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
 std::string DocWriteBatchFormatter::FormatValue(const Slice& key, const Slice& value) {
   auto key_type = GetKeyType(key, storage_db_type_);
   const auto value_result = DocDBValueToDebugStr(
-      key_type, key, value, SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+      key_type, key, value, dockv::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
   if (value_result.ok()) {
     return *value_result;
   }

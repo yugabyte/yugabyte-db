@@ -344,6 +344,13 @@ public class CloudProviderHandler {
   //  whole thing after some validation.
   public Provider createKubernetesNew(Customer customer, Provider reqProvider) {
     Common.CloudType providerCode = CloudType.valueOf(reqProvider.getCode());
+    Provider existentProvider =
+        Provider.get(customer.getUuid(), reqProvider.getName(), providerCode);
+    if (existentProvider != null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format("Provider with the name %s already exists", reqProvider.getName()));
+    }
     validateKubernetesProviderConfig(reqProvider);
     Provider provider =
         Provider.create(
@@ -455,9 +462,6 @@ public class CloudProviderHandler {
         k8sMetadata.setKubernetesPullSecret(pullSecretFile);
         k8sMetadata.setKubernetesPullSecretName(null);
         k8sMetadata.setKubernetesPullSecretContent(null);
-
-        // In case the pull secret is specified.
-        return true;
       }
     }
     return hasKubeConfig;
@@ -919,12 +923,6 @@ public class CloudProviderHandler {
   public UUID addRegions(
       Customer customer, Provider provider, Set<Region> regionsToAdd, boolean skipBootstrap) {
     // Perform validation for necessary fields
-    if (provider.getCloudCode() == gcp) {
-      // TODO: Remove once we allow vpc creation for added regions
-      if (skipBootstrap && provider.getDestVpcId() == null) {
-        throw new PlatformServiceException(BAD_REQUEST, "Required field dest vpc id for GCP");
-      }
-    }
     regionsToAdd.forEach(
         region -> {
           // TODO: Remove once we allow vpc creation for added regions
@@ -957,7 +955,22 @@ public class CloudProviderHandler {
     taskParams.skipKeyPairValidate =
         runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
     taskParams.providerUUID = provider.getUuid();
-    taskParams.destVpcId = provider.getDestVpcId();
+    String destVpcId = null;
+    String hostVpcId = null;
+    String hostVpcRegion = null;
+    CloudType cloudType = provider.getCloudCode();
+    if (cloudType.equals(CloudType.aws)) {
+      AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+      hostVpcId = awsCloudInfo.getHostVpcId();
+      hostVpcRegion = awsCloudInfo.getHostVpcRegion();
+    } else if (cloudType.equals(CloudType.gcp)) {
+      GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
+      hostVpcId = gcpCloudInfo.getHostVpcId();
+      destVpcId = gcpCloudInfo.getDestVpcId();
+    }
+    taskParams.destVpcId = destVpcId;
+    taskParams.hostVpcId = hostVpcId;
+    taskParams.hostVpcRegion = hostVpcRegion;
     List<Region> allRegions = new ArrayList<>(provider.getRegions());
     allRegions.addAll(regionsToAdd);
     taskParams.perRegionMetadata =
@@ -965,10 +978,14 @@ public class CloudProviderHandler {
             .stream()
             .collect(
                 Collectors.toMap(
-                    region -> region.getName(),
+                    region -> region.getCode(),
                     CloudBootstrap.Params.PerRegionMetadata::fromRegion));
     taskParams.addedRegionCodes =
         regionsToAdd.stream().map(r -> r.getCode()).collect(Collectors.toSet());
+
+    // skipBootstrapRegion needs to be done always as part of edit for GCP provider
+    // as GCP has a global network where all the regions are "peered" by default which
+    // would have been handled as part of provider creation.
     taskParams.skipBootstrapRegion = skipBootstrap;
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(
@@ -1016,6 +1033,9 @@ public class CloudProviderHandler {
 
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(reqProvider);
     boolean isConfigInProvider = updateKubeConfig(provider, providerConfig, edit);
+    // We will update the pull secret related infotmation for the provider.
+    Map<String, String> updatedProviderConfig = CloudInfoInterface.fetchEnvVars(provider);
+
     Map<String, String> regionConfig = CloudInfoInterface.fetchEnvVars(rd);
     Region region = Region.getByCode(provider, rd.getCode());
     if (region == null) {
@@ -1065,7 +1085,7 @@ public class CloudProviderHandler {
     if (regionUpdateNeeded || isConfigInRegion) {
       region.save();
     }
-    if (isConfigInProvider) {
+    if (isConfigInProvider || !providerConfig.equals(updatedProviderConfig)) {
       // Top level provider properties are handled in `updateProviderData` with other provider
       // types.
       provider.save();

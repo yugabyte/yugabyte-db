@@ -37,7 +37,6 @@
 
 using std::string;
 
-using google::protobuf::io::CodedInputStream;
 using namespace yb::size_literals;
 using namespace std::literals;
 
@@ -50,7 +49,6 @@ DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
                  "rpc_throttle_threshold_bytes");
 
-using std::placeholders::_1;
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
@@ -91,9 +89,7 @@ class HeartbeatOutboundData : public StringOutboundData {
 } // namespace
 
 using google::protobuf::FieldDescriptor;
-using google::protobuf::Message;
 using google::protobuf::MessageLite;
-using google::protobuf::io::CodedOutputStream;
 
 YBConnectionContext::YBConnectionContext(
     size_t receive_buffer_size, const MemTrackerPtr& buffer_tracker,

@@ -40,7 +40,6 @@ namespace yb {
 namespace log {
 
 using consensus::kInvalidOpIdIndex;
-using std::pair;
 using std::string;
 using strings::Substitute;
 using strings::SubstituteAndAppend;

@@ -1168,17 +1168,27 @@ def update_disk(args, instance_id):
         for attachment in volume.attachments:
             device_name = attachment['Device'].replace('/dev/', '')
             # Format of device name is /dev/xvd{} or /dev/nvme{}n1
-            if device_name in device_names and \
-                    (args.force or volume.size != args.volume_size):
-                logging.info(
-                    "Instance %s's volume %s changed to %s",
-                    instance_id, volume.id, args.volume_size)
-                vol_ids.append(volume.id)
-                ec2_client.modify_volume(VolumeId=volume.id, Size=args.volume_size)
-            elif device_name in device_names:
-                logging.info(
-                    "Instance %s's volume %s has not changed from %s",
-                    instance_id, volume.id, volume.size)
+            if device_name in device_names:
+                modify_size = bool(args.volume_size and volume.size != args.volume_size)
+                modify_iops = bool(args.disk_iops and volume.iops != args.disk_iops)
+                modify_throughput = bool(args.disk_throughput and
+                                         volume.throughput != args.disk_throughput)
+                if args.force or modify_size or modify_iops or modify_throughput:
+                    new_size = args.volume_size if modify_size else volume.size
+                    new_iops = args.disk_iops if modify_iops else volume.iops
+                    new_throughput = \
+                        args.disk_throughput if modify_throughput else volume.throughput
+                    logging.info(
+                        "Existing instance %s's volume %s: size=%s, iops=%s, throughput=%s",
+                        instance_id, volume.id, volume.size, volume.iops, volume.throughput)
+                    logging.info(
+                        "Modified instance %s's volume %s: size=%s, iops=%s, throughput=%s",
+                        instance_id, volume.id, new_size, new_iops, new_throughput)
+                    vol_ids.append(volume.id)
+                    ec2_client.modify_volume(VolumeId=volume.id,
+                                             Size=new_size,
+                                             Iops=new_iops,
+                                             Throughput=new_throughput)
     # Wait for volumes to be ready.
     if vol_ids:
         _wait_for_disk_modifications(ec2_client, vol_ids)

@@ -97,7 +97,6 @@ namespace ql {
 
 using std::shared_ptr;
 using std::string;
-using client::YBClient;
 using client::YBMetaDataCache;
 using client::YBTableName;
 using ql::audit::IsPrepare;

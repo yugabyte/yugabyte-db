@@ -172,7 +172,7 @@ struct PgCatalogTableData {
 
   Status SetTableId(const TableId& table_id) {
     Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
-    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
+    prefix[0] = dockv::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
     pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     id = &table_id;
@@ -201,8 +201,8 @@ class PgCatalogRestorePatch : public RestorePatch {
         table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
     QLValuePB value_pb;
     value_pb.set_int64_value(catalog_version_);
-    auto doc_path = docdb::DocPath(
-        catalog_version_key_.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+    auto doc_path = dockv::DocPath(
+        catalog_version_key_.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
     LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
               << doc_path.ToString() << " to " << catalog_version_;
     RETURN_NOT_OK(DocBatch()->SetPrimitive(
@@ -213,8 +213,8 @@ class PgCatalogRestorePatch : public RestorePatch {
 
  private:
   Status UpdateCatalogVersion(const Slice& key, const Slice& value) {
-    docdb::SubDocKey decoded_key;
-    RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey decoded_key;
+    RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
 
     auto version_opt = VERIFY_RESULT(GetInt64ColumnValue(
         decoded_key, value, table_info_, kCurrentVersionColumnName));
@@ -253,14 +253,14 @@ class PgCatalogRestorePatch : public RestorePatch {
     if (!table_.IsPgYbCatalogMeta() || !FLAGS_TEST_enable_db_catalog_version_mode) {
       return false;
     }
-    docdb::SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
     return sub_doc_key.doc_key().range_group()[0].GetUInt32() != db_oid_;
   }
 
   // Should be alive while this object is alive.
   const PgCatalogTableData& table_;
-  docdb::DocKey catalog_version_key_;
+  dockv::DocKey catalog_version_key_;
   int64_t catalog_version_ = 0;
   int64_t db_oid_;
 };

@@ -1,5 +1,6 @@
 import { IndexAndShardingRecommendationData, RecommendationType } from '../../../redesign/utils/dtos';
 import { isNonEmptyArray } from '../../../utils/ObjectUtils';
+import { PerfRecommendationData } from '../../../redesign/utils/dtos';
 
 export const formatPerfRecommendationsData = (perfRecommendations: any) => {
   if (isNonEmptyArray(perfRecommendations?.entities)) {
@@ -32,7 +33,7 @@ export const formatPerfRecommendationsData = (perfRecommendations: any) => {
     const rangeShardingRecommendation = getIndexesAndShardingRecommendation(perfRecommendations, RecommendationType.RANGE_SHARDING);
     recommendations = isNonEmptyArray(rangeShardingRecommendation) ? rangeShardingRecommendation.concat(recommendations) : recommendations;
     recommendations = isNonEmptyArray(unusedIndexesRecommendation) ? unusedIndexesRecommendation.concat(recommendations) : recommendations;
-
+    recommendations = recommendations?.sort((a: PerfRecommendationData, b: PerfRecommendationData) => a.type.localeCompare(b.type));
     return recommendations;
   }
   return null;
@@ -41,7 +42,7 @@ export const formatPerfRecommendationsData = (perfRecommendations: any) => {
 // Returns recommendation for Unused Indexes and Range Sharding
 const getIndexesAndShardingRecommendation = (perfRecommendations: any, type: RecommendationType): IndexAndShardingRecommendationData[]  => {
   const result = [];
-  const dbCount: any = getDBCount(perfRecommendations);
+  const dbCount: any = getDBCount(perfRecommendations, type);
   for (const key of dbCount.keys()) {
     const unusedIndexRecommendations = perfRecommendations?.entities?.filter((recommendation: any) =>
       recommendation.recommendationType === type && recommendation.recommendationInfo.database_name === key
@@ -62,19 +63,30 @@ const getIndexesAndShardingRecommendation = (perfRecommendations: any, type: Rec
 };
 
 // Returns the number of DBs count recommended in case of unused indexes and range sharding
-const getDBCount = (perfRecommendations: any) => {
-  const dbCount = new Map();
+const getDBCount = (perfRecommendations: any, type: RecommendationType) => {
+  const unusedIndexDBCount = new Map();
+  const rangeShardingDBCount = new Map();
+
   perfRecommendations?.entities?.map(
     (recommendation: any) => {
-    if (recommendation.recommendationType === RecommendationType.UNUSED_INDEX 
-      || recommendation.recommendationType === RecommendationType.RANGE_SHARDING) {
-      if (dbCount.has(recommendation.recommendationInfo.database_name)) {
-        const count = dbCount.get(recommendation.recommendationInfo.database_name);
-        dbCount.set(recommendation.recommendationInfo.database_name, count+1);
+    if (recommendation.recommendationType === type)  {
+      if (unusedIndexDBCount.has(recommendation.recommendationInfo.database_name)) {
+        const count = unusedIndexDBCount.get(recommendation.recommendationInfo.database_name);
+        unusedIndexDBCount.set(recommendation.recommendationInfo.database_name, count+1);
       } else {
-        dbCount.set(recommendation.recommendationInfo.database_name, 1);
+        unusedIndexDBCount.set(recommendation.recommendationInfo.database_name, 1);
+      }
+    }
+
+    if (recommendation.recommendationType === type) {
+        if (rangeShardingDBCount.has(recommendation.recommendationInfo.database_name)) {
+        const count = rangeShardingDBCount.get(recommendation.recommendationInfo.database_name);
+        rangeShardingDBCount.set(recommendation.recommendationInfo.database_name, count+1);
+      } else {
+        rangeShardingDBCount.set(recommendation.recommendationInfo.database_name, 1);
       }
     }
   });
-  return dbCount;
+  
+  return type === RecommendationType.UNUSED_INDEX ? unusedIndexDBCount : rangeShardingDBCount;
 };

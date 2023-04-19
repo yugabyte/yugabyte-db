@@ -40,7 +40,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
 
@@ -468,8 +468,8 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
 // A tablet, and two partitions that together cover the tablet's partition.
 struct TabletWithSplitPartitions {
   TabletInfoPtr tablet;
-  Partition left;
-  Partition right;
+  dockv::Partition left;
+  dockv::Partition right;
 };
 
 // The information about a table, including its state and tablets.
@@ -576,7 +576,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // This should only be used for transaction status tables, where the partition ranges
   // are not actually used.
   void AddStatusTabletViaSplitPartition(TabletInfoPtr old_tablet,
-                                        const Partition& partition,
+                                        const dockv::Partition& partition,
                                         const TabletInfoPtr& new_tablet);
 
   // Replace existing tablet with a new one.

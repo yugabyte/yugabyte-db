@@ -36,6 +36,7 @@ import com.yugabyte.yw.models.HealthCheck;
 import com.yugabyte.yw.models.HealthCheck.Details;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.queries.QueryHelper;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -86,7 +87,7 @@ public class UniverseInfoHandler {
               .collect(Collectors.toSet());
     }
     UniverseResourceDetails.Context context =
-        new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParams);
+        new Context(runtimeConfigFactory.globalRuntimeConf(), customer, taskParams, true);
     return UniverseResourceDetails.create(nodesInCluster, taskParams, context);
   }
 
@@ -291,12 +292,9 @@ public class UniverseInfoHandler {
       } else {
         nodeStatus = portStatus.getOrDefault(nodeDetails.nodeExporterPort, false);
       }
-      nodeDetails.state =
-          !nodeStatus
-              ? (queryError
-                  ? NodeDetails.NodeState.MetricsUnavailable
-                  : NodeDetails.NodeState.Unreachable)
-              : nodeDetails.state;
+      if (!nodeStatus && nodeDetails.isActive()) {
+        nodeDetails.state = queryError ? NodeState.MetricsUnavailable : NodeState.Unreachable;
+      }
 
       ObjectNode nodeJson =
           Json.newObject()

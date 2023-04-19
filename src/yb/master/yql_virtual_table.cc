@@ -15,7 +15,7 @@
 
 #include "yb/common/schema.h"
 
-#include "yb/docdb/key_entry_value.h"
+#include "yb/dockv/key_entry_value.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 
 #include "yb/master/master.h"
@@ -62,7 +62,7 @@ Status YQLVirtualTable::GetIterator(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const QLScanSpec& spec,
+    const dockv::QLScanSpec& spec,
     std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
@@ -82,13 +82,13 @@ Status YQLVirtualTable::BuildYQLScanSpec(
     const Schema& schema,
     const bool include_static_columns,
     const Schema& static_projection,
-    std::unique_ptr<QLScanSpec>* spec,
-    std::unique_ptr<QLScanSpec>* static_row_spec) const {
+    std::unique_ptr<dockv::QLScanSpec>* spec,
+    std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const {
   // There should be no static columns in system tables so we are not handling it.
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
   }
-  const std::vector<KeyEntryValue> empty_vec;
+  const dockv::KeyEntryValues empty_vec;
   spec->reset(new docdb::DocQLScanSpec(
       schema, /* hash_code = */ boost::none, /* max_hash_code = */ boost::none, empty_vec,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,

@@ -2834,4 +2834,11 @@ void StartSecure(
   *cluster = std::make_unique<ExternalMiniCluster>(opts);
   ASSERT_OK((**cluster).Start(messenger->get()));
 }
+
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster *cluster, const TableId&, MonoDelta timeout) {
+  // TODO(jhe) - Check for just table_id, currently checking for all intents.
+  return CHECK_NOTNULL(cluster)->WaitForAllIntentsApplied(timeout);
+}
+
 }  // namespace yb

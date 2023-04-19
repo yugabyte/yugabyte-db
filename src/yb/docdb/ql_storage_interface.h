@@ -45,7 +45,7 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const QLScanSpec& spec,
+      const dockv::QLScanSpec& spec,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status BuildYQLScanSpec(
@@ -54,8 +54,8 @@ class YQLStorageIf {
       const Schema& schema,
       bool include_static_columns,
       const Schema& static_projection,
-      std::unique_ptr<QLScanSpec>* spec,
-      std::unique_ptr<QLScanSpec>* static_row_spec) const = 0;
+      std::unique_ptr<dockv::QLScanSpec>* spec,
+      std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const = 0;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
@@ -92,7 +92,7 @@ class YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const DocKey& start_doc_key,
+      const dockv::DocKey& start_doc_key,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
       boost::optional<size_t> end_referenced_key_column_index = boost::none,
       const DocDBStatistics* statistics = nullptr) const = 0;

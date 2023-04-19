@@ -20,15 +20,15 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/deadline_info.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_ttl_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -36,10 +36,13 @@
 
 using std::vector;
 
-using yb::HybridTime;
-
 namespace yb {
 namespace docdb {
+
+using dockv::SubDocKey;
+using dockv::SubDocument;
+using dockv::ValueControlFields;
+using dockv::ValueEntryType;
 
 const SliceKeyBound& SliceKeyBound::Invalid() {
   static SliceKeyBound result;
@@ -112,7 +115,7 @@ Status BuildSubDocument(
         << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
 
     // Key could be invalidated because we could move iterator, so back it up.
-    KeyBytes key_copy(key);
+    dockv::KeyBytes key_copy(key);
     key = key_copy.AsSlice();
     rocksdb::Slice value = iter->value();
     // Checking that IntentAwareIterator returns an entry with correct time.
@@ -127,7 +130,7 @@ Status BuildSubDocument(
       iter->SeekPastSubKey(key);
       continue;
     }
-    Value doc_value;
+    dockv::Value doc_value;
     RETURN_NOT_OK(doc_value.Decode(value));
     auto value_type = doc_value.value_type();
     if (key == data.subdocument_key) {
@@ -151,8 +154,8 @@ Status BuildSubDocument(
       }
 
       // Treat an expired value as a tombstone written at the same time as the original value.
-      if (HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iter->read_time().read)) {
-        doc_value = Value::Tombstone();
+      if (dockv::HasExpiredTTL(data.exp.write_ht, data.exp.ttl, iter->read_time().read)) {
+        doc_value = dockv::Value::Tombstone();
         value_type = ValueEntryType::kTombstone;
       }
 
@@ -200,7 +203,7 @@ Status BuildSubDocument(
         return STATUS_FORMAT(Corruption, "Expected primitive value type, got $0", value_type);
       }
     }
-    SubDocument descendant{PrimitiveValue(ValueEntryType::kInvalid)};
+    SubDocument descendant{dockv::PrimitiveValue(ValueEntryType::kInvalid)};
     // TODO: what if the key we found is the same as before?
     //       We'll get into an infinite recursion then.
     {
@@ -259,7 +262,7 @@ Status BuildSubDocument(
       Slice temp = key;
       temp.remove_prefix(data.subdocument_key.size());
       for (;;) {
-        KeyEntryValue child;
+        dockv::KeyEntryValue child;
         RETURN_NOT_OK(child.DecodeFromKey(&temp));
         if (temp.empty()) {
           current->SetChild(child, std::move(descendant));
@@ -292,8 +295,8 @@ Status FindLastWriteTime(
     IntentAwareIterator* iter,
     const Slice& key_without_ht,
     DocHybridTime* max_overwrite_time,
-    Expiration* exp,
-    Value* result_value = nullptr) {
+    dockv::Expiration* exp,
+    dockv::Value* result_value = nullptr) {
   Slice value;
   EncodedDocHybridTime pre_doc_ht(*max_overwrite_time);
   RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &pre_doc_ht, &value));
@@ -303,7 +306,7 @@ Status FindLastWriteTime(
 
   auto value_copy = value;
   auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
-  auto value_type = DecodeValueEntryType(value_copy);
+  auto value_type = dockv::DecodeValueEntryType(value_copy);
   if (value_type == ValueEntryType::kInvalid) {
     return Status::OK();
   }
@@ -314,7 +317,7 @@ Status FindLastWriteTime(
   // currently stored in expiration, and the record is not a regular record with default TTL.
   // This is done independently of whether the row is a TTL row.
   // In the case that the always_override flag is true, default TTL will not be preserved.
-  Expiration new_exp = *exp;
+  dockv::Expiration new_exp = *exp;
   if (doc_ht.hybrid_time() >= exp->write_ht) {
     // We want to keep the default TTL otherwise.
     if (control_fields.ttl != ValueControlFields::kMaxTtl ||
@@ -339,7 +342,7 @@ Status FindLastWriteTime(
     if (iter->IsOutOfRecords() && !new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     } else {
-      RETURN_NOT_OK(Value::DecodePrimitiveValueType(value));
+      RETURN_NOT_OK(dockv::Value::DecodePrimitiveValueType(value));
       // Because we still do not know whether we are seeking something expired,
       // we must take the max_overwrite_time as if the value were not expired.
       doc_ht = VERIFY_RESULT(new_ht.Decode());
@@ -383,7 +386,7 @@ yb::Status GetRedisSubDocument(
 yb::Status GetRedisSubDocument(
     IntentAwareIterator *db_iter,
     const GetRedisSubDocumentData& data,
-    const vector<KeyEntryValue>* projection,
+    const dockv::KeyEntryValues* projection,
     const SeekFwdSuffices seek_fwd_suffices) {
   // TODO(dtxn) scan through all involved transactions first to cache statuses in a batch,
   // so during building subdocument we don't need to request them one by one.
@@ -403,8 +406,8 @@ yb::Status GetRedisSubDocument(
   VLOG(4) << "GetRedisSubDocument(" << data << ")";
 
   SubDocKey found_subdoc_key;
-  auto dockey_size =
-      VERIFY_RESULT(DocKey::EncodedSize(data.subdocument_key, DocKeyPart::kWholeDocKey));
+  auto dockey_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(
+      data.subdocument_key, dockv::DocKeyPart::kWholeDocKey));
 
   Slice key_slice(data.subdocument_key.data(), dockey_size);
 
@@ -430,7 +433,7 @@ yb::Status GetRedisSubDocument(
 
   // By this point, key_slice is the DocKey and all the subkeys of subdocument_key. Check for
   // init-marker / tombstones at the top level; update max_overwrite_ht.
-  Value doc_value = Value(PrimitiveValue(ValueEntryType::kInvalid));
+  dockv::Value doc_value{dockv::PrimitiveValue(ValueEntryType::kInvalid)};
   RETURN_NOT_OK(FindLastWriteTime(db_iter, key_slice, &max_overwrite_ht, &data.exp, &doc_value));
 
   const auto value_type = doc_value.value_type();
@@ -441,7 +444,7 @@ yb::Status GetRedisSubDocument(
     // Check for expiration.
     if (*data.doc_found && max_overwrite_ht != DocHybridTime::kMin) {
       *data.doc_found =
-          !HasExpiredTTL(data.exp.write_ht, data.exp.ttl, db_iter->read_time().read);
+          !dockv::HasExpiredTTL(data.exp.write_ht, data.exp.ttl, db_iter->read_time().read);
     }
     if (*data.doc_found) {
       // Observe that this will have the right type but not necessarily the right value.
@@ -473,7 +476,7 @@ yb::Status GetRedisSubDocument(
   // Seed key_bytes with the subdocument key. For each subkey in the projection, build subdocument
   // and reuse key_bytes while appending the subkey.
   *data.result = SubDocument();
-  KeyBytes key_bytes;
+  dockv::KeyBytes key_bytes;
   // Preallocate some extra space to avoid allocation for small subkeys.
   key_bytes.Reserve(data.subdocument_key.size() + kMaxBytesPerEncodedHybridTime + 32);
   key_bytes.AppendRawBytes(data.subdocument_key);

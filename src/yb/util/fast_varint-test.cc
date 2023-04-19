@@ -33,7 +33,6 @@ using std::numeric_limits;
 
 using namespace std::literals;
 using strings::Substitute;
-using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace util {

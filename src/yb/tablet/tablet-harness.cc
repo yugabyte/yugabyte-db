@@ -14,7 +14,7 @@
 #include "yb/tablet/tablet-harness.h"
 
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/consensus/log_anchor_registry.h"
 
@@ -30,20 +30,20 @@ using std::vector;
 namespace yb {
 namespace tablet {
 
-std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema& schema) {
+std::pair<dockv::PartitionSchema, dockv::Partition> CreateDefaultPartition(const Schema& schema) {
   // Create a default partition schema.
-  PartitionSchema partition_schema;
-  CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  CHECK_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
   // Create the tablet partitions.
-  vector<Partition> partitions;
-  CHECK_OK(partition_schema.CreatePartitions(vector<YBPartialRow>(), schema, &partitions));
+  vector<dockv::Partition> partitions;
+  CHECK_OK(partition_schema.CreatePartitions({}, schema, &partitions));
   CHECK_EQ(1, partitions.size());
   return std::make_pair(partition_schema, partitions[0]);
 }
 
 Status TabletHarness::Create(bool first_time) {
-  std::pair<PartitionSchema, Partition> partition(CreateDefaultPartition(schema_));
+  std::pair<dockv::PartitionSchema, dockv::Partition> partition(CreateDefaultPartition(schema_));
 
   // Build the Tablet
   fs_manager_.reset(new FsManager(options_.env, options_.root_dir, "tserver_test"));

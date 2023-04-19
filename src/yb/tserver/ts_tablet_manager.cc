@@ -740,7 +740,7 @@ TSTabletManager::StartTabletStateTransitionForCreation(const TabletId& tablet_id
 Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const tablet::TableInfoPtr& table_info,
     const string& tablet_id,
-    const Partition& partition,
+    const dockv::Partition& partition,
     RaftConfigPB config,
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
@@ -805,7 +805,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
 struct TabletCreationMetaData {
   TabletId tablet_id;
   scoped_refptr<TransitionInProgressDeleter> transition_deleter;
-  Partition partition;
+  dockv::Partition partition;
   docdb::KeyBounds key_bounds;
   RaftGroupMetadataPtr raft_group_metadata;
 };
@@ -820,7 +820,7 @@ SplitTabletsCreationMetaData PrepareTabletCreationMetaDataForSplit(
   const auto& split_partition_key = request.split_partition_key();
   const auto& split_encoded_key = request.split_encoded_key();
 
-  std::shared_ptr<Partition> source_partition = tablet.metadata()->partition();
+  auto source_partition = tablet.metadata()->partition();
   const auto source_key_bounds = *tablet.doc_db().key_bounds;
 
   {
@@ -2670,58 +2670,71 @@ Status TSTabletManager::UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& inf
 }
 
 HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata) {
-  auto schedules = metadata->SnapshotSchedules();
-  if (schedules.empty()) {
-    if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
-      VLOG(1) << "Setting the allowed historycutoff: " << metadata->cdc_sdk_safe_time()
-              << " for tablet: " << metadata->raft_group_id();
-      return metadata->cdc_sdk_safe_time();
-    }
-    VLOG(1) << "Setting the allowed historycutoff: " << HybridTime::kMax
-            << " for tablet: " << metadata->raft_group_id();
-    return HybridTime::kMax;
-  }
-  std::vector<SnapshotScheduleId> schedules_to_remove;
-  auto se = ScopeExit([&schedules_to_remove, metadata]() {
-    if (schedules_to_remove.empty()) {
-      return;
-    }
-    bool any_removed = false;
-    for (const auto& schedule_id : schedules_to_remove) {
-      any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
-    }
-    if (any_removed) {
-      WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
-    }
-  });
-  std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
   HybridTime result = HybridTime::kMax;
-  for (const auto& schedule_id : schedules) {
-    auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
-    if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
-      // We don't know this schedule.
-      auto emplace_result = missing_snapshot_schedules_.emplace(
-          schedule_id, snapshot_schedules_version_);
-      if (!emplace_result.second &&
-          emplace_result.first->second + 2 <= snapshot_schedules_version_) {
-        // We don't know this schedule, and there are already 2 rounds of heartbeat passed
-        // after we first time found that we don't know this schedule.
-        // So it means that schedule was deleted.
-        // One round is not enough, because schedule could be added after heartbeat processed on
-        // master, but response not yet received on TServer.
-        schedules_to_remove.push_back(schedule_id);
-        continue;
-      }
-      return HybridTime::kMin;
-    }
-    if (!it->second) {
-      // Schedules does not have snapshots yet.
-      return HybridTime::kMin;
-    }
-    result = std::min(result, it->second);
-  }
+  // CDC SDK safe time
   if (metadata->cdc_sdk_safe_time() != HybridTime::kInvalid) {
-    result = std::min(result, metadata->cdc_sdk_safe_time());
+    VLOG(1) << "CDC SDK historycutoff: " << metadata->cdc_sdk_safe_time()
+            << " for tablet: " << metadata->raft_group_id();
+    result = metadata->cdc_sdk_safe_time();
+  }
+
+  auto xcluster_safe_time_result =
+      server_->GetXClusterSafeTimeMap().GetSafeTime(metadata->namespace_id());
+  if (!xcluster_safe_time_result) {
+    VLOG(1) << "XCluster GetSafeTime call failed with " << xcluster_safe_time_result.status()
+            << " for namespace: " << metadata->namespace_id();
+    // GetSafeTime call fails when special safetime value is set for a namespace -- this can happen
+    // when we have new replication setup and safe time is not yet computed. In this case, we return
+    // HybridTime::kMin to stop compaction from deleting any of the existing versions of documents.
+    return HybridTime::kMin;
+  }
+  auto opt_xcluster_safe_time = *xcluster_safe_time_result;
+  if (opt_xcluster_safe_time) {
+    VLOG(1) << "XCluster historycutoff: " << *opt_xcluster_safe_time
+            << " for tablet: " << metadata->raft_group_id();
+    result.MakeAtMost(*opt_xcluster_safe_time);
+  }
+
+  auto schedules = metadata->SnapshotSchedules();
+  if (!schedules.empty()) {
+    std::vector<SnapshotScheduleId> schedules_to_remove;
+    auto se = ScopeExit([&schedules_to_remove, metadata]() {
+      if (schedules_to_remove.empty()) {
+        return;
+      }
+      bool any_removed = false;
+      for (const auto& schedule_id : schedules_to_remove) {
+        any_removed = metadata->RemoveSnapshotSchedule(schedule_id) || any_removed;
+      }
+      if (any_removed) {
+        WARN_NOT_OK(metadata->Flush(), "Failed to flush metadata");
+      }
+    });
+    std::lock_guard<simple_spinlock> lock(snapshot_schedule_allowed_history_cutoff_mutex_);
+    for (const auto& schedule_id : schedules) {
+      auto it = snapshot_schedule_allowed_history_cutoff_.find(schedule_id);
+      if (it == snapshot_schedule_allowed_history_cutoff_.end()) {
+        // We don't know this schedule.
+        auto emplace_result =
+            missing_snapshot_schedules_.emplace(schedule_id, snapshot_schedules_version_);
+        if (!emplace_result.second &&
+            emplace_result.first->second + 2 <= snapshot_schedules_version_) {
+          // We don't know this schedule, and there are already 2 rounds of heartbeat passed
+          // after we first time found that we don't know this schedule.
+          // So it means that schedule was deleted.
+          // One round is not enough, because schedule could be added after heartbeat processed on
+          // master, but response not yet received on TServer.
+          schedules_to_remove.push_back(schedule_id);
+          continue;
+        }
+        return HybridTime::kMin;
+      }
+      if (!it->second) {
+        // Schedules does not have snapshots yet.
+        return HybridTime::kMin;
+      }
+      result.MakeAtMost(it->second);
+    }
   }
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();

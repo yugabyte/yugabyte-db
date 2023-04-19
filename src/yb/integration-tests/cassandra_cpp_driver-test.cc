@@ -53,9 +53,6 @@ using rapidjson::Value;
 using strings::Substitute;
 
 using yb::CoarseBackoffWaiter;
-using yb::YQLDatabase;
-using yb::client::TableHandle;
-using yb::client::TransactionManager;
 using yb::client::YBTableName;
 using yb::client::YBTableInfo;
 using yb::client::YBqlWriteOpPtr;

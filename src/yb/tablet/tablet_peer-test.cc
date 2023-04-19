@@ -89,23 +89,13 @@ DECLARE_bool(quick_leader_election_on_create);
 namespace yb {
 namespace tablet {
 
-using consensus::Consensus;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
-using consensus::MakeOpId;
-using consensus::MinimumOpId;
-using consensus::OpIdEquals;
 using consensus::RaftPeerPB;
-using consensus::WRITE_OP;
-using docdb::KeyValueWriteBatchPB;
 using log::Log;
-using log::LogAnchorRegistry;
 using log::LogOptions;
-using server::Clock;
-using server::LogicalClock;
 using std::shared_ptr;
 using std::string;
-using strings::Substitute;
 using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 

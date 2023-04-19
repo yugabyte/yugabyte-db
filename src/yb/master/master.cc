@@ -61,6 +61,7 @@
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/secure_stream.h"
@@ -114,7 +115,6 @@ using std::string;
 using yb::consensus::RaftPeerPB;
 using yb::rpc::ServiceIf;
 using yb::tserver::ConsensusServiceImpl;
-using strings::Substitute;
 
 DEFINE_UNKNOWN_int32(master_tserver_svc_num_threads, 10,
              "Number of RPC worker threads to run for the master tserver service");
@@ -166,6 +166,7 @@ Master::Master(const MasterOptions& opts)
       auto_flags_manager_(new AutoFlagsManager("yb-master", fs_manager_.get())),
       ts_manager_(new TSManager()),
       catalog_manager_(new CatalogManager(this)),
+      ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),

@@ -143,8 +143,6 @@ namespace yb {
 // NOTE: this class has been adapted from Impala, so the code style varies
 // somewhat from yb.
 
-using std::deque;
-using std::list;
 using std::string;
 using std::stringstream;
 using std::shared_ptr;

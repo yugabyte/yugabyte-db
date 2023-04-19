@@ -559,6 +559,21 @@ class PgClient::Impl {
     return result;
   }
 
+  Result<int> WaitForBackendsCatalogVersion(
+      tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgWaitForBackendsCatalogVersionResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(proxy_->WaitForBackendsCatalogVersion(*req, &resp, PrepareController(deadline)));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    if (resp.num_lagging_backends() != -1) {
+      return resp.num_lagging_backends();
+    }
+    return STATUS_FORMAT(
+        TryAgain,
+        "Counting backends in progress: database oid $0, catalog version $1",
+        req->database_oid(), req->catalog_version());
+  }
+
   Status BackfillIndex(
       tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline) {
     tserver::PgBackfillIndexResponsePB resp;
@@ -776,6 +791,11 @@ Status PgClient::CreateSequencesDataTable() {
 Result<client::YBTableName> PgClient::DropTable(
     tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline) {
   return impl_->DropTable(req, deadline);
+}
+
+Result<int> PgClient::WaitForBackendsCatalogVersion(
+    tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->WaitForBackendsCatalogVersion(req, deadline);
 }
 
 Status PgClient::BackfillIndex(

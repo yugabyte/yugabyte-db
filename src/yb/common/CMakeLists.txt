@@ -120,7 +120,6 @@ add_dependencies(yb_common yb_bfql yb_bfpg)
 
 set(QL_SRCS
   index.cc
-  partial_row.cc
   ql_bfunc.cc
   ql_expr.cc
   ql_name.cc
@@ -128,7 +127,6 @@ set(QL_SRCS
   ql_resultset.cc
   ql_rowblock.cc
   ql_serialization.cc
-  ql_scanspec.cc
   row.cc
   schema.cc
   ql_wire_protocol.cc
@@ -138,7 +136,7 @@ set(QL_LIBS
   yb_common
   yb_common_proto
   yb_common_base
-  yb_docdb_encoding
+  yb_dockv
   consensus_metadata_proto
   yb_util
   yb_bfql
@@ -150,32 +148,14 @@ ADD_YB_LIBRARY(yb_ql_common
   DEPS ${QL_LIBS}
   )
 
-set(PARTITION_SRCS
-  partition.cc
-  )
-
-set(PARTITION_DEPS
-  yb_common
-  yb_ql_common
-  yb_util
-  yb_docdb_encoding
-  )
-
-ADD_YB_LIBRARY(yb_partition
-  SRCS ${PARTITION_SRCS}
-  DEPS ${PARTITION_DEPS}
-  )
-
 ADD_YB_TEST_LIBRARY(yb_common_test_util
                     SRCS transaction-test-util.cc wire_protocol-test-util.cc
                     DEPS yb_common yb_ql_common yb_docdb)
 
-set(YB_TEST_LINK_LIBS yb_common yb_partition yb_ql_common yb_common_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common yb_ql_common yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
 ADD_YB_TEST(ql_table_row-test)
-ADD_YB_TEST(partial_row-test)
-ADD_YB_TEST(partition-test)
 ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)

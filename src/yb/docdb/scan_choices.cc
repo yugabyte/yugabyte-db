@@ -13,16 +13,16 @@
 
 #include "yb/docdb/scan_choices.h"
 
-#include "yb/common/ql_scanspec.h"
+#include "yb/dockv/ql_scanspec.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
-#include "yb/docdb/doc_scanspec_util.h"
+#include "yb/dockv/doc_scanspec_util.h"
 #include "yb/docdb/intent_aware_iterator_interface.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -30,6 +30,12 @@
 
 namespace yb {
 namespace docdb {
+
+using dockv::DocKey;
+using dockv::DocKeyDecoder;
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryValue;
 
 bool ScanChoices::CurrentTargetMatchesKey(const Slice& curr) {
   VLOG(3) << __PRETTY_FUNCTION__ << " checking if acceptable ? "
@@ -47,8 +53,8 @@ HybridScanChoices::HybridScanChoices(
     const KeyBytes& upper_doc_key,
     bool is_forward_scan,
     const std::vector<ColumnId>& options_col_ids,
-    const std::shared_ptr<std::vector<OptionList>>& options,
-    const QLScanRange* range_bounds,
+    const std::shared_ptr<std::vector<dockv::OptionList>>& options,
+    const dockv::QLScanRange* range_bounds,
     const ColGroupHolder& col_groups,
     const size_t prefix_length)
     : ScanChoices(is_forward_scan),
@@ -76,7 +82,7 @@ HybridScanChoices::HybridScanChoices(
       const auto col_sort_type =
           col_id.rep() == kYbHashCodeColId ? SortingType::kAscending
               : schema.column(schema.find_column_by_id( col_id)).sorting_type();
-      const QLScanRange::QLRange range = range_bounds->RangeFor(col_id);
+      const auto range = range_bounds->RangeFor(col_id);
       const auto lower = GetQLRangeBoundAsPVal(range, col_sort_type, true /* lower_bound */);
       const auto upper = GetQLRangeBoundAsPVal(range, col_sort_type, false /* upper_bound */);
       current_options.emplace_back(
@@ -188,7 +194,7 @@ HybridScanChoices::HybridScanChoices(
 
 HybridScanChoices::HybridScanChoices(
     const Schema& schema,
-    const YQLScanSpec& doc_spec,
+    const dockv::YQLScanSpec& doc_spec,
     const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key)
     : HybridScanChoices(
@@ -228,7 +234,7 @@ Status HybridScanChoices::DecodeKey(DocKeyDecoder* decoder, KeyEntryValue* targe
 
   // We make sure to consume the kGroupEnd character if any.
   if (!decoder->left_input().empty()) {
-    VERIFY_RESULT(decoder->HasPrimitiveValue(AllowSpecial::kTrue));
+    VERIFY_RESULT(decoder->HasPrimitiveValue(dockv::AllowSpecial::kTrue));
   }
   return Status::OK();
 }
@@ -705,7 +711,7 @@ Result<bool> HybridScanChoices::ValidateHashGroup(const KeyBytes& scan_target) c
   RETURN_NOT_OK(t_decoder.DecodeCotableId());
   RETURN_NOT_OK(t_decoder.DecodeColocationId());
   if (has_hash_columns_) {
-    if (!VERIFY_RESULT(t_decoder.DecodeHashCode(AllowSpecial::kTrue))) {
+    if (!VERIFY_RESULT(t_decoder.DecodeHashCode(dockv::AllowSpecial::kTrue))) {
       return false;
     }
     for (size_t i = 0; i < num_hash_cols_; i++) {
@@ -798,7 +804,7 @@ Status HybridScanChoices::SeekToCurrentTarget(IntentAwareIteratorIf* db_iter) {
 }
 
 ScanChoicesPtr ScanChoices::Create(
-    const Schema& schema, const YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
+    const Schema& schema, const dockv::YQLScanSpec& doc_spec, const KeyBytes& lower_doc_key,
     const KeyBytes& upper_doc_key) {
   if (doc_spec.options() || doc_spec.range_bounds()) {
     return std::make_unique<HybridScanChoices>(schema, doc_spec, lower_doc_key, upper_doc_key);

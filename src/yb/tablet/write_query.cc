@@ -126,7 +126,7 @@ WriteQuery::WriteQuery(
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
     tserver::WriteResponsePB* response,
-    docdb::OperationKind kind)
+    dockv::OperationKind kind)
     : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
@@ -503,7 +503,7 @@ Status WriteQuery::DoExecute() {
         << operation_->ToString();
   }
 
-  docdb::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
+  dockv::PartialRangeKeyIntents partial_range_key_intents(metadata.UsePartialRangeKeyIntents());
   prepare_result_ = VERIFY_RESULT(docdb::PrepareDocWriteOperation(
       doc_ops_, write_batch.read_pairs(), tablet->metrics()->write_lock_latency,
       tablet->metrics()->failed_batch_lock, isolation_level_, kind(), row_mark_type,
@@ -557,7 +557,7 @@ Status WriteQuery::DoExecute() {
         pair.dup_key(key);
         // Empty values are disallowed by docdb.
         // https://github.com/YugaByte/yugabyte-db/issues/736
-        pair.dup_value(std::string(1, docdb::KeyEntryTypeAsChar::kNullLow));
+        pair.dup_value(std::string(1, dockv::KeyEntryTypeAsChar::kNullLow));
       }
     }
   }

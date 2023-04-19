@@ -131,7 +131,6 @@ namespace yb {
 namespace master {
 
 using std::unique_ptr;
-using std::make_unique;
 using std::string;
 using std::set;
 using std::vector;
