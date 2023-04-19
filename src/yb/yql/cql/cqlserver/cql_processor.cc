@@ -160,14 +160,11 @@ using std::unique_ptr;
 using std::ostream;
 using std::string;
 
-using client::YBClient;
-using client::YBSession;
 using ql::ExecutedResult;
 using ql::PreparedResult;
 using ql::RowsResult;
 using ql::SetKeyspaceResult;
 using ql::SchemaChangeResult;
-using ql::QLProcessor;
 using ql::ParseTree;
 using ql::Statement;
 using ql::StatementBatch;
@@ -178,8 +175,6 @@ using ql::audit::IsPrepare;
 using ql::audit::ErrorIsFormatted;
 
 using strings::Substitute;
-
-using yb::util::bcrypt_checkpw;
 
 //------------------------------------------------------------------------------------------------
 CQLMetrics::CQLMetrics(const scoped_refptr<yb::MetricEntity>& metric_entity)

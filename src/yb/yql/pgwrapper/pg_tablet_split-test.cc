@@ -15,7 +15,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -50,6 +50,7 @@ DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(TEST_partitioning_version);
+DECLARE_bool(ysql_enable_packed_row);
 
 using yb::test::Partitioning;
 using namespace std::literals;
@@ -282,7 +283,7 @@ class PgPartitioningVersionTest :
     return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer->tablet_id());
   }
 
-  TabletRecordsInfo GetTabletRecordsInfo(
+  Result<TabletRecordsInfo> GetTabletRecordsInfo(
       const std::vector<tablet::TabletPeerPtr>& peers) {
     TabletRecordsInfo result;
     for (const auto& peer : peers) {
@@ -291,7 +292,7 @@ class PgPartitioningVersionTest :
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       docdb::BoundedRocksDbIterator it(db.regular, read_opts, db.key_bounds);
-      for (it.SeekToFirst(); it.Valid(); it.Next(), ++num_records) {}
+      for (it.SeekToFirst(); VERIFY_RESULT(it.CheckedValid()); it.Next(), ++num_records) {}
       result.emplace(peer->tablet_id(), std::make_tuple(*db.key_bounds, num_records));
     }
     return result;
@@ -378,16 +379,16 @@ class PgPartitioningVersionTest :
              "Range partitioning is expected.");
 
       // Decode partition bounds and validate bounds has expected structure.
-      docdb::DocKey start;
+      dockv::DocKey start;
       RETURN_NOT_OK(start.DecodeFrom(meta->partition()->partition_key_start(),
-                                     docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
+                                     dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
       if (!start.empty()) {
         SCHECK_EQ(num_range_components, start.range_group().size(), IllegalState,
                   Format("Unexpected number of range components: $0", start.range_group().size()));
       }
-      docdb::DocKey end;
+      dockv::DocKey end;
       RETURN_NOT_OK(end.DecodeFrom(meta->partition()->partition_key_end(),
-                                  docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
+                                  dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
       if (!end.empty()) {
         SCHECK_EQ(num_range_components, end.range_group().size(), IllegalState,
                   Format("Unexpected number of range components: $0", end.range_group().size()));
@@ -526,8 +527,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       const auto encoded_split_key =
          ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
       ASSERT_TRUE(parent_peer->tablet()->metadata()->partition_schema()->IsRangePartitioning());
-      docdb::SubDocKey split_key;
-      ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, docdb::HybridTimeRequired::kFalse));
+      dockv::SubDocKey split_key;
+      ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
       LOG(INFO) << "Split key: " << AsString(split_key);
 
       // Split index table.
@@ -536,7 +537,7 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
 
       // Keep current numbers of records persisted in tablets for further analyses.
       const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
-      const auto peers_info = GetTabletRecordsInfo(peers);
+      const auto peers_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
 
       // Simulate leading nulls for the index table
       ASSERT_OK(conn.Execute(
@@ -562,8 +563,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
 
       ASSERT_OK(SetEnableIndexScan(&conn, true));
       const auto count_on = ASSERT_RESULT(FetchTableRowsCount(&conn, table_name, "i0 > 0"));
-      const auto diff =
-          ASSERT_RESULT(DiffTabletRecordsInfo(GetTabletRecordsInfo(peers), peers_info));
+      const auto tablet_records_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
+      const auto diff = ASSERT_RESULT(DiffTabletRecordsInfo(tablet_records_info, peers_info));
 
       const bool is_asc_ordering = ToLowerCase(sort_order) == "asc";
       if (partitioning_version == 0 && is_asc_ordering) {
@@ -629,8 +630,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
     auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
     ASSERT_TRUE(parent_peer->tablet()->metadata()->partition_schema()->IsRangePartitioning());
-    docdb::SubDocKey split_key;
-    ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey split_key;
+    ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
     LOG(INFO) << "Split key: " << AsString(split_key);
 
     // Extract and keep split key values for unique index idx1.
@@ -653,26 +654,33 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     // the row is being forwarded.
     ASSERT_OK(conn.Execute(Format("DELETE FROM $0 WHERE k > 0", table_name)));
     ASSERT_EQ(0, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
 
     // Keep current numbers of records persisted in tablets for further analyses.
-    auto peers_info = GetTabletRecordsInfo(peers);
+    auto peers_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
 
     // Insert values that match the partition bound.
     ASSERT_OK(conn.Execute(Format(
         "INSERT INTO $0 VALUES($1, $1, $2)", table_name, idx1_i0, idx1_t0)));
     ASSERT_EQ(1, ASSERT_RESULT(FetchTableRowsCount(&conn, table_name)));
+    ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
 
     // Validate insert operation is forwarded correctly (assuming NULL LAST approach is used):
     // - for partitioning_version > 0 all records should be persisted in the second tablet
     //   with partition [split_key, <end>);
     // - for partitioning_version == 0 operation is lost, no diff in peers_info.
-    const auto diff = ASSERT_RESULT(DiffTabletRecordsInfo(GetTabletRecordsInfo(peers), peers_info));
+    const auto tablet_records_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
+    const auto diff = ASSERT_RESULT(DiffTabletRecordsInfo(tablet_records_info, peers_info));
     if (partitioning_version == 0) {
       ASSERT_EQ(diff.size(), 0); // Having diff.size() == 0 means the records are not written!
       return;
     }
 
     ASSERT_EQ(diff.size(), 1);
+    const auto records_diff = std::get</* records diff */ 1>(diff.begin()->second);
+    const auto expected_records_diff =
+        ANNOTATE_UNPROTECTED_READ(FLAGS_ysql_enable_packed_row) ? 1 : 2;
+    ASSERT_EQ(records_diff, expected_records_diff);
     bool is_correctly_forwarded =
         std::get</* key_bounds */ 0>(diff.begin()->second).IsWithinBounds(Slice(encoded_split_key));
     ASSERT_TRUE(is_correctly_forwarded) <<
@@ -845,8 +853,8 @@ TEST_F(PgRangePartitionedTableSplitTest,
 
       // Exptract middle tablet bounds.
       const auto parse_partition_key = [](const std::string& key) -> Result<int> {
-        docdb::SubDocKey doc_key;
-        RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+        dockv::SubDocKey doc_key;
+        RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
         SCHECK_EQ(doc_key.doc_key().range_group().size(), 1, IllegalState, "");
         SCHECK_EQ(doc_key.doc_key().range_group().at(0).IsInt32(), true, IllegalState, "");
         return doc_key.doc_key().range_group().at(0).GetInt32();
@@ -954,9 +962,9 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
           need_comma = true;
         }
         expected_clause << "(";
-        docdb::SubDocKey partition_key;
+        dockv::SubDocKey partition_key;
         ASSERT_OK(partition_key.FullyDecodeFrom(
-            partition.partition_key_start(), docdb::HybridTimeRequired::kFalse));
+            partition.partition_key_start(), dockv::HybridTimeRequired::kFalse));
         const auto& range_keys = partition_key.doc_key().range_group();
         std::for_each(range_keys.begin(), range_keys.end(),
             [&expected_clause, need_comma = false](const auto& key) mutable {

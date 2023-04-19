@@ -36,7 +36,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     try {
       verifyParams(UniverseOpType.CREATE);
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -83,17 +83,17 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
-              universe.name,
+              universe.getName(),
               primaryProvider,
               taskParams().communicationPorts.masterRpcPort,
               taskParams().useNewHelmNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      createPodsTask(universe.name, placement, masterAddresses, true);
+      createPodsTask(universe.getName(), placement, masterAddresses, true, universe.isYbcEnabled());
 
       // Following method assumes primary cluster.
       createSingleKubernetesExecutorTask(
-          universe.name, KubernetesCommandExecutor.CommandType.POD_INFO, pi, true);
+          universe.getName(), KubernetesCommandExecutor.CommandType.POD_INFO, pi, true);
 
       Set<NodeDetails> tserversAdded =
           getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, true);
@@ -101,6 +101,16 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       // Wait for new tablet servers to be responsive.
       createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Install YBC on the RR tservers and wait for its completion
+      if (universe.isYbcEnabled()) {
+        installYbcOnThePods(
+            universe.getName(),
+            tserversAdded,
+            true,
+            universe.getUniverseDetails().getYbcSoftwareVersion());
+        createWaitForYbcServerTask(tserversAdded);
+      }
 
       // Persist the placement info into the YB master leader.
       createPlacementInfoTask(null /* blacklistNodes */)
@@ -110,6 +120,7 @@ public class ReadOnlyKubernetesClusterCreate extends KubernetesTaskBase {
       createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       createSwamperTargetUpdateTask(false);
+
       // Marks the update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);

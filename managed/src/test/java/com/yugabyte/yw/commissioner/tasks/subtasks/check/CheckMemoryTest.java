@@ -48,7 +48,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     CheckMemory.Params params = new CheckMemory.Params();
     params.memoryLimitKB = AVAILABLE_MEMORY_LIMIT_KB;
     params.memoryType = Util.AVAILABLE_MEMORY;
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeIpList =
         defaultUniverse
             .getUniverseDetails()
@@ -72,7 +72,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     CheckMemory.Params params = new CheckMemory.Params();
     params.memoryLimitKB = AVAILABLE_MEMORY_LIMIT_KB;
     params.memoryType = Util.AVAILABLE_MEMORY;
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeIpList =
         defaultUniverse
             .getUniverseDetails()
@@ -97,7 +97,7 @@ public class CheckMemoryTest extends CommissionerBaseTest {
     CheckMemory.Params params = new CheckMemory.Params();
     params.memoryLimitKB = AVAILABLE_MEMORY_LIMIT_KB;
     params.memoryType = Util.AVAILABLE_MEMORY;
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeIpList =
         defaultUniverse
             .getUniverseDetails()

@@ -49,11 +49,11 @@ public class AlertChannelEmail extends AlertChannelBase {
 
     SmtpData smtpData =
         params.isDefaultSmtpSettings()
-            ? emailHelper.getSmtpData(customer.uuid)
+            ? emailHelper.getSmtpData(customer.getUuid())
             : params.getSmtpData();
     List<String> recipients =
         params.isDefaultRecipients()
-            ? emailHelper.getDestinations(customer.uuid)
+            ? emailHelper.getDestinations(customer.getUuid())
             : params.getRecipients();
 
     if (CollectionUtils.isEmpty(recipients)) {
@@ -76,7 +76,7 @@ public class AlertChannelEmail extends AlertChannelBase {
           title,
           String.join(", ", recipients),
           smtpData,
-          Collections.singletonMap("text/plain; charset=\"us-ascii\"", text));
+          Collections.singletonMap("text/html; charset=\"us-ascii\"", text));
     } catch (MessagingException e) {
       throw new PlatformNotificationException(
           String.format("Error sending email for alert %s: %s", alert.getName(), e.getMessage()),

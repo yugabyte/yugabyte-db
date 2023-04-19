@@ -1,16 +1,17 @@
 package handlers
 
 import (
-        "apiserver/cmd/server/helpers"
-        "apiserver/cmd/server/models"
-        "encoding/json"
-        "fmt"
-        "net/http"
-        "runtime"
-        "sort"
-        "time"
+    "apiserver/cmd/server/helpers"
+    "apiserver/cmd/server/logger"
+    "apiserver/cmd/server/models"
+    "encoding/json"
+    "fmt"
+    "net/http"
+    "runtime"
+    "sort"
+    "time"
 
-        "github.com/labstack/echo/v4"
+    "github.com/labstack/echo/v4"
 )
 
 const QUERY_LIMIT_ONE string = "select ts, value, details " +
@@ -31,6 +32,8 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         if tabletServersResponse.Error != nil {
                 return ctx.String(http.StatusInternalServerError,
                         tabletServersResponse.Error.Error())
+        } else {
+            logger.Log.Errorf("[tabletServersResponse]", tabletServersResponse.Error)
         }
 
         // Now that we have tabletServersResponse, we can start doing
@@ -126,9 +129,12 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         // Checks cluster-config response encryption_info.encryption_enabled
         clusterConfigResponse := <-clusterConfigFuture
         isEncryptionAtRestEnabled := false
+        var clusterReplicationFactor int32
         if clusterConfigResponse.Error == nil {
                 resultConfig := clusterConfigResponse.ClusterConfig
                 isEncryptionAtRestEnabled = resultConfig.EncryptionInfo.EncryptionEnabled
+                clusterReplicationFactor = int32(resultConfig.ReplicationInfo.
+                                                   LiveReplicas.NumReplicas)
         }
         // Determine if encryption in transit is enabled
         // It is enabled if and only if each master and tserver has the flags:
@@ -146,6 +152,8 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                         tserverFlags.GFlags["use_client_to_server_encryption"] != "true" {
                         isEncryptionInTransitEnabled = false
                         break
+                } else {
+                    logger.Log.Errorf("[tserverFlags]", tserverFlags.Error)
                 }
         }
         // Only need to keep checking masters if it is still possible that in-transit encryption is
@@ -158,6 +166,8 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                                 masterFlags.GFlags["allow_insecure_connections"] != "false" {
                                 isEncryptionInTransitEnabled = false
                                 break
+                        } else {
+                            logger.Log.Errorf("[masterFlags]", masterFlags.Error)
                         }
                 }
         }
@@ -184,6 +194,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 json.Unmarshal([]byte(details), &detailObj)
                 sum += detailObj.Value
                 if err := iter.Close(); err != nil {
+                    logger.Log.Errorf("[api_cluster] error fetching cpu_usage_user data", err)
                     continue
                 }
                 query = fmt.Sprintf(QUERY_LIMIT_ONE, "system.metrics", "cpu_usage_system", uuid)
@@ -192,6 +203,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 json.Unmarshal([]byte(details), &detailObj)
                 sum += detailObj.Value
                 if err := iter.Close(); err != nil {
+                    logger.Log.Errorf("[api_cluster] error fetching cpu_usage_system data", err)
                     continue
                 }
             }
@@ -210,9 +222,12 @@ func (c *Container) GetCluster(ctx echo.Context) error {
             iter = session.Query(query).Iter()
             iter.Scan(&ts, &value, &details)
             freeDiskGb = float64(value) / helpers.BYTES_IN_GB
+        } else{
+            logger.Log.Errorf("[GetHostToUuidMap]", err)
         }
         // Get software version
         smallestVersion := helpers.GetSmallestVersion(versionInfoFutures)
+        numCores := numNodes * int32(runtime.NumCPU())
 
     response := models.ClusterResponse{
         Data: models.ClusterData{
@@ -223,12 +238,13 @@ func (c *Container) GetCluster(ctx echo.Context) error {
                 ClusterInfo: models.ClusterInfo{
                     NumNodes:       numNodes,
                     FaultTolerance: faultTolerance,
+                    ReplicationFactor: clusterReplicationFactor,
                     NodeInfo: models.ClusterNodeInfo{
                         MemoryMb:       ramUsageMb,
                         DiskSizeGb:     totalDiskGb,
                         DiskSizeUsedGb: totalDiskGb - freeDiskGb,
                         CpuUsage:       averageCpu,
-                        NumCores:       int32(runtime.NumCPU()),
+                        NumCores:       numCores,
                     },
                 },
                 ClusterRegionInfo: &clusterRegionInfo,

@@ -16,6 +16,8 @@ namespace yb {
 namespace docdb {
 namespace fuzz {
 
+using dockv::KeyEntryValue;
+
 KeyEntryValue GetKeyEntryValue(FuzzedDataProvider *fdp) {
   uint8_t max_enum_value = static_cast<uint8_t>(FuzzKeyEntryValue::NullValue);
   FuzzKeyEntryValue type_switch = static_cast<FuzzKeyEntryValue>(
@@ -64,9 +66,8 @@ KeyEntryValue GetKeyEntryValue(FuzzedDataProvider *fdp) {
 
 // consume_all = true - consume all the bytes of the input data till the end,
 // otherwise there might be something left.
-std::vector<KeyEntryValue> GetKeyEntryValueVector(FuzzedDataProvider *fdp,
-                                                  bool consume_all) {
-  std::vector<KeyEntryValue> result{};
+dockv::KeyEntryValues GetKeyEntryValueVector(FuzzedDataProvider *fdp, bool consume_all) {
+  dockv::KeyEntryValues result;
   size_t len = consume_all ? std::numeric_limits<size_t>::max()
                            : fdp->ConsumeIntegralInRange<int8_t>(0, 10);
 
@@ -76,12 +77,12 @@ std::vector<KeyEntryValue> GetKeyEntryValueVector(FuzzedDataProvider *fdp,
   return result;
 }
 
-DocKey GetDocKey(FuzzedDataProvider *fdp, bool consume_all) {
+dockv::DocKey GetDocKey(FuzzedDataProvider *fdp, bool consume_all) {
   bool use_hash = fdp->ConsumeBool();
-  return use_hash ? DocKey(fdp->ConsumeIntegral<uint16_t>(),
+  return use_hash ? dockv::DocKey(fdp->ConsumeIntegral<uint16_t>(),
                            GetKeyEntryValueVector(fdp, false),
                            GetKeyEntryValueVector(fdp, consume_all))
-                  : DocKey(GetKeyEntryValueVector(fdp, consume_all));
+                  : dockv::DocKey(GetKeyEntryValueVector(fdp, consume_all));
 }
 
 }  // namespace fuzz

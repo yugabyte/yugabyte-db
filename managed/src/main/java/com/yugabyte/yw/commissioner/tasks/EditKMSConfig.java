@@ -49,7 +49,7 @@ public class EditKMSConfig extends KMSConfigTaskBase {
                     + "as no active key was found");
             continue;
           }
-          byte[] keyRef = Base64.getDecoder().decode(activeKey.uuid.keyRef);
+          byte[] keyRef = Base64.getDecoder().decode(activeKey.getUuid().keyRef);
           if (kmsManager
                   .getServiceInstance(taskParams().kmsProvider.name())
                   .validateConfigForUpdate(

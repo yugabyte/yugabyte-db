@@ -2404,6 +2404,29 @@ class ControlScript(object):
         with open(password_file, "w+") as f:
             f.write(content)
 
+    # When the 3rd node joins, this method will set the placement location and rf to 3
+    def setup_first_cluster_config(self):
+        leader_master = self.get_leader_master().split(':')[0]
+        leader_master_http_endpoint = "{}:{}".format(leader_master,
+                        self.configs.saved_data.get("master_webserver_port"))
+
+        placement_locations = self.get_all_masters_locations(leader_master_http_endpoint)
+        placement_info = list(placement_locations.values())
+        placement_info.append("{}.{}.{}".format(self.configs.saved_data.get("cloud_provider"),
+                                                self.configs.saved_data.get("cloud_region"),
+                                                self.configs.saved_data.get("cloud_zone")))
+        placement_info = ",".join(placement_info)
+
+        master_addresses = list(placement_locations.keys())
+        master_addresses.append(self.configs.saved_data.get("advertise_address"))
+        master_addresses = ["{}:{}".format(master, self.configs.saved_data.get("master_rpc_port")) \
+                                           for master in master_addresses]
+        master_addresses = ",".join(master_addresses)
+
+        if not YBAdminProxy.modify_placement_info(master_addresses, placement_info):
+            Output.log_error_and_exit(Output.make_red("FAILED") + ": Setting of default " +
+                                      "data placement policy on the cluster.")
+
     # Verify that the master is in the current list of masters.
     # If not, set it up appropriately.
     def setup_master(self, timeout=180):
@@ -2456,10 +2479,7 @@ class ControlScript(object):
         # If we are the third master, set replication factor to 3. This makes the cluster
         # automatically expand to rf3 when the third node is added.
         if len(master_uuids) == 2:
-            if not YBAdminProxy.set_rf(master_addrs, 3):
-                Output.log_error_and_exit("Unable to change replication factor for {}.".format(
-                    master_addrs))
-                return False
+            self.setup_first_cluster_config()
 
         try:
             if retry_op_with_argument(self.get_master_uuids, master_addrs, timeout):
@@ -4285,10 +4305,8 @@ class YBAdminProxy(object):
 
     # Sets placement info
     @staticmethod
-    def modify_placement_info(master_addrs, placement_locations, replication_factor, timeout=10):
-        if not replication_factor:
-            replication_factor = "3"
-
+    def modify_placement_info(master_addrs, placement_locations, replication_factor = "3",
+                              timeout=10):
         cmd = YBAdminProxy.cmd_args + ["-master_addresses", master_addrs, "modify_placement_info",
                 placement_locations, replication_factor]
         out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)

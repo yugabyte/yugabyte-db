@@ -116,7 +116,8 @@ export const MetricTypesWithOperations = {
       'tserver_glog_info_messages',
       'tserver_rpc_queue_size_tserver',
       'tserver_cpu_util_secs',
-      'tserver_yb_rpc_connections'
+      'tserver_yb_rpc_connections',
+      'raft_leader'
     ]
   },
   master: {

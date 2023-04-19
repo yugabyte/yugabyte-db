@@ -197,7 +197,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                   ImmutableMap.of("q", "v", "q1", "v1", "q3", "v3");
             });
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     Map<String, String> newTags = ImmutableMap.of("q", "vq", "q2", "v2");
     taskParams.getPrimaryCluster().userIntent.instanceTags = newTags;
 
@@ -216,7 +216,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
             .stream()
             .map(t -> t.getTaskType())
             .collect(Collectors.toCollection(ArrayList::new)));
-    JsonNode details = instanceActions.get(0).getTaskDetails();
+    JsonNode details = instanceActions.get(0).getDetails();
     assertEquals(Json.toJson(newTags), details.get("tags"));
     assertEquals("q1,q3", details.get("deleteTags").asText());
 
@@ -246,7 +246,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
                   ImmutableMap.of("q", "v");
             });
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     Map<String, String> newTags = ImmutableMap.of("q1", "v1");
     taskParams.getPrimaryCluster().userIntent.instanceTags = newTags;
 
@@ -267,7 +267,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE, subTasksByPosition);
-    universe = Universe.getOrBadRequest(universe.universeUUID);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }
 
@@ -276,7 +276,6 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     AvailabilityZone zone = AvailabilityZone.getByCode(onPremProvider, AZ_CODE);
     createOnpremInstance(zone);
     createOnpremInstance(zone);
-
     Universe universe = onPremUniverse;
     UniverseDefinitionTaskParams taskParams = performExpand(universe);
     TaskInfo taskInfo = submitTask(taskParams);
@@ -285,7 +284,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM, subTasksByPosition);
-    universe = Universe.getOrBadRequest(universe.universeUUID);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     assertEquals(5, universe.getUniverseDetails().nodeDetailsSet.size());
   }
 
@@ -321,7 +320,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private UniverseDefinitionTaskParams performExpand(Universe universe) {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
-    taskParams.universeUUID = universe.universeUUID;
+    taskParams.setUniverseUUID(universe.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;
     taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
     taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
@@ -334,7 +333,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     newUserIntent.numNodes = 5;
     taskParams.getPrimaryCluster().userIntent = newUserIntent;
     PlacementInfoUtil.updateUniverseDefinition(
-        taskParams, defaultCustomer.getCustomerId(), primaryCluster.uuid, EDIT);
+        taskParams, defaultCustomer.getId(), primaryCluster.uuid, EDIT);
 
     int iter = 1;
     for (NodeDetails node : taskParams.nodeDetailsSet) {

@@ -55,6 +55,21 @@ using client::YBClient;
 using client::YBTableName;
 using tserver::XClusterConsumer;
 
+Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterTestBase::CreateCluster(
+    const std::string& cluster_id, const std::string& cluster_short_name, uint32_t num_tservers,
+    uint32_t num_masters) {
+  MiniClusterOptions opts;
+  opts.num_tablet_servers = num_tservers;
+  opts.num_masters = num_masters;
+  opts.cluster_id = cluster_id;
+  TEST_SetThreadPrefixScoped prefix_se(cluster_short_name);
+  std::unique_ptr<Cluster> cluster = std::make_unique<Cluster>();
+  cluster->mini_cluster_ = std::make_unique<MiniCluster>(opts);
+  RETURN_NOT_OK(cluster->mini_cluster_.get()->StartSync());
+  cluster->client_ = VERIFY_RESULT(cluster->mini_cluster_.get()->CreateClient());
+  return cluster;
+}
+
 Status XClusterTestBase::InitClusters(const MiniClusterOptions& opts) {
   FLAGS_replication_factor = static_cast<int>(opts.num_tablet_servers);
   // Disable tablet split for regular tests, see xcluster-tablet-split-itest for those tests.
@@ -153,6 +168,10 @@ Status XClusterTestBase::WaitForLoadBalancersToStabilize() {
   RETURN_NOT_OK(
       producer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout)));
   return consumer_cluster()->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
+}
+
+Status XClusterTestBase::WaitForLoadBalancersToStabilize(MiniCluster* cluster) {
+  return cluster->WaitForLoadBalancerToStabilize(MonoDelta::FromSeconds(kRpcTimeout));
 }
 
 Status XClusterTestBase::CreateDatabase(
@@ -522,20 +541,18 @@ Status XClusterTestBase::WaitForSetupUniverseReplicationCleanUp(string producer_
 }
 
 Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
-    const NamespaceId& namespace_id, Cluster* cluster) {
+    const NamespaceId& namespace_id, Cluster* cluster, boost::optional<CoarseTimePoint> deadline) {
   if (!cluster) {
     cluster = &consumer_cluster_;
   }
-
+  if (!deadline) {
+    deadline = PropagationDeadline();
+  }
+  const auto description = Format("Wait for safe_time of namespace $0 to be valid", namespace_id);
+  RETURN_NOT_OK(
+      WaitForRoleChangeToPropogateToAllTServers(cdc::XClusterRole::STANDBY, cluster, deadline));
   for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
-    RETURN_NOT_OK(WaitFor(
-        [&]() -> Result<bool> {
-          auto xcluster_role = tserver->server()->TEST_GetXClusterRole();
-          return xcluster_role && xcluster_role.get() == cdc::XClusterRole::STANDBY;
-        },
-        safe_time_propagation_timeout_, "Wait for cluster to be in STANDBY"));
-
-    RETURN_NOT_OK(WaitFor(
+    RETURN_NOT_OK(Wait(
         [&]() -> Result<bool> {
           auto safe_time_result =
               tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
@@ -545,8 +562,30 @@ Status XClusterTestBase::WaitForValidSafeTimeOnAllTServers(
           CHECK(safe_time_result.get()->is_valid());
           return true;
         },
-        safe_time_propagation_timeout_,
-        Format("Wait for safe_time of namespace $0 to be valid", namespace_id)));
+        *deadline,
+        description));
+  }
+
+  return Status::OK();
+}
+
+Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
+    cdc::XClusterRole expected_role, Cluster* cluster, boost::optional<CoarseTimePoint> deadline) {
+  if (!cluster) {
+    cluster = &consumer_cluster_;
+  }
+  if (!deadline) {
+    deadline = PropagationDeadline();
+  }
+  const auto description = Format("Wait for cluster to be in $0", XClusterRole_Name(expected_role));
+  for (auto& tserver : cluster->mini_cluster_->mini_tablet_servers()) {
+    RETURN_NOT_OK(Wait(
+        [&]() -> Result<bool> {
+          auto xcluster_role = tserver->server()->TEST_GetXClusterRole();
+          return xcluster_role && xcluster_role.get() == expected_role;
+        },
+        *deadline,
+        description));
   }
 
   return Status::OK();
@@ -617,6 +656,96 @@ Status XClusterTestBase::SetupWaitForReplicationDrainStatus(
                expected_num_nondrained, api_resp.undrained_stream_info_size()));
   }
   return Status::OK();
+}
+
+void XClusterTestBase::VerifyReplicationError(
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const boost::optional<ReplicationErrorPb>
+        expected_replication_error) {
+  // 1. Verify that the RPC contains the expected error.
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+
+  req.set_universe_id(kUniverseId);
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        rpc.Reset();
+        rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+        if (!master_proxy->GetReplicationStatus(req, &resp, &rpc).ok()) {
+          return false;
+        }
+
+        if (resp.has_error()) {
+          return false;
+        }
+
+        if (resp.statuses_size() == 0 || (resp.statuses()[0].table_id() != consumer_table_id &&
+                                          resp.statuses()[0].stream_id() != stream_id)) {
+          return false;
+        }
+
+        if (expected_replication_error) {
+          return resp.statuses()[0].errors_size() == 1 &&
+                 resp.statuses()[0].errors()[0].error() == *expected_replication_error;
+        } else {
+          return resp.statuses()[0].errors_size() == 0;
+        }
+      },
+      MonoDelta::FromSeconds(30), "Waiting for replication error"));
+
+  // 2. Verify that the yb-admin output contains the expected error.
+  auto admin_out =
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kUniverseId));
+  if (expected_replication_error) {
+    ASSERT_TRUE(
+        admin_out.find(Format("error: $0", ReplicationErrorPb_Name(*expected_replication_error))) !=
+        std::string::npos);
+  } else {
+    ASSERT_TRUE(admin_out.find("error:") == std::string::npos);
+  }
+}
+
+Result<CDCStreamId> XClusterTestBase::GetCDCStreamID(const std::string& producer_table_id) {
+  master::ListCDCStreamsResponsePB stream_resp;
+  RETURN_NOT_OK(GetCDCStreamForTable(producer_table_id, &stream_resp));
+
+  SCHECK_EQ(
+      stream_resp.streams_size(), 1, IllegalState,
+      Format("Expected 1 stream, have $0", stream_resp.streams_size()));
+
+  SCHECK_EQ(
+      stream_resp.streams(0).table_id().Get(0), producer_table_id, IllegalState,
+      Format(
+          "Expected table id $0, have $1", producer_table_id,
+          stream_resp.streams(0).table_id().Get(0)));
+
+  return stream_resp.streams(0).stream_id();
+}
+
+Status XClusterTestBase::PauseResumeXClusterProducerStreams(
+    const std::vector<std::string>& stream_ids, bool is_paused) {
+  master::PauseResumeXClusterProducerStreamsRequestPB req;
+  master::PauseResumeXClusterProducerStreamsResponsePB resp;
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  for (const auto& stream_id : stream_ids) {
+    req.add_stream_ids(stream_id);
+  }
+  req.set_is_paused(is_paused);
+  RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
+  return StatusFromPB(resp.error().status());
 }
 
 } // namespace yb

@@ -61,9 +61,13 @@ public class NodeConfigTest extends FakeDBApplication {
     keyInfo.installNodeExporter = false;
     keyInfo.skipProvisioning = false;
     keyInfo.sshPort = 22;
-    accessKey = AccessKey.create(provider.uuid, "access-code1", keyInfo);
+    accessKey = AccessKey.create(provider.getUuid(), "access-code1", keyInfo);
     InstanceType.upsert(
-        provider.uuid, "c5.xlarge", 4 /* cores */, 10.0 /* mem in GB */, new InstanceTypeDetails());
+        provider.getUuid(),
+        "c5.xlarge",
+        4 /* cores */,
+        10.0 /* mem in GB */,
+        new InstanceTypeDetails());
     setProviderRuntimeConfig("min_python_version", "2.7");
     setProviderRuntimeConfig("min_tmp_dir_space_mb", "100");
     setProviderRuntimeConfig("user", "dummyUser");
@@ -100,7 +104,7 @@ public class NodeConfigTest extends FakeDBApplication {
     instanceData.nodeConfigs.add(sshPort);
     instanceData.nodeConfigs.add(mountPointsWritable);
     Map<Type, ValidationResult> results =
-        nodeConfigValidator.validateNodeConfigs(provider, instanceData);
+        nodeConfigValidator.validateNodeConfigs(provider, instanceData, true);
     // All the defined types must be present.
     assertEquals(instanceData.nodeConfigs.size() + 1, results.keySet().size());
     // Get the count of valid configs.
@@ -120,7 +124,7 @@ public class NodeConfigTest extends FakeDBApplication {
     // Min RAM size in InstanceType is 10GB.
     // This must fail.
     ramSize.setValue("9000");
-    results = nodeConfigValidator.validateNodeConfigs(provider, instanceData);
+    results = nodeConfigValidator.validateNodeConfigs(provider, instanceData, true);
     assertEquals(instanceData.nodeConfigs.size() + 1, results.keySet().size());
     validCount = results.values().stream().filter(r -> r.isValid()).count();
     assertEquals(6, validCount);
@@ -132,7 +136,7 @@ public class NodeConfigTest extends FakeDBApplication {
     // One mount point is not writable
     // This must fail.
     mountPointsWritable.setValue("{\"/mnt\": \"true\", \"/mnt1\": \"false\"}");
-    results = nodeConfigValidator.validateNodeConfigs(provider, instanceData);
+    results = nodeConfigValidator.validateNodeConfigs(provider, instanceData, true);
     assertEquals(instanceData.nodeConfigs.size() + 1, results.keySet().size());
     validCount = results.values().stream().filter(r -> r.isValid()).count();
     assertEquals(6, validCount);
@@ -145,7 +149,7 @@ public class NodeConfigTest extends FakeDBApplication {
     accessKey.getKeyInfo().installNodeExporter = true;
     accessKey.save();
     instanceData.nodeConfigs.add(noNodeExporter);
-    results = nodeConfigValidator.validateNodeConfigs(provider, instanceData);
+    results = nodeConfigValidator.validateNodeConfigs(provider, instanceData, true);
     assertEquals(instanceData.nodeConfigs.size() + 1, results.keySet().size());
     validCount = results.values().stream().filter(r -> r.isValid()).count();
     assertEquals(8, validCount);

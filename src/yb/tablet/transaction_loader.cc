@@ -14,9 +14,9 @@
 #include "yb/tablet/transaction_loader.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/tablet/transaction_status_resolver.h"
 
@@ -80,28 +80,40 @@ class TransactionLoader::Executor {
   void Execute() {
     SetThreadName("TransactionLoader");
 
-    auto se = ScopeExit([this] {
+    Status status;
+
+    auto se = ScopeExit([this, &status] {
       auto pending_applies = std::move(pending_applies_);
       TransactionLoaderContext& context = loader_.context_;
       loader_.executor_.reset();
 
-      context.LoadFinished(pending_applies);
+      if (status.ok()) {
+        context.LoadFinished(pending_applies);
+        return;
+      }
+
+      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      loader_.load_status_ = status;
+      loader_.state_.store(TransactionLoaderState::kLoadFailed, std::memory_order_release);
     });
 
     LOG_WITH_PREFIX(INFO) << "Load transactions start";
 
-    LoadPendingApplies();
-    LoadTransactions();
+    status = LoadPendingApplies();
+    if (!status.ok()) {
+      return;
+    }
+    status = LoadTransactions();
   }
 
-  void LoadTransactions() {
+  Status LoadTransactions() {
     size_t loaded_transactions = 0;
     TransactionId id = TransactionId::Nil();
-    AppendTransactionKeyPrefix(id, &current_key_);
+    docdb::AppendTransactionKeyPrefix(id, &current_key_);
     intents_iterator_.Seek(current_key_.AsSlice());
     while (intents_iterator_.Valid()) {
       auto key = intents_iterator_.key();
-      if (!key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionId)) {
+      if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionId)) {
         break;
       }
       auto decode_id_result = DecodeTransactionId(&key);
@@ -113,22 +125,23 @@ class TransactionLoader::Executor {
       }
       id = *decode_id_result;
       current_key_.Clear();
-      AppendTransactionKeyPrefix(id, &current_key_);
+      docdb::AppendTransactionKeyPrefix(id, &current_key_);
       if (key.empty()) { // The key only contains a transaction id - it is metadata record.
         if (FLAGS_TEST_inject_load_transaction_delay_ms > 0) {
           std::this_thread::sleep_for(FLAGS_TEST_inject_load_transaction_delay_ms * 1ms);
         }
-        LoadTransaction(id);
+        RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;
       }
-      current_key_.AppendKeyEntryType(docdb::KeyEntryType::kMaxByte);
+      current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
       intents_iterator_.Seek(current_key_.AsSlice());
     }
+    RETURN_NOT_OK(intents_iterator_.status());
 
     intents_iterator_.Reset();
 
     context().CompleteLoad([this] {
-      loader_.all_loaded_.store(true, std::memory_order_release);
+      loader_.state_.store(TransactionLoaderState::kLoadCompleted, std::memory_order_release);
     });
     {
       // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
@@ -149,27 +162,28 @@ class TransactionLoader::Executor {
     }
     loader_.load_cond_.notify_all();
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
+    return Status::OK();
   }
 
-  void LoadPendingApplies() {
+  Status LoadPendingApplies() {
     std::array<char, 1 + sizeof(TransactionId) + 1> seek_buffer;
-    seek_buffer[0] = docdb::KeyEntryTypeAsChar::kTransactionApplyState;
-    seek_buffer[seek_buffer.size() - 1] = docdb::KeyEntryTypeAsChar::kMaxByte;
+    seek_buffer[0] = dockv::KeyEntryTypeAsChar::kTransactionApplyState;
+    seek_buffer[seek_buffer.size() - 1] = dockv::KeyEntryTypeAsChar::kMaxByte;
     regular_iterator_.Seek(Slice(seek_buffer.data(), 1));
 
     while (regular_iterator_.Valid()) {
       auto key = regular_iterator_.key();
-      if (!key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState)) {
+      if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionApplyState)) {
         break;
       }
       auto txn_id = DecodeTransactionId(&key);
-      if (!txn_id.ok() || !key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kGroupEnd)) {
+      if (!txn_id.ok() || !key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kGroupEnd)) {
         LOG_WITH_PREFIX(DFATAL) << "Wrong txn id: " << regular_iterator_.key().ToDebugString();
         regular_iterator_.Next();
         continue;
       }
       Slice value = regular_iterator_.value();
-      if (value.TryConsumeByte(docdb::ValueEntryTypeAsChar::kString)) {
+      if (value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kString)) {
         auto pb = pb_util::ParseFromSlice<docdb::ApplyTransactionStatePB>(value);
         if (!pb.ok()) {
           LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state pb from RocksDB"
@@ -193,7 +207,7 @@ class TransactionLoader::Executor {
 
         VLOG_WITH_PREFIX(4) << "Loaded pending apply for " << *txn_id << ": "
                             << it->second.ToString();
-      } else if (value.TryConsumeByte(docdb::ValueEntryTypeAsChar::kTombstone)) {
+      } else if (value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kTombstone)) {
         VLOG_WITH_PREFIX(4) << "Found deleted large apply for " << *txn_id;
       } else {
         LOG_WITH_PREFIX(DFATAL)
@@ -203,10 +217,11 @@ class TransactionLoader::Executor {
       memcpy(seek_buffer.data() + 1, txn_id->data(), txn_id->size());
       ROCKSDB_SEEK(&regular_iterator_, Slice(seek_buffer));
     }
+    return regular_iterator_.status();
   }
 
   // id - transaction id to load.
-  void LoadTransaction(const TransactionId& id) {
+  Status LoadTransaction(const TransactionId& id) {
     metric_transaction_load_attempts_->Increment();
     VLOG_WITH_PREFIX(1) << "Loading transaction: " << id;
 
@@ -214,16 +229,12 @@ class TransactionLoader::Executor {
 
     const Slice& value = intents_iterator_.value();
     if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
-      LOG_WITH_PREFIX(DFATAL) << "Unable to parse stored metadata: "
-                              << value.ToDebugHexString();
-      return;
+      return STATUS_FORMAT(
+          IllegalState, "Unable to parse stored metadata: $0", value.ToDebugHexString());
     }
 
     auto metadata = TransactionMetadata::FromPB(metadata_pb);
-    if (!metadata.ok()) {
-      LOG_WITH_PREFIX(DFATAL) << "Loaded bad metadata: " << metadata.status();
-      return;
-    }
+    RETURN_NOT_OK_PREPEND(metadata, "Loaded bad metadata: ");
 
     if (!metadata->start_time.is_valid()) {
       metadata->start_time = HybridTime::kMin;
@@ -233,7 +244,7 @@ class TransactionLoader::Executor {
 
     TransactionalBatchData last_batch_data;
     OneWayBitmap replicated_batches;
-    FetchLastBatchData(id, &last_batch_data, &replicated_batches);
+    RETURN_NOT_OK(FetchLastBatchData(id, &last_batch_data, &replicated_batches));
 
     if (!status_resolver_) {
       status_resolver_ = &context().AddStatusResolver();
@@ -249,31 +260,33 @@ class TransactionLoader::Executor {
       loader_.last_loaded_ = id;
     }
     loader_.load_cond_.notify_all();
+    return Status::OK();
   }
 
-  void FetchLastBatchData(
+  Status FetchLastBatchData(
       const TransactionId& id,
       TransactionalBatchData* last_batch_data,
       OneWayBitmap* replicated_batches) {
-    current_key_.AppendKeyEntryType(docdb::KeyEntryType::kMaxByte);
+    current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
     intents_iterator_.Seek(current_key_.AsSlice());
     if (intents_iterator_.Valid()) {
       intents_iterator_.Prev();
     } else {
+      RETURN_NOT_OK(intents_iterator_.status());
       intents_iterator_.SeekToLast();
     }
     current_key_.RemoveLastByte();
     while (intents_iterator_.Valid() && intents_iterator_.key().starts_with(current_key_)) {
-      auto decoded_key = docdb::DecodeIntentKey(intents_iterator_.value());
+      auto decoded_key = dockv::DecodeIntentKey(intents_iterator_.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
           << "Failed to decode intent while loading transaction " << id << ", "
           << intents_iterator_.key().ToDebugHexString() << " => "
           << intents_iterator_.value().ToDebugHexString() << ": " << decoded_key.status();
-      if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
+      if (decoded_key.ok() && dockv::HasStrong(decoded_key->intent_types)) {
         last_batch_data->hybrid_time = CHECK_RESULT(decoded_key->doc_ht.Decode()).hybrid_time();
         Slice rev_key_slice(intents_iterator_.value());
         // Required by the transaction sealing protocol.
-        if (!rev_key_slice.empty() && rev_key_slice[0] == docdb::KeyEntryTypeAsChar::kBitSet) {
+        if (!rev_key_slice.empty() && rev_key_slice[0] == dockv::KeyEntryTypeAsChar::kBitSet) {
           CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
           rev_key_slice.remove_prefix(1);
           auto result = OneWayBitmap::Decode(&rev_key_slice);
@@ -295,14 +308,14 @@ class TransactionLoader::Executor {
         if (intents_iterator_.Valid() && intents_iterator_.key().starts_with(rev_key)) {
           VLOG_WITH_PREFIX(1)
               << "Found latest record for " << id
-              << ": " << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key())
+              << ": " << dockv::SubDocKey::DebugSliceToString(intents_iterator_.key())
               << " => " << intents_iterator_.value().ToDebugHexString();
           auto txn_id_slice = id.AsSlice();
-          auto decoded_value_or_status = docdb::DecodeIntentValue(
+          auto decoded_value_or_status = dockv::DecodeIntentValue(
               intents_iterator_.value(), &txn_id_slice);
           LOG_IF_WITH_PREFIX(DFATAL, !decoded_value_or_status.ok())
               << "Failed to decode intent value: " << decoded_value_or_status.status() << ", "
-              << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key()) << " => "
+              << dockv::SubDocKey::DebugSliceToString(intents_iterator_.key()) << " => "
               << intents_iterator_.value().ToDebugHexString();
           if (decoded_value_or_status.ok()) {
             last_batch_data->next_write_id = decoded_value_or_status->write_id;
@@ -311,8 +324,10 @@ class TransactionLoader::Executor {
         }
         break;
       }
+      RETURN_NOT_OK(intents_iterator_.status());
       intents_iterator_.Prev();
     }
+    return intents_iterator_.status();
   }
 
   TransactionLoaderContext& context() const {
@@ -330,7 +345,7 @@ class TransactionLoader::Executor {
   docdb::BoundedRocksDbIterator intents_iterator_;
 
   // Buffer that contains key of current record, i.e. value type + transaction id.
-  docdb::KeyBytes current_key_;
+  dockv::KeyBytes current_key_;
 
   TransactionStatusResolver* status_resolver_ = nullptr;
 
@@ -361,30 +376,32 @@ constexpr auto kWaitLoadedWakeUpInterval = 10s;
 
 }  // namespace
 
-void TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
-  if (all_loaded_.load(std::memory_order_acquire)) {
-    return;
+Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
+  if (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted) {
+    return Status::OK();
   }
   std::unique_lock<std::mutex> lock(mutex_);
   // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
-  while (!all_loaded_.load(std::memory_order_acquire)) {
+  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadNotFinished) {
     if (last_loaded_ >= id) {
       break;
     }
     load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
+  return load_status_;
 }
 
 // Disable thread safety analysis because std::unique_lock is used.
-void TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
-  if (all_loaded_.load(std::memory_order_acquire)) {
-    return;
+Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
+  if (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted) {
+    return Status::OK();
   }
   // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   std::unique_lock<std::mutex> lock(mutex_);
-  while (!all_loaded_.load(std::memory_order_acquire)) {
+  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadNotFinished) {
     load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
+  return load_status_;
 }
 
 void TransactionLoader::Shutdown() {

@@ -11,10 +11,9 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -32,11 +31,14 @@ import javax.persistence.Entity;
 import javax.persistence.ManyToOne;
 import lombok.Data;
 import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.time.DateUtils;
 import play.data.validation.Constraints;
 
 @Entity
+@Getter
+@Setter
 @ApiModel(
     description =
         "Access key for the cloud provider. This helps to "
@@ -118,21 +120,23 @@ public class AccessKey extends Model {
   }
 
   public static String getDefaultKeyCode(Provider provider) {
-    String sanitizedProviderName = provider.name.replaceAll("\\s+", "-").toLowerCase();
+    String sanitizedProviderName = provider.getName().replaceAll("\\s+", "-").toLowerCase();
     return String.format(
         "yb-%s-%s_%s-key",
-        Customer.get(provider.customerUUID).code, sanitizedProviderName, provider.uuid);
+        Customer.get(provider.getCustomerUUID()).getCode(),
+        sanitizedProviderName,
+        provider.getUuid());
   }
 
   // scheduled access key rotation task uses this
   // since the granularity for that is days,
   // we can safely use a timestamp with second granularity
   public static String getNewKeyCode(Provider provider) {
-    String sanitizedProviderName = provider.name.replaceAll("\\s+", "-").toLowerCase();
+    String sanitizedProviderName = provider.getName().replaceAll("\\s+", "-").toLowerCase();
     String timestamp = generateKeyCodeTimestamp();
     return String.format(
         "yb-%s-%s-key-%s",
-        Customer.get(provider.customerUUID).code, sanitizedProviderName, timestamp);
+        Customer.get(provider.getCustomerUUID()).getCode(), sanitizedProviderName, timestamp);
   }
 
   // Generates a new keycode by appending the timestamp to the
@@ -165,30 +169,30 @@ public class AccessKey extends Model {
   @ApiModelProperty(required = true)
   @EmbeddedId
   @Constraints.Required
-  public AccessKeyId idKey;
+  private AccessKeyId idKey;
 
   @ApiModelProperty(required = false, hidden = true)
   @JsonIgnore
   public String getKeyCode() {
-    if (this.idKey == null) {
+    if (this.getIdKey() == null) {
       return null;
     }
-    return this.idKey.keyCode;
+    return this.getIdKey().keyCode;
   }
 
   @ApiModelProperty(required = false, hidden = true)
   @JsonIgnore
   public UUID getProviderUUID() {
-    if (this.idKey == null) {
+    if (this.getIdKey() == null) {
       return null;
     }
-    return this.idKey.providerUUID;
+    return this.getIdKey().providerUUID;
   }
 
   @Column(nullable = false)
   @ManyToOne
   @JsonBackReference("provider-accessKey")
-  public Provider provider;
+  private Provider provider;
 
   @Constraints.Required
   @Column(nullable = false, columnDefinition = "TEXT")
@@ -196,15 +200,10 @@ public class AccessKey extends Model {
   @DbJson
   private KeyInfo keyInfo;
 
-  public void setKeyInfo(KeyInfo info) {
-    this.keyInfo = info;
-  }
-
   public KeyInfo getKeyInfo() {
     try {
-      Provider provider = Provider.getOrBadRequest(getProviderUUID());
-      if (provider.details != null) {
-        keyInfo.mergeFrom(provider.details);
+      if (provider != null && provider.getDetails() != null) {
+        keyInfo.mergeFrom(provider.getDetails());
       } else {
         keyInfo.mergeFrom(new ProviderDetails());
       }
@@ -224,16 +223,16 @@ public class AccessKey extends Model {
       accessMode = AccessMode.READ_WRITE)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Getter
-  public Date expirationDate;
+  private Date expirationDate;
 
   @JsonIgnore
-  public void setExpirationDate(int expirationThresholdDays) {
-    this.expirationDate = DateUtils.addDays(this.creationDate, expirationThresholdDays);
+  public void setExpirationDateDays(int expirationThresholdDays) {
+    this.setExpirationDate(DateUtils.addDays(this.creationDate, expirationThresholdDays));
   }
 
   @JsonIgnore
   public void updateExpirationDate(int expirationThresholdDays) {
-    this.setExpirationDate(expirationThresholdDays);
+    this.setExpirationDateDays(expirationThresholdDays);
     this.save();
   }
 
@@ -245,15 +244,15 @@ public class AccessKey extends Model {
       accessMode = AccessMode.READ_ONLY)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Getter
-  public Date creationDate;
+  private Date creationDate;
 
   public void setCreationDate() {
-    this.creationDate = new Date();
+    this.setCreationDate(new Date());
   }
 
   public static AccessKey create(UUID providerUUID, String keyCode, KeyInfo keyInfo) {
     AccessKey accessKey = new AccessKey();
-    accessKey.idKey = AccessKeyId.create(providerUUID, keyCode);
+    accessKey.setIdKey(AccessKeyId.create(providerUUID, keyCode));
     accessKey.setKeyInfo(keyInfo);
     accessKey.setCreationDate();
     accessKey.save();
@@ -263,7 +262,7 @@ public class AccessKey extends Model {
   public void deleteOrThrow() {
     if (!super.delete()) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Delete unsuccessful for: " + this.idKey);
+          INTERNAL_SERVER_ERROR, "Delete unsuccessful for: " + this.getIdKey());
     }
   }
 
@@ -289,10 +288,10 @@ public class AccessKey extends Model {
 
   public void mergeProviderDetails() {
     Provider provider = Provider.getOrBadRequest(getProviderUUID());
-    if (provider.details != null) {
-      keyInfo.mergeFrom(provider.details);
+    if (provider.getDetails() != null) {
+      getKeyInfo().mergeFrom(provider.getDetails());
     } else {
-      keyInfo.mergeFrom(new ProviderDetails());
+      getKeyInfo().mergeFrom(new ProviderDetails());
     }
   }
 
@@ -328,7 +327,7 @@ public class AccessKey extends Model {
     return getLatestAccessKeyQuery(providerUUID).findOne();
   }
 
-  public static Query<AccessKey> getLatestAccessKeyQuery(UUID providerUUID) {
+  public static ExpressionList<AccessKey> getLatestAccessKeyQuery(UUID providerUUID) {
     return find.query()
         .where()
         .eq("provider_uuid", providerUUID)

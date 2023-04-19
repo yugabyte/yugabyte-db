@@ -238,18 +238,18 @@ TEST_F(DocDBRocksDBUtilTest, RocksDBRateLimiter) {
     constexpr int64_t kBPS = 64_MB;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec) = kBPS;
     std::shared_ptr<rocksdb::RateLimiter> raw_limiter(rocksdb::NewGenericRateLimiter(kBPS));
-    ASSERT_NOTNULL(raw_limiter.get());
+    ASSERT_ONLY_NOTNULL(raw_limiter.get());
     util_limiter = CreateRocksDBRateLimiter();
-    ASSERT_NOTNULL(util_limiter.get());
+    ASSERT_ONLY_NOTNULL(util_limiter.get());
     ASSERT_EQ(util_limiter->GetSingleBurstBytes(), raw_limiter->GetSingleBurstBytes());
 
     // Decrease bytes per sec
     constexpr auto kFactor = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rocksdb_compact_flush_rate_limit_bytes_per_sec)
       = kBPS / kFactor;
-    ASSERT_NOTNULL(raw_limiter.get());
+    ASSERT_ONLY_NOTNULL(raw_limiter.get());
     util_limiter = CreateRocksDBRateLimiter();
-    ASSERT_NOTNULL(util_limiter.get());
+    ASSERT_ONLY_NOTNULL(util_limiter.get());
     ASSERT_EQ(util_limiter->GetSingleBurstBytes(), raw_limiter->GetSingleBurstBytes() / kFactor);
   }
 }

@@ -81,7 +81,7 @@ public class SnapshotCleanup {
                   }
                 });
       } catch (Exception e) {
-        LOG.error("Error fetching Orphan snapshots for Universe: {}", universe.universeUUID);
+        LOG.error("Error fetching Orphan snapshots for Universe: {}", universe.getUniverseUUID());
       } finally {
         ybService.closeClient(ybClient, masterHostPorts);
       }

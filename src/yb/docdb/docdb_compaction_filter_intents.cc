@@ -20,11 +20,11 @@
 
 #include "yb/common/common.pb.h"
 
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/intent.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/intent.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/compaction_filter.h"
 
@@ -51,11 +51,8 @@ DEFINE_UNKNOWN_uint64(intents_compaction_filter_max_errors_to_log, 100,
 
 DECLARE_uint32(external_transaction_retention_window_secs);
 
-using std::shared_ptr;
 using std::unique_ptr;
-using std::unordered_set;
 using rocksdb::CompactionFilter;
-using rocksdb::VectorToString;
 
 namespace yb {
 namespace docdb {
@@ -85,7 +82,7 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   void AddToSet(const TransactionId& transaction_id, TransactionIdSet* set);
 
  private:
-  void CleanupTransactions();
+  Status CleanupTransactions();
 
   std::string LogPrefix() const;
 
@@ -116,17 +113,17 @@ class DocDBIntentsCompactionFilter : public rocksdb::CompactionFilter {
   } \
 }
 
-void DocDBIntentsCompactionFilter::CleanupTransactions() {
+Status DocDBIntentsCompactionFilter::CleanupTransactions() {
   VLOG_WITH_PREFIX(3) << "DocDB intents compaction filter is being deleted";
   if (transactions_to_cleanup_.empty()) {
-    return;
+    return Status::OK();
   }
   TransactionStatusManager* manager = tablet_->transaction_participant();
   if (rejected_transactions_ > 0) {
     LOG_WITH_PREFIX(WARNING) << "Number of aborted transactions not cleaned up " <<
                                 "on account of reaching size limits:" << rejected_transactions_;
   }
-  manager->Cleanup(std::move(transactions_to_cleanup_));
+  return manager->Cleanup(std::move(transactions_to_cleanup_));
 }
 
 DocDBIntentsCompactionFilter::~DocDBIntentsCompactionFilter() {
@@ -200,7 +197,8 @@ Result<boost::optional<TransactionId>> DocDBIntentsCompactionFilter::FilterTrans
 
   Slice key_slice = key;
   return VERIFY_RESULT_PREPEND(
-      DecodeTransactionIdFromIntentValue(&key_slice), "Could not decode Transaction metadata");
+      dockv::DecodeTransactionIdFromIntentValue(&key_slice),
+      "Could not decode Transaction metadata");
 }
 
 Result<rocksdb::FilterDecision>
@@ -213,7 +211,7 @@ DocDBIntentsCompactionFilter::FilterExternalIntent(const Slice& key) {
   RETURN_NOT_OK_PREPEND(
       DecodeTransactionId(&key_slice), "Could not decode external transaction id");
   auto doc_hybrid_time = VERIFY_RESULT_PREPEND(
-      DecodeInvertedDocHt(key_slice), "Could not decode hybrid time");
+      dockv::DecodeInvertedDocHt(key_slice), "Could not decode hybrid time");
   auto write_time_micros = doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
   int64_t delta_micros = compaction_start_time_ - write_time_micros;
   if (delta_micros >
@@ -228,7 +226,10 @@ void DocDBIntentsCompactionFilter::CompactionFinished() {
     LOG_WITH_PREFIX(WARNING) << Format(
         "Found $0 total errors during intents compaction filter.", num_errors_);
   }
-  CleanupTransactions();
+  const auto s = CleanupTransactions();
+  if (!s.ok()) {
+    YB_LOG_EVERY_N_SECS(DFATAL, 60) << "Error cleaning up transactions: " << AsString(s);
+  }
 }
 
 void DocDBIntentsCompactionFilter::AddToSet(const TransactionId& transaction_id,

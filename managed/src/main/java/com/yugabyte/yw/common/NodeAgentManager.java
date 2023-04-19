@@ -126,8 +126,8 @@ public class NodeAgentManager {
         appConfig.getString("yb.storage.path"),
         "node-agent",
         "certs",
-        nodeAgent.customerUuid.toString(),
-        nodeAgent.uuid.toString());
+        nodeAgent.getCustomerUuid().toString(),
+        nodeAgent.getUuid().toString());
   }
 
   private Path getOrCreateCertDirectory(NodeAgent nodeAgent, String certDir) {
@@ -139,7 +139,7 @@ public class NodeAgentManager {
   // Certs are created in each directory <base-cert-dir>/<index>/.
   // The index keeps increasing.
   private Path getOrCreateNextCertDirectory(NodeAgent nodeAgent) {
-    String certDirPath = nodeAgent.config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    String certDirPath = nodeAgent.getConfig().get(NodeAgent.CERT_DIR_PATH_PROPERTY);
     if (StringUtils.isBlank(certDirPath)) {
       return getOrCreateCertDirectory(nodeAgent, "0");
     }
@@ -150,7 +150,7 @@ public class NodeAgentManager {
   private static Pair<X509Certificate, KeyPair> createRootCert(
       NodeAgent nodeAgent, String certPath, String keyPath) {
     try {
-      String certLabel = nodeAgent.uuid.toString();
+      String certLabel = nodeAgent.getUuid().toString();
       KeyPair keyPair = CertificateHelper.getKeyPairObject();
       X509Certificate x509 =
           CertificateHelper.generateCACertificate(certLabel, keyPair, CERT_EXPIRY_YEARS);
@@ -158,10 +158,10 @@ public class NodeAgentManager {
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), keyPath);
       return new ImmutablePair<>(x509, keyPair);
     } catch (RuntimeException e) {
-      log.error("Failed to create root cert for node agent {}", nodeAgent.uuid, e);
+      log.error("Failed to create root cert for node agent {}", nodeAgent.getUuid(), e);
       throw e;
     } catch (Exception e) {
-      log.error("Failed to create root cert for node agent {}", nodeAgent.uuid, e);
+      log.error("Failed to create root cert for node agent {}", nodeAgent.getUuid(), e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }
@@ -175,7 +175,9 @@ public class NodeAgentManager {
       int expiryYrs) {
     try {
       Map<String, Integer> sans =
-          ImmutableMap.<String, Integer>builder().put(nodeAgent.ip, GeneralName.iPAddress).build();
+          ImmutableMap.<String, Integer>builder()
+              .put(nodeAgent.getIp(), GeneralName.iPAddress)
+              .build();
 
       // Add the security provider in case createSignedCertificate was never called.
       KeyPair keyPair = CertificateHelper.getKeyPairObject();
@@ -183,15 +185,15 @@ public class NodeAgentManager {
       X500Name subject = new JcaX509CertificateHolder(caCert).getSubject();
       X509Certificate x509 =
           CertificateHelper.createAndSignCertificate(
-              nodeAgent.ip, subject, keyPair, caCert, caPrivateKey, sans, expiryYrs);
+              nodeAgent.getIp(), subject, keyPair, caCert, caPrivateKey, sans, expiryYrs);
       CertificateHelper.writeCertFileContentToCertPath(x509, serverCertPath);
       CertificateHelper.writeKeyFileContentToKeyPath(keyPair.getPrivate(), serverKeyPath);
       return new ImmutablePair<>(x509, keyPair);
     } catch (RuntimeException e) {
-      log.error("Failed to create server cert for node agent {}", nodeAgent.uuid, e);
+      log.error("Failed to create server cert for node agent {}", nodeAgent.getUuid(), e);
       throw e;
     } catch (Exception e) {
-      log.error("Failed to create server cert for node agent {}", nodeAgent.uuid, e);
+      log.error("Failed to create server cert for node agent {}", nodeAgent.getUuid(), e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }
@@ -207,7 +209,7 @@ public class NodeAgentManager {
       Pair<X509Certificate, KeyPair> pair = createRootCert(nodeAgent, caCertPath, caKeyPath);
       log.info(
           "Generated root cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent.uuid,
+          nodeAgent.getUuid(),
           caKeyPath,
           caCertPath);
 
@@ -222,15 +224,15 @@ public class NodeAgentManager {
 
       log.info(
           "Generated self-signed server cert for node agent: {} at key path: {} and cert path: {}",
-          nodeAgent.uuid,
+          nodeAgent.getUuid(),
           serverKeyPath,
           serverKeyPath);
       return serverPair;
     } catch (RuntimeException e) {
-      log.error("Failed to generate certs for node agent {}", nodeAgent.uuid, e);
+      log.error("Failed to generate certs for node agent {}", nodeAgent.getUuid(), e);
       throw e;
     } catch (Exception e) {
-      log.error("Failed to generate certs for node agent {}", nodeAgent.uuid, e);
+      log.error("Failed to generate certs for node agent {}", nodeAgent.getUuid(), e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }
@@ -313,8 +315,8 @@ public class NodeAgentManager {
         .setSubject(ClientType.NODE_AGENT.name())
         .setIssuedAt(Date.from(Instant.now()))
         .setExpiration(Date.from(Instant.now().plusSeconds(NODE_AGENT_JWT_EXPIRY_SECS)))
-        .claim(JWTVerifier.CLIENT_ID_CLAIM, nodeAgentUuid.toString())
-        .claim(JWTVerifier.USER_ID_CLAIM, userUuid.toString())
+        .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
+        .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
         .signWith(SignatureAlgorithm.RS256, privateKey)
         .compact();
   }
@@ -431,14 +433,14 @@ public class NodeAgentManager {
    * @return the updated node agent record along with cert and key in the config.
    */
   public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
-    nodeAgent.config = new HashMap<>();
-    nodeAgent.state = State.REGISTERING;
+    nodeAgent.setConfig(new HashMap<>());
+    nodeAgent.setState(State.REGISTERING);
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
     Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
     nodeAgent.updateCertDirPath(certDirPath);
     ImmutableMap.Builder<String, String> builder =
-        ImmutableMap.<String, String>builder().putAll(nodeAgent.config);
+        ImmutableMap.<String, String>builder().putAll(nodeAgent.getConfig());
     if (includeCertContents) {
       X509Certificate serverCert = serverPair.getLeft();
       KeyPair serverKeyPair = serverPair.getRight();
@@ -447,7 +449,7 @@ public class NodeAgentManager {
           NodeAgent.SERVER_KEY_PROPERTY,
           CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
     }
-    nodeAgent.config = builder.build();
+    nodeAgent.setConfig(builder.build());
     return nodeAgent;
   }
 
@@ -463,7 +465,7 @@ public class NodeAgentManager {
   public InstallerFiles getInstallerFiles(NodeAgent nodeAgent, @Nullable Path baseTargetDir) {
     InstallerFiles.InstallerFilesBuilder builder = InstallerFiles.builder();
     // Package tgz file to be copied.
-    Path packagePath = getNodeAgentPackagePath(nodeAgent.osType, nodeAgent.archType);
+    Path packagePath = getNodeAgentPackagePath(nodeAgent.getOsType(), nodeAgent.getArchType());
     Path targetPackagePath = Paths.get("node-agent", "release", "node-agent.tgz");
     if (baseTargetDir != null) {
       targetPackagePath = baseTargetDir.resolve(targetPackagePath);
@@ -472,7 +474,7 @@ public class NodeAgentManager {
     builder.copyFileInfo(new CopyFileInfo(packagePath, targetPackagePath));
 
     Path certDirPath = null;
-    if (nodeAgent.state == State.REGISTERING) {
+    if (nodeAgent.getState() == State.REGISTERING) {
       builder.createDir(targetPackagePath.getParent());
       certDirPath = nodeAgent.getCertDirPath();
     } else {
@@ -521,15 +523,17 @@ public class NodeAgentManager {
       throw new IllegalStateException(
           String.format(
               "New cert directory %s does not exist for node agent %s",
-              newCertDirPath, nodeAgent.uuid));
+              newCertDirPath, nodeAgent.getUuid()));
     }
     // Point to the new directory and persist in the DB before deleting.
-    log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent.uuid);
+    log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent.getUuid());
     nodeAgent.updateCertDirPath(newCertDirPath);
     try {
       // Delete the old cert directory.
       log.info(
-          "Deleting current cert dir {} for node agent {}", currentCertDirPath, nodeAgent.uuid);
+          "Deleting current cert dir {} for node agent {}",
+          currentCertDirPath,
+          nodeAgent.getUuid());
       FileUtils.deleteDirectory(currentCertDirPath.toFile());
     } catch (Exception e) {
       // Ignore error.

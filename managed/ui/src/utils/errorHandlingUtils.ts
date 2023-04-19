@@ -23,12 +23,33 @@ export const isYBPBeanValidationError = (
     'providerValidation'
   );
 
-export const handleServerError = <TError>(
-  error: Error | AxiosError,
-  getErrorMessage?: (error: AxiosError<TError>) => string
+const defaultErrorExtractor = (
+  error: AxiosError<YBPStructuredError | YBPError>,
+  customErrorLabel?: string
 ) => {
-  if (isAxiosError<TError>(error)) {
-    toast.error(getErrorMessage ? getErrorMessage(error) : error.message);
+  const errorLabel = customErrorLabel ?? 'A request encountered an error';
+  if (isYBPError(error)) {
+    const errorMessageDetails = error.response?.data.error;
+    return `${errorLabel}${errorMessageDetails ? `: ${errorMessageDetails}` : '.'}`;
+  }
+  const errorMessageDetails =
+    (error as AxiosError<YBPStructuredError>).response?.data.error?.['message'] ?? error.message;
+  return `${errorLabel}${errorMessageDetails ? `: ${errorMessageDetails}` : '.'}`;
+};
+
+export const handleServerError = (
+  error: Error | AxiosError<YBPStructuredError | YBPError>,
+  options?: {
+    customErrorExtractor?: (error: AxiosError<YBPStructuredError | YBPError>) => string;
+    customErrorLabel?: string;
+  }
+) => {
+  if (isAxiosError<YBPStructuredError | YBPError>(error)) {
+    toast.error(
+      options?.customErrorExtractor
+        ? options?.customErrorExtractor(error)
+        : defaultErrorExtractor(error, options?.customErrorLabel)
+    );
   } else {
     toast.error(error.message);
   }

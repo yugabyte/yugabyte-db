@@ -27,11 +27,10 @@ import datetime
 import random
 import atexit
 
-from sys_detection import is_macos
-
 from typing import List, Optional, Set, Any, Tuple, Dict
 
-from yb.common_util import init_logging, shlex_join
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from yb.common_util import init_logging, shlex_join  # noqa
 
 UUID_RE_STR = '[0-9a-f]{32}'
 TABLET_OR_PEER_ID_RE_STR = r'\b[T|P] [0-9a-f]{32}\b'

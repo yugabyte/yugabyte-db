@@ -46,7 +46,11 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
         margin: {
           l: 165,
           b: 30,
-          t: 10
+          t: 10,
+          r: 50
+        },
+        yaxis: {
+          automargin: true
         },
         hovermode: 'closest'
       };
@@ -67,7 +71,7 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
             <a
               target="_blank"
               rel="noopener noreferrer"
-              className="learnSchemaSuggestion"
+              className="learnRecommendationSuggestions"
               href={EXTERNAL_LINKS.CONNECTION_SKEW}
             >
               {t('clusterDetail.performance.advisor.LearnHow')}

@@ -51,7 +51,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/unique_lock.h"
 
-using std::pair;
 using std::shared_ptr;
 using std::string;
 using strings::Substitute;
@@ -173,7 +172,7 @@ void MaintenanceManager::RegisterOp(MaintenanceOp* op) {
 
 void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
   {
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
 
     CHECK(op->manager_.get() == this) << "Tried to unregister " << op->name()
           << ", but it is not currently registered with this maintenance manager.";
@@ -204,7 +203,7 @@ void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
 void MaintenanceManager::RunSchedulerThread() {
   auto polling_interval = polling_interval_ms_ * 1ms;
 
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
   for (;;) {
     // Loop until we are shutting down or it is time to run another op.
     cond_.wait_for(GetLockForCondition(&lock), polling_interval);

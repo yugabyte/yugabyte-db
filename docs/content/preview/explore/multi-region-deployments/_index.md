@@ -2,7 +2,7 @@
 title: Multi-Region Deployments
 headerTitle: Multi-Region Deployments
 linkTitle: Multi-region deployments
-description: Multi-Region Deployments in YugabyteDB.
+description: Explore different Multi-Region deployment topologies in YugabyteDB.
 headcontent: Multi-Region Deployments in YugabyteDB.
 image: /images/section_icons/explore/planet_scale.png
 menu:

@@ -16,29 +16,29 @@ import com.yugabyte.yw.models.migrations.V230_5.TmpCustomer;
 import com.yugabyte.yw.models.migrations.V230_5.TmpProvider;
 import com.yugabyte.yw.models.migrations.V230_5.TmpProviderDetails;
 import io.ebean.Ebean;
-import java.sql.Connection;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
-import org.flywaydb.core.api.migration.jdbc.BaseJdbcMigration;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
 @Slf4j
-public class V230_5__AccessKeyCleanup extends BaseJdbcMigration {
+public class V230_5__AccessKeyCleanup extends BaseJavaMigration {
 
   @Override
-  public void migrate(Connection connection) {
+  public void migrate(Context context) {
     Ebean.execute(V230_5__AccessKeyCleanup::migrateAllAccessKeys);
   }
 
   public static void migrateAllAccessKeys() {
     for (TmpCustomer customer : TmpCustomer.find.all()) {
-      for (TmpProvider provider : TmpProvider.getAll(customer.uuid)) {
-        if (provider.details == null) {
-          provider.details = new TmpProviderDetails();
+      for (TmpProvider provider : TmpProvider.getAll(customer.getUuid())) {
+        if (provider.getDetails() == null) {
+          provider.setDetails(new TmpProviderDetails());
           provider.save();
         }
         final Optional<TmpAccessKeyDto> optAcccessKey =
-            AccessKey.getLatestAccessKeyQuery(provider.uuid)
+            AccessKey.getLatestAccessKeyQuery(provider.getUuid())
                 .select("keyInfo")
                 .asDto(TmpAccessKeyDto.class)
                 .findOneOrEmpty();
@@ -46,13 +46,13 @@ public class V230_5__AccessKeyCleanup extends BaseJdbcMigration {
         // PLAT-8027:
         // Do not overwrite if there are non-default values in provider.details
         // because the provider is already created with new schema.
-        if (new TmpProviderDetails().equals(provider.details)) {
+        if (new TmpProviderDetails().equals(provider.getDetails())) {
           optAcccessKey.ifPresent(
               latestKey -> {
-                provider.details.mergeFrom(latestKey.keyInfo);
+                provider.getDetails().mergeFrom(latestKey.keyInfo);
                 log.debug(
                     "Migrated KeyInfo fields to ProviderDetails:\n"
-                        + Json.toJson(provider.details).toPrettyString());
+                        + Json.toJson(provider.getDetails()).toPrettyString());
                 provider.save();
               });
         }

@@ -9,8 +9,8 @@
 
 export * from './IPlugin';
 export * from './PluginManager';
-export * from './BasicPlugins';
-export * from './AlertVariablesPlugin';
+export * from './basic/BasicPlugins';
+export * from './alert/AlertVariablesPlugin';
 export * from './SingleLinePlugin';
 export * from './PluginUtils';
 export * from './custom-types';

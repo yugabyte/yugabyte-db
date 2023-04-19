@@ -51,8 +51,21 @@ func (p postgresCheck) Execute() Result {
 	install := viper.GetBool("postgres.install.enabled")
 	if (useExisting && install) || (!useExisting && !install) {
 		res.Status = StatusCritical
-		res.Error = fmt.Errorf("Exactly one of postgres.useExisting.enabled and postgres.install.enabled should be set to true.")
+		res.Error = fmt.Errorf(
+			"exactly one of postgres.useExisting.enabled and" +
+			"postgres.install.enabled should be set to true")
 		return res
+	}
+
+	if (useExisting) {
+		pgDumpPath := viper.GetString("postgres.useExisting.pg_dump_path")
+		pgRestorePath := viper.GetString("postgres.useExisting.pg_restore_path")
+		if (pgDumpPath == "" || pgRestorePath == "") {
+			res.Status = StatusCritical
+			res.Error = fmt.Errorf(
+				"both pg_dump_path and pg_restore_path must be set when using existing Postgres server")
+			return res
+		}
 	}
 
 	if install {

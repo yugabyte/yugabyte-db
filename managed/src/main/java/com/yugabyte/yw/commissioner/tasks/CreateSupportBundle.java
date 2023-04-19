@@ -77,7 +77,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
     Path gzipPath =
         Paths.get(bundlePath.toAbsolutePath().toString().concat(".tar.gz")); // test this path
     log.debug("gzip support bundle path: {}", gzipPath.toString());
-    log.debug("Fetching Universe {} logs", universe.name);
+    log.debug("Fetching Universe {} logs", universe.getName());
 
     // Simplified the following 4 cases to extract appropriate start and end date
     // 1. If both of the dates are given and valid
@@ -160,7 +160,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   private Path generateBundlePath(Universe universe) {
     String storagePath = runtimeConfigFactory.staticApplicationConf().getString("yb.storage.path");
     String datePrefix = new SimpleDateFormat("yyyyMMddHHmmss.SSS").format(new Date());
-    String bundleName = "yb-support-bundle-" + universe.name + "-" + datePrefix + "-logs";
+    String bundleName = "yb-support-bundle-" + universe.getName() + "-" + datePrefix + "-logs";
     Path bundlePath = Paths.get(storagePath + "/" + bundleName);
     return bundlePath;
   }

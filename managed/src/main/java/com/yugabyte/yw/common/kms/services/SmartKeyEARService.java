@@ -45,8 +45,7 @@ public class SmartKeyEARService extends EncryptionAtRestService<SmartKeyAlgorith
   /**
    * A method to retrieve a SmartKey API session token from the inputted api token
    *
-   * @param customerUUID is the customer that the authentication configuration should be retrieved
-   *     for
+   * @param authConfig
    * @return a session token to be used to authorize subsequent requests
    */
   public String retrieveSessionAuthorization(ObjectNode authConfig) {

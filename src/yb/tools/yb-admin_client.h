@@ -128,6 +128,8 @@ Status ResponseStatus(
   return Status::OK();
 }
 
+class ImportSnapshotTableFilter;
+
 class ClusterAdminClient {
  public:
   enum PeerMode {
@@ -350,7 +352,8 @@ class ClusterAdminClient {
                                 const std::string& file_name);
   Status ImportSnapshotMetaFile(const std::string& file_name,
                                 const TypedNamespaceName& keyspace,
-                                const std::vector<client::YBTableName>& tables);
+                                const std::vector<client::YBTableName>& tables,
+                                bool selective_import);
   Status ListReplicaTypeCounts(const client::YBTableName& table_name);
 
   Status SetPreferredZones(const std::vector<std::string>& preferred_zones);
@@ -429,9 +432,7 @@ class ClusterAdminClient {
 
   Status GetReplicationInfo(const std::string& universe_uuid);
 
-  Result<rapidjson::Document> GetXClusterEstimatedDataLoss();
-
-  Result<rapidjson::Document> GetXClusterSafeTime();
+  Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.
@@ -584,6 +585,9 @@ class ClusterAdminClient {
   typedef std::unordered_map<NamespaceName, NamespaceName> NSNameToNameMap;
   Status UpdateUDTypes(
       QLTypePB* pb_type, bool* update_meta, const NSNameToNameMap& ns_name_to_name);
+
+  Status ProcessSnapshotInfoPBFile(const std::string& file_name, const TypedNamespaceName& keyspace,
+      ImportSnapshotTableFilter *table_filter);
 
   NamespaceMap namespace_map_;
 

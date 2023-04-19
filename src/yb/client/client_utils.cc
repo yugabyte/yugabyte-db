@@ -80,7 +80,7 @@ std::vector<internal::RemoteTabletPtr> FilterTabletsByKeyRange(
     const std::string& partition_key_end) {
   std::vector<internal::RemoteTabletPtr> filtered_results;
   for (const auto& remote_tablet : all_tablets) {
-    if (PartitionSchema::HasOverlap(
+    if (dockv::PartitionSchema::HasOverlap(
             remote_tablet->partition().partition_key_start(),
             remote_tablet->partition().partition_key_end(),
             partition_key_start,

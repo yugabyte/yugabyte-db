@@ -69,7 +69,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
 
-For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and peer it with the application VPC. This configuration also provides the best security.
+For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via peering or using a private link. This configuration also provides the best security.
 
 For a list of supported regions, refer to [Cloud provider regions](../../release-notes/#cloud-provider-regions).
 
@@ -79,7 +79,7 @@ An instance in cloud computing is a server resource provided by third-party clou
 
 Cloud providers offer a variety of instance types across the regions where they have data centers. By default, where possible, YugabyteDB Managed uses the following instance type families for dedicated clusters:
 
-- AWS - m5
+- AWS - m6i
 - GCP - n2-standard
 
 In cases where the default is unavailable in a region, YugabyteDB Managed will fall back to a suitable replacement instance type for all nodes in the cluster.
@@ -170,11 +170,11 @@ Clusters are secure by default. You need to explicitly allow access to clusters 
 
 If your applications are running in a VPC, deploy your cluster in a VPC to improve security and lower network latency. You also need to add the CIDR ranges of any application VPCs to your cluster IP allow list.
 
-Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC.
+Multi-region clusters must be deployed in VPCs; in AWS, each region or read replica must be deployed in its own VPC.
 
 You need to create VPCs before you deploy the cluster. YugabyteDB Managed supports AWS and GCP for VPCs. Refer to [VPC network](../cloud-vpcs/).
 
-#### User authorization
+#### Database user authorization
 
 YugabyteDB uses role-based access control to manage database access. When you create a cluster, YugabyteDB Managed adds a default admin user (the credentials for this user are configurable).
 

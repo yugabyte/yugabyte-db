@@ -1,6 +1,5 @@
 package com.yugabyte.yw.controllers.handlers;
 
-import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.FORBIDDEN;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
@@ -18,17 +17,17 @@ import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
 import javax.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+import play.libs.Files.TemporaryFile;
 import play.mvc.Http.MultipartFormData;
 import play.mvc.Http.MultipartFormData.FilePart;
 import play.mvc.Http.RequestBody;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Singleton
@@ -46,15 +45,15 @@ public class AccessKeyHandler {
         "Creating access key {} for customer {}, provider {}.",
         formData.keyCode,
         customerUUID,
-        provider.uuid);
+        provider.getUuid());
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doCreate(provider, formData, requestBody));
+        provider.getUuid(), () -> doCreate(provider, formData, requestBody));
   }
 
   private AccessKey doCreate(
       Provider provider, AccessKeyFormData formData, RequestBody requestBody) {
     try {
-      List<Region> regionList = provider.regions;
+      List<Region> regionList = provider.getRegions();
       if (regionList.isEmpty()) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Provider is in invalid state. No regions.");
@@ -76,18 +75,18 @@ public class AccessKeyHandler {
       }
 
       // Check if a public/private key was uploaded as part of the request
-      MultipartFormData<File> multiPartBody = requestBody.asMultipartFormData();
+      MultipartFormData<TemporaryFile> multiPartBody = requestBody.asMultipartFormData();
       AccessKey accessKey;
       if (multiPartBody != null) {
-        FilePart<File> filePart = multiPartBody.getFile("keyFile");
-        File uploadedFile = filePart.getFile();
+        FilePart<TemporaryFile> filePart = multiPartBody.getFile("keyFile");
+        TemporaryFile uploadedFile = filePart.getRef();
         if (formData.keyType == null || uploadedFile == null) {
           throw new PlatformServiceException(BAD_REQUEST, "keyType and keyFile params required.");
         }
         accessKey =
             accessManager.uploadKeyFile(
-                region.uuid,
-                uploadedFile,
+                region.getUuid(),
+                uploadedFile.path(),
                 formData.keyCode,
                 formData.keyType,
                 formData.sshUser,
@@ -108,8 +107,8 @@ public class AccessKeyHandler {
         // Upload temp file to create the access key and return success/failure
         accessKey =
             accessManager.uploadKeyFile(
-                region.uuid,
-                tempFile.toFile(),
+                region.getUuid(),
+                tempFile.toAbsolutePath(),
                 formData.keyCode,
                 formData.keyType,
                 formData.sshUser,
@@ -122,7 +121,7 @@ public class AccessKeyHandler {
       } else {
         accessKey =
             accessManager.addKey(
-                region.uuid,
+                region.getUuid(),
                 formData.keyCode,
                 null,
                 formData.sshUser,
@@ -154,7 +153,7 @@ public class AccessKeyHandler {
       }
 
       KeyInfo keyInfo = accessKey.getKeyInfo();
-      keyInfo.mergeFrom(provider.details);
+      keyInfo.mergeFrom(provider.getDetails());
       return accessKey;
     } catch (IOException e) {
       log.error("Failed to create access key", e);
@@ -168,9 +167,9 @@ public class AccessKeyHandler {
         "Editing access key {} for customer {}, provider {}.",
         keyCode,
         customerUUID,
-        provider.uuid);
+        provider.getUuid());
     return providerEditRestrictionManager.tryEditProvider(
-        provider.uuid, () -> doEdit(provider, accessKey, keyCode));
+        provider.getUuid(), () -> doEdit(provider, accessKey, keyCode));
   }
 
   private AccessKey doEdit(Provider provider, AccessKey accessKey, String keyCode) {
@@ -180,7 +179,7 @@ public class AccessKeyHandler {
           FORBIDDEN, "Cannot modify the access key for the provider in use!");
     }
 
-    ProviderDetails details = provider.details;
+    ProviderDetails details = provider.getDetails();
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String keyPairName = keyInfo.keyPairName;
     if (keyPairName == null) {
@@ -193,13 +192,13 @@ public class AccessKeyHandler {
       keyPairName = AccessKey.getNewKeyCode(keyPairName);
     }
     String sshPrivateKeyContent = keyInfo.getUnMaskedSshPrivateKeyContent();
-    List<Region> regions = Region.getByProvider(provider.uuid);
+    List<Region> regions = Region.getByProvider(provider.getUuid());
     AccessKey newAccessKey = null;
     for (Region region : regions) {
       if (!Strings.isNullOrEmpty(sshPrivateKeyContent)) {
         newAccessKey =
             accessManager.saveAndAddKey(
-                region.uuid,
+                region.getUuid(),
                 sshPrivateKeyContent,
                 keyPairName,
                 AccessManager.KeyType.PRIVATE,
@@ -214,7 +213,7 @@ public class AccessKeyHandler {
       } else {
         newAccessKey =
             accessManager.addKey(
-                region.uuid,
+                region.getUuid(),
                 keyPairName,
                 null,
                 details.sshUser,

@@ -35,7 +35,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for univ uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for univ uuid={}", getName(), taskParams().getUniverseUUID());
     Universe universe = getUniverse();
     try {
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
@@ -67,7 +67,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
       log.error("Task Errored out with: " + e);
       throw new RuntimeException(e);
     } finally {
-      unlockUniverseForUpdate(universe.universeUUID);
+      unlockUniverseForUpdate(universe.getUniverseUUID());
     }
   }
 
@@ -84,7 +84,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
       AvailabilityZone az = clusterAZ.getAz();
 
       LoadBalancerPlacement lbPlacement =
-          new LoadBalancerPlacement(providerUUID, az.region.code, lbName);
+          new LoadBalancerPlacement(providerUUID, az.getRegion().getCode(), lbName);
       newLbMap.computeIfAbsent(lbPlacement, v -> new LoadBalancerConfig(lbName));
     }
   }
@@ -94,7 +94,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
       // If this universe is not being edited, fail the request.
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       if (!universeDetails.updateInProgress) {
-        String errMsg = "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+        String errMsg = "UserUniverse " + taskParams().getUniverseUUID() + " is not being edited.";
         log.error(errMsg);
         throw new RuntimeException(errMsg);
       }

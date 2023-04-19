@@ -3117,6 +3117,31 @@ const TabletId& RaftConsensus::split_parent_tablet_id() const {
   return split_parent_tablet_id_;
 }
 
+LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusIfLeader(MicrosTime* ht_lease_exp) const {
+  auto lock = state_->LockForRead();
+  LeaderLeaseStatus leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  if (GetRoleUnlocked() == PeerRole::LEADER) {
+    leader_lease_status = GetLeaderLeaseStatusUnlocked(ht_lease_exp);
+  }
+  return leader_lease_status;
+}
+
+LeaderLeaseStatus RaftConsensus::GetLeaderLeaseStatusUnlocked(MicrosTime* ht_lease_exp) const {
+  auto leader_lease_status = state_->GetLeaderLeaseStatusUnlocked();
+  if (leader_lease_status == LeaderLeaseStatus::HAS_LEASE && ht_lease_exp) {
+    auto ht_lease = MajorityReplicatedHtLeaseExpiration(
+        /* min_allowed = */ 0, /* deadline = */ CoarseTimePoint::max());
+    if (!ht_lease.ok()) {
+      LOG(WARNING) <<
+          Format("Tablet $0 failed to get ht lease expiration $1", tablet_id(), ht_lease.status());
+      return LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+    } else {
+      *ht_lease_exp = *ht_lease;
+    }
+  }
+  return leader_lease_status;
+}
+
 ConsensusStatePB RaftConsensus::ConsensusState(
     ConsensusConfigType type,
     LeaderLeaseStatus* leader_lease_status) const {
@@ -3130,7 +3155,7 @@ ConsensusStatePB RaftConsensus::ConsensusStateUnlocked(
   CHECK(state_->IsLocked());
   if (leader_lease_status) {
     if (GetRoleUnlocked() == PeerRole::LEADER) {
-      *leader_lease_status = state_->GetLeaderLeaseStatusUnlocked();
+      *leader_lease_status = GetLeaderLeaseStatusUnlocked(/* ht_lease_exp = */ nullptr);
     } else {
       // We'll still return a valid value if we're not a leader.
       *leader_lease_status = LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;

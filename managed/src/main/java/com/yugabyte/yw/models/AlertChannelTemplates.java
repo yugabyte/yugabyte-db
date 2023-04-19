@@ -60,7 +60,6 @@ public class AlertChannelTemplates extends Model {
 
   @Transient @JsonIgnore private Set<String> customVariablesSet;
 
-  @Transient
   @JsonIgnore
   public Set<String> getCustomVariablesSet() {
     if (customVariablesSet == null) {

@@ -92,16 +92,16 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     payload.osType = OSType.LINUX.name();
     payload.archType = ArchType.AMD64.name();
     payload.home = "/home/yugabyte/node-agent";
-    NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
-    assertNotNull(nodeAgent.uuid);
-    UUID nodeAgentUuid = nodeAgent.uuid;
+    NodeAgent nodeAgent = nodeAgentHandler.register(customer.getUuid(), payload);
+    assertNotNull(nodeAgent.getUuid());
+    UUID nodeAgentUuid = nodeAgent.getUuid();
     verify(mockAppConfig, times(1)).getString(eq("yb.storage.path"));
-    String serverCert = nodeAgent.config.get(NodeAgent.SERVER_CERT_PROPERTY);
+    String serverCert = nodeAgent.getConfig().get(NodeAgent.SERVER_CERT_PROPERTY);
     assertNotNull(serverCert);
     Path serverCertPath = nodeAgent.getServerCertFilePath();
     assertNotNull(serverCertPath);
     assertTrue(Files.exists(serverCertPath));
-    String serverKey = nodeAgent.config.get(NodeAgent.SERVER_KEY_PROPERTY);
+    String serverKey = nodeAgent.getConfig().get(NodeAgent.SERVER_KEY_PROPERTY);
     assertNotNull(serverKey);
     Path serverKeyPath = nodeAgent.getServerKeyFilePath();
     assertNotNull(serverKeyPath);
@@ -109,7 +109,7 @@ public class NodeAgentHandlerTest extends FakeDBApplication {
     // With a real agent, the files are saved locally and ack is sent to the platform.
     // Complete registration.
     payload.state = State.READY.name();
-    nodeAgentHandler.updateState(customer.uuid, nodeAgentUuid, payload);
+    nodeAgentHandler.updateState(customer.getUuid(), nodeAgentUuid, payload);
     verifyKeys(nodeAgentUuid);
     nodeAgentHandler.unregister(nodeAgentUuid);
     Path certPath = nodeAgentManager.getNodeAgentBaseCertDirectory(nodeAgent);

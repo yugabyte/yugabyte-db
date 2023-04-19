@@ -1,15 +1,11 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
-import com.yugabyte.yw.models.Restore;
-import com.yugabyte.yw.models.RestoreKeyspace;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import java.util.concurrent.CancellationException;
-
-import com.google.api.client.util.Throwables;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.YbcTaskBase;
@@ -21,13 +17,16 @@ import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.Optional;
+import java.util.concurrent.CancellationException;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.client.YbcClient;
 import org.apache.commons.lang3.StringUtils;
+import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskCreateResponse;
 import org.yb.ybc.BackupServiceTaskResultRequest;
@@ -71,7 +70,8 @@ public class RestoreBackupYbc extends YbcTaskBase {
   public void run() {
     try {
       Pair<YbcClient, String> clientIPPair =
-          ybcManager.getAvailableYbcClientIpPair(taskParams().universeUUID, taskParams().nodeIp);
+          ybcManager.getAvailableYbcClientIpPair(
+              taskParams().getUniverseUUID(), taskParams().nodeIp);
       ybcClient = clientIPPair.getFirst();
       taskParams().nodeIp = clientIPPair.getSecond();
     } catch (PlatformServiceException e) {
@@ -94,7 +94,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
       taskId = restoreBackupParams.currentYbcTaskId;
     }
 
-    restoreBackupParams = Json.fromJson(taskInfo.getTaskDetails(), RestoreBackupParams.class);
+    restoreBackupParams = Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
     Optional<RestoreKeyspace> restoreKeyspaceIfPresent =
         RestoreKeyspace.fetchRestoreKeyspaceByRestoreIdAndKeyspaceName(
             restoreBackupParams.prefixUUID, backupStorageInfo.keyspace);
@@ -128,7 +128,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
                   backupStorageInfo);
           String successMarkerString =
               ybcManager.downloadSuccessMarker(
-                  downloadSuccessMarkerRequest, taskParams().universeUUID, dsmTaskId);
+                  downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), dsmTaskId);
           if (StringUtils.isEmpty(successMarkerString)) {
             throw new PlatformServiceException(
                 INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
@@ -137,7 +137,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
               ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
           backupSize = Long.parseLong(successMarker.backupSize);
           if (!ybcBackupUtil.validateYCQLTableListOverwrites(
-              successMarker, taskParams().universeUUID, backupStorageInfo.keyspace)) {
+              successMarker, taskParams().getUniverseUUID(), backupStorageInfo.keyspace)) {
             taskId = null;
             throw new PlatformServiceException(BAD_REQUEST, "Overwriting tables is not allowed.");
           }
@@ -203,7 +203,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
         if (restoreKeyspace != null) {
           restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Aborted);
         }
-        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskId, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskParams().getUniverseUUID(), taskId, ybcClient);
       }
       Throwables.propagate(ce);
     } catch (Throwable e) {
@@ -212,7 +212,7 @@ public class RestoreBackupYbc extends YbcTaskBase {
         restoreKeyspace.update(taskUUID, RestoreKeyspace.State.Failed);
       }
       if (StringUtils.isNotBlank(taskId)) {
-        ybcManager.deleteYbcBackupTask(taskParams().universeUUID, taskId, ybcClient);
+        ybcManager.deleteYbcBackupTask(taskParams().getUniverseUUID(), taskId, ybcClient);
       }
       Throwables.propagate(e);
     } finally {

@@ -31,6 +31,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Deprecated
@@ -48,14 +49,14 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    *     that is in storage
    */
   @Deprecated
-  public Result getUniverseResourcesOld(UUID customerUUID) {
+  public Result getUniverseResourcesOld(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     UniverseDefinitionTaskParams taskParams =
-        bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Customer,
             customerUUID.toString(),
             Audit.ActionType.GetUniverseResources,
@@ -74,9 +75,9 @@ public class UniverseUiOnlyController extends AuthenticatedController {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     LOG.info("Finding Universe with name {}.", name);
-    Optional<Universe> universe = Universe.maybeGetUniverseByName(customer.getCustomerId(), name);
+    Optional<Universe> universe = Universe.maybeGetUniverseByName(customer.getId(), name);
     if (universe.isPresent()) {
-      return PlatformResults.withData(Collections.singletonList(universe.get().universeUUID));
+      return PlatformResults.withData(Collections.singletonList(universe.get().getUniverseUUID()));
     }
     return PlatformResults.withData(Collections.emptyList());
   }
@@ -88,22 +89,22 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @param customerUUID the ID of the customer configuring the Universe.
    * @return UniverseDefinitionTasksParams in a serialized form
    */
-  public Result configure(UUID customerUUID) {
+  @Deprecated
+  public Result configure(UUID customerUUID, Http.Request request) {
 
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 
     universeCRUDHandler.configure(customer, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
-            Objects.toString(taskParams.universeUUID, null),
-            Audit.ActionType.Configure,
-            request().body().asJson());
+            Objects.toString(taskParams.getUniverseUUID(), null),
+            Audit.ActionType.Configure);
     return PlatformResults.withData(taskParams);
   }
 
@@ -120,22 +121,21 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true,
           paramType = "body"))
-  public Result getUpdateOptions(UUID customerUUID) {
+  public Result getUpdateOptions(UUID customerUUID, Http.Request request) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> options =
         universeCRUDHandler.getUpdateOptions(customer, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
-            Objects.toString(taskParams.universeUUID, null),
-            Audit.ActionType.UpdateOptions,
-            request().body().asJson());
+            Objects.toString(taskParams.getUniverseUUID(), null),
+            Audit.ActionType.UpdateOptions);
     return PlatformResults.withData(options);
   }
 
@@ -145,21 +145,20 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    *     <p>API that queues a task to create a new universe. This does not wait for the creation.
    * @return result of the universe create operation.
    */
-  public Result create(UUID customerUUID) {
+  @Deprecated
+  public Result create(UUID customerUUID, Http.Request request) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     UniverseResp universeResp =
         universeCRUDHandler.createUniverse(
-            customer,
-            bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class));
+            customer, bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class));
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             Objects.toString(universeResp.universeUUID, null),
             Audit.ActionType.Create,
-            request().body().asJson(),
             universeResp.taskUUID);
     return PlatformResults.withData(universeResp);
   }
@@ -171,19 +170,19 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    *     for the completion.
    * @return result of the universe update operation.
    */
-  public Result update(UUID customerUUID, UUID universeUUID) {
+  @Deprecated
+  public Result update(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UniverseDefinitionTaskParams taskParams =
-        bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class);
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.Update,
-            request().body().asJson(),
             taskUUID);
     return PlatformResults.withData(
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
@@ -195,7 +194,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return result of the cluster create operation.
    */
   @Deprecated
-  public Result clusterCreate(UUID customerUUID, UUID universeUUID) {
+  public Result clusterCreate(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
@@ -203,15 +202,14 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         universeCRUDHandler.createCluster(
             customer,
             universe,
-            bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class));
+            bindFormDataToTaskParams(request, UniverseDefinitionTaskParams.class));
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.CreateCluster,
-            request().body().asJson(),
             taskUUID);
     return PlatformResults.withData(
         UniverseResp.create(universe, taskUUID, runtimeConfigFactory.globalRuntimeConf()));
@@ -224,7 +222,11 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    */
   @Deprecated
   public Result clusterDelete(
-      UUID customerUUID, UUID universeUUID, UUID clusterUUID, Boolean isForceDelete) {
+      UUID customerUUID,
+      UUID universeUUID,
+      UUID clusterUUID,
+      Boolean isForceDelete,
+      Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
@@ -232,8 +234,8 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         universeCRUDHandler.clusterDelete(customer, universe, clusterUUID, isForceDelete);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.DeleteCluster,
@@ -261,22 +263,21 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.UpgradeParams",
           required = true,
           paramType = "body"))
-  public Result upgrade(UUID customerUUID, UUID universeUUID) {
+  public Result upgrade(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    UpgradeParams taskParams = bindFormDataToTaskParams(ctx(), request(), UpgradeParams.class);
+    UpgradeParams taskParams = bindFormDataToTaskParams(request, UpgradeParams.class);
 
     UUID taskUUID = universeCRUDHandler.upgrade(customer, universe, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.Upgrade,
-            request().body().asJson(),
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   @ApiOperation(
@@ -290,24 +291,21 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DiskIncreaseFormData",
           paramType = "body",
           required = true))
-  public Result updateDiskSize(UUID customerUUID, UUID universeUUID) {
+  public Result updateDiskSize(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     UUID taskUUID =
         universeCRUDHandler.updateDiskSize(
-            customer,
-            universe,
-            bindFormDataToTaskParams(ctx(), request(), DiskIncreaseFormData.class));
+            customer, universe, bindFormDataToTaskParams(request, DiskIncreaseFormData.class));
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.UpdateDiskSize,
-            request().body().asJson(),
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 
   /**
@@ -323,23 +321,22 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.TlsConfigUpdateParams",
           required = true,
           paramType = "body"))
-  public Result tlsConfigUpdate(UUID customerUUID, UUID universeUUID) {
+  public Result tlsConfigUpdate(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("TLS config update: {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     TlsConfigUpdateParams taskParams =
         UniverseControllerRequestBinder.bindFormDataToUpgradeTaskParams(
-            ctx(), request(), TlsConfigUpdateParams.class, universe);
+            request, TlsConfigUpdateParams.class, universe);
 
     UUID taskUUID = universeCRUDHandler.tlsConfigUpdate(customer, universe, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.TlsConfigUpdate,
-            request().body().asJson(),
             taskUUID);
-    return new YBPTask(taskUUID, universe.universeUUID).asResult();
+    return new YBPTask(taskUUID, universe.getUniverseUUID()).asResult();
   }
 }

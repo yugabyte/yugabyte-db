@@ -41,7 +41,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.proxy.h"
@@ -53,6 +53,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_loaders.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
@@ -594,6 +595,14 @@ DontVerifyClusterBeforeNextTearDown();
 // Creates tables and reloads on-disk metadata concurrently to test for races
 // between the two operations.
 TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
+  // This test continuously reloads the sys catalog. These reloads cancel all inflight tasks, which
+  // can cancel some create replica tasks for tablet replicas. Given this test uses RF=3, if two
+  // create tablet requests succeed then a tablet leader will be elected and the master will
+  // transition the tablet to RUNNING state, preventing further tasks to fix the tablet. From here
+  // the tablet leader will initiate a remote bootstrap to create a tablet replica on the tablet
+  // peer missing the tablet. We explicitly enable remote bootstraps here so the tablet leader
+  // can successfully create the missing replica.
+  FLAGS_TEST_enable_remote_bootstrap = true;
   AtomicBool stop(false);
 
   // Since this test constantly invokes VisitSysCatalog() which is the function
@@ -606,7 +615,8 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
 
   thread reload_metadata_thread([&]() {
     while (!stop.Load()) {
-      CHECK_OK(cluster_->mini_master()->catalog_manager().VisitSysCatalog(0));
+      master::SysCatalogLoadingState state;
+      CHECK_OK(cluster_->mini_master()->catalog_manager_impl().VisitSysCatalog(0, &state));
       // Give table creation a chance to run.
       SleepFor(MonoDelta::FromMilliseconds(10 * kTimeMultiplier));
     }
@@ -627,7 +637,7 @@ TEST_F(CreateTableStressTest, TestConcurrentCreateTableAndReloadMetadata) {
       unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
       s = table_creator->table_name(table_name)
           .schema(&schema_)
-          .hash_schema(YBHashSchema::kMultiColumnHash)
+          .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
           .set_range_partition_columns({ "key" })
           .num_tablets(1)
           .wait(false)

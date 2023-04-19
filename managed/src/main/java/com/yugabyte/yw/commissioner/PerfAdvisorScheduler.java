@@ -51,6 +51,8 @@ import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 @Slf4j
 public class PerfAdvisorScheduler {
 
+  private static final String PERF_ADVISOR_RUN_IN_PROGRESS = "Perf advisor run in progress";
+
   private final PlatformScheduler platformScheduler;
 
   private final ExecutorService threadPool;
@@ -100,7 +102,7 @@ public class PerfAdvisorScheduler {
       Map<Long, Customer> customerMap =
           Customer.getAll()
               .stream()
-              .collect(Collectors.toMap(Customer::getCustomerId, Function.identity()));
+              .collect(Collectors.toMap(Customer::getId, Function.identity()));
       Set<UUID> uuidList = Universe.getAllUUIDs();
       for (List<UUID> batch : Iterables.partition(uuidList, defaultUniBatchSize)) {
         this.batchRun(batch, customerMap);
@@ -112,7 +114,7 @@ public class PerfAdvisorScheduler {
 
   private void batchRun(List<UUID> univUuidSet, Map<Long, Customer> customerMap) {
     for (Universe universe : Universe.getAllWithoutResources(univUuidSet)) {
-      run(customerMap.get(universe.customerId), universe, true);
+      run(customerMap.get(universe.getCustomerId()), universe, true);
     }
   }
 
@@ -121,8 +123,14 @@ public class PerfAdvisorScheduler {
     if (universe.getUniverseDetails().updateInProgress) {
       return RunResult.builder().failureReason("Universe update in progress").build();
     }
-    if (universesLock.containsKey(universe.universeUUID)) {
-      return RunResult.builder().failureReason("Perf advisor run in progress").build();
+    if (universesLock.containsKey(universe.getUniverseUUID())) {
+      UniversePerfAdvisorRun currentRun =
+          UniversePerfAdvisorRun.getLastRun(customer.getUuid(), universe.getUniverseUUID(), false)
+              .orElse(null);
+      return RunResult.builder()
+          .failureReason(PERF_ADVISOR_RUN_IN_PROGRESS)
+          .activeRun(currentRun)
+          .build();
     }
 
     Config universeConfig = configFactory.forUniverse(universe);
@@ -160,14 +168,14 @@ public class PerfAdvisorScheduler {
     if (universeNodeConfigList.isEmpty()) {
       log.warn(
           String.format(
-              "Universe %s node config list is empty! Skipping..", universe.universeUUID));
+              "Universe %s node config list is empty! Skipping..", universe.getUniverseUUID()));
       return RunResult.builder().failureReason("No Live nodes found").build();
     }
 
     RunResult.RunResultBuilder result =
-        RunResult.builder().failureReason("Perf advisor run in progress");
+        RunResult.builder().failureReason(PERF_ADVISOR_RUN_IN_PROGRESS);
     universesLock.computeIfAbsent(
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         (k) -> {
           UniversePerfAdvisorRun run =
               UniversePerfAdvisorRun.create(
@@ -177,7 +185,7 @@ public class PerfAdvisorScheduler {
                 () ->
                     runPerfAdvisor(
                         customer, universe, universeConfig, universeNodeConfigList, run));
-            result.started(true).failureReason(null);
+            result.started(true).activeRun(run).failureReason(null);
             return true;
           } catch (Exception e) {
             log.error(
@@ -186,6 +194,14 @@ public class PerfAdvisorScheduler {
             throw e;
           }
         });
+    if (result.failureReason != null && result.failureReason.equals(PERF_ADVISOR_RUN_IN_PROGRESS)) {
+      // If we ended up here we're in a race condition where other run started faster.
+      // Let's return it in run result.
+      UniversePerfAdvisorRun currentRun =
+          UniversePerfAdvisorRun.getLastRun(customer.getUuid(), universe.getUniverseUUID(), false)
+              .orElse(null);
+      result.activeRun(currentRun);
+    }
     return result.build();
   }
 
@@ -227,7 +243,6 @@ public class PerfAdvisorScheduler {
           new PerfAdvisorScriptConfig(
               databases,
               NodeManager.YUGABYTE_USER,
-              databaseHost,
               tserverNode.ysqlServerRpcPort,
               DB_QUERY_RECOMMENDATION_TYPES,
               ysqlAuth,
@@ -235,7 +250,7 @@ public class PerfAdvisorScheduler {
       UniverseConfig uConfig =
           new UniverseConfig(
               customer.getUuid(),
-              universe.universeUUID,
+              universe.getUniverseUUID(),
               universeNodeConfigList,
               scriptConfig,
               provider.getYbHome() + "/bin",
@@ -246,7 +261,7 @@ public class PerfAdvisorScheduler {
       log.error("Failed to run perf advisor for universe " + universe.getUniverseUUID(), e);
       run.setEndTime(new Date()).setState(State.FAILED).save();
     } finally {
-      universesLock.remove(universe.universeUUID);
+      universesLock.remove(universe.getUniverseUUID());
     }
   }
 
@@ -259,5 +274,6 @@ public class PerfAdvisorScheduler {
   public static class RunResult {
     @Builder.Default boolean started = false;
     String failureReason;
+    UniversePerfAdvisorRun activeRun;
   }
 }

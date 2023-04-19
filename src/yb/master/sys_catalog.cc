@@ -43,8 +43,8 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/index.h"
-#include "yb/common/partial_row.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_protocol_util.h"
@@ -275,9 +275,9 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   // Update partition schema of old SysCatalogTable. SysCatalogTable should be non-partitioned.
   if (metadata->partition_schema()->IsHashPartitioning()) {
     LOG(INFO) << "Updating partition schema of SysCatalogTable ...";
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), *metadata->schema(),
-                                          &partition_schema));
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+        PartitionSchemaPB(), *metadata->schema(), &partition_schema));
     metadata->SetPartitionSchema(partition_schema);
     RETURN_NOT_OK(metadata->Flush());
   }
@@ -330,11 +330,11 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
   // Create the new Metadata
   Schema schema = BuildTableSchema();
-  PartitionSchema partition_schema;
-  RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  RETURN_NOT_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  vector<YBPartialRow> split_rows;
-  vector<Partition> partitions;
+  vector<dockv::YBPartialRow> split_rows;
+  vector<dockv::Partition> partitions;
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
@@ -765,17 +765,16 @@ Status SysCatalogTable::GetTableSchema(
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, SysRowEntryType::TABLE);
-  const std::vector<docdb::KeyEntryValue> empty_hash_components;
+  const dockv::KeyEntryValues empty_hash_components;
   docdb::DocQLScanSpec spec(
       schema, boost::none /* hash_code */, boost::none /* max_hash_code */, empty_hash_components,
       &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   bool table_schema_found = false;
-  while (VERIFY_RESULT(doc_iter->HasNext())) {
-    QLTableRow value_map;
+  QLTableRow value_map;
+  while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
     QLValue found_entry_type, entry_id, metadata;
-    RETURN_NOT_OK(doc_iter->NextRow(&value_map));
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
     SCHECK_EQ(
         found_entry_type.int8_value(), SysRowEntryType::TABLE, Corruption,
@@ -938,7 +937,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     cond.add_operands()->set_column_id(db_oid_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(db_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -947,19 +946,21 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     iter->Init(tablet->table_type());
   }
 
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&source_row));
+  while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     auto db_oid_value = source_row.GetValue(db_oid_id);
     if (!db_oid_value) {
-      return STATUS(Corruption, "Could not read syscatalog version");
+      return STATUS_FORMAT(Corruption, "Don't have db_oid($0) value in $1", db_oid_id, source_row);
     }
     auto version_col_value = source_row.GetValue(version_col_id);
     if (!version_col_value) {
-      return STATUS(Corruption, "Could not read syscatalog version");
+      return STATUS_FORMAT(
+          Corruption, "Don't have version($0) value in $1", version_col_id, source_row);
     }
     auto last_breaking_version_col_value = source_row.GetValue(last_breaking_version_col_id);
     if (!last_breaking_version_col_value) {
-      return STATUS(Corruption, "Could not read syscatalog version");
+      return STATUS_FORMAT(
+          Corruption, "Don't have last_breaking_version($0) value in $1",
+          last_breaking_version_col_id, source_row);
     }
     if (versions) {
       // When 'versions' is set we read all rows.
@@ -1010,8 +1011,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
   // a tablespace. Populate 'tablespace_map' with the tablespace id and corresponding
   // placement info for each tablespace encountered in this catalog table.
   auto tablespace_map = std::make_shared<TablespaceIdToReplicationInfoMap>();
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&source_row));
+  while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     // Fetch the oid.
     auto oid = source_row.GetValue(oid_col_id);
     if (!oid) {
@@ -1125,8 +1125,7 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
   // a tablegroup. Populate 'table_tablespace_map' with the tablegroup id and corresponding
   // tablespace id for each tablegroup
 
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&source_row));
+  while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     // Fetch the tablegroup oid.
     const auto tablegroup_oid_col = source_row.GetValue(oid_col_id);
     if (!tablegroup_oid_col) {
@@ -1207,7 +1206,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     // catalog tables. They can be skipped, as tablespace information is relevant only for user
     // created tables.
     cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1220,9 +1219,7 @@ Status SysCatalogTable::ReadPgClassInfo(
   // database object itself. But here, we are trying to fetch table->tablespace
   // information. We iterate through every row in the catalog table and try to build
   // the table/index->placement info.
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&row));
-
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the oid of this table/index.
     const auto& oid_col = row.GetValue(oid_col_id);
     if (!oid_col) {
@@ -1328,7 +1325,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1340,10 +1337,8 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
   // database object itself. But here, we are trying to fetch table->relnamespace
   // information only.
   uint32 oid = kInvalidOid;
-  if (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
-
+  QLTableRow row;
+  if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& result_oid_col = row.GetValue(result_col_id);
     if (!result_oid_col) {
@@ -1379,7 +1374,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(relnamespace_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1387,10 +1382,8 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   }
 
   string name;
-  if (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
-
+  QLTableRow row;
+  if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& nspname_col = row.GetValue(nspname_col_id);
     if (!nspname_col) {
@@ -1434,7 +1427,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     cond.add_operands()->set_column_id(attrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1442,10 +1435,8 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
   }
 
   std::unordered_map<string, uint32_t> type_oid_map;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
-
+  QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attnum_col = row.GetValue(attnum_col_id);
 
     if (!attnum_col) {
@@ -1505,7 +1496,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
   auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */,
@@ -1514,9 +1505,8 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
   }
 
   std::unordered_map<uint32_t, string> enumlabel_map;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
+  QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& enumtypid_col = row.GetValue(enumtypid_col_id);
     const auto& enumlabel_col = row.GetValue(enumlabel_col_id);
@@ -1567,7 +1557,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
       seq_value->add_elems()->set_uint32_value(type_oid);
     }
 
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1575,10 +1565,8 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
   }
 
   std::unordered_map<uint32_t, PgTypeInfo> type_oid_info_map;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
-
+  QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& typtype_col = row.GetValue(typtype_col_id);
     const auto& typbasetype_col = row.GetValue(typbasetype_col_id);
@@ -1631,8 +1619,7 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
 
   QLTableRow source_row;
 
-  while (VERIFY_RESULT(iter->HasNext())) {
-    RETURN_NOT_OK(iter->NextRow(&source_row));
+  while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     // Fetch the tablegroup grpname.
     const auto& tablegroup_grpname = source_row.GetValue(grpname_col_id);
     if (!tablegroup_grpname) {
@@ -1682,9 +1669,7 @@ Status SysCatalogTable::CopyPgsqlTables(
         tablet->NewRowIterator(source_projection, {}, source_table_id));
     QLTableRow source_row;
 
-    while (VERIFY_RESULT(iter->HasNext())) {
-      RETURN_NOT_OK(iter->NextRow(&source_row));
-
+    while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
       RETURN_NOT_OK(writer->InsertPgsqlTableRow(
           source_table_info->schema(), source_row, target_table_id, target_table_info->schema(),
           target_table_info->schema_version, true /* is_upsert */));
@@ -1798,7 +1783,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     for (auto const table_oid : table_oids) {
       list_values->add_elems()->set_uint32_value(table_oid);
     }
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1806,10 +1791,8 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
   }
 
   RelIdToAttributesMap relid_attribute_map;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
-
+  QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attrelid_col = row.GetValue(attrelid_col_id);
     const auto& attname_col = row.GetValue(attname_col_id);
     const auto& atttypid_col = row.GetValue(atttypid_col_id);
@@ -1915,7 +1898,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1923,9 +1906,8 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   }
 
   RelTypeOIDMap reltype_oid_map;
-  while (VERIFY_RESULT(iter->HasNext())) {
-    QLTableRow row;
-    RETURN_NOT_OK(iter->NextRow(&row));
+  QLTableRow row;
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& reltype_col = row.GetValue(reltype_col_id);
     const auto& relkind_col = row.GetValue(relkind_col_id);

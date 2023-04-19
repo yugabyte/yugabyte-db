@@ -4,7 +4,12 @@ import {
   YBProvider,
   InstanceTypeMutation
 } from '../../components/configRedesign/providerRedesign/types';
-import { HostInfo, Provider as Provider_Deprecated, YBPSuccess } from './dtos';
+import {
+  HostInfo,
+  Provider as Provider_Deprecated,
+  SuggestedKubernetesConfig,
+  YBPSuccess
+} from './dtos';
 import { ROOT_URL } from '../../config';
 import {
   AvailabilityZone,
@@ -22,6 +27,7 @@ import {
   YBPTask
 } from './dtos';
 import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
+import { UniverseTableFilters } from '../../actions/xClusterReplication';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -64,17 +70,28 @@ export const hostInfoQueryKey = {
 };
 
 export const universeQueryKey = {
-  ALL: ['universe']
+  ALL: ['universe'],
+  detail: (universeUUID: string | undefined) => [...universeQueryKey.ALL, universeUUID],
+  tables: (universeUUID: string | undefined, filters: UniverseTableFilters) => [
+    ...universeQueryKey.detail(universeUUID),
+    'tables',
+    { filters }
+  ]
 };
 
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
+  globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
   customerScope: (customerUUID: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUUID]
 };
 
 export const instanceTypeQueryKey = {
   ALL: ['instanceType'],
   provider: (providerUUID: string) => [...instanceTypeQueryKey.ALL, 'provider', providerUUID]
+};
+
+export const suggestedKubernetesConfigQueryKey = {
+  ALL: ['suggestedKubernetesConfig']
 };
 
 class ApiService {
@@ -90,8 +107,10 @@ class ApiService {
     return axios.get<HostInfo>(requestUrl).then((response) => response.data);
   };
 
-  fetchRuntimeConfigs = (scope?: string, includeInherited = false) => {
-    const configScope = scope || DEFAULT_RUNTIME_GLOBAL_SCOPE;
+  fetchRuntimeConfigs = (
+    configScope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE,
+    includeInherited = false
+  ) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${configScope}?includeInherited=${includeInherited}`;
     return axios.get(requestUrl).then((response) => response.data);
   };
@@ -176,6 +195,11 @@ class ApiService {
       return axios.get<YBProvider>(requestUrl).then((resp) => resp.data);
     }
     return Promise.reject('Failed to fetch provider: No provider UUID provided.');
+  };
+
+  fetchSuggestedKubernetesConfig = () => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/suggested_kubernetes_config`;
+    return axios.get<SuggestedKubernetesConfig>(requestURL).then((response) => response.data);
   };
 
   fetchProviderRegions = (providerId?: string): Promise<Region[]> => {

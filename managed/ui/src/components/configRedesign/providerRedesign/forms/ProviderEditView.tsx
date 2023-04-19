@@ -122,9 +122,21 @@ export const ProviderEditView = ({ isProviderInUse, providerConfig }: ProviderEd
         />
       );
     case ProviderCode.KUBERNETES:
-      return <K8sProviderEditForm providerConfig={providerConfig} />;
+      return (
+        <K8sProviderEditForm
+          providerConfig={providerConfig}
+          editProvider={editProvider}
+          isProviderInUse={isProviderInUse}
+        />
+      );
     case ProviderCode.ON_PREM:
-      return <OnPremProviderEditForm providerConfig={providerConfig} />;
+      return (
+        <OnPremProviderEditForm
+          providerConfig={providerConfig}
+          editProvider={editProvider}
+          isProviderInUse={isProviderInUse}
+        />
+      );
     default: {
       return assertUnreachableCase(providerConfig);
     }

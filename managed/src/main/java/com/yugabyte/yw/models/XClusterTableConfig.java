@@ -13,7 +13,6 @@ import java.io.Serializable;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Embeddable;
 import javax.persistence.Entity;
@@ -21,9 +20,10 @@ import javax.persistence.Id;
 import javax.persistence.IdClass;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
-import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 
@@ -32,6 +32,8 @@ import lombok.extern.slf4j.Slf4j;
 @Entity
 @NoArgsConstructor
 @ToString(onlyExplicitlyIncluded = true)
+@Getter
+@Setter
 public class XClusterTableConfig extends Model {
 
   private static final Finder<String, XClusterTableConfig> find =
@@ -42,63 +44,67 @@ public class XClusterTableConfig extends Model {
   @JoinColumn(name = "config_uuid", referencedColumnName = "uuid")
   @ApiModelProperty(value = "The XCluster config that this table is a participant of")
   @JsonIgnore
-  public XClusterConfig config;
+  private XClusterConfig config;
 
   @Id
   @Column(length = 64)
   @ApiModelProperty(value = "Table ID", example = "000033df000030008000000000004005")
   @ToString.Include
-  public String tableId;
+  private String tableId;
 
   @Column(length = 64)
   @ApiModelProperty(
       value = "Stream ID if replication is setup; bootstrap ID if the table is bootstrapped",
       example = "a9d2470786694dc4b34e0e58e592da9e")
-  public String streamId;
+  private String streamId;
 
   @ApiModelProperty(value = "Whether replication is set up for this table")
-  public boolean replicationSetupDone;
+  private boolean replicationSetupDone;
 
   @ApiModelProperty(value = "Whether this table needs bootstrap process for replication setup")
-  public boolean needBootstrap;
+  private boolean needBootstrap;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(value = "Time of the bootstrap of the table", example = "2022-12-12T13:07:18Z")
-  public Date bootstrapCreateTime;
+  private Date bootstrapCreateTime;
 
   @ManyToOne
   @JoinColumn(name = "backup_uuid", referencedColumnName = "backup_uuid")
   @JsonProperty("backupUuid")
-  public Backup backup;
+  private Backup backup;
 
   @ManyToOne
   @JoinColumn(name = "restore_uuid", referencedColumnName = "restore_uuid")
   @JsonProperty("restoreUuid")
-  public Restore restore;
+  private Restore restore;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(
       value = "Time of the last try to restore data to the target universe",
       example = "2022-12-12T13:07:18Z")
-  public Date restoreTime;
+  private Date restoreTime;
 
   // If its main table is not part the config, it will be false; otherwise, it indicates whether the
   // table is an index table.
-  public boolean indexTable;
+  private boolean indexTable;
 
   @ApiModelProperty(
       value = "Status",
-      allowableValues = "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed")
-  public Status status;
+      allowableValues =
+          "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
+  private Status status;
 
   public enum Status {
     Validated("Validated"),
     Running("Running"),
     Updating("Updating"),
-    Warning("Warning"),
-    Error("Error"),
     Bootstrapping("Bootstrapping"),
-    Failed("Failed");
+    Failed("Failed"),
+
+    // The following statuses will not be stored in the YBA DB.
+    Error("Error"),
+    Warning("Warning"),
+    UnableToFetch("UnableToFetch");
 
     private final String status;
 
@@ -114,12 +120,12 @@ public class XClusterTableConfig extends Model {
   }
 
   public XClusterTableConfig(XClusterConfig config, String tableId) {
-    this.config = config;
-    this.tableId = tableId;
-    this.replicationSetupDone = false;
-    this.needBootstrap = false;
-    this.indexTable = false;
-    this.status = Status.Validated;
+    this.setConfig(config);
+    this.setTableId(tableId);
+    this.setReplicationSetupDone(false);
+    this.setNeedBootstrap(false);
+    this.setIndexTable(false);
+    this.setStatus(Status.Validated);
   }
 
   public static Optional<XClusterTableConfig> maybeGetByStreamId(String streamId) {
@@ -134,18 +140,18 @@ public class XClusterTableConfig extends Model {
 
   @JsonGetter("backupUuid")
   UUID getBackupUuid() {
-    if (backup == null) {
+    if (getBackup() == null) {
       return null;
     }
-    return backup.backupUUID;
+    return getBackup().getBackupUUID();
   }
 
   @JsonGetter("restoreUuid")
   UUID getRestoreUuid() {
-    if (restore == null) {
+    if (getRestore() == null) {
       return null;
     }
-    return restore.restoreUUID;
+    return getRestore().getRestoreUUID();
   }
 
   /** This class is the primary key for XClusterTableConfig. */

@@ -97,7 +97,7 @@ main {
       font-size: 13px;
       margin-top: 20px;
       margin-bottom: 20px;
-      max-width:calc(100% - 5px);
+      max-width: calc(100% - 5px);
 
       > code {
         font-size: 100%;
@@ -116,8 +116,8 @@ main {
         word-break: keep-all;
         overflow: auto;
         scrollbar-width: thin;
-        
-        &:only-child{
+
+        &:only-child {
           padding: 11px 15px;
         }
 
@@ -216,7 +216,7 @@ main {
         }
       }
     }
-    
+
     table {
       pre {
         > code {
@@ -259,6 +259,23 @@ main {
           color: transparent;
           background-color: transparent;
           transform: none;
+        }
+      }
+    }
+
+    .badcode {
+      > pre {
+        button.copy.unclicked:not(:hover) {
+          filter: contrast(100);
+        }
+
+        > code {
+          background: #efb2b2 !important;
+          border-color: #f00 !important;
+        }
+
+        &::after {
+          background: #efb2b2;
         }
       }
     }

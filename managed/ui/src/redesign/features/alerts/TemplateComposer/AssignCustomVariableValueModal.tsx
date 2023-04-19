@@ -54,7 +54,7 @@ const useStyles = makeStyles((theme) => ({
     color: theme.palette.grey[900]
   },
   tableContainer: {
-    border: `1px solid ${theme.palette.ybacolors.ybGrayHover}`,
+    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     overflow: 'auto',
     maxHeight: '500px'
   },
@@ -209,6 +209,7 @@ const AssignCustomVariableValueModal: FC<AssignCustomVariableValueModalProps> = 
       submitLabel={setVariableValue.isLoading ? t('common.saving') : t('common.close')}
       onSubmit={() => onHide()}
       onClose={() => onHide()}
+      enableBackdropDismiss
     >
       <Box>
         <Typography variant="body2" className={classes.searchHelpText}>
@@ -269,7 +270,7 @@ const CustomVariableHoverMenu: FC<CustomVariableHoverMenuProps> = ({
   );
   return (
     <>
-      <Grid container onClick={handleClick}>
+      <Grid container onClick={handleClick} data-testid={`alert-Variable-${variable.name}`}>
         <Grid item>
           {labels[variable.name] ?? (
             <>
@@ -295,11 +296,11 @@ const CustomVariableHoverMenu: FC<CustomVariableHoverMenuProps> = ({
         className={clsx(commonStyles.menuStyles, commonStyles.menuNoBorder)}
         anchorOrigin={{
           vertical: 'bottom',
-          horizontal: 'center'
+          horizontal: 'left',
         }}
         transformOrigin={{
           vertical: 'top',
-          horizontal: 'center'
+          horizontal: 'left',
         }}
       >
         {variable.possibleValues.map((v) => (
@@ -309,6 +310,7 @@ const CustomVariableHoverMenu: FC<CustomVariableHoverMenuProps> = ({
               handleClose();
               onSelect(v);
             }}
+            data-testid={`menu-${v}`}
           >
             {v}
             {v === variable.defaultValue && defaultValueSpan()}

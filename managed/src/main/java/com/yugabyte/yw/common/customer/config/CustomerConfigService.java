@@ -163,7 +163,7 @@ public class CustomerConfigService {
   }
 
   private UUID getUniverseUuid(Backup backup) {
-    return backup.getBackupInfo().universeUUID;
+    return backup.getBackupInfo().getUniverseUUID();
   }
 
   private UUID getUniverseUuid(Schedule schedule) {

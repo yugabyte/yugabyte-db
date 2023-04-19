@@ -1,22 +1,23 @@
 package handlers
 
 import (
-        "apiserver/cmd/server/helpers"
-        "apiserver/cmd/server/models"
-        "context"
-        "encoding/json"
-        "fmt"
-        "math"
-        "net"
-        "net/http"
-        "sort"
-        "strconv"
-        "strings"
-        "time"
+    "apiserver/cmd/server/helpers"
+    "apiserver/cmd/server/logger"
+    "apiserver/cmd/server/models"
+    "context"
+    "encoding/json"
+    "fmt"
+    "math"
+    "net"
+    "net/http"
+    "sort"
+    "strconv"
+    "strings"
+    "time"
 
-        "github.com/jackc/pgx/v4/pgxpool"
-        "github.com/labstack/echo/v4"
-        "github.com/yugabyte/gocql"
+    "github.com/jackc/pgx/v4/pgxpool"
+    "github.com/labstack/echo/v4"
+    "github.com/yugabyte/gocql"
 )
 
 const SLOW_QUERY_STATS_SQL string = "SELECT a.rolname, t.datname, t.queryid, " +
@@ -324,6 +325,8 @@ func getRawMetricsForAllNodes(
                         }
                 }
                 if err := iter.Close(); err != nil {
+                    logger.Log.Errorf("[api_cluster_info] Error fetching " +
+                                            "getRawMetricsForAllNodes", err)
                         return nodeValues, err
                 }
                 sort.Slice(values, func(i, j int) bool {

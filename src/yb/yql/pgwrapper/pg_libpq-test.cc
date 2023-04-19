@@ -2601,7 +2601,7 @@ void PgLibPqTest::AddTSToLoadBalanceSingleInstance(
   // Ensure each tserver has exactly one colocation/tablegroup tablet replica.
   ASSERT_EQ(ts_loads.size(), starting_num_tablet_servers);
   for (const auto& entry : ts_loads) {
-    ASSERT_NOTNULL(cluster_->tablet_server_by_uuid(entry.first));
+    ASSERT_ONLY_NOTNULL(cluster_->tablet_server_by_uuid(entry.first));
     ASSERT_EQ(entry.second, 1);
     LOG(INFO) << "found ts " << entry.first << " has " << entry.second << " replicas";
   }
@@ -3206,20 +3206,6 @@ class CoordinatedRunner {
   std::atomic<bool> error_detected_{false};
 };
 
-bool RetryableError(const Status& status) {
-  const auto msg = status.message().ToBuffer();
-  const std::string expected_errors[] = {"Try again",
-                                         "Catalog Version Mismatch",
-                                         "Restart read required at",
-                                         "schema version mismatch for table"};
-  for (const auto& expected : expected_errors) {
-    if (msg.find(expected) != std::string::npos) {
-      return true;
-    }
-  }
-  return false;
-}
-
 } // namespace
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
@@ -3239,7 +3225,7 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(PagingReadRestart)) {
     commands.emplace_back(
         [connection = std::make_shared<PGConn>(ASSERT_RESULT(Connect()))] () -> Status {
           const auto res = connection->Fetch("SELECT key FROM t");
-          return (res.ok() || RetryableError(res.status())) ? Status::OK() : res.status();
+          return (res.ok() || IsRetryable(res.status())) ? Status::OK() : res.status();
     });
   }
   CoordinatedRunner runner(std::move(commands));

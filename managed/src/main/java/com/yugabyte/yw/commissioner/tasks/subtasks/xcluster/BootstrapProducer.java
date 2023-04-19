@@ -4,7 +4,10 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
-import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.services.config.YbClientConfig;
+import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
@@ -24,9 +27,17 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
   public static final long MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
   public static final long MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP = 120000;
 
+  private final RuntimeConfGetter confGetter;
+  private final YbClientConfigFactory ybcClientConfigFactory;
+
   @Inject
-  protected BootstrapProducer(BaseTaskDependencies baseTaskDependencies) {
+  protected BootstrapProducer(
+      BaseTaskDependencies baseTaskDependencies,
+      RuntimeConfGetter confGetter,
+      YbClientConfigFactory ybcClientConfigFactory) {
     super(baseTaskDependencies);
+    this.confGetter = confGetter;
+    this.ybcClientConfigFactory = ybcClientConfigFactory;
   }
 
   public static class Params extends XClusterConfigTaskParams {
@@ -46,8 +57,8 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
     return String.format(
         "%s (sourceUniverse=%s, xClusterUuid=%s, tableIds=%s)",
         super.getName(),
-        taskParams().universeUUID,
-        taskParams().getXClusterConfig().uuid,
+        taskParams().getUniverseUUID(),
+        taskParams().getXClusterConfig().getUuid(),
         taskParams().tableIds);
   }
 
@@ -58,28 +69,28 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
 
     // Each bootstrap producer task must belong to a parent xCluster config.
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
-    xClusterConfig.setStatusForTables(
+    xClusterConfig.updateStatusForTables(
         taskParams().tableIds, XClusterTableConfig.Status.Bootstrapping);
 
-    Universe sourceUniverse = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe sourceUniverse = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String sourceUniverseMasterAddresses = sourceUniverse.getMasterAddresses();
     String sourceUniverseCertificate = sourceUniverse.getCertificateNodetoNode();
     // Bootstrapping producer might be slower compared to other operations, and it has to have a
     // minimum of 120 seconds timeout.
-    YBClientService.Config clientConfig =
-        new YBClientService.Config(
+    YbClientConfig clientConfig =
+        ybcClientConfigFactory.create(
             sourceUniverseMasterAddresses,
             sourceUniverseCertificate,
             Math.max(
-                YBClientService.Config.DEFAULT_ADMIN_OPERATION_TIMEOUT_MS,
+                confGetter.getGlobalConf(GlobalConfKeys.ybcAdminOperationTimeoutMs),
                 MINIMUM_ADMIN_OPERATION_TIMEOUT_MS_FOR_BOOTSTRAP),
             Math.max(
-                YBClientService.Config.DEFAULT_SOCKET_READ_TIMEOUT_MS,
+                confGetter.getGlobalConf(GlobalConfKeys.ybcSocketReadTimeoutMs),
                 MINIMUM_SOCKET_READ_TIMEOUT_MS_FOR_BOOTSTRAP));
     try (YBClient client = ybService.getClientWithConfig(clientConfig)) {
       // Set bootstrap creation time.
       Date now = new Date();
-      xClusterConfig.setBootstrapCreateTimeForTables(taskParams().tableIds, now);
+      xClusterConfig.updateBootstrapCreateTimeForTables(taskParams().tableIds, now);
       log.info("Bootstrap creation time for tables {} set to {}", taskParams().tableIds, now);
 
       // Todo: Add retry to other tservers if the first tserver is failing.
@@ -94,7 +105,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
         String errMsg =
             String.format(
                 "Failed to bootstrap universe (%s) for table (%s): %s",
-                taskParams().universeUUID, taskParams().tableIds, resp.errorMessage());
+                taskParams().getUniverseUUID(), taskParams().tableIds, resp.errorMessage());
         throw new RuntimeException(errMsg);
       }
       List<String> bootstrapIds = resp.bootstrapIds();
@@ -112,17 +123,17 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
             xClusterConfig.maybeGetTableById(taskParams().tableIds.get(i));
         String bootstrapId = bootstrapIds.get(i);
         if (tableConfig.isPresent()) {
-          tableConfig.get().streamId = bootstrapId;
+          tableConfig.get().setStreamId(bootstrapId);
           // If the table is bootstrapped, no need to bootstrap again.
-          tableConfig.get().needBootstrap = false;
-          log.info("Stream id for table {} set to {}", tableConfig.get().tableId, bootstrapId);
+          tableConfig.get().setNeedBootstrap(false);
+          log.info("Stream id for table {} set to {}", tableConfig.get().getTableId(), bootstrapId);
         } else {
           // This code will never run because when we set the bootstrap creation time, we made sure
           // that all the tableIds exist.
           String errMsg =
               String.format(
                   "Could not find tableId (%s) in the xCluster config with uuid (%s)",
-                  taskParams().tableIds.get(i), taskParams().getXClusterConfig().uuid);
+                  taskParams().tableIds.get(i), taskParams().getXClusterConfig().getUuid());
           throw new RuntimeException(errMsg);
         }
       }

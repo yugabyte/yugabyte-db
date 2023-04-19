@@ -8,7 +8,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -196,9 +195,9 @@ public class GFlagsUtil {
       boolean useHostname,
       Config config) {
     Map<String, String> extra_gflags = new TreeMap<>();
-    extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().code);
-    extra_gflags.put(PLACEMENT_REGION, taskParam.getRegion().code);
-    extra_gflags.put(PLACEMENT_ZONE, taskParam.getAZ().code);
+    extra_gflags.put(PLACEMENT_CLOUD, taskParam.getProvider().getCode());
+    extra_gflags.put(PLACEMENT_REGION, taskParam.getRegion().getCode());
+    extra_gflags.put(PLACEMENT_ZONE, taskParam.getAZ().getCode());
     extra_gflags.put(MAX_LOG_SIZE, "256");
     extra_gflags.put(UNDEFOK, ENABLE_YSQL);
     extra_gflags.put(METRIC_NODE_NAME, taskParam.nodeName);
@@ -254,7 +253,7 @@ public class GFlagsUtil {
     }
 
     if (taskParam.isMaster) {
-      extra_gflags.put(CLUSTER_UUID, String.valueOf(taskParam.universeUUID));
+      extra_gflags.put(CLUSTER_UUID, String.valueOf(taskParam.getUniverseUUID()));
       extra_gflags.put(REPLICATION_FACTOR, String.valueOf(userIntent.replicationFactor));
     }
 
@@ -287,12 +286,13 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlags(AnsibleConfigureServers.Params taskParam) {
-    Universe universe = Universe.getOrBadRequest(taskParam.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParam.getUniverseUUID());
     NodeDetails node = universe.getNode(taskParam.nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
+    ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
@@ -332,6 +332,7 @@ public class GFlagsUtil {
     UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
     String providerUUID = userIntent.provider;
     Map<String, String> ybcFlags = new TreeMap<>();
+    ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("server_address", node.cloudInfo.private_ip);
     ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
     ybcFlags.put("log_dir", K8S_YBC_LOG_SUBDIR);

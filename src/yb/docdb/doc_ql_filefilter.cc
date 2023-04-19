@@ -13,20 +13,21 @@
 
 #include "yb/docdb/doc_ql_filefilter.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/rocksdb/db/compaction.h"
 
 namespace yb {
 namespace docdb {
+
 extern rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
 
-std::vector<KeyBytes> EncodePrimitiveValues(const std::vector<KeyEntryValue>& source,
-                                            size_t min_size) {
+std::vector<dockv::KeyBytes> EncodePrimitiveValues(
+    const dockv::KeyEntryValues& source, size_t min_size) {
   size_t size = source.size();
-  std::vector<KeyBytes> result(std::max(min_size, size));
+  std::vector<dockv::KeyBytes> result(std::max(min_size, size));
   for (size_t i = 0; i != size; ++i) {
     source[i].AppendToKey(&result[i]);
   }
@@ -55,9 +56,9 @@ int Compare(const Slice *lhs, const Slice *rhs) {
 }
 
 
-QLRangeBasedFileFilter::QLRangeBasedFileFilter(const std::vector<KeyEntryValue>& lower_bounds,
+QLRangeBasedFileFilter::QLRangeBasedFileFilter(const dockv::KeyEntryValues& lower_bounds,
                                                const std::vector<bool>& lower_bounds_inclusive,
-                                               const std::vector<KeyEntryValue>& upper_bounds,
+                                               const dockv::KeyEntryValues& upper_bounds,
                                                const std::vector<bool>& upper_bounds_inclusive)
     : lower_bounds_(EncodePrimitiveValues(lower_bounds, upper_bounds.size())),
       lower_bounds_inclusive_(ExtendBoolVector(lower_bounds_inclusive, upper_bounds.size(), true)),

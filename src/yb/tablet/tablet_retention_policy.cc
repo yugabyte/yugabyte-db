@@ -25,7 +25,7 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -43,7 +43,6 @@
 #include "yb/util/flags.h"
 
 using namespace std::literals;
-using std::min;
 
 DEFINE_UNKNOWN_int32(timestamp_history_retention_interval_sec, 900,
              "The time interval in seconds to retain DocDB history for. Point-in-time reads at a "
@@ -69,8 +68,16 @@ DEFINE_test_flag(uint64, committed_history_cutoff_initial_value_usec, 0,
 namespace yb {
 namespace tablet {
 
-using docdb::TableTTL;
 using docdb::HistoryRetentionDirective;
+
+namespace {
+
+HybridTime ClockBasedHistoryCutoff(server::Clock* clock) {
+  return clock->Now().AddSeconds(
+      -ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_history_retention_interval_sec));
+}
+
+}
 
 TabletRetentionPolicy::TabletRetentionPolicy(
     server::ClockPtr clock, const AllowedHistoryCutoffProvider& allowed_history_cutoff_provider,
@@ -97,15 +104,6 @@ HybridTime TabletRetentionPolicy::UpdateCommittedHistoryCutoff(HybridTime value)
 }
 
 HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
-  return DoGetRetentionDirective(/* update_committed_history */ true);
-}
-
-HistoryRetentionDirective TabletRetentionPolicy::StatelessRetentionDirective() {
-  return DoGetRetentionDirective(/* update_committed_history */ false);
-}
-
-HistoryRetentionDirective TabletRetentionPolicy::DoGetRetentionDirective(
-    bool update_committed_history) {
   HybridTime history_cutoff;
   {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -113,15 +111,20 @@ HistoryRetentionDirective TabletRetentionPolicy::DoGetRetentionDirective(
       history_cutoff = SanitizeHistoryCutoff(committed_history_cutoff_);
     } else {
       history_cutoff = EffectiveHistoryCutoff();
-      if (update_committed_history) {
-        committed_history_cutoff_ = std::max(history_cutoff, committed_history_cutoff_);
-      }
+      committed_history_cutoff_ = std::max(history_cutoff, committed_history_cutoff_);
     }
   }
 
-  return {history_cutoff, TableTTL(*metadata_.schema()),
+  return {history_cutoff, dockv::TableTTL(*metadata_.schema()),
           docdb::ShouldRetainDeleteMarkersInMajorCompaction(
               ShouldRetainDeleteMarkersInMajorCompaction())};
+}
+
+HybridTime TabletRetentionPolicy::ProposedHistoryCutoff() {
+  // For proposed history cutoff we don't respect active readers.
+  std::lock_guard<std::mutex> lock(mutex_);
+  return FLAGS_enable_history_cutoff_propagation
+      ? committed_history_cutoff_ : ClockBasedHistoryCutoff(clock_.get());
 }
 
 Status TabletRetentionPolicy::RegisterReaderTimestamp(HybridTime timestamp) {
@@ -171,21 +174,7 @@ HybridTime TabletRetentionPolicy::HistoryCutoffToPropagate(HybridTime last_write
 }
 
 HybridTime TabletRetentionPolicy::EffectiveHistoryCutoff() {
-  auto retention_delta =
-      -ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_history_retention_interval_sec) * 1s;
-  auto retention_delta_syscatalog =
-      -ANNOTATE_UNPROTECTED_READ(FLAGS_timestamp_syscatalog_history_retention_interval_sec) * 1s;
-  HybridTime allowed_cutoff;
-  // We try to garbage-collect history older than current time minus the configured retention
-  // interval, but we might not be able to do so if there are still read operations reading at an
-  // older snapshot.
-  allowed_cutoff = SanitizeHistoryCutoff(clock_->Now().AddDelta(retention_delta));
-  if (metadata_.table_id() == kObsoleteShortPrimaryTableId &&
-      retention_delta_syscatalog.count() != 0) {
-    allowed_cutoff = min(
-        allowed_cutoff, SanitizeHistoryCutoff(clock_->Now().AddDelta(retention_delta_syscatalog)));
-  }
-  return allowed_cutoff;
+  return SanitizeHistoryCutoff(ClockBasedHistoryCutoff(clock_.get()));
 }
 
 HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cutoff) {
@@ -202,6 +191,15 @@ HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cuto
   if (allowed_history_cutoff_provider_) {
     provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
     allowed_cutoff = std::min(provided_allowed_cutoff, allowed_cutoff);
+  }
+
+  if (metadata_.table_id() == kObsoleteShortPrimaryTableId) {
+    auto syscatalog_history_retention_interval_sec = ANNOTATE_UNPROTECTED_READ(
+        FLAGS_timestamp_syscatalog_history_retention_interval_sec);
+    if (syscatalog_history_retention_interval_sec) {
+      allowed_cutoff = std::min(
+          allowed_cutoff, clock_->Now().AddSeconds(-syscatalog_history_retention_interval_sec));
+    }
   }
 
   VLOG_WITH_PREFIX(4) << __func__ << ", result: " << allowed_cutoff

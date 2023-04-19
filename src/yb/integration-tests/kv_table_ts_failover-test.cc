@@ -32,13 +32,6 @@ DEFINE_UNKNOWN_int32(test_num_iter,
 
 namespace yb {
 
-using std::unique_ptr;
-
-using client::YBClient;
-using client::YBClientBuilder;
-using client::YBTable;
-using std::shared_ptr;
-
 using integration_tests::YBTableTestBase;
 
 class KVTableTsFailoverTest : public YBTableTestBase {

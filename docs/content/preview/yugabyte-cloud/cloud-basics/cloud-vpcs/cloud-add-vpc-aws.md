@@ -1,7 +1,7 @@
 ---
-title: Create a VPC Network AWS
-headerTitle:
-linkTitle: Create a VPC Network
+title: Peer VPCs in AWS
+headerTitle: Peer VPCs
+linkTitle: Peer VPCs
 description: Peer a VPC in AWS.
 headcontent: Peer your cluster VPC with a VPC in AWS
 aliases:
@@ -9,8 +9,8 @@ aliases:
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-add-vpc-1-aws
-    parent: cloud-vpcs
-    weight: 40
+    parent: cloud-add-peering
+    weight: 50
 type: docs
 ---
 
@@ -36,7 +36,7 @@ YugabyteDB Managed supports virtual private cloud (VPC) networks on AWS and GCP.
 
 Using YugabyteDB Managed, you can create a VPC on AWS, deploy clusters in the VPC, and peer the VPC with application VPCs hosted on AWS.
 
-To create a VPC network in AWS, you need to complete the following tasks:
+To peer VPCs in AWS, you need to complete the following tasks:
 
 | Task | Notes |
 | :--- | :--- |
@@ -48,7 +48,7 @@ To create a VPC network in AWS, you need to complete the following tasks:
 
 With the exception of accepting the peering request in AWS, these tasks are performed in YugabyteDB Managed.
 
-For information on VPC network peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html) in the AWS documentation.
+For information on VPC peering in AWS, refer to [VPC Peering](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-peering.html) in the AWS documentation.
 
 ## Create a VPC
 
@@ -68,7 +68,7 @@ To create a VPC, do the following:
 1. Click **Create VPC** to display the **Create VPC** sheet.
 1. Enter a name for the VPC.
 1. Choose the provider (AWS).
-1. Select the region. Typically, the same region that hosts the VPC with which you want to peer.
+1. Select the [region](../cloud-vpc-intro/#choose-the-region-for-your-vpc). Typically, the same region that hosts the VPC with which you want to peer.
 1. [Specify the CIDR address](../cloud-vpc-intro/#set-the-cidr-and-size-your-vpc). Ensure the following:
     - the address _does not overlap_ with that of the application VPC.
     - the address _does not overlap_ with the VPCs that will be used for the other regions of a multi-region cluster.
@@ -130,7 +130,7 @@ To set DNS settings:
 
 To accept the peering request, do the following:
 
-1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list; its status is Pending acceptance.
+1. On the AWS [Peering Connections](https://console.aws.amazon.com/vpc/home?#PeeringConnections) page, select the VPC in the list; its status is _Pending acceptance_.
 1. Click **Actions** and choose **Accept request** to display the **Accept VPC peering connection request** window.
 
     ![Accept peering in AWS](/images/yb-cloud/cloud-peer-aws-accept.png)

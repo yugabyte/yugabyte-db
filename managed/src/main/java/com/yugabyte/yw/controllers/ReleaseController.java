@@ -34,6 +34,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -55,10 +56,10 @@ public class ReleaseController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.ReleaseFormData",
         paramType = "body")
   })
-  public Result create(UUID customerUUID) {
+  public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    Iterator<Map.Entry<String, JsonNode>> it = request().body().asJson().fields();
+    Iterator<Map.Entry<String, JsonNode>> it = request.body().asJson().fields();
     List<ReleaseFormData> versionDataList = new ArrayList<>();
     while (it.hasNext()) {
       Map.Entry<String, JsonNode> versionJson = it.next();
@@ -88,11 +89,7 @@ public class ReleaseController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Release,
-            versionDataList.toString(),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            request, Audit.TargetType.Release, versionDataList.toString(), Audit.ActionType.Create);
     return YBPSuccess.empty();
   }
 
@@ -134,7 +131,7 @@ public class ReleaseController extends AuthenticatedController {
     if (arch == null) {
       LOG.info(
           "ReleaseController: Could not determine region {} architecture. Listing all releases.",
-          region.code);
+          region.getCode());
       return list(customerUUID, includeMetadata);
     }
 
@@ -162,7 +159,7 @@ public class ReleaseController extends AuthenticatedController {
         dataType = "Object",
         paramType = "body")
   })
-  public Result update(UUID customerUUID, String version) {
+  public Result update(UUID customerUUID, String version, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     ObjectNode formData;
@@ -170,7 +167,7 @@ public class ReleaseController extends AuthenticatedController {
     if (m == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
-    formData = (ObjectNode) request().body().asJson();
+    formData = (ObjectNode) request.body().asJson();
 
     // For now we would only let the user change the state on their releases.
     if (formData.has("state")) {
@@ -183,16 +180,12 @@ public class ReleaseController extends AuthenticatedController {
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Release,
-            version,
-            Audit.ActionType.Update,
-            Json.toJson(formData));
+            request, Audit.TargetType.Release, version, Audit.ActionType.Update);
     return PlatformResults.withData(m);
   }
 
   @ApiOperation(value = "Refresh a release", response = YBPSuccess.class)
-  public Result refresh(UUID customerUUID) {
+  public Result refresh(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     LOG.info("ReleaseController: refresh");
@@ -203,8 +196,7 @@ public class ReleaseController extends AuthenticatedController {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Release, null, Audit.ActionType.Refresh);
+        .createAuditEntry(request, Audit.TargetType.Release, null, Audit.ActionType.Refresh);
     return YBPSuccess.empty();
   }
 
@@ -212,7 +204,7 @@ public class ReleaseController extends AuthenticatedController {
       value = "Delete a release",
       response = ReleaseManager.ReleaseMetadata.class,
       nickname = "deleteRelease")
-  public Result delete(UUID customerUUID, String version) {
+  public Result delete(UUID customerUUID, String version, Http.Request request) {
     if (releaseManager.getReleaseByVersion(version) == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Release version: " + version);
     }
@@ -226,8 +218,7 @@ public class ReleaseController extends AuthenticatedController {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, re.getMessage());
     }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Release, version, Audit.ActionType.Delete);
+        .createAuditEntry(request, Audit.TargetType.Release, version, Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 }

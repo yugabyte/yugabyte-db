@@ -31,7 +31,7 @@ public class XClusterInfoPersist extends UniverseTaskBase {
   public String getName() {
     return String.format(
         "%s(universeUUID=%s,xClusterInfo=%s)",
-        super.getName(), taskParams().universeUUID, taskParams().xClusterInfo);
+        super.getName(), taskParams().getUniverseUUID(), taskParams().xClusterInfo);
   }
 
   @Override
@@ -46,7 +46,8 @@ public class XClusterInfoPersist extends UniverseTaskBase {
 
             // If this universe is not being updated, fail the request.
             if (!universeDetails.updateInProgress) {
-              String msg = "UserUniverse " + taskParams().universeUUID + " is not being updated.";
+              String msg =
+                  "UserUniverse " + taskParams().getUniverseUUID() + " is not being updated.";
               log.error(msg);
               throw new RuntimeException(msg);
             }

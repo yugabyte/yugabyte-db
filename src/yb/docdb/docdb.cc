@@ -30,16 +30,16 @@
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/docdb/subdocument.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/subdocument.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
@@ -62,19 +62,10 @@
 
 #include "yb/yql/cql/ql/util/errcodes.h"
 
-using std::endl;
-using std::list;
 using std::string;
 using std::stringstream;
 using std::unique_ptr;
-using std::shared_ptr;
-using std::stack;
 using std::vector;
-using std::make_shared;
-
-using yb::HybridTime;
-using yb::FormatBytesAsStr;
-using strings::Substitute;
 
 using namespace std::placeholders;
 
@@ -84,15 +75,20 @@ DEFINE_UNKNOWN_int32(cdc_max_stream_intent_records, 1680,
 namespace yb {
 namespace docdb {
 
+using dockv::IntentStrength;
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryTypeAsChar;
+
 namespace {
 
 // key should be valid prefix of doc key, ending with some complete pritimive value or group end.
 Status ApplyIntent(RefCntPrefix key,
-                   const IntentTypeSet intent_types,
+                   const dockv::IntentTypeSet intent_types,
                    LockBatchEntries *keys_locked) {
   // Have to strip kGroupEnd from end of key, because when only hash key is specified, we will
   // get two kGroupEnd at end of strong intent.
-  RETURN_NOT_OK(RemoveGroupEndSuffix(&key));
+  RETURN_NOT_OK(dockv::RemoveGroupEndSuffix(&key));
   keys_locked->push_back({key, intent_types});
   return Status::OK();
 }
@@ -110,10 +106,10 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     const std::vector<std::unique_ptr<DocOperation>>& doc_write_ops,
     const ArenaList<LWKeyValuePairPB>& read_pairs,
     const IsolationLevel isolation_level,
-    const OperationKind operation_kind,
+    const dockv::OperationKind operation_kind,
     const RowMarkType row_mark_type,
     bool transactional_table,
-    PartialRangeKeyIntents partial_range_key_intents) {
+    dockv::PartialRangeKeyIntents partial_range_key_intents) {
   DetermineKeysToLockResult result;
   boost::container::small_vector<RefCntPrefix, 8> doc_paths;
   boost::container::small_vector<size_t, 32> key_prefix_lengths;
@@ -125,17 +121,18 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
     if (isolation_level != IsolationLevel::NON_TRANSACTIONAL) {
       level = isolation_level;
     }
-    IntentTypeSet strong_intent_types = GetStrongIntentTypeSet(level, operation_kind,
-                                                               row_mark_type);
+    auto strong_intent_types = GetStrongIntentTypeSet(level, operation_kind, row_mark_type);
     if (isolation_level == IsolationLevel::SERIALIZABLE_ISOLATION &&
-        operation_kind == OperationKind::kWrite &&
+        operation_kind == dockv::OperationKind::kWrite &&
         doc_op->RequireReadSnapshot()) {
-      strong_intent_types = IntentTypeSet({IntentType::kStrongRead, IntentType::kStrongWrite});
+      strong_intent_types = dockv::IntentTypeSet(
+          {dockv::IntentType::kStrongRead, dockv::IntentType::kStrongWrite});
     }
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
-      RETURN_NOT_OK(SubDocKey::DecodePrefixLengths(doc_path.as_slice(), &key_prefix_lengths));
+      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(
+          doc_path.as_slice(), &key_prefix_lengths));
       // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
       if (key_prefix_lengths.empty()) {
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
@@ -167,11 +164,12 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
 
   if (!read_pairs.empty()) {
     const auto strong_read_intent_types = GetStrongIntentTypeSet(
-        isolation_level, OperationKind::kRead, row_mark_type);
+        isolation_level, dockv::OperationKind::kRead, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
         [&result, &strong_read_intent_types](
-            IntentStrength strength, FullDocKey, Slice value, KeyBytes* key, LastKey) {
+            IntentStrength strength, dockv::FullDocKey, Slice value, KeyBytes* key,
+            dockv::LastKey) {
           RefCntPrefix prefix(key->AsSlice());
           return ApplyIntent(prefix,
                              strength == IntentStrength::kStrong
@@ -232,12 +230,12 @@ Result<PrepareDocWriteOperationResult> PrepareDocWriteOperation(
     const scoped_refptr<Histogram>& write_lock_latency,
     const scoped_refptr<Counter>& failed_batch_lock,
     const IsolationLevel isolation_level,
-    const OperationKind operation_kind,
+    const dockv::OperationKind operation_kind,
     const RowMarkType row_mark_type,
     bool transactional_table,
     bool write_transaction_metadata,
     CoarseTimePoint deadline,
-    PartialRangeKeyIntents partial_range_key_intents,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
     SharedLockManager *lock_manager) {
   PrepareDocWriteOperationResult result;
 
@@ -408,6 +406,7 @@ Status PrepareApplyExternalIntents(
 
       iter.Next();
     }
+    RETURN_NOT_OK(iter.status());
   }
 
   return Status::OK();
@@ -448,7 +447,7 @@ bool AddExternalPairToWriteBatch(
     rocksdb::WriteBatch* intents_write_batch,
     ExternalTxnIntentsState* external_txns_intents_state) {
   DocHybridTimeBuffer doc_ht_buffer;
-  DocHybridTimeWordBuffer inverted_doc_ht_buffer;
+  dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
 
   CHECK(!kv_pair.key().empty());
   CHECK(!kv_pair.value().empty());
@@ -493,7 +492,7 @@ bool AddExternalPairToWriteBatch(
       Slice(kv_pair.key()),
       doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
   }};
-  key_parts[1] = InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
+  key_parts[1] = dockv::InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
   constexpr size_t kNumValueParts = 1;
   intents_write_batch->Put(key_parts, { &key_value, kNumValueParts });
 
@@ -540,187 +539,10 @@ bool PrepareExternalWriteBatch(
   return has_non_external_kvs;
 }
 
-namespace {
-
-// Checks if the given slice points to the part of an encoded SubDocKey past all of the subkeys
-// (and definitely past all the hash/range keys). The only remaining part could be a hybrid time.
-inline bool IsEndOfSubKeys(const Slice& key) {
-  return key[0] == KeyEntryTypeAsChar::kGroupEnd &&
-         (key.size() == 1 || key[1] == KeyEntryTypeAsChar::kHybridTime);
-}
-
-// Enumerates weak intent keys generated by considering specified prefixes of the given key and
-// invoking the provided callback with each combination considered, stored in encoded_key_buffer.
-// On return, *encoded_key_buffer contains the corresponding strong intent, for which the callback
-// has not yet been called. It is left to the caller to use the final state of encoded_key_buffer.
-//
-// The prefixes of the key considered are as follows:
-// 1. Up to and including the whole hash key.
-// 2. Up to and including the whole range key, or if partial_range_key_intents is
-//    PartialRangeKeyIntents::kTrue, then enumerate the prefix up to the end of each component of
-//    the range key separately.
-// 3. Up to and including each subkey component, separately.
-//
-// In any case, we stop short of enumerating the last intent key generated based on the above, as
-// this represents the strong intent key and will be stored in encoded_key_buffer at the end of this
-// call.
-//
-// The beginning of each intent key will also include any cotable_id or colocation_id,
-// if present.
-Status EnumerateWeakIntents(
-    Slice key,
-    const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer,
-    PartialRangeKeyIntents partial_range_key_intents) {
-  static const Slice kEmptyIntentValue;
-
-  encoded_key_buffer->Clear();
-  if (key.empty()) {
-    return STATUS(Corruption, "An empty slice is not a valid encoded SubDocKey");
-  }
-
-  const bool has_cotable_id    = *key.cdata() == KeyEntryTypeAsChar::kTableId;
-  const bool has_colocation_id = *key.cdata() == KeyEntryTypeAsChar::kColocationId;
-  {
-    bool is_table_root_key = false;
-    if (has_cotable_id) {
-      const auto kMinExpectedSize = kUuidSize + 2;
-      if (key.size() < kMinExpectedSize) {
-        return STATUS_FORMAT(
-            Corruption,
-            "Expected an encoded SubDocKey starting with a cotable id to be at least $0 bytes long",
-            kMinExpectedSize);
-      }
-      encoded_key_buffer->AppendRawBytes(key.cdata(), kUuidSize + 1);
-      is_table_root_key = key[kUuidSize + 1] == KeyEntryTypeAsChar::kGroupEnd;
-    } else if (has_colocation_id) {
-      const auto kMinExpectedSize = sizeof(ColocationId) + 2;
-      if (key.size() < kMinExpectedSize) {
-        return STATUS_FORMAT(
-            Corruption,
-            "Expected an encoded SubDocKey starting with a colocation id to be"
-            " at least $0 bytes long",
-            kMinExpectedSize);
-      }
-      encoded_key_buffer->AppendRawBytes(key.cdata(), sizeof(ColocationId) + 1);
-      is_table_root_key = key[sizeof(ColocationId) + 1] == KeyEntryTypeAsChar::kGroupEnd;
-    } else {
-      is_table_root_key = *key.cdata() == KeyEntryTypeAsChar::kGroupEnd;
-    }
-
-    encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-
-    if (is_table_root_key) {
-      // This must be a "table root" (or "tablet root") key (no hash components, no range
-      // components, but the cotable might still be there). We are not really considering the case
-      // of any subkeys under the empty key, so we can return here.
-      return Status::OK();
-    }
-  }
-
-  // For any non-empty key we already know that the empty key intent is weak.
-  RETURN_NOT_OK(functor(
-      IntentStrength::kWeak, FullDocKey::kFalse, kEmptyIntentValue, encoded_key_buffer,
-      LastKey::kFalse));
-
-  auto hashed_part_size = VERIFY_RESULT(DocKey::EncodedSize(key, DocKeyPart::kUpToHash));
-
-  // Remove kGroupEnd that we just added to generate a weak intent.
-  encoded_key_buffer->RemoveLastByte();
-
-  if (hashed_part_size != encoded_key_buffer->size()) {
-    // A hash component is present. Note that if cotable id is present, hashed_part_size would
-    // also include it, so we only need to append the new bytes.
-    encoded_key_buffer->AppendRawBytes(
-        key.cdata() + encoded_key_buffer->size(), hashed_part_size - encoded_key_buffer->size());
-    key.remove_prefix(hashed_part_size);
-    if (key.empty()) {
-      return STATUS(Corruption, "Range key part missing, expected at least a kGroupEnd");
-    }
-
-    // Append the kGroupEnd at the end for the empty range part to make this a valid encoded DocKey.
-    encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-    if (IsEndOfSubKeys(key)) {
-      // This means the key ends at the hash component -- no range keys and no subkeys.
-      return Status::OK();
-    }
-
-    // Generate a weak intent that only includes the hash component.
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey(key[0] == KeyEntryTypeAsChar::kGroupEnd),
-        kEmptyIntentValue, encoded_key_buffer, LastKey::kFalse));
-
-    // Remove the kGroupEnd we added a bit earlier so we can append some range components.
-    encoded_key_buffer->RemoveLastByte();
-  } else {
-    // No hash component.
-    key.remove_prefix(hashed_part_size);
-  }
-
-  // Range components.
-  auto range_key_start = key.cdata();
-  while (VERIFY_RESULT(ConsumePrimitiveValueFromKey(&key))) {
-    // Append the consumed primitive value to encoded_key_buffer.
-    encoded_key_buffer->AppendRawBytes(range_key_start, key.cdata() - range_key_start);
-    // We always need kGroupEnd at the end to make this a valid encoded DocKey.
-    encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-    if (key.empty()) {
-      return STATUS(Corruption, "Range key part is not terminated with a kGroupEnd");
-    }
-    if (IsEndOfSubKeys(key)) {
-      // This is the last range key and there are no subkeys.
-      return Status::OK();
-    }
-    FullDocKey full_doc_key(key[0] == KeyEntryTypeAsChar::kGroupEnd);
-    if (partial_range_key_intents || full_doc_key) {
-      RETURN_NOT_OK(functor(
-          IntentStrength::kWeak, full_doc_key, kEmptyIntentValue, encoded_key_buffer,
-          LastKey::kFalse));
-    }
-    encoded_key_buffer->RemoveLastByte();
-    range_key_start = key.cdata();
-  }
-
-  // We still need to append the kGroupEnd byte that closes the range portion to our buffer.
-  // The corresponding kGroupEnd has already been consumed from the key slice by the last call to
-  // ConsumePrimitiveValueFromKey, which returned false.
-  encoded_key_buffer->AppendKeyEntryType(KeyEntryType::kGroupEnd);
-
-  // Subkey components.
-  auto subkey_start = key.cdata();
-  while (VERIFY_RESULT(SubDocKey::DecodeSubkey(&key))) {
-    // Append the consumed value to encoded_key_buffer.
-    encoded_key_buffer->AppendRawBytes(subkey_start, key.cdata() - subkey_start);
-    if (key.empty() || *key.cdata() == KeyEntryTypeAsChar::kHybridTime) {
-      // This was the last subkey.
-      return Status::OK();
-    }
-    RETURN_NOT_OK(functor(
-        IntentStrength::kWeak, FullDocKey::kTrue, kEmptyIntentValue, encoded_key_buffer,
-        LastKey::kFalse));
-    subkey_start = key.cdata();
-  }
-
-  return STATUS(
-      Corruption,
-      "Expected to reach the end of the key after decoding last valid subkey");
-}
-
-}  // anonymous namespace
-
 Status EnumerateIntents(
-    Slice key, const Slice& intent_value, const EnumerateIntentsCallback& functor,
-    KeyBytes* encoded_key_buffer, PartialRangeKeyIntents partial_range_key_intents,
-    LastKey last_key) {
-  RETURN_NOT_OK(EnumerateWeakIntents(
-      key, functor, encoded_key_buffer, partial_range_key_intents));
-  return functor(
-      IntentStrength::kStrong, FullDocKey::kTrue, intent_value, encoded_key_buffer, last_key);
-}
-
-Status EnumerateIntents(
-    const ArenaList<docdb::LWKeyValuePairPB>& kv_pairs,
-    const EnumerateIntentsCallback& functor, PartialRangeKeyIntents partial_range_key_intents) {
+    const ArenaList<LWKeyValuePairPB>& kv_pairs,
+    const dockv::EnumerateIntentsCallback& functor,
+    dockv::PartialRangeKeyIntents partial_range_key_intents) {
   if (kv_pairs.empty()) {
     return Status::OK();
   }
@@ -729,10 +551,10 @@ Status EnumerateIntents(
   auto it = kv_pairs.begin();
   for (;;) {
     const auto& kv_pair = *it;
-    LastKey last_key(++it == kv_pairs.end());
+    dockv::LastKey last_key(++it == kv_pairs.end());
     CHECK(!kv_pair.key().empty());
     CHECK(!kv_pair.value().empty());
-    RETURN_NOT_OK(EnumerateIntents(
+    RETURN_NOT_OK(dockv::EnumerateIntents(
         kv_pair.key(), kv_pair.value(), functor, &encoded_key, partial_range_key_intents,
         last_key));
     if (last_key) {
@@ -809,7 +631,8 @@ Result<ApplyTransactionState> GetIntentsBatch(
         }
         {
           intent_iter.Seek(reverse_index_value);
-          if (!intent_iter.Valid() || intent_iter.key() != reverse_index_value) {
+          if (!VERIFY_RESULT(intent_iter.CheckedValid()) ||
+              intent_iter.key() != reverse_index_value) {
             LOG(WARNING) << "Unable to find intent: " << reverse_index_value.ToDebugHexString()
                          << " for " << key_slice.ToDebugHexString()
                          << ", transactionId: " << transaction_id;
@@ -818,12 +641,12 @@ Result<ApplyTransactionState> GetIntentsBatch(
 
           auto intent = VERIFY_RESULT(ParseIntentKey(intent_iter.key(), transaction_id_slice));
 
-          if (intent.types.Test(IntentType::kStrongWrite)) {
-            auto decoded_value =
-                VERIFY_RESULT(DecodeIntentValue(intent_iter.value(), &transaction_id_slice));
+          if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
+            auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
+                intent_iter.value(), &transaction_id_slice));
             write_id = decoded_value.write_id;
 
-            if (decoded_value.body.starts_with(ValueEntryTypeAsChar::kRowLock)) {
+            if (decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
               reverse_index_iter.Next();
               continue;
             }
@@ -862,6 +685,7 @@ Result<ApplyTransactionState> GetIntentsBatch(
     }
     reverse_index_iter.Next();
   }
+  RETURN_NOT_OK(reverse_index_iter.status());
 
   return ApplyTransactionState{};
 }
@@ -879,7 +703,7 @@ void CombineExternalIntents(
   // value: size(intent1_key), intent1_key, size(intent1_value), intent1_value, size(intent2_key)...
   // where size is encoded as varint.
 
-  docdb::KeyBytes buffer;
+  dockv::KeyBytes buffer;
   buffer.AppendKeyEntryType(KeyEntryType::kExternalTransactionId);
   buffer.AppendRawBytes(txn_id.AsSlice());
   provider->SetKey(buffer.AsSlice());

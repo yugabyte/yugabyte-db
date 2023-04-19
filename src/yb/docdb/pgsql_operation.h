@@ -16,8 +16,9 @@
 #include "yb/common/pgsql_protocol.pb.h"
 
 #include "yb/docdb/doc_expr.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_operation.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -67,7 +68,7 @@ class PgsqlWriteOperation :
       ReadHybridTime read_time);
   Result<HybridTime> FindOldestOverwrittenTimestamp(
       IntentAwareIterator* iter,
-      const SubDocKey& sub_doc_key,
+      const dockv::SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
   // Execute write.
@@ -88,7 +89,7 @@ class PgsqlWriteOperation :
   Status ApplyTruncateColocated(const DocOperationApplyData& data);
   Status ApplyFetchSequence(const DocOperationApplyData& data);
 
-  Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
+  Status DeleteRow(const dockv::DocPath& row_path, DocWriteBatch* doc_write_batch,
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   // Reading current row before operating on it.
@@ -124,7 +125,7 @@ class PgsqlWriteOperation :
   // UPDATE, DELETE, INSERT operations should return total number of new or changed rows.
 
   // Doc key and encoded doc key for the primary key.
-  boost::optional<DocKey> doc_key_;
+  boost::optional<dockv::DocKey> doc_key_;
   RefCntPrefix encoded_doc_key_;
 
   // Rows result requested.
@@ -163,8 +164,9 @@ class PgsqlReadOperation : public DocExprExecutor {
                          bool is_explicit_request_read_time,
                          const DocReadContext& doc_read_context,
                          const DocReadContext* index_doc_read_context,
-                         WriteBuffer *result_buffer,
-                         HybridTime *restart_read_ht);
+                         WriteBuffer* result_buffer,
+                         HybridTime* restart_read_ht,
+                         const DocDBStatistics* statistics = nullptr);
 
   Status GetTupleId(QLValuePB *result) const override;
 
@@ -177,27 +179,30 @@ class PgsqlReadOperation : public DocExprExecutor {
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
-                               const DocReadContext *index_doc_read_context,
-                               WriteBuffer *result_buffer,
-                               HybridTime *restart_read_ht,
-                               bool *has_paging_state);
+                               const DocReadContext* index_doc_read_context,
+                               WriteBuffer* result_buffer,
+                               HybridTime* restart_read_ht,
+                               bool* has_paging_state,
+                               const DocDBStatistics* statistics);
 
   // Execute a READ operator for a given batch of ybctids.
   Result<size_t> ExecuteBatchYbctid(const YQLStorageIf& ql_storage,
                                     CoarseTimePoint deadline,
                                     const ReadHybridTime& read_time,
                                     const DocReadContext& doc_read_context,
-                                    WriteBuffer *result_buffer,
-                                    HybridTime *restart_read_ht);
+                                    WriteBuffer* result_buffer,
+                                    HybridTime* restart_read_ht,
+                                    const DocDBStatistics* statistics);
 
   Result<size_t> ExecuteSample(const YQLStorageIf& ql_storage,
                                CoarseTimePoint deadline,
                                const ReadHybridTime& read_time,
                                bool is_explicit_request_read_time,
                                const DocReadContext& doc_read_context,
-                               WriteBuffer *result_buffer,
-                               HybridTime *restart_read_ht,
-                               bool *has_paging_state);
+                               WriteBuffer* result_buffer,
+                               HybridTime* restart_read_ht,
+                               bool* has_paging_state,
+                               const DocDBStatistics* statistics);
 
   Status PopulateResultSet(const QLTableRow& table_row,
                            WriteBuffer *result_buffer);

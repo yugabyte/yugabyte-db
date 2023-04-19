@@ -31,7 +31,7 @@ public class MetricCollectionLevelListener implements RuntimeConfigChangeListene
     Set<Universe> universes = Universe.getAllWithoutResources();
     universes.forEach(
         universe -> {
-          universe.updateSwamperConfigWritten(false);
+          universe.setSwamperConfigWritten(false);
           universe.save();
         });
   }
@@ -42,14 +42,14 @@ public class MetricCollectionLevelListener implements RuntimeConfigChangeListene
     Set<Universe> universes = Universe.getAllWithoutResources(customer);
     universes.forEach(
         universe -> {
-          universe.updateSwamperConfigWritten(false);
+          universe.setSwamperConfigWritten(false);
           universe.save();
         });
   }
 
   @Override
   public void processUniverse(Universe universe) {
-    universe.updateSwamperConfigWritten(false);
+    universe.setSwamperConfigWritten(false);
     universe.save();
   }
 }

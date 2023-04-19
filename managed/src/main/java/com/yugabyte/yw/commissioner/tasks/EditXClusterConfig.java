@@ -37,15 +37,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
     log.info("Running {}", getName());
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     XClusterConfigEditFormData editFormData = taskParams().getEditFormData();
 
     // Lock the source universe.
-    lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
+    lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
     try {
       // Lock the target universe.
-      lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
+      lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
       try {
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
@@ -61,8 +61,8 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                   createTransferXClusterCertsCopyTasks(
                       xClusterConfig,
                       targetUniverse.getNodes(),
-                      XClusterConfig.getReplicationGroupName(
-                          xClusterConfig.sourceUniverseUUID, editFormData.name),
+                      xClusterConfig.getNewReplicationGroupName(
+                          xClusterConfig.getSourceUniverseUUID(), editFormData.name),
                       cert,
                       targetUniverse.getUniverseDetails().getSourceRootCertDirPath()));
 
@@ -113,16 +113,16 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-        createMarkUniverseUpdateSuccessTasks(targetUniverse.universeUUID)
+        createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-        createMarkUniverseUpdateSuccessTasks(sourceUniverse.universeUUID)
+        createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
       } finally {
         // Unlock the target universe.
-        unlockUniverseForUpdate(targetUniverse.universeUUID);
+        unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
@@ -136,12 +136,13 @@ public class EditXClusterConfig extends CreateXClusterConfig {
                         taskParams().getTableIdsToRemove().stream())
                     .collect(Collectors.toSet()),
                 X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
-        xClusterConfig.setStatusForTables(tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+        xClusterConfig.updateStatusForTables(
+            tablesInPendingStatus, XClusterTableConfig.Status.Failed);
       }
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
-      unlockUniverseForUpdate(sourceUniverse.universeUUID);
+      unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
     }
 
     log.info("Completed {}", getName());

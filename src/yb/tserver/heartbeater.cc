@@ -114,14 +114,10 @@ DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be di
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
-using google::protobuf::RepeatedPtrField;
-using yb::HostPortPB;
-using yb::consensus::RaftPeerPB;
 using yb::master::GetLeaderMasterRpc;
 using yb::rpc::RpcController;
 using std::shared_ptr;
 using std::vector;
-using strings::Substitute;
 
 namespace yb {
 namespace tserver {
@@ -514,6 +510,7 @@ Status Heartbeater::Thread::TryHeartbeat() {
       }
       RETURN_NOT_OK(server_->SetConfigVersionAndConsumerRegistry(
           cluster_config_version, &resp.consumer_registry()));
+      server_->SetXClusterDDLOnlyMode(resp.consumer_registry().role() != cdc::XClusterRole::ACTIVE);
     } else if (resp.has_cluster_config_version()) {
       RETURN_NOT_OK(
           server_->SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));

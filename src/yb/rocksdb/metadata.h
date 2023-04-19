@@ -293,7 +293,8 @@ struct SstFileMetaData {
   bool being_compacted = false; // true if the file is currently being compacted.
 
   std::string Name() const;
-  std::string FullName() const;
+  std::string BaseFilePath() const;
+  std::string DataFilePath() const;
 };
 
 // The metadata that describes a level.

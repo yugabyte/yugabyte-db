@@ -61,8 +61,6 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/flags.h"
 
-using std::shared_ptr;
-using std::unordered_set;
 using std::string;
 using std::vector;
 

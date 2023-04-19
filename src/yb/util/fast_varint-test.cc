@@ -33,7 +33,6 @@ using std::numeric_limits;
 
 using namespace std::literals;
 using strings::Substitute;
-using yb::FormatBytesAsStr;
 
 namespace yb {
 namespace util {
@@ -473,6 +472,8 @@ TEST(FastVarIntTest, DecodeDescendingSignedCheck) {
     SCOPED_TRACE(Format("Value: $0", value));
     auto end = FastEncodeDescendingSignedVarInt(value, buffer);
     Slice slice(buffer, end);
+    auto size = FastDecodeDescendingSignedVarIntSize(slice);
+    ASSERT_EQ(size, slice.size());
     auto decoded_value = ASSERT_RESULT_FAST(FastDecodeDescendingSignedVarIntUnsafe(&slice));
     ASSERT_TRUE(slice.empty());
     ASSERT_EQ(value, decoded_value);

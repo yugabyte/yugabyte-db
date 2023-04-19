@@ -6,7 +6,6 @@ import static com.yugabyte.yw.forms.PlatformResults.YBPSuccess.withMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.AccessKeyHandler;
 import com.yugabyte.yw.forms.AccessKeyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -26,6 +25,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -70,7 +70,7 @@ public class AccessKeyController extends AuthenticatedController {
     List<UUID> providerUUIDs =
         Provider.getAll(customerUUID)
             .stream()
-            .map(provider -> provider.uuid)
+            .map(provider -> provider.getUuid())
             .collect(Collectors.toList());
     List<AccessKey> accessKeys = AccessKey.getByProviderUuids(providerUUIDs);
     accessKeys.forEach(AccessKey::mergeProviderDetails);
@@ -89,22 +89,20 @@ public class AccessKeyController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AccessKeyFormData",
           required = true))
-  public Result create(UUID customerUUID, UUID providerUUID) {
+  public Result create(UUID customerUUID, UUID providerUUID, Http.Request request) {
     final Provider provider = Provider.getOrBadRequest(providerUUID);
     AccessKeyFormData formData =
         formFactory
-            .getFormDataOrBadRequest(AccessKeyFormData.class)
+            .getFormDataOrBadRequest(request, AccessKeyFormData.class)
             .get()
             .setOrValidateRequestDataWithExistingKey(provider);
-    AccessKey accessKey =
-        accessKeyHandler.create(customerUUID, provider, formData, request().body());
+    AccessKey accessKey = accessKeyHandler.create(customerUUID, provider, formData, request.body());
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AccessKey,
-            Objects.toString(accessKey.idKey, null),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            Objects.toString(accessKey.getIdKey(), null),
+            Audit.ActionType.Create);
     return PlatformResults.withData(accessKey);
   }
 
@@ -119,23 +117,22 @@ public class AccessKeyController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AccessKey",
           required = true))
-  public Result edit(UUID customerUUID, UUID providerUUID, String keyCode) {
+  public Result edit(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     // As part of access key edit we will be creating a new access key
     // so that if the old key is associated with some universes remains
     // functional by the time we shift completely to start using new generated keys.
 
     final Provider provider = Provider.getOrBadRequest(providerUUID);
-    JsonNode requestBody = request().body().asJson();
+    JsonNode requestBody = request.body().asJson();
     AccessKey accessKey = formFactory.getFormDataOrBadRequest(requestBody, AccessKey.class);
 
     AccessKey newAccessKey = accessKeyHandler.edit(customerUUID, provider, accessKey, keyCode);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AccessKey,
-            Objects.toString(newAccessKey.idKey, null),
-            Audit.ActionType.Edit,
-            request().body().asJson());
+            Objects.toString(newAccessKey.getIdKey(), null),
+            Audit.ActionType.Edit);
     return PlatformResults.withData(newAccessKey);
   }
 
@@ -143,7 +140,7 @@ public class AccessKeyController extends AuthenticatedController {
       nickname = "delete_accesskey",
       value = "Delete an access key",
       response = YBPSuccess.class)
-  public Result delete(UUID customerUUID, UUID providerUUID, String keyCode) {
+  public Result delete(UUID customerUUID, UUID providerUUID, String keyCode, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     Provider.getOrBadRequest(customerUUID, providerUUID);
     AccessKey accessKey = AccessKey.getOrBadRequest(providerUUID, keyCode);
@@ -152,10 +149,10 @@ public class AccessKeyController extends AuthenticatedController {
 
     accessKey.deleteOrThrow();
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.AccessKey,
-            Objects.toString(accessKey.idKey, null),
+            Objects.toString(accessKey.getIdKey(), null),
             Audit.ActionType.Delete);
     return withMessage("Deleted KeyCode: " + keyCode);
   }

@@ -30,7 +30,8 @@ public class RestartTaskParams extends UpgradeTaskParams {
         && currCloudType.equals(CloudType.kubernetes)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
-          "Can perform only a rolling upgrade on a Kubernetes universe " + universe.universeUUID);
+          "Can perform only a rolling upgrade on a Kubernetes universe "
+              + universe.getUniverseUUID());
     }
   }
 

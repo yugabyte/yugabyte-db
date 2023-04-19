@@ -31,7 +31,7 @@
 //
 
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_wire_protocol.h"
 
@@ -69,16 +69,9 @@
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
 
-using yb::consensus::RaftConfigPB;
-using yb::consensus::RaftPeerPB;
-using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
-using yb::server::Clock;
 using yb::server::HybridClock;
-using yb::tablet::Tablet;
-using yb::tablet::TabletPeer;
-using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
@@ -858,10 +851,10 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   const char *tabletId = "TestWriteOutOfBoundsTablet";
   Schema schema = SchemaBuilder(schema_).Build();
 
-  PartitionSchema partition_schema;
-  CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  CHECK_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  Partition partition;
+  dockv::Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
       "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
       YQL_TABLE_TYPE, schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */,

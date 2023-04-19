@@ -107,20 +107,20 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     authToken = user.createAuthToken();
 
     mainUniverseName = "AttachDetachController-test-universe";
-    mainUniverse = createUniverse(mainUniverseName, customer.getCustomerId());
-    mainUniverseUUID = mainUniverse.universeUUID;
+    mainUniverse = createUniverse(mainUniverseName, customer.getId());
+    mainUniverseUUID = mainUniverse.getUniverseUUID();
     detachEndpoint =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + mainUniverse.universeUUID.toString()
+            + mainUniverse.getUniverseUUID().toString()
             + "/export";
 
     attachEndpoint =
         "/api/customers/"
-            + customer.uuid
+            + customer.getUuid()
             + "/universes/"
-            + mainUniverse.universeUUID.toString()
+            + mainUniverse.getUniverseUUID().toString()
             + "/import";
 
     String storagePath = confGetter.getStaticConf().getString("yb.storage.path");
@@ -129,7 +129,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     ProviderDetails providerDetails = new ProviderDetails();
     defaultProvider =
         Provider.create(
-            customer.uuid,
+            customer.getUuid(),
             UUID.randomUUID(),
             Common.CloudType.aws,
             "aws-test-provider",
@@ -138,29 +138,30 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     defaultAZ1 = AvailabilityZone.createOrThrow(defaultRegion, "az-1", "A Zone", "subnet-1");
     defaultAZ2 = AvailabilityZone.createOrThrow(defaultRegion, "az-3", "B Zone", "subnet-2");
     defaultAZ3 = AvailabilityZone.createOrThrow(defaultRegion, "az-2", "C Zone", "subnet-3");
-    providerDetails = defaultProvider.getProviderDetails();
+    providerDetails = defaultProvider.getDetails();
     providerDetails.cloudInfo = new ProviderDetails.CloudInfo();
     AWSCloudInfo awsCloudInfo = new AWSCloudInfo();
     awsCloudInfo.awsAccessKeyID = "awsAccessKeySecretDummyValue";
     awsCloudInfo.awsAccessKeySecret = "awsAccessKeySecretDummyValue";
     providerDetails.cloudInfo.setAws(awsCloudInfo);
-    defaultProvider.regions.add(defaultRegion);
+    defaultProvider.getRegions().add(defaultRegion);
     defaultProvider.save();
-    defaultRegion.zones.add(defaultAZ2);
-    defaultRegion.zones.add(defaultAZ3);
-    defaultRegion.zones.add(defaultAZ1);
+    defaultRegion.getZones().add(defaultAZ2);
+    defaultRegion.getZones().add(defaultAZ3);
+    defaultRegion.getZones().add(defaultAZ1);
     defaultRegion.save();
 
     // Create access key.
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    String accessKeyDir = String.format("%s/keys/%s", storagePath, defaultProvider.uuid);
+    String accessKeyDir = String.format("%s/keys/%s", storagePath, defaultProvider.getUuid());
     keyInfo.privateKey =
-        String.format("%s/keys/%s/private-key.pem", storagePath, defaultProvider.uuid);
+        String.format("%s/keys/%s/private-key.pem", storagePath, defaultProvider.getUuid());
     keyInfo.publicKey =
-        String.format("%s/keys/%s/public-key.pem", storagePath, defaultProvider.uuid);
-    keyInfo.vaultFile = String.format("%s/keys/%s/key.vault", storagePath, defaultProvider.uuid);
+        String.format("%s/keys/%s/public-key.pem", storagePath, defaultProvider.getUuid());
+    keyInfo.vaultFile =
+        String.format("%s/keys/%s/key.vault", storagePath, defaultProvider.getUuid());
     keyInfo.vaultPasswordFile =
-        String.format("%s/keys/%s/key.vault_password", storagePath, defaultProvider.uuid);
+        String.format("%s/keys/%s/key.vault_password", storagePath, defaultProvider.getUuid());
     Files.createDirectories(Paths.get(accessKeyDir));
     File privateKeyFile = new File(keyInfo.privateKey);
     privateKeyFile.createNewFile();
@@ -171,9 +172,9 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     File vaultPasswordFile = new File(keyInfo.vaultPasswordFile);
     vaultPasswordFile.createNewFile();
     defaultAccessKey =
-        AccessKey.create(defaultProvider.uuid, "key-aws-" + mainUniverseName, keyInfo);
+        AccessKey.create(defaultProvider.getUuid(), "key-aws-" + mainUniverseName, keyInfo);
 
-    defaultProvider.allAccessKeys.add(defaultAccessKey);
+    defaultProvider.getAllAccessKeys().add(defaultAccessKey);
     defaultProvider.save();
 
     String host = "1.2.3.4";
@@ -240,7 +241,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     } catch (Exception ignored) {
     }
 
-    String xClusterApiEndpoint = "/api/customers/" + customer.uuid + "/xcluster_configs";
+    String xClusterApiEndpoint = "/api/customers/" + customer.getUuid() + "/xcluster_configs";
 
     ListTablesResponse mockListTablesResponse = mock(ListTablesResponse.class);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList = new ArrayList<>();
@@ -302,13 +303,13 @@ public class AttachDetachControllerTest extends FakeDBApplication {
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
           UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-          userIntent.provider = defaultProvider.uuid.toString();
+          userIntent.provider = defaultProvider.getUuid().toString();
           userIntent.providerType = Common.CloudType.aws;
           universe.getUniverseDetails().upsertPrimaryCluster(userIntent, null);
           universe.setUniverseDetails(universeDetails);
           universe.updateConfig(config);
         };
-    mainUniverse = Universe.saveDetails(mainUniverse.universeUUID, updater);
+    mainUniverse = Universe.saveDetails(mainUniverse.getUniverseUUID(), updater);
 
     // Ignore software releases/ybc releases.
     ObjectNode bodyJson = Json.newObject();
@@ -323,10 +324,10 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     String tarFileLocation = tarFileBase + ".tar.gz";
     File tarFile = new File(tarFileLocation);
     FileUtils.writeByteArrayToFile(tarFile, detachUniverseContent);
-    mainUniverse = Universe.getOrBadRequest(mainUniverse.universeUUID);
+    mainUniverse = Universe.getOrBadRequest(mainUniverse.getUniverseUUID());
 
     // Extract tarball and validate required files exist.
-    Util.extractFilesFromTarGZ(tarFile, tarFileBase);
+    Util.extractFilesFromTarGZ(tarFile.toPath(), tarFileBase);
     File specFolder = new File(tarFileBase);
     File universeJsonFile = new File(tarFileBase + "/universe-spec.json");
     File accessKeyFolder = new File(tarFileBase + "/keys");
@@ -344,9 +345,9 @@ public class AttachDetachControllerTest extends FakeDBApplication {
 
     // Assert provider information is retained.
     JsonNode providerJson = specJson.get("provider");
-    UUID expectedProviderUUID = defaultProvider.uuid;
-    AccessKey expectedAccessKey = defaultProvider.allAccessKeys.get(0);
-    String expectedKeyCode = expectedAccessKey.idKey.keyCode;
+    UUID expectedProviderUUID = defaultProvider.getUuid();
+    AccessKey expectedAccessKey = defaultProvider.getAllAccessKeys().get(0);
+    String expectedKeyCode = expectedAccessKey.getIdKey().keyCode;
     String expectedPublicKey = expectedAccessKey.getKeyInfo().publicKey;
     String expectedPrivateKey = expectedAccessKey.getKeyInfo().privateKey;
     String expectedVaultPassword = expectedAccessKey.getKeyInfo().vaultPasswordFile;
@@ -354,10 +355,10 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     assertEquals(expectedProviderUUID.toString(), providerJson.get("uuid").textValue());
     JsonNode cloudInfoJson = providerJson.get("details").get("cloudInfo");
     assertEquals(
-        defaultProvider.getProviderDetails().cloudInfo.aws.awsAccessKeyID,
+        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeyID,
         cloudInfoJson.get("aws").get("awsAccessKeyID").textValue());
     assertEquals(
-        defaultProvider.getProviderDetails().cloudInfo.aws.awsAccessKeySecret,
+        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeySecret,
         cloudInfoJson.get("aws").get("awsAccessKeySecret").textValue());
     JsonNode accessKeyJson = providerJson.get("allAccessKeys").get(0);
     assertEquals(expectedKeyCode, accessKeyJson.get("idKey").get("keyCode").textValue());
@@ -435,20 +436,20 @@ public class AttachDetachControllerTest extends FakeDBApplication {
 
     // Assert provider information is retained.
     Provider importedProvider = Provider.getOrBadRequest(expectedProviderUUID);
-    assertEquals(importedProvider.allAccessKeys.size(), 1);
-    AccessKey importedAccessKey = importedProvider.allAccessKeys.get(0);
-    assertEquals(expectedKeyCode, importedAccessKey.idKey.keyCode);
+    assertEquals(importedProvider.getAllAccessKeys().size(), 1);
+    AccessKey importedAccessKey = importedProvider.getAllAccessKeys().get(0);
+    assertEquals(expectedKeyCode, importedAccessKey.getIdKey().keyCode);
     assertEquals(expectedPublicKey, importedAccessKey.getKeyInfo().publicKey);
     assertEquals(expectedPrivateKey, importedAccessKey.getKeyInfo().privateKey);
     assertEquals(expectedVaultPassword, importedAccessKey.getKeyInfo().vaultPasswordFile);
     assertEquals(expectedVault, importedAccessKey.getKeyInfo().vaultFile);
     // Provider sensitive information.
     assertEquals(
-        defaultProvider.getProviderDetails().cloudInfo.aws.awsAccessKeyID,
-        importedProvider.getProviderDetails().cloudInfo.aws.awsAccessKeyID);
+        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeyID,
+        importedProvider.getDetails().cloudInfo.aws.awsAccessKeyID);
     assertEquals(
-        defaultProvider.getProviderDetails().cloudInfo.aws.awsAccessKeySecret,
-        importedProvider.getProviderDetails().cloudInfo.aws.awsAccessKeySecret);
+        defaultProvider.getDetails().cloudInfo.aws.awsAccessKeySecret,
+        importedProvider.getDetails().cloudInfo.aws.awsAccessKeySecret);
 
     // Assert universe information is retained.
     Universe importedUniverse = Universe.getOrBadRequest(mainUniverseUUID);

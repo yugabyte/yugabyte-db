@@ -35,6 +35,7 @@ import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -57,10 +58,10 @@ public class KubernetesOverridesController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true))
-  public Result validateKubernetesOverrides(UUID customerUUID) {
+  public Result validateKubernetesOverrides(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     UniverseConfigureTaskParams taskParams =
-        parseJsonAndValidate(UniverseConfigureTaskParams.class);
+        parseJsonAndValidate(request, UniverseConfigureTaskParams.class);
     return PlatformResults.withData(validateKubernetesOverrides(taskParams));
   }
 
@@ -105,9 +106,9 @@ public class KubernetesOverridesController extends AuthenticatedController {
         String ybSoftwareVersion = cluster.userIntent.ybSoftwareVersion;
         PlacementInfo pi = cluster.placementInfo;
         Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-        for (Region r : provider.regions) {
-          for (AvailabilityZone az : r.zones) {
-            providersAZSet.add(az.code);
+        for (Region r : provider.getRegions()) {
+          for (AvailabilityZone az : r.getZones()) {
+            providersAZSet.add(az.getCode());
           }
         }
         KubernetesPlacement placement =
@@ -115,7 +116,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
         for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
           UUID azUUID = entry.getKey();
           boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-          String azName = AvailabilityZone.getOrBadRequest(azUUID).code;
+          String azName = AvailabilityZone.getOrBadRequest(azUUID).getCode();
           String azCode = isMultiAz ? azName : null;
           placementAZSet.add(azName);
           Map<String, String> config = entry.getValue();

@@ -77,7 +77,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   @Before
   public void setUp() throws Exception {
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
 
     // Populate the fake auth config
     fakeAuthConfig.put("name", authConfigName);
@@ -116,12 +116,12 @@ public class GcpEARServiceTest extends FakeDBApplication {
 
     // Make a fake auth config object in db to update proper protection level
     KmsConfig kmsConfig = new KmsConfig();
-    kmsConfig.configUUID = this.configUUID;
-    kmsConfig.customerUUID = this.customer.uuid;
-    kmsConfig.keyProvider = KeyProvider.GCP;
-    kmsConfig.authConfig = fakeAuthConfigCopy;
-    kmsConfig.version = KmsConfig.SCHEMA_VERSION;
-    kmsConfig.name = authConfigName;
+    kmsConfig.setConfigUUID(this.configUUID);
+    kmsConfig.setCustomerUUID(this.customer.getUuid());
+    kmsConfig.setKeyProvider(KeyProvider.GCP);
+    kmsConfig.setAuthConfig(fakeAuthConfigCopy);
+    kmsConfig.setVersion(KmsConfig.SCHEMA_VERSION);
+    kmsConfig.setName(authConfigName);
     kmsConfig.save();
 
     ObjectNode createdAuthConfig =
@@ -138,7 +138,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
         mockGcpEARService.createKeyWithService(
-            universe.universeUUID, configUUID, encryptionAtRestConfig);
+            universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).generateRandomBytes(fakeAuthConfig, numBytes);
     verify(mockGcpEARServiceUtil, times(1)).encryptBytes(fakeAuthConfig, randomBytes);
@@ -150,7 +150,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
         mockGcpEARService.rotateKeyWithService(
-            universe.universeUUID, configUUID, encryptionAtRestConfig);
+            universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).generateRandomBytes(fakeAuthConfig, numBytes);
     verify(mockGcpEARServiceUtil, times(1)).encryptBytes(fakeAuthConfig, randomBytes);

@@ -5,7 +5,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
@@ -19,7 +19,10 @@ import {
 import { ProviderCode, VPCSetupType, YBImageType } from '../../constants';
 import { RegionOperation } from './constants';
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
-import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
+import {
+  ReactSelectOption,
+  YBReactSelectField
+} from '../../components/YBReactSelect/YBReactSelectField';
 import { getRegionlabel, getRegionOptions, getZoneOptions } from './utils';
 import { generateLowerCaseAlphanumericId } from '../utils';
 
@@ -37,7 +40,7 @@ interface ConfigureRegionModalProps extends YBModalProps {
 
 type ZoneCode = { value: string; label: string; isDisabled: boolean };
 type Zones = {
-  code: ZoneCode;
+  code: ZoneCode | undefined;
   subnet: string;
 }[];
 export interface ConfigureRegionFormValues {
@@ -87,7 +90,7 @@ export const ConfigureRegionModal = ({
       providerCode === ProviderCode.AZU ? 'Security Group Name (Optional)' : 'Security Group ID',
     ybImage:
       providerCode === ProviderCode.AWS
-        ? 'Custom AMI ID (Optional Override)'
+        ? 'Custom AMI ID'
         : providerCode === ProviderCode.AZU
         ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',
@@ -113,6 +116,10 @@ export const ConfigureRegionModal = ({
       is: () => shouldExposeField.securityGroupId && providerCode === ProviderCode.AWS,
       then: string().required(`${fieldLabel.securityGroupId} is required.`)
     }),
+    ybImage: string().when([], {
+      is: () => shouldExposeField.ybImage && ybImageType === YBImageType.CUSTOM_AMI,
+      then: string().required(`${fieldLabel.ybImage} is required.`)
+    }),
     sharedSubnet: string().when([], {
       is: () => shouldExposeField.sharedSubnet && providerCode === ProviderCode.GCP,
       then: string().required(`${fieldLabel.sharedSubnet} is required.`)
@@ -121,7 +128,7 @@ export const ConfigureRegionModal = ({
       is: () => shouldExposeField.zones,
       then: array().of(
         object().shape({
-          code: object(),
+          code: object().required('Zone code is required.'),
           subnet: string().required('Zone subnet is required.')
         })
       )
@@ -133,11 +140,7 @@ export const ConfigureRegionModal = ({
   });
   const selectedRegion = formMethods.watch('regionData');
   const { setValue } = formMethods;
-  const selectedRegionCode = selectedRegion?.value?.code;
-  useEffect(() => {
-    setValue('zones', []);
-  }, [selectedRegionCode, setValue]);
-
+  const selectedRegionCode = selectedRegion?.value?.code ?? regionSelection?.code;
   const classes = useStyles();
 
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
@@ -167,7 +170,7 @@ export const ConfigureRegionModal = ({
         : { ...region, zones: [], code: regionData.value.code };
     if (shouldExposeField.zones) {
       newRegion.zones = zones.map((zone) => ({
-        code: zone.code.value,
+        code: zone.code?.value ?? '',
         subnet: zone.subnet
       }));
     } else if (providerCode === ProviderCode.GCP) {
@@ -179,6 +182,12 @@ export const ConfigureRegionModal = ({
     onRegionSubmit(newRegion);
     formMethods.reset();
     onClose();
+  };
+
+  const onRegionChange = (data: ReactSelectOption) => {
+    if (data.value.code !== selectedRegionCode) {
+      setValue('zones', []);
+    }
   };
 
   return (
@@ -201,6 +210,7 @@ export const ConfigureRegionModal = ({
               control={formMethods.control}
               name="regionData"
               options={regionOptions}
+              onChange={onRegionChange}
             />
           </div>
         )}

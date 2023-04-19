@@ -16,11 +16,7 @@ public class UpdateUniverseYbcDetails extends UniverseTaskBase {
     super(baseTaskDependencies);
   }
 
-  public static class Params extends UniverseDefinitionTaskParams {
-    public String ybcSoftwareVersion;
-    public boolean enableYbc;
-    public boolean ybcInstalled;
-  }
+  public static class Params extends UniverseDefinitionTaskParams {}
 
   protected Params taskParams() {
     return (Params) taskParams;
@@ -28,7 +24,7 @@ public class UpdateUniverseYbcDetails extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    return super.getName() + "(" + taskParams().universeUUID + ")";
+    return super.getName() + "(" + taskParams().getUniverseUUID() + ")";
   }
 
   @Override
@@ -45,13 +41,13 @@ public class UpdateUniverseYbcDetails extends UniverseTaskBase {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
               if (!universeDetails.updateInProgress) {
                 String errMsg =
-                    "UserUniverse " + taskParams().universeUUID + " is not being edited.";
+                    "UserUniverse " + taskParams().getUniverseUUID() + " is not being edited.";
                 log.error(errMsg);
                 throw new RuntimeException(errMsg);
               }
-              universeDetails.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
-              universeDetails.enableYbc = taskParams().enableYbc;
-              universeDetails.ybcInstalled = taskParams().ybcInstalled;
+              universeDetails.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
+              universeDetails.setEnableYbc(taskParams().isEnableYbc());
+              universeDetails.setYbcInstalled(taskParams().isYbcInstalled());
               universe.setUniverseDetails(universeDetails);
             }
           };

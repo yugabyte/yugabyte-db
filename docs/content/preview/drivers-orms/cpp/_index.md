@@ -1,5 +1,5 @@
 ---
-title: C++ Drivers and ORMs
+title: Build apps with C++ Drivers and ORMs
 headerTitle: C++
 linkTitle: C++
 description: C++ Drivers and ORMs support for YugabyteDB.

@@ -28,7 +28,6 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
@@ -40,6 +39,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -121,7 +121,7 @@ public class UniverseSpec {
       Util.copyFileToTarGZ(jsonSpecFile, "universe-spec.json", tarOS);
 
       // Save access key files.
-      for (AccessKey accessKey : this.provider.allAccessKeys) {
+      for (AccessKey accessKey : this.provider.getAllAccessKeys()) {
         exportAccessKey(accessKey, tarOS);
       }
       if (this.provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
@@ -173,8 +173,7 @@ public class UniverseSpec {
   }
 
   private void exportKubernetesAccessKey(TarArchiveOutputStream tarArchive) throws IOException {
-    KubernetesInfo kubernetesInfo =
-        this.provider.getProviderDetails().getCloudInfo().getKubernetes();
+    KubernetesInfo kubernetesInfo = this.provider.getDetails().getCloudInfo().getKubernetes();
     String kubernetesPullSecretPath = kubernetesInfo.getKubernetesPullSecret();
     File kubernetesPullSecretFile = new File(kubernetesPullSecretPath);
     File accessKeyFolder = kubernetesPullSecretFile.getParentFile();
@@ -189,16 +188,16 @@ public class UniverseSpec {
   //  certificateFolder (usually in n2n rootCA folder).
   private void exportCertificateInfo(
       CertificateInfo certificateInfo, TarArchiveOutputStream tarArchive) throws IOException {
-    String certificatePath = certificateInfo.certificate;
+    String certificatePath = certificateInfo.getCertificate();
     File certificateFile = new File(certificatePath);
     File certificateFolder = certificateFile.getParentFile();
     Util.addFilesToTarGZ(certificateFolder.getAbsolutePath(), "certs/", tarArchive);
-    log.debug("Added certificate {} to tar gz file.", certificateInfo.label);
+    log.debug("Added certificate {} to tar gz file.", certificateInfo.getLabel());
   }
 
   private void exportProvisionInstanceScript(TarArchiveOutputStream tarArchive) throws IOException {
     if (this.provider.getCloudCode().equals(Common.CloudType.onprem)) {
-      String provisionScriptPath = this.provider.getProviderDetails().provisionInstanceScript;
+      String provisionScriptPath = this.provider.getDetails().provisionInstanceScript;
       File provisionScriptFile = new File(provisionScriptPath);
       File provisionScriptFolder = provisionScriptFile.getParentFile();
 
@@ -222,8 +221,8 @@ public class UniverseSpec {
 
   private void exportYbcReleases(TarArchiveOutputStream tarArchive) throws IOException {
     File ybcReleaseFolder = new File(this.oldPlatformPaths.ybcReleasePath);
-    String universeYbcVersion = this.universe.getUniverseDetails().ybcSoftwareVersion;
-    if (this.universe.getUniverseDetails().ybcInstalled && ybcReleaseFolder.isDirectory()) {
+    String universeYbcVersion = this.universe.getUniverseDetails().getYbcSoftwareVersion();
+    if (this.universe.getUniverseDetails().isYbcInstalled() && ybcReleaseFolder.isDirectory()) {
       File[] ybcTarFiles = ybcReleaseFolder.listFiles();
       Pattern ybcVersionPattern =
           Pattern.compile(String.format("%s-", Pattern.quote(universeYbcVersion)));
@@ -246,22 +245,22 @@ public class UniverseSpec {
 
   // Retrieve unmasked details from provider, region, and availability zone.
   public ObjectNode setIgnoredJsonProperties(ObjectNode universeSpecObj) {
-    ProviderDetails unmaskedProviderDetails = this.provider.getProviderDetails();
+    ProviderDetails unmaskedProviderDetails = this.provider.getDetails();
     JsonNode unmaskedProviderDetailsJson = Json.toJson(unmaskedProviderDetails);
     ObjectNode providerObj = (ObjectNode) universeSpecObj.get("provider");
     providerObj.set("details", unmaskedProviderDetailsJson);
 
-    List<Region> regions = this.provider.regions;
+    List<Region> regions = this.provider.getRegions();
     ArrayNode regionsObj = (ArrayNode) providerObj.get("regions");
     if (regionsObj.isArray()) {
       for (int i = 0; i < regions.size(); i++) {
         ObjectNode regionObj = (ObjectNode) regionsObj.get(i);
         Region region = regions.get(i);
-        RegionDetails unmaskedRegionDetails = region.getRegionDetails();
+        RegionDetails unmaskedRegionDetails = region.getDetails();
         JsonNode unmaskedRegionDetailsJson = Json.toJson(unmaskedRegionDetails);
         regionObj.set("details", unmaskedRegionDetailsJson);
 
-        List<AvailabilityZone> zones = region.zones;
+        List<AvailabilityZone> zones = region.getZones();
         ArrayNode zonesObj = (ArrayNode) regionObj.get("zones");
         if (zonesObj.isArray()) {
           for (int j = 0; j < zones.size(); j++) {
@@ -278,7 +277,7 @@ public class UniverseSpec {
   }
 
   public static UniverseSpec importSpec(
-      File tarFile, PlatformPaths platformPaths, Customer customer) throws IOException {
+      Path tarFile, PlatformPaths platformPaths, Customer customer) throws IOException {
 
     String storagePath = platformPaths.storagePath;
     String releasesPath = platformPaths.releasesPath;
@@ -329,7 +328,7 @@ public class UniverseSpec {
   }
 
   private void importAccessKeys(String specFolderPath, String storagePath) throws IOException {
-    if (!Provider.maybeGet(provider.uuid).isPresent()) {
+    if (!Provider.maybeGet(provider.getUuid()).isPresent()) {
       File srcKeyMasterDir = new File(specFolderPath + "/keys");
       File[] keyDirs = srcKeyMasterDir.listFiles();
       if (keyDirs != null) {
@@ -395,7 +394,8 @@ public class UniverseSpec {
     if (this.provider.getCloudCode().equals(Common.CloudType.onprem)) {
       File srcProvisionDir = new File(String.format("%s/provision", specFolderPath));
       File destReleasesDir =
-          new File(String.format("%s/provision/%s", storagePath, this.provider.uuid.toString()));
+          new File(
+              String.format("%s/provision/%s", storagePath, this.provider.getUuid().toString()));
       org.apache.commons.io.FileUtils.copyDirectory(srcProvisionDir, destReleasesDir);
       log.debug("Finished importing provision instance script.");
     }
@@ -434,21 +434,20 @@ public class UniverseSpec {
   }
 
   private void updateUniverseDetails(Customer customer) {
-    Long customerId = customer.getCustomerId();
-    this.universe.customerId = customerId;
+    Long customerId = customer.getId();
+    this.universe.setCustomerId(customerId);
 
     this.universe.setConfig(this.universeConfig);
   }
 
   private void updateProviderDetails(String storagePath, Customer customer) {
     // Use new customer.
-    provider.customerUUID = customer.uuid;
+    provider.setCustomerUUID(customer.getUuid());
 
     switch (this.provider.getCloudCode()) {
       case kubernetes:
         // Update abs. path for kubernetesPullSecret to use new yb.storage.path.
-        KubernetesInfo kubernetesInfo =
-            this.provider.getProviderDetails().getCloudInfo().getKubernetes();
+        KubernetesInfo kubernetesInfo = this.provider.getDetails().getCloudInfo().getKubernetes();
         kubernetesInfo.setKubernetesPullSecret(
             UniverseSpec.replaceBeginningPath(
                 kubernetesInfo.getKubernetesPullSecret(),
@@ -456,8 +455,8 @@ public class UniverseSpec {
                 storagePath));
 
         // Update abs. path for kubeConfig to use new yb.storage.path.
-        for (Region region : Region.getByProvider(this.provider.uuid)) {
-          for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.uuid)) {
+        for (Region region : Region.getByProvider(this.provider.getUuid())) {
+          for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
             KubernetesRegionInfo kubernetesRegionInfo =
                 az.getAvailabilityZoneDetails().getCloudInfo().getKubernetes();
             kubernetesRegionInfo.setKubeConfig(
@@ -470,7 +469,7 @@ public class UniverseSpec {
         break;
       case gcp:
         // Update abs. path for credentials.json to use new yb.storage.path.
-        GCPCloudInfo gcpCloudInfo = this.provider.getProviderDetails().getCloudInfo().getGcp();
+        GCPCloudInfo gcpCloudInfo = this.provider.getDetails().getCloudInfo().getGcp();
         gcpCloudInfo.setGceApplicationCredentialsPath(
             UniverseSpec.replaceBeginningPath(
                 gcpCloudInfo.getGceApplicationCredentialsPath(),
@@ -478,9 +477,9 @@ public class UniverseSpec {
                 storagePath));
         break;
       case onprem:
-        this.provider.getProviderDetails().provisionInstanceScript =
+        this.provider.getDetails().provisionInstanceScript =
             UniverseSpec.replaceBeginningPath(
-                this.provider.getProviderDetails().provisionInstanceScript,
+                this.provider.getDetails().provisionInstanceScript,
                 this.oldPlatformPaths.storagePath,
                 storagePath);
         break;
@@ -492,31 +491,33 @@ public class UniverseSpec {
   private void updateCertificateInfoDetails(String storagePath, Customer customer) {
     UUID customerUUID = customer.getUuid();
     for (CertificateInfo certificateInfo : this.certificateInfoList) {
-      UUID oldCustomerUUID = certificateInfo.customerUUID;
-      certificateInfo.customerUUID = customerUUID;
+      UUID oldCustomerUUID = certificateInfo.getCustomerUUID();
+      certificateInfo.setCustomerUUID(customerUUID);
 
       // HashicorpVault does not have privateKey.
-      if (!StringUtils.isEmpty(certificateInfo.privateKey)) {
-        certificateInfo.privateKey =
+      if (!StringUtils.isEmpty(certificateInfo.getPrivateKey())) {
+        certificateInfo.setPrivateKey(
             UniverseSpec.replaceBeginningPath(
-                certificateInfo.privateKey, this.oldPlatformPaths.storagePath, storagePath);
-        certificateInfo.privateKey =
-            certificateInfo.privateKey.replaceFirst(
-                oldCustomerUUID.toString(), customerUUID.toString());
+                certificateInfo.getPrivateKey(), this.oldPlatformPaths.storagePath, storagePath));
+        certificateInfo.setPrivateKey(
+            certificateInfo
+                .getPrivateKey()
+                .replaceFirst(oldCustomerUUID.toString(), customerUUID.toString()));
       }
 
-      certificateInfo.certificate =
+      certificateInfo.setCertificate(
           UniverseSpec.replaceBeginningPath(
-              certificateInfo.certificate, this.oldPlatformPaths.storagePath, storagePath);
-      certificateInfo.certificate =
-          certificateInfo.certificate.replaceFirst(
-              oldCustomerUUID.toString(), customerUUID.toString());
+              certificateInfo.getCertificate(), this.oldPlatformPaths.storagePath, storagePath));
+      certificateInfo.setCertificate(
+          certificateInfo
+              .getCertificate()
+              .replaceFirst(oldCustomerUUID.toString(), customerUUID.toString()));
     }
   }
 
   // Update absolute path to access keys due to yb.storage.path changes.
   private void updateAccessKeyDetails(String storagePath) {
-    for (AccessKey key : this.provider.allAccessKeys) {
+    for (AccessKey key : this.provider.getAllAccessKeys()) {
       if (key.getKeyInfo().publicKey != null) {
         key.getKeyInfo().publicKey =
             UniverseSpec.replaceBeginningPath(
@@ -538,25 +539,26 @@ public class UniverseSpec {
 
   private void updateKmsConfigDetails(Customer customer) {
     for (KmsConfig kmsConfig : this.kmsConfigs) {
-      kmsConfig.customerUUID = customer.uuid;
+      kmsConfig.setCustomerUUID(customer.getUuid());
     }
   }
 
   private void updateBackupDetails(Customer customer) {
     for (Backup backup : this.backups) {
-      backup.setCustomerUUID(customer.uuid);
+      backup.setCustomerUUID(customer.getUuid());
+      backup.getBackupInfo().customerUuid = customer.getUuid();
     }
   }
 
   private void updateScheduleDetails(Customer customer) {
     for (Schedule schedule : this.schedules) {
-      schedule.setCustomerUUID(customer.uuid);
+      schedule.setCustomerUUID(customer.getUuid());
     }
   }
 
   private void updateCustomerConfigDetails(Customer customer) {
     for (CustomerConfig customerConfig : this.customerConfigs) {
-      customerConfig.customerUUID = customer.uuid;
+      customerConfig.setCustomerUUID(customer.getUuid());
     }
   }
 
@@ -589,21 +591,17 @@ public class UniverseSpec {
 
     // Check if provider exists, if not, save all entities related to provider (Region,
     // AvailabilityZone, AccessKey).
-    if (!Provider.maybeGet(this.provider.uuid).isPresent()) {
+    if (!Provider.maybeGet(this.provider.getUuid()).isPresent()) {
       this.provider.save();
 
       if (this.provider.getCloudCode().equals(Common.CloudType.kubernetes)) {
         // Kubernetes provider contains kubernetesPullSecret file.
         FileData.writeFileToDB(
-            this.provider
-                .getProviderDetails()
-                .getCloudInfo()
-                .getKubernetes()
-                .getKubernetesPullSecret());
+            this.provider.getDetails().getCloudInfo().getKubernetes().getKubernetesPullSecret());
 
         // Each az contains its own kubeConfig.
-        for (Region region : Region.getByProvider(this.provider.uuid)) {
-          for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.uuid)) {
+        for (Region region : Region.getByProvider(this.provider.getUuid())) {
+          for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
             FileData.writeFileToDB(
                 az.getAvailabilityZoneDetails().getCloudInfo().getKubernetes().getKubeConfig());
           }
@@ -619,7 +617,7 @@ public class UniverseSpec {
       }
 
       // Sync access keys to db.
-      for (AccessKey key : this.provider.allAccessKeys) {
+      for (AccessKey key : this.provider.getAllAccessKeys()) {
         AccessKey.KeyInfo keyInfo = key.getKeyInfo();
         FileData.writeFileToDB(keyInfo.vaultFile);
         FileData.writeFileToDB(keyInfo.vaultPasswordFile);
@@ -640,13 +638,15 @@ public class UniverseSpec {
     }
 
     for (CertificateInfo certificateInfo : certificateInfoList) {
-      if (!CertificateInfo.maybeGet(certificateInfo.uuid).isPresent()) {
+      if (!CertificateInfo.maybeGet(certificateInfo.getUuid()).isPresent()) {
         certificateInfo.save();
 
         File certificateInfoBaseDir =
             new File(
                 CertificateHelper.getCADirPath(
-                    platformPaths.storagePath, certificateInfo.customerUUID, certificateInfo.uuid));
+                    platformPaths.storagePath,
+                    certificateInfo.getCustomerUUID(),
+                    certificateInfo.getUuid()));
         File[] certificateInfoFiles = certificateInfoBaseDir.listFiles();
         if (certificateInfoFiles != null) {
           for (File certificateInfoFile : certificateInfoFiles) {
@@ -663,19 +663,20 @@ public class UniverseSpec {
     }
 
     for (KmsConfig kmsConfig : kmsConfigs) {
-      if (KmsConfig.get(kmsConfig.configUUID) == null) {
+      if (KmsConfig.get(kmsConfig.getConfigUUID()) == null) {
         kmsConfig.save();
       }
     }
 
     for (KmsHistory kmsHistory : kmsHistoryList) {
-      if (!EncryptionAtRestUtil.keyRefExists(this.universe.universeUUID, kmsHistory.uuid.keyRef)) {
+      if (!EncryptionAtRestUtil.keyRefExists(
+          this.universe.getUniverseUUID(), kmsHistory.getUuid().keyRef)) {
         kmsHistory.save();
       }
     }
 
     for (CustomerConfig customerConfig : customerConfigs) {
-      if (CustomerConfig.get(customerConfig.configUUID) == null) {
+      if (CustomerConfig.get(customerConfig.getConfigUUID()) == null) {
         customerConfig.save();
       }
     }
@@ -687,7 +688,7 @@ public class UniverseSpec {
     }
 
     for (Backup backup : this.backups) {
-      if (!Backup.maybeGet(backup.backupUUID).isPresent()) {
+      if (!Backup.maybeGet(backup.getBackupUUID()).isPresent()) {
         backup.save();
       }
     }

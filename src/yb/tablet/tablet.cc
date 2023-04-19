@@ -68,11 +68,12 @@
 #include "yb/docdb/docdb_compaction_filter_intents.h"
 #include "yb/docdb/docdb_debug.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_statistics.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/ql_rocksdb_storage.h"
 #include "yb/docdb/redis_operation.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -221,6 +222,10 @@ DEFINE_UNKNOWN_bool(tablet_enable_ttl_file_filter, false,
 
 DEFINE_UNKNOWN_bool(enable_schema_packing_gc, true, "Whether schema packing GC is enabled.");
 
+DEFINE_RUNTIME_bool(batch_tablet_metrics_update, true,
+                    "Batch update of rocksdb metrics to once per request rather than updating "
+                    "immediately.");
+
 DEFINE_test_flag(int32, slowdown_backfill_by_ms, 0,
                  "If set > 0, slows down the backfill process by this amount.");
 
@@ -280,14 +285,12 @@ DECLARE_bool(TEST_invalidate_last_change_metadata_op);
 using namespace std::placeholders;
 
 using std::shared_ptr;
-using std::make_shared;
 using std::string;
 using std::unordered_set;
 using std::vector;
 using std::unique_ptr;
 using namespace std::literals;  // NOLINT
 
-using rocksdb::WriteBatch;
 using rocksdb::SequenceNumber;
 
 namespace yb {
@@ -298,9 +301,9 @@ using strings::Substitute;
 using client::YBSession;
 using client::YBTablePtr;
 
-using docdb::DocKey;
+using dockv::DocKey;
 using docdb::DocRowwiseIterator;
-using docdb::SubDocKey;
+using dockv::SubDocKey;
 using docdb::StorageDbType;
 
 const std::hash<std::string> hash_for_data_root_dir;
@@ -310,6 +313,8 @@ const std::hash<std::string> hash_for_data_root_dir;
 ////////////////////////////////////////////////////////////
 
 namespace {
+
+thread_local docdb::DocDBStatistics scoped_docdb_statistics;
 
 std::string MakeTabletLogPrefix(
     const TabletId& tablet_id, const std::string& log_prefix_suffix) {
@@ -841,7 +846,8 @@ Status Tablet::OpenKeyValueTablet() {
     transaction_participant_->SetIntentRetainOpIdAndTime(
         metadata_->cdc_sdk_min_checkpoint_op_id(),
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
-    transaction_participant_->SetDB(doc_db(), &key_bounds_, &pending_non_abortable_op_counter_);
+    RETURN_NOT_OK(transaction_participant_->SetDB(
+        doc_db(), &key_bounds_, &pending_non_abortable_op_counter_));
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
@@ -1266,9 +1272,9 @@ Status Tablet::ApplyOperation(
   if (frontiers_ptr) {
     auto ttl = write_batch.has_ttl()
         ? MonoDelta::FromNanoseconds(write_batch.ttl())
-        : docdb::ValueControlFields::kMaxTtl;
+        : dockv::ValueControlFields::kMaxTtl;
     frontiers_ptr->Largest().set_max_value_level_ttl_expiration_time(
-        docdb::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
+        dockv::FileExpirationFromValueTTL(operation.hybrid_time(), ttl));
     for (const auto& p : write_batch.table_schema_version()) {
       // Since new frontiers does not contain schema version just add it there.
       auto table_id = p.table_id().empty()
@@ -1300,8 +1306,8 @@ Status Tablet::WriteTransactionalBatch(
     store_metadata = add_result.get();
   }
   boost::container::small_vector<uint8_t, 16> encoded_replicated_batch_idx_set;
-  auto prepare_batch_data = transaction_participant()->PrepareBatchData(
-      transaction_id, batch_idx, &encoded_replicated_batch_idx_set);
+  auto prepare_batch_data = VERIFY_RESULT(transaction_participant()->PrepareBatchData(
+      transaction_id, batch_idx, &encoded_replicated_batch_idx_set));
   if (!prepare_batch_data) {
     // If metadata is missing it could be caused by aborted and removed transaction.
     // In this case we should not add new intents for it.
@@ -1316,7 +1322,7 @@ Status Tablet::WriteTransactionalBatch(
 
   docdb::TransactionalWriter writer(
       put_batch, hybrid_time, transaction_id, isolation_level,
-      docdb::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
+      dockv::PartialRangeKeyIntents(metadata_->UsePartialRangeKeyIntents()),
       Slice(encoded_replicated_batch_idx_set.data(), encoded_replicated_batch_idx_set.size()),
       last_batch_data.next_write_id);
   if (store_metadata) {
@@ -1591,7 +1597,8 @@ Status Tablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,
       // Check we did not reach the last tablet.
       const string& next_partition_key = metadata_->partition()->partition_key_end();
       if (!next_partition_key.empty()) {
-        uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(next_partition_key);
+        uint16_t next_hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(
+            next_partition_key);
 
         // Check we did not reach the max partition key.
         if (!ql_read_request.has_max_hash_code() ||
@@ -1633,10 +1640,19 @@ Status Tablet::HandlePgsqlReadRequest(
           transaction_metadata,
           table_info->schema().table_properties().is_ysql_catalog_table(),
           &subtransaction_metadata);
+
+  scoped_docdb_statistics.SetHistogramContext(regulardb_statistics_, intentsdb_statistics_);
+  auto* statistics =
+      GetAtomicFlag(&FLAGS_batch_tablet_metrics_update) ? &scoped_docdb_statistics : nullptr;
+
   RETURN_NOT_OK(txn_op_ctx);
   auto status = ProcessPgsqlReadRequest(
       deadline, read_time, is_explicit_request_read_time,
-      pgsql_read_request, table_info, *txn_op_ctx, result);
+      pgsql_read_request, table_info, *txn_op_ctx, statistics, result);
+
+  if (statistics) {
+    statistics->MergeAndClear(regulardb_statistics_.get(), intentsdb_statistics_.get());
+  }
 
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
@@ -1697,7 +1713,7 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
   auto schema = metadata_->schema();
 
   if (schema->num_hash_key_columns() > 0) {
-    uint16_t next_hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+    uint16_t next_hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
     // For batched index lookup of ybctids, check if the current partition hash is lesser than
     // upper bound. If it is, we can then avoid paging. Paging of batched index lookup of ybctids
     // occur when tablets split after request is prepared.
@@ -1705,10 +1721,10 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
       if (!pgsql_read_request.upper_bound().has_key()) {
           return false;
       }
-      uint16_t upper_bound_hash =
-          PartitionSchema::DecodeMultiColumnHashValue(pgsql_read_request.upper_bound().key());
+      uint16_t upper_bound_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(
+          pgsql_read_request.upper_bound().key());
       uint16_t partition_hash =
-          PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+          dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
       return pgsql_read_request.upper_bound().is_inclusive() ?
           partition_hash > upper_bound_hash :
           partition_hash >= upper_bound_hash;
@@ -1718,13 +1734,13 @@ Result<bool> Tablet::HasScanReachedMaxPartitionKey(
       return true;
     }
   } else if (pgsql_read_request.has_upper_bound()) {
-    docdb::DocKey partition_doc_key(*schema);
+    dockv::DocKey partition_doc_key(*schema);
     VERIFY_RESULT(partition_doc_key.DecodeFrom(
-        partition_key, docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
-    docdb::DocKey max_partition_doc_key(*schema);
+        partition_key, dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
+    dockv::DocKey max_partition_doc_key(*schema);
     VERIFY_RESULT(max_partition_doc_key.DecodeFrom(
-        pgsql_read_request.upper_bound().key(), docdb::DocKeyPart::kWholeDocKey,
-        docdb::AllowSpecial::kTrue));
+        pgsql_read_request.upper_bound().key(), dockv::DocKeyPart::kWholeDocKey,
+        dockv::AllowSpecial::kTrue));
 
     auto cmp = partition_doc_key.CompareTo(max_partition_doc_key);
     return pgsql_read_request.upper_bound().is_inclusive() ? cmp > 0 : cmp >= 0;
@@ -1880,6 +1896,10 @@ Status Tablet::WaitForFlush() {
   return Status::OK();
 }
 
+Status Tablet::FlushSuperblock(OnlyIfDirty only_if_dirty) {
+  return metadata_->Flush(only_if_dirty);
+}
+
 Status Tablet::ImportData(const std::string& source_dir) {
   // We import only regular records, so don't have to deal with intents here.
   return regular_db_->Import(source_dir);
@@ -1983,10 +2003,10 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
     const TableId& table_id) {
   VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
 
-  docdb::KeyBytes encoded_next_key;
+  dockv::KeyBytes encoded_next_key;
   if (!next_key.empty()) {
-    SubDocKey start_sub_doc_key;
-    docdb::KeyBytes start_key_bytes(next_key);
+    dockv::SubDocKey start_sub_doc_key;
+    dockv::KeyBytes start_key_bytes(next_key);
     RETURN_NOT_OK(start_sub_doc_key.FullyDecodeFrom(start_key_bytes.AsSlice()));
     encoded_next_key = start_sub_doc_key.doc_key().Encode();
     VLOG_WITH_PREFIX(2) << "The nextKey doc is " << encoded_next_key;
@@ -2028,8 +2048,9 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(table_info.schema(), &schema));
 
-  PartitionSchema partition_schema;
-  RETURN_NOT_OK(PartitionSchema::FromPB(table_info.partition_schema(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+      table_info.partition_schema(), schema, &partition_schema));
 
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
@@ -2041,9 +2062,16 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
 Status Tablet::AddTable(const TableInfoPB& table_info, const OpId& op_id) {
   RETURN_NOT_OK(AddTableInMemory(table_info, op_id));
-  return metadata_->Flush();
+  if (!metadata_->IsLazySuperblockFlushEnabled()) {
+    RETURN_NOT_OK(metadata_->Flush());
+  } else {
+    VLOG_WITH_PREFIX(1) << "Skipping superblock flush on " << table_info.table_name()
+                        << " table creation, will be done lazily";
+  }
+  return Status::OK();
 }
 
+// TODO(lazy_sb_flush): Lazily flush the superblock here when extending the feature to cotables.
 Status Tablet::AddMultipleTables(
     const google::protobuf::RepeatedPtrField<TableInfoPB>& table_infos, const OpId& op_id) {
   // If nothing has changed then return.
@@ -2161,7 +2189,7 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
     // which essentially implies that we mute this new logic for the entire
     // duration of the bootstrap. However, once bootstrap finishes we set this
     // field so that subsequent restarts can start leveraging this feature.
-    metadata_->SetLastChangeMetadataOperationOpId(operation->op_id());
+    metadata_->OnChangeMetadataOperationApplied(operation->op_id());
     // Flush the updated schema metadata to disk.
     return metadata_->Flush();
   }
@@ -2510,7 +2538,7 @@ Status Tablet::BackfillIndexes(
   if (!backfill_from.empty()) {
     VLOG(1) << "Resuming backfill from " << b2a_hex(backfill_from);
     *backfilled_until = backfill_from;
-    RETURN_NOT_OK(iter->SeekTuple(Slice(backfill_from)));
+    iter->SeekTuple(Slice(backfill_from));
   }
 
   string resume_backfill_from;
@@ -2518,7 +2546,7 @@ Status Tablet::BackfillIndexes(
   int TEST_number_rows_corrupted = 0;
   int TEST_number_rows_dropped = 0;
 
-  while (VERIFY_RESULT(iter->HasNext())) {
+  while (VERIFY_RESULT(iter->FetchNext(&row))) {
     if (index_requests.empty()) {
       *backfilled_until = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
       MaybeSleepToThrottleBackfill(backfill_params.start_time, *number_of_rows_processed);
@@ -2529,7 +2557,6 @@ Status Tablet::BackfillIndexes(
       break;
     }
 
-    RETURN_NOT_OK(iter->NextRow(&row));
     if (FLAGS_TEST_backfill_sabotage_frequency > 0 &&
         *number_of_rows_processed % FLAGS_TEST_backfill_sabotage_frequency == 0) {
       VLOG(1) << "Corrupting fetched row: " << row.ToString();
@@ -2789,7 +2816,7 @@ Status Tablet::VerifyTableConsistencyForCQL(
 
   if (!start_key.empty()) {
     VLOG(2) << "Starting verify index from " << b2a_hex(start_key);
-    RETURN_NOT_OK(iter->SeekTuple(Slice(start_key)));
+    iter->SeekTuple(Slice(start_key));
   }
 
   constexpr int kProgressInterval = 1000;
@@ -2801,10 +2828,9 @@ Status Tablet::VerifyTableConsistencyForCQL(
   std::string resume_verified_from;
 
   int rows_verified = 0;
-  while (VERIFY_RESULT(iter->HasNext()) && rows_verified < num_rows &&
+  while (VERIFY_RESULT(iter->FetchNext(&row)) && rows_verified < num_rows &&
          CoarseMonoClock::Now() < deadline) {
     resume_verified_from = VERIFY_RESULT(iter->GetTupleId()).ToBuffer();
-    RETURN_NOT_OK(iter->NextRow(&row));
     VLOG(1) << "Verifying index for main table row: " << row.ToString();
 
     RETURN_NOT_OK(VerifyTableInBatches(
@@ -3460,7 +3486,7 @@ void Tablet::TEST_DocDBDumpToLog(IncludeIntents include_intents) {
   }
 }
 
-size_t Tablet::TEST_CountRegularDBRecords() {
+Result<size_t> Tablet::TEST_CountRegularDBRecords() {
   if (!regular_db_) return 0;
   rocksdb::ReadOptions read_opts;
   read_opts.query_id = rocksdb::kDefaultQueryId;
@@ -3470,6 +3496,7 @@ size_t Tablet::TEST_CountRegularDBRecords() {
   for (iter.SeekToFirst(); iter.Valid(); iter.Next()) {
     ++result;
   }
+  RETURN_NOT_OK(iter.status());
   return result;
 }
 
@@ -3643,8 +3670,9 @@ Result<IsolationLevel> Tablet::DoGetIsolationLevel(const PB& transaction) {
 }
 
 Result<RaftGroupMetadataPtr> Tablet::CreateSubtablet(
-    const TabletId& tablet_id, const Partition& partition, const docdb::KeyBounds& key_bounds,
-    const yb::OpId& split_op_id, const HybridTime& split_op_hybrid_time) {
+    const TabletId& tablet_id, const dockv::Partition& partition,
+    const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
+    const HybridTime& split_op_hybrid_time) {
   auto scoped_read_operation = CreateNonAbortableScopedRWOperation();
   RETURN_NOT_OK(scoped_read_operation);
 
@@ -3705,6 +3733,7 @@ Result<int64_t> Tablet::CountIntents() {
     num_intents++;
     intent_iter->Next();
   }
+  RETURN_NOT_OK(intent_iter->status());
   return num_intents;
 }
 
@@ -3720,7 +3749,7 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
   auto intent_iter = std::unique_ptr<rocksdb::Iterator>(
       intents_db_->NewIterator(read_options));
   intent_iter->SeekToFirst();
-  docdb::SchemaPackingStorage schema_packing_storage(table_type());
+  dockv::SchemaPackingStorage schema_packing_storage(table_type());
 
   for (; intent_iter->Valid(); intent_iter->Next()) {
     auto item = EntryToString(intent_iter->key(), intent_iter->value(),
@@ -3728,7 +3757,7 @@ Status Tablet::ReadIntents(std::vector<std::string>* intents) {
     intents->push_back(item);
   }
 
-  return Status::OK();
+  return intent_iter->status();
 }
 
 void Tablet::ListenNumSSTFilesChanged(std::function<void()> listener) {
@@ -3774,16 +3803,16 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   // to have two child tablets with alive user records after the splitting, but the split
   // by the internal record will lead to a case when one tablet will consist of internal records
   // only and these records will be compacted out at some point making an empty tablet.
-  if (PREDICT_FALSE(docdb::IsInternalRecordKeyType(docdb::DecodeKeyEntryType(middle_key[0])))) {
+  if (PREDICT_FALSE(dockv::IsInternalRecordKeyType(dockv::DecodeKeyEntryType(middle_key[0])))) {
     return STATUS_FORMAT(
         IllegalState, "$0: got internal record \"$1\"",
         error_prefix(), Slice(middle_key).ToDebugHexString());
   }
 
   const auto key_part = metadata()->partition_schema()->IsHashPartitioning()
-                            ? docdb::DocKeyPart::kUpToHashCode
-                            : docdb::DocKeyPart::kWholeDocKey;
-  const auto split_key_size = VERIFY_RESULT(DocKey::EncodedSize(middle_key, key_part));
+                            ? dockv::DocKeyPart::kUpToHashCode
+                            : dockv::DocKeyPart::kWholeDocKey;
+  const auto split_key_size = VERIFY_RESULT(dockv::DocKey::EncodedSize(middle_key, key_part));
   if (PREDICT_FALSE(split_key_size == 0)) {
     // Using this verification just to have a more sensible message. The below verification will
     // not pass with split_key_size == 0 also, but its message is not accurate enough. This failure
@@ -3816,9 +3845,9 @@ Result<std::string> Tablet::GetEncodedMiddleSplitKey(std::string *partition_spli
   const Slice partition_end(metadata()->partition()->partition_key_end());
   std::string middle_hash_key;
   if (metadata()->partition_schema()->IsHashPartitioning()) {
-    const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(middle_key));
+    const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(middle_key));
     if (doc_key_hash.has_value()) {
-      middle_hash_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash.value());
+      middle_hash_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash.value());
       if (partition_split_key) {
         *partition_split_key = middle_hash_key;
       }
@@ -3890,7 +3919,7 @@ void Tablet::TriggerFullCompactionSync(rocksdb::CompactionReason reason) {
 bool Tablet::HasActiveTTLFileExpiration() {
   return FLAGS_rocksdb_max_file_size_for_compaction > 0
       && retention_policy_->GetRetentionDirective().table_ttl !=
-            docdb::ValueControlFields::kMaxTtl;
+            dockv::ValueControlFields::kMaxTtl;
 }
 
 bool Tablet::IsEligibleForFullCompaction() {
@@ -4072,9 +4101,9 @@ void Tablet::RegisterOperationFilter(OperationFilter* filter) {
   operation_filters_.push_back(*filter);
 }
 
-std::shared_ptr<docdb::SchemaPackingStorage> Tablet::PrimarySchemaPackingStorage() {
+std::shared_ptr<dockv::SchemaPackingStorage> Tablet::PrimarySchemaPackingStorage() {
   auto doc_read_context = metadata_->primary_table_info()->doc_read_context;
-  return std::shared_ptr<docdb::SchemaPackingStorage>(doc_read_context,
+  return std::shared_ptr<dockv::SchemaPackingStorage>(doc_read_context,
       &doc_read_context->schema_packing_storage);
 }
 
@@ -4159,13 +4188,13 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
 
 Status AddLockInfo(Slice key, Slice val, const SchemaPtr& schema, LockInfoPB* lock_info) {
   auto parsed_intent = VERIFY_RESULT(docdb::ParseIntentKey(key, val));
-  auto decoded_value = VERIFY_RESULT(docdb::DecodeIntentValue(
+  auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
       val, nullptr /* verify_transaction_id_slice */,
       HasStrong(parsed_intent.types)));
 
-  SubDocKey subdoc_key;
+  dockv::SubDocKey subdoc_key;
   RETURN_NOT_OK(subdoc_key.FullyDecodeFrom(
-      parsed_intent.doc_path, docdb::HybridTimeRequired::kFalse));
+      parsed_intent.doc_path, dockv::HybridTimeRequired::kFalse));
   DCHECK(!subdoc_key.has_hybrid_time());
 
   auto doc_ht = VERIFY_RESULT(DocHybridTime::DecodeFromEnd(parsed_intent.doc_ht));
@@ -4183,23 +4212,23 @@ Status AddLockInfo(Slice key, Slice val, const SchemaPtr& schema, LockInfoPB* lo
   lock_info->set_transaction_id(decoded_value.transaction_id.ToString());
   lock_info->set_subtransaction_id(decoded_value.subtransaction_id);
   lock_info->set_is_explicit(
-      decoded_value.body.starts_with(docdb::ValueEntryTypeAsChar::kRowLock));
+      decoded_value.body.starts_with(dockv::ValueEntryTypeAsChar::kRowLock));
   lock_info->set_is_full_pk(
       schema->num_hash_key_columns() == subdoc_key.doc_key().hashed_group().size() &&
       schema->num_range_key_columns() == subdoc_key.doc_key().range_group().size());
 
   for (const auto& intent_type : parsed_intent.types) {
     switch (intent_type) {
-      case docdb::IntentType::kWeakRead:
+      case dockv::IntentType::kWeakRead:
         lock_info->add_modes(LockMode::WEAK_READ);
         break;
-      case docdb::IntentType::kWeakWrite:
+      case dockv::IntentType::kWeakWrite:
         lock_info->add_modes(LockMode::WEAK_WRITE);
         break;
-      case docdb::IntentType::kStrongRead:
+      case dockv::IntentType::kStrongRead:
         lock_info->add_modes(LockMode::STRONG_READ);
         break;
-      case docdb::IntentType::kStrongWrite:
+      case dockv::IntentType::kStrongWrite:
         lock_info->add_modes(LockMode::STRONG_WRITE);
         break;
     }
@@ -4238,9 +4267,9 @@ Status Tablet::GetLockStatus(const TransactionId& txn_id,
     while (intent_iter->Valid()) {
       auto key = intent_iter->key();
 
-      if (key[0] == docdb::KeyEntryTypeAsChar::kTransactionId) {
+      if (key[0] == dockv::KeyEntryTypeAsChar::kTransactionId) {
         static const std::array<char, 1> kAfterTransactionId{
-            docdb::KeyEntryTypeAsChar::kTransactionId + 1};
+            dockv::KeyEntryTypeAsChar::kTransactionId + 1};
         static const Slice kAfterTxnRegion(kAfterTransactionId);
         intent_iter->Seek(kAfterTxnRegion);
         continue;
@@ -4252,7 +4281,7 @@ Status Tablet::GetLockStatus(const TransactionId& txn_id,
       intent_iter->Next();
     }
 
-    return Status::OK();
+    return intent_iter->status();
   }
 
   DCHECK(!txn_id.IsNil());
@@ -4261,17 +4290,18 @@ Status Tablet::GetLockStatus(const TransactionId& txn_id,
   // TODO(dtxn): Filter records by subtxn_id if set as well.
   static constexpr size_t kReverseKeySize = 1 + sizeof(TransactionId);
   char reverse_key_data[kReverseKeySize];
-  reverse_key_data[0] = docdb::KeyEntryTypeAsChar::kTransactionId;
+  reverse_key_data[0] = dockv::KeyEntryTypeAsChar::kTransactionId;
   memcpy(&reverse_key_data[1], txn_id.data(), sizeof(TransactionId));
   auto reverse_key = Slice(reverse_key_data, kReverseKeySize);
   intent_iter->Seek(Slice(reverse_key));
 
-  std::vector<docdb::KeyBytes> txn_intent_keys;
+  std::vector<dockv::KeyBytes> txn_intent_keys;
   while (intent_iter->Valid() && intent_iter->key().compare_prefix(Slice(reverse_key)) == 0) {
-    DCHECK_EQ(intent_iter->key()[0], docdb::KeyEntryTypeAsChar::kTransactionId);
+    DCHECK_EQ(intent_iter->key()[0], dockv::KeyEntryTypeAsChar::kTransactionId);
     txn_intent_keys.emplace_back(intent_iter->value());
     intent_iter->Next();
   }
+  RETURN_NOT_OK(intent_iter->status());
 
   if (txn_intent_keys.empty()) {
     return Status::OK();
@@ -4280,9 +4310,11 @@ Status Tablet::GetLockStatus(const TransactionId& txn_id,
   std::sort(txn_intent_keys.begin(), txn_intent_keys.end());
 
   intent_iter->SeekToFirst();
+  RETURN_NOT_OK(intent_iter->status());
 
   for (const auto& intent_key : txn_intent_keys) {
     intent_iter->Seek(intent_key);
+    RETURN_NOT_OK(intent_iter->status());
 
     auto key = intent_iter->key();
     DCHECK_EQ(intent_iter->key(), key);

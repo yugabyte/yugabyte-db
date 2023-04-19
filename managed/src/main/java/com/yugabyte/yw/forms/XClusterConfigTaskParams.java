@@ -24,6 +24,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   private Map<String, List<String>> mainTableIndexTablesMap;
   private XClusterConfigCreateFormData.BootstrapParams bootstrapParams;
   private XClusterConfigEditFormData editFormData;
+  private XClusterConfigSyncFormData syncFormData;
   private Set<String> tableIdsToAdd;
   private Set<String> tableIdsToRemove;
   private boolean isForced = false;
@@ -33,7 +34,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       XClusterConfigCreateFormData.BootstrapParams bootstrapParams,
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
@@ -47,7 +48,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       Map<String, List<String>> mainTableIndexTablesMap,
       Set<String> tableIdsToAdd,
       Set<String> tableIdsToRemove) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
     this.editFormData = editFormData;
     this.bootstrapParams = editFormData.bootstrapParams;
@@ -63,7 +64,7 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList,
       Map<String, List<String>> mainTableIndexTablesMap,
       boolean isForced) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
     this.bootstrapParams = bootstrapParams;
     this.mainTableIndexTablesMap = mainTableIndexTablesMap;
@@ -73,18 +74,18 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
   }
 
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
   }
 
   public XClusterConfigTaskParams(XClusterConfig xClusterConfig, boolean isForced) {
-    this.universeUUID = xClusterConfig.targetUniverseUUID;
+    this.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
     this.xClusterConfig = xClusterConfig;
     this.isForced = isForced;
   }
 
   public XClusterConfigTaskParams(UUID targetUniverseUUID) {
-    this.universeUUID = targetUniverseUUID;
+    this.setUniverseUUID(targetUniverseUUID);
   }
 
   public void setTableInfoListAndTxnTableInfo(
@@ -97,5 +98,10 @@ public class XClusterConfigTaskParams extends UniverseDefinitionTaskParams {
         this.tableInfoList.remove(this.tableInfoList.size() - 1);
       }
     }
+  }
+
+  public XClusterConfigTaskParams(XClusterConfigSyncFormData syncFormData) {
+    this.syncFormData = syncFormData;
+    this.setUniverseUUID(syncFormData.targetUniverseUUID);
   }
 }

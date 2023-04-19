@@ -77,7 +77,7 @@ YugabyteDB build scripts require at least Bash version 4. Make sure that `bash -
 
 {{% readfile "includes/java.md" %}}
 
-Both requirements can be satisfied by Homebrew:
+Install the following packages to satisfy those requirements:
 
 ```sh
 brew install openjdk@11 maven
@@ -103,12 +103,16 @@ echo 'export PATH="/usr/local/opt/openjdk@11/bin:$PATH"' >>~/.bashrc
 
 ### Build release package (optional)
 
-[Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+Perform the following steps to build a release package:
 
-Run the `yb_release` script to build a release package:
+1. [Satisfy requirements for building yugabyted-ui](#yugabyted-ui).
+1. Run the `yb_release` script using the following command:
 
-```output.sh
-$ ./yb_release
-......
-2020-10-27 13:55:40,856 [yb_release.py:283 INFO] Generated a package at '/Users/me/code/yugabyte-db/build/yugabyte-2.5.1.0-6ab8013159fdca00ced7e6f5d2f98cacac6a536a-release-darwin-x86_64.tar.gz'
-```
+   ```sh
+   ./yb_release
+   ```
+
+   ```output.sh
+   ......
+   2020-10-27 13:55:40,856 [yb_release.py:283 INFO] Generated a package at '/Users/me/code/yugabyte-db/build/yugabyte-2.5.1.0-6ab8013159fdca00ced7e6f5d2f98cacac6a536a-release-darwin-x86_64.tar.gz'
+   ```

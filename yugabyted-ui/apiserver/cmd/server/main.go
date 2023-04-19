@@ -78,7 +78,7 @@ func getStaticFiles() http.FileSystem {
 func main() {
 
         // Initialize logger
-        log, _ := logger.NewSugaredLogger()
+        log := logger.Log
         defer log.Cleanup()
         log.Infof("Logger initialized")
 

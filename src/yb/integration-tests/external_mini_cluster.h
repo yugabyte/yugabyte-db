@@ -459,10 +459,13 @@ class ExternalMiniCluster : public MiniClusterBase {
   uint16_t AllocateFreePort();
 
   // Step down the master leader. error_code tracks rpc error info that can be used by the caller.
+  // A random peer becomes leader, unless new_leader_uuid is set. If set to the same as the current
+  // leader, it performs a stepdown regardless, increasing the term.
   Status StepDownMasterLeader(
       tserver::TabletServerErrorPB::Code* error_code, const std::string& new_leader_uuid = "");
 
-  // Step down the master leader and wait for a new leader to be elected.
+  // Step down the master leader and wait for a new leader to be elected.  No stepdown will occur if
+  // new_leader_uuid is set to the current leader uuid.
   Status StepDownMasterLeaderAndWaitForNewLeader(const std::string& new_leader_uuid = "");
 
   // Find out if the master service considers itself ready. Return status OK() implies it is ready.
@@ -845,6 +848,10 @@ class ExternalMaster : public ExternalDaemon {
   // Restarts the daemon. Requires that it has previously been shutdown.
   Status Restart();
 
+  uint16_t http_port() const {
+    return http_port_;
+  }
+
  private:
   friend class RefCountedThreadSafe<ExternalMaster>;
   virtual ~ExternalMaster();
@@ -968,12 +975,18 @@ T ExternalMiniCluster::GetProxy(const ExternalDaemon* daemon) {
 
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
-Status CompactTablets(ExternalMiniCluster* cluster);
+Status CompactTablets(
+    ExternalMiniCluster* cluster,
+    const yb::MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
 
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,
   std::unique_ptr<rpc::SecureContext>* secure_context,
   std::unique_ptr<rpc::Messenger>* messenger,
   const std::vector<std::string>& master_flags = std::vector<std::string>());
+
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 }  // namespace yb

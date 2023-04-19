@@ -32,8 +32,6 @@ namespace yb {
 namespace ql {
 
 using std::vector;
-using std::shared_ptr;
-using std::make_shared;
 using std::string;
 using strings::Substitute;
 

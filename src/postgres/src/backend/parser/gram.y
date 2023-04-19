@@ -142,13 +142,27 @@ typedef struct ImportQual
 #define parser_errposition(pos)  scanner_errposition(pos, yyscanner)
 
 #define parser_ybc_not_support(pos, feature) \
-	ybc_not_support(pos, yyscanner, feature " not supported yet", -1)
+	ybc_not_support(pos, yyscanner, feature " not supported yet", -1, NULL)
 
 #define parser_ybc_warn_ignored(pos, feature, issue) \
-	ybc_not_support_signal(pos, yyscanner, feature " not supported yet and will be ignored", issue, WARNING)
+	ybc_not_support_signal(pos, yyscanner,                                   \
+						   feature " not supported yet and will be ignored", \
+						   issue, NULL, WARNING)
 
 #define parser_ybc_signal_unsupported(pos, feature, issue) \
-	ybc_not_support(pos, yyscanner, feature " not supported yet", issue)
+	ybc_not_support(pos, yyscanner, feature " not supported yet", issue, NULL)
+
+#define parser_ybc_signal_unsupported_by_flag(pos, feature, flag, extra_hint) \
+	ybc_not_support(pos, yyscanner,										  \
+					feature " not supported due to setting of flag --" flag,  \
+					-2, extra_hint)
+
+#define parser_ybc_signal_savepoints_disabled(pos, feature)				 \
+	parser_ybc_signal_unsupported_by_flag(pos, feature,					 \
+		"enable_pg_savepoints",											 \
+		"The flag may have been set to false because savepoints do not " \
+		"currently work with xCluster replication "						 \
+		"(see https://github.com/yugabyte/yugabyte-db/issues/14308).");
 
 #define parser_ybc_not_support_in_templates(pos, feature) \
 	ybc_not_support_in_templates(pos, yyscanner, feature " is not supported in template0/template1 yet")
@@ -161,8 +175,11 @@ typedef struct ImportQual
 
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
-static void ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level);
-static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue);
+static void ybc_not_support_signal(int pos, core_yyscan_t yyscanner,
+								   const char *msg, int issue,
+								   const char *extra_hint, int signal_level);
+static void ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg,
+							int issue, const char *extra_hint);
 static void ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg);
 static void check_beta_feature(int pos, core_yyscan_t yyscanner, const char* flag, const char* feature);
 static void ybc_deprecated_feature_warning(int pos, core_yyscan_t yyscanner, const char *feature);
@@ -2774,7 +2791,7 @@ opt_reloptions:		WITH reloptions					{ $$ = $2; }
 			 |		/* EMPTY */						{ $$ = NIL; }
 		;
 
-/* TODO: add copartitioned and interleaved to reloption_list.
+/* TODO: add interleaved to reloption_list.
    Eventually deprecate using colocated */
 reloption_list:
 			reloption_elem
@@ -4767,7 +4784,7 @@ opt_procedural:
  *		QUERY:
  *             CREATE TABLEGROUP tablegroup
  *
- *		TODO: Later extend this to include COPARTITIONED and INTERLEAVED
+ *		TODO: Later extend this to include INTERLEAVED
  *
  *****************************************************************************/
 
@@ -9287,7 +9304,6 @@ AlterTblSpcStmt:
 
 RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				{
-					parser_ybc_signal_unsupported(@1, "ALTER AGGREGATE", 2717);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_AGGREGATE;
 					n->object = (Node *) $3;
@@ -10808,7 +10824,8 @@ TransactionStmt:
 			| SAVEPOINT ColId
 				{
 					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_unsupported(@1, "SAVEPOINT <transaction>", 1125);
+						parser_ybc_signal_savepoints_disabled(
+							@1, "SAVEPOINT <transaction>");
 					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_SAVEPOINT;
@@ -10818,7 +10835,8 @@ TransactionStmt:
 			| RELEASE SAVEPOINT ColId
 				{
 					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_unsupported(@1, "RELEASE SAVEPOINT <transaction>", 1125);
+						parser_ybc_signal_savepoints_disabled(
+							@1, "RELEASE SAVEPOINT <transaction>");
 					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
@@ -10828,7 +10846,8 @@ TransactionStmt:
 			| RELEASE ColId
 				{
 					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_unsupported(@1, "RELEASE <transaction>", 1125);
+						parser_ybc_signal_savepoints_disabled(
+							@1, "RELEASE <transaction>");
 					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_RELEASE;
@@ -10838,7 +10857,8 @@ TransactionStmt:
 			| ROLLBACK opt_transaction TO SAVEPOINT ColId
 				{
 					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
+						parser_ybc_signal_savepoints_disabled(
+							@1, "ROLLBACK <transaction>");
 					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
@@ -10848,7 +10868,8 @@ TransactionStmt:
 			| ROLLBACK opt_transaction TO ColId
 				{
 					if (!YBSavepointsEnabled()) {
-						parser_ybc_signal_unsupported(@1, "ROLLBACK <transaction>", 1125);
+						parser_ybc_signal_savepoints_disabled(
+							@1, "ROLLBACK <transaction>");
 					}
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK_TO;
@@ -17398,38 +17419,65 @@ parser_init(base_yy_extra_type *yyext)
 	yyext->parsetree = NIL;		/* in case grammar forgets to set it */
 }
 
-static void
-raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level)
+static int
+errhint_for_not_supported(int issue, const char *extra_hint)
 {
 	if (issue > 0)
 	{
-		ereport(signal_level,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("%s", msg),
-				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
-						 "React with thumbs up to raise its priority", issue),
-				 parser_errposition(pos)));
-
+		errhint("See https://github.com/yugabyte/yugabyte-db/issues/%d. "
+				"React with thumbs up to raise its priority",
+				issue);
+	}
+	else if (issue == -2)
+	{
+		if (extra_hint)
+		{
+			errhint("%s", extra_hint);
+		}
 	}
 	else
 	{
-		ereport(signal_level,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("%s", msg),
-				 errhint("Please report the issue on "
-						 "https://github.com/YugaByte/yugabyte-db/issues"),
-				 parser_errposition(pos)));
+		errhint("Please report the issue on "
+			"https://github.com/YugaByte/yugabyte-db/issues");
 	}
+	return 0;					/* return value does not matter */
 }
 
+/*----------
+ * Signal that a feature is currently unsupported.
+ *
+ * Issue helps explain why:
+ *
+ *     issue>0:     The feature hasn't been (fully) implemented yet;
+ *                  GitHub issue # issue tracks this.
+ *     issue == -1: Ditto but no GitHub issue has been assigned for this yet
+ *     issue == -2: Custom hint message (e.g., the feature is implemented but
+ *                  is currently turned off at the moment due to a flag)
+ * ----------
+ */
 static void
-raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+raise_feature_not_supported_signal(int pos, core_yyscan_t yyscanner,
+								   const char *msg, int issue,
+								   const char *extra_hint, int signal_level)
 {
-	raise_feature_not_supported_signal(pos, yyscanner, msg, issue, YBUnsupportedFeatureSignalLevel());
+	ereport(signal_level,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("%s", msg),
+			 errhint_for_not_supported(issue, extra_hint),
+			 parser_errposition(pos)));
 }
 
 static void
-ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg, int issue, int signal_level)
+raise_feature_not_supported(int pos, core_yyscan_t yyscanner, const char *msg,
+							int issue, const char *extra_hint)
+{
+	raise_feature_not_supported_signal(pos, yyscanner, msg, issue, extra_hint,
+									   YBUnsupportedFeatureSignalLevel());
+}
+
+static void
+ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg,
+					   int issue, const char *extra_hint, int signal_level)
 {
 	static int use_yb_parser = -1;
 	if (use_yb_parser == -1)
@@ -17439,14 +17487,17 @@ ybc_not_support_signal(int pos, core_yyscan_t yyscanner, const char *msg, int is
 
 	if (use_yb_parser)
 	{
-		raise_feature_not_supported_signal(pos, yyscanner, msg, issue, signal_level);
+		raise_feature_not_supported_signal(pos, yyscanner, msg, issue,
+										   extra_hint, signal_level);
 	}
 }
 
 static void
-ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue)
+ybc_not_support(int pos, core_yyscan_t yyscanner, const char *msg, int issue,
+				const char *extra_hint)
 {
-	ybc_not_support_signal(pos, yyscanner, msg, issue, YBUnsupportedFeatureSignalLevel());
+	ybc_not_support_signal(pos, yyscanner, msg, issue, extra_hint,
+						   YBUnsupportedFeatureSignalLevel());
 }
 
 static void
@@ -17460,7 +17511,7 @@ ybc_not_support_in_templates(int pos, core_yyscan_t yyscanner, const char *msg)
 
 	if (restricted && !IsYsqlUpgrade)
 	{
-		raise_feature_not_supported(pos, yyscanner, msg, -1);
+		raise_feature_not_supported(pos, yyscanner, msg, -1, NULL);
 	}
 }
 

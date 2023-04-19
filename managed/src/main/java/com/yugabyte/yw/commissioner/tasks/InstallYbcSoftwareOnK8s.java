@@ -20,22 +20,29 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
     super(baseTaskDependencies);
   }
 
-  protected UniverseDefinitionTaskParams taskParams() {
-    return (UniverseDefinitionTaskParams) taskParams;
+  public static class Params extends UniverseDefinitionTaskParams {
+    public boolean lockUniverse = false;
+  }
+
+  public Params taskParams() {
+    return (Params) taskParams;
   }
 
   @Override
   public void run() {
     try {
-      lockUniverse(-1 /* expectedUniverseVersion */);
+      if (taskParams().lockUniverse) {
+        lockUniverse(-1 /* expectedUniverseVersion */);
+      }
 
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
       Set<NodeDetails> allTservers = new HashSet<>();
       Set<NodeDetails> primaryTservers =
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
       allTservers.addAll(primaryTservers);
-      installYbcOnThePods(universe.name, primaryTservers, false, taskParams().ybcSoftwareVersion);
+      installYbcOnThePods(
+          universe.getName(), primaryTservers, false, taskParams().getYbcSoftwareVersion());
 
       if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
         Set<NodeDetails> replicaTservers =
@@ -43,13 +50,14 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
                 universe.getNodesInCluster(
                     universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
         allTservers.addAll(replicaTservers);
-        installYbcOnThePods(universe.name, replicaTservers, true, taskParams().ybcSoftwareVersion);
+        installYbcOnThePods(
+            universe.getName(), replicaTservers, true, taskParams().getYbcSoftwareVersion());
         performYbcAction(replicaTservers, true, "stop");
       }
 
       performYbcAction(primaryTservers, false, "stop");
       createWaitForYbcServerTask(allTservers);
-      createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+      createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       // Marks update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()
@@ -58,7 +66,9 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
       throw t;
     } finally {
-      unlockUniverseForUpdate();
+      if (taskParams().lockUniverse) {
+        unlockUniverseForUpdate();
+      }
     }
     log.info("Finished {} task.", getName());
   }

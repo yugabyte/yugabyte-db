@@ -25,6 +25,7 @@ import javax.inject.Inject;
 public class CloudAccessKeySetup extends CloudTaskBase {
 
   private final TemplateManager templateManager;
+
   private final AccessManager accessManager;
 
   @Inject
@@ -61,14 +62,14 @@ public class CloudAccessKeySetup extends CloudTaskBase {
 
     if (!Strings.isNullOrEmpty(taskParams().sshPrivateKeyContent)) {
       accessManager.saveAndAddKey(
-          region.uuid,
+          region.getUuid(),
           taskParams().sshPrivateKeyContent,
           accessKeyCode,
           AccessManager.KeyType.PRIVATE,
           taskParams().sshUser,
           taskParams().sshPort,
           taskParams().airGapInstall,
-          false,
+          taskParams().skipProvisioning,
           taskParams().setUpChrony,
           taskParams().ntpServers,
           taskParams().showSetUpChrony,
@@ -79,13 +80,13 @@ public class CloudAccessKeySetup extends CloudTaskBase {
       // sets it, the key will be added.
       if (!taskParams().skipKeyPairValidate) {
         accessManager.addKey(
-            region.uuid,
+            region.getUuid(),
             accessKeyCode,
             null,
             taskParams().sshUser,
             taskParams().sshPort,
             taskParams().airGapInstall,
-            false,
+            taskParams().skipProvisioning,
             taskParams().setUpChrony,
             taskParams().ntpServers,
             taskParams().showSetUpChrony);
@@ -95,16 +96,16 @@ public class CloudAccessKeySetup extends CloudTaskBase {
     if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
       // In case of onprem provider, we add a couple of additional attributes like passwordlessSudo
       // and create a pre-provision script
-      AccessKey accessKey = AccessKey.getOrBadRequest(provider.uuid, accessKeyCode);
+      AccessKey accessKey = AccessKey.getOrBadRequest(provider.getUuid(), accessKeyCode);
       templateManager.createProvisionTemplate(
           accessKey,
-          provider.details.airGapInstall,
-          provider.details.passwordlessSudoAccess,
-          provider.details.installNodeExporter,
-          provider.details.nodeExporterPort,
-          provider.details.nodeExporterUser,
-          provider.details.setUpChrony,
-          provider.details.ntpServers);
+          provider.getDetails().airGapInstall,
+          provider.getDetails().passwordlessSudoAccess,
+          provider.getDetails().installNodeExporter,
+          provider.getDetails().nodeExporterPort,
+          provider.getDetails().nodeExporterUser,
+          provider.getDetails().setUpChrony,
+          provider.getDetails().ntpServers);
     }
   }
 }

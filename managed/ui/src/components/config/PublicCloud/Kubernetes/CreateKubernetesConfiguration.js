@@ -17,10 +17,14 @@ import { readUploadedFile } from '../../../../utils/UniverseUtils';
 import { KUBERNETES_PROVIDERS, REGION_DICT } from '../../../../config';
 import AddRegionList from './AddRegionList';
 import { ACCEPTABLE_CHARS } from '../../constants';
+import {
+  QUAY_IMAGE_REGISTRY,
+  REDHAT_IMAGE_REGISTRY
+} from '../../../configRedesign/providerRedesign/forms/k8s/constants';
 
 const convertStrToCode = (s) => s.trim().toLowerCase().replace(/\s/g, '-');
-const quayImageRegistry = 'quay.io/yugabyte/yugabyte';
-const redhatImageRegistry = 'registry.connect.redhat.com/yugabytedb/yugabyte';
+const quayImageRegistry = QUAY_IMAGE_REGISTRY;
+const redhatImageRegistry = REDHAT_IMAGE_REGISTRY;
 
 class CreateKubernetesConfiguration extends Component {
   createProviderConfig = (vals, setSubmitting) => {
@@ -35,8 +39,8 @@ class CreateKubernetesConfiguration extends Component {
     const providerTypeMetadata = KUBERNETES_PROVIDERS.find(
       (providerType) => providerType.code === type
     );
-    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : {};
-
+    const providerKubeConfig = vals.kubeConfig ? readUploadedFile(vals.kubeConfig, false) : "{}"  ;
+    fileConfigArray.push(providerKubeConfig);
     // Loop thru regions and check for config files
     vals.regionList.forEach((region, rIndex) => {
       region.zoneList.forEach((zone, zIndex) => {
@@ -69,7 +73,7 @@ class CreateKubernetesConfiguration extends Component {
             KUBE_DOMAIN: zone.kubeDomain || undefined,
             OVERRIDES: zone.zoneOverrides,
             // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-            KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined,
+            KUBECONFIG_NAME: (zone.zoneKubeConfig && zone.zoneKubeConfig.name) || undefined  ,
             KUBE_POD_ADDRESS_TEMPLATE: zone.zonePodAddressTemplate || undefined
           };
 
@@ -95,7 +99,8 @@ class CreateKubernetesConfiguration extends Component {
             : providerTypeMetadata
             ? providerTypeMetadata.code
             : 'gke',
-          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry
+          KUBECONFIG_IMAGE_REGISTRY: vals.imageRegistry || quayImageRegistry,
+
         };
 
         if (!vals.imageRegistry && providerConfig['KUBECONFIG_PROVIDER'] === 'openshift') {
@@ -104,10 +109,15 @@ class CreateKubernetesConfiguration extends Component {
 
         configIndexRecord.forEach(([regionIdx, zoneIdx], i) => {
           const currentZone = regionsLocInfo[regionIdx].zoneList[zoneIdx];
-          currentZone.config.KUBECONFIG_CONTENT = configs[1 + i];
+          currentZone.config.KUBECONFIG_CONTENT = configs[2 + i];
         });
         // TODO: fetch the service account name from the kubeconfig.
-
+        if (isDefinedNotNull(vals.kubeConfig)) {
+          Object.assign(providerConfig, {
+            KUBECONFIG_NAME: vals.kubeConfig.name,
+            KUBECONFIG_CONTENT: configs[1]
+          });
+        }
         if (isDefinedNotNull(pullSecretFile)) {
           const pullSecretYaml = JsYaml.load(configs[0]);
           Object.assign(providerConfig, {
@@ -133,8 +143,13 @@ class CreateKubernetesConfiguration extends Component {
     this.props
       .fetchKubenetesConfig()
       .then((resp) => {
-        const { KUBECONFIG_PULL_SECRET_NAME, KUBECONFIG_PULL_SECRET_CONTENT, KUBECONFIG_IMAGE_REGISTRY, KUBECONFIG_PROVIDER} = resp.data.config;
-        const { regionList, name} = resp.data;
+        const {
+          KUBECONFIG_PULL_SECRET_NAME,
+          KUBECONFIG_PULL_SECRET_CONTENT,
+          KUBECONFIG_IMAGE_REGISTRY,
+          KUBECONFIG_PROVIDER
+        } = resp.data.config;
+        const { regionList, name } = resp.data;
         const fileObj = new File([KUBECONFIG_PULL_SECRET_CONTENT], KUBECONFIG_PULL_SECRET_NAME, {
           type: 'text/plain',
           lastModified: new Date().getTime()
@@ -144,7 +159,6 @@ class CreateKubernetesConfiguration extends Component {
         setFieldValue('imageRegistry', KUBECONFIG_IMAGE_REGISTRY);
         const provider = _.find(KUBERNETES_PROVIDERS, { code: KUBECONFIG_PROVIDER.toLowerCase() });
         setFieldValue('providerType', { label: provider.name, value: provider.code });
-
 
         const parsedRegionList = regionList.map((r) => {
           let regionCode = {};

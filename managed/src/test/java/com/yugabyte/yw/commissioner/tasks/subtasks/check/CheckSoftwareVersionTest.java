@@ -79,7 +79,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     }
     CheckSoftwareVersion task = AbstractTaskBase.createTask(CheckSoftwareVersion.class);
     CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeName = node.nodeName;
     params.requiredVersion = version1;
     task.initialize(params);
@@ -113,7 +113,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     }
     CheckSoftwareVersion task = AbstractTaskBase.createTask(CheckSoftwareVersion.class);
     CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
-    params.universeUUID = defaultUniverse.universeUUID;
+    params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.nodeName = node.nodeName;
     params.requiredVersion = version;
     task.initialize(params);
@@ -125,7 +125,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     try {
       CheckSoftwareVersion task = AbstractTaskBase.createTask(CheckSoftwareVersion.class);
       CheckSoftwareVersion.Params params = new CheckSoftwareVersion.Params();
-      params.universeUUID = defaultUniverse.universeUUID;
+      params.setUniverseUUID(defaultUniverse.getUniverseUUID());
       params.nodeName = node.nodeName;
       params.requiredVersion = "2.17.0.0-b1";
       task.initialize(params);

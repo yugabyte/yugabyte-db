@@ -59,12 +59,13 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
       log.info(
           "Start Node with name {} from universe {} ({})",
           taskParams().nodeName,
-          taskParams().universeUUID,
-          universe.name);
+          taskParams().getUniverseUUID(),
+          universe.getName());
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }

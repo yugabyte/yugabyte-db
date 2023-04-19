@@ -29,6 +29,7 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/status.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
 #include "yb/yql/redis/redisserver/redis_parser.h"
@@ -77,6 +78,9 @@ void YBBackupTest::SetUp() {
   pgwrapper::PgCommandTestBase::SetUp();
   ASSERT_OK(CreateClient());
   test_admin_client_ = std::make_unique<TestAdminClient>(cluster_.get(), client_.get());
+  snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util_->SetProxy(&client_->proxy_cache());
+  snapshot_util_->SetCluster(cluster_.get());
 }
 
 void YBBackupTest::UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) {
@@ -150,20 +154,46 @@ bool YBBackupTest::CheckPartitions(
 
     if (tablets[i].partition().partition_key_start() != expected_start) {
       LOG(WARNING) << "actual partition start "
-                    << b2a_hex(tablets[i].partition().partition_key_start())
-                    << " not equal to expected start "
-                    << b2a_hex(expected_start);
+                   << b2a_hex(tablets[i].partition().partition_key_start())
+                   << " not equal to expected start "
+                   << b2a_hex(expected_start);
       return false;
     }
     if (tablets[i].partition().partition_key_end() != expected_end) {
       LOG(WARNING) << "actual partition end "
-                    << b2a_hex(tablets[i].partition().partition_key_end())
-                    << " not equal to expected end "
-                    << b2a_hex(expected_end);
+                   << b2a_hex(tablets[i].partition().partition_key_end())
+                   << " not equal to expected end "
+                   << expected_end;
       return false;
     }
   }
   return true;
+}
+
+Result<vector<string>> YBBackupTest::GetSplitPoints(
+    const std::vector<yb::master::TabletLocationsPB>& tablets) {
+  vector<string> split_points;
+  if (!tablets.size()) {
+    return split_points;
+  }
+  if (tablets[0].partition().partition_key_start() != "") {
+    return STATUS(InvalidArgument, "First tablet's partition key start is non-empty");
+  }
+  if (tablets[tablets.size() - 1].partition().partition_key_end() != "") {
+    return STATUS(InvalidArgument, "Last tablet's partition key end is non-empty");
+  }
+  for (size_t i = 0; i < tablets.size() - 1; ++i) {
+    if (tablets[i].partition().partition_key_end() !=
+        tablets[i + 1].partition().partition_key_start()) {
+      return STATUS_FORMAT(
+          InvalidArgument,
+          "Tablet at idx $0 and tablet at idx $1 disagree on boundary partition values", i, i + 1);
+    }
+  }
+  for (size_t i = 1; i < tablets.size(); ++i) {
+    split_points.push_back(tablets[i].partition().partition_key_start());
+  }
+  return split_points;
 }
 
 void YBBackupTest::LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets) {

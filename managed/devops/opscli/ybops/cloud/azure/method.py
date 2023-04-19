@@ -59,6 +59,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="Desired iops for ultrassd instance volumes.")
         self.parser.add_argument("--disk_throughput", type=int, default=None,
                                  help="Desired throughput for ultrassd instance volumes.")
+        self.parser.add_argument("--spot_price", default=None,
+                                 help="Spot price for each instance")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)

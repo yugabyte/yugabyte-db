@@ -21,6 +21,7 @@
 
 #include "yb/master/master_heartbeat.pb.h"
 
+#include "yb/rpc/connection.h"
 #include "yb/rpc/connection_context.h"
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_introspection.pb.h"
@@ -47,6 +48,12 @@ DEFINE_RUNTIME_int32(cql_nodelist_refresh_interval_secs, 300,
     "Interval after which a node list refresh event should be sent to all CQL clients.");
 TAG_FLAG(cql_nodelist_refresh_interval_secs, advanced);
 
+DEFINE_RUNTIME_bool(
+    cql_limit_nodelist_refresh_to_subscribed_conns, true,
+    "When enabled, the node list refresh events will only be sent to the connections which have "
+    "subscribed to receiving the topology change events.");
+TAG_FLAG(cql_limit_nodelist_refresh_to_subscribed_conns, advanced);
+
 DEFINE_UNKNOWN_int64(cql_rpc_memory_limit, 0, "CQL RPC memory limit");
 
 namespace yb {
@@ -55,8 +62,6 @@ namespace cqlserver {
 using namespace std::placeholders;
 using namespace yb::size_literals;
 using namespace yb::ql; // NOLINT
-
-using yb::rpc::ServiceIf;
 
 namespace {
 
@@ -171,9 +176,6 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
       const auto cql_port = first_rpc_address().port();
 
       // Queue event for all clients to add a node.
-      //
-      // TODO: the event should be sent only if there is appropriate subscription.
-      //       https://github.com/yugabyte/yugabyte-db/issues/3090
       cqlserver_event_list->AddEvent(
           BuildTopologyChangeEvent(TopologyChangeEventResponse::kNewNode,
                                    Endpoint(*addr, cql_port)));
@@ -183,13 +185,19 @@ void CQLServer::CQLNodeListRefresh(const boost::system::error_code &ec) {
   // Queue node refresh event, to remove any nodes that are down. Note that the 'MOVED_NODE'
   // event forces the client to refresh its entire cluster topology. The RPC address associated
   // with the event doesn't have much significance.
-  //
-  // TODO: the event should be sent only if there is appropriate subscription.
-  //       https://github.com/yugabyte/yugabyte-db/issues/3090
   cqlserver_event_list->AddEvent(
       BuildTopologyChangeEvent(TopologyChangeEventResponse::kMovedNode, first_rpc_address()));
 
-  Status s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
+  Status s;
+  if (PREDICT_TRUE(FLAGS_cql_limit_nodelist_refresh_to_subscribed_conns)) {
+    s = messenger_->QueueEventOnFilteredConnections(
+        cqlserver_event_list, SOURCE_LOCATION(), [](const rpc::ConnectionPtr conn) {
+          const auto& context = static_cast<CQLConnectionContext&>(conn->context());
+          return context.registered_events() & ql::BatchRequest::kTopologyChange;
+        });
+  } else {
+    s = messenger_->QueueEventOnAllReactors(cqlserver_event_list, SOURCE_LOCATION());
+  }
   if (!s.ok()) {
     LOG (WARNING) << strings::Substitute("Failed to push events: [$0], due to: $1",
                                          cqlserver_event_list->ToString(), s.ToString());

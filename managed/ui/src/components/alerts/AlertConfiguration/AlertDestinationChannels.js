@@ -12,11 +12,13 @@ import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 import { AddDestinationChannelForm } from './AddDestinationChannelForm';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
+import clsx from 'clsx';
 
-import './AlertDestinationChannels.scss';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useMount } from 'react-use';
+import { YBLoadingCircleIcon } from '../../common/indicators';
+import './AlertDestinationChannels.scss';
 
 const Composer = React.lazy(() => import('../../../redesign/features/alerts/TemplateComposer/Composer'));
 
@@ -173,7 +175,7 @@ export const AlertDestinationChannels = (props) => {
   };
 
   return (
-    <>
+    <div className={clsx('alert-destination-channels', { 'minPadding': showCustomTemplateEditor })}>
       {
         !showCustomTemplateEditor && (
           <>
@@ -192,6 +194,7 @@ export const AlertDestinationChannels = (props) => {
                         setShowModal(false);
                         setShowCustomTemplateEditor(true);
                       }}
+                      data-testid="customize_notification_template"
                     />
                   )}
 
@@ -237,7 +240,7 @@ export const AlertDestinationChannels = (props) => {
                         columnClassName="no-border name-column"
                         className="no-border"
                       >
-                        Channel Type
+                        Notification Type
                       </TableHeaderColumn>
                       <TableHeaderColumn
                         dataField="params"
@@ -285,13 +288,13 @@ export const AlertDestinationChannels = (props) => {
 
       {
         showCustomTemplateEditor && !showModal && (
-          <Suspense fallback={<div>Loading...</div>}>
+          <Suspense fallback={<YBLoadingCircleIcon />}>
             <Composer onHide={() => {
               setShowCustomTemplateEditor(false);
             }} />
           </Suspense>
         )
       }
-    </>
+    </div>
   );
 };

@@ -48,6 +48,8 @@
 
 using namespace std::placeholders;
 
+DECLARE_bool(TEST_enable_db_catalog_version_mode);
+
 namespace yb {
 namespace master {
 
@@ -170,7 +172,7 @@ struct PgCatalogTableData {
 
   Status SetTableId(const TableId& table_id) {
     Uuid cotable_id = VERIFY_RESULT(Uuid::FromHexString(table_id));
-    prefix[0] = docdb::KeyEntryTypeAsChar::kTableId;
+    prefix[0] = dockv::KeyEntryTypeAsChar::kTableId;
     cotable_id.EncodeToComparable(&prefix[1]);
     pg_table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_id));
     id = &table_id;
@@ -187,36 +189,56 @@ class PgCatalogRestorePatch : public RestorePatch {
  public:
   PgCatalogRestorePatch(
       FetchState* existing_state, FetchState* restoring_state, docdb::DocWriteBatch* doc_batch,
-      const PgCatalogTableData& table, tablet::TableInfo* table_info)
-      : RestorePatch(existing_state, restoring_state, doc_batch, table_info), table_(table) {}
+      const PgCatalogTableData& table, tablet::TableInfo* table_info, int64_t db_oid)
+      : RestorePatch(existing_state, restoring_state, doc_batch, table_info), table_(table),
+        db_oid_(db_oid) {}
 
-  Status Finish() {
-    if (doc_key_catalog_version_map_.empty()) {
+  Status Finish() override {
+    if (!table_.IsPgYbCatalogMeta()) {
       return Status::OK();
     }
-    SCHECK_EQ(table_.IsPgYbCatalogMeta(), true, Corruption, "Expected Pg Yb catalog version");
     auto column_id = VERIFY_RESULT(
         table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
-    for (const auto& it : doc_key_catalog_version_map_) {
-      QLValuePB value_pb;
-      value_pb.set_int64_value(it.second);
-      auto doc_path = docdb::DocPath(
-          it.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
-      LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
-                << doc_path.ToString() << " to " << it.second;
-      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+    QLValuePB value_pb;
+    value_pb.set_int64_value(catalog_version_);
+    auto doc_path = dockv::DocPath(
+        catalog_version_key_.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
+    LOG(INFO) << "PITR: Incrementing pg_yb_catalog version of "
+              << doc_path.ToString() << " to " << catalog_version_;
+    RETURN_NOT_OK(DocBatch()->SetPrimitive(
         doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
-    }
+    IncrementTicker(RestoreTicker::kInserts);
     return Status::OK();
   }
 
  private:
+  Status UpdateCatalogVersion(const Slice& key, const Slice& value) {
+    dockv::SubDocKey decoded_key;
+    RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
+
+    auto version_opt = VERIFY_RESULT(GetInt64ColumnValue(
+        decoded_key, value, table_info_, kCurrentVersionColumnName));
+
+    if (version_opt) {
+      const auto& doc_key = decoded_key.doc_key();
+      int64_t version = *version_opt;
+      version++;
+      VLOG_WITH_FUNC(3) << "Got Version " << version;
+      if (catalog_version_ < version) {
+        catalog_version_ = version;
+        catalog_version_key_ = doc_key;
+        VLOG_WITH_FUNC(3) << "Updated catalog version " << doc_key.ToString() << ": " << version;
+      }
+    }
+    return Status::OK();
+  }
+
   Status ProcessCommonEntry(
       const Slice& key, const Slice& existing_value, const Slice& restoring_value) override {
     if (!table_.IsPgYbCatalogMeta()) {
       return RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value);
     }
-    return ProcessCatalogVersionEntry(key, existing_value);
+    return UpdateCatalogVersion(key, existing_value);
   }
 
   Status ProcessExistingOnlyEntry(
@@ -224,60 +246,23 @@ class PgCatalogRestorePatch : public RestorePatch {
     if (!table_.IsPgYbCatalogMeta()) {
       return RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value);
     }
-    return ProcessCatalogVersionEntry(existing_key, existing_value);
+    return UpdateCatalogVersion(existing_key, existing_value);
   }
 
   Result<bool> ShouldSkipEntry(const Slice& key, const Slice& value) override {
-    return false;
-  }
-
-  Status HandleSchemaVersionValue(const docdb::DocKey& doc_key, const Slice& existing_value) {
-    docdb::Value value;
-    RETURN_NOT_OK(value.Decode(existing_value));
-    auto new_version = value.primitive_value().GetInt64() + 1;
-    auto emplace_result = doc_key_catalog_version_map_.emplace(doc_key, new_version);
-    if (!emplace_result.second && emplace_result.first->second < new_version) {
-      emplace_result.first->second = new_version;
+    if (!table_.IsPgYbCatalogMeta() || !FLAGS_TEST_enable_db_catalog_version_mode) {
+      return false;
     }
-    return Status::OK();
-  }
-
-  Status ProcessCatalogVersionEntry(const Slice& key, const Slice& full_value) {
-    docdb::SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
-    if (sub_doc_key.subkeys().empty()) {
-      auto value_slice = full_value;
-      RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
-      SCHECK(value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow),
-             Corruption, "Packed row expected: $0", full_value.ToDebugHexString());
-      const docdb::SchemaPacking& packing = VERIFY_RESULT(
-          table_info_->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
-      auto column_id = VERIFY_RESULT(
-          table_info_->schema().ColumnIdByName(kCurrentVersionColumnName));
-      auto value = packing.GetValue(column_id, value_slice);
-      if (!value) {
-        return STATUS_FORMAT(
-            Corruption, "$0 missing in $1", kCurrentVersionColumnName,
-            full_value.ToDebugHexString());
-      }
-      return HandleSchemaVersionValue(sub_doc_key.doc_key(), *value);
-    }
-    SCHECK_EQ(sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
-    const auto& first_subkey = sub_doc_key.subkeys()[0];
-    if (first_subkey.type() == docdb::KeyEntryType::kColumnId) {
-      auto column_id = first_subkey.GetColumnId();
-      const ColumnSchema& column = VERIFY_RESULT(table_info_->schema().column_by_id(
-          column_id));
-      if (column.name() == kCurrentVersionColumnName) {
-        return HandleSchemaVersionValue(sub_doc_key.doc_key(), full_value);
-      }
-    }
-    return Status::OK();
+    dockv::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
+    return sub_doc_key.doc_key().range_group()[0].GetUInt32() != db_oid_;
   }
 
   // Should be alive while this object is alive.
   const PgCatalogTableData& table_;
-  std::map<docdb::DocKey, int64_t> doc_key_catalog_version_map_;
+  dockv::DocKey catalog_version_key_;
+  int64_t catalog_version_ = 0;
+  int64_t db_oid_;
 };
 
 } // namespace
@@ -386,6 +371,12 @@ void RestoreSysCatalogState::FillHideInformation(
 
 Result<bool> RestoreSysCatalogState::PatchRestoringEntry(
     const std::string& id, SysNamespaceEntryPB* pb) {
+  if (IsYsqlRestoration()) {
+    SCHECK(restoration_.db_oid, Corruption, "Namespace entry not found in existing state");
+    SCHECK(*(restoration_.db_oid) ==
+        VERIFY_RESULT(GetPgsqlDatabaseOid(id)), Corruption,
+        "Namespace entry in restoring and existing state are different");
+  }
   return true;
 }
 
@@ -831,6 +822,10 @@ Status RestoreSysCatalogState::CheckExistingEntry(
 // We don't delete newly created namespaces, because our filters namespace based.
 Status RestoreSysCatalogState::CheckExistingEntry(
     const std::string& id, const SysNamespaceEntryPB& pb) {
+  if (IsYsqlRestoration()) {
+    SCHECK(!restoration_.db_oid, NotSupported, "Only one database at a time can be restored");
+    restoration_.db_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(id));
+  }
   return Status::OK();
 }
 
@@ -994,10 +989,10 @@ Status RestoreSysCatalogState::ProcessPgCatalogRestores(
 
     RETURN_NOT_OK(restoring_state.SetPrefix(prefix));
     RETURN_NOT_OK(existing_state.SetPrefix(prefix));
-
+    SCHECK(restoration_.db_oid, Corruption, "Db Oid of the database should have been set by now");
     PgCatalogRestorePatch restore_patch(
         &existing_state, &restoring_state, write_batch, table,
-        VERIFY_RESULT(metadata->GetTableInfo(*(table.id))).get());
+        VERIFY_RESULT(metadata->GetTableInfo(*(table.id))).get(), *(restoration_.db_oid));
 
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
 

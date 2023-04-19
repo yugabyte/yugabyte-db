@@ -74,12 +74,9 @@ using namespace std::literals;
 namespace yb {
 
 using client::YBClient;
-using client::YBClientBuilder;
 using client::YBSchema;
-using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;
 using client::YBSession;
-using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableType;
 using client::YBTableName;

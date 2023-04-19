@@ -172,7 +172,7 @@ void EncryptedSSTableTest::CounterOverflow(
       table_reader->NewIterator(rocksdb::ReadOptions()));
   it->SeekToFirst();
   int i = 0;
-  while (it->Valid()) {
+  while (ASSERT_RESULT(it->CheckedValid())) {
     ASSERT_EQ(it->key(), GetKey(i));
     ASSERT_EQ(it->value(), GetValue(i));
     i++;

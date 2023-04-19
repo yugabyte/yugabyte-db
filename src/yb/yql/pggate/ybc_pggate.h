@@ -332,6 +332,11 @@ YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
 
 YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
 
+YBCStatus YBCPgWaitForBackendsCatalogVersion(
+    YBCPgOid dboid,
+    uint64_t version,
+    int* num_lagging_backends);
+
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
     const YBCPgOid index_oid);

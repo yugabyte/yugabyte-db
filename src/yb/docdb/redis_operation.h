@@ -19,7 +19,7 @@
 
 #include "yb/docdb/deadline_info.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/expiration.h"
+#include "yb/dockv/expiration.h"
 #include "yb/docdb/key_bounds.h"
 
 #include "yb/rocksdb/cache.h"
@@ -32,7 +32,7 @@ namespace docdb {
 struct RedisValue {
   RedisDataType type = static_cast<RedisDataType>(0);
   std::string value;
-  Expiration exp;
+  dockv::Expiration exp;
   int64_t internal_index = 0;
 };
 
@@ -62,7 +62,7 @@ class RedisWriteOperation :
   Result<RedisDataType> GetValueType(const DocOperationApplyData& data,
       int subkey_index = kNilSubkeyIndex);
   Result<RedisValue> GetValue(const DocOperationApplyData& data,
-      int subkey_index = kNilSubkeyIndex, Expiration* exp = nullptr);
+      int subkey_index = kNilSubkeyIndex, dockv::Expiration* exp = nullptr);
 
   Status ApplySetTtl(const DocOperationApplyData& data);
   Status ApplySet(const DocOperationApplyData& data);
@@ -116,7 +116,7 @@ class RedisReadOperation {
   Status ExecuteGetTtl();
   // Used to implement HGETALL, HKEYS, HVALS, SMEMBERS, HLEN, SCARD
   Status ExecuteHGetAllLikeCommands(
-      ValueEntryType value_type, bool add_keys, bool add_values);
+      dockv::ValueEntryType value_type, bool add_keys, bool add_values);
   Status ExecuteStrLen();
   Status ExecuteExists();
   Status ExecuteGetRange();

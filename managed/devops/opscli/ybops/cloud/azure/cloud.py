@@ -13,7 +13,7 @@ import logging
 import os
 
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.cloud.common.cloud import AbstractCloud
+from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
     AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
 from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, \
@@ -114,13 +114,16 @@ class AzureCloud(AbstractCloud):
         public_ip = args.assign_public_ip
         disk_iops = args.disk_iops
         disk_throughput = args.disk_throughput
+        spot_price = args.spot_price
+        use_spot_instance = args.use_spot_instance
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
         nicId = self.get_admin().create_or_update_nic(
             vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
         output = self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file,
                                                       volSize, instanceType, adminSSH, nsg, image,
                                                       volType, args.type, region, nicId, tags,
-                                                      disk_iops, disk_throughput)
+                                                      disk_iops, disk_throughput,
+                                                      spot_price, use_spot_instance)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 
@@ -229,3 +232,20 @@ class AzureCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
 
         return self.get_admin().deallocate_instance(host_info['name'])
+
+    def normalize_instance_state(self, instance_state):
+        if instance_state:
+            instance_state = instance_state.lower()
+            if instance_state in ("creating", "starting"):
+                return InstanceState.STARTING
+            if instance_state in ("running"):
+                return InstanceState.RUNNING
+            if instance_state in ("stopping"):
+                return InstanceState.STOPPING
+            if instance_state in ("stopped"):
+                return InstanceState.STOPPED
+            if instance_state in ("deallocating"):
+                return InstanceState.TERMINATING
+            if instance_state in ("deallocated"):
+                return InstanceState.TERMINATED
+        return InstanceState.UNKNOWN

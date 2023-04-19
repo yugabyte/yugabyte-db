@@ -15,6 +15,8 @@
 
 #include <string>
 
+#include <boost/optional.hpp>
+
 #include "yb/cdc/cdc_consumer.pb.h"
 
 #include "yb/client/transaction_manager.h"
@@ -81,8 +83,12 @@ class XClusterTestBase : public YBTest {
     FLAGS_TEST_check_broadcast_address = false;
     FLAGS_flush_rocksdb_on_shutdown = false;
     FLAGS_xcluster_safe_time_update_interval_secs = 1;
-    safe_time_propagation_timeout_ = MonoDelta::FromSeconds(30);
+    propagation_timeout_ = MonoDelta::FromSeconds(30 * kTimeMultiplier);
   }
+
+  Result<std::unique_ptr<Cluster>> CreateCluster(
+      const std::string& cluster_id, const std::string& cluster_short_name,
+      uint32_t num_tservers = 1, uint32_t num_masters = 1);
 
   virtual Status InitClusters(const MiniClusterOptions& opts);
 
@@ -92,6 +98,8 @@ class XClusterTestBase : public YBTest {
   Status RunOnBothClusters(std::function<Status(Cluster*)> run_on_cluster);
 
   Status WaitForLoadBalancersToStabilize();
+
+  Status WaitForLoadBalancersToStabilize(MiniCluster* cluster);
 
   Status CreateDatabase(
       Cluster* cluster, const std::string& namespace_name = kNamespaceName, bool colocated = false);
@@ -169,7 +177,12 @@ class XClusterTestBase : public YBTest {
   Status WaitForSetupUniverseReplicationCleanUp(std::string producer_uuid);
 
   Status WaitForValidSafeTimeOnAllTServers(
-      const NamespaceId& namespace_id, Cluster* cluster = nullptr);
+      const NamespaceId& namespace_id, Cluster* cluster = nullptr,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
+
+  Status WaitForRoleChangeToPropogateToAllTServers(
+      cdc::XClusterRole expected_xcluster_role, Cluster* cluster = nullptr,
+      boost::optional<CoarseTimePoint> deadline = boost::none);
 
   Result<std::vector<CDCStreamId>> BootstrapProducer(
       MiniCluster* producer_cluster, YBClient* producer_client,
@@ -233,10 +246,25 @@ class XClusterTestBase : public YBTest {
     return result;
   }
 
+  void VerifyReplicationError(
+      const std::string& consumer_table_id,
+      const std::string& stream_id,
+      const boost::optional<ReplicationErrorPb>
+          expected_replication_error);
+
+  Result<CDCStreamId> GetCDCStreamID(const std::string& producer_table_id);
+
+  Status PauseResumeXClusterProducerStreams(
+      const std::vector<std::string>& stream_ids, bool is_paused);
+
  protected:
+  CoarseTimePoint PropagationDeadline() const {
+    return CoarseMonoClock::Now() + propagation_timeout_;
+  }
+
   Cluster producer_cluster_;
   Cluster consumer_cluster_;
-  MonoDelta safe_time_propagation_timeout_;
+  MonoDelta propagation_timeout_;
 
  private:
   // Function that translates the api response from a WaitForReplicationDrainResponsePB call into

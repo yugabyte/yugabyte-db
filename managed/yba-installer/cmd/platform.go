@@ -7,13 +7,13 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/fluxcd/pkg/tar"
-	"github.com/jimmidyson/pemtokeystore"
 	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
@@ -29,9 +29,11 @@ type platformDirectories struct {
 	templateFileName    string
 	DataDir             string
 	cronScript          string
+	PgBin               string
+	PlatformPackages    string
 }
 
-func newPlatDirectories() platformDirectories {
+func newPlatDirectories(version string) platformDirectories {
 	return platformDirectories{
 		SystemdFileLocation: common.SystemdDir + "/yb-platform.service",
 		ConfFileLocation:    common.GetSoftwareRoot() + "/yb-platform/conf/yb-platform.conf",
@@ -39,6 +41,8 @@ func newPlatDirectories() platformDirectories {
 		DataDir:             common.GetBaseInstall() + "/data/yb-platform",
 		cronScript: filepath.Join(
 			common.GetInstallerSoftwareDir(), common.CronDir, "managePlatform.sh"),
+		PgBin:            common.GetSoftwareRoot() + "/pgsql/bin",
+		PlatformPackages: common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + version,
 	}
 }
 
@@ -54,17 +58,17 @@ func NewPlatform(version string) Platform {
 	return Platform{
 		name:                "yb-platform",
 		version:             version,
-		platformDirectories: newPlatDirectories(),
+		platformDirectories: newPlatDirectories(version),
 	}
 }
 
 func (plat Platform) devopsDir() string {
-	return plat.yugabyteDir() + "/devops"
+	return plat.PlatformPackages + "/devops"
 }
 
 // yugaware dir has actual yugaware binary and JARs
 func (plat Platform) yugawareDir() string {
-	return plat.yugabyteDir() + "/yugaware"
+	return plat.PlatformPackages + "/yugaware"
 }
 
 func (plat Platform) packageFolder() string {
@@ -95,11 +99,13 @@ func (plat Platform) Install() error {
 	config.GenerateTemplate(plat)
 	plat.createNecessaryDirectories()
 	plat.untarDevopsAndYugawarePackages()
-	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
 	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
-	convertCertsToKeyStoreFormat()
+	err := createPemFormatKeyAndCert()
+	if err != nil {
+		return err
+	}
 
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
@@ -109,7 +115,7 @@ func (plat Platform) Install() error {
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
 	} else {
-		// Allow yugabyte user to fully manage this installation (GetSoftwareRoot() to be safe)
+		// Allow yugabyte user to fully manage this installation (GetBaseInstall() to be safe)
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetBaseInstall(), userName, userName, true)
 	}
@@ -120,15 +126,22 @@ func (plat Platform) Install() error {
 }
 
 func (plat Platform) createNecessaryDirectories() {
-
-	common.MkdirAll(common.GetSoftwareRoot()+"/yb-platform", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version, os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/release", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/ybc/releases", os.ModePerm)
-	common.MkdirAll(common.GetBaseInstall()+"/data/yb-platform/node-agent/releases", os.ModePerm)
-
-	common.MkdirAll(plat.devopsDir(), os.ModePerm)
-	common.MkdirAll(plat.yugawareDir(), os.ModePerm)
+	dirs := []string{
+		common.GetSoftwareRoot() + "/yb-platform",
+		common.GetBaseInstall() + "/data/yb-platform/releases",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/release",
+		common.GetBaseInstall() + "/data/yb-platform/ybc/releases",
+		common.GetBaseInstall() + "/data/yb-platform/node-agent/releases",
+		plat.devopsDir(),
+		plat.yugawareDir(),
+	}
+	userName := viper.GetString("service_username")
+	for _, dir := range dirs {
+		if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+			common.MkdirAll(dir, os.ModePerm)
+			common.Chown(dir, userName, userName, true)
+		}
+	}
 }
 
 func (plat Platform) untarDevopsAndYugawarePackages() {
@@ -182,36 +195,14 @@ func (plat Platform) untarDevopsAndYugawarePackages() {
 
 }
 
-func (plat Platform) copyYugabyteReleaseFile() {
-
-	packageFolderPath := plat.yugabyteDir()
-
-	files, err := os.ReadDir(packageFolderPath)
-	if err != nil {
-		log.Fatal("Error: " + err.Error() + ".")
-	}
-
-	for _, f := range files {
-		if strings.Contains(f.Name(), "yugabyte") {
-
-			yugabyteTgzName := f.Name()
-			yugabyteTgzPath := packageFolderPath + "/" + yugabyteTgzName
-			common.CopyFile(yugabyteTgzPath,
-				common.GetBaseInstall()+"/data/yb-platform/releases/"+plat.version+"/"+yugabyteTgzName)
-
-		}
-	}
-}
-
 func (plat Platform) copyYbcPackages() {
-	packageFolderPath := common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + plat.version
-	ybcPattern := packageFolderPath + "/**/ybc/ybc*.tar.gz"
+	ybcPattern := plat.PlatformPackages + "/**/ybc/ybc*.tar.gz"
 
 	matches, err := filepath.Glob(ybcPattern)
 	if err != nil {
 		log.Fatal(
 			fmt.Sprintf("Could not find ybc components in %s. Failed with err %s",
-				packageFolderPath, err.Error()))
+				plat.PlatformPackages, err.Error()))
 	}
 
 	for _, f := range matches {
@@ -237,14 +228,13 @@ func (plat Platform) deleteNodeAgentPackages() {
 
 func (plat Platform) copyNodeAgentPackages() {
 	// Node-agent package is under yugabundle folder.
-	packageFolderPath := common.GetInstallerSoftwareDir() + "/packages/yugabyte-" + plat.version
-	nodeAgentPattern := packageFolderPath + "/node_agent-*.tar.gz"
+	nodeAgentPattern := plat.PlatformPackages + "/node_agent-*.tar.gz"
 
 	matches, err := filepath.Glob(nodeAgentPattern)
 	if err != nil {
 		log.Fatal(
 			fmt.Sprintf("Could not find node-agent components in %s. Failed with err %s",
-				packageFolderPath, err.Error()))
+				plat.PlatformPackages, err.Error()))
 	}
 
 	for _, f := range matches {
@@ -256,8 +246,8 @@ func (plat Platform) copyNodeAgentPackages() {
 
 func (plat Platform) renameAndCreateSymlinks() {
 
-	common.CreateSymlink(plat.yugabyteDir(), common.GetSoftwareRoot()+"/yb-platform", "yugaware")
-	common.CreateSymlink(plat.yugabyteDir(), common.GetSoftwareRoot()+"/yb-platform", "devops")
+	common.CreateSymlink(plat.PlatformPackages, common.GetSoftwareRoot()+"/yb-platform", "yugaware")
+	common.CreateSymlink(plat.PlatformPackages, common.GetSoftwareRoot()+"/yb-platform", "devops")
 
 }
 
@@ -435,16 +425,18 @@ func (plat Platform) Status() (common.Status, error) {
 // Upgrade will upgrade the platform and install it into the alt install directory.
 // Upgrade will NOT restart the service, the old version is expected to still be running
 func (plat Platform) Upgrade() error {
-	plat.platformDirectories = newPlatDirectories()
+	plat.platformDirectories = newPlatDirectories(plat.version)
 	config.GenerateTemplate(plat) // systemctl reload is not needed, start handles it for us.
 	plat.createNecessaryDirectories()
 	plat.untarDevopsAndYugawarePackages()
-	plat.copyYugabyteReleaseFile()
 	plat.copyYbcPackages()
 	plat.deleteNodeAgentPackages()
 	plat.copyNodeAgentPackages()
 	plat.renameAndCreateSymlinks()
-
+	pemErr := createPemFormatKeyAndCert()
+	if pemErr != nil {
+		return pemErr
+	}
 	//Create the platform.log file so that we can start platform as
 	//a background process for non-root.
 	common.Create(common.GetSoftwareRoot() + "/yb-platform/yugaware/bin/platform.log")
@@ -452,38 +444,61 @@ func (plat Platform) Upgrade() error {
 	//Crontab based monitoring for non-root installs.
 	if !common.HasSudoAccess() {
 		plat.CreateCronJob()
-	} else {
-		// Allow yugabyte user to fully manage this installation (GetSoftwareRoot() to be safe)
-		userName := viper.GetString("service_username")
-		common.Chown(common.GetSoftwareRoot(), userName, userName, true)
 	}
 	err := plat.Start()
 	return err
 }
 
-func convertCertsToKeyStoreFormat() {
+func createPemFormatKeyAndCert() error {
+	keyFile := viper.GetString("server_key_path")
+	certFile := viper.GetString("server_cert_path")
+	log.Info(fmt.Sprintf("Generating concatenated PEM from %s %s ", keyFile, certFile))
 
-	keyStorePath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerKeyStorePath)
-	// ignore errors if the file doesn't exist
-	os.Remove(keyStorePath)
-
-	log.Info(fmt.Sprintf("Generating key store from %s %s ", viper.GetString("server_cert_path"), viper.GetString("server_key_path")))
-	var opts pemtokeystore.Options
-	opts.KeystorePath = keyStorePath
-	opts.KeystorePassword = viper.GetString("platform.keyStorePassword")
-	opts.CertFiles = map[string]string{"myserver": viper.GetString("server_cert_path")}
-	opts.PrivateKeyFiles = map[string]string{"myserver": viper.GetString("server_key_path")}
-	err := pemtokeystore.CreateKeystore(opts)
+	// Open and read the key file.
+	keyIn, err := os.Open(keyFile)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("failed to convert cert to keystore: %s", err))
-		return
+		log.Error(fmt.Sprintf("Failed to open server.key for reading with error: %s", err))
+		return err
 	}
+	defer keyIn.Close()
+
+	// Open and read the cert file.
+	certIn, err := os.Open(certFile)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to open server.cert for reading with error: %s", err))
+		return err
+	}
+	defer certIn.Close()
+
+	// Create this new concatenated PEM file to write key and cert in order.
+	serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
+	pemFile, err := os.OpenFile(serverPemPath, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to open server.pem with error: %s", err))
+		return err
+	}
+	defer pemFile.Close()
+
+	// Append the key file into server.pem file.
+	n, err := io.Copy(pemFile, keyIn)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to append server.key to server.pem with error: %s", err))
+		return err
+	}
+	log.Debug(fmt.Sprintf("Wrote %d bytes of %s to %s\n", n, keyFile, serverPemPath))
+	// Append the cert file into server.pem file.
+	n1, err := io.Copy(pemFile, certIn)
+	if err != nil {
+		log.Error(fmt.Sprintf("Failed to append server.cert to server.pem with error: %s", err))
+		return err
+	}
+	log.Debug(fmt.Sprintf("Wrote %d bytes of %s to %s\n", n1, certFile, serverPemPath))
 
 	if common.HasSudoAccess() {
 		userName := viper.GetString("service_username")
 		common.Chown(common.GetSelfSignedCertsDir(), userName, userName, true)
-
 	}
+	return nil
 }
 
 // CreateCronJob creates the cron job for managing YBA platform with cron script in non-root.

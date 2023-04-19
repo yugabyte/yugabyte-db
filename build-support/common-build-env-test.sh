@@ -91,7 +91,9 @@ test_compiler_detection_by_jenkins_job_name() {
     unset YB_COMPILER_TYPE
     JOB_NAME="$jenkins_job_name"
     set_compiler_type_based_on_jenkins_job_name
-    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "compiler type"
+    if [[ ${YB_COMPILER_TYPE_WAS_ADJUSTED:-false} == "false" ]]; then
+      assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "compiler type"
+    fi
   )
 }
 
@@ -141,8 +143,10 @@ test_set_cmake_build_type_and_compiler_type() {
     set_cmake_build_type_and_compiler_type
     assert_equals "$expected_cmake_build_type" "$cmake_build_type" "$test_case_details" \
                   "Note: comparing CMake build type."
-    assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "$test_case_details" \
-                  "Note: comparing compiler type."
+    if [[ ${YB_COMPILER_TYPE_WAS_ADJUSTED:-false} == "false" ]]; then
+      assert_equals "$expected_compiler_type" "$YB_COMPILER_TYPE" "$test_case_details" \
+                    "Note: comparing compiler type."
+    fi
   )
   local exit_code=$?
   set -e

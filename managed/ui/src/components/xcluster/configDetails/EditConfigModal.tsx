@@ -2,13 +2,14 @@ import React from 'react';
 import * as Yup from 'yup';
 import { Field } from 'formik';
 import { useMutation, useQueryClient } from 'react-query';
-import { toast } from 'react-toastify';
+import { AxiosError } from 'axios';
 
 import { editXclusterName } from '../../../actions/xClusterReplication';
 import { YBModalForm } from '../../common/forms';
 import { XClusterConfig } from '../XClusterTypes';
 import { YBFormInput } from '../../common/forms/fields';
 import { XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN } from '../constants';
+import { handleServerError } from '../../../utils/errorHandlingUtils';
 
 interface Props {
   visible: boolean;
@@ -38,13 +39,8 @@ export function EditConfigModal({ onHide, visible, replication }: Props) {
         queryClient.invalidateQueries(['Xcluster', replication.uuid]);
         onHide();
       },
-      onError: (err: any) => {
-        toast.error(
-          err.response.data.error instanceof String
-            ? err.response.data.error
-            : JSON.stringify(err.response.data.error)
-        );
-      }
+      onError: (error: Error | AxiosError) =>
+        handleServerError(error, { customErrorLabel: 'Create xCluster config request failed' })
     }
   );
 

@@ -82,10 +82,8 @@ namespace yb {
 namespace consensus {
 
 using log::Log;
-using log::LogEntryPB;
 using log::LogOptions;
 using log::LogReader;
-using rpc::RpcContext;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 

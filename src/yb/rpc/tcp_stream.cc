@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include <deque>
+
 #include "yb/rpc/tcp_stream.h"
 
 #include "yb/rpc/outbound_data.h"
@@ -461,7 +463,7 @@ Result<size_t> TcpStream::Send(OutboundDataPtr data) {
   // transferred.
   size_t result = data_blocks_sent_ + sending_.size();
 
-  DVLOG_WITH_PREFIX(6) << "TcpStream::Send queueing: " << AsString(*data);
+  DVLOG_WITH_PREFIX(6) << "TcpStream::Send queuing: " << AsString(*data);
   // Serialize the actual bytes to be put on the wire.
   sending_.emplace_back(std::move(data), mem_tracker_);
   queued_bytes_to_send_ += sending_.back().bytes_size();

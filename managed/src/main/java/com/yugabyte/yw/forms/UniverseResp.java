@@ -25,6 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +53,7 @@ public class UniverseResp {
   }
 
   public static List<UniverseResp> create(
-      Customer customer, List<Universe> universeList, Config config) {
+      Customer customer, Collection<Universe> universeList, Config config) {
     List<UniverseDefinitionTaskParams> universeDefinitionTaskParams =
         universeList.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
     UniverseResourceDetails.Context context =
@@ -73,7 +74,7 @@ public class UniverseResp {
         .collect(Collectors.toList());
   }
 
-  private static void fillRegions(List<Universe> universes) {
+  private static void fillRegions(Collection<Universe> universes) {
     fillClusterRegions(
         universes
             .stream()
@@ -94,7 +95,7 @@ public class UniverseResp {
     Map<UUID, Region> regionMap =
         Region.findByUuids(regionUuids)
             .stream()
-            .collect(Collectors.toMap(region -> region.uuid, Function.identity()));
+            .collect(Collectors.toMap(region -> region.getUuid(), Function.identity()));
     clusters
         .stream()
         .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
@@ -153,7 +154,7 @@ public class UniverseResp {
     this(
         entity,
         taskUUID,
-        Customer.get(entity.customerId),
+        Customer.get(entity.getCustomerId()),
         Provider.getOrBadRequest(
             UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
         resources);
@@ -165,10 +166,10 @@ public class UniverseResp {
       Customer customer,
       Provider provider,
       UniverseResourceDetails resources) {
-    universeUUID = entity.universeUUID;
-    name = entity.name;
-    creationDate = entity.creationDate.toString();
-    version = entity.version;
+    universeUUID = entity.getUniverseUUID();
+    name = entity.getName();
+    creationDate = entity.getCreationDate().toString();
+    version = entity.getVersion();
     dnsName = getDnsName(customer, provider);
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID;
@@ -191,7 +192,7 @@ public class UniverseResp {
     if (dnsSuffix == null) {
       return null;
     }
-    return String.format("%s.%s.%s", name, customer.code, dnsSuffix);
+    return String.format("%s.%s.%s", name, customer.getCode(), dnsSuffix);
   }
 
   /** Returns the command to run the sample apps in the universe. */

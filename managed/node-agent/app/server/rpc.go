@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"net"
-	"node-agent/app/executor"
 	"node-agent/app/task"
 	pb "node-agent/generated/service"
 	"node-agent/model"
@@ -108,10 +107,25 @@ func (server *RPCServer) Stop() {
 	server.gServer = nil
 }
 
+func (server *RPCServer) toPreflightCheckResponse(result any) (*pb.DescribeTaskResponse, error) {
+	nodeConfigs := []*pb.NodeConfig{}
+	err := util.ConvertType(result, &nodeConfigs)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.DescribeTaskResponse{
+		Data: &pb.DescribeTaskResponse_PreflightCheckOutput{
+			PreflightCheckOutput: &pb.PreflightCheckOutput{
+				NodeConfigs: nodeConfigs,
+			},
+		},
+	}, nil
+}
+
 /* Implementation of gRPC methods start here. */
 
 // Ping handles ping request.
-func (s *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PingResponse, error) {
+func (server *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PingResponse, error) {
 	util.FileLogger().Debugf(ctx, "Received ping")
 	config := util.CurrentConfig()
 	return &pb.PingResponse{
@@ -123,7 +137,7 @@ func (s *RPCServer) Ping(ctx context.Context, in *pb.PingRequest) (*pb.PingRespo
 }
 
 // ExecuteCommand executes a command on the server.
-func (s *RPCServer) ExecuteCommand(
+func (server *RPCServer) ExecuteCommand(
 	req *pb.ExecuteCommandRequest,
 	stream pb.NodeAgent_ExecuteCommandServer,
 ) error {
@@ -159,24 +173,47 @@ func (s *RPCServer) ExecuteCommand(
 }
 
 // SubmitTask submits an async task on the server.
-func (s *RPCServer) SubmitTask(
+func (server *RPCServer) SubmitTask(
 	ctx context.Context,
 	req *pb.SubmitTaskRequest,
 ) (*pb.SubmitTaskResponse, error) {
-	cmd := req.GetCommand()
+	res := &pb.SubmitTaskResponse{}
 	taskID := req.GetTaskId()
 	username := req.GetUser()
-	shellTask := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
-	err := task.GetTaskManager().Submit(ctx, taskID, shellTask)
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+	cmdInput := req.GetCommandInput()
+	if cmdInput != nil {
+		cmd := cmdInput.GetCommand()
+		shellTask := task.NewShellTaskWithUser("RemoteCommand", username, cmd[0], cmd[1:])
+		err := task.GetTaskManager().Submit(ctx, taskID, shellTask, nil)
+		if err != nil {
+			return res, status.Error(codes.Internal, err.Error())
+		}
+		return res, nil
 	}
-	return &pb.SubmitTaskResponse{}, nil
+	preflightCheckInput := req.GetPreflightCheckInput()
+	if preflightCheckInput != nil {
+		preflightCheckParam := &model.PreflightCheckParam{}
+		err := util.ConvertType(preflightCheckInput, &preflightCheckParam)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in preflight input conversion - %s", err.Error())
+			return res, status.Errorf(codes.InvalidArgument, err.Error())
+		}
+		preflightCheckHandler := task.NewPreflightCheckHandler(preflightCheckParam)
+		err = task.GetTaskManager().
+			Submit(ctx, taskID, preflightCheckHandler,
+				util.RPCResponseConverter(server.toPreflightCheckResponse))
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Error in running preflight check - %s", err.Error())
+			return res, status.Errorf(codes.Internal, err.Error())
+		}
+		return res, nil
+	}
+	return res, status.Error(codes.Unimplemented, "Unknown task")
 }
 
 // DescribeTask describes a submitted task.
 // Client needs to retry on DeadlineExeeced error.
-func (s *RPCServer) DescribeTask(
+func (server *RPCServer) DescribeTask(
 	req *pb.DescribeTaskRequest,
 	stream pb.NodeAgent_DescribeTaskServer,
 ) error {
@@ -185,18 +222,22 @@ func (s *RPCServer) DescribeTask(
 	err := task.GetTaskManager().Subscribe(
 		ctx,
 		taskID,
-		func(taskState executor.TaskState, callbackData *task.TaskCallbackData) error {
+		func(callbackData *task.TaskCallbackData) error {
 			var res *pb.DescribeTaskResponse
 			if callbackData.ExitCode == 0 {
-				res = &pb.DescribeTaskResponse{
-					State: taskState.String(),
-					Data: &pb.DescribeTaskResponse_Output{
-						Output: callbackData.Info,
-					},
+				if callbackData.RPCResponse != nil {
+					res = callbackData.RPCResponse
+				} else {
+					res = &pb.DescribeTaskResponse{
+						State: callbackData.State.String(),
+						Data: &pb.DescribeTaskResponse_Output{
+							Output: callbackData.Info,
+						},
+					}
 				}
 			} else {
 				res = &pb.DescribeTaskResponse{
-					State: taskState.String(),
+					State: callbackData.State.String(),
 					Data: &pb.DescribeTaskResponse_Error{
 						Error: &pb.Error{
 							Code:    int32(callbackData.ExitCode),
@@ -219,11 +260,11 @@ func (s *RPCServer) DescribeTask(
 }
 
 // AbortTask aborts a running task.
-func (s *RPCServer) AbortTask(
+func (server *RPCServer) AbortTask(
 	ctx context.Context,
 	req *pb.AbortTaskRequest,
 ) (*pb.AbortTaskResponse, error) {
-	taskID, err := task.GetTaskManager().AbortTask(ctx, req.GetTaskId())
+	taskID, err := task.GetTaskManager().Abort(ctx, req.GetTaskId())
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -231,7 +272,7 @@ func (s *RPCServer) AbortTask(
 }
 
 // UploadFile handles upload file to a specified file.
-func (s *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error {
+func (server *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error {
 	ctx := stream.Context()
 	req, err := stream.Recv()
 	if err != nil {
@@ -316,7 +357,7 @@ func (s *RPCServer) UploadFile(stream pb.NodeAgent_UploadFileServer) error {
 }
 
 // DownloadFile downloads a specified file.
-func (s *RPCServer) DownloadFile(
+func (server *RPCServer) DownloadFile(
 	in *pb.DownloadFileRequest,
 	stream pb.NodeAgent_DownloadFileServer,
 ) error {
@@ -365,7 +406,7 @@ func (s *RPCServer) DownloadFile(
 	return nil
 }
 
-func (s *RPCServer) Update(
+func (server *RPCServer) Update(
 	ctx context.Context,
 	in *pb.UpdateRequest,
 ) (*pb.UpdateResponse, error) {
@@ -380,7 +421,7 @@ func (s *RPCServer) Update(
 		// Platform has confirmed that it has also rotated the cert and the key.
 		err = HandleUpgradedState(ctx, config)
 	default:
-		err = fmt.Errorf("Unhandled state - %s", state)
+		err = status.Errorf(codes.InvalidArgument, fmt.Sprintf("Unhandled state - %s", state))
 	}
 	res := &pb.UpdateResponse{Home: util.MustGetHomeDirectory()}
 	return res, err

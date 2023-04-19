@@ -2,39 +2,36 @@
 
 package db.migration.default_.common;
 
-import java.sql.Connection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.migrations.V231.AvailabilityZone;
+import com.yugabyte.yw.models.migrations.V231.Customer;
+import com.yugabyte.yw.models.migrations.V231.Provider;
+import com.yugabyte.yw.models.migrations.V231.Region;
+import com.yugabyte.yw.models.migrations.V231.CloudInfoInterface_Clone;
 import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-
 import io.ebean.Ebean;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
 import play.libs.Json;
 
-import org.flywaydb.core.api.migration.jdbc.BaseJdbcMigration;
-
-public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
+public class V231__ProviderDetailsPersist extends BaseJavaMigration {
 
   @Override
-  public void migrate(Connection connection) throws Exception {
+  public void migrate(Context context) {
     Ebean.execute(V231__ProviderDetailsPersist::migrateConfigToDetails);
   }
 
   public static void migrateConfigToDetails() {
-    for (Customer customer : Customer.getAll()) {
-      for (Provider provider : Provider.getAll(customer.uuid)) {
-        Map<String, String> config = provider.config;
+    for (Customer customer : Customer.find.all()) {
+      for (Provider provider : Provider.getAll(customer.getUuid())) {
+        Map<String, String> config = provider.getConfig();
         if (config == null) {
           continue;
         }
@@ -45,16 +42,16 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
           providerConfig = V231__ProviderDetailsPersist.translateGCPConfigToDetails(config);
         }
 
-        for (Region region : provider.regions) {
+        for (Region region : provider.getRegions()) {
           V231__ProviderDetailsPersist.migrateRegionDetails(region);
-          for (AvailabilityZone az : region.zones) {
-            CloudInfoInterface.setCloudProviderInfoFromConfig(az, az.config);
+          for (AvailabilityZone az : region.getZones()) {
+            CloudInfoInterface_Clone.setCloudProviderInfoFromConfig(az, az.getConfig());
             az.save();
           }
           region.save();
         }
 
-        CloudInfoInterface.setCloudProviderInfoFromConfig(provider, providerConfig);
+        CloudInfoInterface_Clone.setCloudProviderInfoFromConfig(provider, providerConfig);
         provider.save();
         if (provider.getCloudCode().equals(CloudType.gcp)) {
           V231__ProviderDetailsPersist.populateGCPCredential(provider, config);
@@ -68,15 +65,15 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
     if (region.ybImage != null) {
       region.setYbImage(region.ybImage);
     }
-    if (region.details != null) {
-      if (region.details.sg_id != null) {
-        region.setSecurityGroupId(region.details.sg_id);
+    if (region.getDetails() != null) {
+      if (region.getDetails().sg_id != null) {
+        region.setSecurityGroupId(region.getDetails().sg_id);
       }
-      if (region.details.vnet != null) {
-        region.setVnetName(region.details.vnet);
+      if (region.getDetails().vnet != null) {
+        region.setVnetName(region.getDetails().vnet);
       }
-      if (region.details.arch != null) {
-        region.setArchitecture(region.details.arch);
+      if (region.getDetails().arch != null) {
+        region.setArchitecture(region.getDetails().arch);
       }
     }
   }
@@ -124,10 +121,10 @@ public class V231__ProviderDetailsPersist extends BaseJdbcMigration {
       }
     }
 
-    if (provider.details == null) {
+    if (provider.getDetails() == null) {
       return;
     }
-    GCPCloudInfo gcpCloudInfo = provider.details.cloudInfo.gcp;
+    GCPCloudInfo gcpCloudInfo = provider.getDetails().cloudInfo.gcp;
     if (gcpCloudInfo == null) {
       return;
     }

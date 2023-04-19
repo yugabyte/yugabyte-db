@@ -14,13 +14,13 @@
 #include "yb/docdb/intent_iterator.h"
 
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/util/debug-util.h"
 #include "yb/util/logging.h"
@@ -32,13 +32,17 @@ using namespace std::literals;
 
 namespace yb::docdb {
 
+using dockv::KeyBytes;
+using dockv::KeyEntryTypeAsChar;
+using dockv::SubDocKey;
+
 namespace {
 
 // Given that key is well-formed DocDB encoded key, checks if it is an intent key for the same key
 // as intent_prefix. If key is not well-formed DocDB encoded key, result could be true or false.
 bool IsIntentForTheSameKey(const Slice& key, const Slice& intent_prefix) {
   return key.starts_with(intent_prefix) && key.size() > intent_prefix.size() &&
-         IntentValueType(key[intent_prefix.size()]);
+         dockv::IntentValueType(key[intent_prefix.size()]);
 }
 
 std::string DebugDumpKeyToStr(const Slice& key) {
@@ -129,6 +133,8 @@ void IntentIterator::SeekForward(KeyBytes* key_bytes) {
   // Avoid seeking if intent iterator is already pointing to the target.
   if (intent_iter_.Valid() && intent_iter_.key().compare(*key_bytes) < 0) {
     AppendStrongWriteAndPerformSeek(key_bytes, true /*seek_forward*/);
+  } else {
+    HandleStatus(intent_iter_.status());
   }
 
   SeekToSuitableIntent<Direction::kForward>();
@@ -195,6 +201,7 @@ void IntentIterator::SeekToSuitableIntent() {
         break;
     }
   }
+  HandleStatus(intent_iter_.status());
 
   if (!resolved_intent_key_prefix_.empty()) {
     UpdateResolvedIntentSubDocKeyEncoded();
@@ -334,13 +341,15 @@ void IntentIterator::SeekOutOfSubKey(KeyBytes* key_bytes) {
 
   if (intent_iter_.Valid()) {
     docdb::SeekOutOfSubKey(key_bytes, &intent_iter_);
+  } else {
+    HandleStatus(intent_iter_.status());
   }
   SeekToSuitableIntent<Direction::kForward>();
 }
 
 void IntentIterator::UpdateResolvedIntentSubDocKeyEncoded() {
   resolved_intent_sub_doc_key_encoded_.Reset(resolved_intent_key_prefix_.AsSlice());
-  resolved_intent_sub_doc_key_encoded_.AppendKeyEntryType(KeyEntryType::kHybridTime);
+  resolved_intent_sub_doc_key_encoded_.AppendKeyEntryType(dockv::KeyEntryType::kHybridTime);
   resolved_intent_sub_doc_key_encoded_.AppendHybridTime(resolved_intent_txn_dht_);
   VLOG(4) << "Resolved intent SubDocKey: "
           << DebugDumpKeyToStr(resolved_intent_sub_doc_key_encoded_);
@@ -386,6 +395,12 @@ std::string IntentIterator::DebugPosToString() {
   return SubDocKey::DebugSliceToString(key->key);
 }
 
+void IntentIterator::HandleStatus(const Status& status) {
+  if (!status.ok()) {
+    status_ = status;
+  }
+}
+
 std::string DecodeStrongWriteIntentResult::ToString() const {
   return Format(
       "{ intent_prefix: $0 intent_value: $1 intent_time: $2 value_time: $3 "
@@ -413,12 +428,12 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     rocksdb::Iterator* intent_iter,
     TransactionStatusCache* transaction_status_cache) {
   DecodeStrongWriteIntentResult result;
-  auto decoded_intent_key = VERIFY_RESULT(DecodeIntentKey(intent_iter->key()));
+  auto decoded_intent_key = VERIFY_RESULT(dockv::DecodeIntentKey(intent_iter->key()));
   result.intent_prefix = decoded_intent_key.intent_prefix;
   result.intent_types = decoded_intent_key.intent_types;
-  if (result.intent_types.Test(IntentType::kStrongWrite)) {
+  if (result.intent_types.Test(dockv::IntentType::kStrongWrite)) {
     auto intent_value = intent_iter->value();
-    auto decoded_intent_value = VERIFY_RESULT(DecodeIntentValue(intent_value));
+    auto decoded_intent_value = VERIFY_RESULT(dockv::DecodeIntentValue(intent_value));
 
     const auto& decoded_txn_id = decoded_intent_value.transaction_id;
     auto decoded_subtxn_id = decoded_intent_value.subtransaction_id;
@@ -431,7 +446,7 @@ Result<DecodeStrongWriteIntentResult> DecodeStrongWriteIntent(
     // because the caller is skipping all intents written before or at the same time as
     // intent_dht_from_same_txn_ or resolved_intent_txn_dht_, which of course are greater than or
     // equal to DocHybridTime::kMin.
-    if (result.intent_value.starts_with(ValueEntryTypeAsChar::kRowLock)) {
+    if (result.intent_value.starts_with(dockv::ValueEntryTypeAsChar::kRowLock)) {
       result.value_time.Assign(EncodedDocHybridTime::kMin);
     } else if (result.same_transaction) {
       const auto aborted = txn_op_context.subtransaction.aborted.Test(decoded_subtxn_id);
@@ -472,14 +487,14 @@ namespace {
 
 const char kStrongWriteTail[] = {
     KeyEntryTypeAsChar::kIntentTypeSet,
-    static_cast<char>(IntentTypeSet({IntentType::kStrongWrite}).ToUIntPtr()) };
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
 
 const Slice kStrongWriteTailSlice = Slice(kStrongWriteTail, sizeof(kStrongWriteTail));
 
 char kEmptyKeyStrongWriteTail[] = {
     KeyEntryTypeAsChar::kGroupEnd,
     KeyEntryTypeAsChar::kIntentTypeSet,
-    static_cast<char>(IntentTypeSet({IntentType::kStrongWrite}).ToUIntPtr()) };
+    static_cast<char>(dockv::IntentTypeSet({dockv::IntentType::kStrongWrite}).ToUIntPtr()) };
 
 const Slice kEmptyKeyStrongWriteTailSlice =
     Slice(kEmptyKeyStrongWriteTail, sizeof(kEmptyKeyStrongWriteTail));

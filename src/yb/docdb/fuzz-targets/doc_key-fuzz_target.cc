@@ -21,13 +21,13 @@ namespace fuzz {
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   FuzzedDataProvider fdp(data, size);
 
-  DocKey dockey = GetDocKey(&fdp, /* consume_all */ true);
+  auto dockey = GetDocKey(&fdp, /* consume_all */ true);
 
-  KeyBytes encoded_key = dockey.Encode();
-  DocKey decoded_key;
+  auto encoded_key = dockey.Encode();
+  dockv::DocKey decoded_key;
   CHECK_OK(decoded_key.FullyDecodeFrom(encoded_key.AsSlice()));
   CHECK_EQ(dockey, decoded_key);
-  KeyBytes reencoded_doc_key = decoded_key.Encode();
+  auto reencoded_doc_key = decoded_key.Encode();
   CHECK_EQ(encoded_key, reencoded_doc_key);
   return 0;
 }

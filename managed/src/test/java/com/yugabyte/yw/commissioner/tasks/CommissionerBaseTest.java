@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
+import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.AccessManager;
@@ -260,7 +261,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         TaskInfo taskInfo = TaskInfo.get(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
-          if (taskInfo.getTaskDetails() != null) {
+          if (taskInfo.getDetails() != null) {
             return taskInfo;
           }
         }

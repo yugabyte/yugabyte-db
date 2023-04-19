@@ -31,6 +31,7 @@ import java.util.UUID;
 import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -60,18 +61,17 @@ public class CustomerConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
-  public Result create(UUID customerUUID) {
-    CustomerConfig customerConfig = parseJson(CustomerConfig.class);
+  public Result create(UUID customerUUID, Http.Request request) {
+    CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
     customerConfig.setCustomerUUID(customerUUID);
 
     customerConfigService.create(customerConfig);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CustomerConfig,
-            Objects.toString(customerConfig.configUUID, null),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            Objects.toString(customerConfig.getConfigUUID(), null),
+            Audit.ActionType.Create);
     return PlatformResults.withData(this.customerConfigService.getConfigMasked(customerConfig));
   }
 
@@ -79,10 +79,11 @@ public class CustomerConfigController extends AuthenticatedController {
       value = "Delete a customer configuration",
       response = YBPTask.class,
       nickname = "deleteCustomerConfig")
-  public Result delete(UUID customerUUID, UUID configUUID, boolean isDeleteBackups) {
+  public Result delete(
+      UUID customerUUID, UUID configUUID, boolean isDeleteBackups, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerConfig customerConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
-    if (customerConfig.type == CustomerConfig.ConfigType.STORAGE) {
+    if (customerConfig.getType() == CustomerConfig.ConfigType.STORAGE) {
       Boolean backupsInProgress = Backup.findIfBackupsRunningWithCustomerConfig(configUUID);
       if (backupsInProgress) {
         throw new PlatformServiceException(
@@ -107,10 +108,10 @@ public class CustomerConfigController extends AuthenticatedController {
             taskUUID,
             CustomerTask.TargetType.CustomerConfiguration,
             CustomerTask.TaskType.Delete,
-            customerConfig.configName);
+            customerConfig.getConfigName());
         auditService()
-            .createAuditEntryWithReqBody(
-                ctx(),
+            .createAuditEntry(
+                request,
                 Audit.TargetType.CustomerConfig,
                 configUUID.toString(),
                 Audit.ActionType.Delete);
@@ -120,8 +121,11 @@ public class CustomerConfigController extends AuthenticatedController {
     customerConfigService.delete(customerUUID, configUUID);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.CustomerConfig, configUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.CustomerConfig,
+            configUUID.toString(),
+            Audit.ActionType.Delete);
     return YBPSuccess.withMessage("Config " + configUUID + " deleted");
   }
 
@@ -129,10 +133,11 @@ public class CustomerConfigController extends AuthenticatedController {
       value = "Delete a customer configuration V2",
       response = YBPTask.class,
       nickname = "deleteCustomerConfigV2")
-  public Result deleteYb(UUID customerUUID, UUID configUUID, boolean isDeleteBackups) {
+  public Result deleteYb(
+      UUID customerUUID, UUID configUUID, boolean isDeleteBackups, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     CustomerConfig customerConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
-    if (customerConfig.type == CustomerConfig.ConfigType.STORAGE) {
+    if (customerConfig.getType() == CustomerConfig.ConfigType.STORAGE) {
       Boolean backupsInProgress = Backup.findIfBackupsRunningWithCustomerConfig(configUUID);
       if (backupsInProgress) {
         throw new PlatformServiceException(
@@ -156,10 +161,10 @@ public class CustomerConfigController extends AuthenticatedController {
           taskUUID,
           CustomerTask.TargetType.CustomerConfiguration,
           CustomerTask.TaskType.Delete,
-          customerConfig.configName);
+          customerConfig.getConfigName());
       auditService()
-          .createAuditEntryWithReqBody(
-              ctx(),
+          .createAuditEntry(
+              request,
               Audit.TargetType.CustomerConfig,
               configUUID.toString(),
               Audit.ActionType.Delete);
@@ -167,8 +172,11 @@ public class CustomerConfigController extends AuthenticatedController {
     }
     customerConfigService.delete(customerUUID, configUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.CustomerConfig, configUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.CustomerConfig,
+            configUUID.toString(),
+            Audit.ActionType.Delete);
     return YBPSuccess.withMessage("Config " + configUUID + " is queued for deletion");
   }
 
@@ -193,8 +201,8 @@ public class CustomerConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
-  public Result edit(UUID customerUUID, UUID configUUID) {
-    CustomerConfig customerConfig = parseJson(CustomerConfig.class);
+  public Result edit(UUID customerUUID, UUID configUUID, Http.Request request) {
+    CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
     customerConfig.setConfigUUID(configUUID);
     customerConfig.setCustomerUUID(customerUUID);
 
@@ -205,11 +213,10 @@ public class CustomerConfigController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CustomerConfig,
-            Objects.toString(customerConfig.configUUID, null),
-            Audit.ActionType.Update,
-            request().body().asJson());
+            Objects.toString(customerConfig.getConfigUUID(), null),
+            Audit.ActionType.Update);
     return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
   }
 
@@ -225,7 +232,7 @@ public class CustomerConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
-  public Result editYb(UUID customerUUID, UUID configUUID) {
+  public Result editYb(UUID customerUUID, UUID configUUID, Http.Request request) {
 
     CustomerConfig existingConfig = customerConfigService.getOrBadRequest(customerUUID, configUUID);
     if (existingConfig.getState().equals(ConfigState.QueuedForDeletion)) {
@@ -233,7 +240,7 @@ public class CustomerConfigController extends AuthenticatedController {
           BAD_REQUEST, "Cannot edit config as it is queued for deletion.");
     }
 
-    CustomerConfig customerConfig = parseJson(CustomerConfig.class);
+    CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
     customerConfig.setConfigUUID(configUUID);
     customerConfig.setCustomerUUID(customerUUID);
     CustomerConfig unmaskedConfig = CommonUtils.unmaskObject(existingConfig, customerConfig);
@@ -241,11 +248,10 @@ public class CustomerConfigController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CustomerConfig,
-            Objects.toString(customerConfig.configUUID, null),
-            Audit.ActionType.Update,
-            request().body().asJson());
+            Objects.toString(customerConfig.getConfigUUID(), null),
+            Audit.ActionType.Update);
     return PlatformResults.withData(this.customerConfigService.getConfigMasked(unmaskedConfig));
   }
 
@@ -261,13 +267,13 @@ public class CustomerConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.models.configs.data.CustomerConfigData",
         paramType = "body")
   })
-  public Result listBuckets(UUID customerUUID, String cloud) {
+  public Result listBuckets(UUID customerUUID, String cloud, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     CustomerConfigData configData = null;
     try {
       Class<? extends CustomerConfigData> configClass =
           CustomerConfig.getDataClass(CustomerConfig.ConfigType.STORAGE, cloud);
-      configData = parseJson(configClass);
+      configData = parseJson(request, configClass);
     } catch (NullPointerException e) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Unsupported cloud type %s", cloud));

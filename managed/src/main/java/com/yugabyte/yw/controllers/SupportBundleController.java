@@ -38,6 +38,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -67,8 +68,8 @@ public class SupportBundleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.SupportBundleFormData",
           required = true))
-  public Result create(UUID customerUUID, UUID universeUUID) {
-    JsonNode requestBody = request().body().asJson();
+  public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    JsonNode requestBody = request.body().asJson();
     SupportBundleFormData bundleData =
         formFactory.getFormDataOrBadRequest(requestBody, SupportBundleFormData.class);
 
@@ -82,7 +83,7 @@ public class SupportBundleController extends AuthenticatedController {
           String.format(
               "Cannot create support bundle since the universe %s"
                   + "is currently in a locked/paused state or has backup running",
-              universe.universeUUID));
+              universe.getUniverseUUID()));
     }
 
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
@@ -124,7 +125,7 @@ public class SupportBundleController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreateSupportBundle,
-        universe.name);
+        universe.getName());
     log.info(
         "Saved task uuid "
             + taskUUID.toString()
@@ -135,11 +136,10 @@ public class SupportBundleController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.SupportBundle,
             Objects.toString(supportBundle.getBundleUUID(), null),
             Audit.ActionType.Create,
-            requestBody,
             taskUUID);
     return new YBPTask(taskUUID, supportBundle.getBundleUUID()).asResult();
   }
@@ -159,11 +159,11 @@ public class SupportBundleController extends AuthenticatedController {
           NOT_FOUND, String.format("No bundle found for %s", bundleUUID.toString()));
     }
     InputStream is = SupportBundle.getAsInputStream(bundleUUID);
-    response()
-        .setHeader(
+    return ok(is)
+        .as("application/x-compressed")
+        .withHeader(
             "Content-Disposition",
             "attachment; filename=" + SupportBundle.get(bundleUUID).getFileName());
-    return ok(is).as("application/x-compressed");
   }
 
   @ApiOperation(
@@ -193,7 +193,8 @@ public class SupportBundleController extends AuthenticatedController {
       value = "Delete a support bundle",
       response = YBPSuccess.class,
       nickname = "deleteSupportBundle")
-  public Result delete(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
+  public Result delete(
+      UUID customerUUID, UUID universeUUID, UUID bundleUUID, Http.Request request) {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
 
     // Deletes row from the support_bundle db table
@@ -203,8 +204,11 @@ public class SupportBundleController extends AuthenticatedController {
     supportBundleUtil.deleteFile(supportBundle.getPathObject());
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.SupportBundle, bundleUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.SupportBundle,
+            bundleUUID.toString(),
+            Audit.ActionType.Delete);
     log.info("Successfully deleted the support bundle: " + bundleUUID.toString());
     return YBPSuccess.empty();
   }

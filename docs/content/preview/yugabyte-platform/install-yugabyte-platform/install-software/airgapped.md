@@ -40,20 +40,7 @@ If Docker is not installed on the host computer, you need to install a recent ve
 
 If access to the Docker repositories for your Linux distribution is not available on the host computer, you may have to manually transfer the necessary RPM or DEB packages whose locations are specified in [Installing Docker in Airgapped Environments](https://community.replicated.com/t/installing-docker-in-airgapped-environments/81).
 
-If you want to set up Docker on Amazon Linux OS, perform the following:
-
-1. Install Docker using the following commands:
-
-    ```sh
-    sudo yum install docker
-    sudo systemctl daemon-reload
-    ```
-
-1. Start Docker using the following command:
-
-    ```sh
-    sudo systemctl start docker.service
-    ```
+Refer to [Airgapped hosts](../../prerequisites/default/#airgapped-hosts) for more details on preparing your host machine.
 
 ## Install Replicated
 
@@ -86,7 +73,7 @@ On a computer connected to the Internet, perform the following steps:
 - Download the `yugaware` binary and change the following number, as required:
 
   ```sh
-  wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable">}}/yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap
+  wget https://downloads.yugabyte.com/releases/{{<yb-version version="preview">}}/yugaware-{{<yb-version version="preview" format="build">}}-linux-x86_64.airgap
   ```
 
 - Switch to the following directory:
@@ -116,7 +103,6 @@ sudo docker ps
 ```
 
 You should see an output similar to the following:
-
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 

@@ -23,11 +23,11 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -46,8 +46,8 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
    * @return JSON response of newly created provider
    */
   @ApiOperation(value = "UI_ONLY", nickname = "createCloudProvider", hidden = true)
-  public Result create(UUID customerUUID) throws IOException {
-    JsonNode reqBody = CloudInfoInterface.mayBeMassageRequest(request().body().asJson(), false);
+  public Result create(UUID customerUUID, Http.Request request) throws IOException {
+    JsonNode reqBody = CloudInfoInterface.mayBeMassageRequest(request.body().asJson(), false);
     CloudProviderFormData cloudProviderFormData =
         formFactory.getFormDataOrBadRequest(reqBody, CloudProviderFormData.class);
     fieldsValidator.validateFields(
@@ -55,13 +55,13 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         cloudProviderFormData.config);
     // Hack to ensure old API remains functional.
     Provider reqProvider = new Provider();
-    reqProvider.code = cloudProviderFormData.code.toString();
+    reqProvider.setCode(cloudProviderFormData.code.toString());
     if (!reqBody.isNull() && reqBody.has("details")) {
       ObjectMapper objectMapper = new ObjectMapper();
-      reqProvider.details =
-          objectMapper.readValue(reqBody.get("details").toString(), ProviderDetails.class);
+      reqProvider.setDetails(
+          objectMapper.readValue(reqBody.get("details").toString(), ProviderDetails.class));
     } else {
-      reqProvider.setConfig(cloudProviderFormData.config);
+      reqProvider.setConfigMap(cloudProviderFormData.config);
     }
     Provider provider =
         cloudProviderHandler.createProvider(
@@ -73,9 +73,9 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
     CloudInfoInterface.mayBeMassageResponse(provider);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
-            Objects.toString(provider.uuid, null),
+            Objects.toString(provider.getUuid(), null),
             Audit.ActionType.Create,
             Json.toJson(cloudProviderFormData));
     return PlatformResults.withData(provider);
@@ -84,7 +84,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   // TODO: This is temporary endpoint, so we can setup docker, will move this
   // to standard provider bootstrap route soon.
   @ApiOperation(value = "setupDocker", notes = "Unused", hidden = true)
-  public Result setupDocker(UUID customerUUID) {
+  public Result setupDocker(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     List<Provider> providerList = Provider.get(customerUUID, Common.CloudType.docker);
@@ -94,18 +94,18 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
 
     Provider newProvider = cloudProviderHandler.setupNewDockerProvider(customer);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.CloudProvider,
-            Objects.toString(newProvider.uuid, null),
+            Objects.toString(newProvider.getUuid(), null),
             Audit.ActionType.SetupDocker);
     return PlatformResults.withData(newProvider);
   }
 
   // For creating the a multi-cluster kubernetes provider.
   @ApiOperation(value = "UI_ONLY", nickname = "createKubernetes", hidden = true)
-  public Result createKubernetes(UUID customerUUID) throws IOException {
-    JsonNode requestBody = request().body().asJson();
+  public Result createKubernetes(UUID customerUUID, Http.Request request) throws IOException {
+    JsonNode requestBody = request.body().asJson();
     KubernetesProviderFormData formData =
         formFactory.getFormDataOrBadRequest(requestBody, KubernetesProviderFormData.class);
     fieldsValidator.validateFields(
@@ -115,11 +115,10 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
         cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), formData);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
-            Objects.toString(provider.uuid, null),
-            Audit.ActionType.CreateKubernetes,
-            requestBody);
+            Objects.toString(provider.getUuid(), null),
+            Audit.ActionType.CreateKubernetes);
     CloudInfoInterface.mayBeMassageResponse(provider);
     return PlatformResults.withData(provider);
   }
@@ -144,25 +143,24 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
     cloudProviderHandler.refreshPricing(customerUUID, provider);
-    return YBPSuccess.withMessage(provider.code.toUpperCase() + " Initialized");
+    return YBPSuccess.withMessage(provider.getCode().toUpperCase() + " Initialized");
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
-  public Result bootstrap(UUID customerUUID, UUID providerUUID) {
+  public Result bootstrap(UUID customerUUID, UUID providerUUID, Http.Request request) {
     // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
-    JsonNode requestBody = request().body().asJson();
+    JsonNode requestBody = request.body().asJson();
     CloudBootstrap.Params taskParams =
         formFactory.getFormDataOrBadRequest(requestBody, CloudBootstrap.Params.class);
     UUID taskUUID = cloudProviderHandler.bootstrap(customer, provider, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.CloudProvider,
-            Objects.toString(provider.uuid, null),
+            Objects.toString(provider.getUuid(), null),
             Audit.ActionType.Bootstrap,
-            requestBody,
             taskUUID);
     return new YBPTask(taskUUID).asResult();
   }

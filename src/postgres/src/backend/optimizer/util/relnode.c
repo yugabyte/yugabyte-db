@@ -1632,6 +1632,27 @@ get_joinrel_parampathinfo(PlannerInfo *root, RelOptInfo *joinrel,
 	return ppi;
 }
 
+void
+yb_accumulate_batching_info(List *paths, 
+							Relids *batchedrelids, Relids *unbatchedrelids)
+{
+	ListCell *lc;
+	foreach(lc, paths)
+	{
+		Path *path = (Path *) lfirst(lc);
+		ParamPathInfo *ppi = path->param_info;
+		if (ppi)
+		{
+			*batchedrelids =
+				bms_union(*batchedrelids, ppi->yb_ppi_req_outer_batched);
+			*unbatchedrelids =
+				bms_union(*unbatchedrelids, ppi->yb_ppi_req_outer_unbatched);
+		}
+	}
+
+	*batchedrelids = bms_difference(*batchedrelids, *unbatchedrelids);
+}
+
 /*
  * get_appendrel_parampathinfo
  *		Get the ParamPathInfo for a parameterized path for an append relation.

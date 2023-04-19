@@ -7,48 +7,32 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-
-import React, { MutableRefObject, useCallback, useImperativeHandle, useMemo } from 'react'
-import clsx from 'clsx'
-import { createEditor, Descendant } from 'slate'
-import { Slate, Editable, withReact } from 'slate-react'
-import { EditableProps } from 'slate-react/dist/components/editable'
-import { withHistory } from 'slate-history'
-import { Grid, makeStyles } from '@material-ui/core'
-import { IYBEditor, TextDecorators } from './plugins/custom-types'
-import { LoadPlugins, useEditorPlugin } from './plugins/PluginManager'
-import { DefaultElement, toggleMark } from './plugins/PluginUtils'
-import { FormatBold, FormatItalic, FormatStrikethrough, FormatUnderlined } from '@material-ui/icons'
-
-const ToolbarIcons: Record<TextDecorators, { icon: React.ReactChild }> = {
-  italic: {
-    icon: <FormatItalic />
-  },
-  bold: {
-    icon: <FormatBold />
-  },
-  underline: {
-    icon: <FormatUnderlined />
-  },
-  strikethrough: {
-    icon: <FormatStrikethrough />
-  }
-}
-
+import React, { MutableRefObject, useImperativeHandle, useMemo } from 'react';
+import clsx from 'clsx';
+import { createEditor, Descendant } from 'slate';
+import { Slate, Editable, withReact } from 'slate-react';
+import { EditableProps } from 'slate-react/dist/components/editable';
+import { withHistory } from 'slate-history';
+import { makeStyles } from '@material-ui/core';
+import { IYBEditor } from './plugins/custom-types';
+import { LoadPlugins, useEditorPlugin } from './plugins/PluginManager';
+import { DefaultElement } from './plugins/PluginUtils';
 interface YBEditorProps {
   initialValue?: Descendant[];
   setVal?: (val: Descendant[]) => void;
-  editorProps?: EditableProps
-  showToolbar?: boolean;
-  singleLine?: boolean;
+  editorProps?: EditableProps & {'data-testid'?: string};
   loadPlugins?: LoadPlugins;
-  moreToolbar?: (editor: IYBEditor) => JSX.Element;
   ref: MutableRefObject<IYBEditor>;
+  editorClassname?: any,
+  showLineNumbers?: boolean;
+  onEditorKeyDown?: (e: React.KeyboardEvent<HTMLDivElement>) => void;
 }
 
 const useStyles = makeStyles((theme) => ({
   root: {
     background: theme.palette.common.white,
+    position: 'relative'
+
   },
   rootSingleLine: {
     borderRadius: theme.spacing(1),
@@ -56,37 +40,58 @@ const useStyles = makeStyles((theme) => ({
   },
   editable: {
     height: '380px',
-    padding: theme.spacing(2)
+    padding: theme.spacing(2),
+    overflowY: 'auto'
   },
   singleLine: {
     height: theme.spacing(4),
-    padding: theme.spacing(0.5)
+    padding: theme.spacing(0.5),
+    overflowY: 'hidden',
+    '&::-webkit-scrollbar': {
+      display: 'none'
+    },
+    scrollbarWidth: 'none'
   },
-  toolbarRoot: {
-    height: theme.spacing(5.25),
-    display: 'flex',
-    justifyContent: 'space-between',
-    background: '#FAFBFC',
-    borderBottom: `1px solid ${theme.palette.ybacolors.ybGrayHover}`,
-    padding: `0 ${theme.spacing(2)}px`
+  // Display line number like in IDE
+  lineNumberBackground: {
+    position: 'absolute',
+    height: '100%',
+    left: 0,
+    top: 0,
+    width: theme.spacing(5.25),
+    background: theme.palette.ybacolors.ybBorderGray
   },
-  formatIcons: {
-    display: 'flex',
-    alignItems: 'center',
-    "& > svg": {
-      width: theme.spacing(3),
-      height: theme.spacing(3)
+  showLineNumbers: {
+    counterReset: 'line 0',
+    '&> *': {
+      counterIncrement: 'line',
+      "&::before": {
+        content: 'counter(line)',
+        marginRight: theme.spacing(1),
+        height: theme.spacing(3),
+        width: theme.spacing(5.25),
+        textAlign: 'center',
+        display: 'inline-block',
+        marginLeft: theme.spacing(-2.25)
+      }
     }
   }
-}))
+}));
 
 export const YBEditor = React.forwardRef<IYBEditor, React.PropsWithChildren<YBEditorProps>>(
   (
-    { showToolbar = false, editorProps, setVal, loadPlugins = {}, moreToolbar, initialValue = [DefaultElement] },
+    {
+      editorProps,
+      setVal,
+      loadPlugins = {},
+      initialValue = [DefaultElement],
+      editorClassname = {},
+      showLineNumbers = false,
+      onEditorKeyDown
+    },
     forwardRef
   ) => {
-
-    const editor = useMemo(() => withHistory(withReact(createEditor())), [])
+    const editor = useMemo(() => withHistory(withReact(createEditor())), []);
 
     //only basic plugins are enabled by default
     const enabledPlugins: LoadPlugins = {
@@ -94,61 +99,46 @@ export const YBEditor = React.forwardRef<IYBEditor, React.PropsWithChildren<YBEd
       alertVariablesPlugin: false,
       singleLine: false,
       ...loadPlugins
-    }
+    };
 
     useImperativeHandle(forwardRef, () => editor, []);
 
-
-    const { renderElement, onKeyDown, renderLeaf, getDefaultComponents } = useEditorPlugin(editor, enabledPlugins);
+    const { renderElement, onKeyDown, renderLeaf, getDefaultComponents, getDecorators } = useEditorPlugin(
+      editor,
+      enabledPlugins
+    );
     const classes = useStyles();
-
-    let Toolbar = useCallback(() => {
-      if (!showToolbar) {
-        return null;
-      }
-      return (
-        <Grid className={classes.toolbarRoot} container alignItems="center">
-          <Grid item className={classes.formatIcons}>
-            {
-              Object.keys(ToolbarIcons).map((ic) => React.cloneElement(ToolbarIcons[ic].icon, {
-                key: ic,
-                onClick: (e: React.MouseEvent) => {
-                  e.preventDefault();
-                  toggleMark(editor, ic as TextDecorators);
-                }
-              }))
-            }
-          </Grid>
-          <Grid item>
-            {
-              moreToolbar && moreToolbar(editor)
-            }
-          </Grid>
-        </Grid>
-      )
-    }, [showToolbar, moreToolbar]);
 
     return (
       <div className={clsx(classes.root, { [classes.rootSingleLine]: enabledPlugins.singleLine })}>
-
-        {Toolbar()}
-        <Slate editor={editor} value={initialValue} onChange={val => setVal?.(val)}>
+        {/* Show Line numbers to the left */}
+        {
+          showLineNumbers && (<div className={classes.lineNumberBackground} />)
+        }
+        <Slate editor={editor} value={initialValue} onChange={(val) => setVal?.(val)}>
           <Editable
-            className={clsx(classes.editable, { [classes.singleLine]: enabledPlugins.singleLine })}
+            className={clsx(classes.editable, { [classes.singleLine]: enabledPlugins.singleLine, [classes.showLineNumbers]: showLineNumbers }, editorClassname)}
             renderElement={renderElement}
-            onKeyDown={onKeyDown}
+            onKeyDown={e => {
+              onEditorKeyDown && onEditorKeyDown(e);
+              return onKeyDown(e);
+            }}
             renderLeaf={renderLeaf}
             spellCheck
             autoFocus
-            style={enabledPlugins.singleLine ? { whiteSpace: "pre" } : {}}
+            style={enabledPlugins.singleLine ? { whiteSpace: 'pre' } : {}}
+            decorate={getDecorators as any}
             {...editorProps}
           />
           {/* inject default components from the plugins into the dom */}
           {getDefaultComponents().map((components) => {
-            if (!components) return
-            return components.map((comp: Function, ind: number) => <React.Fragment key={ind}>{comp()}</React.Fragment>)
+            if (!components) return;
+            return components.map((comp: Function, ind: number) => (
+              <React.Fragment key={ind}>{comp()}</React.Fragment>
+            ));
           })}
         </Slate>
       </div>
-    )
-  });
+    );
+  }
+);

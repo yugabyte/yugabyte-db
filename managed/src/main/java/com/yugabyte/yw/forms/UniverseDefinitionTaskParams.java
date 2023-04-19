@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
+import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -164,6 +165,10 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Place all masters into default region flag.
   @ApiModelProperty public boolean mastersInDefaultRegion = true;
 
+  // true iff created through a k8s CR and controlled by the
+  // Kubernetes Operator.
+  @ApiModelProperty public boolean isKubernetesOperatorControlled = false;
+
   @ApiModelProperty public Map<ClusterAZ, String> existingLBs = null;
 
   // Override the default DB present in pre-built Ami
@@ -248,6 +253,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // This is set internally by the placement util in the server, client should not set it.
     @ApiModelProperty public int index = 0;
 
+    @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
     @JsonProperty(access = JsonProperty.Access.READ_ONLY)
     public List<Region> regions;
 
@@ -489,6 +495,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty() public String ycqlPassword;
 
+    @ApiModelProperty() public Long kubernetesOperatorVersion;
+
     @ApiModelProperty() public boolean enableYSQLAuth = false;
 
     @ApiModelProperty() public boolean enableYCQLAuth = false;
@@ -589,7 +597,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           + ", tags="
           + instanceTags
           + ", masterInstanceType="
-          + masterInstanceType;
+          + masterInstanceType
+          + ", kubernetesOperatorVersion="
+          + kubernetesOperatorVersion;
     }
 
     @Override
@@ -836,7 +846,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     Cluster cluster = getClusterByUuid(clusterUuid);
     if (cluster == null) {
       throw new IllegalArgumentException(
-          "UUID " + clusterUuid + " not found in universe " + universeUUID);
+          "UUID " + clusterUuid + " not found in universe " + getUniverseUUID());
     }
 
     clusters.remove(cluster);
@@ -856,7 +866,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
             .collect(Collectors.toList());
     if (foundClusters.size() > 1) {
       throw new RuntimeException(
-          "Multiple primary clusters found in params for universe " + universeUUID.toString());
+          "Multiple primary clusters found in params for universe " + getUniverseUUID().toString());
     }
     return Iterables.getOnlyElement(foundClusters, null);
   }
@@ -928,7 +938,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           "Multiple clusters with uuid "
               + uuid.toString()
               + " found in params for universe "
-              + universeUUID.toString());
+              + getUniverseUUID().toString());
     }
 
     return Iterables.getOnlyElement(foundClusters, null);
@@ -1006,7 +1016,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonGetter("xclusterInfo")
   XClusterInfo getXClusterInfo() {
-    this.xClusterInfo.universeUuid = this.universeUUID;
+    this.xClusterInfo.universeUuid = this.getUniverseUUID();
     return this.xClusterInfo;
   }
 
@@ -1034,7 +1044,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return XClusterConfig.getByTargetUniverseUUID(universeUuid)
           .stream()
-          .map(xClusterConfig -> xClusterConfig.uuid)
+          .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
 
@@ -1046,7 +1056,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return XClusterConfig.getBySourceUniverseUUID(universeUuid)
           .stream()
-          .map(xClusterConfig -> xClusterConfig.uuid)
+          .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
   }

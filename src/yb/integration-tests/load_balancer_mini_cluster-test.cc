@@ -353,7 +353,7 @@ TEST_F(LoadBalancerMiniClusterTest, NoLBOnDeletedTables) {
 
     // 2) Should respond to GetTableSchema with a NotFound error.
     client::YBSchema schema;
-    PartitionSchema partition_schema;
+    dockv::PartitionSchema partition_schema;
     Status s = client_->GetTableSchema(
         client::YBTableName(YQL_DATABASE_CQL,
                             table_name().namespace_name(),

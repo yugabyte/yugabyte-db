@@ -470,7 +470,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -496,7 +496,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -551,8 +551,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(universeDefinitions, hasSize(3));
 
-    Universe universe3 = ModelFactory.createUniverse("one more", customer.getCustomerId());
-    Universe universe4 = ModelFactory.createUniverse("another more", customer.getCustomerId());
+    Universe universe3 = ModelFactory.createUniverse("one more", customer.getId());
+    Universe universe4 = ModelFactory.createUniverse("another more", customer.getId());
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
     List<Future<Void>> futures = new ArrayList<>();
@@ -743,7 +743,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   private void assertTestConfiguration(AlertConfiguration configuration) {
     AlertTemplate template = MEMORY_CONSUMPTION;
-    assertThat(configuration.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(configuration.getName(), equalTo(template.getName()));
     assertThat(configuration.getDescription(), equalTo(template.getDescription()));
     assertThat(configuration.getTemplate(), equalTo(template));

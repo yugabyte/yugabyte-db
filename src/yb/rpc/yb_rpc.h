@@ -24,10 +24,12 @@
 
 #include <boost/version.hpp>
 
-#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/binary_call_parser.h"
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/connection_context.h"
+#include "yb/rpc/connection.h"
+#include "yb/rpc/reactor_thread_role.h"
+#include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/rpc_with_call_id.h"
 #include "yb/rpc/serialization.h"
 #include "yb/rpc/sidecars.h"
@@ -86,16 +88,18 @@ class YBInboundConnectionContext : public YBConnectionContext {
   static std::string Name() { return "Inbound RPC"; }
  private:
   // Takes ownership of call_data content.
-  Status HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
+  Status HandleCall(const ConnectionPtr& connection, CallData* call_data)
+      ON_REACTOR_THREAD override;
   void Connected(const ConnectionPtr& connection) override;
-  Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,
-                                          const IoVecs& data,
-                                          ReadBufferFull read_buffer_full) override;
+  Result<ProcessCallsResult> ProcessCalls(
+      const ConnectionPtr& connection,
+      const IoVecs& data,
+      ReadBufferFull read_buffer_full) ON_REACTOR_THREAD override;
 
   // Takes ownership of call_data content.
   Status HandleInboundCall(const ConnectionPtr& connection, std::vector<char>* call_data);
 
-  void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
+  void HandleTimeout(ev::timer& watcher, int revents) ON_REACTOR_THREAD;  // NOLINT
 
   RpcConnectionPB::StateType State() override { return state_; }
 
@@ -235,16 +239,18 @@ class YBOutboundConnectionContext : public YBConnectionContext {
   }
 
   // Takes ownership of call_data content.
-  Status HandleCall(const ConnectionPtr& connection, CallData* call_data) override;
+  Status HandleCall(const ConnectionPtr& connection, CallData* call_data)
+      ON_REACTOR_THREAD override;
   void Connected(const ConnectionPtr& connection) override;
-  void AssignConnection(const ConnectionPtr& connection) override;
-  Result<ProcessCallsResult> ProcessCalls(const ConnectionPtr& connection,
-                                          const IoVecs& data,
-                                          ReadBufferFull read_buffer_full) override;
+  Status AssignConnection(const ConnectionPtr& connection) override;
+  Result<ProcessCallsResult> ProcessCalls(
+      const ConnectionPtr& connection,
+      const IoVecs& data,
+      ReadBufferFull read_buffer_full) ON_REACTOR_THREAD override;
 
   void UpdateLastRead(const ConnectionPtr& connection) override;
 
-  void HandleTimeout(ev::timer& watcher, int revents); // NOLINT
+  void HandleTimeout(ev::timer& watcher, int revents) ON_REACTOR_THREAD;  // NOLINT
 
   std::weak_ptr<Connection> connection_;
 

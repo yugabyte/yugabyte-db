@@ -26,8 +26,10 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/range.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
@@ -117,6 +119,12 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Update)) {
 
 // Alter 2 tables and performs compactions concurrently. See #13846 for details.
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AlterTable)) {
+  static const auto kExpectedErrors = {
+      "Try again",
+      "Snapshot too old",
+      "Network error"
+  };
+
   FLAGS_timestamp_history_retention_interval_sec = 1 * kTimeMultiplier;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -138,24 +146,24 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AlterTable)) {
             LOG(INFO) << table_name << ", added column: " << column_idx;
             columns.push_back(column_idx);
           } else {
-            LOG(INFO) << table_name << ", failed to add column " << column_idx << ": " << status;
             auto msg = status.ToString();
-            ASSERT_TRUE(msg.find("Try again") != std::string::npos ||
-                        msg.find("Snapshot too old") != std::string::npos ||
-                        msg.find("Network error") != std::string::npos) << msg;
+            LOG(INFO) << table_name << ", failed to add column " << column_idx << ": " << msg;
+            ASSERT_TRUE(HasSubstring(msg, kExpectedErrors)) << msg;
           }
           ++column_idx;
         } else {
           size_t idx = RandomUniformInt<size_t>(0, columns.size() - 1);
           auto status = conn.ExecuteFormat(
               "ALTER TABLE $0 DROP COLUMN column_$1", table_name, columns[idx]);
-          if (status.ok() || status.ToString().find("The specified column does not exist")) {
+          if (status.ok() ||
+              status.ToString().find("The specified column does not exist") != std::string::npos) {
             LOG(INFO) << table_name << ", dropped column: " << columns[idx] << ", " << status;
             columns[idx] = columns.back();
             columns.pop_back();
           } else {
-            LOG(INFO) << table_name << ", failed to drop column " << columns[idx] << ": " << status;
-            ASSERT_STR_CONTAINS(status.ToString(), "Try again");
+            auto msg = status.ToString();
+            LOG(INFO) << table_name << ", failed to drop column " << columns[idx] << ": " << msg;
+            ASSERT_TRUE(HasSubstring(msg, kExpectedErrors)) << msg;
           }
         }
       }
@@ -359,7 +367,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(SchemaGC)) {
         int idx = 0;
         for (const auto& p : columns) {
           auto is_null = PQgetisnull(res.get(), row, ++idx);
-          ASSERT_EQ(is_null, key < p.second);
+          ASSERT_EQ(is_null, key < p.second) << ", key: " << key << ", p.second: " << p.second;
           if (is_null) {
             continue;
           }
@@ -647,7 +655,7 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AddDropColumn)) {
   for (auto key : Range(kKeys)) {
     LOG(INFO) << "Insert key: " << key;
     auto status = conn.ExecuteFormat("INSERT INTO t VALUES ($0)", key);
-    if (!status.ok()) {
+    if (!(status.ok() || IsRetryable(status))) {
       LOG(INFO) << "Insert failed for " << key << ": " << status;
       // TODO temporary workaround for YSQL issue #8096.
       if (status.ToString().find("Invalid column number") != std::string::npos) {
@@ -689,6 +697,36 @@ TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(Transaction)) {
   ASSERT_OK(conn.CommitTransaction());
 
   ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(CleanupIntentDocHt)) {
+  // Set retention interval to 0, to repack all recently flushed entries.
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY, value INT) SPLIT INTO 1 TABLETS"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2)"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Execute("UPDATE t SET value = 3 WHERE key = 1"));
+  ASSERT_OK(conn.CommitTransaction());
+
+  ASSERT_OK(WaitFor([this] {
+    return CountIntents(cluster_.get()) == 0;
+  }, 10s, "Intents cleanup"));
+
+  ASSERT_OK(cluster_->CompactTablets());
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kLeaders);
+  for (const auto& peer : peers) {
+    if (!peer->tablet()->TEST_db()) {
+      continue;
+    }
+    auto dump = peer->tablet()->TEST_DocDBDumpStr(tablet::IncludeIntents::kTrue);
+    LOG(INFO) << "Dump: " << dump;
+    ASSERT_EQ(dump.find("intent doc ht"), std::string::npos);
+  }
 }
 
 TEST_F(PgPackedRowTest, YB_DISABLE_TEST_IN_TSAN(AppliedSchemaVersion)) {
@@ -781,7 +819,7 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
       continue;
     }
     for (const auto& file : tablet->TEST_db()->GetLiveFilesMetaData()) {
-      fname = file.FullName();
+      fname = file.BaseFilePath();
       metapath = ASSERT_RESULT(tablet->metadata()->FilePath());
       LOG(INFO) << "File: " << fname << ", metapath: " << metapath;
     }

@@ -92,7 +92,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     defaultUser = ModelFactory.testUser(defaultCustomer);
     superAdminUser =
         ModelFactory.testUser(defaultCustomer, "superadmin@customer.com", Role.SuperAdmin);
-    baseRoute = "/api/customers/" + defaultCustomer.uuid + "/hooks";
+    baseRoute = "/api/customers/" + defaultCustomer.getUuid() + "/hooks";
     defaultArgs = new HashMap<>();
     defaultArgs.put("KEY1", "123456789");
     defaultArgs.put("OPTION1", "ABCDEFGH");
@@ -156,19 +156,19 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
 
     // Ensure persistence
     String hookUUID = json.get("uuid").asText();
-    Hook hook = Hook.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(hookUUID));
-    assertTrue(hook.name.equals("test.py"));
-    assertTrue(hook.hookText.equals("DEFAULT\nTEXT\n"));
-    assertTrue(hook.useSudo == true);
-    assertTrue(hook.executionLang == ExecutionLang.Python);
-    Map<String, String> persistedArgs = hook.runtimeArgs;
+    Hook hook = Hook.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(hookUUID));
+    assertTrue(hook.getName().equals("test.py"));
+    assertTrue(hook.getHookText().equals("DEFAULT\nTEXT\n"));
+    assertTrue(hook.isUseSudo() == true);
+    assertTrue(hook.getExecutionLang() == ExecutionLang.Python);
+    Map<String, String> persistedArgs = hook.getRuntimeArgs();
     assertTrue(persistedArgs.size() == 2);
     assertTrue(persistedArgs.get("KEY1").equals("123456789"));
     assertTrue(persistedArgs.get("OPTION1").equals("ABCDEFGH"));
 
     // Ensure audit entry has the runtime args redacted and the hook text logged.
-    assertAuditEntry(1, defaultCustomer.uuid);
-    List<Audit> entries = Audit.getAll(defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
+    List<Audit> entries = Audit.getAll(defaultCustomer.getUuid());
     JsonNode payload = entries.get(0).getPayload();
     assertValue(payload, "hookText", "DEFAULT\nTEXT\n");
     assertValue(payload.get("runtimeArgs"), "KEY1", "123456789");
@@ -184,7 +184,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     assertUnauthorized(
         result,
         "Creating custom hooks with superuser privileges is not enabled on this Anywhere instance");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -194,7 +194,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHook("test.py", Python, "NEW\nTEXT\n", false, superAdminUser));
     assertBadRequest(result, "Hook with this name already exists: test.py");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -203,7 +203,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHook("test.py", Python, "NEW\nTEXT\n", false, defaultUser));
     assertUnauthorized(result, "Only Super Admins can perform this operation.");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -234,7 +234,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     String uri = baseRoute + "/" + uuid;
     Result deleteResult = doRequestWithAuthToken("DELETE", uri, superAdminUser.createAuthToken());
     assertOk(deleteResult);
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -247,7 +247,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> doRequestWithAuthToken("DELETE", uri, defaultUser.createAuthToken()));
     assertUnauthorized(deleteResult, "Only Super Admins can perform this operation.");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -272,18 +272,18 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     assertOk(updateResult);
 
     // Ensure persistence
-    Hook hook = Hook.getOrBadRequest(defaultCustomer.uuid, UUID.fromString(uuid));
-    assertTrue(hook.name.equals("test2.sh"));
-    assertTrue(hook.hookText.equals("UPDATED\nTEXT\n"));
-    assertTrue(hook.useSudo == false);
-    assertTrue(hook.executionLang == Bash);
-    Map<String, String> persistedArgs = hook.runtimeArgs;
+    Hook hook = Hook.getOrBadRequest(defaultCustomer.getUuid(), UUID.fromString(uuid));
+    assertTrue(hook.getName().equals("test2.sh"));
+    assertTrue(hook.getHookText().equals("UPDATED\nTEXT\n"));
+    assertTrue(hook.isUseSudo() == false);
+    assertTrue(hook.getExecutionLang() == Bash);
+    Map<String, String> persistedArgs = hook.getRuntimeArgs();
     assertTrue(persistedArgs.size() == 1);
     assertTrue(persistedArgs.get("KEY2").equals("QWERTYUIOP"));
 
     // Ensure audit entry has the runtime args redacted and hook text logged
-    assertAuditEntry(2, defaultCustomer.uuid);
-    List<Audit> entries = Audit.getAll(defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
+    List<Audit> entries = Audit.getAll(defaultCustomer.getUuid());
     JsonNode payload = entries.get(1).getPayload();
     assertValue(payload, "hookText", "UPDATED\nTEXT\n");
     assertValue(payload.get("runtimeArgs"), "KEY2", "QWERTYUIOP");
@@ -305,7 +305,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
                 doRequestWithAuthTokenAndMultipartData(
                     "PUT", uri, superAdminUser.createAuthToken(), bodyData, mat));
     assertBadRequest(updateResult, "Hook with this name already exists: test2.sh");
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -327,7 +327,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     assertValue(updateResultJson, "executionLang", "Python");
     assertValue(updateResultJson, "useSudo", "false");
     assertOk(updateResult);
-    assertAuditEntry(2, defaultCustomer.uuid);
+    assertAuditEntry(2, defaultCustomer.getUuid());
   }
 
   @Test
@@ -345,7 +345,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
                 doRequestWithAuthTokenAndMultipartData(
                     "PUT", uri, defaultUser.createAuthToken(), bodyData, mat));
     assertUnauthorized(updateResult, "Only Super Admins can perform this operation.");
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -355,9 +355,9 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Universe universe = ModelFactory.createUniverse();
     String uri =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/run_hooks";
     Result result = doRequestWithAuthToken("POST", uri, superAdminUser.createAuthToken());
     assertOk(result);
@@ -366,8 +366,8 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     CustomerTask customerTask =
         CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(customerTask);
-    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.uuid));
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.getUuid()));
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -378,9 +378,9 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Universe universe = ModelFactory.createUniverse();
     String uri =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/run_hooks"
             + "?clusterUUID="
             + clusterUUID;
@@ -392,9 +392,9 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     CustomerTask customerTask =
         CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(customerTask);
-    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.uuid));
-    assertTrue(customerTask.getTarget().equals(CustomerTask.TargetType.Cluster));
-    assertAuditEntry(1, defaultCustomer.uuid);
+    assertTrue(customerTask.getCustomerUUID().equals(defaultCustomer.getUuid()));
+    assertTrue(customerTask.getTargetType().equals(CustomerTask.TargetType.Cluster));
+    assertAuditEntry(1, defaultCustomer.getUuid());
   }
 
   @Test
@@ -403,9 +403,9 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     Universe universe = ModelFactory.createUniverse();
     String uri =
         "/api/customers/"
-            + defaultCustomer.uuid
+            + defaultCustomer.getUuid()
             + "/universes/"
-            + universe.universeUUID
+            + universe.getUniverseUUID()
             + "/run_hooks";
     Result result =
         assertPlatformException(
@@ -413,7 +413,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
     assertUnauthorized(
         result,
         "The execution of API Triggered custom hooks is not enabled on this Anywhere instance");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 
   @Test
@@ -423,6 +423,6 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
         assertPlatformException(
             () -> createHook("test.py", Python, "DEFAULT\nTEXT\n", true, superAdminUser));
     assertUnauthorized(result, "Custom hooks is not enabled on this Anywhere instance");
-    assertAuditEntry(0, defaultCustomer.uuid);
+    assertAuditEntry(0, defaultCustomer.getUuid());
   }
 }

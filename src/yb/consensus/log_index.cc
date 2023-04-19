@@ -78,7 +78,6 @@ DEFINE_test_flag(
 
 using std::string;
 using std::vector;
-using strings::Substitute;
 
 #define RETRY_ON_EINTR(ret, expr) do { \
   ret = expr; \

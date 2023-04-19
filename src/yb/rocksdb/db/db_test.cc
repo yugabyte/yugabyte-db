@@ -142,12 +142,12 @@ TEST_F(DBTest, MockEnvTest) {
   Iterator* iterator = db->NewIterator(ReadOptions());
   iterator->SeekToFirst();
   for (size_t i = 0; i < 3; ++i) {
-    ASSERT_TRUE(iterator->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iterator->CheckedValid()));
     ASSERT_TRUE(keys[i] == iterator->key());
     ASSERT_TRUE(vals[i] == iterator->value());
     iterator->Next();
   }
-  ASSERT_TRUE(!iterator->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iterator->CheckedValid()));
   delete iterator;
 
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db);
@@ -186,12 +186,12 @@ TEST_F(DBTest, MemEnvTest) {
   Iterator* iterator = db->NewIterator(ReadOptions());
   iterator->SeekToFirst();
   for (size_t i = 0; i < 3; ++i) {
-    ASSERT_TRUE(iterator->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iterator->CheckedValid()));
     ASSERT_TRUE(keys[i] == iterator->key());
     ASSERT_TRUE(vals[i] == iterator->value());
     iterator->Next();
   }
-  ASSERT_TRUE(!iterator->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iterator->CheckedValid()));
   delete iterator;
 
   DBImpl* dbi = reinterpret_cast<DBImpl*>(db);
@@ -247,8 +247,7 @@ TEST_F(DBTest, ReadOnlyDB) {
   ASSERT_EQ("v2", Get("bar"));
   Iterator* iter = db_->NewIterator(ReadOptions());
   int count = 0;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    ASSERT_OK(iter->status());
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     ++count;
   }
   ASSERT_EQ(count, 2);
@@ -632,6 +631,7 @@ TEST_F(DBTest, IteratorProperty) {
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
     ASSERT_EQ("0", prop_value);
     iter->Next();
+    ASSERT_FALSE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
     ASSERT_EQ("Iterator is not valid.", prop_value);
   }
@@ -951,8 +951,7 @@ TEST_F(DBTest, NonBlockingIteration) {
     // it is in memtable.
     Iterator* iter = db_->NewIterator(non_blocking_opts, handles_[1]);
     int count = 0;
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      ASSERT_OK(iter->status());
+    for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       count++;
     }
     ASSERT_EQ(count, 1);
@@ -985,8 +984,7 @@ TEST_F(DBTest, NonBlockingIteration) {
     cache_added = TestGetTickerCount(options, BLOCK_CACHE_ADD);
     iter = db_->NewIterator(non_blocking_opts, handles_[1]);
     count = 0;
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      ASSERT_OK(iter->status());
+    for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       count++;
     }
     ASSERT_EQ(count, 1);
@@ -1014,8 +1012,7 @@ TEST_F(DBTest, ManagedNonBlockingIteration) {
     // it is in memtable.
     Iterator* iter = db_->NewIterator(non_blocking_opts, handles_[1]);
     int count = 0;
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      ASSERT_OK(iter->status());
+    for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       count++;
     }
     ASSERT_EQ(count, 1);
@@ -1048,8 +1045,7 @@ TEST_F(DBTest, ManagedNonBlockingIteration) {
     cache_added = TestGetTickerCount(options, BLOCK_CACHE_ADD);
     iter = db_->NewIterator(non_blocking_opts, handles_[1]);
     count = 0;
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-      ASSERT_OK(iter->status());
+    for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       count++;
     }
     ASSERT_EQ(count, 1);
@@ -1192,13 +1188,13 @@ TEST_F(DBTest, IterEmpty) {
     Iterator* iter = db_->NewIterator(ReadOptions(), handles_[1]);
 
     iter->SeekToFirst();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->SeekToLast();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->Seek("foo");
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     delete iter;
   } while (ChangeCompactOptions());
@@ -1213,33 +1209,33 @@ TEST_F(DBTest, IterSingle) {
     iter->SeekToFirst();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
     iter->SeekToFirst();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Prev();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->SeekToLast();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
     iter->SeekToLast();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Prev();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->Seek("");
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->Seek("a");
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->Seek("b");
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     delete iter;
   } while (ChangeCompactOptions());
@@ -1260,11 +1256,11 @@ TEST_F(DBTest, IterMulti) {
     iter->Next();
     ASSERT_EQ(IterStatus(iter), "c->vc");
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
     iter->SeekToFirst();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Prev();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->SeekToLast();
     ASSERT_EQ(IterStatus(iter), "c->vc");
@@ -1273,11 +1269,11 @@ TEST_F(DBTest, IterMulti) {
     iter->Prev();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Prev();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
     iter->SeekToLast();
     ASSERT_EQ(IterStatus(iter), "c->vc");
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->Seek("");
     ASSERT_EQ(IterStatus(iter), "a->va");
@@ -1289,7 +1285,7 @@ TEST_F(DBTest, IterMulti) {
     iter->Seek("b");
     ASSERT_EQ(IterStatus(iter), "b->vb");
     iter->Seek("z");
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     // Switch from reverse to forward
     iter->SeekToLast();
@@ -1318,7 +1314,7 @@ TEST_F(DBTest, IterMulti) {
     iter->Next();
     ASSERT_EQ(IterStatus(iter), "c->vc");
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
     iter->SeekToLast();
     ASSERT_EQ(IterStatus(iter), "c->vc");
     iter->Prev();
@@ -1326,7 +1322,7 @@ TEST_F(DBTest, IterMulti) {
     iter->Prev();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Prev();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     delete iter;
   } while (ChangeCompactOptions());
@@ -1441,7 +1437,7 @@ TEST_F(DBTest, IterSmallAndLargeMix) {
     iter->Next();
     ASSERT_EQ(IterStatus(iter), "e->" + std::string(100000, 'e'));
     iter->Next();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     iter->SeekToLast();
     ASSERT_EQ(IterStatus(iter), "e->" + std::string(100000, 'e'));
@@ -1454,7 +1450,7 @@ TEST_F(DBTest, IterSmallAndLargeMix) {
     iter->Prev();
     ASSERT_EQ(IterStatus(iter), "a->va");
     iter->Prev();
-    ASSERT_EQ(IterStatus(iter), "(invalid)");
+    ASSERT_EQ(IterStatus(iter), "(invalid) OK");
 
     delete iter;
   } while (ChangeCompactOptions());
@@ -1511,7 +1507,7 @@ TEST_F(DBTest, IterPrevMaxSkip) {
     VerifyIterLast("key1->v1", 1);
 
     ASSERT_OK(Delete(1, "key1"));
-    VerifyIterLast("(invalid)", 1);
+    VerifyIterLast("(invalid) OK", 1);
   } while (ChangeOptions(kSkipMergePut | kSkipNoSeekToLast));
 }
 
@@ -1552,7 +1548,7 @@ TEST_F(DBTest, IterWithSnapshot) {
         ASSERT_EQ(IterStatus(iter), "key5->val5");
       }
       iter->Next();
-      ASSERT_TRUE(!iter->Valid());
+      ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
     }
     db_->ReleaseSnapshot(snapshot);
     delete iter;
@@ -2594,11 +2590,11 @@ TEST_F(DBTest, IteratorPinsRef) {
     ASSERT_OK(Put(1, "foo", "newvalue2"));
 
     iter->SeekToFirst();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ("foo", iter->key().ToString());
     ASSERT_EQ("hello", iter->value().ToString());
     iter->Next();
-    ASSERT_TRUE(!iter->Valid());
+    ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
     delete iter;
   } while (ChangeCompactOptions());
 }
@@ -4428,12 +4424,12 @@ TEST_F(DBTest, GroupCommitTest) {
     Iterator* itr = db_->NewIterator(ReadOptions());
     itr->SeekToFirst();
     for (auto x : expected_db) {
-      ASSERT_TRUE(itr->Valid());
+      ASSERT_TRUE(ASSERT_RESULT(itr->CheckedValid()));
       ASSERT_EQ(itr->key().ToString(), x);
       ASSERT_EQ(itr->value().ToString(), x);
       itr->Next();
     }
-    ASSERT_TRUE(!itr->Valid());
+    ASSERT_TRUE(!ASSERT_RESULT(itr->CheckedValid()));
     delete itr;
 
     HistogramData hist_data = {0, 0, 0, 0, 0};
@@ -4832,6 +4828,17 @@ static bool CompareIterators(int step,
       ok = false;
     }
   }
+
+  if (!miter->status().ok()) {
+    LOG(ERROR) << "miter->status(): " << miter->status();
+    ok = false;
+  }
+
+  if (!dbiter->status().ok()) {
+    LOG(ERROR) << "dbiter->status(): " << dbiter->status();
+    ok = false;
+  }
+
   delete miter;
   delete dbiter;
   return ok;
@@ -5377,15 +5384,15 @@ TEST_F(DBTest, DBIteratorBoundTest) {
 
     iter->Seek("foo");
 
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Slice("foo")), 0);
 
     iter->Next();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Slice("foo1")), 0);
 
     iter->Next();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Slice("g1")), 0);
   }
 
@@ -5401,16 +5408,16 @@ TEST_F(DBTest, DBIteratorBoundTest) {
 
     iter->Seek("foo");
 
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Slice("foo")), 0);
 
     iter->Next();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(("foo1")), 0);
 
     iter->Next();
     // should stop here...
-    ASSERT_TRUE(!iter->Valid());
+    ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   }
   // Testing SeekToLast with iterate_upper_bound set
   {
@@ -5422,7 +5429,7 @@ TEST_F(DBTest, DBIteratorBoundTest) {
     std::unique_ptr<Iterator> iter(db_->NewIterator(ro));
 
     iter->SeekToLast();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Slice("a")), 0);
   }
 
@@ -5447,15 +5454,15 @@ TEST_F(DBTest, DBIteratorBoundTest) {
 
     iter->Seek("foo");
 
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ("foo", iter->key().ToString());
 
     iter->Next();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ("foo1", iter->key().ToString());
 
     iter->Next();
-    ASSERT_TRUE(!iter->Valid());
+    ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   }
 
   // testing that iterate_upper_bound prevents iterating over deleted items
@@ -5479,17 +5486,17 @@ TEST_F(DBTest, DBIteratorBoundTest) {
     std::unique_ptr<Iterator> iter(db_->NewIterator(ro));
 
     iter->Seek("b");
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Slice("b")), 0);
 
     iter->Next();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(("b1")), 0);
 
     perf_context.Reset();
     iter->Next();
 
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(static_cast<int>(perf_context.internal_delete_skipped_count), 2);
 
     // now testing with iterate_bound
@@ -5501,18 +5508,18 @@ TEST_F(DBTest, DBIteratorBoundTest) {
     perf_context.Reset();
 
     iter->Seek("b");
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Slice("b")), 0);
 
     iter->Next();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(("b1")), 0);
 
     iter->Next();
     // the iteration should stop as soon as the the bound key is reached
     // even though the key is deleted
     // hence internal_delete_skipped_count should be 0
-    ASSERT_TRUE(!iter->Valid());
+    ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(static_cast<int>(perf_context.internal_delete_skipped_count), 0);
   }
 }
@@ -5783,10 +5790,9 @@ TEST_F(DBTest, DynamicLevelCompressionPerLevel) {
 
   int num_keys = 0;
   std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     num_keys++;
   }
-  ASSERT_OK(iter->status());
   ASSERT_GT(SizeAtLevel(0) + SizeAtLevel(3), num_keys * 4000U);
 }
 
@@ -6210,10 +6216,10 @@ TEST_F(DBTest, DynamicMiscOptions) {
     ASSERT_OK(Put(Key(key2), RandomString(&rnd, 8)));
     std::unique_ptr<Iterator> iter(db_->NewIterator(ReadOptions()));
     iter->Seek(Key(key1));
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Key(key1)), 0);
     iter->Next();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->key().compare(Key(key2)), 0);
     ASSERT_EQ(num_reseek,
               TestGetTickerCount(options, NUMBER_OF_RESEEKS_IN_ITERATION));
@@ -6434,8 +6440,7 @@ TEST_F(DBTest, MergeTestTime) {
   ReadOptions read_options;
   std::unique_ptr<Iterator> iter(db_->NewIterator(read_options));
   int count = 0;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
-    ASSERT_OK(iter->status());
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     ++count;
   }
 
@@ -6493,6 +6498,7 @@ TEST_P(DBTestWithParam, FilterCompactionTimeTest) {
 
   Iterator* itr = db_->NewIterator(ReadOptions());
   itr->SeekToFirst();
+  ASSERT_OK(itr->status());
   // Stopwatch has been removed from compaction iterator. Disable assert below.
   // ASSERT_NE(TestGetTickerCount(options, FILTER_OPERATION_TOTAL_TIME), 0);
   delete itr;
@@ -7173,11 +7179,11 @@ TEST_F(DBTest, PrevAfterMerge) {
   std::unique_ptr<Iterator> it(db_->NewIterator(ReadOptions()));
 
   it->Seek("2");
-  ASSERT_TRUE(it->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(it->CheckedValid()));
   ASSERT_EQ("2", it->key().ToString());
 
   it->Prev();
-  ASSERT_TRUE(it->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(it->CheckedValid()));
   ASSERT_EQ("1", it->key().ToString());
 }
 
@@ -7811,7 +7817,7 @@ TEST_F(DBTest, PinnedDataIteratorRandomized) {
       std::vector<std::string> true_keys;
       for (auto& k : random_keys) {
         iter->Seek(k);
-        if (!iter->Valid()) {
+        if (!ASSERT_RESULT(iter->CheckedValid())) {
           ASSERT_EQ(true_data.lower_bound(k), true_data.end());
           continue;
         }
@@ -7832,7 +7838,7 @@ TEST_F(DBTest, PinnedDataIteratorRandomized) {
       // Test iterating all data forward
       printf("Testing iterating forward on all keys\n");
       std::vector<Slice> all_keys;
-      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
         std::string prop_value;
         ASSERT_OK(
             iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
@@ -7853,7 +7859,7 @@ TEST_F(DBTest, PinnedDataIteratorRandomized) {
       // Test iterating all data backward
       printf("Testing iterating backward on all keys\n");
       std::vector<Slice> all_keys;
-      for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+      for (iter->SeekToLast(); ASSERT_RESULT(iter->CheckedValid()); iter->Prev()) {
         std::string prop_value;
         ASSERT_OK(
             iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
@@ -7926,7 +7932,7 @@ TEST_F(DBTest, PinnedDataIteratorMultipleFiles) {
   auto iter = db_->NewIterator(ro);
 
   std::vector<std::pair<Slice, std::string>> results;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     std::string prop_value;
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
     ASSERT_EQ("1", prop_value);
@@ -7980,7 +7986,7 @@ TEST_F(DBTest, PinnedDataIteratorMergeOperator) {
   auto iter = db_->NewIterator(ro);
 
   std::vector<std::pair<Slice, std::string>> results;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     std::string prop_value;
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
     ASSERT_EQ("1", prop_value);
@@ -8037,7 +8043,7 @@ TEST_F(DBTest, PinnedDataIteratorReadAfterUpdate) {
   }
 
   std::vector<std::pair<Slice, std::string>> results;
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     std::string prop_value;
     ASSERT_OK(iter->GetProperty("rocksdb.iterator.is-key-pinned", &prop_value));
     ASSERT_EQ("1", prop_value);

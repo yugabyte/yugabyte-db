@@ -90,10 +90,11 @@ public class Scheduler {
     Schedule.getAll()
         .forEach(
             (schedule) -> {
-              if (schedule.getRunningState()) {
+              if (schedule.isRunningState()) {
                 schedule.setRunningState(false);
                 schedule.save();
-                log.debug("Updated scheduler {} running state to false", schedule.scheduleUUID);
+                log.debug(
+                    "Updated scheduler {} running state to false", schedule.getScheduleUUID());
               }
             });
   }
@@ -125,7 +126,7 @@ public class Scheduler {
         long frequency = schedule.getFrequency();
         String cronExpression = schedule.getCronExpression();
         Date expectedScheduleTaskTime = schedule.getNextScheduleTaskTime();
-        boolean backlogStatus = schedule.getBacklogStatus();
+        boolean backlogStatus = schedule.isBacklogStatus();
         if (cronExpression == null && frequency == 0) {
           log.error(
               "Scheduled task does not have a recurrence specified {}", schedule.getScheduleUUID());
@@ -160,7 +161,8 @@ public class Scheduler {
 
           boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime);
           UUID baseBackupUUID = null;
-          if (!shouldRunTask && ScheduleUtil.isIncrementalBackupSchedule(schedule.scheduleUUID)) {
+          if (!shouldRunTask
+              && ScheduleUtil.isIncrementalBackupSchedule(schedule.getScheduleUUID())) {
             baseBackupUUID = fetchBaseBackupUUIDIfIncrementalBackupRequired(schedule);
             if (baseBackupUUID != null) {
               shouldRunTask = true;
@@ -192,7 +194,7 @@ public class Scheduler {
             }
           }
         } catch (PlatformServiceException pe) {
-          log.error("Error running schedule {} ", schedule.scheduleUUID, pe);
+          log.error("Error running schedule {} ", schedule.getScheduleUUID(), pe);
           if (pe.getHttpStatus() == SERVICE_UNAVAILABLE) {
             Date retryDate =
                 new Date(
@@ -204,7 +206,7 @@ public class Scheduler {
             }
           }
         } catch (Exception e) {
-          log.error("Error running schedule {} ", schedule.scheduleUUID, e);
+          log.error("Error running schedule {} ", schedule.getScheduleUUID(), e);
         } finally {
           schedule.setRunningState(false);
           schedule.save();
@@ -228,7 +230,7 @@ public class Scheduler {
     Date expectedTaskExecutionTime =
         new Date(backup.getCreateTime().getTime() + incrementalBackupFrequency);
     if (todaysDate.after(expectedTaskExecutionTime)) {
-      return backup.baseBackupUUID;
+      return backup.getBaseBackupUUID();
     }
     return null;
   }
@@ -275,22 +277,22 @@ public class Scheduler {
           stateLogMsg);
       return;
     }
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
     }
     UUID taskUUID = commissioner.submit(TaskType.ExternalScript, taskParams);
     ScheduleTask.create(taskUUID, schedule.getScheduleUUID());
     CustomerTask.create(
         customer,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.ExternalScript,
-        universe.name);
+        universe.getName());
     log.info(
         "Submitted external script task with task uuid = {} for universe {}.",
         taskUUID,
-        universe.universeUUID);
+        universe.getUniverseUUID());
   }
 
   private void runAccessKeyRotation(Schedule schedule, boolean alreadyRunning) {
@@ -308,7 +310,7 @@ public class Scheduler {
             ? customer
                 .getUniversesForProvider(providerUUID)
                 .stream()
-                .map(universe -> universe.universeUUID)
+                .map(universe -> universe.getUniverseUUID())
                 .collect(Collectors.toList())
             : taskParams.getUniverseUUIDs();
 
@@ -331,7 +333,7 @@ public class Scheduler {
       return;
     }
 
-    if (schedule.getBacklogStatus()) {
+    if (schedule.isBacklogStatus()) {
       schedule.updateBacklogStatus(false);
     }
 
@@ -344,7 +346,7 @@ public class Scheduler {
         taskUUID,
         CustomerTask.TargetType.Provider,
         CustomerTask.TaskType.CreateAndRotateAccessKey,
-        provider.name);
+        provider.getName());
     log.info(
         "Submitted create and rotate access key task with task uuid = {} "
             + "for provider uuid = {}.",

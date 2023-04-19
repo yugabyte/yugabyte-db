@@ -23,9 +23,12 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/rpc/call_data.h"
+#include "yb/rpc/outbound_call.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc_controller.h"
 
+#include "yb/tserver/pg_client.messages.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client.proxy.h"
 #include "yb/tserver/tserver_shared_mem.h"
@@ -69,7 +72,8 @@ struct PerformData {
   rpc::RpcController controller;
   PerformCallback callback;
 
-  explicit PerformData(ThreadSafeArena* arena) : resp(arena) {
+  PerformData(ThreadSafeArena* arena, PgsqlOps&& operations_, const PerformCallback& callback_)
+      : operations(std::move(operations_)), resp(arena), callback(callback_) {
   }
 
   Status Process() {
@@ -185,6 +189,10 @@ class PgClient::Impl {
         if (!status.ok()) {
           create_session_promise_.set_value(status);
         } else {
+          auto instance_id = Uuid::TryFullyDecode(heartbeat_resp_.instance_id());
+          if (!instance_id.IsNil()) {
+            exchange_.emplace(instance_id, heartbeat_resp_.session_id(), tserver::Create::kFalse);
+          }
           create_session_promise_.set_value(heartbeat_resp_.session_id());
         }
       }
@@ -427,29 +435,56 @@ class PgClient::Impl {
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
 
-    auto data = std::make_shared<PerformData>(&arena);
-    data->operations = std::move(*operations);
-    data->callback = callback;
-    data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
+    if (exchange_) {
+      PerformData data(&arena, std::move(*operations), callback);
+      ProcessPerformResponse(&data, ExecutePerform(&data, req));
+    } else {
+      auto data = std::make_shared<PerformData>(&arena, std::move(*operations), callback);
+      data->controller.set_invoke_callback_mode(rpc::InvokeCallbackMode::kReactorThread);
 
-    proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
-      PerformResult result;
-      result.status = data->controller.status();
-      result.response = data->controller.response();
-      if (result.status.ok()) {
-        result.status = ResponseStatus(data->resp);
-      }
-      if (result.status.ok()) {
-        result.status = data->Process();
-      }
-      if (result.status.ok()) {
-        if (data->resp.has_catalog_read_time()) {
-          result.catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
-        }
-        result.used_in_txn_limit = HybridTime::FromPB(data->resp.used_in_txn_limit_ht());
-      }
-      data->callback(result);
-    });
+      proxy_->PerformAsync(req, &data->resp, SetupController(&data->controller), [data] {
+        ProcessPerformResponse(data.get(), data->controller.response());
+      });
+    }
+  }
+
+  Result<rpc::CallResponsePtr> ExecutePerform(
+      PerformData* data, const tserver::LWPgPerformRequestPB& req) {
+    auto size = req.SerializedSize();
+    auto* out = exchange_->Obtain(size);
+    auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
+    CHECK_EQ(end - out, size);
+
+    auto res = VERIFY_RESULT(exchange_->SendRequest(nullptr, CoarseMonoClock::now() + timeout_));
+
+    rpc::CallData call_data(res.size());
+    res.CopyTo(call_data.data());
+    auto response = std::make_shared<rpc::CallResponse>();
+    RETURN_NOT_OK(response->ParseFrom(&call_data));
+    RETURN_NOT_OK(data->resp.ParseFromSlice(response->serialized_response()));
+    return response;
+  }
+
+  static void ProcessPerformResponse(
+      PerformData* data, const Result<rpc::CallResponsePtr>& response) {
+    PerformResult result;
+    if (response.ok()) {
+      result.response = *response;
+      result.status = DoProcessPerformResponse(data, &result);
+    } else {
+      result.status = response.status();
+    }
+    data->callback(result);
+  }
+
+  static Status DoProcessPerformResponse(PerformData* data, PerformResult* result) {
+    RETURN_NOT_OK(ResponseStatus(data->resp));
+    RETURN_NOT_OK(data->Process());
+    if (data->resp.has_catalog_read_time()) {
+      result->catalog_read_time = ReadHybridTime::FromPB(data->resp.catalog_read_time());
+    }
+    result->used_in_txn_limit = HybridTime::FromPB(data->resp.used_in_txn_limit_ht());
+    return Status::OK();
   }
 
   void PrepareOperations(tserver::LWPgPerformRequestPB* req, PgsqlOps* operations) {
@@ -522,6 +557,21 @@ class PgClient::Impl {
       result.GetFromTableIdentifierPB(resp.indexed_table());
     }
     return result;
+  }
+
+  Result<int> WaitForBackendsCatalogVersion(
+      tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline) {
+    tserver::PgWaitForBackendsCatalogVersionResponsePB resp;
+    req->set_session_id(session_id_);
+    RETURN_NOT_OK(proxy_->WaitForBackendsCatalogVersion(*req, &resp, PrepareController(deadline)));
+    RETURN_NOT_OK(ResponseStatus(resp));
+    if (resp.num_lagging_backends() != -1) {
+      return resp.num_lagging_backends();
+    }
+    return STATUS_FORMAT(
+        TryAgain,
+        "Counting backends in progress: database oid $0, catalog version $1",
+        req->database_oid(), req->catalog_version());
   }
 
   Status BackfillIndex(
@@ -677,6 +727,7 @@ class PgClient::Impl {
   std::atomic<bool> heartbeat_running_{false};
   rpc::RpcController heartbeat_controller_;
   tserver::PgHeartbeatResponsePB heartbeat_resp_;
+  std::optional<tserver::SharedExchange> exchange_;
   std::promise<Result<uint64_t>> create_session_promise_;
   std::array<int, 2> tablet_server_count_cache_;
   MonoDelta timeout_ = FLAGS_yb_client_admin_operation_timeout_sec * 1s;
@@ -740,6 +791,11 @@ Status PgClient::CreateSequencesDataTable() {
 Result<client::YBTableName> PgClient::DropTable(
     tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline) {
   return impl_->DropTable(req, deadline);
+}
+
+Result<int> PgClient::WaitForBackendsCatalogVersion(
+    tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline) {
+  return impl_->WaitForBackendsCatalogVersion(req, deadline);
 }
 
 Status PgClient::BackfillIndex(

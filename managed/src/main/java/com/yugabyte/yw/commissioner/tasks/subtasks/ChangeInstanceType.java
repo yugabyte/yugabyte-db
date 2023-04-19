@@ -36,7 +36,7 @@ public class ChangeInstanceType extends NodeTaskBase {
     log.info(
         "Running ChangeInstanceType against node {} to change its type from {} to {}",
         taskParams().nodeName,
-        Universe.getOrBadRequest(taskParams().universeUUID)
+        Universe.getOrBadRequest(taskParams().getUniverseUUID())
             .getNode(taskParams().nodeName)
             .cloudInfo
             .instance_type,

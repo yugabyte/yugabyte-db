@@ -43,6 +43,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -182,12 +183,12 @@ public class PlatformReplicationManager {
     }
 
     // Update which instance should be local.
-    previousLocal.get().setIsLocalAndUpdate(false);
+    previousLocal.get().updateIsLocal(false);
     config
         .getInstances()
         .forEach(
             i -> {
-              i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID()));
+              i.updateIsLocal(i.getUuid().equals(newLeader.getUuid()));
               try {
                 // Clear out any old backups.
                 replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
@@ -323,7 +324,7 @@ public class PlatformReplicationManager {
                             instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
                           });
                 } catch (Exception e) {
-                  log.error("Error running sync for HA config {}", config.getUUID(), e);
+                  log.error("Error running sync for HA config {}", config.getUuid(), e);
                 } finally {
                   // Remove locally created backups since they have already been sent to followers.
                   replicationHelper.cleanupCreatedBackups();
@@ -338,13 +339,13 @@ public class PlatformReplicationManager {
     replicationHelper.cleanupReceivedBackups(leader, replicationHelper.getNumBackupsRetention());
   }
 
-  public boolean saveReplicationData(String fileName, File uploadedFile, URL leader, URL sender) {
+  public boolean saveReplicationData(String fileName, Path uploadedFile, URL leader, URL sender) {
     Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName).normalize();
     if ((replicationDir.toFile().exists() || replicationDir.toFile().mkdirs())
         && saveAsFile.toString().startsWith(replicationDir.toString())) {
       try {
-        FileUtils.moveFile(uploadedFile.toPath(), saveAsFile);
+        FileUtils.moveFile(uploadedFile, saveAsFile);
         log.debug(
             "Store platform backup received from leader {} via {} as {}.",
             leader.toString(),
@@ -353,7 +354,7 @@ public class PlatformReplicationManager {
 
         return true;
       } catch (IOException ioException) {
-        log.error("File move failed from {} as {}", uploadedFile.toPath(), saveAsFile, ioException);
+        log.error("File move failed from {} as {}", uploadedFile, saveAsFile, ioException);
       }
     } else {
       log.error(
@@ -428,6 +429,15 @@ public class PlatformReplicationManager {
 
       return extraVars;
     }
+
+    List<String> getYbaInstallerArgs() {
+      List<String> commandArgs = new ArrayList<>();
+      commandArgs.add("--yba_installer");
+      commandArgs.add("--data_dir");
+      commandArgs.add(replicationHelper.getBaseInstall());
+
+      return commandArgs;
+    }
   }
 
   private class CreatePlatformBackupParams extends PlatformBackupParams {
@@ -458,6 +468,13 @@ public class PlatformReplicationManager {
         commandArgs.add("--exclude_releases");
       }
 
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_dump_path");
+        commandArgs.add(replicationHelper.getPGDumpPath());
+        commandArgs.addAll(getYbaInstallerArgs());
+      }
+
       commandArgs.add("--output");
       commandArgs.add(outputDirectory);
 
@@ -481,6 +498,14 @@ public class PlatformReplicationManager {
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
       commandArgs.add("--disable_version_check");
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_restore_path");
+        commandArgs.add(replicationHelper.getPGRestorePath());
+        commandArgs.addAll(getYbaInstallerArgs());
+        commandArgs.add("--destination");
+        commandArgs.add(replicationHelper.getBaseInstall());
+      }
 
       return commandArgs;
     }

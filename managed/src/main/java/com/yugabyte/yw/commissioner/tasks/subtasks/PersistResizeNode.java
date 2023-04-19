@@ -29,9 +29,13 @@ public class PersistResizeNode extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public String instanceType;
     public Integer volumeSize;
+    public Integer volumeIops;
+    public Integer volumeThroughput;
     public List<UUID> clusters;
     public String masterInstanceType;
     public Integer masterVolumeSize;
+    public Integer masterVolumeIops;
+    public Integer masterVolumeThroughput;
   }
 
   protected Params taskParams() {
@@ -40,16 +44,25 @@ public class PersistResizeNode extends UniverseTaskBase {
 
   @Override
   public String getName() {
-    String ret =
-        super.getName()
-            + "("
-            + taskParams().universeUUID
-            + ", instanceType: "
-            + taskParams().instanceType;
+    StringBuilder sb = new StringBuilder(super.getName());
+    sb.append('(');
+    sb.append(taskParams().getUniverseUUID());
+    sb.append(", instanceType: ");
+    sb.append(taskParams().instanceType);
     if (taskParams().volumeSize != null) {
-      ret += ", volumeSize: " + taskParams().volumeSize;
+      sb.append(", volumeSize: ");
+      sb.append(taskParams().volumeSize);
     }
-    return ret + ")";
+    if (taskParams().volumeIops != null) {
+      sb.append(", volumeIops: ");
+      sb.append(taskParams().volumeIops);
+    }
+    if (taskParams().volumeThroughput != null) {
+      sb.append(", volumeThroughput: ");
+      sb.append(taskParams().volumeThroughput);
+    }
+    sb.append(')');
+    return sb.toString();
   }
 
   @Override
@@ -73,8 +86,20 @@ public class PersistResizeNode extends UniverseTaskBase {
                 if (taskParams().volumeSize != null) {
                   userIntent.deviceInfo.volumeSize = taskParams().volumeSize;
                 }
+                if (taskParams().volumeIops != null) {
+                  userIntent.deviceInfo.diskIops = taskParams().volumeIops;
+                }
+                if (taskParams().volumeThroughput != null) {
+                  userIntent.deviceInfo.throughput = taskParams().volumeThroughput;
+                }
                 if (taskParams().masterVolumeSize != null) {
                   userIntent.masterDeviceInfo.volumeSize = taskParams().masterVolumeSize;
+                }
+                if (taskParams().masterVolumeIops != null) {
+                  userIntent.masterDeviceInfo.diskIops = taskParams().masterVolumeIops;
+                }
+                if (taskParams().masterVolumeThroughput != null) {
+                  userIntent.masterDeviceInfo.throughput = taskParams().masterVolumeThroughput;
                 }
                 for (NodeDetails nodeDetails :
                     universe.getUniverseDetails().getNodesInCluster(cluster.uuid)) {

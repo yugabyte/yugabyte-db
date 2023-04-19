@@ -45,9 +45,9 @@
 namespace yb {
 
 using docdb::KeyValuePairPB;
-using docdb::SubDocKey;
-using docdb::DocKey;
-using docdb::PrimitiveValue;
+using dockv::SubDocKey;
+using dockv::DocKey;
+using dockv::PrimitiveValue;
 
 inline Schema GetSimpleTestSchema() {
   return Schema({ ColumnSchema("key", INT32, false, true),

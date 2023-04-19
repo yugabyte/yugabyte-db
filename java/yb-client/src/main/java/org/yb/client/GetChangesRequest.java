@@ -37,16 +37,17 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final boolean needSchemaInfo;
   private final CdcSdkCheckpoint explicitCheckpoint;
   private final String tableId;
+  private final long safeHybridTime;
 
   public GetChangesRequest(YBTable table, String streamId, String tabletId,
    long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo) {
     this(table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
-         null, new String(""));
+         null, new String(""), -1);
   }
 
   public GetChangesRequest(YBTable table, String streamId, String tabletId,
    long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo,
-   CdcSdkCheckpoint explicitCheckpoint, String tableId) {
+   CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
@@ -58,6 +59,7 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     this.needSchemaInfo = needSchemaInfo;
     this.explicitCheckpoint = explicitCheckpoint;
     this.tableId = tableId;
+    this.safeHybridTime = safeHybridTime;
   }
 
   @Override
@@ -89,6 +91,10 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
         .setKey(ByteString.copyFrom(explicitCheckpoint.getKey()))
         .setWriteId(explicitCheckpoint.getWriteId()).setSnapshotTime(explicitCheckpoint.getTime());
       builder.setExplicitCdcSdkCheckpoint(checkpointBuilder.build());
+    }
+
+    if (safeHybridTime != -1) {
+      builder.setSafeHybridTime(safeHybridTime);
     }
 
     return toChannelBuffer(header, builder.build());

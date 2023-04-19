@@ -9,8 +9,6 @@
  */
 package com.yugabyte.yw.common;
 
-import static play.test.Helpers.contextComponents;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yugabyte.yw.controllers.RequestContext;
@@ -27,8 +25,6 @@ import org.yb.WireProtocol;
 import org.yb.client.GetStatusResponse;
 import org.yb.server.ServerBase;
 import play.libs.Json;
-import play.mvc.Http;
-import play.mvc.Http.Context;
 
 public class TestUtils {
   public static String readResource(String path) {
@@ -65,12 +61,9 @@ public class TestUtils {
 
   public static void setFakeHttpContext(Users user, String email) {
     if (user != null) {
-      user.email = email;
+      user.setEmail(email);
     }
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
-    Http.Request request = new Http.RequestBuilder().build();
-    Context currentContext = new Context(request, contextComponents());
-    Context.current.set(currentContext);
   }
 
   public static GetStatusResponse prepareGetStatusResponse(

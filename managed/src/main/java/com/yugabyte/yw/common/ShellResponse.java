@@ -1,7 +1,6 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import java.util.List;
 import java.util.concurrent.CancellationException;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;

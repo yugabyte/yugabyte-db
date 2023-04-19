@@ -16,7 +16,6 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
-import com.yugabyte.yw.models.PitrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.filters.MetricFilter.MetricFilterBuilder;
@@ -34,7 +33,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.yb.client.SnapshotInfo;
 
 @Singleton
 @Slf4j
@@ -157,7 +155,7 @@ public class MetricService {
 
   public static Metric buildMetricTemplate(
       PlatformMetrics metric, Universe universe, long metricExpiryPeriodSec) {
-    Customer customer = Customer.get(universe.customerId);
+    Customer customer = Customer.get(universe.getCustomerId());
     return buildMetricTemplate(metric, customer, universe, metricExpiryPeriodSec);
   }
 

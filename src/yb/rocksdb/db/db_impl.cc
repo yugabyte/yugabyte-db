@@ -2532,6 +2532,27 @@ void DBImpl::NotifyOnCompactionCompleted(
   // flush process.
 }
 
+void DBImpl::NotifyOnTrivialCompactionCompleted(
+    const ColumnFamilyData& cfd, const CompactionReason compaction_reason) {
+  mutex_.AssertHeld();
+  if (IsShuttingDown()) {
+    return;
+  }
+  // release lock while notifying events
+  mutex_.Unlock();
+  if (db_options_.listeners.size() > 0) {
+    CompactionJobInfo info;
+    info.cf_name = cfd.GetName();
+    info.status = Status::OK();
+    info.thread_id = env_->GetThreadID();
+    info.is_full_compaction = true;
+    for (auto listener : db_options_.listeners) {
+      listener->OnCompactionCompleted(this, info);
+    }
+  }
+  mutex_.Lock();
+}
+
 void DBImpl::SetDisableFlushOnShutdown(bool disable_flush_on_shutdown) {
   // disable_flush_on_shutdown_ can only transition from false to true. This location
   // can be called multiple times with arg as false. It is only called once with arg
@@ -2963,6 +2984,12 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
     } else if (!scheduled) {
       if (manual_compaction.compaction == nullptr) {
         manual_compaction.done = true;
+
+        // If there are no files to compact, a trivial full compaction has been completed.
+        if (cfd->current()->storage_info()->num_non_empty_levels() == 0) {
+          NotifyOnTrivialCompactionCompleted(*cfd, compaction_reason);
+        }
+
         bg_cv_.SignalAll();
         continue;
       }
@@ -4693,7 +4720,8 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         kMaxSequenceNumber,
         sv->mutable_cf_options.max_sequential_skip_in_iterations,
         sv->version_number, read_options.iterate_upper_bound,
-        read_options.prefix_same_as_start, read_options.pin_data);
+        read_options.prefix_same_as_start, read_options.pin_data,
+        read_options.statistics);
   } else {
     SequenceNumber latest_snapshot = versions_->LastSequence();
     SuperVersion* sv = cfd->GetReferencedSuperVersion(&mutex_);
@@ -4750,7 +4778,7 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         env_, *cfd->ioptions(), cfd->user_comparator(), snapshot,
         sv->mutable_cf_options.max_sequential_skip_in_iterations,
         sv->version_number, read_options.iterate_upper_bound,
-        read_options.prefix_same_as_start, read_options.pin_data);
+        read_options.prefix_same_as_start, read_options.pin_data, read_options.statistics);
 
     InternalIterator* internal_iter =
         NewInternalIterator(read_options, cfd, sv, db_iter->GetArena());
@@ -6117,7 +6145,7 @@ Status DBImpl::CheckConsistency() {
 
   std::string corruption_messages;
   for (const auto& md : metadata) {
-    std::string base_file_path = md.FullName();
+    std::string base_file_path = md.BaseFilePath();
     uint64_t base_fsize = 0;
     Status s = env_->GetFileSize(base_file_path, &base_fsize);
     if (!s.ok() &&

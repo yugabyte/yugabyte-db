@@ -43,9 +43,6 @@ class SnapshotTestUtil;
 
 }
 
-Result<size_t> SelectRowsCount(
-    const client::YBSessionPtr& session, const client::TableHandle& table);
-
 void DumpTableLocations(
     master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name);
 
@@ -96,8 +93,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
     return WriteRows(&this->table_, num_rows, start_key);
   }
 
-  // Waits for intents of table to be applied.
-  virtual Status WaitForTableIntentsApplied(const TableId& table_id) = 0;
+  // Waits for intents of test table to be applied.
   Status WaitForTestTableIntentsApplied();
 
   Status FlushTable(const TableId& table_id);
@@ -122,7 +118,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   }
 
   Status CheckRowsCount(size_t expected_num_rows) {
-    auto rows_count = VERIFY_RESULT(SelectRowsCount(this->NewSession(), this->table_));
+    auto rows_count = VERIFY_RESULT(CountRows(this->NewSession(), this->table_));
     SCHECK_EQ(rows_count, expected_num_rows, InternalError, "Got unexpected rows count");
     return Status::OK();
   }
@@ -214,8 +210,6 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   Status CheckPostSplitTabletReplicasData(
       size_t num_rows, size_t num_replicas_online = 0, size_t num_active_tablets = 2);
 
-  Status WaitForTableIntentsApplied(const TableId& table_id) override;
-
   Status WaitForTableNumActiveLeadersPeers(size_t expected_leaders);
 
  protected:
@@ -259,8 +253,6 @@ class TabletSplitExternalMiniClusterITest : public TabletSplitITestBase<External
   Result<TabletId> GetOnlyTestTabletId(size_t tserver_idx);
 
   Result<TabletId> GetOnlyTestTabletId();
-
-  Status WaitForTableIntentsApplied(const TableId& table_id) override;
 };
 
 }  // namespace yb

@@ -248,7 +248,7 @@ public class Commissioner {
     responseJson.put("retryable", false);
     if (isTaskRetryable(taskInfo.getTaskType())
         && TaskInfo.ERROR_STATES.contains(taskInfo.getTaskState())) {
-      if (task.getTarget() == CustomerTask.TargetType.Provider) {
+      if (task.getTargetType() == CustomerTask.TargetType.Provider) {
         CustomerTask lastTask =
             lastTaskByTarget.computeIfAbsent(
                 task.getTargetUUID(), tId -> CustomerTask.getLastTaskByTargetUuid(tId));
@@ -287,7 +287,7 @@ public class Commissioner {
   public JsonNode getTaskDetails(UUID taskUUID) {
     TaskInfo taskInfo = TaskInfo.get(taskUUID);
     if (taskInfo != null) {
-      return taskInfo.getTaskDetails();
+      return taskInfo.getDetails();
     } else {
       // TODO: push this down to TaskInfo
       throw new PlatformServiceException(
@@ -312,22 +312,7 @@ public class Commissioner {
   // Returns the TaskExecutionListener instance.
   private TaskExecutionListener getTaskExecutionListener() {
     final Consumer<TaskInfo> beforeTaskConsumer = getBeforeTaskConsumer();
-    TaskExecutionListener listener =
-        new TaskExecutionListener() {
-          @Override
-          public void beforeTask(TaskInfo taskInfo) {
-            LOG.info("About to execute task {}", taskInfo);
-            if (beforeTaskConsumer != null) {
-              beforeTaskConsumer.accept(taskInfo);
-            }
-          }
-
-          @Override
-          public void afterTask(TaskInfo taskInfo, Throwable t) {
-            LOG.info("Task {} is completed", taskInfo);
-            providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
-          }
-        };
+    Listener listener = new Listener(providerEditRestrictionManager, beforeTaskConsumer);
     return listener;
   }
 
@@ -352,7 +337,7 @@ public class Commissioner {
           taskInfo -> {
             if (taskInfo.getPosition() >= subTaskPausePosition) {
               LOG.debug("Pausing task {} at position {}", taskInfo, taskInfo.getPosition());
-              final UUID subTaskUUID = taskInfo.getParentUUID();
+              final UUID subTaskUUID = taskInfo.getParentUuid();
               try {
                 // Insert if absent and get the latch.
                 pauseLatches.computeIfAbsent(subTaskUUID, k -> new CountDownLatch(1)).await();
@@ -367,7 +352,6 @@ public class Commissioner {
     }
     return consumer;
   }
-
   /**
    * A progress monitor to constantly write a last updated timestamp in the DB so that this process
    * and all its subtasks are considered to be alive.

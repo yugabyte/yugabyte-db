@@ -22,12 +22,8 @@ DEFINE_UNKNOWN_bool(cql_raise_index_where_clause_error, false,
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-using std::to_string;
 using std::string;
-using client::YBColumnSchema;
 using client::YBSchema;
-using client::YBTableName;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -191,7 +187,6 @@ Status PTCreateIndex::Analyze(SemContext *sem_context) {
     }
   }
 
-  // TODO: create local index when co-partition table is available.
   if (is_local_) {
     LOG(WARNING) << "Creating local secondary index " << yb_table_name().ToString()
                  << " as global index.";

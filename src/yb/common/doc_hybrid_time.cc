@@ -27,14 +27,9 @@
 
 using std::string;
 
-using yb::util::VarInt;
 using yb::util::FastEncodeDescendingSignedVarInt;
 using yb::util::FastDecodeDescendingSignedVarIntUnsafe;
-using yb::FormatBytesAsStr;
-using yb::FormatSliceAsStr;
-using yb::QuotesType;
 
-using strings::Substitute;
 using strings::SubstituteAndAppend;
 
 namespace yb {
@@ -91,6 +86,25 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   DCHECK_LE(encoded_size, kMaxBytesPerEncodedHybridTime);
   out[-1] = static_cast<char>((last_byte & ~kHybridTimeSizeMask) | encoded_size);
   return out;
+}
+
+Result<Slice> DocHybridTime::EncodedFromStart(Slice* slice) {
+  const auto* start = slice->data();
+  // There are following components:
+  // 1) Generation number - not used always 0.
+  // 2) Physical part of hybrid time.
+  // 3) Logical part of hybrid time.
+  // 4) Write id.
+  for (size_t i = 0; i != 4; ++i) {
+    auto size = util::FastDecodeDescendingSignedVarIntSize(*slice);
+    if (size == 0 || size > slice->size()) {
+      return STATUS_FORMAT(
+          Corruption, "Bad doc hybrid time: $0, step: $1",
+          Slice(start, slice->end()).ToDebugHexString(), i);
+    }
+    slice->remove_prefix(size);
+  }
+  return Slice(start, slice->data());
 }
 
 Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {

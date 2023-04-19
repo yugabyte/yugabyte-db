@@ -2,7 +2,7 @@
 title: ysqlsh pset options
 headerTitle: ysqlsh pset options
 linkTitle: pset options
-description: YSQL shell meta-commands.
+description: YSQL shell pset meta-command options.
 headcontent: Options for the \pset meta-command
 menu:
   preview:

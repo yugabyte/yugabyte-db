@@ -16,6 +16,7 @@
 #include <atomic>
 #include <chrono>
 #include <future>
+#include <list>
 #include <memory>
 #include <queue>
 #include <sstream>
@@ -28,7 +29,7 @@
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
 #include "yb/common/wire_protocol.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/thread_annotations.h"
@@ -39,6 +40,7 @@
 #include "yb/tablet/transaction_participant.h"
 #include "yb/tablet/transaction_participant_context.h"
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/flags.h"
@@ -91,6 +93,10 @@ TAG_FLAG(refresh_waiter_timeout_ms, hidden);
 DEFINE_test_flag(uint64, sleep_before_entering_wait_queue_ms, 0,
                  "The amount of time for which the thread sleeps before registering a transaction "
                  "with the wait queue.");
+
+DEFINE_test_flag(bool, drop_participant_signal, false,
+                 "If true, do nothing with the commit/abort signal from the participant to the "
+                 "wait queue.");
 
 METRIC_DEFINE_coarse_histogram(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
@@ -332,7 +338,8 @@ class BlockerData {
     return status_tablet_;
   }
 
-  std::vector<WaiterDataPtr> Signal(Result<TransactionStatusResult>&& txn_status_response) {
+  std::vector<WaiterDataPtr> Signal(
+      Result<TransactionStatusResult>&& txn_status_response, HybridTime now) {
     VLOG(4) << "Signaling waiters "
             << (txn_status_response.ok() ?
                 txn_status_response->ToString() :
@@ -355,6 +362,7 @@ class BlockerData {
     }
 
     if (txn_status_response.ok()) {
+      DCHECK(!txn_status_response->status_time.is_special() || IsAbortedUnlocked());
       txn_status_ht_ = txn_status_response->status_time;
       if (aborted_subtransactions_ != txn_status_response->aborted_subtxn_set) {
         // TODO(wait-queues): Avoid copying the subtransaction set. See:
@@ -365,6 +373,12 @@ class BlockerData {
     }
 
     if (should_signal) {
+      if (txn_status_ht_.is_special()) {
+        DCHECK(IsAbortedUnlocked())
+          << "Unexpected special status ht in blocker " << txn_status_
+          << " @ " << txn_status_ht_;
+        txn_status_ht_ = now;
+      }
       return GetWaitersToSignalUnlocked();
     }
 
@@ -418,6 +432,10 @@ class BlockerData {
   bool IsPendingUnlocked() REQUIRES_SHARED(mutex_) {
     return txn_status_.ok() &&
         (*txn_status_ == ResolutionStatus::kPending || *txn_status_ == ResolutionStatus::kPromoted);
+  }
+
+  bool IsAbortedUnlocked() REQUIRES_SHARED(mutex_) {
+    return txn_status_.ok() && *txn_status_ == ResolutionStatus::kAborted;
   }
 
   bool IsPromotedUnlocked() REQUIRES_SHARED(mutex_) {
@@ -494,7 +512,7 @@ class BlockerData {
   // conflict_info is not null, populate conflict information. Otherwise, early return true to
   // indicate a conflict was found. Return false if no conflict is found.
   bool PopulateConflictInfo(
-      const RefCntPrefix& doc_path, const IntentTypeSet& intent_type_set,
+      const RefCntPrefix& doc_path, const dockv::IntentTypeSet& intent_type_set,
       TransactionConflictInfo* conflict_info) {
     bool did_find_conflicts = false;
     SharedLock l(mutex_);
@@ -533,7 +551,7 @@ class BlockerData {
 
   using IntentsByKey = std::unordered_map<
       RefCntPrefix,
-      IntentTypeSet,
+      dockv::IntentTypeSet,
       RefCntPrefixHash>;
   std::unordered_map<SubTransactionId, IntentsByKey> subtxn_intents_by_key_ GUARDED_BY(mutex_);
 };
@@ -808,7 +826,8 @@ class WaitQueue::Impl {
         // necessary because of the potential race between handling promotion signal of a blocker
         // txn from the transaction participant and a waiter transaction entering the queue with
         // the blocker's old status tablet.
-        auto blocker_status_tablet = txn_status_manager_->FindStatusTablet(blocker.id);
+        auto blocker_status_tablet =
+            VERIFY_RESULT(txn_status_manager_->FindStatusTablet(blocker.id));
         if (blocker_status_tablet) {
           blocker.status_tablet = *blocker_status_tablet;
         }
@@ -1024,7 +1043,7 @@ class WaitQueue::Impl {
     // queue to ensure their wait-for relationships are re-registered with their coordinator
     // pointing to the correct blocker status tablet.
     if (promoted_blocker) {
-      for (const auto& waiter : promoted_blocker->Signal(std::move(res))) {
+      for (const auto& waiter : promoted_blocker->Signal(std::move(res), clock_->Now())) {
         InvokeWaiterCallback(Status::OK(), waiter, res.status_time);
       }
     }
@@ -1148,12 +1167,20 @@ class WaitQueue::Impl {
   }
 
   void SignalCommitted(const TransactionId& id, HybridTime commit_ht) {
+    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_drop_participant_signal))) {
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << "Dropping commit signal " << id;
+      return;
+    }
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Signaling committed " << id << " @ " << commit_ht;
     TransactionStatusResult res(TransactionStatus::COMMITTED, commit_ht);
     MaybeSignalWaitingTransactions(id, res);
   }
 
   void SignalAborted(const TransactionId& id) {
+    if (PREDICT_FALSE(GetAtomicFlag(&FLAGS_TEST_drop_participant_signal))) {
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << "Dropping abort signal " << id;
+      return;
+    }
     VLOG_WITH_PREFIX_AND_FUNC(1) << "Signaling aborted " << id;
     TransactionStatusResult res(TransactionStatus::ABORTED, clock_->Now());
     MaybeSignalWaitingTransactions(id, res);
@@ -1278,7 +1305,7 @@ class WaitQueue::Impl {
       return;
     }
 
-    for (const auto& waiter : resolved_blocker->Signal(std::move(res))) {
+    for (const auto& waiter : resolved_blocker->Signal(std::move(res), clock_->Now())) {
       SignalWaiter(waiter);
     }
   }

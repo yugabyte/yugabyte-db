@@ -194,3 +194,19 @@ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+
+create table tab1 (id int primary key, r1 int);
+insert into tab1 select generate_series(1,1000);
+analyze tab1;
+create table tab2 (id int primary key, r1 int, r2 int not null) partition by range (id);
+create table tab2_p0 partition of tab2 default;
+create table tab2_p1 partition of tab2 for values from (minvalue) to (10);
+create table tab2_p2 partition of tab2 for values from (10) to (20);
+create table tab2_p3 partition of tab2 for values from (20) to (maxvalue);
+create index i_tab2_r2 on tab2 (r2 asc);
+
+SET yb_bnl_batch_size = 1024;
+
+explain (costs off) /*+ Leading((tab1 tab2)) IndexScan(tab2) NestLoop(tab1 tab2) */ select * from tab1 join tab2 on tab1.r1 = tab2.r2;
+drop table tab2;
+drop table tab1;

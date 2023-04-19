@@ -30,7 +30,7 @@ type: docs
 
 Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues. 
 
-If you experience difficulties while troubleshooting, contact [Yugabyte Support](https://support.yugabyte.com).
+If you experience difficulties while troubleshooting, contact {{% support-platform %}}.
 
 For more information, see the following:
 
@@ -77,7 +77,7 @@ For more information, see [Kubernetes: Specify a CPU request that is too big for
 
 **Resolution**
 
-- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Prerequisites](../../../install-yugabyte-platform/prerequisites/#kubernetes-based-installations).
+- Ensure that you have enough resources in the Kubernetes cluster to schedule the YugabyteDB Anywhere pods. For more information, see [Prerequisites - Kubernetes](../../../install-yugabyte-platform/prerequisites/kubernetes/#hardware-requirements).
 - Modify the YugabyteDB Anywhere pods resources configuration. For more information, see [Modify resources](../../../install-yugabyte-platform/install-software/kubernetes/#modify-resources).
 
 ### Mismatch in node selector, affinity, taints, tolerations

@@ -19,7 +19,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/docdb/docdb_test_util.h"
-#include "yb/docdb/key_bytes.h"
+#include "yb/dockv/key_bytes.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
@@ -39,7 +39,7 @@ class DocDBTestBase : public YBTest, public DocDBRocksDBFixture {
   // a straightforward copy of all key/values stored, not a RocksDB-level snapshot. This is an easy
   // way to go back to an old state of RocksDB in tests so we can make some more changes and take
   // on a different path.
-  void CaptureLogicalSnapshot();
+  Status CaptureLogicalSnapshot();
 
   // Clears the internal vector of logical RocksDB snapshots. The next snapshot to be captured will
   // again have the index 0.
@@ -49,10 +49,10 @@ class DocDBTestBase : public YBTest, public DocDBRocksDBFixture {
   //
   // @param snapshot_index The snapshot index to restore the state to RocksDB to, with the first
   //                       snapshot having index 0.
-  void RestoreToRocksDBLogicalSnapshot(size_t snapshot_index);
+  Status RestoreToRocksDBLogicalSnapshot(size_t snapshot_index);
 
-  void RestoreToLastLogicalRocksDBSnapshot() {
-    RestoreToRocksDBLogicalSnapshot(logical_snapshots_.size() - 1);
+  Status RestoreToLastLogicalRocksDBSnapshot() {
+    return RestoreToRocksDBLogicalSnapshot(logical_snapshots_.size() - 1);
   }
 
   size_t num_logical_snapshots() { return logical_snapshots_.size(); }

@@ -25,6 +25,6 @@ public class LoggingConfigControllerTest extends FakeDBApplication {
 
     Result result = assertPlatformException(() -> doRequestWithBody("POST", uri, body));
     JsonNode node = Json.parse(contentAsString(result));
-    assertErrorNodeValue(node, "rolloverPattern", "Invalid value");
+    assertErrorNodeValue(node, "rolloverPattern", "Incorrect pattern");
   }
 }

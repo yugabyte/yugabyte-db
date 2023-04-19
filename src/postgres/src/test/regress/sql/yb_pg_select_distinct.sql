@@ -1,9 +1,37 @@
 --
+-- SELECT_DISTINCT
+--
+
+--
+-- awk '{print $3;}' onek.data | sort -n | uniq
+--
+SELECT DISTINCT two FROM tmp ORDER BY 1;
+
+--
+-- awk '{print $5;}' onek.data | sort -n | uniq
+--
+SELECT DISTINCT ten FROM tmp ORDER BY 1;
+
+--
+-- awk '{print $16;}' onek.data | sort -d | uniq
+--
+SELECT DISTINCT string4 FROM tmp ORDER BY 1;
+
+--
+-- awk '{print $3,$16,$5;}' onek.data | sort -d | uniq |
+-- sort +0n -1 +1d -2 +2n -3
+--
+SELECT DISTINCT two, string4, ten
+   FROM tmp
+   ORDER BY two using <, string4 using <, ten using <;
+
+--
 -- awk '{print $2;}' person.data |
 -- awk '{if(NF!=1){print $2;}else{print;}}' - emp.data |
 -- awk '{if(NF!=1){print $2;}else{print;}}' - student.data |
 -- awk 'BEGIN{FS="      ";}{if(NF!=1){print $5;}else{print;}}' - stud_emp.data |
 -- sort -n -r | uniq
+-- TODO(#1129): add missing rows 23, 60 when inheritance is supported.
 --
 SELECT DISTINCT p.age FROM person* p ORDER BY age using >;
 
@@ -46,13 +74,3 @@ SELECT 1 IS NOT DISTINCT FROM 2 as "no";
 SELECT 2 IS NOT DISTINCT FROM 2 as "yes";
 SELECT 2 IS NOT DISTINCT FROM null as "no";
 SELECT null IS NOT DISTINCT FROM null as "yes";
-
--- Testing distinct pushdown, see #16552
-EXPLAIN (ANALYZE, SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name, att.attnum as OID, pg_catalog.format_type(ty.oid,NULL) AS datatype,
-	att.attnotnull as not_null, att.atthasdef as has_default_val
-	FROM pg_catalog.pg_attribute att
-	    JOIN pg_catalog.pg_type ty ON ty.oid=atttypid
-	WHERE
-	    att.attnum > 0
-	    AND att.attisdropped IS FALSE
-	ORDER BY att.attnum LIMIT 1;

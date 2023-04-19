@@ -9,7 +9,7 @@ import React from 'react';
 import clsx from 'clsx';
 import { FormHelperText, makeStyles } from '@material-ui/core';
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
-import { array, object, string } from 'yup';
+import { array, boolean, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBModal, YBModalProps } from '../../../../../redesign/components';
@@ -24,7 +24,6 @@ interface ConfigureK8sRegionModalProps extends YBModalProps {
   configuredRegions: K8sRegionField[];
   onRegionSubmit: (region: K8sRegionField) => void;
   onClose: () => void;
-  providerCode: ProviderCode;
   regionOperation: RegionOperation;
 
   regionSelection?: K8sRegionField;
@@ -35,18 +34,23 @@ interface K8sRegionCloudInfoFormValues {
   certIssuerType: K8sCertIssuerType;
 
   certIssuerName?: string;
+  editKubeConfigContent?: boolean;
+  kubeConfigFilepath?: string;
   kubeConfigContent?: File;
   kubeDomain?: string;
   kubeNamespace?: string;
   kubePodAddressTemplate?: string;
-  kubernetesStorageClasses?: string;
+  kubernetesStorageClass?: string;
   overrides?: string;
 }
 
-interface K8sAvailabilityZoneFormValues extends K8sRegionCloudInfoFormValues {
+export interface K8sAvailabilityZoneFormValues extends K8sRegionCloudInfoFormValues {
   code: string;
+
+  editKubeConfigContent?: boolean;
+  isNewZone?: boolean;
 }
-export interface ConfigureK8sRegionFormValues extends K8sRegionCloudInfoFormValues {
+interface ConfigureK8sRegionFormValues {
   regionData: { value: { code: string; zoneOptions: string[] }; label: string };
   zones: K8sAvailabilityZoneFormValues[];
 
@@ -77,7 +81,6 @@ export const ConfigureK8sRegionModal = ({
   onRegionSubmit,
   onClose,
   regionOperation,
-  providerCode,
   regionSelection,
   vpcSetupType,
   ...modalProps
@@ -86,7 +89,9 @@ export const ConfigureK8sRegionModal = ({
     regionData: object().required(`${K8sRegionFieldLabel.REGION} is required.`),
     zones: array().of(
       object().shape({
-        code: string().required('Zone code is required.')
+        code: string().required('Zone code is required.'),
+        editKubeConfigContent: boolean(),
+        isNewZone: boolean()
       })
     )
   });
@@ -107,7 +112,14 @@ export const ConfigureK8sRegionModal = ({
     const newRegion = {
       ...formValues,
       code: formValues.regionData.value.code,
-      fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId()
+      fieldId: formValues.fieldId ?? generateLowerCaseAlphanumericId(),
+      zones: formValues.zones.map((zone) => {
+        const { isNewZone, ...zoneValues } = zone;
+        // `isNewZone` should be kept internal since this is only used
+        // to track whether we should show an `editKubeConfigContent` toggle in the
+        // component for configuring k8s AZs
+        return { ...zoneValues };
+      })
     };
     onRegionSubmit(newRegion);
     formMethods.reset();
@@ -115,7 +127,7 @@ export const ConfigureK8sRegionModal = ({
   };
 
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
-  const regionOptions = getRegionOptions(providerCode).filter(
+  const regionOptions = getRegionOptions(ProviderCode.KUBERNETES).filter(
     (regionOption) =>
       regionSelection?.code === regionOption.value.code ||
       !configuredRegionCodes.includes(regionOption.value.code)
@@ -144,6 +156,7 @@ export const ConfigureK8sRegionModal = ({
         <div>
           <ConfigureK8sAvailabilityZoneField
             className={classes.manageAvailabilityZoneField}
+            regionOperation={regionOperation}
             isSubmitting={formMethods.formState.isSubmitting}
           />
           {formMethods.formState.errors.zones?.message && (

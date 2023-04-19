@@ -18,10 +18,11 @@
 
 namespace yb {
 namespace stateful_service {
-class PgAutoAnalyzeService : public StatefulServiceBase, public PgAutoAnalyzeServiceIf {
+class PgAutoAnalyzeService : public StatefulRpcServiceBase<PgAutoAnalyzeServiceIf> {
  public:
-  explicit PgAutoAnalyzeService(const scoped_refptr<MetricEntity>& metric_entity);
-  void Shutdown() override;
+  explicit PgAutoAnalyzeService(
+      const scoped_refptr<MetricEntity>& metric_entity,
+      const std::shared_future<client::YBClient*>& client_future);
 
  private:
   void Activate(const int64_t leader_term) override;

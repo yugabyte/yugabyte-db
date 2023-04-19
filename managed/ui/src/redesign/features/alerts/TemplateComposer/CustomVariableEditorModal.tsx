@@ -8,21 +8,21 @@
  */
 
 import React, { FC, useEffect } from 'react';
+import * as Yup from 'yup';
+import clsx from 'clsx';
 import { useMutation, useQueryClient } from 'react-query';
 import { Box, Grid, makeStyles } from '@material-ui/core';
-import { Add, Edit } from '@material-ui/icons';
 import { FieldArrayPath, useFieldArray, useForm } from 'react-hook-form';
 import { Trans, useTranslation } from 'react-i18next';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
-import * as Yup from 'yup';
-import clsx from 'clsx';
 import { YBButton, YBModal, YBRadio, YBInputField } from '../../../components';
 import { useCommonStyles } from './CommonStyles';
 import { CustomVariable } from './ICustomVariables';
 import { ALERT_TEMPLATES_QUERY_KEY, createCustomAlertTemplteVariable } from './CustomVariablesAPI';
 import { isDefinedNotNull } from '../../../../utils/ObjectUtils';
 import { createErrorMessage } from '../../universe/universe-form/utils/helpers';
+import { Add, Edit } from '@material-ui/icons';
 import { ReactComponent as BulbIcon } from '../../../assets/bulb.svg';
 import { ReactComponent as Trash } from '../../../assets/trashbin.svg';
 
@@ -44,7 +44,12 @@ const INITIAL_FORM_VALUE: CustomVariablesForm = {
 
 const useStyles = makeStyles((theme) => ({
   root: {
-    overflow: 'visible'
+    overflow: 'visible',
+    "& .MuiInputLabel-root": {
+      textTransform: 'none',
+      fontSize: '13px',
+      color: theme.palette.common.black
+    }
   },
   headerIcon: {
     color: theme.palette.orange[500],
@@ -143,9 +148,8 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
         reset();
         toast.success(
           <Trans
-            i18nKey={`alertCustomTemplates.customVariables.${
-              isEditMode ? 'edit' : 'create'
-            }Success`}
+            i18nKey={`alertCustomTemplates.customVariables.${isEditMode ? 'edit' : 'create'
+              }Success`}
             values={{ variable_name: variables[0].name }}
             components={{ u: <u /> }}
           />
@@ -195,14 +199,17 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
         }
       }}
       dialogContentProps={{
-        className: classes.root
+        className: classes.root,
+        dividers: true
       }}
+      enableBackdropDismiss
     >
       <YBInputField
         fullWidth
         name="customVariableName"
         control={control}
         label={t('alertCustomTemplates.customVariables.createNewVariableModal.name')}
+        data-testid="custom-variable-name-input"
         disabled={isEditMode}
       />
       <Box mt={4}>{t('alertCustomTemplates.customVariables.createNewVariableModal.values')}</Box>
@@ -236,6 +243,8 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
                     placeholder={`value ${index + 1}`}
                     fullWidth
                     name={`possibleValues.${index}.text` as FieldArrayPath<string[]>}
+                    data-testid={`custom-variable-input-${index}`}
+
                     control={control}
                   />
                 </Grid>
@@ -243,6 +252,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
                   <YBRadio
                     name={`possibleValues.${index}.isDefault`}
                     checked={formValues.possibleValues[index].isDefault}
+                    data-testid={`custom-variable-radio-${index}`}
                     onChange={() => {
                       setValue('possibleValues', [
                         ...formValues.possibleValues.map((t, i) => {
@@ -256,6 +266,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
                 <Grid item md={1} xs={1} lg={1}>
                   <Trash
                     className={classes.deleteIcon}
+                    data-testid={`custom-variable-delete-${index}`}
                     onClick={() => {
                       remove(index);
                     }}
@@ -271,7 +282,8 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
         <YBButton
           variant="secondary"
           startIcon={<Add />}
-          onClick={() => append({ text: '', isDefault: false })}
+          onClick={() => append({ text: '', isDefault: formValues.possibleValues.length === 0 })}
+          data-testid={`custom-variable-add-button`}
         >
           {t('alertCustomTemplates.customVariables.createNewVariableModal.addValuesButton')}
         </YBButton>

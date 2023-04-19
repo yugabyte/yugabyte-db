@@ -31,7 +31,11 @@ import org.pac4j.core.profile.ProfileManager;
 import org.pac4j.play.PlayWebContext;
 import org.pac4j.play.store.PlaySessionStore;
 import play.libs.typedmap.TypedKey;
-import play.mvc.*;
+import play.mvc.Action;
+import play.mvc.Http;
+import play.mvc.Http.Cookie;
+import play.mvc.Result;
+import play.mvc.Results;
 
 @Slf4j
 public class TokenAuthenticator extends Action.Simple {
@@ -61,9 +65,17 @@ public class TokenAuthenticator extends Action.Simple {
 
   public static final TypedKey<UserWithFeatures> USER = TypedKey.create("user");
 
+  private static final Set<TypedKey<?>> AUTH_KEYS =
+      ImmutableSet.of(
+          CUSTOMER,
+          USER,
+          JWTVerifier.CLIENT_ID_CLAIM,
+          JWTVerifier.USER_ID_CLAIM,
+          JWTVerifier.CLIENT_TYPE_CLAIM);
+
   private final Config config;
 
-  private final PlaySessionStore playSessionStore;
+  private final PlaySessionStore sessionStore;
 
   private final UserService userService;
 
@@ -74,24 +86,24 @@ public class TokenAuthenticator extends Action.Simple {
   @Inject
   public TokenAuthenticator(
       Config config,
-      PlaySessionStore playSessionStore,
+      PlaySessionStore sessionStore,
       UserService userService,
       RuntimeConfigFactory runtimeConfigFactory,
       JWTVerifier jwtVerifier) {
     this.config = config;
-    this.playSessionStore = playSessionStore;
+    this.sessionStore = sessionStore;
     this.userService = userService;
     this.runtimeConfigFactory = runtimeConfigFactory;
     this.jwtVerifier = jwtVerifier;
   }
 
-  public Users getCurrentAuthenticatedUser(Http.Context ctx) {
+  public Users getCurrentAuthenticatedUser(Http.Request request) {
     String token;
     Users user = null;
     boolean useOAuth = runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.use_oauth");
-    Http.Cookie cookieValue = ctx.request().cookie(COOKIE_PLAY_SESSION);
+    Optional<Http.Cookie> cookieValue = request.getCookie(COOKIE_PLAY_SESSION);
     if (useOAuth) {
-      final PlayWebContext context = new PlayWebContext(ctx.request(), playSessionStore);
+      final PlayWebContext context = new PlayWebContext(request, sessionStore);
       final ProfileManager<CommonProfile> profileManager = new ProfileManager<>(context);
       if (profileManager.isAuthenticated()) {
         String emailAttr =
@@ -106,20 +118,20 @@ public class TokenAuthenticator extends Action.Simple {
       }
       if (user == null) {
         // Defaulting to regular flow to support dual login.
-        token = fetchToken(ctx, false /* isApiToken */);
+        token = fetchToken(request, false /* isApiToken */);
         user = Users.authWithToken(token, getAuthTokenExpiry());
         if (user != null && !user.getRole().equals(Role.SuperAdmin)) {
           user = null; // We want to only allow SuperAdmins access.
         }
       }
     } else {
-      token = fetchToken(ctx, false /* isApiToken */);
+      token = fetchToken(request, false /* isApiToken */);
       user = Users.authWithToken(token, getAuthTokenExpiry());
     }
-    if (user == null && cookieValue == null) {
-      token = fetchToken(ctx, true /* isApiToken */);
+    if (user == null && !cookieValue.isPresent()) {
+      token = fetchToken(request, true /* isApiToken */);
       if (token == null) {
-        UUID userUuid = jwtVerifier.verify(ctx, API_JWT_HEADER);
+        UUID userUuid = jwtVerifier.verify(request, API_JWT_HEADER);
         if (userUuid != null) {
           user = Users.getOrBadRequest(userUuid);
         }
@@ -131,12 +143,11 @@ public class TokenAuthenticator extends Action.Simple {
   }
 
   @Override
-  public CompletionStage<Result> call(Http.Context ctx) {
+  public CompletionStage<Result> call(Http.Request request) {
     try {
-      Http.Request req = ctx.request();
-      String path = req.path();
       String endPoint = "";
-      String requestType = req.method();
+      String path = request.path();
+      String requestType = request.method();
       Pattern pattern = Pattern.compile(".*/customers/([a-zA-Z0-9-]+)(/.*)?");
       Matcher matcher = pattern.matcher(path);
       UUID custUUID = null;
@@ -150,7 +161,7 @@ public class TokenAuthenticator extends Action.Simple {
               String.format("^.*/universes/%s/proxy/%s/(.*)$", patternForUUID, patternForHost),
               path)
           && !config.getBoolean("yb.security.enable_auth_for_proxy_metrics")) {
-        return delegate.call(req);
+        return delegate.call(request);
       }
 
       if (matcher.find()) {
@@ -158,17 +169,17 @@ public class TokenAuthenticator extends Action.Simple {
         endPoint = ((endPoint = matcher.group(2)) != null) ? endPoint : "";
       }
       Customer cust;
-      Users user = getCurrentAuthenticatedUser(ctx);
+      Users user = getCurrentAuthenticatedUser(request);
 
       if (user != null) {
-        cust = Customer.get(user.customerUUID);
+        cust = Customer.get(user.getCustomerUUID());
       } else {
         return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
       }
 
       // Some authenticated calls don't actually need to be authenticated
       // (e.g. /metadata/column_types). Only check auth_token is valid in that case.
-      if (cust != null && (custUUID == null || custUUID.equals(cust.uuid))) {
+      if (cust != null && (custUUID == null || custUUID.equals(cust.getUuid()))) {
         if (!checkAccessLevel(endPoint, user, requestType)) {
           return CompletableFuture.completedFuture(Results.forbidden("User doesn't have access"));
         }
@@ -178,19 +189,19 @@ public class TokenAuthenticator extends Action.Simple {
         // Send Forbidden Response if Authentication Fails.
         return CompletableFuture.completedFuture(Results.forbidden("Unable To Authenticate User"));
       }
-      return delegate.call(req);
+      return delegate.call(request);
     } finally {
-      RequestContext.clean();
+      RequestContext.clean(AUTH_KEYS);
     }
   }
 
-  public boolean checkAuthentication(Http.Context ctx, Set<Role> roles) {
-    String token = fetchToken(ctx, true);
+  public boolean checkAuthentication(Http.Request request, Set<Role> roles) {
+    String token = fetchToken(request, true);
     Users user = null;
     if (token != null) {
       user = Users.authWithApiToken(token);
     } else {
-      token = fetchToken(ctx, false);
+      token = fetchToken(request, false);
       user = Users.authWithToken(token, getAuthTokenExpiry());
     }
     if (user != null) {
@@ -207,31 +218,31 @@ public class TokenAuthenticator extends Action.Simple {
     return false;
   }
 
-  public boolean superAdminAuthentication(Http.Context ctx) {
-    return checkAuthentication(ctx, new HashSet<>(Collections.singletonList(Role.SuperAdmin)));
+  public boolean superAdminAuthentication(Http.Request request) {
+    return checkAuthentication(request, new HashSet<>(Collections.singletonList(Role.SuperAdmin)));
   }
 
   // Calls that require admin authentication should allow
   // both admins and super-admins.
-  public boolean adminAuthentication(Http.Context ctx) {
-    return checkAuthentication(ctx, new HashSet<>(Arrays.asList(Role.Admin, Role.SuperAdmin)));
+  public boolean adminAuthentication(Http.Request request) {
+    return checkAuthentication(request, new HashSet<>(Arrays.asList(Role.Admin, Role.SuperAdmin)));
   }
 
-  public void adminOrThrow(Http.Context ctx) {
-    if (!adminAuthentication(ctx)) {
+  public void adminOrThrow(Http.Request request) {
+    if (!adminAuthentication(request)) {
       throw new PlatformServiceException(UNAUTHORIZED, "Only Admins can perform this operation.");
     }
   }
 
   // TODO: Consider changing to a method annotation
-  public void superAdminOrThrow(Http.Context ctx) {
-    if (!superAdminAuthentication(ctx)) {
+  public void superAdminOrThrow(Http.Request request) {
+    if (!superAdminAuthentication(request)) {
       throw new PlatformServiceException(
           UNAUTHORIZED, "Only Super Admins can perform this operation.");
     }
   }
 
-  private static String fetchToken(Http.Context ctx, boolean isApiToken) {
+  private static String fetchToken(Http.Request request, boolean isApiToken) {
     String header, cookie;
     if (isApiToken) {
       header = API_TOKEN_HEADER;
@@ -240,17 +251,14 @@ public class TokenAuthenticator extends Action.Simple {
       header = AUTH_TOKEN_HEADER;
       cookie = COOKIE_AUTH_TOKEN;
     }
-    Optional<String> headerValueOp = ctx.request().header(header);
-    Http.Cookie cookieValue = ctx.request().cookie(cookie);
+    Optional<String> headerValueOp = request.header(header);
+    Optional<Http.Cookie> cookieValue = request.getCookie(cookie);
 
     if (headerValueOp.isPresent()) {
       return headerValueOp.get();
     }
-    if (cookieValue != null) {
-      // If we are accessing authenticated pages, the auth token would be in the cookie
-      return cookieValue.value();
-    }
-    return null;
+    // If we are accessing authenticated pages, the auth token would be in the cookie
+    return cookieValue.map(Cookie::value).orElse(null);
   }
 
   // Check role, and if the API call is accessible.
@@ -260,7 +268,7 @@ public class TokenAuthenticator extends Action.Simple {
     // user's password.
     if (endPoint.endsWith("/change_password")) {
       UUID userUUID = UUID.fromString(endPoint.split("/")[2]);
-      return userUUID.equals(user.uuid);
+      return userUUID.equals(user.getUuid());
     }
 
     // All users have access to get, metrics and setting an API token.

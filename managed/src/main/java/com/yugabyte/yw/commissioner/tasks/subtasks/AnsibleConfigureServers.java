@@ -98,8 +98,8 @@ public class AnsibleConfigureServers extends NodeTaskBase {
 
   @Override
   public void run() {
-    log.debug("AnsibleConfigureServers run called for {}", taskParams().universeUUID);
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    log.debug("AnsibleConfigureServers run called for {}", taskParams().getUniverseUUID());
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     taskParams().useSystemd =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
     String processType = taskParams().getProperty("processType");
@@ -120,7 +120,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     log.debug(
         "Reset master state is now {} for universe {}. It was {}",
         resetMasterState,
-        universe.universeUUID,
+        universe.getUniverseUUID(),
         taskParams().resetMasterState);
     taskParams().resetMasterState = resetMasterState;
     // Execute the ansible command.
@@ -136,7 +136,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
             getNodeManager().nodeCommand(NodeManager.NodeCommandType.CronCheck, taskParams());
       }
 
-      universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       if (response.code != 0 || taskParams().useSystemd) {
         String nodeName = taskParams().nodeName;
 
@@ -150,7 +150,7 @@ public class AnsibleConfigureServers extends NodeTaskBase {
                 log.info(
                     "Updated {} cronjob status to inactive from universe {}",
                     nodeName,
-                    taskParams().universeUUID);
+                    taskParams().getUniverseUUID());
               }
             };
         saveUniverseDetails(updater);

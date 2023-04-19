@@ -95,7 +95,7 @@ public class CertsRotate extends UpgradeTaskBase {
 
             // Add task to use the updated certs
             createActivateCertsTask(
-                getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().ybcInstalled);
+                getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().isYbcInstalled());
 
           } else {
             // Update the rootCA in platform to have both old cert and new cert
@@ -111,7 +111,7 @@ public class CertsRotate extends UpgradeTaskBase {
 
             // Add task to use the updated certs
             createActivateCertsTask(
-                getUniverse(), nodes, taskParams().upgradeOption, taskParams().ybcInstalled);
+                getUniverse(), nodes, taskParams().upgradeOption, taskParams().isYbcInstalled());
 
             // Reset the old rootCA content in platform
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
@@ -136,7 +136,7 @@ public class CertsRotate extends UpgradeTaskBase {
   private void createUniverseUpdateRootCertTask(UpdateRootCertAction updateAction) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateRootCert");
     UniverseUpdateRootCert.Params params = new UniverseUpdateRootCert.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.rootCA = taskParams().rootCA;
     params.action = updateAction;
     UniverseUpdateRootCert task = createTask(UniverseUpdateRootCert.class);
@@ -201,7 +201,7 @@ public class CertsRotate extends UpgradeTaskBase {
     if (isCertReloadable(universe)) {
       // cert reload can be performed
       log.info("adding cert rotate via reload task ...");
-      createCertReloadTask(nodes, universe.universeUUID, userTaskUUID);
+      createCertReloadTask(nodes, universe.getUniverseUUID(), userTaskUUID);
 
     } else {
       // Do a restart to rotate certificate
@@ -292,7 +292,7 @@ public class CertsRotate extends UpgradeTaskBase {
 
     UpdateUniverseConfig task = createTask(UpdateUniverseConfig.class);
     UpdateUniverseConfig.Params params = new UpdateUniverseConfig.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.configs =
         Collections.singletonMap(Universe.KEY_CERT_HOT_RELOADABLE, Boolean.TRUE.toString());
     task.initialize(params);

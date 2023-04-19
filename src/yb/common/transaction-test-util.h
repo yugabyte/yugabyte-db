@@ -56,7 +56,8 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void Abort(const TransactionId& id, TransactionStatusCallback callback) override {
   }
 
-  void Cleanup(TransactionIdSet&& set) override {
+  Status Cleanup(TransactionIdSet&& set) override {
+    return Status::OK();
   }
 
   Result<int64_t> RegisterRequest() override {
@@ -66,10 +67,12 @@ class TransactionStatusManagerMock : public TransactionStatusManager {
   void UnregisterRequest(int64_t) override {
   }
 
-  void FillPriorities(
-      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {}
+  Status FillPriorities(
+      boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override {
+    return Status::OK();
+  }
 
-  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override {
+  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override {
     return boost::none;
   }
 

@@ -41,6 +41,8 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.EnumUtils;
@@ -49,6 +51,8 @@ import play.mvc.Http.Status;
 
 @Slf4j
 @Entity
+@Getter
+@Setter
 public class NodeAgent extends Model {
 
   /** Node agent server OS type. */
@@ -157,48 +161,48 @@ public class NodeAgent extends Model {
 
   @Id
   @ApiModelProperty(accessMode = READ_ONLY)
-  public UUID uuid;
+  private UUID uuid;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public String name;
+  private String name;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public String ip;
+  private String ip;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public int port;
+  private int port;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public UUID customerUuid;
+  private UUID customerUuid;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public String version;
+  private String version;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(accessMode = READ_ONLY)
-  public State state;
+  private State state;
 
   @UpdatedTimestamp
   @Column(nullable = false)
   @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
-  public Date updatedAt;
+  private Date updatedAt;
 
   @ApiModelProperty(accessMode = READ_ONLY)
   @Column(nullable = false)
   @DbJson
-  public Map<String, String> config;
+  private Map<String, String> config;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(accessMode = READ_ONLY)
-  public OSType osType;
+  private OSType osType;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(accessMode = READ_ONLY)
-  public ArchType archType;
+  private ArchType archType;
 
   @ApiModelProperty(accessMode = READ_ONLY)
   @Column(nullable = false)
-  public String home;
+  private String home;
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
     NodeAgent nodeAgent = finder.byId(uuid);
@@ -252,19 +256,19 @@ public class NodeAgent extends Model {
   }
 
   public void ensureState(State expectedState) {
-    if (state != expectedState) {
+    if (getState() != expectedState) {
       throw new PlatformServiceException(
           Status.CONFLICT,
           String.format(
-              "Invalid current node agent state %s, expected state %s", state, expectedState));
+              "Invalid current node agent state %s, expected state %s", getState(), expectedState));
     }
   }
 
   public void validateStateTransition(State nextState) {
-    if (state == null) {
+    if (getState() == null) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent state must be set");
     }
-    state.validateTransition(nextState);
+    getState().validateTransition(nextState);
   }
 
   @JsonIgnore
@@ -291,15 +295,19 @@ public class NodeAgent extends Model {
 
   public void saveState(State state) {
     validateStateTransition(state);
-    this.state = state;
+    this.setState(state);
     save();
   }
 
   public void heartbeat() {
     Date current = new Date();
-    if (db().update(NodeAgent.class).set("updatedAt", current).where().eq("uuid", uuid).update()
+    if (db().update(NodeAgent.class)
+            .set("updatedAt", current)
+            .where()
+            .eq("uuid", getUuid())
+            .update()
         > 0) {
-      updatedAt = current;
+      setUpdatedAt(current);
     }
   }
 
@@ -338,7 +346,7 @@ public class NodeAgent extends Model {
 
   @JsonIgnore
   public Path getCertDirPath() {
-    String certDirPath = config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    String certDirPath = getConfig().get(NodeAgent.CERT_DIR_PATH_PROPERTY);
     if (StringUtils.isBlank(certDirPath)) {
       throw new IllegalArgumentException(
           "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
@@ -367,7 +375,7 @@ public class NodeAgent extends Model {
   }
 
   public void updateCertDirPath(Path certDirPath) {
-    config.put(NodeAgent.CERT_DIR_PATH_PROPERTY, certDirPath.toString());
+    getConfig().put(NodeAgent.CERT_DIR_PATH_PROPERTY, certDirPath.toString());
     save();
   }
 }

@@ -68,8 +68,6 @@ DEFINE_UNKNOWN_bool(exclude_dead, false, "Exclude dead tservers from output");
 using std::cerr;
 using std::endl;
 using std::ostringstream;
-using std::make_pair;
-using std::next;
 using std::pair;
 using std::string;
 using std::vector;
@@ -367,6 +365,40 @@ Result<rapidjson::Document> ListSnapshotRestorations(
   }
   result.AddMember("restorations", json_restorations, result.GetAllocator());
   return result;
+}
+
+Status ImportSnapshot(ClusterAdminClient* client, const ClusterAdminCli::CLIArguments& args,
+    bool selective) {
+  if (args.size() < 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  string filename = args[0];
+  size_t num_tables = 0;
+  TypedNamespaceName keyspace;
+  vector<YBTableName> tables;
+
+  if (args.size() >= 2) {
+    keyspace = VERIFY_RESULT(ParseNamespaceName(args[1]));
+    num_tables = args.size() - 2;
+
+    if (num_tables > 0) {
+      LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
+      tables.reserve(num_tables);
+
+      for (size_t i = 0; i < num_tables; ++i) {
+        tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
+      }
+    }
+  }
+
+  string msg = num_tables > 0 ?
+    Substitute("Unable to import tables $0 from snapshot meta file $1",
+        yb::ToString(tables), filename) :
+    Substitute("Unable to import snapshot meta file $0", filename);
+
+  RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(filename, keyspace, tables, selective), msg);
+  return Status::OK();
 }
 
 } // namespace
@@ -1473,37 +1505,14 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
   Register(
       "import_snapshot", " <file_name> [<namespace> <table_name> [<table_name>]...]",
       [client](const CLIArguments& args) -> Status {
-        if (args.size() < 1) {
-          return ClusterAdminCli::kInvalidArguments;
-        }
+        return ImportSnapshot(client, args, false);
+      });
 
-        const string file_name = args[0];
-        TypedNamespaceName keyspace;
-        size_t num_tables = 0;
-        vector<YBTableName> tables;
 
-        if (args.size() >= 2) {
-          keyspace = VERIFY_RESULT(ParseNamespaceName(args[1]));
-          num_tables = args.size() - 2;
-
-          if (num_tables > 0) {
-            LOG_IF(DFATAL, keyspace.name.empty()) << "Uninitialized keyspace: " << keyspace.name;
-            tables.reserve(num_tables);
-
-            for (size_t i = 0; i < num_tables; ++i) {
-              tables.push_back(YBTableName(keyspace.db_type, keyspace.name, args[2 + i]));
-            }
-          }
-        }
-
-        const string msg = num_tables > 0
-                               ? Substitute(
-                                     "Unable to import tables $0 from snapshot meta file $1",
-                                     yb::ToString(tables), file_name)
-                               : Substitute("Unable to import snapshot meta file $0", file_name);
-
-        RETURN_NOT_OK_PREPEND(client->ImportSnapshotMetaFile(file_name, keyspace, tables), msg);
-        return Status::OK();
+  Register(
+      "import_snapshot_selective", " <file_name> [<namespace> <table_name> [<table_name>]...]",
+      [client](const CLIArguments& args) -> Status {
+        return ImportSnapshot(client, args, true);
       });
 
   Register("delete_snapshot", " <snapshot_id>", [client](const CLIArguments& args) -> Status {
@@ -1971,15 +1980,22 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
       });
 
   RegisterJson(
-      "get_xcluster_estimated_data_loss", "",
+      "get_xcluster_safe_time", " [include_lag_and_skew]",
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
-        return client->GetXClusterEstimatedDataLoss();
-      });
+        if (args.size() != 0 && args.size() != 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
 
-  RegisterJson(
-      "get_xcluster_safe_time", "",
-      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
-        return client->GetXClusterSafeTime();
+        bool include_lag_and_skew = false;
+        if (args.size() > 0) {
+          if (IsEqCaseInsensitive(args[0], "include_lag_and_skew")) {
+            include_lag_and_skew = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+
+        return client->GetXClusterSafeTime(include_lag_and_skew);
       });
 } // NOLINT, prevents long function message
 

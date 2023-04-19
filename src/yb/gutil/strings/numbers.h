@@ -351,34 +351,6 @@ bool AutoDigitLessThan(const char* a, size_t alen,
 bool StrictAutoDigitLessThan(const char* a, size_t alen,
                              const char* b, size_t blen);
 
-struct autodigit_less
-  : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string& b) const {
-    return AutoDigitLessThan(a.data(), a.size(), b.data(), b.size());
-  }
-};
-
-struct autodigit_greater
-  : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string& b) const {
-    return AutoDigitLessThan(b.data(), b.size(), a.data(), a.size());
-  }
-};
-
-struct strict_autodigit_less
-  : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string& b) const {
-    return StrictAutoDigitLessThan(a.data(), a.size(), b.data(), b.size());
-  }
-};
-
-struct strict_autodigit_greater
-  : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string& b) const {
-    return StrictAutoDigitLessThan(b.data(), b.size(), a.data(), a.size());
-  }
-};
-
 // ----------------------------------------------------------------------
 // SimpleItoa()
 //    Description: converts an integer to a string.

@@ -112,7 +112,6 @@ using std::string;
 using std::unique_ptr;
 using std::unordered_set;
 using std::vector;
-using std::set;
 
 using strings::Substitute;
 
@@ -1578,9 +1577,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Get partitions from external snapshot.
   size_t i = 0;
-  vector<Partition> partitions(table_data->partitions.size());
+  vector<dockv::Partition> partitions(table_data->partitions.size());
   for (const auto& partition_pb : table_data->partitions) {
-    Partition::FromPB(partition_pb, &partitions[i++]);
+    dockv::Partition::FromPB(partition_pb, &partitions[i++]);
   }
   VLOG_WITH_FUNC(3) << "Got " << partitions.size()
                     << " partitions from external snapshot for table " << table->id();
@@ -1605,10 +1604,11 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
       // other writers from entering from this point forward, so take the write lock now.
       table_lock = table->LockForWrite();
       if (table->old_pb().state() != SysTablesEntryPB::RUNNING) {
-        return STATUS_FORMAT(IllegalState,
-                             "Table $0 not running: $1",
-                             table->ToString(),
-                             SysTablesEntryPB_State_Name(table->old_pb().state()));
+          return STATUS_FORMAT(
+              IllegalState,
+              "Table $0 not running: $1",
+              table->ToString(),
+              SysTablesEntryPB_State_Name(table->old_pb().state()));
       }
       // Make sure the table's tablets can be deleted.
       RETURN_NOT_OK_PREPEND(CheckIfForbiddenToDeleteTabletOf(table),
@@ -1674,6 +1674,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
     // Add new tablets to TableInfo. This must be done after removing tablets because
     // TableInfo::partitions_ has key PartitionKey, which old and new tablets may conflict on.
     table->AddTablets(new_tablets);
+    // Since we have added a new set of tablets move the table back to a PREPARING state. It will
+    // get marked to RUNNING once all the new tablets have been created.
+    table_pb.set_state(SysTablesEntryPB::PREPARING);
 
     // Commit table and tablets to disk.
     RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table, new_tablets, old_tablets));

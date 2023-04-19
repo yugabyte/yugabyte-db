@@ -88,12 +88,12 @@ public class NodeAgentPollerTest extends FakeDBApplication {
   }
 
   private NodeAgent register(NodeAgentForm payload) {
-    NodeAgent nodeAgent = nodeAgentHandler.register(customer.uuid, payload);
-    assertNotNull(nodeAgent.uuid);
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgent.uuid);
-    assertEquals(State.REGISTERING, nodeAgent.state);
+    NodeAgent nodeAgent = nodeAgentHandler.register(customer.getUuid(), payload);
+    assertNotNull(nodeAgent.getUuid());
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
+    assertEquals(State.REGISTERING, nodeAgent.getState());
     payload.state = State.READY.name();
-    return nodeAgentHandler.updateState(customer.uuid, nodeAgent.uuid, payload);
+    return nodeAgentHandler.updateState(customer.getUuid(), nodeAgent.getUuid(), payload);
   }
 
   @Test
@@ -107,8 +107,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.archType = ArchType.AMD64.name();
     payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
-    UUID nodeAgentUuid = nodeAgent.uuid;
-    Date time1 = nodeAgent.updatedAt;
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    Date time1 = nodeAgent.getUpdatedAt();
     PollerTaskParam param =
         PollerTaskParam.builder()
             .nodeAgentUuid(nodeAgentUuid)
@@ -117,9 +117,9 @@ public class NodeAgentPollerTest extends FakeDBApplication {
             .build();
     Thread.sleep(1000);
     nodeAgentPoller.createPollerTask(param).run();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    Date time2 = nodeAgent.updatedAt;
-    assertEquals(State.READY, nodeAgent.state);
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid);
+    Date time2 = nodeAgent.getUpdatedAt();
+    assertEquals(State.READY, nodeAgent.getState());
     // Make sure time is updated.
     assertTrue("Time is updated", time2.equals(time1));
     param =
@@ -134,7 +134,7 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     assertThrows(
         "Cannot find node agent",
         PlatformServiceException.class,
-        () -> NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid));
+        () -> NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid));
   }
 
   @Test
@@ -147,8 +147,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     payload.archType = ArchType.AMD64.name();
     payload.home = "/home/yugabyte/node-agent";
     NodeAgent nodeAgent = register(payload);
-    UUID nodeAgentUuid = nodeAgent.uuid;
-    Date time1 = nodeAgent.updatedAt;
+    UUID nodeAgentUuid = nodeAgent.getUuid();
+    Date time1 = nodeAgent.getUpdatedAt();
     PollerTaskParam param =
         PollerTaskParam.builder()
             .nodeAgentUuid(nodeAgentUuid)
@@ -160,9 +160,9 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     Thread.sleep(1000);
     // Run to just heartbeat.
     pollerTask.run();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgentUuid);
-    Date time2 = nodeAgent.updatedAt;
-    assertEquals(State.READY, nodeAgent.state);
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgentUuid);
+    Date time2 = nodeAgent.getUpdatedAt();
+    assertEquals(State.READY, nodeAgent.getState());
     // Make sure time is updated.
     assertTrue("Time is not updated " + time1, time2.after(time1));
   }
@@ -197,22 +197,22 @@ public class NodeAgentPollerTest extends FakeDBApplication {
     Path certDir = nodeAgent.getCertDirPath();
     PollerTaskParam param =
         PollerTaskParam.builder()
-            .nodeAgentUuid(nodeAgent.uuid)
+            .nodeAgentUuid(nodeAgent.getUuid())
             .softwareVersion("2.13.0.0")
             .lifetime(Duration.ofMinutes(5))
             .build();
     PollerTask pollerTask = nodeAgentPoller.createPollerTask(param);
     pollerTask.run();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgent.uuid);
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
     Path newCertDirPath = nodeAgent.getCertDirPath();
     Path mergedCertFile = nodeAgent.getMergedCaCertFilePath();
     // Restart was set, it is not live yet.
-    assertEquals(State.UPGRADED, nodeAgent.state);
+    assertEquals(State.UPGRADED, nodeAgent.getState());
     assertTrue("Merged cert file does not exist", mergedCertFile.toFile().exists());
     pollerTask.run();
-    nodeAgent = NodeAgent.getOrBadRequest(customer.uuid, nodeAgent.uuid);
+    nodeAgent = NodeAgent.getOrBadRequest(customer.getUuid(), nodeAgent.getUuid());
     // Restart done after running again.
-    assertEquals(State.READY, nodeAgent.state);
+    assertEquals(State.READY, nodeAgent.getState());
     assertFalse("Merged cert file still exists", mergedCertFile.toFile().exists());
     assertFalse("Cert dir is not updated", certDir.equals(newCertDirPath));
     verify(mockNodeAgentClient, times(3)).uploadFile(any(), any(), any());

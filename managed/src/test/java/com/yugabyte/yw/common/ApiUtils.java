@@ -115,8 +115,11 @@ public class ApiUtils {
       final String nodePrefix,
       final boolean setMasters,
       final boolean updateInProgress) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(ClusterType.PRIMARY, userIntent);
     AvailableNodeTracker mockNodeTracker =
-        new AvailableNodeTracker(userIntent, Collections.emptyList()) {
+        new AvailableNodeTracker(
+            cluster.uuid, Collections.singletonList(cluster), Collections.emptyList()) {
           @Override
           public void acquire(UUID zoneId, UniverseTaskBase.ServerType serverType) {
             super.acquire(zoneId, serverType);
@@ -162,8 +165,8 @@ public class ApiUtils {
         universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
         universeDetails.nodeDetailsSet = new HashSet<>();
         universeDetails.updateInProgress = updateInProgress;
-        universeDetails.enableYbc = enableYbc;
-        universeDetails.ybcInstalled = enableYbc;
+        universeDetails.setEnableYbc(enableYbc);
+        universeDetails.setYbcInstalled(enableYbc);
         List<UUID> azUUIDList = null;
         if (placementInfo != null) {
           PlacementCloud placementCloud = placementInfo.cloudList.get(0);
@@ -469,7 +472,8 @@ public class ApiUtils {
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
     InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -481,7 +485,8 @@ public class ApiUtils {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     InstanceType i =
-        InstanceType.upsert(p.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
     UserIntent ui = getTestUserIntent(r, p, i, 3);
     ui.replicationFactor = 3;
     ui.masterGFlags = new HashMap<>();
@@ -491,9 +496,9 @@ public class ApiUtils {
 
   public static UserIntent getTestUserIntent(Region r, Provider p, InstanceType i, int numNodes) {
     UserIntent ui = new UserIntent();
-    ui.regionList = ImmutableList.of(r.uuid);
-    ui.provider = p.uuid.toString();
-    ui.providerType = Common.CloudType.valueOf(p.code);
+    ui.regionList = ImmutableList.of(r.getUuid());
+    ui.provider = p.getUuid().toString();
+    ui.providerType = Common.CloudType.valueOf(p.getCode());
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
     ui.deviceInfo = getDummyDeviceInfo(1, 100);
@@ -673,8 +678,8 @@ public class ApiUtils {
   public static UserIntent getDummyUserIntent(
       DeviceInfo deviceInfo, Provider provider, String instanceType) {
     UserIntent userIntent = new UserIntent();
-    userIntent.provider = provider.uuid.toString();
-    userIntent.providerType = Common.CloudType.valueOf(provider.code);
+    userIntent.provider = provider.getUuid().toString();
+    userIntent.providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.instanceType = instanceType;
     userIntent.deviceInfo = deviceInfo;
     return userIntent;

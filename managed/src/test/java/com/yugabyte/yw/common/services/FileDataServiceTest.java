@@ -69,11 +69,11 @@ public class FileDataServiceTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
     for (String diskFileName : diskFileNames) {
-      String filePath = "/keys/" + p.uuid + "/";
+      String filePath = "/keys/" + p.getUuid() + "/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     for (String diskFileName : diskFileNames) {
-      String filePath = "/node-agent/certs/" + customer.uuid + "/" + UUID.randomUUID() + "/0/";
+      String filePath = "/node-agent/certs/" + customer.getUuid() + "/" + UUID.randomUUID() + "/0/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     fileDataService.syncFileData(TMP_STORAGE_PATH, false);
@@ -88,7 +88,7 @@ public class FileDataServiceTest extends FakeDBApplication {
     for (String dbFileName : dbFileNames) {
       UUID parentUUID = UUID.randomUUID();
       String filePath =
-          "/node-agent/certs/" + customer.uuid + "/" + parentUUID + "/0/" + dbFileName;
+          "/node-agent/certs/" + customer.getUuid() + "/" + parentUUID + "/0/" + dbFileName;
       String content = Base64.getEncoder().encodeToString(UUID.randomUUID().toString().getBytes());
       FileData.create(parentUUID, filePath, dbFileName, content);
     }
@@ -107,7 +107,7 @@ public class FileDataServiceTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
     for (String diskFileName : diskFileNames) {
-      String filePath = "/keys/" + p.uuid + "/";
+      String filePath = "/keys/" + p.getUuid() + "/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     fileDataService.syncFileData(TMP_STORAGE_PATH, false);
@@ -131,7 +131,7 @@ public class FileDataServiceTest extends FakeDBApplication {
     Provider p = ModelFactory.awsProvider(customer);
     String[] diskFileNames = {"testFile1.txt", "testFile2", "testFile3.root.crt"};
     for (String diskFileName : diskFileNames) {
-      String filePath = "/keys/" + p.uuid + "/";
+      String filePath = "/keys/" + p.getUuid() + "/";
       createTempFile(TMP_STORAGE_PATH + filePath, diskFileName, UUID.randomUUID().toString());
     }
     fileDataService.syncFileData(TMP_STORAGE_PATH, false);

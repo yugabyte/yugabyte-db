@@ -9,13 +9,14 @@ import {
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
 import clsx from 'clsx';
+import { Field } from 'formik';
 
 import {
   fetchTablesInUniverse,
   fetchXClusterConfig
 } from '../../../../actions/xClusterReplication';
-import { api } from '../../../../redesign/helpers/api';
-import { YBControlledSelect, YBInputField } from '../../../common/forms/fields';
+import { api, runtimeConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
+import { YBCheckBox, YBControlledSelect, YBInputField } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
@@ -30,7 +31,12 @@ import { CollapsibleNote } from '../CollapsibleNote';
 import { ExpandedTableSelect } from './ExpandedTableSelect';
 import { XClusterTableEligibility } from '../../constants';
 import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
-import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
+import {
+  RuntimeConfigKey,
+  SortOrder,
+  YBTableRelationType
+} from '../../../../redesign/helpers/constants';
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../../actions/customers';
 
 import { TableType, TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
@@ -186,13 +192,19 @@ export const TableSelect = (props: TableSelectProps) => {
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', sourceUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(sourceUniverseUUID).then((response) => response.data)
+    universeQueryKey.tables(sourceUniverseUUID, { excludeColocatedTables: true }),
+    () =>
+      fetchTablesInUniverse(sourceUniverseUUID, { excludeColocatedTables: true }).then(
+        (response) => response.data
+      )
   );
 
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    ['universe', targetUniverseUUID, 'tables'],
-    () => fetchTablesInUniverse(targetUniverseUUID).then((response) => response.data)
+    universeQueryKey.tables(targetUniverseUUID, { excludeColocatedTables: true }),
+    () =>
+      fetchTablesInUniverse(targetUniverseUUID, { excludeColocatedTables: true }).then(
+        (response) => response.data
+      )
   );
 
   const sourceUniverseQuery = useQuery<Universe>(['universe', sourceUniverseUUID], () =>
@@ -220,6 +232,10 @@ export const TableSelect = (props: TableSelectProps) => {
     // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   ) as UseQueryResult<XClusterConfig>[];
 
+  const globalRuntimeConfigQuery = useQuery(runtimeConfigQueryKey.globalScope(), () =>
+    api.fetchRuntimeConfigs(DEFAULT_RUNTIME_GLOBAL_SCOPE, true)
+  );
+
   if (
     sourceUniverseTablesQuery.isLoading ||
     sourceUniverseTablesQuery.isIdle ||
@@ -228,18 +244,21 @@ export const TableSelect = (props: TableSelectProps) => {
     sourceUniverseQuery.isLoading ||
     sourceUniverseQuery.isIdle ||
     targetUniverseQuery.isLoading ||
-    targetUniverseQuery.isIdle
+    targetUniverseQuery.isIdle ||
+    globalRuntimeConfigQuery.isLoading ||
+    globalRuntimeConfigQuery.isIdle
   ) {
     return <YBLoading />;
   }
 
-  if (
-    sourceUniverseTablesQuery.isError ||
-    targetUniverseTablesQuery.isError ||
-    sourceUniverseQuery.isError ||
-    targetUniverseQuery.isError
-  ) {
-    return <YBErrorIndicator />;
+  if (sourceUniverseTablesQuery.isError || sourceUniverseQuery.isError) {
+    return <YBErrorIndicator message="Error fetching source universe information." />;
+  }
+  if (targetUniverseTablesQuery.isError || targetUniverseQuery.isError) {
+    return <YBErrorIndicator message="Error fetching target universe information." />;
+  }
+  if (globalRuntimeConfigQuery.isError) {
+    return <YBErrorIndicator message="Error fetching runtime configurations." />;
   }
 
   const toggleTableGroup = (isSelected: boolean, rows: XClusterTableCandidate[]) => {
@@ -379,9 +398,23 @@ export const TableSelect = (props: TableSelectProps) => {
       setSortOrder(sortOrder);
     }
   };
-
+  const runtimeConfigEntries = globalRuntimeConfigQuery.data.configEntries ?? [];
+  const isTransactionalAtomicitySupported = runtimeConfigEntries.some(
+    (config: any) =>
+      config.key === RuntimeConfigKey.XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG &&
+      config.value === 'true'
+  );
   return (
     <>
+      {isTransactionalAtomicitySupported &&
+        props.configAction === XClusterConfigAction.CREATE &&
+        tableType === TableType.PGSQL_TABLE_TYPE && (
+          <Field
+            name="isTransactionalConfig"
+            component={YBCheckBox}
+            label="Enable transactional atomicity"
+          />
+        )}
       <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
       <div className={styles.tableToolbar}>
         <Select

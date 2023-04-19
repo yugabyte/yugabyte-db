@@ -1,28 +1,27 @@
 ---
-title: VPC network overview
+title: Overview
 headerTitle:
 linkTitle: Overview
 description: Requirements and considerations for setting up a VPC network.
-headcontent: What you need to know before setting up a VPC network
+headcontent: What you need to know before creating VPCs
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-vpc-intro
     parent: cloud-vpcs
-    weight: 10
+    weight: 5
 type: docs
 ---
 
-A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. This is called peering. A VPC peering connection is a networking connection between two VPCs on the same cloud provider that enables you to route traffic between them privately, without traversing the public internet. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
+A virtual private cloud (VPC) is a virtual network that you can define in a cloud provider. After you create a VPC on a cloud provider, you can then connect it with other VPCs on the same provider. VPC networks provide more secure connections between resources because the network is inaccessible from the public internet and other VPC networks.
 
-In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a VPC, it can connect to an application running on a peered VPC as though it was located on the same network; all traffic stays in the cloud provider's network. The VPCs can be in different regions.
+A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network (unless you explicitly enable public access). Resources that can be included in the network fall into two categories:
 
-A VPC is defined by a block of [private IP addresses](#private-ip-address-ranges), entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing). In the context of your VPC network, each address is unique. A cluster deployed in a VPC can only be accessed from resources inside the VPC network.
-
-![Peered VPCs](/images/yb-cloud/managed-vpc-diagram.png)
+- peered application VPCs. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster VPC using [peering connections](../cloud-add-peering/).
+- privately linked services. Your applications reside in one or more VPCs on the same cloud provider, and are connected to your cluster over a private link to a [private service endpoint](../cloud-add-endpoint/).
 
 ## Advantages
 
-Deploying your cluster in a VPC network has the following advantages:
+Deploying your cluster in a VPC has the following advantages:
 
 - Lower network latency. Traffic uses only internal addresses, which provides lower latency than connectivity that uses external addresses.
 - Better security. Your services are never exposed to the public Internet.
@@ -30,13 +29,14 @@ Deploying your cluster in a VPC network has the following advantages:
 
 ## Pricing
 
-There's no additional charge for using a VPC. In most cases, using a VPC will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
+There's no additional charge for using a VPC, peering, or private service endpoints. In most cases, using a VPC network will reduce your data transfer costs. VPCs are not supported for Sandbox clusters.
+
+Note that using a private service endpoint with [AWS PrivateLink](https://aws.amazon.com/privatelink/) does incur charges from AWS. See [AWS PrivateLink pricing](https://aws.amazon.com/privatelink/pricing/).
 
 ## Limitations
 
 - You assign a VPC when you create a cluster. You can't switch VPCs after cluster creation.
-- You can't change the size of your VPC once it is created.
-- You can't peer VPCs with overlapping ranges with the same application VPC.
+- You can't change the [size of your VPC](#set-the-cidr-and-size-your-vpc) once it is created.
 - You can create a maximum of 3 AWS VPCs per region.
 - You can create a maximum of 3 GCP VPCs.
 - VPCs are not supported on Sandbox clusters.
@@ -45,25 +45,18 @@ If you need additional VPCs, contact {{% support-cloud %}}.
 
 ## Prerequisites
 
-Before setting up the VPC network, you'll need the following:
+When creating a VPC, you need to determine the following:
 
-- The CIDR block you want to use for your VPC.
-
-  - Refer to [Set the CIDR and size your VPC](#set-the-cidr-and-size-your-vpc).
-
-- The details of the application VPC you want to peer with.
-
-  - AWS - the AWS account ID, and the VPC ID, region, and CIDR block. To obtain these details, navigate to your AWS [Your VPCs](https://console.aws.amazon.com/vpc/home?#vpcs) page for the region where the VPC is located.
-
-  - GCP - the project ID and the network name, and CIDR block. To obtain these details, navigate to your GCP [VPC networks](https://console.cloud.google.com/networking/networks) page.
+- The region for the VPC.
+- The size of the VPC.
 
 ### Choose the region for your VPC
-
-To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you are peering with.
 
 For GCP, you have the choice of selecting all regions automatically, or defining a custom set of regions. If you use automated region selection, the VPC is created globally and assigned to all regions supported by YugabyteDB Managed. If you use custom region selection, you can choose one or more regions, and specify unique CIDR ranges for each; you can also add regions at a later date.
 
 For AWS, you can only define a single region per VPC.
+
+To avoid cross-region data transfer costs, deploy your VPC and cluster in the same region as the application VPC you intend peer or link.
 
 #### Multi-region clusters
 
@@ -77,7 +70,7 @@ Each region in multi-region clusters must be deployed in a VPC. Depending on the
 
 ### Set the CIDR and size your VPC
 
-The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing); because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that [the range doesn't overlap](#restrictions) the range of addresses used by other resources in the network, namely the application VPC you will peer and other VPCs.
+The block of [private IP addresses](#private-ip-address-ranges) used to define your VPC is entered in [CIDR notation](https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing); because you can't resize a VPC once it is created, you need to decide on an appropriate size before creating it. You also need to ensure that [the range doesn't overlap](#restrictions) the range of addresses used by other resources in the network, such as any application VPC you will peer, or other VPCs you have created.
 
 Ideally, you want the network to be as small as possible while accommodating potential growth. Calculate how many applications will be connecting to it, and estimate how that is expected to grow over time. Although you may want to create a large network to cover all contingencies, an over-sized network can impact network performance. If your traffic experiences spikes, you'll need to take that into account.
 
@@ -130,11 +123,11 @@ You can use the private IP addresses in the following ranges (per [RFC 1918](htt
 - 172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
 - 192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
 
-Peered application VPCs also use addresses in these ranges. Once peered, you also need to add the addresses of the peered VPCs to your cluster IP allow list. Private IP addresses added to the cluster allow list that are not part of a peered network are ignored, and can't be used to connect to the cluster.
+Note that peered application VPCs also use addresses in these ranges. Once peered, you also need to add the addresses of the peered VPCs to your cluster IP allow list. Private IP addresses added to the cluster allow list that are not part of a peered network are ignored, and can't be used to connect to the cluster.
 
 You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conversion calculator](https://www.ipaddressguide.com/cidr).
 
-## Restrictions
+### Restrictions
 
 Addresses have the following additional restrictions:
 
@@ -194,6 +187,7 @@ To create a VPC network, you need to complete the following tasks:
 With the exception of 4, these tasks are performed in YugabyteDB Managed.
 -->
 
-## Next step
+## Next steps
 
-[Create a VPC network](../cloud-add-vpc-aws/)
+- [Peering connections](../cloud-add-peering/)
+- [Private service endpoints](../cloud-add-endpoint/)

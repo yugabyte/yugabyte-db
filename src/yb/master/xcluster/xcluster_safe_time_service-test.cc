@@ -35,7 +35,7 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
     return table_entries_;
   }
 
-  Status RefreshProducerTabletToNamespaceMap() override REQUIRES(mutex_) {
+  Status RefreshProducerTabletToNamespaceMap() REQUIRES(mutex_) override {
     if (producer_tablet_namespace_map_ != consumer_registry_) {
       producer_tablet_namespace_map_ = consumer_registry_;
     }

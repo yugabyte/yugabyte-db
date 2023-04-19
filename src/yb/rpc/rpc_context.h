@@ -185,6 +185,7 @@ class RpcContext {
   explicit RpcContext(std::shared_ptr<LocalYBInboundCall> call);
 
   RpcContext(RpcContext&& rhs) = default;
+  RpcContext& operator=(RpcContext&& rhs) = default;
 
   RpcContext(const RpcContext&) = delete;
   void operator=(const RpcContext&) = delete;

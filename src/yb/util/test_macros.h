@@ -322,6 +322,16 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   }) \
   /**/
 
+// Similar to ASSERT_NOTNULL but does not return anything.
+#define ASSERT_ONLY_NOTNULL(expr) \
+  do { \
+    auto&& result = (expr); \
+    if (result == nullptr) { \
+      FAIL() << "Unexpected nullptr"; \
+    } \
+  } while (false)
+  /**/
+
 #define ASSERT_QUERY_FAIL(query_exec, expected_failure_substr) \
   do { \
     auto&& status = (query_exec); \
@@ -367,6 +377,12 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) YB_DISABLE_TEST(test_name)
 #else
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
+#endif
+
+#if !defined(NDEBUG) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) test_name
 #endif
 
 // Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.

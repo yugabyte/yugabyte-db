@@ -104,6 +104,7 @@ typedef struct YBCStatusStruct* YBCStatus;
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
 bool YBCStatusIsSnapshotTooOld(YBCStatus s);
+bool YBCStatusIsTryAgain(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);

@@ -36,8 +36,6 @@ namespace ql {
 using std::string;
 using std::vector;
 using std::shared_ptr;
-using client::YBClient;
-using client::YBSession;
 using client::YBClientBuilder;
 
 ClockHolder::ClockHolder() : clock_(new server::HybridClock()) {

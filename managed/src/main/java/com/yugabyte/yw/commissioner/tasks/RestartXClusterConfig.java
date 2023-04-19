@@ -27,26 +27,26 @@ public class RestartXClusterConfig extends EditXClusterConfig {
     log.info("Running {}", getName());
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
-    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     try {
       // Lock the source universe.
-      lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
+      lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
       try {
         // Lock the target universe.
-        lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
+        lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
 
         // Set table type for old xCluster configs.
-        xClusterConfig.setTableType(taskParams().getTableInfoList());
+        xClusterConfig.updateTableType(taskParams().getTableInfoList());
 
         // Do not skip bootstrapping for the following tables. It will check if it is required.
-        if (xClusterConfig.type.equals(ConfigType.Txn)) {
-          xClusterConfig.setNeedBootstrapForTables(
+        if (xClusterConfig.getType().equals(ConfigType.Txn)) {
+          xClusterConfig.updateNeedBootstrapForTables(
               getTableIds(Collections.singleton(taskParams().getTxnTableInfo())),
               true /* needBootstrap */);
         }
         if (taskParams().getBootstrapParams() != null) {
-          xClusterConfig.setNeedBootstrapForTables(
+          xClusterConfig.updateNeedBootstrapForTables(
               taskParams().getBootstrapParams().tables, true /* needBootstrap */);
         }
 
@@ -102,16 +102,16 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-        createMarkUniverseUpdateSuccessTasks(targetUniverse.universeUUID)
+        createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
-        createMarkUniverseUpdateSuccessTasks(sourceUniverse.universeUUID)
+        createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         getRunnableTask().runSubTasks();
       } finally {
         // Unlock the target universe.
-        unlockUniverseForUpdate(targetUniverse.universeUUID);
+        unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
@@ -119,7 +119,7 @@ public class RestartXClusterConfig extends EditXClusterConfig {
       // Set XClusterConfig status to Running if at least one table is running.
       Set<String> tablesInRunningStatus =
           xClusterConfig.getTableIdsInStatus(
-              xClusterConfig.getTables(), XClusterTableConfig.Status.Running);
+              xClusterConfig.getTableIds(), XClusterTableConfig.Status.Running);
       if (tablesInRunningStatus.isEmpty()) {
         setXClusterConfigStatus(XClusterConfigStatusType.Failed);
       } else {
@@ -130,11 +130,12 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           xClusterConfig.getTableIdsInStatus(
               getTableIds(taskParams().getTableInfoList()),
               X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
-      xClusterConfig.setStatusForTables(tablesInUpdatingStatus, XClusterTableConfig.Status.Failed);
+      xClusterConfig.updateStatusForTables(
+          tablesInUpdatingStatus, XClusterTableConfig.Status.Failed);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
-      unlockUniverseForUpdate(sourceUniverse.universeUUID);
+      unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
     }
 
     log.info("Completed {}", getName());

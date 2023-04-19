@@ -132,9 +132,15 @@ class ApiService {
     return axios.post<Universe>(requestUrl, data).then((resp) => resp.data);
   };
 
-  getInstanceTypes = (providerId?: string): Promise<InstanceType[]> => {
+  getInstanceTypes = (providerId?: string, zones: string[] = []): Promise<InstanceType[]> => {
     if (providerId) {
-      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`;
+      let requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`;
+      if (zones.length) {
+        requestUrl =
+          requestUrl +
+          '?' +
+          zones.map((item: string) => `zone=${encodeURIComponent(item)}`).join('&');
+      }
       return axios.get<InstanceType[]>(requestUrl).then((resp) => resp.data);
     } else {
       return Promise.reject('Querying instance types failed: no provider ID provided');
