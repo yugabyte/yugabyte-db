@@ -500,7 +500,7 @@ static VLE_local_context *build_local_vle_context(FunctionCallInfo fcinfo,
 
     /*
      * Get the VLE grammar node id, if it exists. Remember, we overload the
-     * age_vle function, for now, for backwards compatability
+     * age_vle function, for now, for backwards compatibility
      */
     if (PG_NARGS() == 8)
     {

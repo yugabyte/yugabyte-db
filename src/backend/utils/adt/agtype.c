@@ -1991,7 +1991,7 @@ Datum _agtype_build_path(PG_FUNCTION_ARGS)
     /* initialize the result */
     memset(&result, 0, sizeof(agtype_in_state));
 
-    /* push in the begining of the agtype array */
+    /* push in the beginning of the agtype array */
     result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY, NULL);
 
     /* loop through the path components */

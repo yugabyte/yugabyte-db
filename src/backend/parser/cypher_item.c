@@ -112,7 +112,7 @@ List *transform_cypher_item_list(cypher_parsestate *cpstate, List *item_list,
         target_list = lappend(target_list, te);
 
         /*
-         * Did the tranformed item contain an aggregate function? If it didn't,
+         * Did the transformed item contain an aggregate function? If it didn't,
          * add it to the potential group_clause. If it did, flag that we found
          * an aggregate in an expression
          */

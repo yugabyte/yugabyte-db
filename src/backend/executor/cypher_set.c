@@ -241,7 +241,7 @@ static agtype_value *replace_entity_in_path(agtype_value *path,
 
         elem = &path->val.array.elems[i];
 
-        // something unexpected happended, throw an error.
+        // something unexpected happened, throw an error.
         if (elem->type != AGTV_VERTEX && elem->type != AGTV_EDGE)
         {
             ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
