@@ -14,7 +14,6 @@
 
 namespace yb {
 
-using client::YBClient;
 using client::YBTableName;
 
 using pgwrapper::PGConn;
@@ -7730,6 +7729,33 @@ TEST_F(
   ASSERT_EQ(
       OpId::FromPB(streaming_checkpoint_resp.checkpoint().op_id()),
       OpId::FromPB(added_table_checkpoint_resp.checkpoint().op_id()));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // We are calling 'GetChanges' in snapshot mode, but sine there is no data in the tablet, the
+  // first response itself should indicate the end of snapshot.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  // 'write_id' must be set to 0, 'key' must to empty, to indicate that the snapshot is done.
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().write_id(), 0);
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), "");
+
+  ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_GT(change_resp.cdc_sdk_proto_records_size(), 1000);
 }
 
 }  // namespace cdc

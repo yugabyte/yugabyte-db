@@ -17,7 +17,7 @@
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol.h"
 
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 namespace yb {
 namespace docdb {
@@ -43,7 +43,7 @@ struct DocReadContext {
   }
 
   template <class PB>
-  Status MergeWithRestored(const PB& pb, OverwriteSchemaPacking overwrite) {
+  Status MergeWithRestored(const PB& pb, dockv::OverwriteSchemaPacking overwrite) {
     RETURN_NOT_OK(schema_packing_storage.MergeWithRestored(
         pb.schema_version(), pb.schema(), pb.old_schema_packings(), overwrite));
     LogAfterMerge(overwrite);
@@ -68,11 +68,11 @@ struct DocReadContext {
   }
 
   Schema schema;
-  SchemaPackingStorage schema_packing_storage;
+  dockv::SchemaPackingStorage schema_packing_storage;
 
  private:
   void LogAfterLoad();
-  void LogAfterMerge(OverwriteSchemaPacking overwrite);
+  void LogAfterMerge(dockv::OverwriteSchemaPacking overwrite);
 
   const std::string& LogPrefix() const {
     return log_prefix_;

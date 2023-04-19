@@ -72,11 +72,7 @@ const char* const kRoleColumnNameCanLogin = "can_login";
 
 using std::shared_ptr;
 using std::string;
-using std::unique_ptr;
-using std::vector;
 using strings::Substitute;
-using yb::client::YBSchema;
-using yb::client::YBSession;
 using yb::client::YBMetaDataCache;
 using yb::rpc::InboundCall;
 

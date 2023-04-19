@@ -18,11 +18,11 @@
 #include <variant>
 
 #include "yb/docdb/doc_reader.h"
-#include "yb/docdb/docdb_encoding_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/ql_scanspec.h"
+#include "yb/dockv/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
@@ -80,7 +80,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
-  Status Init(const YQLScanSpec& spec);
+  Status Init(const dockv::YQLScanSpec& spec);
 
   const Schema& schema() const override {
     // Note: this is the schema only for the columns in the projection, not all columns.
@@ -103,7 +103,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Result<bool> FetchTuple(const Slice& tuple_id, QLTableRow* row) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
+  Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
 
   void set_debug_dump(bool value) { debug_dump_ = value; }
 
@@ -172,7 +172,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for
   // reverse scans.
   bool has_bound_key_ = false;
-  KeyBytes bound_key_;
+  dockv::KeyBytes bound_key_;
 
   std::unique_ptr<ScanChoices> scan_choices_;
 
@@ -198,7 +198,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Slice row_hash_key_;
 
   // The current row's iterator key.
-  KeyBytes iter_key_;
+  dockv::KeyBytes iter_key_;
 
   ReaderProjection reader_projection_;
 
@@ -206,7 +206,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status has_next_status_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
-  boost::optional<KeyBytes> tuple_key_;
+  boost::optional<dockv::KeyBytes> tuple_key_;
 
   TableType table_type_;
   bool ignore_ttl_ = false;

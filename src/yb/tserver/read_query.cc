@@ -366,7 +366,7 @@ Status ReadQuery::DoPerform() {
         leader_peer.tablet,
         nullptr /* rpc_context */,
         nullptr /* response */,
-        docdb::OperationKind::kRead);
+        dockv::OperationKind::kRead);
 
     auto& write = *query->operation().AllocateRequest();
     auto& write_batch = *write.mutable_write_batch();

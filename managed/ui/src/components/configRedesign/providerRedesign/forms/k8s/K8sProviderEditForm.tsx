@@ -169,7 +169,8 @@ export const K8sProviderEditForm = ({
       kubernetesImageRegistry,
       kubernetesProvider,
       kubernetesPullSecretContent,
-      providerName
+      providerName,
+      regions
     } = adaptSuggestedKubernetesConfig(suggestedKubernetesConfig);
 
     formMethods.setValue('editPullSecretContent', true);
@@ -177,7 +178,7 @@ export const K8sProviderEditForm = ({
     formMethods.setValue('kubernetesImageRegistry', kubernetesImageRegistry);
     formMethods.setValue('kubernetesProvider', kubernetesProvider);
     formMethods.setValue('providerName', providerName);
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   };
   const onFormReset = () => {
     formMethods.reset(defaultValues);
@@ -204,7 +205,8 @@ export const K8sProviderEditForm = ({
   };
 
   const regions = formMethods.watch('regions', defaultValues.regions);
-  const setRegions = (regions: K8sRegionField[]) => formMethods.setValue('regions', regions);
+  const setRegions = (regions: K8sRegionField[]) =>
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: K8sRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)

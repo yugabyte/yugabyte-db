@@ -99,3 +99,5 @@ Delete a specified private service endpoint.
 | Flag | Description |
 | :--- | :--- |
 | --endpoint-id | Required. The ID of the endpoint to delete. |
+
+To avoid charges from your cloud provider, be sure to delete the corresponding endpoint in your cloud provider account.

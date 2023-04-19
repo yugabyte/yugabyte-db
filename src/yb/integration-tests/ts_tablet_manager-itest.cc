@@ -39,7 +39,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/table_creator.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
@@ -93,7 +93,6 @@ using client::YBTable;
 using client::YBTableCreator;
 using client::YBTableName;
 using consensus::GetConsensusRole;
-using consensus::RaftPeerPB;
 using itest::SimpleIntKeyYBSchema;
 using master::ReportedTabletPB;
 using master::TabletReportPB;
@@ -165,7 +164,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   std::unique_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)
-            .hash_schema(YBHashSchema::kMultiColumnHash)
+            .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
             .num_tablets(1)
             .Create());
   ASSERT_OK(client_->OpenTable(kTableName, &table));

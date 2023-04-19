@@ -29,6 +29,7 @@ import {
   isEditorDirty,
   isMarkActive,
   IYBEditor,
+  resetEditorHistory,
   TextDecorators,
   toggleBlock,
   toggleMark
@@ -54,6 +55,7 @@ import { ReactComponent as Bold } from '../icons/bold.svg';
 import { ReactComponent as Underline } from '../icons/underline.svg';
 import { ReactComponent as Strikethrough } from '../icons/strikethrough.svg';
 import { FormatAlignCenter, FormatAlignLeft, FormatAlignRight } from '@material-ui/icons';
+import RollbackToTemplateModal from '../webhook/RollbackToTemplateModal';
 
 const ToolbarMarkIcons: Partial<Record<TextDecorators, { icon: React.ReactChild }>> = {
   italic: {
@@ -94,6 +96,17 @@ const ToolbarBlockIcons: Record<
 const useStyles = makeStyles((theme) => ({
   composers: {
     padding: `0 ${theme.spacing(3.5)}px !important`
+  },
+  moreToolbarActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.2)
+  },
+  rollToDefaultTemplateText: {
+    textDecoration: 'underline',
+    color: '#44518B',
+    cursor: 'pointer',
+    userSelect: 'none'
   }
 }));
 
@@ -116,6 +129,8 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
     const subjectInsertVariableButRef = useRef(null);
 
     const [showPreviewModal, setShowPreviewModal] = useState(false);
+    const [showRollbackTemplateModal, setShowRollbackTemplateModal] = useState(false);
+    const [isRollbackedToDefaultTemplate, setIsRollbackedToDefaultTemplate] = useState(false);
 
     // counter to force re-render this component, if any operations is performed on the body editor
     const [counter, setCounter] = useState(1);
@@ -194,6 +209,40 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
       []
     );
 
+    // rollback to default template
+    const rollbackTemplate = () => {
+      const emailTemplate = find(channelTemplates?.data, { type: 'Email' });
+      if (emailTemplate && bodyEditorRef.current && subjectEditorRef.current) {
+        let bodyVal = new HTMLDeSerializer(
+          bodyEditorRef.current,
+          emailTemplate.defaultTextTemplate ?? ''
+        ).deserialize();
+
+        if (bodyVal[0].text) {
+          bodyVal = [
+            {
+              ...DefaultElement,
+              children: bodyVal as any
+            }
+          ];
+        }
+
+        clearEditor(bodyEditorRef.current as IYBEditor);
+        Transforms.insertNodes(bodyEditorRef.current as IYBEditor, bodyVal);
+
+        const subjectVal = new TextDeserializer(
+          subjectEditorRef.current,
+          emailTemplate.defaultTitleTemplate ?? ''
+        ).deserialize();
+        clearEditor(subjectEditorRef.current as IYBEditor);
+        Transforms.insertNodes(subjectEditorRef.current as IYBEditor, subjectVal);
+      }
+      setIsRollbackedToDefaultTemplate(true);
+      setShowRollbackTemplateModal(false);
+      resetEditorHistory(bodyEditorRef.current!);
+      resetEditorHistory(subjectEditorRef.current!);
+    };
+
     if (isTemplateLoading) {
       return <YBLoadingCircleIcon />;
     }
@@ -220,9 +269,13 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                     singleLine: true,
                     alertVariablesPlugin: true,
                     basic: false,
+                    highlightAlertVariablePlugin: true,
                     defaultPlugin: true
                   }}
                   ref={subjectEditorRef}
+                  editorProps={{
+                    'data-testid': 'email-subject-editor'
+                  }}
                 />
               </Grid>
               <Grid item style={{ width: '20%' }}>
@@ -255,6 +308,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                   {Object.keys(ToolbarMarkIcons).map((ic) =>
                     React.cloneElement(ToolbarMarkIcons[ic].icon, {
                       key: ic,
+                      'data-testid': `mark-icon-${ic}`,
                       className: clsx(
                         ToolbarMarkIcons[ic].icon.props.className,
                         isMarkActive(bodyEditorRef.current, ic as TextDecorators) ? 'active' : ''
@@ -272,6 +326,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                   {Object.keys(ToolbarBlockIcons).map((ic) =>
                     React.cloneElement(ToolbarBlockIcons[ic].icon, {
                       key: ic,
+                      'data-testid': `block-icon-${ic}`,
                       className: clsx(
                         ToolbarBlockIcons[ic].icon.props.className,
                         isBlockActive(bodyEditorRef.current, ToolbarBlockIcons[ic].align, 'align')
@@ -285,7 +340,19 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                     })
                   )}
                 </Grid>
-                <Grid item>
+                <Grid item className={classes.moreToolbarActions}>
+                  {isEditorDirty(bodyEditorRef.current) && (
+                    <Typography
+                      variant="body2"
+                      className={classes.rollToDefaultTemplateText}
+                      onClick={() => {
+                        setShowRollbackTemplateModal(true);
+                      }}
+                      data-testid="webhook-rollback-template"
+                    >
+                      {t('alertCustomTemplates.composer.webhookComposer.rollback')}
+                    </Typography>
+                  )}
                   <GetInsertVariableButton
                     onClick={() => setShowBodyAlertPopover(true)}
                     ref={bodyInsertVariableButRef}
@@ -314,15 +381,21 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                 // on onClick and on onKeyDown , update the counter state, re-render this component,
                 // such that the marks (bold, italics) are marked
                 editorProps={{
-                  onClick: () => reRender()
+                  onClick: () => reRender(),
+                  'data-testid': 'email-body-editor'
                 }}
-                onEditorKeyDown={() => reRender()}
+                onEditorKeyDown={() => {
+                  isRollbackedToDefaultTemplate && setIsRollbackedToDefaultTemplate(false);
+                  reRender();
+                }}
               />
             </Grid>
           </Grid>
           <Grid item container alignItems="center" className={composerStyles.helpText}>
             <Info />
-            <Typography variant="body2">{t('alertCustomTemplates.composer.helpText')}</Typography>
+            <Typography variant="body2">
+              {t('alertCustomTemplates.composer.helpText', { type: 'email' })}
+            </Typography>
           </Grid>
         </Grid>
         <Grid item className={commonStyles.noPadding}>
@@ -337,6 +410,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
               onClick={() => {
                 setShowPreviewModal(true);
               }}
+              data-testid="preview-email-button"
             >
               {t('alertCustomTemplates.composer.previewTemplateButton')}
             </YBButton>
@@ -346,6 +420,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                 onClick={() => {
                   onClose();
                 }}
+                data-testid="cancel-email-button"
               >
                 {t('common.cancel')}
               </YBButton>
@@ -353,10 +428,13 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                 variant="primary"
                 type="submit"
                 disabled={
-                  !isEditorDirty(subjectEditorRef.current) && !isEditorDirty(bodyEditorRef.current)
+                  !isEditorDirty(subjectEditorRef.current) &&
+                  !isEditorDirty(bodyEditorRef.current) &&
+                  !isRollbackedToDefaultTemplate
                 }
                 autoFocus
                 className={composerStyles.submitButton}
+                data-testid="save-email-button"
                 onClick={() => {
                   if (bodyEditorRef.current && subjectEditorRef.current) {
                     const subjectHtml = new TextSerializer(subjectEditorRef.current).serialize();
@@ -379,6 +457,15 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
           subjectValue={subject}
           visible={showPreviewModal}
           onHide={() => setShowPreviewModal(false)}
+        />
+        <RollbackToTemplateModal
+          visible={showRollbackTemplateModal}
+          onHide={() => {
+            setShowRollbackTemplateModal(false);
+          }}
+          onSubmit={() => {
+            rollbackTemplate();
+          }}
         />
       </>
     );

@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_filter_policy.h"
 
 #include "yb/util/test_util.h"
@@ -26,9 +26,9 @@ class DocDBFilterPolicyTest : public YBTest {
 
 std::string EncodeSubDocKey(const std::string& hash_key,
     const std::string& range_key, const std::string& sub_key, uint64_t time) {
-  DocKey dk(DocKey(0, KeyEntryValues(hash_key), KeyEntryValues(range_key)));
-  return SubDocKey(
-      dk, KeyEntryValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
+  dockv::DocKey dk(0, dockv::MakeKeyEntryValues(hash_key), dockv::MakeKeyEntryValues(range_key));
+  return dockv::SubDocKey(
+      dk, dockv::KeyEntryValue(sub_key), HybridTime::FromMicros(time)).Encode().ToStringBuffer();
 }
 
 std::string EncodeSimpleSubDocKey(const std::string& hash_key) {

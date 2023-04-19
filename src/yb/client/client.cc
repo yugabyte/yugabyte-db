@@ -67,7 +67,7 @@
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
@@ -116,11 +116,6 @@
 
 using namespace std::literals;
 
-using yb::master::AlterTableRequestPB;
-using yb::master::CreateTablegroupRequestPB;
-using yb::master::CreateTablegroupResponsePB;
-using yb::master::DeleteTablegroupRequestPB;
-using yb::master::DeleteTablegroupResponsePB;
 using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
@@ -266,7 +261,6 @@ namespace yb {
 namespace client {
 
 using internal::MetaCache;
-using ql::ObjectType;
 using std::shared_ptr;
 using std::pair;
 
@@ -757,7 +751,7 @@ Result<YBTableInfo> YBClient::GetYBTableInfo(const YBTableName& table_name) {
 
 Status YBClient::GetTableSchema(const YBTableName& table_name,
                                 YBSchema* schema,
-                                PartitionSchema* partition_schema) {
+                                dockv::PartitionSchema* partition_schema) {
   Result<YBTableInfo> info = GetYBTableInfo(table_name);
   if (!info.ok()) {
     return info.status();

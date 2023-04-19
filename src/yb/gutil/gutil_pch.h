@@ -45,12 +45,14 @@
 #include <string_view>
 #include <thread>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/core/demangle.hpp>
 #include <boost/mpl/and.hpp>
+#include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/expr_if.hpp>
 #include <boost/preprocessor/facilities/apply.hpp>

@@ -21,6 +21,7 @@ from ybops.utils import validate_instance, get_datafile_path, YB_HOME_DIR, \
                         DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
                         DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
 from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, RemoteShell
+from ybops.node_agent.server_pb2 import PreflightCheckInput
 from ybops.utils.ssh import SSH_RETRY_LIMIT_PRECHECK
 
 import json
@@ -211,6 +212,8 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         self.parser.add_argument('--redis_proxy_http_port', default=None)
         self.parser.add_argument('--redis_proxy_rpc_port', default=None)
         self.parser.add_argument('--node_exporter_http_port', default=None)
+        self.parser.add_argument('--yb_controller_http_port', default=None)
+        self.parser.add_argument('--yb_controller_rpc_port', default=None)
         self.parser.add_argument('--root_cert_path', default=None)
         self.parser.add_argument('--server_cert_path', default=None)
         self.parser.add_argument('--server_key_path', default=None)
@@ -283,9 +286,9 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             print(json.dumps(results, indent=2))
             return
 
-        scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'))
-
-        results["SSH Connection"] = scp_result == 0
+        if self.get_connection_type() == "ssh":
+            scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'))
+            results["SSH Connection"] = scp_result == 0
 
         connect_options = {}
         connect_options.update(self.extra_vars)
@@ -339,31 +342,66 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
                                                     args.redis_proxy_rpc_port,
                                                     args.node_exporter_http_port] if p is not None])
 
-        cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
-              "--ports_to_check {} --sudo_pass_file {} --cleanup".format(
-                args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args),
-                ports_to_check, sudo_pass_file)
-        if args.install_node_exporter:
-            cmd += " --install_node_exporter"
-        if args.air_gap:
-            cmd += " --airgap"
+        if self.get_connection_type() == "ssh":
+            cmd = "/tmp/preflight_checks.sh --type {} --yb_home_dir {} --mount_points {} " \
+                "--ports_to_check {} --sudo_pass_file {} --cleanup".format(
+                    args.precheck_type, YB_HOME_DIR, self.cloud.get_mount_points_csv(args),
+                    ports_to_check, sudo_pass_file)
+            if args.install_node_exporter:
+                cmd += " --install_node_exporter"
+            if args.air_gap:
+                cmd += " --airgap"
 
-        self.update_ansible_vars_with_args(args)
-        self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
-        rc, stdout, stderr = remote_exec_command(self.extra_vars, cmd)
+            rc, stdout, stderr = remote_exec_command(self.extra_vars, cmd)
 
-        if rc != 0:
-            results["Preflight Script Error"] = stderr
+            if rc != 0:
+                results["Preflight Script Error"] = stderr
+            else:
+                # stdout will be returned as a list of lines, which should just be one line of json.
+                if isinstance(stdout, list):
+                    stdout = stdout[0]
+                stdout = json.loads(stdout)
+                stdout = {k: v == "true" for k, v in iteritems(stdout)}
+                results.update(stdout)
+
+            output = json.dumps(results, indent=2)
+            print(output)
         else:
-            # stdout will be returned as a list of lines, which should just be one line of json.
-            if isinstance(stdout, list):
-                stdout = stdout[0]
-            stdout = json.loads(stdout)
-            stdout = {k: v == "true" for k, v in iteritems(stdout)}
-            results.update(stdout)
-
-        output = json.dumps(results, indent=2)
-        print(output)
+            input = PreflightCheckInput()
+            input.ybHomeDir = YB_HOME_DIR
+            input.airGapInstall = args.air_gap
+            input.installNodeExporter = args.install_node_exporter
+            input.mountPaths.extend(self.cloud.get_mount_points_csv(args).split(","))
+            input.skipProvisioning = True if args.precheck_type == 'configure' else False
+            if args.master_http_port:
+                input.masterHttpPort = int(args.master_http_port)
+            if args.master_rpc_port:
+                input.masterRpcPort = int(args.master_rpc_port)
+            if args.tserver_http_port:
+                input.tserverHttpPort = int(args.tserver_http_port)
+            if args.tserver_rpc_port:
+                input.tserverRpcPort = int(args.tserver_rpc_port)
+            if args.redis_proxy_http_port:
+                input.redisServerHttpPort = int(args.redis_proxy_http_port)
+            if args.redis_proxy_rpc_port:
+                input.redisServerRpcPort = int(args.redis_proxy_rpc_port)
+            if args.node_exporter_http_port:
+                input.nodeExporterPort = int(args.node_exporter_http_port)
+            if args.cql_proxy_http_port:
+                input.ycqlServerHttpPort = int(args.cql_proxy_http_port)
+            if args.cql_proxy_rpc_port:
+                input.ycqlServerRpcPort = int(args.cql_proxy_rpc_port)
+            if args.ysql_proxy_http_port:
+                input.ysqlServerHttpPort = int(args.ysql_proxy_http_port)
+            if args.ysql_proxy_rpc_port:
+                input.ysqlServerRpcPort = int(args.ysql_proxy_rpc_port)
+            if args.yb_controller_http_port:
+                input.ybControllerHttpPort = int(args.yb_controller_http_port)
+            if args.yb_controller_rpc_port:
+                input.ybControllerRpcPort = int(args.yb_controller_rpc_port)
+            remote_shell = RemoteShell(self.extra_vars)
+            json_response = remote_shell.invoke_method(input)
+            print(json_response)
 
 
 class OnPremFillInstanceProvisionTemplateMethod(AbstractMethod):

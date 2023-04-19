@@ -41,7 +41,7 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/ql_value.h"
@@ -113,7 +113,7 @@ struct IntKeyTestSetup {
 
   // builds a row key from an existing row for updates
   template<class RowType>
-  void BuildRowKeyFromExistingRow(YBPartialRow *dst_row, const RowType& row) {
+  void BuildRowKeyFromExistingRow(dockv::YBPartialRow *dst_row, const RowType& row) {
     CHECK(false) << "Unsupported type";
   }
 
@@ -159,24 +159,24 @@ void IntKeyTestSetup<INT64>::BuildRowKey(QLWriteRequestPB *req, int64_t i) {
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT8>::BuildRowKeyFromExistingRow(YBPartialRow *row,
+void IntKeyTestSetup<INT8>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
                                                        const RowType& src_row) {
   CHECK_OK(row->SetInt8(0, *reinterpret_cast<const int8_t*>(src_row.cell_ptr(0))));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT16>::BuildRowKeyFromExistingRow(YBPartialRow *row,
+void IntKeyTestSetup<INT16>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
                                                         const RowType& src_row) {
   CHECK_OK(row->SetInt16(0, *reinterpret_cast<const int16_t*>(src_row.cell_ptr(0))));
 }
 template<> template<class RowType>
-void IntKeyTestSetup<INT32>::BuildRowKeyFromExistingRow(YBPartialRow *row,
+void IntKeyTestSetup<INT32>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
                                                         const RowType& src_row) {
   CHECK_OK(row->SetInt32(0, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(0))));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT64>::BuildRowKeyFromExistingRow(YBPartialRow *row,
+void IntKeyTestSetup<INT64>::BuildRowKeyFromExistingRow(dockv::YBPartialRow *row,
                                                         const RowType& src_row) {
   CHECK_OK(row->SetInt64(0, *reinterpret_cast<const int64_t*>(src_row.cell_ptr(0))));
 }
@@ -223,7 +223,7 @@ struct NullableValueTestSetup {
 
   // builds a row key from an existing row for updates
   template<class RowType>
-  void BuildRowKeyFromExistingRow(YBPartialRow *row, const RowType& src_row) {
+  void BuildRowKeyFromExistingRow(dockv::YBPartialRow *row, const RowType& src_row) {
     CHECK_OK(row->SetInt32(0, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(0))));
   }
 

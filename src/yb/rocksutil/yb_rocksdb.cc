@@ -16,12 +16,7 @@
 
 #include "yb/util/bytes_formatter.h"
 
-using std::shared_ptr;
 using std::string;
-using strings::Substitute;
-
-using yb::FormatBytesAsStr;
-using yb::QuotesType;
 
 namespace yb {
 

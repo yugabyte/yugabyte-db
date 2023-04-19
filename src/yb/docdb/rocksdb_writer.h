@@ -21,7 +21,7 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.fwd.h"
 #include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/rocksdb/write_batch.h"
 
@@ -66,7 +66,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
       HybridTime hybrid_time,
       const TransactionId& transaction_id,
       IsolationLevel isolation_level,
-      PartialRangeKeyIntents partial_range_key_intents,
+      dockv::PartialRangeKeyIntents partial_range_key_intents,
       const Slice& replicated_batches_state,
       IntraTxnWriteId intra_txn_write_id);
 
@@ -81,13 +81,13 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   }
 
   Status operator()(
-      IntentStrength intent_strength, FullDocKey, Slice value_slice, KeyBytes* key,
-      LastKey last_key);
+      dockv::IntentStrength intent_strength, dockv::FullDocKey, Slice value_slice,
+      dockv::KeyBytes* key, dockv::LastKey last_key);
 
  private:
   Status Finish();
   Status AddWeakIntent(
-      const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
+      const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
       const std::array<Slice, 4>& value,
       DocHybridTimeBuffer* doc_ht_buffer);
 
@@ -95,7 +95,7 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   HybridTime hybrid_time_;
   TransactionId transaction_id_;
   IsolationLevel isolation_level_;
-  PartialRangeKeyIntents partial_range_key_intents_;
+  dockv::PartialRangeKeyIntents partial_range_key_intents_;
   Slice replicated_batches_state_;
   IntraTxnWriteId intra_txn_write_id_;
   IntraTxnWriteId write_id_ = 0;
@@ -107,8 +107,8 @@ class TransactionalWriter : public rocksdb::DirectWriter {
   rocksdb::DirectWriteHandler* handler_;
   RowMarkType row_mark_;
   SubTransactionId subtransaction_id_;
-  IntentTypeSet strong_intent_types_;
-  std::unordered_map<KeyBuffer, IntentTypeSet, ByteBufferHash> weak_intents_;
+  dockv::IntentTypeSet strong_intent_types_;
+  std::unordered_map<KeyBuffer, dockv::IntentTypeSet, ByteBufferHash> weak_intents_;
 };
 
 // Base class used by IntentsWriter to handle found intents.
@@ -174,7 +174,7 @@ class IntentsWriter : public rocksdb::DirectWriter {
   Slice start_key_;
   rocksdb::DB* intents_db_;
   IntentsWriterContext& context_;
-  KeyBytes txn_reverse_index_prefix_;
+  dockv::KeyBytes txn_reverse_index_prefix_;
   Slice reverse_index_upperbound_;
   BoundedRocksDbIterator reverse_index_iter_;
 };

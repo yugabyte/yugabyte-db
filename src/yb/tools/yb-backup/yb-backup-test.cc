@@ -523,10 +523,10 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLBackupWithDefinedPart
   client::YBSchema client_schema(client::YBSchemaFromSchema(yb::GetSimpleTestSchema()));
 
   // Allocate the partitions.
-  Partition partitions[kNumPartitions];
-  const uint16_t max_interval = PartitionSchema::kMaxPartitionKey;
-  const string key1 = PartitionSchema::EncodeMultiColumnHashValue(max_interval / 10);
-  const string key2 = PartitionSchema::EncodeMultiColumnHashValue(max_interval * 3 / 4);
+  dockv::Partition partitions[kNumPartitions];
+  const uint16_t max_interval = dockv::PartitionSchema::kMaxPartitionKey;
+  const string key1 = dockv::PartitionSchema::EncodeMultiColumnHashValue(max_interval / 10);
+  const string key2 = dockv::PartitionSchema::EncodeMultiColumnHashValue(max_interval * 3 / 4);
 
   partitions[0].set_partition_key_end(key1);
   partitions[1].set_partition_key_start(key1);
@@ -559,8 +559,8 @@ TEST_F(YBBackupTest, YB_DISABLE_TEST_IN_SANITIZERS(TestYCQLBackupWithDefinedPart
       /* partition_list_version =*/ nullptr,
       RequireTabletsRunning::kFalse));
   for (int i = 0 ; i < kNumPartitions; ++i) {
-    Partition p;
-    Partition::FromPB(tablets[i].partition(), &p);
+    dockv::Partition p;
+    dockv::Partition::FromPB(tablets[i].partition(), &p);
     ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
   }
 }

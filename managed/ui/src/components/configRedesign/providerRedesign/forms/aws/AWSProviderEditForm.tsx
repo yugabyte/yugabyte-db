@@ -281,7 +281,7 @@ export const AWSProviderEditForm = ({
 
   const regions = formMethods.watch('regions');
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -350,6 +350,7 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   options={credentialOptions}
                   orientation={RadioGroupOrientation.HORIZONTAL}
+                  isDisabled={isFormDisabled}
                 />
               </FormField>
               {providerCredentialType === AWSProviderCredentialType.ACCESS_KEY && (
@@ -447,6 +448,7 @@ export const AWSProviderEditForm = ({
                   control={formMethods.control}
                   options={VPC_SETUP_OPTIONS}
                   orientation={RadioGroupOrientation.HORIZONTAL}
+                  isDisabled={isFormDisabled}
                 />
               </FormField>
               <RegionList
@@ -523,6 +525,7 @@ export const AWSProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (

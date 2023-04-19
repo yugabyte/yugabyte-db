@@ -38,7 +38,7 @@
 #include "yb/consensus/raft_consensus.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_test_util.h"
 
 #include "yb/gutil/casts.h"
@@ -309,7 +309,7 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
             RETURN_NOT_OK(op->GetPartitionKey(&partition_key));
             auto* ql_batch = req.add_ql_batch();
             *ql_batch = op->request();
-            const auto& hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+            auto hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
             ql_batch->set_hash_code(hash_code);
             ql_batch->set_max_hash_code(hash_code);
           }
@@ -1264,7 +1264,7 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
     bool complete = false;
     for (size_t i = 0; i < peers.size(); ++i) {
       auto peer = peers[i];
-      SCOPED_TRACE(Format("Peer: $0", peer->permanent_uuid()));
+      SCOPED_TRACE(Format("Peer: $0, Trace: $1", peer->permanent_uuid(), trace));
       if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
         complete = false;
         break;
@@ -1318,9 +1318,16 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
     for (;;) {
-      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+      auto tserver = cluster_->mini_tablet_server(i)->server();
+      auto peers = tserver->tablet_manager()->GetTabletPeers();
       ASSERT_LE(peers.size(), 1);
       if (peers.empty() || peers[0]->state() != tablet::RaftGroupStatePB::RUNNING) {
+        std::this_thread::sleep_for(100ms);
+        continue;
+      }
+      if (!tserver->GetXClusterSafeTimeMap()
+               .GetSafeTime(peers[0]->tablet()->metadata()->namespace_id())
+               .ok()) {
         std::this_thread::sleep_for(100ms);
         continue;
       }
@@ -1410,16 +1417,16 @@ TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   LOG(INFO) << "Encoded split key: " << Slice(encoded_split_key).ToDebugString();
 
   if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
-    docdb::DocKey split_key;
+    dockv::DocKey split_key;
     Slice key_slice = encoded_split_key;
-    ASSERT_OK(split_key.DecodeFrom(&key_slice, docdb::DocKeyPart::kUpToHashCode));
+    ASSERT_OK(split_key.DecodeFrom(&key_slice, dockv::DocKeyPart::kUpToHashCode));
     ASSERT_TRUE(key_slice.empty()) << "Extra bytes after decoding: " << key_slice.ToDebugString();
     ASSERT_EQ(split_key.hashed_group().size() + split_key.range_group().size(), 0)
         << "Hash-based partition: middle key should only have encoded hash code";
     LOG(INFO) << "Split key: " << AsString(split_key);
   } else {
-    docdb::SubDocKey split_key;
-    ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey split_key;
+    ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
     ASSERT_EQ(split_key.num_subkeys(), 0)
         << "Range-based partition: middle doc key should not have sub doc key components";
     LOG(INFO) << "Split key: " << AsString(split_key);

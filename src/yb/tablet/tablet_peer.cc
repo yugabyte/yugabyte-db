@@ -146,12 +146,10 @@ using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::ConsensusOptions;
 using consensus::ConsensusRound;
-using consensus::OpIdType;
 using consensus::PeerMemberType;
 using consensus::RaftConfigPB;
 using consensus::RaftConsensus;
 using consensus::RaftPeerPB;
-using consensus::ReplicateMsg;
 using consensus::StateChangeContext;
 using consensus::StateChangeReason;
 using log::Log;
@@ -697,6 +695,13 @@ Status TabletPeer::SubmitUpdateTransaction(
   if (!operation->tablet_is_set()) {
     auto tablet = VERIFY_RESULT(shared_tablet_safe());
     operation->SetTablet(tablet);
+  }
+  auto scoped_read_operation =
+      VERIFY_RESULT(operation->tablet_safe())->CreateNonAbortableScopedRWOperation();
+  if (!scoped_read_operation.ok()) {
+    auto status = MoveStatus(scoped_read_operation);
+    operation->CompleteWithStatus(status);
+    return status;
   }
   Submit(std::move(operation), term);
   return Status::OK();

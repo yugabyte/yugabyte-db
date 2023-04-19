@@ -14,7 +14,7 @@
 #include "yb/docdb/docdb_util.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_debug.h"
@@ -32,15 +32,13 @@
 #include "yb/docdb/docdb_pgapi.h"
 
 using std::string;
-using std::make_shared;
-using std::endl;
 using strings::Substitute;
-using yb::FormatBytesAsStr;
-using yb::util::ApplyEagerLineContinuation;
 using std::vector;
 
 namespace yb {
 namespace docdb {
+
+using dockv::DocPath;
 
 namespace {
 
@@ -151,14 +149,14 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
     HybridTime hybrid_time,
     bool decode_dockey,
     bool increment_write_id,
-    PartialRangeKeyIntents partial_range_key_intents) const {
+    dockv::PartialRangeKeyIntents partial_range_key_intents) const {
   if (decode_dockey) {
     for (const auto& entry : dwb.key_value_pairs()) {
       // Skip key validation for external intents.
-      if (!entry.key.empty() && entry.key[0] == KeyEntryTypeAsChar::kExternalTransactionId) {
+      if (!entry.key.empty() && entry.key[0] == dockv::KeyEntryTypeAsChar::kExternalTransactionId) {
         continue;
       }
-      SubDocKey subdoc_key;
+      dockv::SubDocKey subdoc_key;
       // We don't expect any invalid encoded keys in the write batch. However, these encoded keys
       // don't contain the HybridTime.
       RETURN_NOT_OK_PREPEND(
@@ -189,8 +187,8 @@ Status DocDBRocksDBUtil::PopulateRocksDBWriteBatch(
       string rocksdb_key;
       if (hybrid_time.is_valid()) {
         // HybridTime provided. Append a PrimitiveValue with the HybridTime to the key.
-        const KeyBytes encoded_ht =
-            KeyEntryValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
+        const auto encoded_ht =
+            dockv::KeyEntryValue(DocHybridTime(hybrid_time, write_id)).ToKeyBytes();
         rocksdb_key = entry.key + encoded_ht.ToStringBuffer();
       } else {
         // Useful when printing out a write batch that does not yet know the HybridTime it will be
@@ -211,7 +209,7 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
     const HybridTime& hybrid_time,
     bool decode_dockey,
     bool increment_write_id,
-    PartialRangeKeyIntents partial_range_key_intents) {
+    dockv::PartialRangeKeyIntents partial_range_key_intents) {
   if (doc_write_batch.IsEmpty()) {
     return Status::OK();
   }
@@ -283,14 +281,14 @@ Status DocDBRocksDBUtil::WriteToRocksDBAndClear(
 }
 
 Status DocDBRocksDBUtil::WriteSimple(int index) {
-  auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", index), 11111 * index)).Encode();
+  auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", index), 11111 * index).Encode();
   op_id_.term = index / 2;
   op_id_.index = index;
   auto& dwb = DefaultDocWriteBatch();
   QLValuePB value;
   value.set_int32_value(index);
   RETURN_NOT_OK(dwb.SetPrimitive(
-      DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
+      DocPath(encoded_doc_key, dockv::KeyEntryValue::MakeColumnId(ColumnId(10))), ValueRef(value)));
   return WriteToRocksDBAndClear(&dwb, HybridTime::FromMicros(1000 * index));
 }
 
@@ -311,7 +309,7 @@ string DocDBRocksDBUtil::DocDBDebugDumpToStr() {
 
 Status DocDBRocksDBUtil::SetPrimitive(
     const DocPath& doc_path,
-    const ValueControlFields& control_fields,
+    const dockv::ValueControlFields& control_fields,
     const ValueRef& value,
     const HybridTime hybrid_time,
     const ReadHybridTime& read_ht) {
@@ -386,10 +384,10 @@ Status DocDBRocksDBUtil::AddExternalIntents(
     const Uuid involved_tablet_;
     const HybridTime hybrid_time_;
     size_t next_idx_ = 0;
-    KeyBytes key_;
+    dockv::KeyBytes key_;
     KeyBuffer value_;
 
-    KeyBytes intent_key_;
+    dockv::KeyBytes intent_key_;
     std::string intent_value_;
   };
 

@@ -422,8 +422,8 @@ Status TabletSnapshots::RestoreCheckpoint(
                             << " , force overwrite of schema packing " << !is_pitr_restore;
       RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
           tablet_metadata_file,
-          is_pitr_restore ? docdb::OverwriteSchemaPacking::kFalse
-              : docdb::OverwriteSchemaPacking::kTrue));
+          is_pitr_restore ? dockv::OverwriteSchemaPacking::kFalse
+              : dockv::OverwriteSchemaPacking::kTrue));
       need_flush = true;
     }
   }
@@ -579,9 +579,9 @@ Status TabletSnapshots::RestoreFinished(SnapshotOperation* operation) {
 Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& value) {
   KeyBuffer key_copy;
   key_copy = key;
-  docdb::SubDocKey sub_doc_key;
+  dockv::SubDocKey sub_doc_key;
   RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(
-      key_copy.AsSlice(), docdb::HybridTimeRequired::kFalse));
+      key_copy.AsSlice(), dockv::HybridTimeRequired::kFalse));
   // Get the db_oid.
   int64_t db_oid = sub_doc_key.doc_key().hashed_group()[0].GetInt64();
   if (db_oid != db_oid_) {
@@ -592,9 +592,9 @@ Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& 
 
 Status TabletRestorePatch::UpdateColumnValueInMap(
     const Slice& key, const Slice& value,
-    std::map<docdb::DocKey, SequencesDataInfo>* key_to_seq_info_map) {
-  docdb::SubDocKey decoded_key;
-  RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    std::map<dockv::DocKey, SequencesDataInfo>* key_to_seq_info_map) {
+  dockv::SubDocKey decoded_key;
+  RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
 
   auto last_value_opt = VERIFY_RESULT(GetInt64ColumnValue(
       decoded_key, value, table_info_, "last_value"));
@@ -665,8 +665,8 @@ Status TabletRestorePatch::Finish() {
       value_pb.set_int64_value(*(value_to_insert.last_value));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
-      auto doc_path = docdb::DocPath(
-          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      auto doc_path = dockv::DocPath(
+          doc_key_and_value.first.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(DocBatch()->SetPrimitive(
           doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
       IncrementTicker(RestoreTicker::kInserts);
@@ -676,8 +676,8 @@ Status TabletRestorePatch::Finish() {
       value_pb.set_bool_value(*(value_to_insert.is_called));
       VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
       auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));
-      auto doc_path = docdb::DocPath(
-          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      auto doc_path = dockv::DocPath(
+          doc_key_and_value.first.Encode(), dockv::KeyEntryValue::MakeColumnId(column_id));
       RETURN_NOT_OK(DocBatch()->SetPrimitive(
           doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
       IncrementTicker(RestoreTicker::kInserts);

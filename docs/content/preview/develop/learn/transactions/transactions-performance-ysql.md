@@ -48,7 +48,7 @@ The [INSERT](../../../../api/ysql/the-sql-language/statements/dml_insert/) state
 For example, if concurrent transactions are inserting the same row, this could cause a UniqueViolation. Instead of letting the server throw an error and handling it in code, you could just ask the server to ignore it as follows:
 
 ```plpgsql
-INSERT INTO txndemo VALUES (1,10) DO NOTHING;
+INSERT INTO txndemo VALUES (1,10) ON CONFLICT DO NOTHING;
 ```
 
 With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip between the application and the server.
@@ -56,8 +56,9 @@ With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#c
 You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
 
 ```plpgsql
-INSERT INTO txndemo VALUES (1,10) 
-        DO UPDATE SET v=10 WHERE k=1;
+INSERT INTO txndemo VALUES (1,10)
+        ON CONFLICT (k)
+        DO UPDATE SET v=10;
 ```
 
 Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
@@ -114,16 +115,17 @@ COMMIT;
 
 ## Optimistic concurrency control
 
-As noted, all transactions are dynamically assigned a priority. This is a value in the range of `[0.0, 1.0]`. The current priority can be fetched using the `yb_transaction_priority` setting as follows:
+As noted, all transactions are dynamically assigned a priority. This is a value in the range of `[0.0, 1.0]`. The current priority can be fetched using the `yb_get_current_transaction_priority` setting as follows:
 
 ```plpgsql
-SHOW yb_transaction_priority;
+SELECT yb_get_current_transaction_priority();
 ```
 
 ```output
-          yb_transaction_priority
+    yb_get_current_transaction_priority
 -------------------------------------------
  0.000000000 (Normal priority transaction)
+(1 row)
 ```
 
 The priority value is bound by two settings, namely `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`. If an application would like a specific transaction to be given higher priority, it can issue statements like the following:

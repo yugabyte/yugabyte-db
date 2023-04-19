@@ -18,10 +18,10 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_expr.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -30,6 +30,9 @@ using std::vector;
 
 namespace yb {
 namespace docdb {
+
+using dockv::KeyBytes;
+using dockv::KeyEntryValue;
 
 namespace {
 
@@ -49,11 +52,11 @@ bool AreColumnsContinous(ColumnListVector col_idxs) {
 
 DocQLScanSpec::DocQLScanSpec(
     const Schema& schema,
-    const DocKey& doc_key,
+    const dockv::DocKey& doc_key,
     const rocksdb::QueryId query_id,
     const bool is_forward_scan,
     const size_t prefix_length)
-    : QLScanSpec(
+    : dockv::QLScanSpec(
           schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length,
           std::make_shared<DocExprExecutor>()),
       hashed_components_(nullptr),
@@ -67,18 +70,19 @@ DocQLScanSpec::DocQLScanSpec(
         hash_code,
     const boost::optional<int32_t>
         max_hash_code,
-    std::reference_wrapper<const std::vector<KeyEntryValue>>
+    std::reference_wrapper<const dockv::KeyEntryValues>
         hashed_components,
     const QLConditionPB* condition,
     const QLConditionPB* if_condition,
     const rocksdb::QueryId query_id,
     const bool is_forward_scan,
     const bool include_static_columns,
-    const DocKey& start_doc_key,
+    const dockv::DocKey& start_doc_key,
     const size_t prefix_length)
-    : QLScanSpec(
+    : dockv::QLScanSpec(
           schema, is_forward_scan, query_id,
-          (condition ? std::make_unique<QLScanRange>(schema, *condition) : nullptr), prefix_length,
+          condition ? std::make_unique<dockv::QLScanRange>(schema, *condition) : nullptr,
+          prefix_length,
           condition, if_condition, std::make_shared<DocExprExecutor>()),
       hash_code_(hash_code),
       max_hash_code_(max_hash_code),
@@ -89,7 +93,7 @@ DocQLScanSpec::DocQLScanSpec(
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)) {
   if (!hashed_components_->empty() && schema.num_hash_key_columns()) {
-    options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
+    options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
     // should come here if we are not batching hash keys as a part of IN condition
     options_groups_.BeginNewGroup();
     options_groups_.AddToLatestGroup(0);
@@ -113,7 +117,7 @@ DocQLScanSpec::DocQLScanSpec(
       rangebounds->has_in_range_options()) {
     DCHECK(condition);
     if (!options_) {
-      options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
+      options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
     }
     InitOptions(*condition);
   }
@@ -266,17 +270,17 @@ void DocQLScanSpec::InitOptions(const QLConditionPB& condition) {
 
 KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   KeyBytes result;
-  auto encoder = DocKeyEncoder(&result).CotableId(Uuid::Nil());
+  auto encoder = dockv::DocKeyEncoder(&result).CotableId(Uuid::Nil());
 
   // If no hashed_component use hash lower/upper bounds if set.
   if (hashed_components_->empty()) {
     // use lower bound hash code if set in request (for scans using token)
     if (lower_bound && hash_code_) {
-      encoder.HashAndRange(*hash_code_, {KeyEntryValue(KeyEntryType::kLowest)}, {});
+      encoder.HashAndRange(*hash_code_, {KeyEntryValue(dockv::KeyEntryType::kLowest)}, {});
     }
     // use upper bound hash code if set in request (for scans using token)
     if (!lower_bound && max_hash_code_) {
-      encoder.HashAndRange(*max_hash_code_, {KeyEntryValue(KeyEntryType::kHighest)}, {});
+      encoder.HashAndRange(*max_hash_code_, {KeyEntryValue(dockv::KeyEntryType::kHighest)}, {});
     }
     return result;
   }
@@ -290,9 +294,9 @@ KeyBytes DocQLScanSpec::bound_key(const bool lower_bound) const {
   return result;
 }
 
-std::vector<KeyEntryValue> DocQLScanSpec::range_components(const bool lower_bound,
-                                                           std::vector<bool> *inclusivities,
-                                                           bool use_strictness) const {
+dockv::KeyEntryValues DocQLScanSpec::range_components(const bool lower_bound,
+                                                      std::vector<bool> *inclusivities,
+                                                      bool use_strictness) const {
   return GetRangeKeyScanSpec(
       schema(),
       nullptr /* prefixed_range_components */,
@@ -332,7 +336,7 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
     KeyBytes result = doc_key_;
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
-    result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+    result.AppendKeyEntryTypeBeforeGroupEnd(dockv::KeyEntryType::kHighest);
     return std::move(result);
   }
 
@@ -349,7 +353,7 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
 
       // For lower-bound key, if static columns should be included in the scan, the lower-bound key
       // should be the hash key with no range components in order to include the static columns.
-      RETURN_NOT_OK(ClearRangeComponents(&result, AllowSpecial::kTrue));
+      RETURN_NOT_OK(ClearRangeComponents(&result, dockv::AllowSpecial::kTrue));
 
       return result;
     } else {
@@ -382,7 +386,7 @@ Result<KeyBytes> DocQLScanSpec::Bound(const bool lower_bound) const {
   // the target start_doc_key itself (dockey + suffix < dockey + kHighest).
   // For lower bound, this is true already, because dockey + suffix is > dockey.
   KeyBytes result = start_doc_key_;
-  result.AppendKeyEntryTypeBeforeGroupEnd(KeyEntryType::kHighest);
+  result.AppendKeyEntryTypeBeforeGroupEnd(dockv::KeyEntryType::kHighest);
   return result;
 }
 
@@ -404,8 +408,8 @@ std::shared_ptr<rocksdb::ReadFileFilter> DocQLScanSpec::CreateFileFilter() const
   }
 }
 
-const DocKey& DocQLScanSpec::DefaultStartDocKey() {
-  static const DocKey result;
+const dockv::DocKey& DocQLScanSpec::DefaultStartDocKey() {
+  static const dockv::DocKey result;
   return result;
 }
 

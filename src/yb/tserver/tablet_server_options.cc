@@ -36,7 +36,6 @@
 #include "yb/tserver/tserver_flags.h"
 #include "yb/util/result.h"
 
-using std::vector;
 
 namespace yb {
 namespace tserver {

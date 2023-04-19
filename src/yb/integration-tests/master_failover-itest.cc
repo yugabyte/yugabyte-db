@@ -159,7 +159,7 @@ class MasterFailoverTest : public YBTest {
     return table_creator->table_name(table_name)
         .table_type(YBTableType::YQL_TABLE_TYPE)
         .schema(&client_schema)
-        .hash_schema(YBHashSchema::kMultiColumnHash)
+        .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
         .timeout(MonoDelta::FromSeconds(90))
         .wait(mode == kWaitForCreate)
         .Create();
@@ -181,7 +181,7 @@ class MasterFailoverTest : public YBTest {
         .table_type(YBTableType::YQL_TABLE_TYPE)
         .indexed_table_id(table->id())
         .schema(&client_schema)
-        .hash_schema(YBHashSchema::kMultiColumnHash)
+        .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
         .timeout(MonoDelta::FromSeconds(90))
         .wait(mode == kWaitForCreate)
         // In the new style create index request, the CQL proxy populates the
@@ -743,7 +743,7 @@ TEST_F_EX(MasterFailoverTest, DereferenceTasks, MasterFailoverMiniClusterTest) {
   auto table_creator = client->NewTableCreator();
   ASSERT_OK(table_creator->table_name(table_name)
                          .schema(&schema)
-                         .hash_schema(YBHashSchema::kMultiColumnHash)
+                         .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
                          .num_tablets(1)
                          .Create());
 

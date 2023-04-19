@@ -27,7 +27,7 @@
 #include "yb/consensus/consensus.pb.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -1302,7 +1302,7 @@ TEST_F(CompactionTestWithFileExpiration, FileThatNeverExpires) {
   SleepFor(MonoDelta::FromSeconds(2 * kTableTTLSec));
 
   // Set workload TTL to not expire.
-  workload_->set_ttl(docdb::kResetTTL);
+  workload_->set_ttl(dockv::kResetTTL);
   rocksdb_listener_->Reset();
   ASSERT_OK(WriteAtLeastFilesPerDb(1));
   ASSERT_OK(ExecuteManualCompaction());

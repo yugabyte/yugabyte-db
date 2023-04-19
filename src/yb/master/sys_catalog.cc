@@ -43,8 +43,8 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/index.h"
-#include "yb/common/partial_row.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_protocol_util.h"
@@ -275,9 +275,9 @@ Status SysCatalogTable::Load(FsManager* fs_manager) {
   // Update partition schema of old SysCatalogTable. SysCatalogTable should be non-partitioned.
   if (metadata->partition_schema()->IsHashPartitioning()) {
     LOG(INFO) << "Updating partition schema of SysCatalogTable ...";
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), *metadata->schema(),
-                                          &partition_schema));
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+        PartitionSchemaPB(), *metadata->schema(), &partition_schema));
     metadata->SetPartitionSchema(partition_schema);
     RETURN_NOT_OK(metadata->Flush());
   }
@@ -330,11 +330,11 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   LOG(INFO) << "Creating new SysCatalogTable data";
   // Create the new Metadata
   Schema schema = BuildTableSchema();
-  PartitionSchema partition_schema;
-  RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
+  dockv::PartitionSchema partition_schema;
+  RETURN_NOT_OK(dockv::PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  vector<YBPartialRow> split_rows;
-  vector<Partition> partitions;
+  vector<dockv::YBPartialRow> split_rows;
+  vector<dockv::Partition> partitions;
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
 
@@ -765,7 +765,7 @@ Status SysCatalogTable::GetTableSchema(
   QLConditionPB cond;
   cond.set_op(QL_OP_AND);
   QLAddInt8Condition(&cond, schema.column_id(type_col_idx), QL_OP_EQUAL, SysRowEntryType::TABLE);
-  const std::vector<docdb::KeyEntryValue> empty_hash_components;
+  const dockv::KeyEntryValues empty_hash_components;
   docdb::DocQLScanSpec spec(
       schema, boost::none /* hash_code */, boost::none /* max_hash_code */, empty_hash_components,
       &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
@@ -937,7 +937,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     cond.add_operands()->set_column_id(db_oid_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(db_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1206,7 +1206,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     // catalog tables. They can be skipped, as tablespace information is relevant only for user
     // created tables.
     cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1325,7 +1325,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1374,7 +1374,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     cond.add_operands()->set_column_id(oid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(relnamespace_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1427,7 +1427,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     cond.add_operands()->set_column_id(attrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1496,7 +1496,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
   auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */,
@@ -1557,7 +1557,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
       seq_value->add_elems()->set_uint32_value(type_oid);
     }
 
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1783,7 +1783,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     for (auto const table_oid : table_oids) {
       list_values->add_elems()->set_uint32_value(table_oid);
     }
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
@@ -1898,7 +1898,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
   {
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
         projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);

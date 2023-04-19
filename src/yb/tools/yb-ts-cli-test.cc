@@ -64,8 +64,6 @@
 using std::string;
 using std::vector;
 
-using boost::assign::list_of;
-using strings::Split;
 using strings::Substitute;
 using yb::consensus::OpIdType;
 using yb::itest::FindTabletFollowers;

@@ -49,9 +49,9 @@
 #include "yb/consensus/log_reader.h"
 
 #include "yb/docdb/docdb_types.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/kv_debug.h"
-#include "yb/docdb/schema_packing.h"
+#include "yb/dockv/schema_packing.h"
 
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/numbers.h"
@@ -99,10 +99,8 @@ DEFINE_UNKNOWN_string(output_wal_dir, "", "WAL directory for the output of --fil
 namespace yb {
 namespace log {
 
-using consensus::OperationType;
 using consensus::ReplicateMsg;
 using std::string;
-using std::vector;
 using std::cout;
 using std::endl;
 
@@ -173,11 +171,11 @@ Status PrintDecodedWriteRequestPB(const string& indent,
       if (kv.has_key()) {
         Result<std::string> formatted_key =
           DocDBKeyToDebugStr(kv.key(), ::yb::docdb::StorageDbType::kRegular,
-                             ::yb::docdb::HybridTimeRequired::kFalse);
+                             ::yb::dockv::HybridTimeRequired::kFalse);
         cout << indent << indent << indent << indent << "Key: " << formatted_key << endl;
       }
       if (kv.has_value()) {
-        static docdb::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
+        static dockv::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
         Result<std::string> formatted_value = DocDBValueToDebugStr(
             kv.key(), ::yb::docdb::StorageDbType::kRegular, kv.value(), schema_packing_storage);
         cout << indent << indent << indent << indent << "Value: " << formatted_value << endl;

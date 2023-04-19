@@ -55,8 +55,6 @@
 namespace yb {
 
 class MetricRegistry;
-class Partition;
-class PartitionSchema;
 class ThreadPool;
 
 namespace consensus {
@@ -92,7 +90,7 @@ class TabletStatusListener {
 
   const std::string table_id() const;
 
-  std::shared_ptr<Partition> partition() const;
+  std::shared_ptr<dockv::Partition> partition() const;
 
   SchemaPtr schema() const;
 

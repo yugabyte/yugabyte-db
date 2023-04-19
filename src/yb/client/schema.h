@@ -48,14 +48,16 @@
 #include <string>
 #include <vector>
 
-#include "yb/client/client_fwd.h"
 #include "yb/common/constants.h"
-#include "yb/client/value.h"
 #include "yb/common/schema.h"
 #include "yb/common/pg_types.h"
-
 #include "yb/common/common_types.pb.h"
 #include "yb/common/value.pb.h"
+
+#include "yb/client/client_fwd.h"
+#include "yb/client/value.h"
+
+#include "yb/dockv/dockv_fwd.h"
 
 #include "yb/util/status_fwd.h"
 
@@ -63,15 +65,6 @@ namespace yb {
 
 // the types used internally and sent over the wire to the tserver
 typedef QLValuePB::ValueCase InternalType;
-
-class ColumnSchema;
-class YBPartialRow;
-class Schema;
-class TableProperties;
-
-namespace tools {
-class TsAdminClient;
-}
 
 namespace client {
 
@@ -345,7 +338,7 @@ class YBSchema {
   // the YBSchema object.
   //
   // The caller takes ownership of the created row.
-  std::unique_ptr<YBPartialRow> NewRow() const;
+  std::unique_ptr<dockv::YBPartialRow> NewRow() const;
 
   const std::vector<ColumnSchema>& columns() const;
 

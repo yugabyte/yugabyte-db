@@ -61,7 +61,7 @@ Result<bool> FetchState::Update() {
     rest_of_key.remove_prefix(i->key.size());
   }
 
-  auto alive_row = !VERIFY_RESULT(docdb::Value::IsTombstoned(value()));
+  auto alive_row = !VERIFY_RESULT(dockv::Value::IsTombstoned(value()));
   if (key_write_stack_.empty()) {
     // Empty stack means new row, i.e. doc key. So rest_of_key is not updated and matches
     // full key, that contains doc key.
@@ -69,7 +69,7 @@ Result<bool> FetchState::Update() {
       ++num_rows_;
     }
     auto doc_key_size = VERIFY_RESULT(
-        docdb::DocKey::EncodedHashPartAndDocKeySizes(rest_of_key)).doc_key_size;
+        dockv::DocKey::EncodedHashPartAndDocKeySizes(rest_of_key)).doc_key_size;
     key_write_stack_.push_back(KeyWriteEntry {
       .key = KeyBuffer(rest_of_key.Prefix(doc_key_size)),
       // If doc key does not have its own write time, then we use min time to avoid ignoring
@@ -143,9 +143,9 @@ Status RestorePatch::ProcessExistingOnlyEntry(
     Slice subkey = existing_key.WithoutPrefix(last_packed_row_restoring_state_.key.size());
     if (!subkey.empty()) {
       char type = subkey.consume_byte();
-      if (docdb::IsColumnId(static_cast<docdb::KeyEntryType>(type))) {
+      if (dockv::IsColumnId(static_cast<dockv::KeyEntryType>(type))) {
         Slice packed_value = last_packed_row_restoring_state_.value.AsSlice();
-        const docdb::SchemaPacking& packing = VERIFY_RESULT(
+        const dockv::SchemaPacking& packing = VERIFY_RESULT(
             table_info_->doc_read_context->schema_packing_storage.GetPacking(&packed_value));
         int64_t column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&subkey));
         // Expect only one subkey.
@@ -165,7 +165,7 @@ Status RestorePatch::ProcessExistingOnlyEntry(
     }
   }
   // Otherwise delete this kv.
-  char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
+  char tombstone_char = dockv::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
   IncrementTicker(RestoreTicker::kDeletes);
   AddKeyValue(existing_key, tombstone, doc_batch_);
@@ -227,8 +227,8 @@ Status RestorePatch::TryUpdateLastPackedRow(const Slice& key, const Slice& value
   VLOG_WITH_FUNC(3) << "Key: " << key.ToDebugHexString()
                     << ", value: " << value.ToDebugHexString();
   auto value_slice = value;
-  RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
-  if (value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow)) {
+  RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
+  if (value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow)) {
     VLOG_WITH_FUNC(2) << "Packed row encountered in the restoring state. Key: "
                       << key.ToDebugHexString() << ", value: " << value.ToDebugHexString();
     last_packed_row_restoring_state_.key = key;
@@ -265,16 +265,16 @@ void WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 }
 
-int64_t GetValue(const docdb::Value& value, int64_t* type) {
+int64_t GetValue(const dockv::Value& value, int64_t* type) {
   return value.primitive_value().GetInt64();
 }
 
-bool GetValue(const docdb::Value& value, bool* type) {
+bool GetValue(const dockv::Value& value, bool* type) {
   return value.primitive_value().GetBoolean();
 }
 
 Result<std::optional<int64_t>> GetInt64ColumnValue(
-    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    const dockv::SubDocKey& sub_doc_key, const Slice& value,
     tablet::TableInfo* table_info, const std::string& column_name) {
   // Packed row case.
   if (sub_doc_key.subkeys().empty()) {
@@ -285,7 +285,7 @@ Result<std::optional<int64_t>> GetInt64ColumnValue(
 }
 
 Result<std::optional<bool>> GetBoolColumnValue(
-    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    const dockv::SubDocKey& sub_doc_key, const Slice& value,
     tablet::TableInfo* table_info, const std::string& column_name) {
   // Packed row case.
   if (sub_doc_key.subkeys().empty()) {

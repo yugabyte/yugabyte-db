@@ -46,7 +46,6 @@
 
 using yb::tablet::MaintenanceManagerStatusPB;
 using std::shared_ptr;
-using std::vector;
 using std::string;
 using strings::Substitute;
 

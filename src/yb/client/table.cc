@@ -134,7 +134,7 @@ std::string YBTable::ToString() const {
       yb::ToString(index_info()), yb::ToString(index_map()));
 }
 
-const PartitionSchema& YBTable::partition_schema() const {
+const dockv::PartitionSchema& YBTable::partition_schema() const {
   return info_->partition_schema;
 }
 

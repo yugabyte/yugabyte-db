@@ -16,14 +16,14 @@
 #include "yb/common/row_mark.h"
 
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/transaction_dump.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/walltime.h"
 
@@ -47,6 +47,9 @@ DEFINE_test_flag(bool, fail_on_replicated_batch_idx_set_in_txn_record, false,
 
 namespace yb {
 namespace docdb {
+
+using dockv::KeyEntryTypeAsChar;
+using dockv::ValueEntryTypeAsChar;
 
 namespace {
 
@@ -77,8 +80,8 @@ void AddIntent(
     rocksdb::DirectWriteHandler* handler,
     Slice reverse_value_prefix = Slice()) {
   char reverse_key_prefix[1] = { KeyEntryTypeAsChar::kTransactionId };
-  DocHybridTimeWordBuffer doc_ht_buffer;
-  auto doc_ht_slice = InvertEncodedDocHT(key.parts[N - 1], &doc_ht_buffer);
+  dockv::DocHybridTimeWordBuffer doc_ht_buffer;
+  auto doc_ht_slice = dockv::InvertEncodedDocHT(key.parts[N - 1], &doc_ht_buffer);
 
   std::array<Slice, 3> reverse_key = {{
       Slice(reverse_key_prefix, sizeof(reverse_key_prefix)),
@@ -143,11 +146,11 @@ Status NonTransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
 #ifndef NDEBUG
     // Debug-only: ensure all keys we get in Raft replication can be decoded.
-    SubDocKey subdoc_key;
+    dockv::SubDocKey subdoc_key;
     Status s = subdoc_key.FullyDecodeFromKeyWithOptionalHybridTime(kv_pair.key());
     CHECK(s.ok())
         << "Failed decoding key: " << s.ToString() << "; "
-        << "Problematic key: " << BestEffortDocDBKeyToStr(KeyBytes(kv_pair.key())) << "\n"
+        << "Problematic key: " << dockv::BestEffortDocDBKeyToStr(kv_pair.key()) << "\n"
         << "value: " << kv_pair.value().ToDebugHexString();
 #endif
 
@@ -181,7 +184,7 @@ TransactionalWriter::TransactionalWriter(
     HybridTime hybrid_time,
     const TransactionId& transaction_id,
     IsolationLevel isolation_level,
-    PartialRangeKeyIntents partial_range_key_intents,
+    dockv::PartialRangeKeyIntents partial_range_key_intents,
     const Slice& replicated_batches_state,
     IntraTxnWriteId intra_txn_write_id)
     : put_batch_(put_batch),
@@ -233,7 +236,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
                    << " when only reads are expected";
     }
     strong_intent_types_ = GetStrongIntentTypeSet(
-        isolation_level_, OperationKind::kWrite, row_mark_);
+        isolation_level_, dockv::OperationKind::kWrite, row_mark_);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
@@ -243,7 +246,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
   if (!put_batch_.read_pairs().empty()) {
     strong_intent_types_ = GetStrongIntentTypeSet(
-        isolation_level_, OperationKind::kRead, row_mark_);
+        isolation_level_, dockv::OperationKind::kRead, row_mark_);
     RETURN_NOT_OK(EnumerateIntents(
         put_batch_.read_pairs(), std::ref(*this), partial_range_key_intents_));
   }
@@ -253,9 +256,9 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
 // Using operator() to pass this object conveniently to EnumerateIntents.
 Status TransactionalWriter::operator()(
-    IntentStrength intent_strength, FullDocKey, Slice value_slice, KeyBytes* key,
-    LastKey last_key) {
-  if (intent_strength == IntentStrength::kWeak) {
+    dockv::IntentStrength intent_strength, dockv::FullDocKey, Slice value_slice,
+    dockv::KeyBytes* key, dockv::LastKey last_key) {
+  if (intent_strength == dockv::IntentStrength::kWeak) {
     weak_intents_[key->data()] |= StrongToWeak(strong_intent_types_);
     return Status::OK();
   }
@@ -340,7 +343,7 @@ Status TransactionalWriter::Finish() {
 
   if (PREDICT_FALSE(FLAGS_TEST_docdb_sort_weak_intents)) {
     // This is done in tests when deterministic DocDB state is required.
-    std::vector<std::pair<KeyBuffer, IntentTypeSet>> intents_and_types(
+    std::vector<std::pair<KeyBuffer, dockv::IntentTypeSet>> intents_and_types(
         weak_intents_.begin(), weak_intents_.end());
     sort(intents_and_types.begin(), intents_and_types.end());
     for (const auto& intent_and_types : intents_and_types) {
@@ -357,7 +360,7 @@ Status TransactionalWriter::Finish() {
 }
 
 Status TransactionalWriter::AddWeakIntent(
-    const std::pair<KeyBuffer, IntentTypeSet>& intent_and_types,
+    const std::pair<KeyBuffer, dockv::IntentTypeSet>& intent_and_types,
     const std::array<Slice, 4>& value,
     DocHybridTimeBuffer* doc_ht_buffer) {
   char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
@@ -388,7 +391,7 @@ IntentsWriter::IntentsWriter(const Slice& start_key,
                              IntentsWriterContext* context)
     : start_key_(start_key), intents_db_(intents_db), context_(*context) {
   AppendTransactionKeyPrefix(context_.transaction_id(), &txn_reverse_index_prefix_);
-  txn_reverse_index_prefix_.AppendKeyEntryType(KeyEntryType::kMaxByte);
+  txn_reverse_index_prefix_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
   reverse_index_upperbound_ = txn_reverse_index_prefix_.AsSlice();
   reverse_index_iter_ = CreateRocksDBIterator(
       intents_db_, &KeyBounds::kNoBounds, BloomFilterMode::DONT_USE_BLOOM_FILTER, boost::none,
@@ -520,9 +523,9 @@ Result<bool> ApplyIntentsContext::Entry(
 
   auto intent = VERIFY_RESULT(ParseIntentKey(value, transaction_id().AsSlice()));
 
-  if (intent.types.Test(IntentType::kStrongWrite)) {
+  if (intent.types.Test(dockv::IntentType::kStrongWrite)) {
     const Slice transaction_id_slice = transaction_id().AsSlice();
-    auto decoded_value = VERIFY_RESULT(DecodeIntentValue(
+    auto decoded_value = VERIFY_RESULT(dockv::DecodeIntentValue(
         intent_iter_.value(), &transaction_id_slice));
 
     // Write id should match to one that were calculated during append of intents.
@@ -559,8 +562,8 @@ Result<bool> ApplyIntentsContext::Entry(
 
     // Useful when debugging transaction failure.
 #if defined(DUMP_APPLY)
-    SubDocKey sub_doc_key;
-    CHECK_OK(sub_doc_key.FullyDecodeFrom(intent.doc_path, HybridTimeRequired::kFalse));
+    dockv::SubDocKey sub_doc_key;
+    CHECK_OK(sub_doc_key.FullyDecodeFrom(intent.doc_path, dockv::HybridTimeRequired::kFalse));
     if (!sub_doc_key.subkeys().empty()) {
       auto txn_id = FullyDecodeTransactionId(transaction_id_slice);
       LOG(INFO) << "Apply: " << sub_doc_key.ToString()
@@ -579,7 +582,7 @@ Result<bool> ApplyIntentsContext::Entry(
 
     if (frontiers_) {
       Slice value_slice = decoded_value.body;
-      RETURN_NOT_OK(ValueControlFields::Decode(&value_slice));
+      RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
       if (value_slice.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
         auto schema_version = narrow_cast<SchemaVersion>(VERIFY_RESULT(
             util::FastDecodeUnsignedVarInt(&value_slice)));

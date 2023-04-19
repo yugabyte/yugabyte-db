@@ -27,14 +27,14 @@
 #include "yb/client/client_utils.h"
 #include "yb/client/table_info.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/gutil/casts.h"
 
@@ -76,7 +76,6 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 
 using namespace std::literals;
-using std::make_shared;
 using std::string;
 using std::vector;
 
@@ -404,7 +403,7 @@ void PgApiImpl::TupleIdBuilder::Prepare() {
   doc_key_.Clear();
 }
 
-Result<docdb::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
+Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     PgSession* session, const YBCPgYBTupleIdDescriptor& descr) {
   Prepare();
   auto target_desc = VERIFY_RESULT(session->LoadTable(
@@ -446,7 +445,7 @@ Result<docdb::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     }
 
     if (attr->is_null) {
-      values->emplace_back(docdb::KeyEntryType::kNullLow);
+      values->emplace_back(dockv::KeyEntryType::kNullLow);
       continue;
     }
     if (attr->attr_num == to_underlying(PgSystemAttrNum::kYBRowId)) {
@@ -463,7 +462,7 @@ Result<docdb::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
           Corruption, "Attribute value type does not match column type");
       expr_pb->ref_value(VERIFY_RESULT(value->Eval()));
     }
-    values->push_back(docdb::KeyEntryValue::FromQLValuePB(
+    values->push_back(dockv::KeyEntryValue::FromQLValuePB(
         expr_pb->value(), column.desc().sorting_type()));
   }
 
@@ -1281,7 +1280,7 @@ Status PgApiImpl::DmlFetch(PgStatement *handle, int32_t natts, uint64_t *values,
   return down_cast<PgDml*>(handle)->Fetch(natts, values, isnulls, syscols, has_data);
 }
 
-Result<docdb::KeyBytes> PgApiImpl::BuildTupleId(const YBCPgYBTupleIdDescriptor& descr) {
+Result<dockv::KeyBytes> PgApiImpl::BuildTupleId(const YBCPgYBTupleIdDescriptor& descr) {
     return tuple_id_builder_.Build(pg_session_.get(), descr);
 }
 

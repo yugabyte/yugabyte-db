@@ -58,9 +58,6 @@ METRIC_DEFINE_coarse_histogram(table, log_gc_duration,
 namespace yb {
 namespace tablet {
 
-using std::map;
-using strings::Substitute;
-
 //
 // LogGCOp.
 //

@@ -432,9 +432,7 @@ class ClusterAdminClient {
 
   Status GetReplicationInfo(const std::string& universe_uuid);
 
-  Result<rapidjson::Document> GetXClusterEstimatedDataLoss();
-
-  Result<rapidjson::Document> GetXClusterSafeTime();
+  Result<rapidjson::Document> GetXClusterSafeTime(bool include_lag_and_skew = false);
 
  protected:
   // Fetch the locations of the replicas for a given tablet from the Master.

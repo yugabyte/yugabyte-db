@@ -31,8 +31,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <glog/logging.h>
 
-#include "yb/common/partial_row.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -173,7 +173,7 @@ Result<bool> GetPgIndexStatus(
     cond.add_operands()->set_column_id(indexrelid_col_id);
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
-    const std::vector<docdb::KeyEntryValue> empty_key_components;
+    const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(projection,
                                  rocksdb::kDefaultQueryId,
                                  empty_key_components,
@@ -1214,7 +1214,7 @@ BackfillTablet::BackfillTablet(
   {
     auto l = tablet_->LockForRead();
     const auto& pb = tablet_->metadata().state().pb;
-    Partition::FromPB(pb.partition(), &partition_);
+    dockv::Partition::FromPB(pb.partition(), &partition_);
     // calculate backfilled_until_ as the largest key which all (active) indexes have backfilled.
     for (const TableId& idx_id : index_ids) {
       if (pb.backfilled_until().find(idx_id) != pb.backfilled_until().end()) {

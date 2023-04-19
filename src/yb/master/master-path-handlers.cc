@@ -43,7 +43,7 @@
 
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -1339,7 +1339,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   Schema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   NamespaceName keyspace_name;
   TableName table_name;
   TabletInfos tablets;
@@ -1436,7 +1436,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
     if (s.ok()) {
-      s = PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
@@ -1458,8 +1458,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     auto l = tablet->LockForRead();
 
-    Partition partition;
-    Partition::FromPB(l->pb.partition(), &partition);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(l->pb.partition(), &partition);
 
     string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);

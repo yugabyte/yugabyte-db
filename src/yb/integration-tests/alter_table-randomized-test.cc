@@ -63,9 +63,6 @@ using namespace std::literals;
 namespace yb {
 
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBTableType;
-using client::YBError;
 using client::YBqlWriteOp;
 using client::YBSchema;
 using client::YBSchemaBuilder;
@@ -74,7 +71,6 @@ using client::YBTable;
 using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBTableName;
-using client::YBValue;
 using std::shared_ptr;
 using std::make_pair;
 using std::map;

@@ -45,10 +45,8 @@ namespace yb {
 namespace tools {
 
 using client::YBClient;
-using client::YBClientBuilder;
 using client::YBSchema;
 using client::YBSchemaBuilder;
-using client::YBTableCreator;
 using client::YBTableName;
 using client::YBTable;
 

@@ -39,7 +39,7 @@ class WriteQuery {
              TabletPtr tablet,
              rpc::RpcContext* rpc_context,
              tserver::WriteResponsePB *response = nullptr,
-             docdb::OperationKind kind = docdb::OperationKind::kWrite);
+             dockv::OperationKind kind = dockv::OperationKind::kWrite);
 
   ~WriteQuery();
 
@@ -69,7 +69,7 @@ class WriteQuery {
     return &pgsql_write_ops_;
   }
 
-  docdb::OperationKind kind() const {
+  dockv::OperationKind kind() const {
     return kind_;
   }
 
@@ -207,7 +207,7 @@ class WriteQuery {
   std::unique_ptr<tserver::WriteRequestPB> client_request_holder_;
   tserver::WriteResponsePB* response_;
 
-  docdb::OperationKind kind_;
+  dockv::OperationKind kind_;
 
   // this transaction's start time
   CoarseTimePoint start_time_;
