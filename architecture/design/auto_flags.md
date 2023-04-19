@@ -22,7 +22,7 @@ New AutoFlags are defined using the following syntax in the primary cpp file whe
 
 - value_type: [`bool`, `int32`, `int64`, `uint64`, `double`, `string`]
 - flag_name: A friendly descriptive name for the AutoFlag.
-- flag_class: [`kLocalVolatile`, `kLocalPersisted`, `kExternal`]
+- flag_class: [`kLocalVolatile`, `kLocalPersisted`, `kExternal`, `kNewInstallsOnly`]
 - initial_value: The initial value of type `<value_type>`.
 - target_value: The target value of type `<value_type>`.
 - usage: Usage information about the AutoFlag.
@@ -65,6 +65,7 @@ AutoFlag class is picked based on the persistence property of the data, and whic
 | LocalVolatile     | After all the processes in our universe have been upgraded to the new code version.   | Yes, after the AutoFlag is demoted [^1] | yb_enable_expression_pushdown |
 | LocalPersisted    | After all the processes in our universe have been upgraded to the new code version.   | No | TEST_auto_flags_initialized |
 | External          | After all the processes in our universe and other dependent universes and processes have been upgraded to the new code version.   | No | regular_tablets_data_block_key_value_encoding, enable_stream_compression |
+| NewInstallsOnly   | After all the processes have been installed. No promotion for universe upgrades.   | No | TEST_auto_flags_new_install |
 
 [^1]: Not yet implemented.
 
