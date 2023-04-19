@@ -781,6 +781,7 @@
         "tabletStatus": "Tablet Status",
         "allNodes": "All Nodes",
         "allStatuses": "All statuses",
+        "none": "None",
         "tabletID": "Tablet ID",
         "tabletRange": "Tablet range",
         "leaderNode": "Leader node",

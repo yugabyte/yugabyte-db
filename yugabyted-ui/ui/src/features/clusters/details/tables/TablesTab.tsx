@@ -8,6 +8,7 @@ import { DatabaseList } from './DatabaseList';
 import TriangleDownIcon from '@app/assets/caret-down.svg';
 import { TableList } from './TableList';
 import { TabletList } from './TabletList';
+import { useTranslation } from 'react-i18next';
 
 export type DatabaseListType = Array<{ name: string, tableCount: number, size: number }>
 
@@ -28,11 +29,20 @@ const useStyles = makeStyles((theme) => ({
   },
   dropdownContent: {
     color: "black"
+  },
+  dropdownHeader: {
+    fontWeight: 500,
+    color: theme.palette.grey[500],
+    marginLeft: theme.spacing(2),
+    marginRight: theme.spacing(2),
+    fontSize: '11.5px',
+    textTransform: 'uppercase'
   }
 }));
 
 export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => {
   const classes = useStyles();
+  const { t } = useTranslation();
 
   const [selectedDB, setSelectedDB] = React.useState<string>();
   const [selectedTable, setSelectedTable] = React.useState<string>();
@@ -152,6 +162,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
                 growDirection={'right'}
                 className={classes.dropdown}
               >
+                <Box className={classes.dropdownHeader}>{t('clusterDetail.databases.database')}</Box>
                 {dbKeyframeList.map(item => (
                   <MenuItem
                     key={`keyspaces-${item.name.replace(' ', '-')}`}
@@ -175,6 +186,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
               growDirection={'right'}
               className={classes.dropdown}
             >
+              <Box className={classes.dropdownHeader}>{t('clusterDetail.databases.table')}</Box>
               {tableList.map(item => (
                 <MenuItem
                   key={`keyspaces-${item.name.replace(' ', '-')}`}
