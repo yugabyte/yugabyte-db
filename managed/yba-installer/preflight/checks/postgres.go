@@ -11,7 +11,6 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"golang.org/x/exp/slices"
@@ -20,7 +19,7 @@ import (
 var Postgres = &postgresCheck{
 	"postgres",
 	true,
-	[]int{10, 14}, // supportedMajorVersions
+	[]int{14}, // supportedMajorVersions
 }
 
 type postgresCheck struct {
@@ -52,14 +51,14 @@ func (p postgresCheck) Execute() Result {
 		res.Status = StatusCritical
 		res.Error = fmt.Errorf(
 			"exactly one of postgres.useExisting.enabled and" +
-			"postgres.install.enabled should be set to true")
+				"postgres.install.enabled should be set to true")
 		return res
 	}
 
-	if (useExisting) {
+	if useExisting {
 		pgDumpPath := viper.GetString("postgres.useExisting.pg_dump_path")
 		pgRestorePath := viper.GetString("postgres.useExisting.pg_restore_path")
-		if (pgDumpPath == "" || pgRestorePath == "") {
+		if pgDumpPath == "" || pgRestorePath == "" {
 			res.Status = StatusCritical
 			res.Error = fmt.Errorf(
 				"both pg_dump_path and pg_restore_path must be set when using existing Postgres server")
@@ -71,15 +70,19 @@ func (p postgresCheck) Execute() Result {
 		return res
 	}
 
-	res = p.testExistingPostgres()
-	if res.Status != StatusPassed {
+	err := p.testExistingPostgres()
+	if err != nil {
+		log.Error("failed subtest 'testExistingPostgres': " + err.Error())
+		res.Status = StatusCritical
+		res.Error = err
 		return res
 	}
 
-	out := shell.Run("pg_dump", "--help")
-	if !out.SucceededOrLog() {
-		res.Error = fmt.Errorf("pg_dump has to be installed on the host (error %w)", out.Error)
+	err = p.testPgcryptoAvailable()
+	if err != nil {
+		log.Error("failed subtest 'testPgcryptoAvailable': " + err.Error())
 		res.Status = StatusCritical
+		res.Error = err
 		return res
 	}
 
@@ -88,54 +91,47 @@ func (p postgresCheck) Execute() Result {
 
 // If the user has specified their own postgres db endpoint, this method attempts to
 // validate it
-func (p postgresCheck) testExistingPostgres() Result {
-
-	res := Result{
-		Check:  p.name,
-		Status: StatusPassed,
-	}
-
+func (p postgresCheck) testExistingPostgres() error {
 	db, nonPwdConnStr, err := common.GetPostgresConnection("yugaware")
 	if err != nil {
-		res.Error = fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
-		res.Status = StatusCritical
-		return res
+		return fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
 	}
+
 	log.Debug("Fetching server version")
 	rows, err := db.Query("SHOW server_version;")
 	if err != nil {
-		res.Error = fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
-		res.Status = StatusCritical
-		log.Info(res.Error.Error())
-		return res
+		return fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
 	}
 	defer rows.Close()
 
 	if !rows.Next() {
-		res.Error = fmt.Errorf("Could not query version from db %s", err)
-		res.Status = StatusCritical
-		log.Info(res.Error.Error())
-		return res
+		return fmt.Errorf("Could not query version from db %s", err)
 	}
 
 	var pgVersion string
 	err = rows.Scan(&pgVersion)
 	if err != nil {
-		res.Error = fmt.Errorf("Could not read version from postgres %s", err)
-		res.Status = StatusCritical
-		log.Info(res.Error.Error())
-		return res
+		return fmt.Errorf("Could not read version from postgres %s", err)
 	}
 	log.Debug(fmt.Sprintf("Postgres server version is %s", pgVersion))
 
 	pgMajorVersion := -1
 	pgMajorVersion, _ = strconv.Atoi(strings.Split(pgVersion, ".")[0])
 	if !slices.Contains(p.supportedMajorVersions, pgMajorVersion) {
-		res.Error = fmt.Errorf("Unsupported postgres major version %d", pgMajorVersion)
-		res.Status = StatusCritical
-		log.Info(res.Error.Error())
-		return res
+		return fmt.Errorf("Unsupported postgres major version %d", pgMajorVersion)
 	}
+	return nil
+}
 
-	return res
+func (p postgresCheck) testPgcryptoAvailable() error {
+	db, nonPwdConnStr, err := common.GetPostgresConnection("yugaware")
+	if err != nil {
+		return fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
+	}
+	log.Debug("checking pgcrypto is an available extension")
+	_, err = db.Query("create extension if not exists pgcrypto;")
+	if err != nil {
+		log.Error("could not create pgcrypto extension: " + err.Error())
+	}
+	return err
 }
