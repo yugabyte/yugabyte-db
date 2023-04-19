@@ -13,6 +13,7 @@ import {
   PROVIDER_FIELD,
   REGIONS_FIELD
 } from '../../../utils/constants';
+import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface DefaultRegionsFieldProps {
   disabled?: boolean;
@@ -20,6 +21,7 @@ interface DefaultRegionsFieldProps {
 
 export const DefaultRegionField = ({ disabled }: DefaultRegionsFieldProps): ReactElement => {
   const { control } = useFormContext<UniverseFormData>();
+  const classes = useFormFieldStyles();
   const { t } = useTranslation();
 
   //watchers
@@ -41,7 +43,7 @@ export const DefaultRegionField = ({ disabled }: DefaultRegionsFieldProps): Reac
         <YBLabel dataTestId="DefaultRegionField-Label">
           {t('universeForm.cloudConfig.defaultRegion')}
         </YBLabel>
-        <Box flex={1}>
+        <Box flex={1} className={classes.defaultTextBox}>
           <YBSelectField
             name={DEFAULT_REGION_FIELD}
             control={control}
