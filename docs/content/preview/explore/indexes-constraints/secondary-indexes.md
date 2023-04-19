@@ -1,7 +1,9 @@
 ---
-title: Secondary indexes
+title: Secondary indexes in YugabyteDB
+headerTitle: Secondary indexes
 linkTitle: Secondary indexes
 description: Overview of Secondary indexes in YSQL and YCQL
+headContent: Explore secondary indexes in YugabyteDB using YSQL and YCQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -10,7 +12,6 @@ menu:
     weight: 220
 aliases:
   - /preview/explore/ysql-language-features/indexes-1/
-  - /preview/explore/indexes-constraints/indexes-1/
 type: docs
 ---
 
@@ -66,6 +67,8 @@ DROP INDEX index_name1, index_name2, index_name3, ... ;
 For additional information, see [DROP INDEX YCQL API](../../../api/ycql/ddl_drop_index/).
 
 ## Example scenario using YSQL
+
+{{% explore-setup-single %}}
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -127,5 +130,5 @@ DROP INDEX index_employees_department;
 
 ## Learn more
 
-- [Benefits of Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
-- [Pushdown #3: Filtering using index predicates](https://blog.yugabyte.com/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.
+- [Benefits of Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+- [Pushdown #3: Filtering using index predicates](https://www.yugabyte.com/blog/5-query-pushdowns-for-distributed-sql-and-how-they-differ-from-a-traditional-rdbms/) discusses the performance boost of distributed SQL queries using indexes.

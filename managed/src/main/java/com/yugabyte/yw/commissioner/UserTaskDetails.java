@@ -176,6 +176,12 @@ public class UserTaskDetails {
     // Upgrade pod in Kubernetes.
     KubernetesUpgradePod,
 
+    // Copy package to YBC
+    KubernetesCopyPackage,
+
+    // Perform YBC Action
+    KubernetesYbcAction,
+
     // Run the initdb script in a tserver pod. (Deprecated)
     KubernetesInitYSQL,
 
@@ -210,7 +216,10 @@ public class UserTaskDetails {
     UpdatingKubernetesOverrides,
 
     // Fetch PVC and StorageClass information
-    KubernetesVolumeInfo
+    KubernetesVolumeInfo,
+
+    // Install Third Party Packages
+    InstallingThirdPartySoftware
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -426,6 +435,14 @@ public class UserTaskDetails {
         title = "Upgrade Kubernetes Pod";
         description = "Upgrade Kubernetes Pod";
         break;
+      case KubernetesCopyPackage:
+        title = "Copy Package to Kubernetes Pod";
+        description = "Copy Package to Kubernetes Pod";
+        break;
+      case KubernetesYbcAction:
+        title = "Perform YBC Action in the Container";
+        description = "Perform YBC Action in the Container";
+        break;
       case KubernetesInitYSQL:
         title = "Initialize YSQL in Kubernetes Universe";
         description = "Initialize YSQL in Kubernetes Universe";
@@ -489,6 +506,10 @@ public class UserTaskDetails {
       case KubernetesVolumeInfo:
         title = "Fetching Kubernetes Volume information";
         description = "Fetching Volume and storage information";
+        break;
+      case InstallingThirdPartySoftware:
+        title = "Install Third Party Software Packages";
+        description = "Installing Third party Software packages";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

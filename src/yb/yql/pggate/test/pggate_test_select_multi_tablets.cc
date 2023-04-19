@@ -62,7 +62,7 @@ TEST_F(PggateTestSelectMultiTablets, TestSelectMultiTablets) {
                                                DataType::FLOAT, false, false));
   CHECK_YBC_STATUS(YBCTestCreateTableAddColumn(pg_stmt, "job", ++col_count,
                                                DataType::STRING, false, false));
-  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  ExecCreateTableTransaction(pg_stmt);
   pg_stmt = nullptr;
 
   // SELECT: Empty Table ---------------------------------------------------------------------------

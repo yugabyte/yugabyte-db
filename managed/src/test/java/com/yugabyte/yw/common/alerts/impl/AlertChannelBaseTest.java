@@ -9,20 +9,27 @@
  */
 package com.yugabyte.yw.common.alerts.impl;
 
-import static com.yugabyte.yw.common.alerts.impl.AlertChannelBase.DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE;
-import static com.yugabyte.yw.common.alerts.impl.AlertChannelBase.DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE;
 import static org.junit.Assert.assertEquals;
 
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
-import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateServiceTest;
+import com.yugabyte.yw.common.alerts.AlertNotificationTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.PlatformNotificationException;
+import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertLabel;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.List;
@@ -31,6 +38,15 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class AlertChannelBaseTest extends FakeDBApplication {
+
+  private static final String DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE =
+      "YugabyteDB Anywhere {{ $labels.severity }} alert {{ $labels.definition_name }} "
+          + "{{ $labels.alert_state }} for {{ $labels.source_name }}";
+
+  private static final String DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE =
+      "{{ $labels.definition_name }} alert with severity level '{{ $labels.severity }}' "
+          + "for {{ $labels.source_type }} '{{ $labels.source_name }}' "
+          + "is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}";
 
   private static final String TITLE_TEMPLATE = "<b>Title template</b>";
 
@@ -41,17 +57,83 @@ public class AlertChannelBaseTest extends FakeDBApplication {
   private Customer defaultCustomer;
   AlertChannelBase channelBase;
 
+  private AlertTemplateVariableService alertTemplateVariableService;
+
+  private AlertChannelTemplateService alertChannelTemplateService;
+
+  private AlertChannelTemplatesExt defaultTemplates;
+
   @Before
   public void setUp() {
     defaultCustomer = ModelFactory.testCustomer();
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
+    defaultTemplates =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Email);
     channelBase =
-        new AlertChannelBase() {
+        new AlertChannelBase(alertTemplateVariableService) {
           @Override
-          public void sendNotification(Customer customer, Alert alert, AlertChannel channel)
+          public void sendNotification(
+              Customer customer,
+              Alert alert,
+              AlertChannel channel,
+              AlertChannelTemplatesExt templates)
               throws PlatformNotificationException {
             // Do nothing
           }
         };
+  }
+
+  @Test
+  public void testGetNotificationTitle_TemplateForChannelType() {
+    Universe universe = ModelFactory.createUniverse();
+    AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    alert.setDefinitionUuid(definition.getUuid());
+    AlertChannel channel = createEmailChannelWithEmptyTemplates();
+
+    AlertChannelTemplates channelTemplates =
+        AlertChannelTemplateServiceTest.createTemplates(
+            defaultCustomer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(channelTemplates);
+    AlertChannelTemplatesExt customTemplates =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Email);
+
+    Context context = getContext(channel, customTemplates);
+    assertEquals(
+        channelTemplates.getTitleTemplate(), AlertChannelBase.getNotificationTitle(alert, context));
+  }
+
+  @Test
+  public void testGetNotificationText_VariableValues() {
+    Universe universe = ModelFactory.createUniverse();
+    AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+    alert.setLabel("custom_value", "bar");
+    alert.setDefinitionUuid(definition.getUuid());
+
+    AlertChannel channel = createEmailChannelWithEmptyTemplates();
+
+    AlertTemplateVariable variable1 =
+        AlertTemplateVariableServiceTest.createTestVariable(
+            defaultCustomer.getUuid(), "custom_value");
+    AlertTemplateVariable variable2 =
+        AlertTemplateVariableServiceTest.createTestVariable(
+            defaultCustomer.getUuid(), "default_value");
+    alertTemplateVariableService.save(variable1);
+    alertTemplateVariableService.save(variable2);
+    AlertChannelTemplates channelTemplates =
+        AlertChannelTemplateServiceTest.createTemplates(
+            defaultCustomer.getUuid(), ChannelType.Email);
+    channelTemplates.setTextTemplate("Some {{ custom_value }} and {{ default_value }} variables");
+    alertChannelTemplateService.save(channelTemplates);
+    AlertChannelTemplatesExt customTemplates =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Email);
+
+    Context context = getContext(channel, customTemplates);
+    assertEquals(
+        "Some bar and foo variables", AlertChannelBase.getNotificationText(alert, context));
   }
 
   @Test
@@ -63,8 +145,10 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     alert.setDefinitionUuid(definition.getUuid());
     AlertChannel channel = createEmailChannel();
 
+    Context context = getContext(channel, defaultTemplates);
     assertEquals(
-        channel.getParams().getTitleTemplate(), channelBase.getNotificationTitle(alert, channel));
+        channel.getParams().getTitleTemplate(),
+        AlertChannelBase.getNotificationTitle(alert, context));
   }
 
   @Test
@@ -72,10 +156,35 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Alert alert = ModelFactory.createAlert(defaultCustomer);
     AlertChannel channel = createEmailChannelWithEmptyTemplates();
 
-    AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
+    Context context = getContext(channel, defaultTemplates);
+    AlertNotificationTemplateSubstitutor substitutor =
+        new AlertNotificationTemplateSubstitutor(
+            alert, channel, context.getLabelDefaultValues(), false);
     assertEquals(
         substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TITLE_TEMPLATE),
-        channelBase.getNotificationTitle(alert, channel));
+        AlertChannelBase.getNotificationTitle(alert, context));
+  }
+
+  @Test
+  public void testGetNotificationText_TemplateForChannelType() {
+    Universe universe = ModelFactory.createUniverse();
+    AlertDefinition definition = ModelFactory.createAlertDefinition(defaultCustomer, universe);
+    Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
+
+    alert.setDefinitionUuid(definition.getUuid());
+    AlertChannel channel = createEmailChannelWithEmptyTemplates();
+
+    AlertChannelTemplates channelTemplates =
+        AlertChannelTemplateServiceTest.createTemplates(
+            defaultCustomer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(channelTemplates);
+    AlertChannelTemplatesExt customTemplates =
+        alertChannelTemplateService.getWithDefaults(defaultCustomer.getUuid(), ChannelType.Email);
+
+    Context context = getContext(channel, customTemplates);
+    assertEquals(
+        customTemplates.getChannelTemplates().getTextTemplate(),
+        AlertChannelBase.getNotificationText(alert, context));
   }
 
   @Test
@@ -85,8 +194,10 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     Alert alert = ModelFactory.createAlert(defaultCustomer, definition);
 
     AlertChannel channel = createEmailChannel();
+    Context context = getContext(channel, defaultTemplates);
     assertEquals(
-        channel.getParams().getTextTemplate(), channelBase.getNotificationText(alert, channel));
+        channel.getParams().getTextTemplate(),
+        AlertChannelBase.getNotificationText(alert, context));
   }
 
   @Test
@@ -109,10 +220,13 @@ public class AlertChannelBaseTest extends FakeDBApplication {
     alert.setLabels(labels);
     AlertChannel channel = createEmailChannelWithEmptyTemplates();
 
-    AlertTemplateSubstitutor<Alert> substitutor = new AlertTemplateSubstitutor<>(alert);
+    Context context = getContext(channel, defaultTemplates);
+    AlertNotificationTemplateSubstitutor substitutor =
+        new AlertNotificationTemplateSubstitutor(
+            alert, channel, context.getLabelDefaultValues(), false);
     assertEquals(
         substitutor.replace(DEFAULT_ALERT_NOTIFICATION_TEXT_TEMPLATE),
-        channelBase.getNotificationText(alert, channel));
+        AlertChannelBase.getNotificationText(alert, context));
   }
 
   private AlertChannel createEmailChannel() {
@@ -128,5 +242,10 @@ public class AlertChannelBaseTest extends FakeDBApplication {
 
   private AlertChannel createEmailChannelWithEmptyTemplates() {
     return ModelFactory.createEmailChannel(defaultCustomer.getUuid(), ALERT_CHANNEL_NAME);
+  }
+
+  private Context getContext(AlertChannel channel, AlertChannelTemplatesExt templates) {
+    return new Context(
+        channel, templates, alertTemplateVariableService.list(defaultCustomer.getUuid()));
   }
 }

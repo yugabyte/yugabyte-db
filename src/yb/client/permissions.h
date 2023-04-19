@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_PERMISSIONS_H
-#define YB_CLIENT_PERMISSIONS_H
+#pragma once
 
 #include <condition_variable>
 #include <shared_mutex>
@@ -151,5 +150,3 @@ class PermissionsCache {
 } // namespace namespace internal
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_PERMISSIONS_H

@@ -6,15 +6,20 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -23,7 +28,7 @@ import java.util.function.Function;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
-import play.api.Play;
+import play.mvc.Http.Status;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = ResizeNodeParams.Converter.class)
@@ -36,6 +41,8 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws, Common.CloudType.kubernetes);
 
   private boolean forceResizeNode;
+  public Map<String, String> masterGFlags;
+  public Map<String, String> tserverGFlags;
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
@@ -44,20 +51,46 @@ public class ResizeNodeParams extends UpgradeTaskParams {
 
   @Override
   public void verifyParams(Universe universe) {
-    super.verifyParams(universe);
+    verifyParams(universe, null);
+  }
+
+  @Override
+  public void verifyParams(Universe universe, NodeDetails.NodeState nodeState) {
+    super.verifyParams(universe, nodeState); // we call verifyParams which will fail
+
+    RuntimeConfigFactory runtimeConfigFactory =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
+
+    // Both master and tserver can be null. But if one is provided, both should be provided.
+    if ((masterGFlags == null && tserverGFlags != null)
+        || (tserverGFlags == null && masterGFlags != null)) {
+      throw new PlatformServiceException(
+          Status.BAD_REQUEST, "Either none or both master and tserver gflags are required");
+    }
+    if (masterGFlags != null) {
+      // We want this flow to only be enabled for cloud in the first go.
+      if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")) {
+        throw new PlatformServiceException(
+            Status.METHOD_NOT_ALLOWED, "Cannot resize with gflag changes.");
+      }
+      masterGFlags = GFlagsUtil.trimFlags(masterGFlags);
+      tserverGFlags = GFlagsUtil.trimFlags(tserverGFlags);
+      GFlagsUtil.checkConsistency(masterGFlags, tserverGFlags);
+    }
 
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE) {
       throw new IllegalArgumentException(
           "Only ROLLING_UPGRADE option is supported for resizing node (changing VM type).");
     }
 
-    RuntimeConfigFactory runtimeConfigFactory =
-        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
-
+    boolean hasClustersToResize = false;
     for (Cluster cluster : clusters) {
       UserIntent newUserIntent = cluster.userIntent;
       UserIntent currentUserIntent =
           universe.getUniverseDetails().getClusterByUuid(cluster.uuid).userIntent;
+      if (!hasResizeChanges(currentUserIntent, newUserIntent)) {
+        continue;
+      }
 
       String errorStr =
           getResizeIsPossibleError(
@@ -65,7 +98,21 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       if (errorStr != null) {
         throw new IllegalArgumentException(errorStr);
       }
+      hasClustersToResize = true;
     }
+    if (!hasClustersToResize && !forceResizeNode) {
+      throw new IllegalArgumentException("No changes!");
+    }
+  }
+
+  private boolean hasResizeChanges(UserIntent currentUserIntent, UserIntent newUserIntent) {
+    if (currentUserIntent == null || newUserIntent == null) {
+      return false;
+    }
+    return !(Objects.equals(currentUserIntent.instanceType, newUserIntent.instanceType)
+        && Objects.equals(currentUserIntent.masterInstanceType, newUserIntent.masterInstanceType)
+        && Objects.equals(currentUserIntent.deviceInfo, newUserIntent.deviceInfo)
+        && Objects.equals(currentUserIntent.masterDeviceInfo, newUserIntent.masterDeviceInfo));
   }
 
   /**
@@ -84,7 +131,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       boolean verifyVolumeSize) {
 
     RuntimeConfigFactory runtimeConfigFactory =
-        Play.current().injector().instanceOf(RuntimeConfigFactory.class);
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
 
     return checkResizeIsPossible(
         currentUserIntent, newUserIntent, universe, runtimeConfigFactory, verifyVolumeSize);
@@ -220,26 +267,84 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     DeviceInfo newDeviceInfo = getter.apply(newUserIntent);
     DeviceInfo currentDeviceInfo = getter.apply(currentUserIntent);
 
-    if (newDeviceInfo != null && newDeviceInfo.volumeSize != null) {
-      Integer currDiskSize = currentDeviceInfo.volumeSize;
-      if (verifyVolumeSize && currDiskSize > newDeviceInfo.volumeSize) {
-        errorConsumer.accept(
-            "Disk size cannot be decreased. It was "
-                + currDiskSize
-                + " got "
-                + newDeviceInfo.volumeSize);
+    // Disk will not be resized if the universe has no currently defined device info.
+    if (currentDeviceInfo != null && newDeviceInfo != null) {
+      DeviceInfo currentDeviceInfoCloned = currentDeviceInfo.clone();
+      if (newDeviceInfo.volumeSize != null) {
+        if (verifyVolumeSize && currentDeviceInfo.volumeSize > newDeviceInfo.volumeSize) {
+          errorConsumer.accept(
+              "Disk size cannot be decreased. It was "
+                  + currentDeviceInfo.volumeSize
+                  + " got "
+                  + newDeviceInfo.volumeSize);
+          return true;
+        }
+        currentDeviceInfoCloned.volumeSize = newDeviceInfo.volumeSize;
       }
-      // If numVolumes is specified in the newUserIntent,
-      // make sure it is the same as the current value.
-      if (newDeviceInfo.numVolumes != null
-          && !newDeviceInfo.numVolumes.equals(currentDeviceInfo.numVolumes)) {
-        errorConsumer.accept(
-            "Number of volumes cannot be changed. It was "
-                + currentDeviceInfo.numVolumes
-                + " got "
-                + newDeviceInfo.numVolumes);
+      if (!Objects.equals(newDeviceInfo.diskIops, currentDeviceInfo.diskIops)) {
+        if (newDeviceInfo.diskIops == null) {
+          newDeviceInfo.diskIops = currentDeviceInfo.diskIops;
+        }
+        if (currentUserIntent.providerType != Common.CloudType.aws) {
+          errorConsumer.accept("Disk IOPS provisioning is only supported for AWS");
+          return true;
+        }
+        if (!currentDeviceInfo.storageType.isIopsProvisioning()) {
+          errorConsumer.accept(
+              "Disk IOPS provisioning is not allowed for storage type: "
+                  + currentDeviceInfo.storageType);
+          return true;
+        }
+        Pair<Integer, Integer> iopsRange = currentDeviceInfo.storageType.getIopsRange();
+        if (newDeviceInfo.diskIops < iopsRange.getFirst()
+            || newDeviceInfo.diskIops > iopsRange.getSecond()) {
+          errorConsumer.accept(
+              String.format(
+                  "Disk IOPS value: %d is not in the acceptable range: %d - %d "
+                      + "for storage type: %s",
+                  newDeviceInfo.diskIops,
+                  iopsRange.getFirst(),
+                  iopsRange.getSecond(),
+                  currentDeviceInfo.storageType));
+          return true;
+        }
+        currentDeviceInfoCloned.diskIops = newDeviceInfo.diskIops;
       }
-      return !Objects.equals(currDiskSize, newDeviceInfo.volumeSize);
+      if (!Objects.equals(newDeviceInfo.throughput, currentDeviceInfo.throughput)) {
+        if (newDeviceInfo.throughput == null) {
+          newDeviceInfo.throughput = currentDeviceInfo.throughput;
+        }
+        if (currentUserIntent.providerType != Common.CloudType.aws) {
+          errorConsumer.accept("Disk Throughput provisioning is only supported for AWS");
+          return true;
+        }
+        if (!currentDeviceInfo.storageType.isThroughputProvisioning()) {
+          errorConsumer.accept(
+              "Disk Throughput provisioning is not allowed for storage type: "
+                  + currentDeviceInfo.storageType);
+          return true;
+        }
+        Pair<Integer, Integer> throughputRange = currentDeviceInfo.storageType.getThroughputRange();
+        if (newDeviceInfo.throughput < throughputRange.getFirst()
+            || newDeviceInfo.throughput > throughputRange.getSecond()) {
+          errorConsumer.accept(
+              String.format(
+                  "Disk Throughput (MiB/s) value: %d is not in the acceptable range: %d - %d"
+                      + " for storage type: %s",
+                  newDeviceInfo.throughput,
+                  throughputRange.getFirst(),
+                  throughputRange.getSecond(),
+                  currentDeviceInfo.storageType));
+          return true;
+        }
+        currentDeviceInfoCloned.throughput = newDeviceInfo.throughput;
+      }
+
+      if (!newDeviceInfo.equals(currentDeviceInfoCloned)) {
+        errorConsumer.accept(
+            "Smart resize only supports modifying volumeSize, diskIops, throughput");
+      }
+      return !currentDeviceInfo.equals(currentDeviceInfoCloned);
     }
     return false;
   }
@@ -258,8 +363,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       List<InstanceType> instanceTypes =
           InstanceType.findByProvider(
               Provider.getOrBadRequest(UUID.fromString(provider)),
-              Play.current().injector().instanceOf(Config.class),
-              Play.current().injector().instanceOf(ConfigHelper.class),
+              StaticInjectorHolder.injector().instanceOf(Config.class),
               allowUnsupportedInstances);
       InstanceType newInstanceType =
           instanceTypes
@@ -276,6 +380,11 @@ public class ResizeNodeParams extends UpgradeTaskParams {
       return true;
     }
     return false;
+  }
+
+  public boolean flagsProvided() {
+    // If one is present, we know the other must be present.
+    return masterGFlags != null;
   }
 
   public static class Converter extends BaseConverter<ResizeNodeParams> {}

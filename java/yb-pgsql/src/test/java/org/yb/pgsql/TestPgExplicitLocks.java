@@ -19,7 +19,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -29,7 +29,7 @@ import java.util.Map;
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgExplicitLocks extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSelect.class);
 
@@ -64,7 +64,8 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       String query = "update explicitlocks set vi=5 where h=0 and r=0";
       s2.execute(query);
     } catch (PSQLException ex) {
-      if (ex.getMessage().contains("Conflicts with higher priority transaction")) {
+      if (ex.getMessage().contains("could not serialize access due to concurrent update")) {
+        assertTrue(ex.getMessage().contains("conflicts with higher priority transaction"));
         LOG.info("Conflict ERROR");
         conflict_occurred = true;
       }
@@ -98,7 +99,9 @@ public class TestPgExplicitLocks extends BasePgSQLTest {
       int first = stmts[0].getUpdateCount();
       int second = 0;
       if (conflict_expected) {
-        runInvalidQuery(stmts[1], query2, "Conflicts with higher priority transaction");
+        runInvalidQuery(stmts[1], query2, true,
+          "could not serialize access due to concurrent update",
+          "conflicts with higher priority transaction");
         stmts[0].execute("COMMIT");
         stmts[1].execute("ROLLBACK");
       } else {

@@ -13,48 +13,48 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link active">
-      <i class="fab fa-aws"></i>
+    <a href="../aws" class="nav-link active">
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+    <a href="../gcp" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../kubernetes" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../vmware-tanzu" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+    <a href="../openshift" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
-      <i class="fas fa-building"></i>
+    <a href="../on-premises" class="nav-link">
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
@@ -109,10 +109,9 @@ You have an option to provide the following:
 
 - A custom classless inter-domain routing (CIDR) block for each regional VPC. If not provided, Yugabyte Platform will choose defaults, aiming to not overlap across regions.
 
-- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.<br><br>
+- A custom Amazon Machine Image (AMI) ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle 8 support](#ubuntu-18-and-oracle-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
 
-  ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
-
+    ![New Region Modal](/images/ee/aws-setup/aws_new_region.png)
 
 ### Self-managed configuration
 
@@ -150,7 +149,7 @@ If you are not already subscribed and have not accepted the Terms and Conditions
 
 ![Marketplace accept](/images/ee/aws-setup/marketplace-accept.png)
 
-If so, click **Accept Terms** and wait for the page to switch to a successful state. Once the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
+If so, click **Accept Terms** and wait for the page to switch to a successful state. After the operation completes, or if you previously subscribed and accepted the terms, you should see the following:
 
 ![Marketplace success](/images/ee/aws-setup/marketplace-success.png)
 

@@ -21,26 +21,28 @@
 #include "yb/master/snapshot_state.h"
 
 #include "yb/tserver/tserver_error.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 
-DEFINE_int64(max_concurrent_restoration_rpcs, -1,
-              "Maximum number of tablet restoration rpcs that can be outstanding. "
-              "Only used if its value is >= 0. Value of 0 means that "
-              "INT_MAX number of restoration rpcs can be concurrent."
-              "If its value is < 0 then max_concurrent_restoration_rpcs_per_tserver "
-              "gflag is used.");
-TAG_FLAG(max_concurrent_restoration_rpcs, runtime);
+DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs, -1,
+    "Maximum number of tablet restoration rpcs that can be outstanding. "
+    "Only used if its value is >= 0. Value of 0 means that "
+    "INT_MAX number of restoration rpcs can be concurrent."
+    "If its value is < 0 then max_concurrent_restoration_rpcs_per_tserver "
+    "gflag is used.");
 
-DEFINE_int64(max_concurrent_restoration_rpcs_per_tserver, 1,
-              "Maximum number of tablet restoration rpcs per tserver that can be outstanding."
-              "Only used if the value of gflag max_concurrent_restoration_rpcs is < 0. "
-              "When used it is multiplied with the number of TServers in the active cluster "
-              "(not read-replicas) to obtain the total maximum concurrent restoration rpcs. If "
-              "the cluster config is not found and we are not able to determine the number of "
-              "live tservers then the total maximum concurrent restoration RPCs is just the "
-              "value of this flag.");
-TAG_FLAG(max_concurrent_restoration_rpcs_per_tserver, runtime);
+DEFINE_RUNTIME_int64(max_concurrent_restoration_rpcs_per_tserver, 1,
+    "Maximum number of tablet restoration rpcs per tserver that can be outstanding."
+    "Only used if the value of gflag max_concurrent_restoration_rpcs is < 0. "
+    "When used it is multiplied with the number of TServers in the active cluster "
+    "(not read-replicas) to obtain the total maximum concurrent restoration rpcs. If "
+    "the cluster config is not found and we are not able to determine the number of "
+    "live tservers then the total maximum concurrent restoration RPCs is just the "
+    "value of this flag.");
+
+DEFINE_test_flag(bool, update_aggregated_restore_state, false,
+    "Test only flag that updates the aggregated restore state as opposed to the initial state"
+    " when persisting the restoration object");
 
 #include "yb/util/result.h"
 
@@ -86,12 +88,33 @@ RestorationState::RestorationState(
   InitTabletIds(snapshot->TabletIdsInState(SysSnapshotEntryPB::COMPLETE));
 }
 
+SysSnapshotEntryPB::State RestorationState::MigrateInitialStateIfNeeded(
+    SysSnapshotEntryPB::State state) {
+  // Since deletion of restores is not implemented as of D23527
+  // we can safely assume that a FAILED final state cannot occur from a
+  // DELETING initial state.
+  if (state == SysSnapshotEntryPB::RESTORED || state == SysSnapshotEntryPB::FAILED) {
+    LOG(INFO) << "Incorrect initial state of restoration " << state
+              << " migrating to " << SysSnapshotEntryPB::RESTORING;
+    return SysSnapshotEntryPB::RESTORING;
+  }
+  return state;
+}
+
 RestorationState::RestorationState(
     SnapshotCoordinatorContext* context, const TxnSnapshotRestorationId& restoration_id,
     const SysRestorationEntryPB& entry)
-    : StateWithTablets(context, entry.state(), MakeRestorationStateLogPrefix(
-        restoration_id, FullyDecodeTxnSnapshotId(entry.snapshot_id()),
-        FullyDecodeSnapshotScheduleId(entry.schedule_id()))),
+    // Due to a bug (see https://github.com/yugabyte/yugabyte-db/issues/16131)
+    // we are persisting the final restoration state in entry.state().
+    // Ideally we should be persisting the initial state and then load it
+    // in-memory in the StateWithTablets object. Below, we migrate from such a
+    // final state to an initial state for clusters that have
+    // done some restores already before upgrading.
+    : StateWithTablets(
+        context, MigrateInitialStateIfNeeded(entry.state()),
+        MakeRestorationStateLogPrefix(restoration_id,
+            FullyDecodeTxnSnapshotId(entry.snapshot_id()),
+            FullyDecodeSnapshotScheduleId(entry.schedule_id()))),
       restoration_id_(restoration_id),
       is_sys_catalog_restored_(entry.is_sys_catalog_restored()),
       restore_at_(HybridTime::FromPB(entry.restore_at_ht())), version_(entry.version()) {
@@ -117,7 +140,7 @@ RestorationState::RestorationState(
 
 Status RestorationState::ToPB(RestorationInfoPB* out) {
   out->set_id(restoration_id_.data(), restoration_id_.size());
-  return ToEntryPB(out->mutable_entry());
+  return ToEntryPB(ForClient::kTrue, out->mutable_entry());
 }
 
 void RestorationState::PrepareOperations(
@@ -136,18 +159,23 @@ void RestorationState::PrepareOperations(
       .sys_catalog_restore_needed = !schedule_id_.IsNil(),
       .is_tablet_part_of_snapshot = snapshot_tablets.count(data.id) != 0,
       .db_oid = db_oid,
+      .schedule_id = schedule_id_,
     });
     return true;
   });
 }
 
-bool RestorationState::IsTerminalFailure(const Status& status) {
-  return status.IsAborted() ||
-         tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT;
+std::optional<SysSnapshotEntryPB::State> RestorationState::GetTerminalStateForStatus(
+    const Status& status) {
+  if (status.IsAborted() ||
+      tserver::TabletServerError(status) == tserver::TabletServerErrorPB::INVALID_SNAPSHOT) {
+    return SysSnapshotEntryPB::FAILED;
+  }
+  return std::nullopt;
 }
 
-Status RestorationState::ToEntryPB(SysRestorationEntryPB* out) {
-  out->set_state(VERIFY_RESULT(AggregatedState()));
+Status RestorationState::ToEntryPB(ForClient for_client, SysRestorationEntryPB* out) {
+  out->set_state(for_client ? VERIFY_RESULT(AggregatedState()) : initial_state());
   if (complete_time_) {
     out->set_complete_time_ht(complete_time_.ToUint64());
   }
@@ -180,7 +208,11 @@ Status RestorationState::StoreToKeyValuePair(docdb::KeyValuePairPB* pair) {
   faststring value;
   value.push_back(docdb::ValueEntryTypeAsChar::kString);
   SysRestorationEntryPB entry;
-  RETURN_NOT_OK(ToEntryPB(&entry));
+  ForClient for_client = ForClient::kFalse;
+  if (FLAGS_TEST_update_aggregated_restore_state) {
+    for_client = ForClient::kTrue;
+  }
+  RETURN_NOT_OK(ToEntryPB(for_client, &entry));
   RETURN_NOT_OK(pb_util::AppendToString(entry, &value));
   pair->set_value(value.data(), value.size());
   return Status::OK();

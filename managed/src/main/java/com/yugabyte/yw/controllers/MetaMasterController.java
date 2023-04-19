@@ -6,8 +6,9 @@ import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingService
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -142,16 +143,16 @@ public class MetaMasterController extends Controller {
       PlacementInfo pi = universeDetails.getPrimaryCluster().placementInfo;
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
-      Map<UUID, Map<String, String>> azToConfig = PlacementInfoUtil.getConfigPerAZ(pi);
+      Map<UUID, Map<String, String>> azToConfig = KubernetesUtil.getConfigPerAZ(pi);
 
       for (Entry<UUID, Map<String, String>> entry : azToConfig.entrySet()) {
         UUID azUUID = entry.getKey();
-        String azName = isMultiAz ? AvailabilityZone.get(azUUID).code : null;
+        String azName = isMultiAz ? AvailabilityZone.get(azUUID).getCode() : null;
 
         Map<String, String> config = entry.getValue();
 
         String namespace =
-            PlacementInfoUtil.getKubernetesNamespace(
+            KubernetesUtil.getKubernetesNamespace(
                 isMultiAz,
                 universeDetails.nodePrefix,
                 azName,
@@ -160,8 +161,13 @@ public class MetaMasterController extends Controller {
                 false);
 
         String helmReleaseName =
-            PlacementInfoUtil.getHelmReleaseName(
-                isMultiAz, universeDetails.nodePrefix, azName, false);
+            KubernetesUtil.getHelmReleaseName(
+                isMultiAz,
+                universeDetails.nodePrefix,
+                universe.getName(),
+                azName,
+                false,
+                universeDetails.useNewHelmNamingStyle);
 
         String ip =
             kubernetesManagerFactory

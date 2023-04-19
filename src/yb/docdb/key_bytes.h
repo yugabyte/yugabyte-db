@@ -11,14 +11,13 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_KEY_BYTES_H_
-#define YB_DOCDB_KEY_BYTES_H_
+#pragma once
 
 #include <string>
 
 #include "yb/common/common_fwd.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/kv_util.h"
 #include "yb/util/slice.h"
@@ -281,5 +280,3 @@ void AppendHash(uint16_t hash, KeyBytes* key);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_KEY_BYTES_H_

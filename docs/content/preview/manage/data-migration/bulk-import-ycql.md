@@ -1,5 +1,5 @@
 ---
-title: Bulk import
+title: Bulk import YCQL
 headerTitle: Bulk import for YCQL
 linkTitle: Bulk import
 description: Import data from Apache Cassandra to YugabyteDB.
@@ -28,7 +28,7 @@ type: docs
   </li>
 </ul>
 
-Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB. This page documents bulk import for YugabyteDB’s [Cassandra-compatible YCQL API](../../../api/ycql/).
+Depending on the data volume imported, various bulk import tools can be used to load data into YugabyteDB. This page documents bulk import for YugabyteDB's [Cassandra-compatible YCQL API](../../../api/ycql/).
 
 You should first export data from existing Apache Cassandra and MySQL tables. Next, you can import the data using the various bulk load options supported by YugabyteDB.
 
@@ -112,7 +112,7 @@ The import data instructions are organized by the size of the input datasets, ra
 
 ### Small datasets
 
-Cassandra’s CQL shell provides the  [`COPY FROM`](../../../admin/ycqlsh/#copy-from)  command which allows importing data from CSV files:
+Cassandra's CQL shell provides the [`COPY FROM`](../../../admin/ycqlsh/#copy-from) command, which allows importing data from CSV files:
 
 ```sql
 ycqlsh> COPY example.SensorData FROM '/path/to/sample.csv';
@@ -124,7 +124,7 @@ See also [`COPY TO`](../../../admin/ycqlsh/#copy-to) .
 
 ### Large datasets
 
-[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general-purpose bulk loader for CQL that supports various types of delimited files (particularly CSV files). For details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that `cassandra-loader` requires quotes for collection types (for example, “[1,2,3]” rather than [1,2,3] for lists).
+[`cassandra-loader`](https://github.com/brianmhess/cassandra-loader) is a general-purpose bulk loader for CQL that supports various types of delimited files (particularly CSV files). For details, review the README of the [YugabyteDB cassandra-loader fork](https://github.com/yugabyte/cassandra-loader/). Note that `cassandra-loader` requires quotes for collection types (for example, "[1,2,3]" rather than [1,2,3] for lists).
 
 #### Install cassandra-loader
 
@@ -169,7 +169,7 @@ The tool uses the exposed `partition_hash` function in order to execute smaller,
 
 Set up and run the ycrc tool using the following steps:
 
-1. Download the [ycrc](https://github.com/yugabyte/yb-tools/tree/main/ycrc) tool by compiling the source from the GitHub repository.
+1. Download the ycrc tool by compiling the source from the GitHub repository.
 
 1. Run the following command to confirm that the ycrc tool is working:
 

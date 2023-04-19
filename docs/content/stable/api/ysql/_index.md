@@ -1,8 +1,8 @@
 ---
-title: YSQL - Yugabyte SQL for distributed databases (PostgreSQL-compatible)
+title: YSQL - Yugabyte SQL for distributed databases
 headerTitle: Yugabyte Structured Query Language (YSQL)
 linkTitle: YSQL
-description: Yugabyte Structured Query Language (YSQL) is the distributed SQL API for PostgreSQL-compatible YugabyteDB.
+description: Learn about Yugabyte Structured Query Language (YSQL), the distributed SQL API for the PostgreSQL compatible YugabyteDB database.
 summary: Reference for the YSQL API
 image: /images/section_icons/api/ysql.png
 menu:
@@ -74,6 +74,6 @@ Moreover, for some experiments, you'll need operating system access so that you 
 
 It also helps to have a vanilla PostgreSQL installation on the same server so that you can confirm for yourself that the SQL systems of each (at least for the functionality that application developers use, and in the overwhelming majority of cases) are syntactically and semantically identical.
 
-To do all this confidently, you need to be sure that nobody else can use your sandbox so that you know that everything that you observe will be explained by what you deliberately did. Occasionally, you'll even want to destroy a cluster at one version and replace it with a cluster at a different version 
+To do all this confidently, you need to be sure that nobody else can use your sandbox so that you know that everything that you observe will be explained by what you deliberately did. Occasionally, you'll even want to destroy a cluster at one version and replace it with a cluster at a different version
 
 The simplest way to achieve this ideal sandbox regime is to use you own laptop. The [Quick Start](../../quick-start/explore/ysql/) section shows you how to do this.

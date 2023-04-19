@@ -344,6 +344,7 @@ export const CreateAzureConfigForm: FC<CreateAzureConfigFormProps> = ({
                     render={(arrayHelper) => (
                       <>
                         {values.multi_regions.map((region: configs, index: number) => (
+                          // eslint-disable-next-line react/no-array-index-key
                           <Row key={index} className="padding-bottom">
                             <Col lg={12} md={12} className="no-left-padding">
                               {MultiRegionControls(

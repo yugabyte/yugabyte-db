@@ -17,6 +17,7 @@ import static org.yb.AssertionWrappers.fail;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -32,6 +33,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.BaseYBTest;
 import org.yb.client.TestUtils;
+import org.yb.client.YBClient;
+import org.yb.client.YBTable;
+import org.yb.master.MasterDdlOuterClass;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.Timeouts;
 
@@ -208,6 +212,19 @@ public class BaseMiniClusterTest extends BaseYBTest {
     createMiniCluster(-1, -1, additionalMasterFlags, additionalTserverFlags);
   }
 
+  /**
+   * Creates a new cluster with additional flags and environment vars.
+   * <p>
+   * Flags will override initial ones on name clash.
+   */
+  protected final void createMiniCluster(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags,
+      Map<String, String> additionalEnvironmentVars) throws Exception {
+    createMiniCluster(-1, -1, additionalMasterFlags, additionalTserverFlags, null,
+        additionalEnvironmentVars);
+  }
+
   protected final void createMiniCluster(
       Consumer<MiniYBClusterBuilder> customize) throws Exception {
     createMiniCluster(-1, -1, customize);
@@ -229,7 +246,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
       int numTservers,
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags) throws Exception {
-    createMiniCluster(numMasters, numTservers, additionalMasterFlags, additionalTserverFlags, null);
+    createMiniCluster(numMasters, numTservers, additionalMasterFlags, additionalTserverFlags, null,
+        Collections.emptyMap());
   }
 
   protected final void createMiniCluster(
@@ -237,7 +255,7 @@ public class BaseMiniClusterTest extends BaseYBTest {
       int numTservers,
       Consumer<MiniYBClusterBuilder> customize) throws Exception {
     createMiniCluster(numMasters, numTservers, Collections.emptyMap(), Collections.emptyMap(),
-        customize);
+        customize, Collections.emptyMap());
   }
 
   protected void createMiniCluster(
@@ -245,7 +263,9 @@ public class BaseMiniClusterTest extends BaseYBTest {
       int numTservers,
       Map<String, String> additionalMasterFlags,
       Map<String, String> additionalTserverFlags,
-      Consumer<MiniYBClusterBuilder> customize) throws Exception {
+      Consumer<MiniYBClusterBuilder> customize,
+      Map<String, String> additionalEnvironmentVars
+      ) throws Exception {
     if (!isMiniClusterEnabled()) {
       return;
     }
@@ -281,6 +301,8 @@ public class BaseMiniClusterTest extends BaseYBTest {
     if (customize != null) {
       customize.accept(clusterBuilder);
     }
+
+    clusterBuilder.addEnvironmentVariables(additionalEnvironmentVars);
 
     miniCluster = clusterBuilder.build();
     masterAddresses = miniCluster.getMasterAddresses();
@@ -351,6 +373,22 @@ public class BaseMiniClusterTest extends BaseYBTest {
   private Set<String> getTabletIds(String tableUUID)  throws Exception {
     return miniCluster.getClient().getTabletUUIDs(
         miniCluster.getClient().openTableByUUID(tableUUID));
+  }
+
+  /**
+   * Get the list of all YBTable satisfying the input table name filter as a substring.
+   * @param tableNameFilter table name filter as a name substring
+   * @return a list of YBTable satisfying the name filter
+   */
+  protected List<YBTable> getTablesFromName(final String tableNameFilter) throws Exception {
+    final YBClient client = miniCluster.getClient();
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tables =
+      client.getTablesList(tableNameFilter).getTableInfoList();
+    List<YBTable> tablesList = new ArrayList<>();
+    for (MasterDdlOuterClass.ListTablesResponsePB.TableInfo table : tables) {
+      tablesList.add(client.openTableByUUID(table.getId().toStringUtf8()));
+    }
+    return tablesList;
   }
 
   protected int getTableCounterMetricByTableUUID(String tableUUID,

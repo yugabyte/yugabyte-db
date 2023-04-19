@@ -22,8 +22,8 @@ import {
   editBackupSchedule,
   getScheduledBackupList
 } from '../common/BackupScheduleAPI';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { IBackupSchedule } from '../common/IBackupSchedule';
+import { TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { IBackupSchedule, IBackupScheduleStatus } from '../common/IBackupSchedule';
 import { BackupCreateModal } from '../components/BackupCreateModal';
 
 import { convertScheduleToFormValues, convertMsecToTimeFrame } from './ScheduledBackupUtils';
@@ -31,9 +31,9 @@ import { convertScheduleToFormValues, convertMsecToTimeFrame } from './Scheduled
 import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { keyBy } from 'lodash';
-import { FormatUnixTimeStampTimeToTimezone } from '../common/BackupUtils';
 import { ScheduledBackupEmpty } from '../components/BackupEmpty';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './ScheduledBackupList.scss';
 
 const wrapTableName = (tablesList: string[] | undefined) => {
@@ -156,6 +156,7 @@ export const ScheduledBackupList = ({ universeUUID }: { universeUUID: string }) 
         />
       </div>
       <div className="schedule-backup-list" onScroll={handleScroll}>
+        {/* eslint-disable-next-line react/display-name */}
         {schedules?.map((schedule) => (
           <ScheduledBackupCard
             schedule={schedule}
@@ -244,23 +245,25 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           <span className="schedule-name">{schedule.scheduleName}</span>
           <StatusBadge
             statusType={Badge_Types.DELETED}
-            customLabel={TABLE_TYPE_MAP[schedule.backupInfo.backupType ?? '-']}
+            customLabel={TableTypeLabel[schedule.backupInfo.backupType ?? '-']}
           />
           <YBToggle
             name="Enabled"
             input={{
-              value: schedule.status === 'Active',
+              value: schedule.status === IBackupScheduleStatus.ACTIVE,
               onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
                 toggleSchedule.mutateAsync({
                   scheduleUUID: schedule.scheduleUUID,
                   frequency: schedule.frequency,
                   cronExpression: schedule.cronExpression,
-                  status: e.target.checked ? 'Active' : 'Stopped',
+                  status: e.target.checked
+                    ? IBackupScheduleStatus.ACTIVE
+                    : IBackupScheduleStatus.STOPPED,
                   frequencyTimeUnit: schedule.frequencyTimeUnit
                 })
             }}
           />
-          <span>{schedule.status === 'Active' ? 'Enabled' : 'Disabled'}</span>
+          <span>{schedule.status === IBackupScheduleStatus.ACTIVE ? 'Enabled' : 'Disabled'}</span>
         </Col>
         <Col lg={6} className="no-padding">
           <DropdownButton
@@ -272,8 +275,10 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
           >
             <MenuItem
               onClick={() => {
+                if (schedule.status !== IBackupScheduleStatus.ACTIVE) return;
                 doEditPolicy(schedule);
               }}
+              disabled={schedule.status !== IBackupScheduleStatus.ACTIVE}
             >
               <i className="fa fa-pencil"></i> Edit Policy
             </MenuItem>
@@ -358,21 +363,13 @@ const ScheduledBackupCard: FC<ScheduledBackupCardProps> = ({
             <Col lg={3}>
               <div className="info-title">Last backup</div>
               <div className="info-val">
-                {schedule.prevCompletedTask ? (
-                  <FormatUnixTimeStampTimeToTimezone timestamp={schedule.prevCompletedTask} />
-                ) : (
-                  '-'
-                )}
+                {schedule.prevCompletedTask ? ybFormatDate(schedule.prevCompletedTask) : '-'}
               </div>
             </Col>
             <Col lg={3}>
               <div className="info-title">Next backup</div>
               <div className="info-val">
-                {schedule.nextExpectedTask ? (
-                  <FormatUnixTimeStampTimeToTimezone timestamp={schedule.nextExpectedTask} />
-                ) : (
-                  '-'
-                )}
+                {schedule.nextExpectedTask ? ybFormatDate(schedule.nextExpectedTask) : '-'}
               </div>
             </Col>
           </Row>

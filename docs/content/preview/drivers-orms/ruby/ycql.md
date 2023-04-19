@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: YugabyteDB Ruby Driver for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Ruby drivers for YCQL
+description: Connect an application using YugabyteDB Ruby driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,20 +12,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../ysql-pg/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li class="active">
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../ysql-pg/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li class="active">
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
@@ -35,9 +34,9 @@ type: docs
   </li>
 </ul>
 
-## Install the Yugabyte Ruby Driver for YCQL
+## Install the YugabyteDB Ruby Driver for YCQL
 
-To install the [Yugabyte Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver), run the following `gem install` command:
+To install the [YugabyteDB Ruby Driver for YCQL](https://github.com/yugabyte/cassandra-ruby-driver), run the following `gem install` command:
 
 ```sh
 $ gem install yugabyte-ycql-driver
@@ -105,5 +104,5 @@ Query returned: John 35 Ruby
 
 ## Learn more
 
-- Build Ruby applications using [Pg Gem Driver](../ysql-pg/).
-- Build Ruby applications using [Active Record ORM](../activerecord/).
+- Build Ruby applications using [Pg Gem Driver](../ysql-pg/)
+- Build Ruby applications using [Active Record ORM](../activerecord/)

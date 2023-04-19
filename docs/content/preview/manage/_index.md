@@ -1,10 +1,10 @@
 ---
 title: Manage YugabyteDB
-headerTitle: Manage
+headerTitle: Manage YugabyteDB
 linkTitle: Manage
-description:
+description: Manging YugabyteDB deployments
 image: /images/section_icons/quick_start/sample_apps.png
-headcontent:
+headcontent: Manage your YugabyteDB deployment
 aliases:
   - /preview/manage/
 menu:

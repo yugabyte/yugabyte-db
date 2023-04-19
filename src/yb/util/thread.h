@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_THREAD_H
-#define YB_UTIL_THREAD_H
+#pragma once
 
 #include <pthread.h>
 #include <sys/syscall.h>
@@ -55,6 +54,17 @@ namespace yb {
 class MetricEntity;
 class Thread;
 class WebCallbackRegistry;
+
+const char* TEST_GetThreadLogPrefix();
+
+class TEST_SetThreadPrefixScoped {
+ public:
+  explicit TEST_SetThreadPrefixScoped(const std::string& prefix);
+  ~TEST_SetThreadPrefixScoped();
+
+ private:
+  std::string old_prefix_;
+};
 
 // Utility to join on a thread, printing warning messages if it
 // takes too long. For example:
@@ -320,14 +330,7 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // Function object that wraps the user-supplied function to run in a separate thread.
   typedef std::function<void()> ThreadFunctor;
 
-  Thread(std::string category, std::string name, ThreadFunctor functor)
-      : thread_(0),
-        category_(std::move(category)),
-        name_(std::move(name)),
-        tid_(CHILD_WAITING_TID),
-        functor_(std::move(functor)),
-        done_(1),
-        joinable_(false) {}
+  Thread(std::string category, std::string name, ThreadFunctor functor);
 
   // Library-specific thread ID.
   pthread_t thread_;
@@ -335,6 +338,7 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // Name and category for this thread.
   const std::string category_;
   const std::string name_;
+  const std::string TEST_log_prefix_;
 
   // OS-specific thread ID. Once the constructor finishes StartThread(),
   // guaranteed to be set either to a non-negative integer, or to INVALID_TID.
@@ -413,5 +417,3 @@ class CDSAttacher {
 };
 
 } // namespace yb
-
-#endif /* YB_UTIL_THREAD_H */

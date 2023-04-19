@@ -112,6 +112,7 @@ Citrix
 Citus
 clonable
 Cloudwatch
+CMake
 Cobertura
 Codepen
 Cognito
@@ -124,6 +125,7 @@ Conda
 Consul
 Contentful
 Corosync
+Couchbase
 Coursier
 CPUs
 cron
@@ -276,6 +278,7 @@ Heroku
 Herokuish
 Hexo
 HipChat
+HLCs
 hostname
 hostnames
 hotfix
@@ -621,6 +624,8 @@ sparklines
 spidering
 Splunk
 SpotBugs
+SQLAlchemy
+SSDs
 Stackdriver
 Stackprof
 starrer
@@ -724,6 +729,7 @@ Twilio
 Twitter
 TypeScript
 Ubuntu
+UDTs
 ulimit
 unapplied
 unapprove
@@ -820,6 +826,7 @@ unverify
 unverifying
 uploader
 uploaders
+upsert
 upstreams
 upvote
 upvoted
@@ -838,6 +845,7 @@ viewport
 viewports
 virtualized
 virtualizing
+Vitess
 VPCs
 Vue
 Vuex
@@ -864,6 +872,7 @@ Worldline
 xCluster
 Xcode
 Xeon
+YBase
 ycqlsh
 YouTrack
 ysqlsh

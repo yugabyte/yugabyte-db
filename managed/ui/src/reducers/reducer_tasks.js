@@ -35,7 +35,7 @@ export default function (state = INITIAL_STATE, action) {
       return setInitialState(state, 'taskProgressData', {});
     case FETCH_CUSTOMER_TASKS:
       return { ...state };
-    case FETCH_CUSTOMER_TASKS_SUCCESS:
+    case FETCH_CUSTOMER_TASKS_SUCCESS: {
       const taskData = action.payload.data;
       const taskListResultArray = [];
       Object.keys(taskData).forEach(function (taskIdx) {
@@ -48,6 +48,7 @@ export default function (state = INITIAL_STATE, action) {
         ...state,
         customerTaskList: taskListResultArray.sort((a, b) => moment(b.createTime).isBefore(a.createTime) ? -1 : 1)
       };
+    }
     case FETCH_CUSTOMER_TASKS_FAILURE:
       if ('data' in action.payload) {
         return { ...state, customerTaskList: action.payload.response.data.error };

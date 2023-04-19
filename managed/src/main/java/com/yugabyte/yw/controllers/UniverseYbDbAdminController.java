@@ -18,6 +18,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.controllers.handlers.UniverseYbDbAdminHandler;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
@@ -33,7 +34,7 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import play.data.Form;
-import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -46,59 +47,122 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
       value = "Set a universe's database credentials",
       nickname = "setDatabaseCredentials",
       response = YBPSuccess.class)
-  public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID) {
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseSecurityFormData",
+          value = "The database credentials",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseSecurityFormData",
+          paramType = "body"))
+  public Result setDatabaseCredentials(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     universeYbDbAdminHandler.setDatabaseCredentials(
         customer,
         universe,
-        formFactory.getFormDataOrBadRequest(DatabaseSecurityFormData.class).get());
+        formFactory.getFormDataOrBadRequest(request, DatabaseSecurityFormData.class).get());
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.SetDBCredentials,
-            request().body().asJson());
+            Audit.ActionType.SetDBCredentials);
     return withMessage("Updated user in DB.");
+  }
+
+  @ApiOperation(
+      value = "Drop a database user for a universe",
+      nickname = "dropUserInDB",
+      response = YBPSuccess.class,
+      hidden = true)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseUserDropFormData",
+          value = "The database user to drop",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseUserDropFormData",
+          paramType = "body"))
+  public Result dropUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    DatabaseUserDropFormData data =
+        formFactory.getFormDataOrBadRequest(request, DatabaseUserDropFormData.class).get();
+
+    universeYbDbAdminHandler.dropUser(customer, universe, data);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.DropUserInDB);
+    return withMessage("Deleted user in DB.");
+  }
+
+  @ApiOperation(
+      value = "Create a restricted user for a universe",
+      nickname = "createRestrictedUserInDB",
+      response = YBPSuccess.class,
+      hidden = true)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseUserFormData",
+          value = "The database user to create",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
+          paramType = "body"))
+  public Result createRestrictedUserInDB(
+      UUID customerUUID, UUID universeUUID, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+
+    DatabaseUserFormData data =
+        formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
+
+    universeYbDbAdminHandler.createRestrictedUser(customer, universe, data);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.Universe,
+            universeUUID.toString(),
+            Audit.ActionType.CreateRestrictedUserInDB);
+    return withMessage("Created restricted user in DB.");
   }
 
   @ApiOperation(
       value = "Create a database user for a universe",
       nickname = "createUserInDB",
       response = YBPSuccess.class)
-  public Result createUserInDB(UUID customerUUID, UUID universeUUID) {
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "DatabaseUserFormData",
+          value = "The database user to create",
+          required = true,
+          dataType = "com.yugabyte.yw.forms.DatabaseUserFormData",
+          paramType = "body"))
+  public Result createUserInDB(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     DatabaseUserFormData data =
-        formFactory.getFormDataOrBadRequest(DatabaseUserFormData.class).get();
+        formFactory.getFormDataOrBadRequest(request, DatabaseUserFormData.class).get();
 
     universeYbDbAdminHandler.createUserInDB(customer, universe, data);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.CreateUserInDB,
-            Json.toJson(data));
+            Audit.ActionType.CreateUserInDB);
     return withMessage("Created user in DB.");
   }
 
   @VisibleForTesting static final String DEPRECATED = "Deprecated.";
-
-  // TODO: should this be tagged as deprecated?
-  // @Deprecated
-  @ApiOperation(
-      value = "Run a shell command",
-      notes = "This operation is no longer supported, for security reasons.",
-      response = YBPError.class)
-  public Result runInShell(UUID customerUUID, UUID universeUUID) {
-    throw new PlatformServiceException(BAD_REQUEST, DEPRECATED);
-  }
 
   @ApiOperation(
       value = "Run a YSQL query in a universe",
@@ -111,20 +175,20 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.RunQueryFormData",
           required = true))
-  public Result runQuery(UUID customerUUID, UUID universeUUID) {
+  public Result runQuery(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    Form<RunQueryFormData> formData = formFactory.getFormDataOrBadRequest(RunQueryFormData.class);
+    Form<RunQueryFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, RunQueryFormData.class);
 
     JsonNode queryResult =
-        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get());
+        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get(), request);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.RunYsqlQuery,
-            Json.toJson(formData.data()));
+            Audit.ActionType.RunYsqlQuery);
     return PlatformResults.withRawData(queryResult);
   }
 }

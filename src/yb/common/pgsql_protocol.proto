@@ -20,6 +20,7 @@ import "yb/common/common.proto";
 import "yb/common/common_types.proto";
 import "yb/common/transaction.proto";
 import "yb/common/value.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/rpc/lightweight_message.proto";
 
 //--------------------------------------------------------------------------------------------------
@@ -163,6 +164,14 @@ message PgsqlSamplingStatePB {
   optional uint64 rand_state = 6;
 }
 
+message PgsqlFetchSequenceParamsPB {
+  optional uint32 fetch_count = 1;
+  optional int64 inc_by = 2;
+  optional int64 min_value = 3;
+  optional int64 max_value = 4;
+  optional bool cycle = 5;
+}
+
 //--------------------------------------------------------------------------------------------------
 // Data Writing Instructions - INSERT, UPDATE, DELETE, colocated TRUNCATE.
 //--------------------------------------------------------------------------------------------------
@@ -176,6 +185,7 @@ message PgsqlWriteRequestPB {
     PGSQL_DELETE = 3;
     PGSQL_UPSERT = 4;
     PGSQL_TRUNCATE_COLOCATED = 5;
+    PGSQL_FETCH_SEQUENCE = 6;
   }
 
   // Client info
@@ -250,7 +260,7 @@ message PgsqlWriteRequestPB {
   optional uint32 ysql_db_oid = 24;
 
   // True only if this changes a system catalog table (or index).
-  optional bool is_ysql_catalog_change = 17 [default = false];
+  optional bool is_ysql_catalog_change_using_protobuf = 17 [default = false];
 
   // Does this request correspond to backfilling an index table?
   optional bool is_backfill = 19 [default = false];
@@ -269,6 +279,8 @@ message PgsqlWriteRequestPB {
 
   // Used only in pg client.
   optional bytes partition_key = 22;
+
+  optional PgsqlFetchSequenceParamsPB fetch_sequence_params = 25;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -407,6 +419,10 @@ message PgsqlReadRequestPB {
   // Reading distinct columns?
   optional bool distinct = 11 [default = false];
 
+  // Current only used on SELECT DISTINCT scan. If the value is greater than 0, use the specified
+  // prefix length to scan the table.
+  optional uint64 prefix_length = 39 [default = 0];
+
   // Flag for reading aggregate values.
   optional bool is_aggregate = 12 [default = false];
 
@@ -440,14 +456,9 @@ message PgsqlReadRequestPB {
   // Row mark as used by postgres for row locking.
   optional RowMarkType row_mark_type = 23;
 
-  // Used to identify 3 possibilities: WAIT_BLOCK, WAIT_SKIP or WAIT_ERROR
-  // TODO(Piyush):
-  // 1. YB doesn't support WAIT_BLOCK as of now. That will be supported with blocking infrastructure
-  //    that is to be implemented for pessmistic locking feature.
-  // 2. Default is set to WAIT_ERROR. For now, WAIT_ERROR denotes the current YB behaviour of
-  //    "abort other txn or raise conflict error when a conflict is found". When pessimistic locking
-  //    is turned on by default on YB, WAIT_ERROR will only denote the behaviour of raising conflict
-  //    error in current txn and not aborting others (like Postgres).
+  // Used only for explicit row-locking to identify 3 possibilities: WAIT_BLOCK, WAIT_SKIP, or
+  // WAIT_ERROR.
+  // See WaitPolicy for detailed information.
   optional WaitPolicy wait_policy = 32 [default = WAIT_ERROR];
 
   // Scan partition boundary.
@@ -509,7 +520,6 @@ message PgsqlResponsePB {
     PGSQL_STATUS_DUPLICATE_KEY_ERROR = 5;
   }
 
-  // TODO: AppStatusPB can consolidate status + error_message + pg_error_code
   // Internal Status information
   optional RequestStatus status = 1 [ default = PGSQL_STATUS_OK ]; // required
 
@@ -517,6 +527,7 @@ message PgsqlResponsePB {
   optional bool skipped = 6;
 
   // User readable error message associated with Internal & External Status
+  // DEPRECATED: please use error_status instead
   optional string error_message = 2;
 
   // Sidecar of rows data returned
@@ -546,10 +557,12 @@ message PgsqlResponsePB {
 
   // PostgreSQL error code encoded as in errcodes.h or yb_pg_errcodes.h.
   // See https://www.postgresql.org/docs/11/errcodes-appendix.html
+  // DEPRECATED: please use error_status instead
   optional uint64 pg_error_code = 8;
 
   // Transaction error code, obtained by static_cast of TransactionErrorTag::Decode
   // of Status::ErrorData(TransactionErrorTag::kCategory)
+  // DEPRECATED: please use error_status instead
   optional uint32 txn_error_code = 9;
 
   // Random sample state to hand over to the next block
@@ -562,4 +575,13 @@ message PgsqlResponsePB {
   // that sent out the 'BACKFILL' request statement.
   optional bytes backfill_spec = 13;
   optional bool is_backfill_batch_done = 14;
+
+  // Table's partition list version obtained from YBTable during response preparation.
+  // Table cache should be invalidated on partition list version mismatch detected.
+  optional uint32 partition_list_version = 15;
+
+  // Encapsulates data from a Status instance
+  // Repeated field provides support for multiple Statuses per response, allowing to return
+  // not only detailed error, but also warnings and notices.
+  repeated AppStatusPB error_status = 16;
 }

@@ -16,14 +16,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -31,32 +31,34 @@ type: docs
   <li>
     <a href="../azure/" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp; Azure
+      Azure
     </a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
@@ -83,7 +85,7 @@ When the configuration is completed, you can see all the resources managed by Yu
 
 You configure the Microsoft Azure cloud provider by completing the fields of the configuration page shown in the following illustration:
 
-![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-4.png)<br><br>
+![Prepare Azure cloud to install YugabyteDB Anywhere](/images/yb-platform/install/azure/platform-azure-prepare-cloud-env-4.png)<br>
 
 - **Provider Name** translates to an internal YugabyteDB Anywhere tag used for organizing cloud providers.
 - **Subscription ID** is required for cost management. The virtual machine resources managed by YugabyteDB Anywhere are tagged with this subscription.
@@ -93,10 +95,10 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
 - **SSH User** represents the user name for the **SSH Port**.
 - **Client ID** represents the [ID of an application](https://docs.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#option-2-create-a-new-application-secret) registered in your Azure Active Directory.
 - **Client Secret** represents the secret of an application registered in your Azure Active Directory. You need to enter the `Value` of the secret (not the `Secret ID`).
-- **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [How to define a private DNS zone](#how-to-define-a-private-dns-zone).
+- **Private DNS zone** lets you use a custom domain name for the nodes in your universe. For details and instructions, see [Define a private DNS zone](#define-a-private-dns-zone).
 - **Virtual Network Setup** allows you to customize your network, including the virtual network, as follows:
   - Select an existing Virtual Private Cloud (VPC).
-  - Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure: 
+  - Create a new VPC. Note that this option is considered beta and is not recommended for production use cases, as creating a new VPC can silently fail if there are any classless inter-domain routing (CIDR) conflicts. For example, the following will result in a silent failure:
     - Configure more than one Azure cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
     - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
@@ -104,7 +106,7 @@ You configure the Microsoft Azure cloud provider by completing the fields of the
   - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
   - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
-### How to obtain Azure resource IDs
+### Obtain Azure resource IDs
 
 To find an Azure resource's ID, navigate to the resource in question and click **JSON View** at the top right, as per the following illustration:
 
@@ -116,19 +118,19 @@ Azure resource IDs typically have the following format:
 /subscriptions/<subscriptionID>/resourceGroups/<resourceGroup>/providers/Microsoft.<service>/path/to/resource
 ```
 
-### How to define a private DNS zone
+### Define a private DNS zone
 
 You may choose to define a private DNS zone to instruct YugabyteDB Anywhere to register the universe name to all of the IP addresses in the universe within that DNS zone. For more information, see [What is a private Azure DNS zone](https://docs.microsoft.com/en-us/azure/dns/private-dns-privatednszone).
 
 You can set a private DNS zone as follows:
 
-1. On the Azure portal, create the Private DNS Zone, as per the following illustration:<br><br>
+1. On the Azure portal, create the Private DNS Zone, as per the following illustration:<br>
 
-    ![Private DNS: basics tab](/images/yb-platform/install/azure/private-dns-basics-tab.png)<br><br>
+    ![Private DNS: basics tab](/images/yb-platform/install/azure/private-dns-basics-tab.png)<br>
 
-1. Navigate to the resource page and click **Settings > Virtual Network Links**, as per the following illustration:<br><br>
+1. Navigate to the resource page and click **Settings > Virtual Network Links**, as per the following illustration:<br>
 
-    ![Resource menu](/images/yb-platform/install/azure/resource-menu.png)<br><br>
+    ![Resource menu](/images/yb-platform/install/azure/resource-menu.png)<br>
 
 1. Add a link to the virtual network to which you want it to be connected. For more information, see [Create an Azure private DNS zone using the Azure portal](https://docs.microsoft.com/en-us/azure/dns/private-dns-getstarted-portal).
 
@@ -160,7 +162,7 @@ You can specify a region as follows:
 
 1. Optionally, specify the security group, if the database VM is in a different network than YugabyteDB Anywhere.
 
-1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [How to use a shared image gallery](#how-to-use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [Configure Azure](#configure-azure).
+1. Provide a URN to a marketplace image or a shared gallery image by following instructions provided in [Use a shared image gallery](#use-a-shared-image-gallery). If you are using custom images, you need to specify the SSH port and user, as described in [Configure Azure](#configure-azure).
 
 1. Provide a mapping of subnet IDs to use for each availability zone you wish to deploy. This is required for ensuring that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you need in your environment.
 
@@ -174,7 +176,7 @@ Typically, it takes a few minutes for the cloud provider to be configured. When 
 
 If you encounter problems, see [Troubleshoot Azure cloud provider configuration](../../../troubleshoot/cloud-provider-config-issues/#azure-cloud-provider-configuration-problems).
 
-### How to use a shared image gallery
+### Use a shared image gallery
 
 You can use shared image galleries as an alternative to using marketplace image URNs. A gallery allows you to provide your own custom image to use for creating universe instances. For more information on shared image galleries, refer to [Store and share images in an Azure Compute Gallery](https://docs.microsoft.com/en-us/azure/virtual-machines/shared-image-galleries).
 
@@ -188,11 +190,11 @@ You set up a shared gallery image on Azure as follows:
 
 1. Navigate to the VM and click **Capture** on the top menu.
 
-1. Fill in the information and then choose the gallery and image definition you created in the previous steps, as per the following illustration:<br><br>
+1. Fill in the information and then choose the gallery and image definition you created in the previous steps, as per the following illustration:<br>
 
     ![img](/images/yb-platform/install/azure/shared-gallery-capture.png)
 
-    <br><br>Ensure that the images are replicated to each region in which you are planning to use them. For example, configuration shown in the following illustration would only work for US East:
+    Ensure that the images are replicated to each region in which you are planning to use them. For example, configuration shown in the following illustration would only work for US East:
 
     ![description](/images/yb-platform/install/azure/shared-gallery-replication.png)
 

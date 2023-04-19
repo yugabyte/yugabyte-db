@@ -44,7 +44,6 @@ import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodList;
-import io.fabric8.kubernetes.api.model.PodStatus;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +58,11 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
+
+import java.io.File;
+import java.io.FileInputStream;
+import io.fabric8.kubernetes.client.utils.Serialization;
+import java.io.InputStream;
 
 @RunWith(MockitoJUnitRunner.class)
 public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
@@ -92,21 +96,27 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     userIntent.tserverGFlags = new HashMap<>();
     userIntent.universeName = "demo-universe";
     userIntent.ybSoftwareVersion = YB_SOFTWARE_VERSION_OLD;
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     config.put("KUBECONFIG", "test");
-    defaultProvider.setConfig(config);
-    defaultProvider.save();
+    kubernetesProvider.setConfigMap(config);
+    kubernetesProvider.save();
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(
             userIntent, NODE_PREFIX, setMasters /* setMasters */, false, placementInfo));
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     defaultUniverse.updateConfig(
         ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
 
-    String statusString = "{ \"phase\": \"Running\", \"conditions\": [{\"status\": \"True\"}]}";
-    PodStatus status = TestUtils.deserialize(statusString, PodStatus.class);
-    when(mockKubernetesManager.getPodStatus(any(), any(), any())).thenReturn(status);
+    try {
+      File jsonFile = new File("src/test/resources/testPod.json");
+      InputStream jsonStream = new FileInputStream(jsonFile);
+
+      Pod testPod = Serialization.unmarshal(jsonStream, Pod.class);
+      when(mockKubernetesManager.getPodObject(any(), any(), any())).thenReturn(testPod);
+    } catch (Exception e) {
+    }
 
     YBClient mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
@@ -127,14 +137,18 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   private void setupUniverseSingleAZ(boolean setMasters) {
-    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
+    Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-    UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+            kubernetesProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
+    UserIntent userIntent = getTestUserIntent(r, kubernetesProvider, i, 3);
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 3, 3, true);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 3, 3, true);
     setupUniverse(setMasters, userIntent, pi);
     String podsString =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
@@ -172,23 +186,27 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
   }
 
   private void setupUniverseMultiAZ(boolean setMasters) {
-    Region r = Region.create(defaultProvider, "region-1", "PlacementRegion-1", "default-image");
+    Region r = Region.create(kubernetesProvider, "region-1", "PlacementRegion-1", "default-image");
     AvailabilityZone az1 = AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ-1", "subnet-1");
     AvailabilityZone az2 = AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ-2", "subnet-2");
     AvailabilityZone az3 = AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ-3", "subnet-3");
     InstanceType i =
         InstanceType.upsert(
-            defaultProvider.uuid, "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
-    UserIntent userIntent = getTestUserIntent(r, defaultProvider, i, 3);
+            kubernetesProvider.getUuid(),
+            "c3.xlarge",
+            10,
+            5.5,
+            new InstanceType.InstanceTypeDetails());
+    UserIntent userIntent = getTestUserIntent(r, kubernetesProvider, i, 3);
     PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 1, false);
     setupUniverse(setMasters, userIntent, pi);
 
-    String nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.code);
-    String nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.code);
-    String nodePrefix3 = String.format("%s-%s", NODE_PREFIX, az3.code);
+    String nodePrefix1 = String.format("%s-%s", NODE_PREFIX, az1.getCode());
+    String nodePrefix2 = String.format("%s-%s", NODE_PREFIX, az2.getCode());
+    String nodePrefix3 = String.format("%s-%s", NODE_PREFIX, az3.getCode());
 
     String podInfosMessage =
         "{\"items\": [{\"status\": {\"startTime\": \"1234\", \"phase\": \"Running\", "
@@ -431,7 +449,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
               : createUpdateGflagsResult(isSingleAZ);
       JsonNode expectedResults = expectedResultsList.get(position);
       List<JsonNode> taskDetails =
-          tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+          tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
       assertJsonEqual(expectedResults, taskDetails.get(0));
       position++;
     }
@@ -439,7 +457,7 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
   private TaskInfo submitTask(
       UpgradeKubernetesUniverse.Params taskParams, UpgradeTaskType taskType) {
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.taskType = taskType;
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     taskParams.nodePrefix = NODE_PREFIX;
@@ -467,8 +485,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
 
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     UpgradeKubernetesUniverse.Params taskParams = new UpgradeKubernetesUniverse.Params();
     taskParams.ybSoftwareVersion = "new-version";
@@ -476,13 +495,14 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(6))
         .helmUpgrade(
+            expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1))
         .getPodInfos(
@@ -511,7 +531,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     UpgradeKubernetesUniverse.Params taskParams = new UpgradeKubernetesUniverse.Params();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
@@ -520,13 +541,14 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(6))
         .helmUpgrade(
+            expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(1))
         .getPodInfos(
@@ -555,7 +577,9 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     UpgradeKubernetesUniverse.Params taskParams = new UpgradeKubernetesUniverse.Params();
     taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
@@ -563,13 +587,14 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(6))
         .helmUpgrade(
+            expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(
@@ -598,7 +623,8 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
     ArgumentCaptor<String> expectedOverrideFile = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedPodName = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<Map<String, String>> expectedConfig = ArgumentCaptor.forClass(Map.class);
-    String overrideFileRegex = "(.*)" + defaultUniverse.universeUUID + "(.*).yml";
+    ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
+    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     UpgradeKubernetesUniverse.Params taskParams = new UpgradeKubernetesUniverse.Params();
     taskParams.masterGFlags = ImmutableMap.of("master-flag", "m1");
@@ -607,13 +633,14 @@ public class UpgradeKubernetesUniverseTest extends CommissionerBaseTest {
 
     verify(mockKubernetesManager, times(6))
         .helmUpgrade(
+            expectedUniverseUUID.capture(),
             expectedYbSoftwareVersion.capture(),
             expectedConfig.capture(),
             expectedNodePrefix.capture(),
             expectedNamespace.capture(),
             expectedOverrideFile.capture());
     verify(mockKubernetesManager, times(6))
-        .getPodStatus(
+        .getPodObject(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedPodName.capture());
     verify(mockKubernetesManager, times(3))
         .getPodInfos(

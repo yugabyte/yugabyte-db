@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_SERVER_MONITORED_TASK_H
-#define YB_SERVER_MONITORED_TASK_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -60,11 +59,12 @@ YB_DEFINE_ENUM(MonitoredTaskType,
   (kAddServer)
   (kAddTableToTablet)
   (kAlterTable)
+  (kBackendsCatalogVersion)
+  (kBackendsCatalogVersionTs)
   (kBackfillDone)
   (kBackfillTable)
   (kBackfillTabletChunk)
   (kChangeConfig)
-  (kCopartitionTable)
   (kCreateReplica)
   (kDeleteReplica)
   (kFlushTablets)
@@ -123,5 +123,3 @@ class MonitoredTask : public std::enable_shared_from_this<MonitoredTask> {
 
 } // namespace server
 } // namespace yb
-
-#endif  // YB_SERVER_MONITORED_TASK_H

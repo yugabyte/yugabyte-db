@@ -300,3 +300,31 @@ message IsTabletServerReadyResponsePB {
   optional int32 num_tablets_not_running = 2;
   optional int32 total_tablets = 3 [default = 0];
 }
+
+// A list master servers request
+message ListMasterServersRequestPB {
+}
+
+// A list master servers response
+message ListMasterServersResponsePB {
+  optional TabletServerErrorPB error = 1;
+
+  message MasterServerAndTypePB {
+    optional string master_server = 1;
+    optional bool is_leader = 2;
+  }
+
+  repeated MasterServerAndTypePB master_server_and_type = 2;
+}
+
+// Gets the schema version of the schema that is compatible with the requested schema.
+message GetCompatibleSchemaVersionRequestPB {
+  optional bytes tablet_id = 1;
+  optional SchemaPB schema = 2;
+}
+
+// Update Schema version mapping response PB.
+message GetCompatibleSchemaVersionResponsePB {
+  optional TabletServerErrorPB error = 1;
+  optional uint32 compatible_schema_version = 2;
+}

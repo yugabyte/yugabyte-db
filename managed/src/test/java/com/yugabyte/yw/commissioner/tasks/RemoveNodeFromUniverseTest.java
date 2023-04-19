@@ -65,16 +65,16 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     // create default universe
     UserIntent userIntent = new UserIntent();
     userIntent.numNodes = numNodes;
-    userIntent.provider = defaultProvider.uuid.toString();
+    userIntent.provider = defaultProvider.getUuid().toString();
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
-    userIntent.regionList = ImmutableList.of(region.uuid);
-    defaultUniverse = createUniverse(defaultCustomer.getCustomerId());
+    userIntent.regionList = ImmutableList.of(region.getUuid());
+    defaultUniverse = createUniverse(defaultCustomer.getId());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         ApiUtils.mockUniverseUpdater(userIntent, withMaster /* setMasters */));
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     Universe.UniverseUpdater updater =
         universe -> {
@@ -92,8 +92,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           universeDetails.nodeDetailsSet = nodes;
           universe.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(defaultUniverse.universeUUID, updater);
-    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.universeUUID);
+    Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
     YBClient mockClient = mock(YBClient.class);
     when(mockNodeManager.nodeCommand(any(), any()))
@@ -103,11 +103,11 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
                 ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
                 if (params.nodeUuid == null) {
-                  listResponse.message = "{\"universe_uuid\":\"" + params.universeUUID + "\"}";
+                  listResponse.message = "{\"universe_uuid\":\"" + params.getUniverseUUID() + "\"}";
                 } else {
                   listResponse.message =
                       "{\"universe_uuid\":\""
-                          + params.universeUUID
+                          + params.getUniverseUUID()
                           + "\", "
                           + "\"node_uuid\": \""
                           + params.nodeUuid
@@ -133,7 +133,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     }
 
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
     mockWaits(mockClient, 3);
   }
 
@@ -241,7 +240,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NODE_WITH_MASTER_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -254,7 +253,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NODE_TASK_EXPECTED_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -267,7 +266,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           assertEquals(taskType, tasks.get(0).getTaskType());
           JsonNode expectedResults = REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS.get(position);
           List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getTaskDetails).collect(Collectors.toList());
+              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
           assertJsonEqual(expectedResults, taskDetails.get(0));
           position++;
           taskPosition++;
@@ -280,7 +279,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeSuccess() {
     setUp(false, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -296,7 +295,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeWithMaster() {
     setUp(true, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -312,7 +311,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveUnknownNode() {
     setUp(false, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n9");
@@ -323,7 +322,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNonExistentNode() {
     setUp(false, 4, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = null;
@@ -342,7 +341,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeWithNoDataMove() {
     setUp(true, 3, 3, false);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -358,7 +357,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeWithNoDataMoveRF5() {
     setUp(true, 5, 5, true);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -374,7 +373,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
   public void testRemoveNodeRF5() {
     setUp(true, 6, 5, true);
     NodeTaskParams taskParams = new NodeTaskParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
@@ -391,6 +390,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     Set<NodeState> allowedStates = NodeState.allowedStatesForAction(NodeActionType.REMOVE);
     Set<NodeState> expectedStates =
         ImmutableSet.of(
+            NodeState.Adding,
             NodeState.Live,
             NodeState.ToBeRemoved,
             NodeState.ToJoinCluster,

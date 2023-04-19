@@ -22,13 +22,16 @@ import com.google.protobuf.Message;
 import io.netty.buffer.ByteBuf;
 
 public class GetTabletListToPollForCDCRequest extends YRpc<GetTabletListToPollForCDCResponse> {
-  private String streamId;
-  private String tableId;
+  private final String streamId;
+  private final String tableId;
+  private final String tabletId;
 
-  public GetTabletListToPollForCDCRequest(YBTable ybTable, String streamId, String tableId) {
+  public GetTabletListToPollForCDCRequest(YBTable ybTable, String streamId, String tableId,
+                                          String tabletId) {
     super(ybTable);
     this.streamId = streamId;
     this.tableId = tableId;
+    this.tabletId = tabletId;
   }
 
   @Override
@@ -43,6 +46,8 @@ public class GetTabletListToPollForCDCRequest extends YRpc<GetTabletListToPollFo
     tableInfoBuilder.setTableId(ByteString.copyFromUtf8(this.tableId));
 
     builder.setTableInfo(tableInfoBuilder.build());
+
+    builder.setTabletId(ByteString.copyFromUtf8(this.tabletId));
 
     return toChannelBuffer(header, builder.build());
   }

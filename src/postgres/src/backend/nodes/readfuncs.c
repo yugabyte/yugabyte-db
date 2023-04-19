@@ -2246,13 +2246,33 @@ _readNestLoop(void)
 static YbBatchedNestLoop *
 _readYbBatchedNestLoop(void)
 {
+	int			num_hashClauseInfos;
 	READ_LOCALS(YbBatchedNestLoop);
 
 	ReadCommonNestLoop(&local_node->nl);
+	READ_INT_FIELD(num_hashClauseInfos);
+	num_hashClauseInfos = local_node->num_hashClauseInfos;
+	local_node->hashClauseInfos =
+		palloc0(num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
 
-	READ_NODE_FIELD(hashOps);
-	READ_NODE_FIELD(innerHashAttNos);
-	READ_NODE_FIELD(outerParamExprs);
+	YbBNLHashClauseInfo *current_hinfo = local_node->hashClauseInfos;
+	for (int i = 0; i < num_hashClauseInfos; i++)
+	{	
+		char *tok = pg_strtok(&length);
+		(void) tok;
+		tok = pg_strtok(&length);
+		current_hinfo->hashOp = atoi(tok);
+		
+		tok = pg_strtok(&length);
+		(void) tok;
+		tok = pg_strtok(&length);
+		current_hinfo->innerHashAttNo = atoi(tok);
+
+		tok = pg_strtok(&length);
+		(void) tok;
+		current_hinfo->outerParamExpr = nodeRead(NULL, 0);
+		current_hinfo++;
+	}
 
 	READ_DONE();
 }

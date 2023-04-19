@@ -14,11 +14,13 @@ type: docs
 
 ## Synopsis
 
-<b>`SREM key value [value ...]`</b><br>
+**`SREM key value [value ...]`**
+
 This command removes one or more specified members from the set that is associated with the given `key`.
-<li>If the `key` does not exist, the associated set is an empty set, and the return value is zero.</li>
-<li>If the `key` is associated with a value that is not a set, an error is raised.</li>
-<li>If a specified `value` does not exist in the given set, that `value` is ignored and not counted toward the total of removed members.</li>
+
+- If the `key` does not exist, the associated set is an empty set, and the return value is zero.
+- If the `key` is associated with a value that is not a set, an error is raised.
+- If a specified `value` does not exist in the given set, that `value` is ignored and not counted toward the total of removed members.
 
 ## Return value
 

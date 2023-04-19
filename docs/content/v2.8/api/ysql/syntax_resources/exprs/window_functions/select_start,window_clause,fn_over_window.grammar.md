@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 select_start ::= SELECT [ ALL | 
                           DISTINCT [ ON { ( expression [ , ... ] ) } ] ] 
                  [ * | { { expression

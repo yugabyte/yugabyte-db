@@ -70,13 +70,14 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/perf_level.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/stats/iostats_context_imp.h"
 #include "yb/util/string_util.h"
+#include "yb/util/thread.h"
+#include "yb/util/sync_point.h"
 
 using std::unique_ptr;
 
@@ -451,13 +452,16 @@ Result<FileNumbersHolder> CompactionJob::Run() {
   const uint64_t start_micros = env_->NowMicros();
 
   // Launch a thread for each of subcompactions 1...num_threads-1
-  std::vector<std::thread> thread_pool;
+  std::vector<scoped_refptr<yb::Thread>> thread_pool;
   thread_pool.reserve(num_threads - 1);
   FileNumbersHolder file_numbers_holder(file_numbers_provider_->CreateHolder());
   file_numbers_holder.Reserve(num_threads);
   for (size_t i = 1; i < compact_->sub_compact_states.size(); i++) {
-    thread_pool.emplace_back(&CompactionJob::ProcessKeyValueCompaction, this, &file_numbers_holder,
-                             &compact_->sub_compact_states[i]);
+    scoped_refptr<yb::Thread> thread;
+    RETURN_NOT_OK(yb::Thread::Create(
+        "rocksdb", "subcompaction", &CompactionJob::ProcessKeyValueCompaction, this,
+        &file_numbers_holder, &compact_->sub_compact_states[i], &thread));
+    thread_pool.emplace_back(std::move(thread));
   }
 
   // Always schedule the first subcompaction (whether or not there are also
@@ -466,7 +470,7 @@ Result<FileNumbersHolder> CompactionJob::Run() {
 
   // Wait for all other threads (if there are any) to finish execution
   for (auto& thread : thread_pool) {
-    thread.join();
+    RETURN_NOT_OK(yb::ThreadJoiner(thread.get()).Join());
   }
 
   if (output_directory_ && !db_options_.disableDataSync) {
@@ -803,6 +807,7 @@ Status CompactionJob::FinishCompactionOutputFile(
   assert(sub_compact->base_outfile);
   const bool is_split_sst = sub_compact->compaction->column_family_data()->ioptions()
       ->table_factory->IsSplitSstForWriteSupported();
+  const CompactionReason compaction_reason = sub_compact->compaction->compaction_reason();
   assert((sub_compact->data_outfile != nullptr) == is_split_sst);
   assert(sub_compact->builder != nullptr);
   assert(sub_compact->current_output() != nullptr);
@@ -872,10 +877,10 @@ Status CompactionJob::FinishCompactionOutputFile(
       info.job_id = job_id_;
       RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
           "[%s] [JOB %d] Generated table #%" PRIu64 ": %" PRIu64
-          " keys, %" PRIu64 " bytes%s %s",
+          " keys, %" PRIu64 " bytes %s %s",
           cfd->GetName().c_str(), job_id_, output_number, current_entries,
           current_total_bytes,
-          meta.marked_for_compaction ? " (need compaction)" : "",
+          meta.marked_for_compaction ? "(need compaction)" : ToString(compaction_reason).c_str(),
           meta.FrontiersToString().c_str());
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, cfd->ioptions()->listeners, meta.fd, info);
@@ -1075,7 +1080,6 @@ void CompactionJob::CleanupCompaction() {
   compact_ = nullptr;
 }
 
-#ifndef ROCKSDB_LITE
 namespace {
 void CopyPrefix(
     const Slice& src, size_t prefix_length, std::string* dst) {
@@ -1085,7 +1089,6 @@ void CopyPrefix(
 }
 }  // namespace
 
-#endif  // !ROCKSDB_LITE
 
 void CompactionJob::UpdateCompactionStats() {
   Compaction* compaction = compact_->compaction;
@@ -1143,7 +1146,6 @@ void CompactionJob::UpdateCompactionInputStatsHelper(
 
 void CompactionJob::UpdateCompactionJobStats(
     const InternalStats::CompactionStats& stats) const {
-#ifndef ROCKSDB_LITE
   if (compaction_job_stats_) {
     compaction_job_stats_->elapsed_micros = stats.micros;
 
@@ -1176,7 +1178,6 @@ void CompactionJob::UpdateCompactionJobStats(
           &compaction_job_stats_->largest_output_key_prefix);
     }
   }
-#endif  // !ROCKSDB_LITE
 }
 
 void CompactionJob::LogCompaction() {

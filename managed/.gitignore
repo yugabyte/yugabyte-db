@@ -2,6 +2,7 @@
 build
 logs
 target
+.bsp
 .idea
 .idea_modules
 jacoco.exec
@@ -53,3 +54,5 @@ src/public/*
 
 client/*/generated
 lib
+
+devops/pex/pexEnv

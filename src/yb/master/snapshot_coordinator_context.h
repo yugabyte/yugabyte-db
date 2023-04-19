@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H
-#define YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/entity_ids.h"
@@ -71,7 +70,7 @@ class SnapshotCoordinatorContext {
 
   virtual const Schema& schema() = 0;
 
-  virtual void Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
+  virtual Status Submit(std::unique_ptr<tablet::Operation> operation, int64_t leader_term) = 0;
 
   virtual void PrepareRestore() = 0;
 
@@ -83,7 +82,7 @@ class SnapshotCoordinatorContext {
 
   virtual Result<size_t> GetNumLiveTServersForActiveCluster() = 0;
 
-  virtual void EnableTabletSplitting(const std::string& feature) = 0;
+  virtual void ReenableTabletSplitting(const std::string& feature) = 0;
 
   virtual Result<scoped_refptr<TableInfo>> GetTableById(const TableId& table_id) const = 0;
 
@@ -97,5 +96,3 @@ Result<docdb::KeyBytes> EncodedKey(
 
 } // namespace master
 } // namespace yb
-
-#endif  // YB_MASTER_SNAPSHOT_COORDINATOR_CONTEXT_H

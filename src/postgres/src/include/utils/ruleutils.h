@@ -44,4 +44,10 @@ extern char *get_range_partbound_string(List *bound_datums);
 
 extern char *pg_get_statisticsobjdef_string(Oid statextid);
 
+extern char *yb_deparse_expression(Node *expr, List *dpcontext,
+				   				   bool forceprefix, bool showimplicit,
+								   bool verbose);
+extern void yb_get_dependent_views(Oid relid, List **view_oids,
+								   List **view_defs);
+
 #endif							/* RULEUTILS_H */

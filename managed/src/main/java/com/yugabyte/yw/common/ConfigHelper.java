@@ -4,20 +4,14 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.YugawareProperty;
 import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import javax.inject.Singleton;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.math.NumberUtils;
@@ -25,31 +19,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
-import play.Application;
+import play.Environment;
 import play.libs.Json;
 
 @Singleton
 public class ConfigHelper {
-
-  @Inject RuntimeConfigFactory runtimeConfigFactory;
-
-  private static final List<String> AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m3.", "c5.", "c5d.", "c4.", "c3.", "i3.");
-  private static final List<String> GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of("m6g.", "c6gd.", "c6g.", "t4g.");
-  private static final List<String> CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED =
-      ImmutableList.of(
-          "m3.", "c5.", "c5d.", "c4.", "c3.", "i3.", "t2.", "t3.", "t4g.", "m6i.", "m5.");
-
-  public List<String> getAWSInstancePrefixesSupported() {
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
-      return CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED;
-    }
-    return Stream.concat(
-            AWS_INSTANCE_PREFIXES_SUPPORTED.stream(),
-            GRAVITON_AWS_INSTANCE_PREFIXES_SUPPORTED.stream())
-        .collect(Collectors.toList());
-  }
 
   public static final Logger LOG = LoggerFactory.getLogger(ConfigHelper.class);
 
@@ -68,7 +42,8 @@ public class ConfigHelper {
     YbcSoftwareReleases("Ybc Software Releases"),
     SoftwareVersion("Software Version"),
     YugawareMetadata("Yugaware Metadata"),
-    Security("Security Level");
+    Security("Security Level"),
+    FileDataSync("Sync File System Data in the DB");
 
     private final String description;
     private final String configFile;
@@ -104,31 +79,28 @@ public class ConfigHelper {
     return type.getRegionMetadataConfigType().map(this::getConfig).orElse(Collections.emptyMap());
   }
 
-  public static String getCurrentVersion(Application app) {
+  public static String getCurrentVersion(Environment environment) {
 
     String configFile = "version_metadata.json";
-    InputStream inputStream = app.resourceAsStream(configFile);
+    InputStream inputStream = environment.resourceAsStream(configFile);
     if (inputStream == null) { // version_metadata.json not found
       LOG.info(
           "{} file not found. Reading version from version.txt file",
           FilenameUtils.getName(configFile));
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
-      String version = yaml.load(app.resourceAsStream("version.txt"));
-      return version;
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      return yaml.load(environment.resourceAsStream("version.txt"));
     }
     JsonNode jsonNode = Json.parse(inputStream);
     String buildNumber = jsonNode.get("build_number").asText();
-    String version =
-        jsonNode.get("version_number").asText()
-            + "-"
-            + (NumberUtils.isDigits(buildNumber) ? "b" : "")
-            + buildNumber;
 
-    return version;
+    return jsonNode.get("version_number").asText()
+        + "-"
+        + (NumberUtils.isDigits(buildNumber) ? "b" : "")
+        + buildNumber;
   }
 
-  public void loadSoftwareVersiontoDB(Application app) {
-    String version = getCurrentVersion(app);
+  public void loadSoftwareVersiontoDB(Environment environment) {
+    String version = getCurrentVersion(environment);
     loadConfigToDB(ConfigType.SoftwareVersion, ImmutableMap.of("version", version));
 
     // TODO: Version added to Yugaware metadata, now slowly decomission SoftwareVersion property
@@ -141,13 +113,13 @@ public class ConfigHelper {
     loadConfigToDB(ConfigType.YugawareMetadata, ywMetadata);
   }
 
-  public void loadConfigsToDB(Application app) {
+  public void loadConfigsToDB(Environment environment) {
     for (ConfigType type : ConfigType.values()) {
       if (type.getConfigFile() == null) {
         continue;
       }
-      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(app.classloader()));
-      Map<String, Object> config = yaml.load(app.resourceAsStream(type.getConfigFile()));
+      Yaml yaml = new Yaml(new CustomClassLoaderConstructor(environment.classLoader()));
+      Map<String, Object> config = yaml.load(environment.resourceAsStream(type.getConfigFile()));
       loadConfigToDB(type, config);
     }
   }

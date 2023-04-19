@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`PSUBSCRIBE pattern [pattern ...]`</b><br>
+**`PSUBSCRIBE pattern [pattern ...]`**
+
 This command subscribes the client to the specified pattern(s). The client will receive a message whenever a publisher sends a message to a channel that matches any of the patterns that it has subscribed to.
 
 ## See also

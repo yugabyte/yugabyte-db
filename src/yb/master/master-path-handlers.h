@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_PATH_HANDLERS_H
-#define YB_MASTER_MASTER_PATH_HANDLERS_H
+#pragma once
 
 #include <string>
 #include <sstream>
@@ -112,7 +111,14 @@ class MasterPathHandlers {
     kNumColumns
   };
 
-  const std::string kSystemPlatformNamespace = "system_platform";
+  enum NamespaceColumns {
+    kNamespaceName,
+    kNamespaceId,
+    kNamespaceLanguage,
+    kNamespaceState,
+    kNamespaceColocated,
+    kNumNamespaceColumns
+  };
 
   struct TabletCounts {
     uint32_t user_tablet_leaders = 0;
@@ -201,6 +207,10 @@ class MasterPathHandlers {
   void HandleCatalogManager(const Webserver::WebRequest& req,
                             Webserver::WebResponse* resp,
                             bool only_user_tables = false);
+  void HandleNamespacesHTML(const Webserver::WebRequest& req,
+                            Webserver::WebResponse* resp,
+                            bool only_user_namespaces = false);
+  void HandleNamespacesJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleTablePage(const Webserver::WebRequest& req,
                        Webserver::WebResponse* resp);
   void HandleTasksPage(const Webserver::WebRequest& req,
@@ -214,6 +224,8 @@ class MasterPathHandlers {
                           Webserver::WebResponse* resp);
   void HandleGetClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetXClusterConfig(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
+  void HandleGetXClusterConfigJSON(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleHealthCheck(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleCheckIfLeader(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
   void HandleGetMastersStatus(const Webserver::WebRequest& req, Webserver::WebResponse* resp);
@@ -262,6 +274,9 @@ class MasterPathHandlers {
 
   std::string GetHttpHostPortFromServerRegistration(const ServerRegistrationPB& reg) const;
 
+  Status GetClusterAndXClusterConfigStatus(
+      SysXClusterConfigEntryPB* xcluster_config, SysClusterConfigEntryPB* cluster_config);
+
   Master* master_;
 
   const int output_precision_;
@@ -272,4 +287,3 @@ void HandleTabletServersPage(const Webserver::WebRequest& req, Webserver::WebRes
 
 } // namespace master
 } // namespace yb
-#endif /* YB_MASTER_MASTER_PATH_HANDLERS_H */

@@ -19,8 +19,9 @@
 // different ExecContexts, so non-thread-safe fields should not be referenced there.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_
-#define YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_
+#pragma once
+
+#include <memory>
 
 #include "yb/rpc/service_if.h"
 
@@ -182,5 +183,3 @@ class CQLProcessor : public ql::QLProcessor {
 
 }  // namespace cqlserver
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_CQLSERVER_CQL_PROCESSOR_H_

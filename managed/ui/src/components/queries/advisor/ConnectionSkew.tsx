@@ -4,11 +4,12 @@ import { usePrevious } from 'react-use';
 import _ from 'lodash';
 
 import lightBulbIcon from '../images/lightbulb.svg';
-import { CONST_VAR } from '../helpers/const';
-import { CpuMeasureRecommendation } from '../../../redesign/helpers/dtos';
+import { EXTERNAL_LINKS, CONST_VAR } from '../helpers/const';
+import { CpuMeasureRecommendation } from '../../../redesign/utils/dtos';
 import './styles.scss';
 
-var Plotly = require('plotly.js/lib/index-basic.js');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Plotly = require('plotly.js/lib/index-basic.js');
 
 export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
   const { t } = useTranslation();
@@ -35,11 +36,9 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
   };
 
   useEffect(() => {
-    if (
-      !_.isEqual(previousData, data)
-    ) {
+    if (!_.isEqual(previousData, data)) {
       const chartData = [avgNodeConnections, maxNodeConnections];
-      var layout = {
+      const layout = {
         showlegend: false,
         autosize: true,
         height: 170,
@@ -47,7 +46,7 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
         margin: {
           l: 165,
           b: 30,
-          t: 10,
+          t: 10
         },
         hovermode: 'closest'
       };
@@ -64,13 +63,20 @@ export const ConnectionSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) 
           <span className="learnPerfAdvisorText">
             {t('clusterDetail.performance.advisor.Recommendation')}
             {t('clusterDetail.performance.advisor.Separator')}
-            {t('clusterDetail.performance.advisor.ReviewLoadBalancing')}
+            {data.suggestion}
+            <a
+              target="_blank"
+              rel="noopener noreferrer"
+              className="learnRecommendationSuggestions"
+              href={EXTERNAL_LINKS.CONNECTION_SKEW}
+            >
+              {t('clusterDetail.performance.advisor.LearnHow')}
+            </a>
           </span>
         </div>
       </div>
       <span className="queryText">{t('clusterDetail.performance.chartTitle.Connections')}</span>
-      <div id="connectionsSkewGraph" >
-      </div>
+      <div id="connectionsSkewGraph"></div>
     </div>
-  )
-}
+  );
+};

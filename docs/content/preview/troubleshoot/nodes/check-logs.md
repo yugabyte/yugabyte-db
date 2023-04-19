@@ -49,7 +49,7 @@ Logs are organized by error severity: `FATAL`, `ERROR`, `WARNING`, `INFO`.
 
 For YB-Master and YB-TServer, the log rotation size is controlled by the `--max_log_size` flag. For example, setting this flag to 256 limits each file to 256 MB. The default size is 1.8 GB.
 
-For YSQL, there are additional `postgres*log` files that have daily-based and size-based log rotation. That is, a new log file is created evert day or when a log reaches 10 MB in size.
+For YSQL, there are additional `postgres*log` files that have daily-based and size-based log rotation. That is, a new log file is created every day or when a log reaches 10 MB in size.
 
 For information on available configuration flags, see [YB-Master logging flags](../../../reference/configuration/yb-master/#logging-flags) and [YB-TServer logging flags](../../../reference/configuration/yb-tserver/#logging-flags).
 

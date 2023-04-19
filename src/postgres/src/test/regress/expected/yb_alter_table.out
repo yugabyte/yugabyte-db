@@ -13,6 +13,7 @@ CREATE TABLE bar(b INT);
 ALTER TABLE bar ADD CONSTRAINT baz FOREIGN KEY (b) REFERENCES foo(a);
 CREATE TABLE table_other(a int, b int);
 CREATE INDEX index_table_other ON table_other(a);
+CREATE USER regress_alter_table_user1;
 SET SESSION AUTHORIZATION yb_db_admin;
 ALTER TABLE table_other RENAME to table_new;
 ALTER TABLE table_new OWNER TO regress_alter_table_user1;
@@ -29,6 +30,7 @@ RESET SESSION AUTHORIZATION;
 DROP TABLE foo;
 DROP TABLE bar;
 DROP TABLE table_new;
+DROP USER regress_alter_table_user1;
 ---
 --- Verify alter table which requires table rewrite
 ---
@@ -68,3 +70,22 @@ ALTER TABLE pk_tbl ADD COLUMN v2 SERIAL;
 ERROR:  Rewriting of YB table is not yet implemented
 HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
 DROP TABLE pk_tbl;
+-- Verify cache cleanup of table names when TABLE RENAME fails.
+CREATE TABLE rename_test (id int);
+SET yb_test_fail_next_ddl TO true;
+ALTER TABLE rename_test RENAME TO foobar;
+ERROR:  Failed DDL operation as requested
+-- The table name must be unchanged.
+SELECT * FROM rename_test;
+ id
+----
+(0 rows)
+
+-- The name 'foobar' must be invalid.
+SELECT * FROM foobar;
+ERROR:  relation "foobar" does not exist
+LINE 1: SELECT * FROM foobar;
+                      ^
+-- Rename operation must succeed now.
+ALTER TABLE rename_test RENAME TO foobar;
+DROP TABLE foobar;

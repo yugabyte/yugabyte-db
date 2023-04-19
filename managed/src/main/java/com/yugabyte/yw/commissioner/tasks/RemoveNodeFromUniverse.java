@@ -13,7 +13,6 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
@@ -24,11 +23,12 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 
 // Allows the removal of a node from a universe. Ensures the task waits for the right set of
 // server data move primitives. And stops using the underlying instance, though YW still owns it.
@@ -52,9 +52,8 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         "Started {} task for node {} in univ uuid={}",
         getName(),
         taskParams().nodeName,
-        taskParams().universeUUID);
+        taskParams().getUniverseUUID());
     NodeDetails currentNode = null;
-    boolean hitException = false;
     try {
       checkUniverseVersion();
 
@@ -63,7 +62,8 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
       currentNode = universe.getNode(taskParams().nodeName);
       if (currentNode == null) {
-        String msg = "No node " + taskParams().nodeName + " found in universe " + universe.name;
+        String msg =
+            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -104,7 +104,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           } else {
-            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
+            createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
           }
         }
 
@@ -112,7 +112,7 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
         if (currentNode.isMaster) {
           createWaitForMasterLeaderTask()
               .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
-          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration, true);
+          createChangeConfigTask(currentNode, false, SubTaskGroupType.WaitForDataMigration);
         }
       }
 
@@ -141,8 +141,8 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
 
         if (rfInZone == -1) {
           log.error(
-              "Unexpected placement info in univ {} {} {}",
-              universe.name,
+              "Unexpected placement info in universe {} {} {}",
+              universe.getName(),
               rfInZone,
               nodesActiveInAZExcludingCurrentNode);
           throw new RuntimeException(
@@ -159,11 +159,20 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
             createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
           }
         }
-        createTServerTaskForNode(currentNode, "stop")
+
+        // Remove node from load balancer.
+        createManageLoadBalancerTasks(
+            createLoadBalancerMap(
+                universe.getUniverseDetails(),
+                Arrays.asList(currCluster),
+                new HashSet<>(Arrays.asList(currentNode)),
+                null));
+        createTServerTaskForNode(currentNode, "stop", true /*isIgnoreErrors*/)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
         if (universe.isYbcEnabled()) {
-          createStopYbControllerTasks(new HashSet<>(Arrays.asList(currentNode)))
+          createStopYbControllerTasks(
+                  new HashSet<>(Arrays.asList(currentNode)), true /*isIgnoreErrors*/)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
       }
@@ -195,7 +204,6 @@ public class RemoveNodeFromUniverse extends UniverseTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
-      hitException = true;
       throw t;
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the

@@ -30,10 +30,6 @@ public class ShellResponse {
     return sr;
   }
 
-  public void setDescription(List<String> command) {
-    description = StringUtils.abbreviateMiddle(String.join(" ", command), " ... ", 140);
-  }
-
   public boolean isSuccess() {
     return code == ERROR_CODE_SUCCESS;
   }

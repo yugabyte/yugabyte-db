@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_WRITE_QUERY_H
-#define YB_TABLET_WRITE_QUERY_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -20,6 +19,8 @@
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/doc_operation.h"
 #include "yb/docdb/lock_batch.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -36,6 +37,7 @@ class WriteQuery {
              CoarseTimePoint deadline,
              WriteQueryContext* context,
              TabletPtr tablet,
+             rpc::RpcContext* rpc_context,
              tserver::WriteResponsePB *response = nullptr,
              docdb::OperationKind kind = docdb::OperationKind::kWrite);
 
@@ -45,7 +47,7 @@ class WriteQuery {
     return *operation_;
   }
 
-  WritePB& request();
+  LWWritePB& request();
 
   // Returns the prepared response to the client that will be sent when this
   // transaction is completed, if this transaction was started by a client.
@@ -110,10 +112,6 @@ class WriteQuery {
   // Cancel query even before sending underlying operation to the Raft.
   void Cancel(const Status& status);
 
-  const ReadHybridTime& read_time() const {
-    return read_time_;
-  }
-
   const tserver::WriteRequestPB* client_request() {
     return client_request_;
   }
@@ -174,7 +172,7 @@ class WriteQuery {
   bool CqlCheckSchemaVersion();
   bool PgsqlCheckSchemaVersion();
 
-  Tablet& tablet() const;
+  Result<TabletPtr> tablet_safe() const;
 
   std::unique_ptr<WriteOperation> operation_;
 
@@ -198,6 +196,7 @@ class WriteQuery {
   ScopedRWOperation submit_token_;
   const CoarseTimePoint deadline_;
   WriteQueryContext* const context_;
+  rpc::RpcContext* const rpc_context_;
 
   // Pointers to the rpc context, request and response, lifecycle
   // is managed by the rpc subsystem. These pointers maybe nullptr if the
@@ -223,11 +222,8 @@ class WriteQuery {
   ExecuteMode execute_mode_;
   IsolationLevel isolation_level_;
   docdb::PrepareDocWriteOperationResult prepare_result_;
-  RequestScope request_scope_;
   std::unique_ptr<WriteQuery> self_; // Keep self while Execute is performed.
 };
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_WRITE_QUERY_H

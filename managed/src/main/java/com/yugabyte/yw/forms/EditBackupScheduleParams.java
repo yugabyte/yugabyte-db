@@ -19,4 +19,10 @@ public class EditBackupScheduleParams {
 
   @ApiModelProperty(value = "Time Unit for frequency")
   public TimeUnit frequencyTimeUnit;
+
+  @ApiModelProperty(value = "Frequency of incremental backup schedule")
+  public Long incrementalBackupFrequency;
+
+  @ApiModelProperty(value = "TimeUnit for incremental Backup Schedule frequency")
+  public TimeUnit incrementalBackupFrequencyTimeUnit;
 }

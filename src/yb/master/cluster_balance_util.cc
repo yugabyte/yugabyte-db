@@ -445,8 +445,9 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If we ask to use placement information, check against it.
   if (placement_info && !GetValidPlacement(to_ts, placement_info).has_value()) {
-    YB_LOG_EVERY_N_SECS(INFO, 30) << "tablet server " << to_ts << " has invalid placement info. "
-                                  << "Not allowing it to take more tablets.";
+    YB_LOG_EVERY_N_SECS(INFO, 30) << "tablet server " << to_ts << " has placement info "
+                                  << "incompatible with tablet " << tablet_id << ". Not allowing "
+                                  << "it to host this tablet.";
     return false;
   }
   // If this server has a pending tablet delete, don't use it.
@@ -497,7 +498,7 @@ Result<bool> PerTableLoadState::CanSelectWrongReplicaToMove(
           VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info))) {
         found_match = true;
       } else {
-        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid))) {
+        if (VERIFY_RESULT(CanAddTabletToTabletServer(tablet_id, to_uuid, &placement_info))) {
           // If we have placement information, we want to only pick the tablet if it's moving
           // to the same placement, so we guarantee we're keeping the same type of distribution.
           // Since we allow prefixes as well, we can still respect the placement of this tablet

@@ -54,15 +54,13 @@ You can also modify TLS settings for an existing universe, as follows:
 
 1. Click **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog and then proceed as follows:
 
-    - If encryption in transit is currently disabled for the universe, enable it via the **Encryption in Transit for this Universe** field, as per the following illustration:<br><br>
+    - If encryption in transit is currently disabled for the universe, enable it via the **Encryption in Transit for this Universe** field, as per the following illustration:<br>
 
       ![TLS Configuration](/images/yp/encryption-in-transit/tls-config1.png)
 
-      <br><br>Use the expanded **TLS Configuration** dialog shown in the following illustration to change the settings to meet your requirements:<br><br>
+      Use the expanded **TLS Configuration** dialog shown in the following illustration to change the settings to meet your requirements:<br>
 
       ![TLS Configuration Expanded](/images/yp/encryption-in-transit/tls-config2.png)
-
-     <br>
 
     - If encryption in transit is currently enabled for the universe, you can either disable or modify it, as follows:
 
@@ -133,9 +131,9 @@ In addition, verify the following:
 
 1. Click **Add Certificate** to open the **Add Certificate** dialog.
 
-1. Select **CA Signed**, as per the following illustration:<br><br>
+1. Select **CA Signed**, as per the following illustration:<br>
 
-   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)<br><br>
+   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)<br>
 
 1. Upload the custom CA root certificate as the root certificate.
 
@@ -177,20 +175,23 @@ You rotate the existing custom certificates and replace them with new database n
 
 - Navigate to the universe for which you are rotating the keys.
 
-- Select **Actions > Edit Security**, as shown in the following illustration:<br><br>
+- Select **Actions > Edit Security**, as shown in the following illustration:<br>
 
   ![edit-security](/images/yp/encryption-in-transit/edit-security.png)<br>
 
 - Select **Encryption in-Transit** to open the **TLS Configuration** dialog.
 
-- Complete the **TLS Configuration** dialog shown in the following illustration:
+- Complete the **TLS Configuration** dialog shown in the following illustration:<br>
+
+  ![Configure TLS](/images/yp/encryption-in-transit/edit-tls-new.png)
+
   - Select the new certificate which you created in Step 3.
 
-  - Modifying certificates requires restart of YB-Master and T-Server processes, which can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled).
+  - Modifying certificates requires restart of YB-Master and YB-TServer processes, which can result in downtime. To avoid downtime, you should accept the default value (enabled) for the **Rolling Upgrade** field to trigger a sequential node-by-node change with a specific delay between node upgrades (as opposed to a simultaneous change of certificates in every node which occurs when the **Rolling Upgrade** field is disabled).
 
   - Click **OK**.<br>
 
-    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.<br><br>
+    Typically, this process takes time, as it needs to wait for the specified delay interval after each node is upgraded.<br>
 
   ![Configure TLS](/images/yp/encryption-in-transit/edit-tls-new.png)
 
@@ -252,7 +253,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   max_lease_ttl = "8760h"
   ```
 
-  <br>Replace `127.0.0.1` with the vault web address.
+  Replace `127.0.0.1` with the vault web address.
 
   For additional configuration options, see [Parameters](https://www.vaultproject.io/docs/configuration#parameters).
 
@@ -319,7 +320,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   vault token create -no-default-policy -policy=pki_policy
   ```
 
-  <br>You may also specify the following for your token:
+  You may also specify the following for your token:
 
   - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
   - `period` — If specified, the token can be infinitely renewed.
@@ -330,7 +331,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
   vault write <PKI_MOUNT_PATH>/roles/<ROLE_NAME> allow_any_name=true allow_subdomains=true max_ttl="8640h"
   ```
 
-  <br>Credentials are generated against this role.
+  Credentials are generated against this role.
 
 - Issue certificates for nodes or a YugabyteDB client:
 
@@ -367,6 +368,52 @@ When you create a universe, you can enable TLS using certificates provided by Ha
 
 You can also edit TLS settings for an existing universe by navigating to **Universes**, opening a specific universe, clicking **Actions > Edit Security > Encryption in-Transit** to open the **TLS Configuration** dialog, and then modifying the required settings.
 
+## Kubernetes cert-manager
+
+For a universe created on Kubernetes, YugabyteDB Anywhere allows you to configure an existing running instance of the [cert-manager](https://cert-manager.io/) as a TLS certificate provider for a cluster, assuming that the following criteria are met:
+
+- The cert-manager is running in the Kubernetes cluster.
+- A root or intermediate CA (either self-signed or external) is already configured on the cert-manager. The same root certificate file must be prepared for upload to YugabyteDB Anywhere.
+- An Issuer or ClusterIssuer Kind is configured on the cert-manager and is ready to issue certificates using the previously-mentioned root or intermediate certificate.
+
+During the universe creation, you can enable TLS certificates issued by the cert-manager, as follows:
+
+1. Upload the root certificate to YugabyteDB Anywhere:
+
+   - Prepare the root certificate in a file (for example, `root.crt`).
+   - Navigate to **Configs > Security > Encryption in Transit** and click **Add Certificate**.
+   - On the **Add Certificate** dialog shown in the following illustration, select **K8S cert-manager**:
+
+     ![img](/images/yp/security/kubernetes-cert-manager.png)
+
+   - In the **Certificate Name** field, enter a meaningful name for your certificate configuration.
+   - Click **Upload Root Certificate** and select the root certificate file that you prepared.
+   - Click **Add** to make the certificate available.
+
+2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Since an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+
+   ![img](/images/yp/security/kubernetes-cert-manager-add-region.png)
+
+3. Create the universe:
+
+   - Navigate to **Universes** and click **Create Universe**.
+   - In the **Provider** field, select the cloud provided that you have configured in step 2.
+   - Complete the fields based on your requirements, and select **Enable Node-to-Node TLS** or **Enable Client-to-Node TLS**.
+   - Select the root certificate that you have uploaded in step 1.
+   - Click **Create**.
+
+### Troubleshoot
+
+If you encounter problems, you should verify the name of Issuer or ClusterIssuer in the Kubernetes cluster, as well as ensure that the Kubernetes cluster is in Ready state. You can use the following commands:
+
+```sh
+kubectl get ClusterIssuer
+```
+
+```sh
+kubectl -n <namespace> Issuer
+```
+
 ## Connecting to clusters
 
 Using TLS, you can connect to the YSQL and YCQL endpoints.
@@ -377,26 +424,29 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 - Navigate to the **Certificates** page and then to your universe's certificate.
 
-- Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.<br><br>
+- Click **Actions** and select **Download YSQL Cert**, as shown in the following illustration. This triggers the download of the `yugabytedb.crt` and `yugabytedb.key` files.<br>
 
-  ![download-ysql-cert](/images/yp/encryption-in-transit/download-ysql-cert.png)<br><br>
+  ![download-ysql-cert](/images/yp/encryption-in-transit/download-ysql-cert.png)<br>
 
 - Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on YugabyteDB Anywhere for downloading.
 
 - For testing with a `ysqlsh` client, paste the `yugabytedb.crt` and `yugabytedb.key` files into the `<home-dir>/.yugabytedb` directory and change the permissions to `0600`, as follows:
 
   ```sh
-  $ mkdir ~/.yugabytedb; cd ~/.yugabytedb
-  $ cp <DownloadDir>/yugabytedb.crt .
-  $ cp <DownloadDir>/yugabytedb.key .
-  $ chmod 600 yugabytedb.*
+  mkdir ~/.yugabytedb; cd ~/.yugabytedb
+  cp <DownloadDir>/yugabytedb.crt .
+  cp <DownloadDir>/yugabytedb.key .
+  chmod 600 yugabytedb.*
   ```
 
 - Run `ysqlsh` using the `sslmode=require` option, as follows:
 
   ```sh
-  $ cd <yugabyte software install directory>
-  $ bin/ysqlsh -h 172.152.43.78 -p 5433 sslmode=require
+  cd <yugabyte software install directory>
+  bin/ysqlsh -h 172.152.43.78 -p 5433 sslmode=require
+  ```
+
+  ```output
   ysqlsh (11.2-YB-2.3.3.0-b0)
   SSL connection (protocol: TLSv1.2, cipher: ECDHE-RSA-AES256-GCM-SHA384, bits: 256, compression: off)
   Type "help" for help.
@@ -406,7 +456,7 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 To use TLS from a different client, consult the client-specific documentation. For example, if you are using a PostgreSQL JDBC driver to connect to YugabyteDB, see [Configuring the client](https://jdbc.postgresql.org/documentation/head/ssl-client.html) for more details.
 
-If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](/preview/develop/build-apps/java/ysql-jdbc-ssl/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
+If you are using PostgreSQL/YugabyteDB JDBC driver with SSL, you need to convert the certificates to DER format. To do this, you need to perform only steps 6 and 7 from [Set up SSL certificates for Java applications](../../../reference/drivers/java/postgres-jdbc-reference/#set-up-ssl-certificates-for-java-applications) section after downloading the certificates.
 
 ### Connect to a YCQL endpoint with TLS
 
@@ -414,9 +464,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 
 - Navigate to the **Certificates** page and then to your universe's certificate.
 
-- Click **Actions** and select **Download Root Cert**, as shown in the following illustration. This triggers the download of the `root.crt` file.<br><br>
+- Click **Actions** and select **Download Root Cert**, as shown in the following illustration. This triggers the download of the `root.crt` file.<br>
 
-  ![download-root-cert](/images/yp/encryption-in-transit/download-root-cert.png)<br><br>
+  ![download-root-cert](/images/yp/encryption-in-transit/download-root-cert.png)<br>
 
 - Optionally, when connecting to universes that are configured with custom CA-signed certificates, obtain the root CA and client YSQL certificate from your administrator. These certificates are not available on YugabyteDB Anywhere for downloading.
 
@@ -425,9 +475,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
 - Run `ycqlsh` using the `-ssl` option, as follows:
 
   ```sh
-  $ cp <DownloadDir>/root.crt ~/.yugabytedb/root.crt
-  $ export SSL_CERTFILE=~/.yugabytedb/root.crt
-  $ bin/ycqlsh 172.152.43.78 --ssl
+  cp <DownloadDir>/root.crt ~/.yugabytedb/root.crt
+  export SSL_CERTFILE=~/.yugabytedb/root.crt
+  bin/ycqlsh 172.152.43.78 --ssl
   ```
 
   ```output

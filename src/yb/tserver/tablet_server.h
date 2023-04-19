@@ -29,18 +29,20 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TABLET_SERVER_H_
-#define YB_TSERVER_TABLET_SERVER_H_
+#pragma once
 
 #include <future>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
 
 #include "yb/consensus/metadata.pb.h"
+#include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
+#include "yb/rpc/rpc_fwd.h"
 
 #include "yb/encryption/encryption_fwd.h"
 
@@ -49,10 +51,12 @@
 #include "yb/master/master_fwd.h"
 #include "yb/server/webserver_options.h"
 #include "yb/tserver/db_server_base.h"
+#include "yb/tserver/pg_mutation_counter.h"
 #include "yb/tserver/tserver_shared_mem.h"
 #include "yb/tserver/tablet_server_interface.h"
 #include "yb/tserver/tablet_server_options.h"
 #include "yb/tserver/xcluster_safe_time_map.h"
+#include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/locks.h"
 #include "yb/util/net/net_util.h"
@@ -71,9 +75,7 @@ class AutoFlagsManager;
 
 namespace tserver {
 
-namespace enterprise {
-class CDCConsumer;
-}
+class XClusterConsumer;
 class PgClientServiceImpl;
 
 class TabletServer : public DbServerBase, public TabletServerIf {
@@ -141,7 +143,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // If the update is from master leader, we use that list directly. If not, we
   // merge the existing in-memory master list with the provided config list.
   Status UpdateMasterAddresses(const consensus::RaftConfigPB& new_config,
-                                       bool is_master_leader);
+                               bool is_master_leader);
 
   server::Clock* Clock() override { return clock(); }
 
@@ -159,7 +161,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
       std::vector<master::TSInformationPB> *live_tservers) const override;
 
   Status GetTabletStatus(const GetTabletStatusRequestPB* req,
-                                 GetTabletStatusResponsePB* resp) const override;
+                         GetTabletStatusResponsePB* resp) const override;
 
   bool LeaderAndReady(const TabletId& tablet_id, bool allow_stale = false) const override;
 
@@ -220,6 +222,7 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   }
 
   Status get_ysql_db_oid_to_cat_version_info_map(
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB* resp) const override;
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
@@ -238,9 +241,13 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   uint64_t GetSharedMemoryPostgresAuthKey();
 
   // Currently only used by cdc.
-  virtual int32_t cluster_config_version() const {
-    return std::numeric_limits<int32_t>::max();
-  }
+  virtual int32_t cluster_config_version() const;
+
+  Result<uint32_t> XClusterConfigVersion() const;
+
+  Status SetPausedXClusterProducerStreams(
+      const ::google::protobuf::Map<::std::string, bool>& paused_producer_stream_ids,
+      uint32_t xcluster_config_version);
 
   client::TransactionPool& TransactionPool() override;
 
@@ -254,14 +261,40 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   client::LocalTabletFilter CreateLocalTabletFilter() override;
 
-  void RegisterCertificateReloader(CertificateReloader reloader) override {}
+  void RegisterCertificateReloader(CertificateReloader reloader) override;
 
   const XClusterSafeTimeMap& GetXClusterSafeTimeMap() const;
+
+  PgMutationCounter& GetPgNodeLevelMutationCounter();
 
   void UpdateXClusterSafeTime(const XClusterNamespaceToSafeTimePBMap& safe_time_map);
 
   Result<bool> XClusterSafeTimeCaughtUpToCommitHt(
       const NamespaceId& namespace_id, HybridTime commit_ht) const;
+
+  Result<cdc::XClusterRole> TEST_GetXClusterRole() const;
+
+  Status ListMasterServers(const ListMasterServersRequestPB* req,
+                           ListMasterServersResponsePB* resp) const;
+
+  encryption::UniverseKeyManager* GetUniverseKeyManager();
+
+  Status SetConfigVersionAndConsumerRegistry(
+      int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry);
+
+  XClusterConsumer* GetXClusterConsumer() const;
+
+  // Mark the CDC service as enabled via heartbeat.
+  Status SetCDCServiceEnabled();
+
+  Status ReloadKeysAndCertificates() override;
+  std::string GetCertificateDetails() override;
+
+  PgClientServiceImpl* TEST_GetPgClientService() {
+    return pg_client_service_.lock().get();
+  }
+
+  void SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode);
 
  protected:
   virtual Status RegisterServices();
@@ -274,6 +307,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   MonoDelta default_client_timeout() override;
   void SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) override;
+
+  Status SetupMessengerBuilder(rpc::MessengerBuilder* builder) override;
 
   std::atomic<bool> initted_{false};
 
@@ -291,8 +326,6 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Used to forward redis pub/sub messages to the redis pub/sub handler
   yb::AtomicUniquePtr<rpc::Publisher> publish_service_ptr_;
 
-  std::thread fetch_universe_key_thread_;
-
   // Thread responsible for heartbeating to the master.
   std::unique_ptr<Heartbeater> heartbeater_;
 
@@ -300,6 +333,9 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   // Thread responsible for collecting metrics snapshots for native storage.
   std::unique_ptr<MetricsSnapshotter> metrics_snapshotter_;
+
+  // Thread responsible for sending aggregated table mutations to the auto analyzer service
+  std::unique_ptr<TableMutationCountSender> pg_table_mutation_count_sender_;
 
   // Webserver path handlers
   std::unique_ptr<TabletServerPathHandlers> path_handlers_;
@@ -348,6 +384,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   // Auto initialize some of the service flags that are defaulted to -1.
   void AutoInitServiceFlags();
 
+  void InvalidatePgTableCache();
+
   std::string log_prefix_;
 
   // Bind address of postgres proxy under this tserver.
@@ -355,11 +393,26 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   XClusterSafeTimeMap xcluster_safe_time_map_;
 
+  std::atomic<bool> xcluster_read_only_mode_{false};
+
+  PgMutationCounter pg_node_level_mutation_counter_;
+
   PgConfigReloader pg_config_reloader_;
+
+  Status CreateCDCConsumer() REQUIRES(cdc_consumer_mutex_);
+
+  std::unique_ptr<rpc::SecureContext> secure_context_;
+  std::vector<CertificateReloader> certificate_reloaders_;
+
+  // CDC consumer.
+  mutable std::mutex cdc_consumer_mutex_;
+  std::unique_ptr<XClusterConsumer> xcluster_consumer_ GUARDED_BY(cdc_consumer_mutex_);
+
+  // CDC service.
+  std::shared_ptr<cdc::CDCServiceImpl> cdc_service_;
 
   DISALLOW_COPY_AND_ASSIGN(TabletServer);
 };
 
 } // namespace tserver
 } // namespace yb
-#endif // YB_TSERVER_TABLET_SERVER_H_

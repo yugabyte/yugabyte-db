@@ -20,15 +20,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.AccessManager.KeyType;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
-import com.yugabyte.yw.models.AccessKey.KeyInfo;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -69,13 +72,13 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
 
   private CloudBootstrap.Params getBaseTaskParams() {
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
-    taskParams.providerUUID = defaultProvider.uuid;
+    taskParams.providerUUID = defaultProvider.getUuid();
     taskParams.hostVpcRegion = HOST_VPC_REGION;
     taskParams.hostVpcId = HOST_VPC_ID;
     taskParams.destVpcId = DEST_VPC_ID;
     taskParams.sshPort = 12345;
     taskParams.airGapInstall = false;
-    taskParams.overrideKeyValidate = false;
+    taskParams.skipKeyPairValidate = false;
     return taskParams;
   }
 
@@ -122,6 +125,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         customSecurityGroup,
         customImageId,
         hasSecondarySubnet,
+        false,
         false);
   }
 
@@ -137,36 +141,65 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       boolean hasSecondarySubnet,
       boolean isAddRegion)
       throws InterruptedException {
+    validateCloudBootstrapSuccess(
+        taskParams,
+        zoneInfo,
+        expectedRegions,
+        expectedProviderCode,
+        customAccessKey,
+        customAzMapping,
+        customSecurityGroup,
+        customImageId,
+        hasSecondarySubnet,
+        isAddRegion,
+        false);
+  }
+
+  private void validateCloudBootstrapSuccess(
+      CloudBootstrap.Params taskParams,
+      JsonNode zoneInfo,
+      List<String> expectedRegions,
+      String expectedProviderCode,
+      boolean customAccessKey,
+      boolean customAzMapping,
+      boolean customSecurityGroup,
+      boolean customImageId,
+      boolean hasSecondarySubnet,
+      boolean isAddRegion,
+      boolean armArchitecture)
+      throws InterruptedException {
     Provider provider = Provider.get(taskParams.providerUUID);
     // Mock region metadata.
-    mockRegionMetadata(Common.CloudType.valueOf(provider.code));
+    mockRegionMetadata(Common.CloudType.valueOf(provider.getCode()));
     // TODO(bogdan): we don't really care about the output now..
     when(mockNetworkManager.bootstrap(any(), any(), anyString())).thenReturn(Json.parse("{}"));
     when(mockCloudQueryHelper.getZones(any(UUID.class), anyString())).thenReturn(zoneInfo);
     when(mockCloudQueryHelper.getZones(any(UUID.class), anyString(), anyString()))
         .thenReturn(zoneInfo);
     String defaultImage = "test_image_id";
-    when(mockCloudQueryHelper.getDefaultImage(any(Region.class))).thenReturn(defaultImage);
-    String x86_64 = "x86_64";
-    when(mockCloudQueryHelper.getImageArchitecture(any(Region.class))).thenReturn(x86_64);
-    taskParams.providerUUID = provider.uuid;
+    when(mockCloudQueryHelper.getDefaultImage(any(Region.class), any())).thenReturn(defaultImage);
+    if (expectedProviderCode.equals("aws")) {
+      String arch = armArchitecture ? "aarch64" : "x86_64";
+      when(mockCloudQueryHelper.getImageArchitecture(any(Region.class))).thenReturn(arch);
+    }
+    taskParams.providerUUID = provider.getUuid();
 
     UUID taskUUID = submitTask(taskParams);
     TaskInfo taskInfo = waitForTask(taskUUID);
     assertEquals(Success, taskInfo.getTaskState());
     if (expectedProviderCode.equals("aws")) {
       verify(mockAWSInitializer, times(isAddRegion ? 2 : 1))
-          .initialize(defaultCustomer.uuid, provider.uuid);
+          .initialize(defaultCustomer.getUuid(), provider.getUuid());
     } else if (expectedProviderCode.equals("gcp")) {
       verify(mockGCPInitializer, times(isAddRegion ? 2 : 1))
-          .initialize(defaultCustomer.uuid, provider.uuid);
+          .initialize(defaultCustomer.getUuid(), provider.getUuid());
     } else {
       fail("Only support AWS and GCP for now.");
     }
     // TODO(bogdan): do we want a different handling here?
     String customPayload = Json.stringify(Json.toJson(taskParams));
     verify(mockNetworkManager, times(isAddRegion ? 0 : 1))
-        .bootstrap(null, provider.uuid, customPayload);
+        .bootstrap(null, provider.getUuid(), customPayload);
     assertEquals(taskParams.perRegionMetadata.size(), expectedRegions.size());
     // Check per-region settings.
     for (Map.Entry<String, CloudBootstrap.Params.PerRegionMetadata> entry :
@@ -182,7 +215,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         // TODO: might need to add port here.
         verify(mockAccessManager, times(1))
             .saveAndAddKey(
-                eq(r.uuid),
+                eq(r.getUuid()),
                 eq(taskParams.sshPrivateKeyContent),
                 eq(taskParams.keyPairName),
                 any(KeyType.class),
@@ -203,7 +236,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
 
         verify(mockAccessManager, times(1))
             .addKey(
-                eq(r.uuid),
+                eq(r.getUuid()),
                 eq(expectedAccessKeyCode),
                 any(),
                 eq(taskParams.sshUser),
@@ -215,32 +248,32 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
                 eq(taskParams.showSetUpChrony));
       }
       // Check AZ info.
-      List<AvailabilityZone> zones = r.zones;
+      List<AvailabilityZone> zones = r.getZones();
       assertNotNull(zones);
       if (customAzMapping) {
         if (expectedProviderCode.equals("aws")) {
           assertEquals(metadata.azToSubnetIds.size(), zones.size());
           for (AvailabilityZone zone : zones) {
-            String subnet = metadata.azToSubnetIds.get(zone.code);
-            String subnetDb = zone.subnet;
+            String subnet = metadata.azToSubnetIds.get(zone.getCode());
+            String subnetDb = zone.getSubnet();
             assertNotNull(subnetDb);
             assertEquals(subnet, subnetDb);
             if (hasSecondarySubnet) {
-              String secondarySubnet = metadata.azToSecondarySubnetIds.get(zone.code);
-              String secondarySubnetDb = zone.secondarySubnet;
+              String secondarySubnet = metadata.azToSecondarySubnetIds.get(zone.getCode());
+              String secondarySubnetDb = zone.getSecondarySubnet();
               assertNotNull(secondarySubnetDb);
               assertEquals(secondarySubnet, secondarySubnetDb);
             } else {
-              assertNull(zone.secondarySubnet);
+              assertNull(zone.getSecondarySubnet());
             }
           }
         } else if (expectedProviderCode.equals("gcp")) {
           for (AvailabilityZone zone : zones) {
-            assertEquals(metadata.subnetId, zone.subnet);
+            assertEquals(metadata.subnetId, zone.getSubnet());
             if (hasSecondarySubnet) {
-              assertEquals(metadata.secondarySubnetId, zone.secondarySubnet);
+              assertEquals(metadata.secondarySubnetId, zone.getSecondarySubnet());
             } else {
-              assertNull(zone.secondarySubnet);
+              assertNull(zone.getSecondarySubnet());
             }
           }
         }
@@ -255,10 +288,12 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       }
       // Check AMI info.
       if (customImageId) {
-        assertEquals(r.ybImage, metadata.customImageId);
+        assertEquals(metadata.customImageId, r.getYbImage());
       } else {
-        assertEquals(r.ybImage, defaultImage);
+        assertEquals(defaultImage, r.getYbImage());
       }
+      // Check Arch info.
+      assertEquals(r.getArchitecture(), metadata.architecture);
     }
   }
 
@@ -269,6 +304,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
     perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("x86_64");
     taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west-1"), "aws", false, false, false, false);
@@ -282,6 +318,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
     perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("x86_64");
     taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
     // Add in the keypair info.
     taskParams.keyPairName = "keypair-name";
@@ -299,6 +336,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
         new CloudBootstrap.Params.PerRegionMetadata();
     perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("x86_64");
     taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
     // Add in the keypair info.
     taskParams.keyPairName = "keypair-name";
@@ -314,6 +352,15 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       boolean useSecondarySubnet,
       boolean useCustomImage,
       CloudBootstrap.Params.PerRegionMetadata regionMetadata) {
+    createPerRegionMetadata(region, useSecondarySubnet, useCustomImage, true, regionMetadata);
+  }
+
+  public void createPerRegionMetadata(
+      String region,
+      boolean useSecondarySubnet,
+      boolean useCustomImage,
+      boolean useDefaultArchitecture,
+      CloudBootstrap.Params.PerRegionMetadata regionMetadata) {
     regionMetadata.vpcId = region;
     regionMetadata.azToSubnetIds = new HashMap<>();
     regionMetadata.azToSecondarySubnetIds = new HashMap<>();
@@ -327,6 +374,9 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
       regionMetadata.customImageId = region + "-image";
     }
     regionMetadata.customSecurityGroupId = region + "-sg-id";
+    if (useDefaultArchitecture) {
+      regionMetadata.architecture = Architecture.valueOf("x86_64");
+    }
   }
 
   @Test
@@ -437,7 +487,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     JsonNode zoneInfo =
         Json.parse("{\"us-west1\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-0\"]}}");
     CloudBootstrap.Params taskParams = getBaseTaskParams();
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", new CloudBootstrap.Params.PerRegionMetadata());
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, false, false, false);
@@ -451,7 +501,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     CloudBootstrap.Params.PerRegionMetadata westRegion =
         new CloudBootstrap.Params.PerRegionMetadata();
     westRegion.subnetId = "us-west1";
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", westRegion);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false);
@@ -466,7 +516,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         new CloudBootstrap.Params.PerRegionMetadata();
     westRegion.subnetId = "us-west1-subnet1";
     westRegion.secondarySubnetId = "us-west1-subnet2";
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", westRegion);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false, true);
@@ -481,7 +531,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         new CloudBootstrap.Params.PerRegionMetadata();
     westRegion.subnetId = "us-west1-subnet1";
     westRegion.secondarySubnetId = "us-west1-subnet2";
-    taskParams.providerUUID = gcpProvider.uuid;
+    taskParams.providerUUID = gcpProvider.getUuid();
     taskParams.perRegionMetadata.put("us-west1", westRegion);
     validateCloudBootstrapSuccess(
         taskParams, zoneInfo, ImmutableList.of("us-west1"), "gcp", false, true, false, false, true);
@@ -489,7 +539,7 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     // Since the above was a success, there must now be an AccessKey created for the provider.
     // Create it so that it exists for the next call.
     String accessKeyCode = AccessKey.getDefaultKeyCode(gcpProvider);
-    AccessKey.create(gcpProvider.uuid, accessKeyCode, new KeyInfo());
+    AccessKey.create(gcpProvider.getUuid(), accessKeyCode, new KeyInfo());
 
     // Add new region
     zoneInfo =
@@ -499,8 +549,8 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
         new CloudBootstrap.Params.PerRegionMetadata();
     eastRegion.subnetId = "us-east1-subnet1";
     eastRegion.secondarySubnetId = "us-east1-subnet2";
-    taskParams.providerUUID = gcpProvider.uuid;
-    taskParams.regionAddOnly = true;
+    taskParams.providerUUID = gcpProvider.getUuid();
+    taskParams.skipBootstrapRegion = true;
     taskParams.perRegionMetadata.put("us-east1", eastRegion);
     validateCloudBootstrapSuccess(
         taskParams,
@@ -545,5 +595,50 @@ public class CloudBootstrapTest extends CommissionerBaseTest {
     assertEquals(Failure, taskInfo.getTaskState());
     Region r = Region.getByCode(defaultProvider, "us-west-1");
     assertNull(r);
+  }
+
+  @Test
+  public void testCloudBootstrapWithInstanceTemplate() throws InterruptedException {
+    String region = "us-west1";
+    JsonNode zoneInfo =
+        Json.parse(
+            String.format(
+                "{\"%s\": {\"zones\": [\"zone-1\"], \"subnetworks\": [\"subnet-0\"]}}", region));
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    createPerRegionMetadata(region, false, false, false, perRegionMetadata);
+    String instanceTemplate = "TestInstanceTemplate";
+    perRegionMetadata.instanceTemplate = instanceTemplate;
+    taskParams.perRegionMetadata.put(region, perRegionMetadata);
+    taskParams.providerUUID = gcpProvider.getUuid();
+    validateCloudBootstrapSuccess(
+        taskParams, zoneInfo, ImmutableList.of(region), "gcp", false, false, false, false);
+    Provider provider = Provider.get(taskParams.providerUUID);
+    GCPRegionCloudInfo g = CloudInfoInterface.get(provider.getRegions().get(0));
+    assertEquals(instanceTemplate, g.getInstanceTemplate());
+  }
+
+  @Test
+  public void testCloudBootstrapSuccessAwsAarchArchitecture() throws InterruptedException {
+    JsonNode zoneInfo = Json.parse("{\"us-west-1\": {\"zone-1\": \"subnet-1\"}}");
+    CloudBootstrap.Params taskParams = getBaseTaskParams();
+    CloudBootstrap.Params.PerRegionMetadata perRegionMetadata =
+        new CloudBootstrap.Params.PerRegionMetadata();
+    perRegionMetadata.vpcId = "test-vpc";
+    perRegionMetadata.architecture = Architecture.valueOf("aarch64");
+    taskParams.perRegionMetadata.put("us-west-1", perRegionMetadata);
+    validateCloudBootstrapSuccess(
+        taskParams,
+        zoneInfo,
+        ImmutableList.of("us-west-1"),
+        "aws",
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true);
   }
 }

@@ -162,7 +162,7 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
   }
 
   Status StartProcessAndGetStreams(string exe_path, vector<string> argv, FILE** out,
-                                           FILE** in, std::unique_ptr<Subprocess>* process) {
+                                   FILE** in, std::unique_ptr<Subprocess>* process) {
     process->reset(new Subprocess(exe_path, argv));
     (*process)->PipeParentStdout();
     RETURN_NOT_OK((*process)->Start());
@@ -381,10 +381,9 @@ class YBBulkLoadTest : public YBMiniClusterTestBase<MiniCluster> {
 
     // Retrieve row.
     ASSERT_TRUE(controller.finished());
-    Slice rows_data = ASSERT_RESULT(controller.GetSidecar(ql_resp.rows_data_sidecar()));
-    std::shared_ptr<std::vector<ColumnSchema>>
-      columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
-    yb::ql::RowsResult rowsResult(*table_name_, columns, rows_data.ToBuffer());
+    auto rows_data = ASSERT_RESULT(controller.ExtractSidecar(ql_resp.rows_data_sidecar()));
+    auto columns = std::make_shared<std::vector<ColumnSchema>>(schema_.columns());
+    ql::RowsResult rowsResult(*table_name_, columns, rows_data);
     *rowblock = rowsResult.GetRowBlock();
   }
 

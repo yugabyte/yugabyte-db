@@ -21,16 +21,16 @@ import {
   YBFormToggle,
   YBNumericInput
 } from '../../common/forms/fields';
-import { BACKUP_API_TYPES, Backup_Options_Type, IStorageConfig, ITable } from '../common/IBackup';
-import { useSelector } from 'react-redux';
-import { find, flatten, groupBy, omit, uniq, uniqBy } from 'lodash';
+import { BACKUP_API_TYPES, Backup_Options_Type, IBackupEditParams, IStorageConfig, ITable } from '../common/IBackup';
+import { useDispatch, useSelector } from 'react-redux';
+import { find, flatten, groupBy, isArray, omit, uniq, uniqBy } from 'lodash';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
 import { YBLoading } from '../../common/indicators';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import Bulb from '../../universes/images/bulb.svg';
 import { toast } from 'react-toastify';
-import { createBackup } from '../common/BackupAPI';
+import { createBackup, editBackup } from '../common/BackupAPI';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { createBackupSchedule, editBackupSchedule } from '../common/BackupScheduleAPI';
 
@@ -41,9 +41,10 @@ import { components } from 'react-select';
 import Close from '../../universes/images/close.svg';
 
 import { PARALLEL_THREADS_RANGE } from '../common/BackupUtils';
-import './BackupCreateModal.scss';
 import { isDefinedNotNull } from '../../../utils/ObjectUtils';
 import { isYbcEnabledUniverse } from '../../../utils/UniverseUtils';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../actions/universe';
+import './BackupCreateModal.scss';
 
 interface BackupCreateModalProps {
   onHide: Function;
@@ -53,6 +54,7 @@ interface BackupCreateModalProps {
   isEditMode?: boolean;
   editValues?: Record<string, any>;
   isIncrementalBackup?: boolean;
+  isEditBackupMode?: boolean;
 }
 
 type ToogleScheduleProps = Partial<IBackupSchedule> & Pick<IBackupSchedule, 'scheduleUUID'>;
@@ -90,12 +92,14 @@ const SCHEDULE_DURATION_OPTIONS = ['Minutes', 'Hours', ...DURATIONS].map((t: str
   };
 });
 
-const INCREMENTAL_BACKUP_DURATION_OPTIONS = ['Hours', 'Days', 'Months'].map((t: string) => {
-  return {
-    value: t,
-    label: t
-  };
-});
+const INCREMENTAL_BACKUP_DURATION_OPTIONS = ['Minutes', 'Hours', 'Days', 'Months'].map(
+  (t: string) => {
+    return {
+      value: t,
+      label: t
+    };
+  }
+);
 
 const TABLE_BACKUP_OPTIONS = [
   { label: 'Select all tables in this Keyspace', value: Backup_Options_Type.ALL },
@@ -104,7 +108,10 @@ const TABLE_BACKUP_OPTIONS = [
 
 const STEPS = [
   {
-    title: (isScheduledBackup: boolean, isEditMode: boolean, isIncrementalBackup = false) => {
+    title: (isScheduledBackup: boolean, isEditMode: boolean, isIncrementalBackup = false, isEditBackupMode: boolean) => {
+      if(isEditBackupMode) {
+        return 'Edit Backup';
+      }
       if (isScheduledBackup) {
         return `${isEditMode ? 'Edit' : 'Create'} scheduled backup policy`;
       }
@@ -113,8 +120,14 @@ const STEPS = [
       }
       return 'Backup Now';
     },
-    submitLabel: (isScheduledBackup: boolean, isEditMode: boolean) =>
-      isScheduledBackup ? (isEditMode ? 'Apply Changes' : 'Create') : 'Backup',
+    submitLabel: (isScheduledBackup: boolean, isEditMode: boolean, isEditBackupMode: boolean) => {
+      if(isScheduledBackup) {
+        return (isEditMode ? 'Apply Changes' : 'Create');
+      }
+      else {
+        return (isEditBackupMode ? 'Apply Changes' : 'Backup');
+      }
+    },
     component: BackupConfigurationForm,
     footer: () => null
   }
@@ -137,7 +150,7 @@ const initialValues = {
   storage_config: null as any,
   is_incremental_backup_enabled: false,
   incremental_backup_frequency: 1,
-  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[0]
+  incremental_backup_frequency_type: INCREMENTAL_BACKUP_DURATION_OPTIONS[1]
 };
 
 export const BackupCreateModal: FC<BackupCreateModalProps> = ({
@@ -147,7 +160,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   isScheduledBackup = false,
   isEditMode = false,
   editValues = {},
-  isIncrementalBackup = false
+  isIncrementalBackup = false,
+  isEditBackupMode = false
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
 
@@ -181,6 +195,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
   const queryClient = useQueryClient();
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
+  const dispatch = useDispatch();
 
   const doCreateBackup = useMutation(
     (values: any) => {
@@ -202,7 +217,28 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         );
         queryClient.invalidateQueries(['backups']);
         queryClient.invalidateQueries(['incremental_backups', values['baseBackupUUID']]);
+
+        dispatch(fetchUniverseInfo(currentUniverseUUID) as any).then((response: any) => {
+          dispatch(fetchUniverseInfoResponse(response.payload));
+        });
+
         onHide();
+      },
+      onError: (err: any) => {
+        onHide();
+        toast.error(err.response.data.error);
+      }
+    }
+  );
+
+  const doEditBackup = useMutation(
+    (values: IBackupEditParams) => {
+      return editBackup(values);
+    },
+    {
+      onSuccess: (resp, values) => {
+        onHide();
+        toast.success('Backup Edited Successfully!');
       },
       onError: (err: any) => {
         onHide();
@@ -254,22 +290,25 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   );
 
   const groupedStorageConfigs = useMemo(() => {
+    if (!isArray(storageConfigs?.data)) {
+      return [];
+    }
+    const filteredConfigs = storageConfigs.data.filter((c: IStorageConfig) => c.type === 'STORAGE');
+
     // if user has only one storage config, select it by default
-    if (storageConfigs.data.length === 1) {
-      const { configUUID, configName, name } = storageConfigs.data[0];
+    if (filteredConfigs.length === 1) {
+      const { configUUID, configName, name } = filteredConfigs[0];
       initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
     }
 
-    const configs = storageConfigs.data
-      .filter((c: IStorageConfig) => c.type === 'STORAGE')
-      .map((c: IStorageConfig) => {
-        return {
-          value: c.configUUID,
-          label: c.configName,
-          name: c.name,
-          regions: c.data?.REGION_LOCATIONS
-        };
-      });
+    const configs = filteredConfigs.map((c: IStorageConfig) => {
+      return {
+        value: c.configUUID,
+        label: c.configName,
+        name: c.name,
+        regions: c.data?.REGION_LOCATIONS
+      };
+    });
 
     return Object.entries(groupBy(configs, (c: IStorageConfig) => c.name)).map(
       ([label, options]) => {
@@ -282,7 +321,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
 
   const validationSchema = Yup.object().shape({
     scheduleName: Yup.string().when('storage_config', {
-      is: () => isScheduledBackup,
+      is: () => isScheduledBackup && !isEditBackupMode,
       then: Yup.string().required('Required')
     }),
     // we don't support schedules backups less than an hour
@@ -323,7 +362,13 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
     incremental_backup_frequency: Yup.number().test({
       message: 'Incremental backup interval must be less than full backup',
       test: function (value) {
-        if (!isScheduledBackup) return true;
+        if (
+          !isScheduledBackup ||
+          !this.parent.is_incremental_backup_enabled ||
+          this.parent.use_cron_expression
+        )
+          return true;
+
         return (
           value *
             MILLISECONDS_IN[this.parent.incremental_backup_frequency_type.value.toUpperCase()] <
@@ -337,7 +382,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
   return (
     <YBModalForm
       size="large"
-      title={STEPS[currentStep].title(isScheduledBackup, isEditMode, isIncrementalBackup)}
+      title={STEPS[currentStep].title(isScheduledBackup, isEditMode, isIncrementalBackup, isEditBackupMode)}
       className="backup-modal"
       visible={visible}
       validationSchema={validationSchema}
@@ -352,17 +397,45 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
           return;
         }
 
-        if (isScheduledBackup) {
+        if(isEditBackupMode) {
+          const backup = values.backupObj;
+          const currentTime = Date.now();
+          const lastBackedUpTime = backup.hasIncrementalBackups ? Date.parse(backup.lastIncrementalBackupTime) : Date.parse(backup.commonBackupInfo.createTime);
+          const retentionTimeUnit = values['retention_interval_type'].value.toUpperCase();
+          const newExpirationTime = lastBackedUpTime + (values['retention_interval'] * MILLISECONDS_IN[retentionTimeUnit]);
+          doEditBackup.mutateAsync({
+            backupUUID: backup.backupUUID,
+            timeBeforeDeleteFromPresentInMillis: values['keep_indefinitely'] ? 
+            0 : (newExpirationTime - currentTime),
+            storageConfigUUID: '',
+            expiryTimeUnit: retentionTimeUnit
+          });
+        }
+        else if (isScheduledBackup) {
           if (isEditMode) {
-            doEditBackupSchedule.mutateAsync({
+            const editPayloadValues = {
               scheduleUUID: values.scheduleObj.scheduleUUID,
-              frequency:
+              status: values.scheduleObj.status
+            };
+            if (values.use_cron_expression) {
+              editPayloadValues['cronExpression'] = values.cron_expression;
+            } else {
+              editPayloadValues['frequency'] =
                 values['policy_interval'] *
-                MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()],
-              cronExpression: values.cronExpression,
-              status: values.scheduleObj.status,
-              frequencyTimeUnit: values['policy_interval_type'].value.toUpperCase()
-            });
+                MILLISECONDS_IN[values['policy_interval_type'].value.toUpperCase()];
+              editPayloadValues['frequencyTimeUnit'] = values[
+                'policy_interval_type'
+              ].value.toUpperCase();
+            }
+            if (values['is_incremental_backup_enabled']) {
+              editPayloadValues['incrementalBackupFrequency'] =
+                values['incremental_backup_frequency'] *
+                MILLISECONDS_IN[values['incremental_backup_frequency_type'].value.toUpperCase()];
+              editPayloadValues['incrementalBackupFrequencyTimeUnit'] = values[
+                'incremental_backup_frequency_type'
+              ].value.toUpperCase();
+            }
+            doEditBackupSchedule.mutateAsync(editPayloadValues);
           } else {
             doCreateBackupSchedule.mutateAsync({
               ...values,
@@ -382,7 +455,7 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
         ...initialValues,
         ...editValues
       }}
-      submitLabel={STEPS[currentStep].submitLabel(isScheduledBackup, isEditMode)}
+      submitLabel={STEPS[currentStep].submitLabel(isScheduledBackup, isEditMode, isEditBackupMode)}
       onHide={() => {
         setCurrentStep(0);
         onHide();
@@ -401,7 +474,8 @@ export const BackupCreateModal: FC<BackupCreateModalProps> = ({
               isEditMode,
               nodesInRegionsList,
               isYbcEnabledinCurrentUniverse,
-              isIncrementalBackup
+              isIncrementalBackup,
+              isEditBackupMode
             })}
           </>
         )
@@ -421,7 +495,8 @@ function BackupConfigurationForm({
   isEditMode,
   nodesInRegionsList,
   isYbcEnabledinCurrentUniverse,
-  isIncrementalBackup
+  isIncrementalBackup,
+  isEditBackupMode
 }: {
   kmsConfigList: any;
   setFieldValue: Function;
@@ -440,6 +515,7 @@ function BackupConfigurationForm({
   nodesInRegionsList: string[];
   isYbcEnabledinCurrentUniverse: boolean;
   isIncrementalBackup: boolean;
+  isEditBackupMode: boolean;
 }) {
   const ALL_DB_OPTION = {
     label: `All ${values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Databases' : 'Keyspaces'}`,
@@ -463,7 +539,7 @@ function BackupConfigurationForm({
   let regions_satisfied_by_config = true;
 
   if (values['storage_config']?.regions?.length > 0) {
-    regions_satisfied_by_config = nodesInRegionsList.every((e) =>
+  regions_satisfied_by_config = nodesInRegionsList.every((e) =>
       find(values['storage_config'].regions, { REGION: e })
     );
   }
@@ -512,12 +588,14 @@ function BackupConfigurationForm({
             label="Select the storage config you want to use for your backup"
             options={storageConfigs}
             components={{
+              // eslint-disable-next-line react/display-name
               SingleValue: ({ data }: { data: any }) => (
                 <>
                   <span className="storage-cfg-name">{data.label}</span>
                   <StatusBadge statusType={Badge_Types.DELETED} customLabel={data.name} />
                 </>
               ),
+              // eslint-disable-next-line react/display-name
               Option: (props: any) => {
                 return (
                   <components.Option {...props}>
@@ -582,7 +660,8 @@ function BackupConfigurationForm({
                       values['db_to_backup'] === null ||
                       values['db_to_backup']?.value === null ||
                       isEditMode ||
-                      isIncrementalBackup
+                      isIncrementalBackup ||
+                      isEditBackupMode
                     }
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                       setFieldValue('backup_tables', e.target.value, false);
@@ -608,7 +687,9 @@ function BackupConfigurationForm({
                             setFieldValue('show_select_ycql_table', true);
                           }}
                         >
-                          <i className="fa fa-pencil" /> Edit selection
+                          <i className="fa fa-pencil" />
+                          &nbsp;
+                          {`${isIncrementalBackup || isEditMode ? 'View' : 'Edit'} `} selection
                         </span>
                       </span>
                     )}
@@ -633,7 +714,7 @@ function BackupConfigurationForm({
                   value: values['retention_interval']
                 }}
                 minVal={0}
-                readOnly={values['keep_indefinitely'] || isEditMode}
+                readOnly={values['keep_indefinitely'] || (isEditMode && !isEditBackupMode)}
               />
             </Col>
             <Col lg={3}>
@@ -641,14 +722,14 @@ function BackupConfigurationForm({
                 name="retention_interval_type"
                 component={YBFormSelect}
                 options={DURATION_OPTIONS}
-                isDisabled={values['keep_indefinitely'] || isEditMode}
+                isDisabled={values['keep_indefinitely'] || (isEditMode && !isEditBackupMode)}
               />
             </Col>
             <Col lg={4}>
               <Field
                 name="keep_indefinitely"
                 component={YBCheckBox}
-                disabled={isEditMode}
+                disabled={isEditMode && !isEditBackupMode}
                 checkState={values['keep_indefinitely']}
               />
               Keep indefinitely
@@ -661,7 +742,7 @@ function BackupConfigurationForm({
           </Col>
         )}
       </Row>
-      {isScheduledBackup && (
+      {isScheduledBackup && !isEditBackupMode && (
         <Row>
           <div>Set backup intervals</div>
           <Col lg={12} className="no-padding">
@@ -753,7 +834,6 @@ function BackupConfigurationForm({
                           value: values['incremental_backup_frequency']
                         }}
                         minVal={0}
-                        readOnly={isEditMode}
                       />
                     </Col>
                     <Col lg={4}>
@@ -761,7 +841,6 @@ function BackupConfigurationForm({
                         name="incremental_backup_frequency_type"
                         component={YBFormSelect}
                         options={INCREMENTAL_BACKUP_DURATION_OPTIONS}
-                        isDisabled={isEditMode}
                       />
                     </Col>
                   </div>
@@ -884,9 +963,11 @@ export const SelectYCQLTablesModal: FC<SelectYCQLTablesModalProps> = ({
             <Col lg={12} className="no-padding table-list">
               {tablesInKeyspaces
                 ?.filter(
+                  // eslint-disable-next-line @typescript-eslint/prefer-includes
                   (t) => t.tableName.toLowerCase().indexOf(values['search_text'].toLowerCase()) > -1
                 )
                 .filter((t) => !find(values['selected_ycql_tables'], { tableName: t.tableName }))
+                // eslint-disable-next-line react/display-name
                 .map((t) => {
                   return (
                     <div className="table-item" key={t.tableUUID}>

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_PRIMITIVE_VALUE_H_
-#define YB_DOCDB_PRIMITIVE_VALUE_H_
+#pragma once
 
 #include <ostream>
 #include <string>
@@ -26,7 +25,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_datatype.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
@@ -108,7 +107,11 @@ class PrimitiveValue {
 
   // Decodes a primitive value from the given slice representing a RocksDB value in our value
   // encoding format. Expects the entire slice to be consumed and returns an error otherwise.
-  Status DecodeFromValue(const rocksdb::Slice& rocksdb_slice);
+  Status DecodeFromValue(const Slice& rocksdb_slice);
+
+  static Status DecodeToQLValuePB(
+      const Slice& rocksdb_slice, const std::shared_ptr<QLType>& ql_type,
+      QLValuePB* ql_val);
 
   static PrimitiveValue Double(double v);
   static PrimitiveValue Float(float v);
@@ -173,6 +176,8 @@ class PrimitiveValue {
   }
 
   float GetFloat() const;
+
+  bool GetBoolean() const;
 
   const std::string& GetDecimal() const;
 
@@ -308,5 +313,3 @@ size_t EncodedValueSize(const QLValuePB& value);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_PRIMITIVE_VALUE_H_

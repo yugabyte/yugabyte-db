@@ -25,9 +25,9 @@
 #include "yb/rocksdb/port/port.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/util/mutexlock.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/result.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 

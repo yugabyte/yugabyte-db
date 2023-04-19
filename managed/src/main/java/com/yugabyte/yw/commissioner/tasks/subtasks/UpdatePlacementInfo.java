@@ -59,7 +59,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
   public String getName() {
     return super.getName()
         + "'("
-        + taskParams().universeUUID
+        + taskParams().getUniverseUUID()
         + " "
         + taskParams().blacklistNodes
         + ")'";
@@ -67,7 +67,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String hostPorts = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
     YBClient client = null;
@@ -76,9 +76,10 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
       client = ybService.getClient(hostPorts, certificate);
 
       ModifyUniverseConfig modifyConfig =
-          new ModifyUniverseConfig(client, taskParams().universeUUID, taskParams().blacklistNodes);
+          new ModifyUniverseConfig(
+              client, taskParams().getUniverseUUID(), taskParams().blacklistNodes);
       modifyConfig.doCall();
-      if (shouldIncrementVersion(taskParams().universeUUID)) universe.incrementVersion();
+      if (shouldIncrementVersion(taskParams().getUniverseUUID())) universe.incrementVersion();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);
@@ -110,8 +111,8 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
             // Create the cloud info object.
             CloudInfoPB.Builder ccb = CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
-                .setPlacementRegion(region.code)
-                .setPlacementZone(az.code);
+                .setPlacementRegion(region.getCode())
+                .setPlacementZone(az.getCode());
 
             CatalogEntityInfo.PlacementBlockPB.Builder pbb =
                 CatalogEntityInfo.PlacementBlockPB.newBuilder();
@@ -140,8 +141,8 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
             // Create the cloud info object.
             CloudInfoPB.Builder ccb = CloudInfoPB.newBuilder();
             ccb.setPlacementCloud(placementCloud.code)
-                .setPlacementRegion(region.code)
-                .setPlacementZone(az.code);
+                .setPlacementRegion(region.getCode())
+                .setPlacementZone(az.getCode());
             if (placementAz.isAffinitized) {
               replicationInfoPB.addAffinitizedLeaders(ccb);
             }

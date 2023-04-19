@@ -18,8 +18,6 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_UTIL_OPTIONS_HELPER_H
-#define YB_ROCKSDB_UTIL_OPTIONS_HELPER_H
 
 #pragma once
 
@@ -32,7 +30,6 @@
 #include "yb/rocksdb/table.h"
 #include "yb/rocksdb/util/mutable_cf_options.h"
 
-#ifndef ROCKSDB_LITE
 namespace rocksdb {
 
 // Returns true if the input char "c" is considered as a special character
@@ -646,7 +643,3 @@ static std::unordered_map<std::string, InfoLogLevel> info_log_level_string_map =
      {"HEADER_LEVEL", InfoLogLevel::HEADER_LEVEL}};
 
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE
-
-#endif // YB_ROCKSDB_UTIL_OPTIONS_HELPER_H

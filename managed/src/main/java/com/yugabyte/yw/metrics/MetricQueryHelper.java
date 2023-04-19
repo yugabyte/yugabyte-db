@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.metrics;
 
-import static com.yugabyte.yw.common.SwamperHelper.SCRAPE_INTERVAL_SECS_PARAM;
+import static com.yugabyte.yw.common.SwamperHelper.getScrapeIntervalSeconds;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -10,18 +10,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiHelper;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -50,7 +55,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.Configuration;
 import play.libs.Json;
 
 @Singleton
@@ -64,8 +68,6 @@ public class MetricQueryHelper {
   public static final String ALERTS_PATH = "alerts";
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
-  private static final String PROMETHEUS_METRICS_URL_PATH = "yb.metrics.url";
-  private static final String PROMETHEUS_MANAGEMENT_URL_PATH = "yb.metrics.management.url";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
 
   private static final String CONTAINER_METRIC_PREFIX = "container";
@@ -78,7 +80,7 @@ public class MetricQueryHelper {
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
-  private final play.Configuration appConfig;
+  private final Config appConfig;
 
   private final ApiHelper apiHelper;
 
@@ -88,7 +90,7 @@ public class MetricQueryHelper {
 
   @Inject
   public MetricQueryHelper(
-      Configuration appConfig,
+      Config appConfig,
       ApiHelper apiHelper,
       MetricUrlProvider metricUrlProvider,
       PlatformExecutorFactory platformExecutorFactory) {
@@ -189,12 +191,21 @@ public class MetricQueryHelper {
       if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
           || CollectionUtils.isNotEmpty(metricQueryParams.getRegionCodes())
           || CollectionUtils.isNotEmpty(metricQueryParams.getAvailabilityZones())
-          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())) {
+          || CollectionUtils.isNotEmpty(metricQueryParams.getNodeNames())
+          || metricQueryParams.getServerType() != null) {
         // Need to get matching nodes
         universe
             .getNodes()
             .forEach(
                 node -> {
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.MASTER
+                      && !node.isMaster) {
+                    return;
+                  }
+                  if (metricQueryParams.getServerType() == UniverseTaskBase.ServerType.TSERVER
+                      && !node.isTserver) {
+                    return;
+                  }
                   if (CollectionUtils.isNotEmpty(metricQueryParams.getClusterUuids())
                       && !metricQueryParams.getClusterUuids().contains(node.placementUuid)) {
                     return;
@@ -249,10 +260,26 @@ public class MetricQueryHelper {
               universeFilterLabel, getNamespacesFilter(universe, nodePrefix, newNamingStyle));
           // Check if the universe is using newNamingStyle.
           if (newNamingStyle) {
-            // TODO(bhavin192): account for max character limit in
-            // Helm release name, which is 53 characters.
-            // The default value in metrics.yml is yb-tserver-(.*)
-            filterJson.put(nodeFilterLabel, nodePrefix + "-(.*)-yb-tserver-(.*)");
+            Set<String> nodePrefixes = new HashSet<String>();
+            for (Cluster cluster : universe.getUniverseDetails().clusters) {
+              Provider provider =
+                  Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+              for (Region r : provider.getRegions()) {
+                for (AvailabilityZone az : r.getZones()) {
+                  boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+                  String helmRelease =
+                      KubernetesUtil.getHelmReleaseName(
+                          isMultiAZ,
+                          nodePrefix,
+                          universe.getName(),
+                          az.getName(),
+                          cluster.clusterType == ClusterType.ASYNC,
+                          newNamingStyle);
+                  nodePrefixes.add(helmRelease + "-yb-tserver-(.*)");
+                }
+              }
+            }
+            filterJson.put(nodeFilterLabel, StringUtils.join(nodePrefixes, '|'));
           }
         }
       } else {
@@ -276,7 +303,8 @@ public class MetricQueryHelper {
     if (metricQueryParams.getXClusterConfigUuid() != null) {
       XClusterConfig xClusterConfig =
           XClusterConfig.getOrBadRequest(metricQueryParams.getXClusterConfigUuid());
-      String tableIdRegex = String.join("|", xClusterConfig.getTables());
+      String tableIdRegex =
+          String.join("|", xClusterConfig.getTableIds(true /* includeTxnTableIfExists */));
       filterJson.put("table_id", tableIdRegex);
     }
     params.put("filters", Json.stringify(filterJson));
@@ -303,7 +331,7 @@ public class MetricQueryHelper {
       throw new PlatformServiceException(BAD_REQUEST, "Empty metricsWithSettings data provided.");
     }
 
-    long scrapeInterval = appConfig.getLong(SCRAPE_INTERVAL_SECS_PARAM);
+    long scrapeInterval = getScrapeIntervalSeconds(appConfig);
     long timeDifference;
     if (params.get("end") != null) {
       timeDifference = Long.parseLong(params.get("end")) - Long.parseLong(params.get("start"));
@@ -356,12 +384,6 @@ public class MetricQueryHelper {
         throw new PlatformServiceException(
             BAD_REQUEST, "Invalid filter params provided, it should be a hash.");
       }
-    }
-
-    String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if ((null == metricsUrl || metricsUrl.isEmpty())) {
-      LOG.error("Error fetching metrics data: no prometheus metrics URL configured");
-      return Json.newObject();
     }
 
     ExecutorService threadPool =
@@ -456,7 +478,7 @@ public class MetricQueryHelper {
   }
 
   public void postManagementCommand(String command) {
-    final String queryUrl = getPrometheusManagementUrl(command);
+    final String queryUrl = metricUrlProvider.getMetricsManagementUrl() + "/" + command;
     if (!apiHelper.postRequest(queryUrl)) {
       throw new RuntimeException(
           "Failed to perform " + command + " on prometheus instance " + queryUrl);
@@ -467,20 +489,8 @@ public class MetricQueryHelper {
     return appConfig.getBoolean(PROMETHEUS_MANAGEMENT_ENABLED);
   }
 
-  private String getPrometheusManagementUrl(String path) {
-    final String prometheusManagementUrl = appConfig.getString(PROMETHEUS_MANAGEMENT_URL_PATH);
-    if (StringUtils.isEmpty(prometheusManagementUrl)) {
-      throw new RuntimeException(PROMETHEUS_MANAGEMENT_URL_PATH + " not set");
-    }
-    return prometheusManagementUrl + "/" + path;
-  }
-
   private String getPrometheusQueryUrl(String path) {
-    final String metricsUrl = appConfig.getString(PROMETHEUS_METRICS_URL_PATH);
-    if (StringUtils.isEmpty(metricsUrl)) {
-      throw new RuntimeException(PROMETHEUS_METRICS_URL_PATH + " not set");
-    }
-    return metricsUrl + "/" + path;
+    return metricUrlProvider.getMetricsApiUrl() + "/" + path;
   }
 
   // Return a regex string for filtering the metrics based on
@@ -494,15 +504,16 @@ public class MetricQueryHelper {
 
     for (UniverseDefinitionTaskParams.Cluster cluster : universe.getUniverseDetails().clusters) {
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      for (Region r : Region.getByProvider(provider.uuid)) {
-        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.uuid)) {
+      for (Region r : Region.getByProvider(provider.getUuid())) {
+        for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(r.getUuid())) {
           boolean isMultiAZ = PlacementInfoUtil.isMultiAZ(provider);
+          Map<String, String> zoneConfig = CloudInfoInterface.fetchEnvVars(az);
           namespaces.add(
-              PlacementInfoUtil.getKubernetesNamespace(
+              KubernetesUtil.getKubernetesNamespace(
                   isMultiAZ,
                   nodePrefix,
-                  az.code,
-                  az.getUnmaskedConfig(),
+                  az.getCode(),
+                  zoneConfig,
                   newNamingStyle,
                   cluster.clusterType == ClusterType.ASYNC));
         }

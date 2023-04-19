@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_CONSENSUS_LOG_INDEX_H
-#define YB_CONSENSUS_LOG_INDEX_H
+#pragma once
 
 #include <map>
 #include <string>
@@ -192,4 +191,3 @@ int64_t TEST_GetEntriesPerIndexChunk();
 
 } // namespace log
 } // namespace yb
-#endif /* YB_CONSENSUS_LOG_INDEX_H */

@@ -13,7 +13,7 @@ import logging
 import os
 
 from ybops.common.exceptions import YBOpsRuntimeError
-from ybops.cloud.common.cloud import AbstractCloud
+from ybops.cloud.common.cloud import AbstractCloud, InstanceState
 from ybops.cloud.azure.command import AzureNetworkCommand, AzureInstanceCommand, \
     AzureAccessCommand, AzureQueryCommand, AzureDnsCommand
 from ybops.cloud.azure.utils import AzureBootstrapClient, AzureCloudAdmin, \
@@ -49,17 +49,20 @@ class AzureCloud(AbstractCloud):
         #   "azToSubnetIds": Dict mapping zones to subnet name
         #   "customSecurityGroupId": (Optional) String representing Azure SG name
         # if provided by the user
-        perRegionMetadata = json.loads(args.custom_payload).get("perRegionMetadata")
+        custom_payload = json.loads(args.custom_payload)
+        perRegionMetadata = custom_payload.get("perRegionMetadata")
 
         # First, make sure the resource group exists.
         # If not, place it in arbitrary Azure region about to be bootstrapped.
         create_resource_group(next(iter(perRegionMetadata.keys())))
 
-        user_provided_vnets = 0
+        added_region_codes = custom_payload.get("addedRegionCodes")
+        if added_region_codes is None:
+            added_region_codes = perRegionMetadata.keys()
         # Verify that the user provided data
-        user_provided_vnets = len([r for r in perRegionMetadata.values()
-                                   if r.get("vpcId") is not None])
-        if user_provided_vnets > 0 and user_provided_vnets != len(perRegionMetadata):
+        user_provided_vnets = len([r for k, r in perRegionMetadata.items()
+                                   if k in added_region_codes and r.get("vpcId") is not None])
+        if user_provided_vnets > 0 and user_provided_vnets != len(added_region_codes):
             raise YBOpsRuntimeError("Either no regions or all regions must have vpcId specified.")
 
         components = {}
@@ -72,8 +75,11 @@ class AzureCloud(AbstractCloud):
             logging.info("Bootstrapping individual regions.")
             # Bootstrap the individual region items standalone (vnet, subnet, sg, RT, etc).
             for region, metadata in perRegionMetadata.items():
-                components[region] = self.get_admin().network(metadata) \
-                                         .bootstrap(region).to_components()
+                if region in added_region_codes:
+                    components[region] = self.get_admin().network(metadata) \
+                                             .bootstrap(region).to_components()
+                else:
+                    components[region] = self.get_admin().network(metadata).to_components()
             self.get_admin().network().peer(components)
         print(json.dumps(components))
 
@@ -108,13 +114,16 @@ class AzureCloud(AbstractCloud):
         public_ip = args.assign_public_ip
         disk_iops = args.disk_iops
         disk_throughput = args.disk_throughput
+        spot_price = args.spot_price
+        use_spot_instance = args.use_spot_instance
         tags = json.loads(args.instance_tags) if args.instance_tags is not None else {}
         nicId = self.get_admin().create_or_update_nic(
             vmName, vnet, subnet, zone, nsg, region, public_ip, tags)
         output = self.get_admin().create_or_update_vm(vmName, zone, numVolumes, private_key_file,
                                                       volSize, instanceType, adminSSH, nsg, image,
                                                       volType, args.type, region, nicId, tags,
-                                                      disk_iops, disk_throughput)
+                                                      disk_iops, disk_throughput,
+                                                      spot_price, use_spot_instance)
         logging.info("[app] Updated Azure VM {}.".format(vmName, region, zone))
         return output
 
@@ -196,7 +205,7 @@ class AzureCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
         modify_tags(args.region, instance["id"], args.instance_tags, args.remove_tags)
 
-    def start_instance(self, args, ssh_ports):
+    def start_instance(self, args, server_ports):
         host_info = self.get_host_info(args)
         if host_info is None:
             raise YBOpsRuntimeError("Host {} does not exist".format(args.search_pattern))
@@ -214,7 +223,7 @@ class AzureCloud(AbstractCloud):
                 args.search_pattern))
             return
 
-        self.wait_for_ssh_ports(host_info['private_ip'], host_info['name'], ssh_ports)
+        self.wait_for_server_ports(host_info['private_ip'], host_info['name'], server_ports)
         return host_info
 
     def stop_instance(self, args):
@@ -223,3 +232,20 @@ class AzureCloud(AbstractCloud):
             raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
 
         return self.get_admin().deallocate_instance(host_info['name'])
+
+    def normalize_instance_state(self, instance_state):
+        if instance_state:
+            instance_state = instance_state.lower()
+            if instance_state in ("creating", "starting"):
+                return InstanceState.STARTING
+            if instance_state in ("running"):
+                return InstanceState.RUNNING
+            if instance_state in ("stopping"):
+                return InstanceState.STOPPING
+            if instance_state in ("stopped"):
+                return InstanceState.STOPPED
+            if instance_state in ("deallocating"):
+                return InstanceState.TERMINATING
+            if instance_state in ("deallocated"):
+                return InstanceState.TERMINATED
+        return InstanceState.UNKNOWN

@@ -24,7 +24,8 @@ setup(name='ybops',
           'ybops/cloud/onprem',
           'ybops/cloud/azure',
           'ybops/common',
-          'ybops/utils',
+          'ybops/node_agent',
+          'ybops/utils'
       ],
       package_data={'ybops': ['data/*.yml', 'data/internal/*.yml', 'data/*.j2', 'data/*.sh']},
       scripts=[

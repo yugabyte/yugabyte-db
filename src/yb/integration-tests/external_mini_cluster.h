@@ -84,6 +84,10 @@ class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
 
+namespace rpc {
+class SecureContext;
+}
+
 namespace server {
 class ServerStatusPB;
 }  // namespace server
@@ -109,7 +113,8 @@ struct ExternalMiniClusterOptions {
 
   static constexpr bool kDefaultStartCqlProxy = true;
 #if defined(__APPLE__)
-  static constexpr bool kBindToUniqueLoopbackAddress = false;
+  static constexpr bool kBindToUniqueLoopbackAddress = true; // Older Mac OS may need
+                                                             // to set this to false.
 #else
   static constexpr bool kBindToUniqueLoopbackAddress = true;
 #endif
@@ -213,6 +218,7 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status Start(rpc::Messenger* messenger = nullptr);
 
   // Restarts the cluster. Requires that it has been Shutdown() first.
+  // TODO: #14902 Shutdown the process if it is running.
   Status Restart();
 
   // Like the previous method but performs initialization synchronously, i.e.  this will wait for
@@ -440,8 +446,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   // This uses the 'force' flag on the RPC so that, even if the flag is considered unsafe to change
   // at runtime, it is changed.
   Status SetFlag(ExternalDaemon* daemon,
-                         const std::string& flag,
-                         const std::string& value);
+                 const std::string& flag,
+                 const std::string& value);
 
   // Sets the given flag on all masters.
   Status SetFlagOnMasters(const std::string& flag, const std::string& value);
@@ -453,10 +459,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   uint16_t AllocateFreePort();
 
   // Step down the master leader. error_code tracks rpc error info that can be used by the caller.
-  Status StepDownMasterLeader(tserver::TabletServerErrorPB::Code* error_code);
+  // A random peer becomes leader, unless new_leader_uuid is set. If set to the same as the current
+  // leader, it performs a stepdown regardless, increasing the term.
+  Status StepDownMasterLeader(
+      tserver::TabletServerErrorPB::Code* error_code, const std::string& new_leader_uuid = "");
 
-  // Step down the master leader and wait for a new leader to be elected.
-  Status StepDownMasterLeaderAndWaitForNewLeader();
+  // Step down the master leader and wait for a new leader to be elected.  No stepdown will occur if
+  // new_leader_uuid is set to the current leader uuid.
+  Status StepDownMasterLeaderAndWaitForNewLeader(const std::string& new_leader_uuid = "");
 
   // Find out if the master service considers itself ready. Return status OK() implies it is ready.
   Status GetIsMasterLeaderServiceReady(ExternalMaster* master);
@@ -562,6 +572,8 @@ class ExternalMiniCluster : public MiniClusterBase {
   DISALLOW_COPY_AND_ASSIGN(ExternalMiniCluster);
 };
 
+YB_STRONGLY_TYPED_BOOL(SafeShutdown);
+
 class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
  public:
   class StringListener {
@@ -601,13 +613,16 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
   // Return true if we have explicitly shut down the process.
   bool IsShutdown() const;
 
+  // Was SIGKILL used to shutdown the process?
+  bool WasUnsafeShutdown() const;
+
   // Return true if the process is still running.  This may return false if the process crashed,
   // even if we didn't explicitly call Shutdown().
   bool IsProcessAlive() const;
 
   bool IsProcessPaused() const;
 
-  virtual void Shutdown();
+  virtual void Shutdown(SafeShutdown safe_shutdown = SafeShutdown::kFalse);
 
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
@@ -762,6 +777,7 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   std::unique_ptr<Subprocess> process_;
   bool is_paused_ = false;
+  bool sigkill_used_for_shutdown_ = false;
 
   std::unique_ptr<server::ServerStatusPB> status_;
 
@@ -832,6 +848,10 @@ class ExternalMaster : public ExternalDaemon {
   // Restarts the daemon. Requires that it has previously been shutdown.
   Status Restart();
 
+  uint16_t http_port() const {
+    return http_port_;
+  }
+
  private:
   friend class RefCountedThreadSafe<ExternalMaster>;
   virtual ~ExternalMaster();
@@ -861,6 +881,7 @@ class ExternalTabletServer : public ExternalDaemon {
   void UpdateMasterAddress(const std::vector<HostPort>& master_addrs);
 
   // Restarts the daemon. Requires that it has previously been shutdown.
+  // TODO: #14902 Shutdown the process if it is running.
   Status Restart(
       bool start_cql_proxy = ExternalMiniClusterOptions::kDefaultStartCqlProxy,
       std::vector<std::pair<std::string, std::string>> flags = {});
@@ -954,6 +975,18 @@ T ExternalMiniCluster::GetProxy(const ExternalDaemon* daemon) {
 
 Status RestartAllMasters(ExternalMiniCluster* cluster);
 
-Status CompactTablets(ExternalMiniCluster* cluster);
+Status CompactTablets(
+    ExternalMiniCluster* cluster,
+    const yb::MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
+
+void StartSecure(
+  std::unique_ptr<ExternalMiniCluster>* cluster,
+  std::unique_ptr<rpc::SecureContext>* secure_context,
+  std::unique_ptr<rpc::Messenger>* messenger,
+  const std::vector<std::string>& master_flags = std::vector<std::string>());
+
+Status WaitForTableIntentsApplied(
+    ExternalMiniCluster* cluster, const TableId& table_id,
+    MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 }  // namespace yb

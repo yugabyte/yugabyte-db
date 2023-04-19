@@ -11,10 +11,10 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_PG_CLIENT_H
-#define YB_YQL_PGGATE_PG_CLIENT_H
+#pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <boost/preprocessor/seq/for_each.hpp>
@@ -34,6 +34,7 @@
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
 
+#include "yb/util/enums.h"
 #include "yb/util/monotime.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
@@ -42,7 +43,15 @@
 namespace yb {
 namespace pggate {
 
-YB_STRONGLY_TYPED_BOOL(DdlMode);
+YB_DEFINE_ENUM(
+  DdlType,
+  // Not a DDL operation.
+  ((NonDdl, 0))
+  // DDL operation that does not modify the DocDB schema protobufs.
+  ((DdlWithoutDocdbSchemaChanges, 1))
+  // DDL operation that modifies the DocDB schema protobufs.
+  ((DdlWithDocdbSchemaChanges, 2))
+);
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
     (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
@@ -52,9 +61,10 @@ struct PerformResult {
   Status status;
   ReadHybridTime catalog_read_time;
   rpc::CallResponsePtr response;
+  HybridTime used_in_txn_limit;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(status, catalog_read_time);
+    return YB_STRUCT_TO_STRING(status, catalog_read_time, used_in_txn_limit);
   }
 };
 
@@ -66,8 +76,8 @@ class PgClient {
   ~PgClient();
 
   Status Start(rpc::ProxyCache* proxy_cache,
-                       rpc::Scheduler* scheduler,
-                       const tserver::TServerSharedObject& tserver_shared_object);
+               rpc::Scheduler* scheduler,
+               const tserver::TServerSharedObject& tserver_shared_object);
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
@@ -75,7 +85,9 @@ class PgClient {
   Result<PgTableDescPtr> OpenTable(
       const PgObjectId& table_id, bool reopen, CoarseTimePoint invalidate_cache_time);
 
-  Status FinishTransaction(Commit commit, DdlMode ddl_mode);
+  Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
+
+  Status FinishTransaction(Commit commit, DdlType ddl_type);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -90,7 +102,12 @@ class PgClient {
   Result<client::YBTableName> DropTable(
       tserver::PgDropTableRequestPB* req, CoarseTimePoint deadline);
 
+  Result<int> WaitForBackendsCatalogVersion(
+      tserver::PgWaitForBackendsCatalogVersionRequestPB* req, CoarseTimePoint deadline);
   Status BackfillIndex(tserver::PgBackfillIndexRequestPB* req, CoarseTimePoint deadline);
+
+  Status GetIndexBackfillProgress(const std::vector<PgObjectId>& index_ids,
+                                  uint64_t** backfill_statuses);
 
   Result<int32> TabletServerCount(bool primary_only);
 
@@ -105,22 +122,35 @@ class PgClient {
   Result<client::TableSizeInfo> GetTableDiskSize(const PgObjectId& table_oid);
 
   Status InsertSequenceTuple(int64_t db_oid,
-                                     int64_t seq_oid,
-                                     uint64_t ysql_catalog_version,
-                                     int64_t last_val,
-                                     bool is_called);
+                             int64_t seq_oid,
+                             uint64_t ysql_catalog_version,
+                             bool is_db_catalog_version_mode,
+                             int64_t last_val,
+                             bool is_called);
 
   Result<bool> UpdateSequenceTuple(int64_t db_oid,
                                    int64_t seq_oid,
                                    uint64_t ysql_catalog_version,
+                                   bool is_db_catalog_version_mode,
                                    int64_t last_val,
                                    bool is_called,
-                                   boost::optional<int64_t> expected_last_val,
-                                   boost::optional<bool> expected_is_called);
+                                   std::optional<int64_t> expected_last_val,
+                                   std::optional<bool> expected_is_called);
+
+  Result<std::pair<int64_t, int64_t>> FetchSequenceTuple(int64_t db_oid,
+                                                         int64_t seq_oid,
+                                                         uint64_t ysql_catalog_version,
+                                                         bool is_db_catalog_version_mode,
+                                                         uint32_t fetch_count,
+                                                         int64_t inc_by,
+                                                         int64_t min_value,
+                                                         int64_t max_value,
+                                                         bool cycle);
 
   Result<std::pair<int64_t, bool>> ReadSequenceTuple(int64_t db_oid,
                                                      int64_t seq_oid,
-                                                     uint64_t ysql_catalog_version);
+                                                     uint64_t ysql_catalog_version,
+                                                     bool is_db_catalog_version_mode);
 
   Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
 
@@ -133,7 +163,8 @@ class PgClient {
 
   Result<bool> CheckIfPitrActive();
 
-  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo();
+  Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
+      bool size_only, uint32_t db_oid);
 
 #define YB_PG_CLIENT_SIMPLE_METHOD_DECLARE(r, data, method) \
   Status method(                             \
@@ -149,5 +180,3 @@ class PgClient {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif  // YB_YQL_PGGATE_PG_CLIENT_H

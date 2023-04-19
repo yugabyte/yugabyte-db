@@ -224,7 +224,6 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   // a balanced load, but that the global load is skewed.
 
   // Assert that each table is balanced, but we are not globally balanced.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
   z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 3 }));
   ASSERT_FALSE(AreLoadsBalanced(z0_tserver_loads));
 
@@ -235,7 +234,6 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   WaitForLoadBalanceCompletion();
 
   // Assert that each table is balanced, and that we are now globally balanced.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
   z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 3 }));
   ASSERT_TRUE(AreLoadsBalanced(z0_tserver_loads));
 
@@ -256,7 +254,6 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   // a global load of (6, 6, 3) in zone 0.
 
   // Assert that each table is balanced, and that we are not globally balanced.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
   z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 3, 4 }));
   ASSERT_FALSE(AreLoadsBalanced(z0_tserver_loads));
 
@@ -267,7 +264,6 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancing) {
   WaitForLoadBalanceCompletion();
 
   // Assert that each table is balanced, and that we are now globally balanced.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
   z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 3, 4 }));
   ASSERT_TRUE(AreLoadsBalanced(z0_tserver_loads));
   // Each node should have exactly 5 tablets on it.
@@ -296,7 +292,6 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancingWithBlacklist) {
   WaitForLoadBalanceCompletion();
 
   // Assert that each table is balanced, and that we are globally balanced.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
   z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 3, 4 }));
   ASSERT_TRUE(AreLoadsBalanced(z0_tserver_loads));
   // Each node should have exactly 5 tablets on it.
@@ -317,7 +312,6 @@ TEST_F(LoadBalancerMultiTableTest, GlobalLoadBalancingWithBlacklist) {
   ASSERT_EQ(z0_tserver_loads[0], 0);
 
   // Assert that each table is balanced, and that we are globally balanced amongst the other nodes.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
   z0_tserver_loads = ASSERT_RESULT(GetTserverLoads({ 3, 4 }));
   ASSERT_TRUE(AreLoadsBalanced(z0_tserver_loads));
 }
@@ -344,8 +338,7 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
   }
 
   // Verify that the load is evenly distributed.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
-
+  ASSERT_TRUE(ASSERT_RESULT(client_->IsLoadBalanced(/* num_servers */ rf)));
   std::vector<uint32_t> tserver_loads;
   tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2 }));
   ASSERT_TRUE(AreLoadsBalanced(tserver_loads));
@@ -423,7 +416,6 @@ TEST_F(LoadBalancerMultiTableTest, TestDeadNodesLeaderBalancing) {
 }
 
 TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
-  const int rf = 3;
   auto num_ts = num_tablet_servers();
 
   // Reduce the time after which a TS is marked DEAD.
@@ -440,8 +432,6 @@ TEST_F(LoadBalancerMultiTableTest, TestLBWithDeadBlacklistedTS) {
   WaitForLoadBalanceCompletion();
 
   // Load should be balanced.
-  ASSERT_OK(client_->IsLoadBalanced(kNumTables * num_tablets() * rf));
-
   std::vector<uint32_t> tserver_loads;
   tserver_loads = ASSERT_RESULT(GetTserverLoads({ 0, 1, 2, 3 }));
   ASSERT_TRUE(AreLoadsBalanced(tserver_loads));

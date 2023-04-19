@@ -22,7 +22,7 @@
 #include "yb/rpc/yb_rpc.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
@@ -70,10 +70,10 @@ namespace {
 
 constexpr size_t kQueueLength = 1000;
 
-Slice GetSidecarPointer(const RpcController& controller, int idx, size_t expected_size) {
-  Slice sidecar = CHECK_RESULT(controller.GetSidecar(idx));
-  CHECK_EQ(expected_size, sidecar.size());
-  return sidecar;
+void GetSidecar(
+    const RpcController& controller, int idx, size_t expected_size, std::string* buffer) {
+  CHECK_RESULT(controller.ExtractSidecar(idx)).AsSlice().AssignTo(buffer);
+  CHECK_EQ(expected_size, buffer->size());
 }
 
 MessengerBuilder CreateMessengerBuilder(const std::string& name,
@@ -167,7 +167,8 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
   for (auto size : req.sizes()) {
     auto sidecar = RefCntBuffer(size);
     RandomString(sidecar.udata(), size, &r);
-    resp.add_sidecars(narrow_cast<uint32_t>(yb_call->AddRpcSidecar(sidecar.as_slice())));
+    yb_call->sidecars().Start().Append(sidecar.as_slice());
+    resp.add_sidecars(narrow_cast<uint32_t>(yb_call->sidecars().Complete()));
   }
 
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
@@ -351,7 +352,7 @@ class CalculatorService: public CalculatorServiceIf {
       resp->mutable_repeated_messages()->push_back_ref(&*it);
     }
     for (const auto& msg : req->repeated_messages()) {
-      auto temp = CopySharedMessage<rpc_test::LWLightweightSubMessagePB>(msg.ToGoogleProtobuf());
+      auto temp = CopySharedMessage(msg.ToGoogleProtobuf());
       resp->mutable_repeated_messages_copy()->emplace_back(*temp);
     }
 
@@ -425,8 +426,10 @@ class AbacusService: public rpc_test::AbacusServiceIf {
 TestServer::TestServer(std::unique_ptr<Messenger>&& messenger,
                        const TestServerOptions& options)
     : messenger_(std::move(messenger)),
-      thread_pool_(std::make_unique<ThreadPool>(
-          "rpc-test", kQueueLength, options.n_worker_threads)) {
+      thread_pool_(std::make_unique<ThreadPool>(ThreadPoolOptions {
+        .name = "rpc-test",
+        .max_workers = options.n_worker_threads,
+      })) {
 
   EXPECT_OK(messenger_->ListenAddress(
       rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(),
@@ -517,13 +520,14 @@ void RpcTestBase::DoTestSidecar(Proxy* proxy,
   }
 
   Random rng(kSeed);
-  faststring expected;
+  std::string expected;
+  std::string buffer;
   for (size_t i = 0; i != sizes.size(); ++i) {
     size_t size = sizes[i];
+    GetSidecar(controller, resp.sidecars(narrow_cast<uint32_t>(i)), size, &buffer);
     expected.resize(size);
-    Slice sidecar = GetSidecarPointer(controller, resp.sidecars(narrow_cast<uint32_t>(i)), size);
     RandomString(expected.data(), size, &rng);
-    ASSERT_EQ(0, sidecar.compare(expected)) << "Invalid sidecar at " << i << " position";
+    ASSERT_EQ(buffer, expected) << "Invalid sidecar at " << i << " position";
   }
 }
 

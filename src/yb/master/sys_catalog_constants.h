@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_SYS_CATALOG_CONSTANTS_H_
-#define YB_MASTER_SYS_CATALOG_CONSTANTS_H_
+#pragma once
 
 #include "yb/common/constants.h"
 
@@ -51,9 +50,7 @@ static const char* const kLastBreakingVersionColumnName = "last_breaking_version
 static const char* const kDefaultCassandraUsername = "cassandra";
 static const char* const kDefaultCassandraPassword = "cassandra";
 
-constexpr uint32_t kSysCatalogSchemaVersion = 1;
+constexpr uint32_t kSysCatalogSchemaVersion = 0;
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_SYS_CATALOG_CONSTANTS_H_

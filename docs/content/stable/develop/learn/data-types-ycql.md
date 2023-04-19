@@ -33,11 +33,11 @@ This topic lists the various data types available in YugabyteDB's [Cassandra-com
 
 ## JSONB
 
-There are a number of different serialization formats for JSON data, one of the popular formats being JSONB to efficiently model document data. And just in case you were wondering, JSONB stands for JSON Better.
+There are a number of different serialization formats for JSON data, one of the popular formats being JSONB (JSON Better) to efficiently model document data.
 
-The YCQL API supports the [JSONB data type](../../../api/ycql/type_jsonb/) to parse, store and query JSON documents natively. This data type is similar in query language syntax and functionality to the one supported by PostgreSQL. JSONB serialization allows for easy search and retrieval of attributes inside the document. This is achieved by storing all the JSON attributes in a sorted order, which allows for efficient binary search of keys. Similarly arrays are stored such that random access for a particular array index into the serialized json document is possible. [DocDB](../../../architecture/docdb/persistence/), YugabyteDB’s underlying storage engine, is document-oriented in itself which makes storing the data of the JSON data type lot more simple than otherwise possible.
+The YCQL API supports the [JSONB data type](../../../api/ycql/type_jsonb/) to parse, store, and query JSON documents natively. This data type is similar in query language syntax and functionality to the one supported by PostgreSQL. JSONB serialization allows for easy search and retrieval of attributes inside the document. This is achieved by storing all the JSON attributes in a sorted order, which allows for efficient binary search of keys. Similarly, arrays are stored such that random access for a particular array index into the serialized JSON document is possible. In addition, [DocDB](../../../architecture/docdb/persistence/), YugabyteDB's underlying storage engine, is document-oriented, which makes storing JSON data simpler than would otherwise be possible.
 
-Let us take the example of an ecommerce app of an online bookstore. The database for such a bookstore needs to store details of various books, some of which may have custom attributes. Below is an example of a JSON document that captures the details of a particular book, Macbeth written by William Shakespeare.
+Consider the example of an ecommerce application for an online bookstore. The database for such a bookstore needs to store details of various books, some of which may have custom attributes. The following example shows a JSON document that captures the details of a particular book, Macbeth by William Shakespeare.
 
 ```json
 {
@@ -57,21 +57,21 @@ Let us take the example of an ecommerce app of an online bookstore. The database
 
 ### Create a table
 
-The books table for this bookstore can be modelled as shown below. We assume that the id of each book is an int, but this could be a string or a uuid.
+The books table for this bookstore can be modelled as follows. Assume that the ID of each book is an int, but this could be a string or a UUID.
 
-```sql
+```cql
 ycqlsh> CREATE KEYSPACE store;
 ```
 
-```sql
+```cql
 ycqlsh> CREATE TABLE store.books ( id int PRIMARY KEY, details jsonb );
 ```
 
 ### Insert data
 
-Next we insert some sample data for a few books into this store. You can copy and paste the following commands into the YCQL shell (`ycqlsh`) for YugabyteDB to insert the data.
+Next, insert some sample data for a few books into this store as follows:
 
-```sql
+```cql
 INSERT INTO store.books (id, details) VALUES (1,
   '{ "name"   : "Macbeth",
      "author" : {"first_name": "William", "last_name": "Shakespeare"},
@@ -107,7 +107,7 @@ INSERT INTO store.books (id, details) VALUES (5,
 );
 ```
 
-Note the following interesting points about the book details above:
+Note the following about the preceding book details:
 
 - The year attribute for each of the books is interpreted as an integer.
 - The first two books do not have a genre attribute, which the others do.
@@ -116,20 +116,20 @@ Note the following interesting points about the book details above:
 
 ### Retrieve a subset of attributes
 
-Running the following default `SELECT` query will return all attributes of each book.
+Running the following `SELECT` query returns all attributes of each book:
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books;
 
 ```
 
-But a number of times you might want to query just a subset of attributes from YugabyteDB database. Below is an example of a query that retrieves just the id and name for all the books.
+The following query retrieves just the ID and name for all the books:
 
-```sql
+```cql
 ycqlsh> SELECT id, details->>'name' as book_title FROM store.books;
 ```
 
-```
+```output
  id | book_title
 ----+-------------------------
   5 | A Brief History of Time
@@ -143,11 +143,11 @@ ycqlsh> SELECT id, details->>'name' as book_title FROM store.books;
 
 The name attribute is a string in the book details JSON document. Run the following to query the details of the book named *Hamlet*.
 
-```sql
+```cql
 ycqlsh> SELECT * FROM store.books WHERE details->>'name'='Hamlet';
 ```
 
-```
+```output
  id | details
 ----+---------------------------------------------------------------
   2 | {"author":{"first_name":"William","last_name":"Shakespeare"},
@@ -155,16 +155,16 @@ ycqlsh> SELECT * FROM store.books WHERE details->>'name'='Hamlet';
        "name":"Hamlet","year":1603}
 ```
 
-Note that you can query by attributes that exist only in some of the documents. For example, you can query for all books that have a genre of novel. Recall from before that all books do not have a genre attribute defined.
+Note that you can query by attributes that exist only in some of the documents. For example, you can query for all books that have a genre of novel. Recall that not all books have a genre attribute defined.
 
-```sql
+```cql
 ycqlsh> SELECT id, details->>'name' as title,
               details->>'genre' as genre
          FROM store.books
          WHERE details->>'genre'='novel';
 ```
 
-```
+```output
  id | title              | genre
 ----+--------------------+-------
   4 | Great Expectations | novel
@@ -173,15 +173,15 @@ ycqlsh> SELECT id, details->>'name' as title,
 
 ### Query by attribute values - integer
 
-The year attribute is an integer in the book details JSON document. Run the following to query the ID and name of books written after 1900.
+The year attribute is an integer in the book details JSON document. Run the following to query the ID and name of books written after 1900:
 
-```sql
+```cql
 ycqlsh> SELECT id, details->>'name' as title, details->>'year'
          FROM store.books
          WHERE CAST(details->>'year' AS integer) > 1900;
 ```
 
-```
+```output
  id | title                   | expr
 ----+-------------------------+------
   5 | A Brief History of Time | 1988
@@ -190,9 +190,9 @@ ycqlsh> SELECT id, details->>'name' as title, details->>'year'
 
 ### Query by attribute values - map
 
-The author attribute is a map, which in turn consists of the attributes `first_name` and `last_name`. Let us fetch the IDs and titles of all books written by the author William Shakespeare.
+The author attribute is a map, which in turn consists of the attributes `first_name` and `last_name`. Fetch the IDs and titles of all books written by William Shakespeare as follows:
 
-```sql
+```cql
 ycqlsh> SELECT id, details->>'name' as title,
               details->>'author' as author
          FROM store.books
@@ -200,7 +200,7 @@ ycqlsh> SELECT id, details->>'name' as title,
                details->'author'->>'last_name' = 'Shakespeare';
 ```
 
-```
+```output
  id | title   | author
 ----+---------+----------------------------------------------------
   1 | Macbeth | {"first_name":"William","last_name":"Shakespeare"}
@@ -209,15 +209,15 @@ ycqlsh> SELECT id, details->>'name' as title,
 
 ### Query by attribute Values - array
 
-The editors attribute is an array consisting of the first names of the editors of each of the books. You can query for the book titles where `Mark` is the first entry in the editors list as follows.
+The editors attribute is an array consisting of the first names of the editors of each of the books. You can query for the book titles where `Mark` is the first entry in the editors list as follows:
 
-```sql
+```cql
 ycqlsh> SELECT id, details->>'name' as title,
               details->>'editors' as editors FROM store.books
          WHERE details->'editors'->>0 = 'Mark';
 ```
 
-```
+```output
  id | title        | editors
 ----+--------------+---------------------------
   3 | Oliver Twist | ["Mark","Tony","Britney"]

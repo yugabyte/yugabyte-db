@@ -13,6 +13,7 @@
 
 #include "yb/docdb/primitive_value.h"
 
+#include <memory>
 #include <string>
 
 #include <glog/logging.h>
@@ -25,9 +26,11 @@
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_kv_util.h"
 #include "yb/docdb/intent.h"
+#include "yb/docdb/key_entry_value.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
@@ -504,6 +507,59 @@ void KeyEntryValue::AppendToKey(KeyBytes* key_bytes) const {
   FATAL_INVALID_ENUM_VALUE(KeyEntryType, type_);
 }
 
+size_t KeyEntryValue::GetEncodedKeyEntryValueSize(const DataType& data_type) {
+  constexpr size_t key_entry_type_size = 1;
+  switch (data_type) {
+    case NULL_VALUE_TYPE: FALLTHROUGH_INTENDED;
+    case BOOL:
+      return key_entry_type_size;
+    case INT8: FALLTHROUGH_INTENDED;
+    case INT16: FALLTHROUGH_INTENDED;
+    case INT32: FALLTHROUGH_INTENDED;
+    case FLOAT:
+      return key_entry_type_size + sizeof(int32_t);
+
+    case UINT32: FALLTHROUGH_INTENDED;
+    case DATE:
+      return key_entry_type_size + sizeof(uint32_t);
+
+    case INT64: FALLTHROUGH_INTENDED;
+    case DOUBLE: FALLTHROUGH_INTENDED;
+    case TIME:
+      return key_entry_type_size + sizeof(int64_t);
+
+    case UINT64:
+      return key_entry_type_size + sizeof(uint64_t);
+
+    case TIMESTAMP:
+      return key_entry_type_size + sizeof(Timestamp);
+
+    case UUID: FALLTHROUGH_INTENDED;
+    case TIMEUUID: FALLTHROUGH_INTENDED;
+    case STRING: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case DECIMAL: FALLTHROUGH_INTENDED;
+    case VARINT: FALLTHROUGH_INTENDED;
+    case INET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
+    case MAP: FALLTHROUGH_INTENDED;
+    case SET: FALLTHROUGH_INTENDED;
+    case TUPLE: FALLTHROUGH_INTENDED;
+    case TYPEARGS: FALLTHROUGH_INTENDED;
+    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case FROZEN: FALLTHROUGH_INTENDED;
+    case JSONB: FALLTHROUGH_INTENDED;
+    case UINT8: FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case GIN_NULL: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA:
+      return 0;
+  }
+
+  LOG(FATAL) << "GetEncodedKeyEntryValueSize: unsupported ql_type: "
+             << QLType::ToCQLString(data_type);
+}
+
 namespace {
 
 template <class Buffer>
@@ -765,24 +821,24 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
 
     case KeyEntryType::kFrozenDescending:
     case KeyEntryType::kFrozen: {
-      auto end_marker_value_type = KeyEntryType::kGroupEnd;
-      if (type == KeyEntryType::kFrozenDescending) {
-        end_marker_value_type = KeyEntryType::kGroupEndDescending;
-      }
+      const auto end_marker_value_type = (type == KeyEntryType::kFrozenDescending)
+          ? KeyEntryType::kGroupEndDescending
+          : KeyEntryType::kGroupEnd;
 
-      if (out) {
-        out->frozen_val_ = new FrozenContainer();
-      }
+      std::unique_ptr<FrozenContainer> frozen_val(out ? new FrozenContainer() : nullptr);
       while (!slice->empty()) {
         auto current_value_type = DecodeKeyEntryType(*slice->data());
         if (current_value_type == end_marker_value_type) {
           slice->consume_byte();
           type_ref = type;
+          if (frozen_val) {
+            out->frozen_val_ = frozen_val.release();
+          }
           return Status::OK();
         } else {
-          if (out) {
-            out->frozen_val_->emplace_back();
-            RETURN_NOT_OK(DecodeKey(slice, &out->frozen_val_->back()));
+          if (frozen_val) {
+            frozen_val->emplace_back();
+            RETURN_NOT_OK(DecodeKey(slice, &frozen_val->back()));
           } else {
             RETURN_NOT_OK(DecodeKey(slice, nullptr));
           }
@@ -947,29 +1003,24 @@ Status KeyEntryValue::DecodeKey(Slice* slice, KeyEntryValue* out) {
       return Status::OK();
     }
 
-    case KeyEntryType::kInetaddress: {
-      if (out) {
-        string bytes;
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, &bytes));
-        out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
-      } else {
-        RETURN_NOT_OK(DecodeZeroEncodedStr(slice, nullptr));
-      }
-      type_ref = type;
-      return Status::OK();
-    }
-
+    case KeyEntryType::kInetaddress:
     case KeyEntryType::kInetaddressDescending: {
-      if (out) {
-        string bytes;
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, &bytes));
-        out->inetaddress_val_ = new InetAddress();
-        RETURN_NOT_OK(out->inetaddress_val_->FromSlice(bytes));
+      auto decoder = &DecodeComplementZeroEncodedStr;
+      if (type == KeyEntryType::kInetaddress) {
+        decoder = &DecodeZeroEncodedStr;
+      }
+      std::unique_ptr<InetAddress> inetaddress_val(out ? new InetAddress() : nullptr);
+      if (inetaddress_val) {
+        std::string bytes;
+        RETURN_NOT_OK(decoder(slice, &bytes));
+        RETURN_NOT_OK(inetaddress_val->FromSlice(bytes));
       } else {
-        RETURN_NOT_OK(DecodeComplementZeroEncodedStr(slice, nullptr));
+        RETURN_NOT_OK(decoder(slice, nullptr));
       }
       type_ref = type;
+      if (inetaddress_val) {
+        out->inetaddress_val_ = inetaddress_val.release();
+      }
       return Status::OK();
     }
 
@@ -1120,17 +1171,18 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
     case ValueEntryType::kFrozen: {
       auto end_marker_value_type = KeyEntryType::kGroupEnd;
 
-      frozen_val_ = new FrozenContainer();
+      auto frozen_val = std::make_unique<FrozenContainer>();
       while (!slice.empty()) {
-        KeyEntryType current_value_type = static_cast<KeyEntryType>(*slice.data());
+        auto current_value_type = static_cast<KeyEntryType>(*slice.data());
         if (current_value_type == end_marker_value_type) {
           slice.consume_byte();
           type_ = value_type;
+          frozen_val_ = frozen_val.release();
           return Status::OK();
         } else {
           // Frozen elems are encoded as keys even in values.
-          frozen_val_->emplace_back();
-          RETURN_NOT_OK(frozen_val_->back().DecodeFromKey(&slice));
+          frozen_val->emplace_back();
+          RETURN_NOT_OK(frozen_val->back().DecodeFromKey(&slice));
         }
       }
 
@@ -1273,6 +1325,232 @@ Status PrimitiveValue::DecodeFromValue(const Slice& rocksdb_slice) {
   }
   RSTATUS_DCHECK(
       false, Corruption, "Wrong value type $0 in $1", value_type, rocksdb_slice.ToDebugHexString());
+}
+
+Status PrimitiveValue::DecodeToQLValuePB(
+    const Slice& rocksdb_slice, const std::shared_ptr<QLType>& ql_type, QLValuePB* ql_value) {
+
+  RSTATUS_DCHECK(!rocksdb_slice.empty(), Corruption, "Cannot decode a value from an empty slice");
+  Slice slice(rocksdb_slice);
+
+  const auto value_type = ConsumeValueEntryType(&slice);
+  switch (value_type) {
+    case ValueEntryType::kNullHigh: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kNullLow: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTombstone:
+      SetNull(ql_value);
+      return Status::OK();
+
+    case ValueEntryType::kFalse: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTrue:
+      if (ql_type->main() != DataType::BOOL) {
+        break;
+      }
+      ql_value->set_bool_value(IsTrue(value_type));
+      return Status::OK();
+
+    case ValueEntryType::kInt32: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kWriteId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kFloat: {
+      if (slice.size() != sizeof(int32_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      int32_t int32_val = BigEndian::Load32(slice.data());
+      if (ql_type->main() == DataType::INT8) {
+        ql_value->set_int8_value(static_cast<int8_t>(int32_val));
+      } else if (ql_type->main() == DataType::INT16) {
+        ql_value->set_int16_value(static_cast<int16_t>(int32_val));
+      } else if (ql_type->main() == DataType::INT32) {
+        ql_value->set_int32_value(int32_val);
+      } else if (ql_type->main() == DataType::FLOAT) {
+        ql_value->set_float_value(bit_cast<float>(int32_val));
+      } else {
+        break;
+      }
+      return Status::OK();
+    }
+
+    case ValueEntryType::kColocationId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUInt32: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kSubTransactionId: {
+      if (slice.size() != sizeof(uint32_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      uint32_t uint32_val = BigEndian::Load32(slice.data());
+      if (ql_type->main() == DataType::UINT32) {
+        ql_value->set_uint32_value(uint32_val);
+      } else if (ql_type->main() == DataType::DATE) {
+        ql_value->set_date_value(uint32_val);
+      } else {
+        break;
+      }
+      return Status::OK();
+    }
+
+    case ValueEntryType::kInt64: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kArrayIndex: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kDouble: {
+      if (slice.size() != sizeof(int64_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      int64_t int64_val = BigEndian::Load64(slice.data());
+      if (ql_type->main() == DataType::INT64) {
+        ql_value->set_int64_value(int64_val);
+      } else if (ql_type->main() == DataType::TIME) {
+        ql_value->set_time_value(int64_val);
+      } else if (ql_type->main() == DataType::DOUBLE) {
+        ql_value->set_double_value(bit_cast<double>(int64_val));
+      } else {
+        break;
+      }
+      return Status::OK();
+    }
+
+    case ValueEntryType::kUInt64:
+      if (slice.size() != sizeof(uint64_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      if (ql_type->main() != DataType::UINT64) {
+        break;
+      }
+
+      ql_value->set_uint64_value(BigEndian::Load64(slice.data()));
+      return Status::OK();
+
+    case ValueEntryType::kDecimal: {
+      // TODO(kpopali): check if we can simply put the slice value, instead of decoding and
+      // encoding it again.
+      util::Decimal decimal;
+      size_t num_decoded_bytes = 0;
+      RETURN_NOT_OK(decimal.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
+      if (ql_type->main() != DataType::DECIMAL) {
+        break;
+      }
+
+      ql_value->set_decimal_value(decimal.EncodeToComparable());
+      return Status::OK();
+    }
+
+    case ValueEntryType::kVarInt: {
+      // TODO(kpopali): check if we can simply put the slice value, instead of decoding and
+      // encoding it again.
+      util::VarInt varint;
+      size_t num_decoded_bytes = 0;
+      RETURN_NOT_OK(varint.DecodeFromComparable(slice.ToString(), &num_decoded_bytes));
+      if (ql_type->main() != DataType::VARINT) {
+        break;
+      }
+
+      ql_value->set_varint_value(varint.EncodeToComparable());
+      return Status::OK();
+    }
+
+    case ValueEntryType::kTimestamp: {
+      if (slice.size() != sizeof(Timestamp)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+            value_type, slice.size());
+      }
+      Timestamp timestamp_val = Timestamp(BigEndian::Load64(slice.data()));
+      if (ql_type->main() == DataType::TIMESTAMP) {
+        ql_value->set_timestamp_value(timestamp_val.ToInt64());
+      } else {
+        break;
+      }
+      return Status::OK();
+    }
+
+    case ValueEntryType::kCollString: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kString:
+      if (ql_type->main() == DataType::STRING) {
+        ql_value->set_string_value(slice.cdata(), slice.size());
+      } else if (ql_type->main() == DataType::BINARY) {
+        ql_value->set_binary_value(slice.cdata(), slice.size());
+      } else {
+        break;
+      }
+      return Status::OK();
+
+    case ValueEntryType::kInetaddress: {
+      if (slice.size() != kInetAddressV4Size && slice.size() != kInetAddressV6Size) {
+        return STATUS_FORMAT(Corruption,
+                             "Invalid number of bytes to decode IPv4/IPv6: $0, need $1 or $2",
+                             slice.size(), kInetAddressV4Size, kInetAddressV6Size);
+      }
+      // Need to use a non-rocksdb slice for InetAddress.
+      Slice slice_temp(slice.data(), slice.size());
+      InetAddress inetaddress_val;
+      RETURN_NOT_OK(inetaddress_val.FromSlice(slice_temp));
+      if (ql_type->main() != DataType::INET) {
+        break;
+      }
+
+      QLValue::set_inetaddress_value(inetaddress_val, ql_value);
+      return Status::OK();
+    }
+
+    case ValueEntryType::kTransactionId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kTableId: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kUuid: {
+      if (slice.size() != kUuidSize) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes to decode Uuid: $0, need $1",
+            slice.size(), kUuidSize);
+      }
+      Uuid uuid = VERIFY_RESULT(Uuid::FromComparable(slice));
+      if (ql_type->main() == DataType::UUID) {
+        QLValue::set_uuid_value(uuid, ql_value);
+      } else if (ql_type->main() == DataType::TIMEUUID) {
+        QLValue::set_timeuuid_value(uuid, ql_value);
+      } else {
+        break;
+      }
+      return Status::OK();
+    }
+
+    case ValueEntryType::kJsonb: {
+      if (slice.size() < sizeof(int64_t)) {
+        return STATUS_FORMAT(Corruption, "Invalid number of bytes for a $0: $1",
+                             value_type, slice.size());
+      }
+      // Read the jsonb flags.
+      int64_t jsonb_flags = BigEndian::Load64(slice.data());
+      slice.remove_prefix(sizeof(jsonb_flags));
+
+      if (ql_type->main() != DataType::JSONB) {
+        break;
+      }
+
+      ql_value->set_jsonb_value(slice.data(), slice.size());
+      return Status::OK();
+    }
+
+    case ValueEntryType::kFrozen: {
+      // TODO(kpopali): make sure that PGSQL doesn't use PGSQL type.
+      break;
+    }
+
+    case ValueEntryType::kObject: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kArray: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisList: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisSet: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisTS: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRedisSortedSet: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kGinNull:
+      break;
+
+    case ValueEntryType::kInvalid: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kPackedRow: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kRowLock: FALLTHROUGH_INTENDED;
+    case ValueEntryType::kMaxByte:
+      return STATUS_FORMAT(Corruption, "$0 is not allowed in a RocksDB PrimitiveValue", value_type);
+  }
+
+  RSTATUS_DCHECK(
+      false, Corruption, "Wrong value type $0 in $1 OR unsupported datatype $2",
+      value_type, rocksdb_slice.ToDebugHexString(), ql_type->main());
 }
 
 POD_FACTORY(Double, double);
@@ -1639,6 +1917,11 @@ uint64_t PrimitiveValue::GetUInt64() const {
 float PrimitiveValue::GetFloat() const {
   DCHECK_EQ(ValueEntryType::kFloat, type_);
   return float_val_;
+}
+
+bool PrimitiveValue::GetBoolean() const {
+  DCHECK(type_ == ValueEntryType::kTrue || type_ == ValueEntryType::kFalse);
+  return type_ == ValueEntryType::kTrue ? true : false;
 }
 
 const std::string& PrimitiveValue::GetDecimal() const {
@@ -2586,7 +2869,7 @@ double KeyEntryValue::GetDouble() const {
 }
 
 bool KeyEntryValue::IsColumnId() const {
-  return type_ == KeyEntryType::kColumnId || type_ == KeyEntryType::kSystemColumnId;
+  return docdb::IsColumnId(type_);
 }
 
 ColumnId KeyEntryValue::GetColumnId() const {
@@ -2601,6 +2884,15 @@ uint8_t KeyEntryValue::GetGinNull() const {
 
 bool KeyEntryValue::IsInt32() const {
   return KeyEntryType::kInt32 == type_ || KeyEntryType::kInt32Descending == type_;
+}
+
+bool KeyEntryValue::IsUInt16Hash() const {
+  return type_ == KeyEntryType::kUInt16Hash;
+}
+
+uint16_t KeyEntryValue::GetUInt16Hash() const {
+  DCHECK(IsUInt16Hash());
+  return uint16_val_;
 }
 
 int32_t KeyEntryValue::GetInt32() const {

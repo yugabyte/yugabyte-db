@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_COLUMN_ID_H
-#define YB_COMMON_COLUMN_ID_H
+#pragma once
 
 #include <stdint.h>
 
@@ -106,5 +105,3 @@ ColumnId operator"" _ColId() {
 }
 
 }  // namespace yb
-
-#endif  // YB_COMMON_COLUMN_ID_H

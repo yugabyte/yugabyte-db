@@ -13,13 +13,15 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.CommonUtils;
+import org.yb.perf_advisor.Utils;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -33,7 +35,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
-import play.Configuration;
 import play.libs.Json;
 import play.libs.ws.WSClient;
 
@@ -50,8 +51,15 @@ public class QueryHelper {
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
       "yb.query_stats.slow_queries.limit";
+  public static final String SET_ENABLE_NESTLOOP_OFF_STATEMENT = "/*+Set(enable_nestloop off)*/";
+  public static final String SET_ENABLE_NESTLOOP_OFF_KEY =
+      "yb.query_stats.slow_queries.set_enable_nestloop_off";
 
   public static final String QUERY_STATS_TASK_QUEUE_SIZE_CONF_KEY = "yb.query_stats.queue_capacity";
+
+  public static final String LIST_USER_DATABASES_SQL =
+      "SELECT datname from pg_database where datname NOT IN "
+          + "('postgres', 'template1', 'template0', 'system_platform')";
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;
@@ -143,7 +151,7 @@ public class QueryHelper {
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
-                    ysqlQuery.query = slowQuerySqlWithLimit(config);
+                    ysqlQuery.query = slowQuerySqlWithLimit(config, universe);
                     ysqlQuery.db_name = "postgres";
                     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
                   };
@@ -214,15 +222,15 @@ public class QueryHelper {
           }
         } else {
           if (queryAction == QueryAction.FETCH_SLOW_QUERIES) {
-            // TODO: PLAT-3977 group by queryid instead of query
             // TODO: PLAT-3986 Sort and limit the merged data
             JsonNode ysqlResponse = response.get("result");
             for (JsonNode queryObject : ysqlResponse) {
+              String queryID = queryObject.get("queryid").asText();
               String queryStatement = queryObject.get("query").asText();
               if (!isExcluded(queryStatement, config)) {
-                if (queryMap.containsKey(queryStatement)) {
+                if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats
-                  ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryStatement);
+                  ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryID);
                   // Defining values to reuse
                   double X_a = previousQueryObj.get("mean_time").asDouble();
                   double X_b = queryObject.get("mean_time").asDouble();
@@ -275,7 +283,7 @@ public class QueryHelper {
                   previousQueryObj.put("local_blks_written", tmpTables);
                   previousQueryObj.put("stddev_time", stdDevTime);
                 } else {
-                  queryMap.put(queryStatement, queryObject);
+                  queryMap.put(queryID, queryObject);
                 }
               }
             }
@@ -326,17 +334,33 @@ public class QueryHelper {
   }
 
   @VisibleForTesting
-  public String slowQuerySqlWithLimit(Config config) {
+  public String slowQuerySqlWithLimit(Config config, Universe universe) {
     String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
     int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
+    String setEnableNestloopOffStatementOptional =
+        runtimeConfigFactory.forUniverse(universe).getBoolean(SET_ENABLE_NESTLOOP_OFF_KEY)
+            ? SET_ENABLE_NESTLOOP_OFF_STATEMENT
+            : "";
     return String.format(
-        "%s ORDER BY t.%s DESC LIMIT %d", SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+        "%s%s ORDER BY t.%s DESC LIMIT %d",
+        setEnableNestloopOffStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+  }
+
+  public JsonNode listDatabaseNames(Universe universe) {
+    NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
+    RunQueryFormData ysqlQuery = new RunQueryFormData();
+    ysqlQuery.query = LIST_USER_DATABASES_SQL;
+    ysqlQuery.db_name = "postgres";
+    return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, randomTServer);
   }
 
   private boolean isExcluded(String queryStatement, Config config) {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
+    final List<String> excludedPerfAdvisorQueries = Utils.getScriptQueryStatements();
     return excludedQueries.contains(queryStatement)
-        || queryStatement.startsWith(SLOW_QUERY_STATS_UNLIMITED_SQL);
+        || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL)
+        || queryStatement.contains(LIST_USER_DATABASES_SQL)
+        || excludedPerfAdvisorQueries.contains(queryStatement);
   }
 
   private void concatArrayNodes(ArrayNode destination, JsonNode source) {

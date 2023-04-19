@@ -13,14 +13,14 @@
 //
 //
 
-#ifndef YB_RPC_RPC_FWD_H
-#define YB_RPC_RPC_FWD_H
+#pragma once
 
 #include <chrono>
 #include <functional>
 #include <unordered_map>
 
 #include <boost/functional/hash.hpp>
+#include <boost/container/small_vector.hpp>
 
 #include "yb/gutil/ref_counted.h"
 
@@ -32,6 +32,7 @@
 namespace yb {
 
 class RefCntBuffer;
+class RefCntSlice;
 class Slice;
 
 namespace rpc {
@@ -69,6 +70,7 @@ class RefinedStream;
 class Scheduler;
 class SecureContext;
 class ServicePoolImpl;
+class Sidecars;
 class Strand;
 class StrandTask;
 class Stream;
@@ -117,6 +119,8 @@ typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
 
 typedef std::function<int(const std::string&, const std::string&)> Publisher;
 
+using ConnectionFilter = std::function<bool(const ConnectionPtr&)>;
+
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about
 // our private MonoTime.
 typedef std::chrono::steady_clock::time_point SteadyTimePoint;
@@ -149,8 +153,8 @@ YB_DEFINE_ENUM(InvokeCallbackMode,
 
 using SidecarHolder = std::pair<RefCntBuffer, Slice>;
 using CallResponsePtr = std::shared_ptr<CallResponse>;
+using RpcCallParamsPtr = std::shared_ptr<RpcCallParams>;
+using ByteBlocks = boost::container::small_vector_base<RefCntSlice>;
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_RPC_FWD_H

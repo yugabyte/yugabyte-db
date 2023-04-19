@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <boost/assign.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
@@ -55,14 +55,14 @@ DECLARE_int32(cdc_max_stream_intent_records);
 
 namespace yb {
 namespace cdc {
-class CDCSDKGFlagValueTest : public enterprise::CDCSDKTestBase {
+class CDCSDKGFlagValueTest : public CDCSDKTestBase {
 };
 
 TEST_F(CDCSDKGFlagValueTest, YB_DISABLE_TEST_IN_TSAN(GFlagsDefaultValue)) {
   // create a cluster
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
-  const uint32_t default_intent_batch_size = 1000;
+  const uint32_t default_intent_batch_size = 1680;
   const uint32_t default_snapshot_batch_size = 250;
 
   ASSERT_EQ(default_intent_batch_size, FLAGS_cdc_max_stream_intent_records);

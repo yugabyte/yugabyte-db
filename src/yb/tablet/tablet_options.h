@@ -10,8 +10,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TABLET_TABLET_OPTIONS_H
-#define YB_TABLET_TABLET_OPTIONS_H
+
+#pragma once
 
 #include <future>
 #include <memory>
@@ -81,12 +81,12 @@ struct TabletInitData {
   TabletSplitter* tablet_splitter = nullptr;
   std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
   TransactionManagerProvider transaction_manager_provider;
-  LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
+  docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
+  ThreadPool* wait_queue_pool = nullptr;
   AutoFlagsManager* auto_flags_manager = nullptr;
-  ThreadPool* post_split_compaction_pool;
+  ThreadPool* full_compaction_pool;
   scoped_refptr<yb::AtomicGauge<uint64_t>> post_split_compaction_added;
 };
 
 } // namespace tablet
 } // namespace yb
-#endif // YB_TABLET_TABLET_OPTIONS_H

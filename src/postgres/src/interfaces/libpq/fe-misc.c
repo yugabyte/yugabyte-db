@@ -32,6 +32,7 @@
 
 #include <signal.h>
 #include <time.h>
+#include <stdatomic.h>
 
 #ifdef WIN32
 #include "win32.h"
@@ -1239,7 +1240,7 @@ libpq_binddomain(void)
 	 * complete, so don't set the flag till that's done.  Use "volatile" just
 	 * to be sure the compiler doesn't try to get cute.
 	 */
-	static volatile bool already_bound = false;
+	static atomic_bool already_bound = false;
 
 	if (!already_bound)
 	{

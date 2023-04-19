@@ -13,8 +13,7 @@
 
 // No include guards here because this file is expected to be included multiple times.
 
-#ifndef YB_YQL_PGGATE_PG_TXN_MANAGER_H_
-#define YB_YQL_PGGATE_PG_TXN_MANAGER_H_
+#pragma once
 
 #include <mutex>
 
@@ -25,10 +24,10 @@
 #include "yb/tserver/pg_client.fwd.h"
 #include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/tserver_fwd.h"
-#include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/enums.h"
 
+#include "yb/yql/pggate/pg_client.h"
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/pg_callbacks.h"
 
@@ -47,17 +46,13 @@ YB_DEFINE_ENUM(
 
 class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
  public:
-  PgTxnManager(PgClient* pg_client,
-               scoped_refptr<ClockBase> clock,
-               const tserver::TServerSharedObject* tserver_shared_object,
-               PgCallbacks pg_callbacks);
+  PgTxnManager(PgClient* pg_client, scoped_refptr<ClockBase> clock, PgCallbacks pg_callbacks);
 
   virtual ~PgTxnManager();
 
   Status BeginTransaction();
-  Status CalculateIsolation(bool read_only_op,
-                                    TxnPriorityRequirement txn_priority_requirement,
-                                    uint64_t* in_txn_limit = nullptr);
+
+  Status CalculateIsolation(bool read_only_op, TxnPriorityRequirement txn_priority_requirement);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
@@ -68,15 +63,17 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status SetPgIsolationLevel(int isolation);
   PgIsolationLevel GetPgIsolationLevel();
   Status SetReadOnly(bool read_only);
+  Status SetEnableTracing(bool tracing);
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
   Status SetDeferrable(bool deferrable);
   Status EnterSeparateDdlTxnMode();
   Status ExitSeparateDdlTxnMode(Commit commit);
+  void SetDdlHasSyscatalogChanges();
 
-  bool IsDdlMode() const { return ddl_mode_; }
   bool IsTxnInProgress() const { return txn_in_progress_; }
   IsolationLevel GetIsolationLevel() const { return isolation_level_; }
-  bool ShouldUseFollowerReads() const { return read_time_for_follower_reads_.is_valid(); }
+  bool IsDdlMode() const { return ddl_type_ != DdlType::NonDdl; }
+  bool ShouldEnableTracing() const { return enable_tracing_; }
 
   uint64_t SetupPerformOptions(tserver::PgPerformOptionsPB* options);
 
@@ -102,12 +99,12 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   PgClient* client_;
   scoped_refptr<ClockBase> clock_;
-  const tserver::TServerSharedObject* const tserver_shared_object_;
 
   bool txn_in_progress_ = false;
   IsolationLevel isolation_level_ = IsolationLevel::NON_TRANSACTIONAL;
   uint64_t txn_serial_no_ = 0;
-  SubTransactionId active_sub_transaction_id_ = 0;
+  // Postgres assigns subtransaction id(s) starting from 1.
+  SubTransactionId active_sub_transaction_id_ = kMinSubTransactionId;
   bool need_restart_ = false;
   bool need_defer_read_point_ = false;
   tserver::ReadTimeManipulation read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
@@ -115,19 +112,19 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // Postgres transaction characteristics.
   PgIsolationLevel pg_isolation_level_ = PgIsolationLevel::REPEATABLE_READ;
   bool read_only_ = false;
+  bool enable_tracing_ = false;
   bool enable_follower_reads_ = false;
   uint64_t follower_read_staleness_ms_ = 0;
   HybridTime read_time_for_follower_reads_;
   bool deferrable_ = false;
 
-  bool ddl_mode_ = false;
+  DdlType ddl_type_ = DdlType::NonDdl;
 
   // On a transaction conflict error we want to recreate the transaction with the same priority as
   // the last transaction. This avoids the case where the current transaction gets a higher priority
   // and cancels the other transaction.
   uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
-  HybridTime in_txn_limit_;
 
   PgCallbacks pg_callbacks_;
 
@@ -136,4 +133,3 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
 }  // namespace pggate
 }  // namespace yb
-#endif // YB_YQL_PGGATE_PG_TXN_MANAGER_H_

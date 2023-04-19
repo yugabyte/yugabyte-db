@@ -1,4 +1,4 @@
--- Verify that SELECTs of a single query are on a single read point.
+-- Verify that SELECTs of a single query don't read data written by the same SQL query.
 CREATE table test1(id int primary key, value int);
 CREATE table test2(id int primary key, value int);
 INSERT INTO test1 VALUES(1, 1);
@@ -48,3 +48,13 @@ $$;
 
 CALL testproc();
 SELECT * FROM test2 ORDER BY id;
+
+-- The below test case is for gh issue #10142. As part of this bug, if a write was performed before the first
+-- read of the SQL statement, the write would be visible to the read. This was because the in_txn_limit (see
+-- ReadHybridTimePB for details) for the reads of the SQL statement was being picked on the first read op
+-- issued by the statement and not at the first op (which was a write in this case).
+--
+-- TODO: Uncomment this once the TODO in PgDocOp::SendRequestImpl is fixed.
+-- create table test_no_pk (v int);
+-- with ins AS (insert into test_no_pk values (5) returning *) select * from test_no_pk, ins; -- should return 0 rows
+-- select * from test_no_pk;

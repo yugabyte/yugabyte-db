@@ -55,6 +55,7 @@ class AddRegionList extends Component {
           kubeDomain: '',
           zoneKubeConfig: formik.values.kubeConfig,
           zoneOverrides: '',
+          zonePodAddressTemplate: '',
           issuerType: 'NONE'
         }
       ]
@@ -109,7 +110,7 @@ class AddRegionList extends Component {
   };
 
   zoneConfigFormatter = (cell, row) => {
-    if (row.zoneKubeConfig && row.zoneKubeConfig.name) {
+    if (row.zoneKubeConfig?.name) {
       return row.zoneKubeConfig.name;
     } else {
       return null;
@@ -139,6 +140,7 @@ class AddRegionList extends Component {
                 kubeDomain: '',
                 zoneKubeConfig: vals.kubeConfig,
                 zoneOverrides: '',
+                zonePodAddressTemplate: '',
                 issuerType: 'NONE'
               });
               this.setState({
@@ -162,6 +164,7 @@ class AddRegionList extends Component {
       kubeDomain: '',
       zoneKubeConfig: formik.values.kubeConfig,
       zoneOverrides: '',
+      zonePodAddressTemplate: '',
       issuerType: 'NONE'
     });
     if (!this.state.showZoneForm) {
@@ -177,9 +180,9 @@ class AddRegionList extends Component {
     const { regionList } = formik.values;
     const currentRegion = regionList[regionIndex];
     const zoneIndex =
-      currentRegion && currentRegion.zoneList.length ? currentRegion.zoneList.length - 1 : 0;
+      currentRegion?.zoneList?.length ? currentRegion.zoneList.length - 1 : 0;
     const nonEditingZones =
-      currentRegion && currentRegion.zoneList ? currentRegion.zoneList.slice(0, zoneIndex) : [];
+      currentRegion?.zoneList ? currentRegion.zoneList?.slice(0, zoneIndex) : [];
     const regionOptions = REGION_METADATA.map((region) => ({
       value: region.code,
       label: region.name
@@ -271,7 +274,7 @@ class AddRegionList extends Component {
                       </Row>
                     </div>
 
-                    {currentRegion && currentRegion.regionCode && (
+                    {currentRegion?.regionCode && (
                       <FieldArray
                         name={`regionList[${regionIndex}].zoneList`}
                         render={(zoneArrayHelpers) => {
@@ -432,7 +435,6 @@ class AddRegionList extends Component {
                                         <Field
                                           name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zoneKubeConfig`}
                                           component={YBFormDropZone}
-                                          className="upload-file-button"
                                           title={'Upload Kube Config file'}
                                         />
                                       </Col>
@@ -449,6 +451,32 @@ class AddRegionList extends Component {
                                           component={YBFormInput}
                                           componentClass="textarea"
                                           className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                    </Row>
+
+                                    <Row className="config-provider-row">
+                                      <Col lg={3}>
+                                        <div className="form-item-custom-label">
+                                          Pod Address Template
+                                        </div>
+                                      </Col>
+                                      <Col lg={7}>
+                                        <Field
+                                          name={`regionList[${regionIndex}].zoneList[${zoneIndex}].zonePodAddressTemplate`}
+                                          placeholder="Pod address template for this Zone"
+                                          component={YBFormInput}
+                                          className={'kube-provider-input-field'}
+                                        />
+                                      </Col>
+                                      <Col lg={1} className="config-zone-tooltip">
+                                        <YBInfoTip
+                                          title="Pod Address Template (optional)"
+                                          content={
+                                            'Use this setting for multi-cluster setups like Istio or MCS to generate the ' +
+                                            'correct pod addresses. Supported fields are {pod_name}, {service_name}, ' +
+                                            '{namespace}, and {cluster_domain}.'
+                                          }
                                         />
                                       </Col>
                                     </Row>
@@ -542,6 +570,7 @@ class AddRegionList extends Component {
                   )}
                   {displayedRegions.map((region, index) => (
                     <li
+                      // eslint-disable-next-line react/no-array-index-key
                       key={index}
                       onClick={() => {
                         // Regions edit popup handler

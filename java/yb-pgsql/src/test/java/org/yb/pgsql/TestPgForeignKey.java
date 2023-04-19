@@ -19,7 +19,7 @@ import org.junit.*;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -27,7 +27,7 @@ import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Set;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgForeignKey extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgForeignKey.class);
 
@@ -256,8 +256,9 @@ public class TestPgForeignKey extends BasePgSQLTest {
       extraStmt.execute("BEGIN");
       extraStmt.execute("SELECT * FROM parent WHERE k = 1 FOR UPDATE");
 
-      runInvalidQuery(
-        stmt, "INSERT INTO child VALUES(1, 1)", "Conflicts with higher priority transaction");
+      runInvalidQuery(stmt, "INSERT INTO child VALUES(1, 1)", true,
+        "could not serialize access due to concurrent update",
+        "conflicts with higher priority transaction");
       extraStmt.execute("ROLLBACK");
       assertNoRows(stmt, "SELECT * FROM child");
 

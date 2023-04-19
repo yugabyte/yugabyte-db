@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_OUTBOUND_CALL_H_
-#define YB_RPC_OUTBOUND_CALL_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -44,7 +43,7 @@
 #include <vector>
 
 #include <boost/functional/hash.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/integral_types.h"
@@ -61,6 +60,7 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/service_if.h"
 #include "yb/rpc/thread_pool.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/atomic.h"
@@ -168,8 +168,14 @@ class CallResponse {
     return serialized_response_;
   }
 
-  Result<Slice> GetSidecar(size_t idx) const;
   Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
+
+  // Extract sidecar with specified index to out.
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+
+  // Transfer all sidecars to specified context, returning the first transferred sidecar index in
+  // the context.
+  size_t TransferSidecars(Sidecars* dest);
 
   size_t DynamicMemoryUsage() const {
     return DynamicMemoryUsageOf(header_, response_data_) +
@@ -225,7 +231,7 @@ class InvokeCallbackTask : public rpc::ThreadPoolTask {
 // of different threads, making it tricky to enforce single ownership.
 class OutboundCall : public RpcCall {
  public:
-  OutboundCall(const RemoteMethod* remote_method,
+  OutboundCall(const RemoteMethod& remote_method,
                const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
                std::shared_ptr<const OutboundMethodMetrics> method_metrics,
                AnyMessagePtr response_storage,
@@ -245,12 +251,7 @@ class OutboundCall : public RpcCall {
 
   // Serialize the call for the wire. Requires that SetRequestParam()
   // is called first. This is called from the Reactor thread.
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
-
-  // Sets thread pool to be used by `InvokeCallback` for callback execution.
-  void SetCallbackThreadPool(ThreadPool* callback_thread_pool) {
-    callback_thread_pool_ = callback_thread_pool;
-  }
+  void Serialize(ByteBlocks* output) ON_REACTOR_THREAD override;
 
   // Callback after the call has been put on the outbound connection queue.
   void SetQueued();
@@ -268,14 +269,15 @@ class OutboundCall : public RpcCall {
   // Mark the call as failed. This also triggers the callback to notify
   // the caller. If the call failed due to a remote error, then err_pb
   // should be set to the error returned by the remote server.
-  void SetFailed(const Status& status, std::unique_ptr<ErrorStatusPB> err_pb = nullptr);
+  void SetFailed(const Status& status, std::unique_ptr<ErrorStatusPB> err_pb = nullptr)
+      EXCLUDES(mtx_);
 
   // Mark the call as timed out. This also triggers the callback to notify
   // the caller.
-  void SetTimedOut();
+  void SetTimedOut() ON_REACTOR_THREAD EXCLUDES(mtx_);
 
   // Fill in the call response.
-  void SetResponse(CallResponse&& resp);
+  void SetResponse(CallResponse&& resp) ON_REACTOR_THREAD;
 
   bool IsTimedOut() const;
 
@@ -284,32 +286,36 @@ class OutboundCall : public RpcCall {
 
   std::string ToString() const override;
 
-  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) override;
+  bool DumpPB(const DumpRunningRpcsRequestPB& req, RpcCallInProgressPB* resp) EXCLUDES(mtx_)
+      override;
 
   std::string LogPrefix() const override;
 
+  // This is only called before the call is queued, so no synchronization is needed.
   void SetConnectionId(const ConnectionId& value, const std::string* hostname) {
     conn_id_ = value;
     hostname_ = hostname;
   }
 
-  void SetThreadPoolFailure(const Status& status) {
+  void SetThreadPoolFailure(const Status& status) EXCLUDES(mtx_) {
+    std::lock_guard lock(mtx_);
     thread_pool_failure_ = status;
   }
 
-  const Status& thread_pool_failure() const {
+  const Status& thread_pool_failure() const EXCLUDES(mtx_) {
+    std::lock_guard lock(mtx_);
     return thread_pool_failure_;
   }
 
   void InvokeCallbackSync();
 
-  ////////////////////////////////////////////////////////////
+  // ----------------------------------------------------------------------------------------------
   // Getters
-  ////////////////////////////////////////////////////////////
+  // ----------------------------------------------------------------------------------------------
 
   const ConnectionId& conn_id() const { return conn_id_; }
   const std::string& hostname() const { return *hostname_; }
-  const RemoteMethod& remote_method() const { return *remote_method_; }
+  const RemoteMethod& remote_method() const { return remote_method_; }
   RpcController* controller() { return controller_; }
   const RpcController* controller() const { return controller_; }
   AnyMessagePtr response() const { return response_; }
@@ -336,19 +342,28 @@ class OutboundCall : public RpcCall {
  protected:
   friend class RpcController;
 
-  virtual Result<Slice> GetSidecar(size_t idx) const;
-  virtual Result<SidecarHolder> GetSidecarHolder(size_t idx) const;
+  // See appropriate comments in CallResponse.
+  virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+  virtual size_t TransferSidecars(Sidecars* dest);
 
-  ConnectionId conn_id_;
+  // ----------------------------------------------------------------------------------------------
+  // Protected fields set in constructor
+  // ----------------------------------------------------------------------------------------------
+
   const std::string* hostname_;
   CoarseTimePoint start_;
   RpcController* controller_;
+
   // Pointer for the protobuf where the response should be written.
   // Can be used only while callback_ object is alive.
   AnyMessagePtr response_;
 
   // The trace buffer.
   scoped_refptr<Trace> trace_;
+
+  // conn_id_ is not set in the constructor, but is set in SetConnectionId together with hostname_
+  // before the call is queued, so no synchronization is needed.
+  ConnectionId conn_id_;
 
  private:
   friend class RpcController;
@@ -362,59 +377,69 @@ class OutboundCall : public RpcCall {
   bool SetState(State new_state);
   State state() const;
 
-  // Same as set_state, but requires that the caller already holds
-  // lock_
-  void set_state_unlocked(State new_state);
-
   // return current status
-  Status status() const;
+  Status status() const EXCLUDES(mtx_);
 
   // Return the error protobuf, if a remote error occurred.
   // This will only be non-NULL if status().IsRemoteError().
-  const ErrorStatusPB* error_pb() const;
+  const ErrorStatusPB* error_pb() const EXCLUDES(mtx_);
 
   Status InitHeader(RequestHeader* header);
 
-  // Lock for state_ status_, error_pb_ fields, since they
-  // may be mutated by the reactor thread while the client thread
-  // reads them.
-  mutable simple_spinlock lock_;
-  std::atomic<State> state_ = {READY};
-  Status status_;
-  std::unique_ptr<ErrorStatusPB> error_pb_;
-
-  // Invokes the user-provided callback. Uses callback_thread_pool_ if set.
+  // Invokes the user-provided callback. Uses callback_thread_pool_ if set. This is only invoked
+  // after a successful transition of the call state to one of the final states, so it should be
+  // called exactly once.
   void InvokeCallback();
 
   Result<uint32_t> TimeoutMs() const;
 
+  // ----------------------------------------------------------------------------------------------
+  // Private fields set in constructor
+  // ----------------------------------------------------------------------------------------------
+
   const int32_t call_id_;
 
   // The remote method being called.
-  const RemoteMethod* remote_method_;
+  const RemoteMethod& remote_method_;
 
   ResponseCallback callback_;
+  ThreadPool* const callback_thread_pool_;
+  const std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
+  const std::shared_ptr<RpcMetrics> rpc_metrics_;
+  const std::shared_ptr<const OutboundMethodMetrics> method_metrics_;
+
+  // ----------------------------------------------------------------------------------------------
+  // Fields that may be mutated by the reactor thread while the client thread reads them.
+  // ----------------------------------------------------------------------------------------------
+
+  mutable simple_spinlock mtx_;
+  Status status_ GUARDED_BY(mtx_);
+  std::unique_ptr<ErrorStatusPB> error_pb_ GUARDED_BY(mtx_);
+  Status thread_pool_failure_ GUARDED_BY(mtx_);
+
+  // ----------------------------------------------------------------------------------------------
 
   InvokeCallbackTask callback_task_;
 
-  ThreadPool* callback_thread_pool_;
-
   // Buffers for storing segments of the wire-format request.
+  // This buffer is written to by the client thread before the call is queued, and read by the
+  // reactor thread, so no synchronization is needed.
   RefCntBuffer buffer_;
 
-  // Consumption of buffer_.
+  // Consumption of buffer_. Same synchronization rules as buffer_.
   ScopedTrackedConsumption buffer_consumption_;
 
   // Once a response has been received for this call, contains that response.
-  CallResponse call_response_;
+  // This is written to by the reactor thread, and read by the client thread after the call is
+  // complete, so no synchronization is needed, and the functions extracting data from this object
+  // are annotated with NO_THREAD_SAFETY_ANALYSIS.
+  CallResponse call_response_ GUARDED_BY_REACTOR_THREAD;
 
-  std::shared_ptr<OutboundCallMetrics> outbound_call_metrics_;
+  // ----------------------------------------------------------------------------------------------
+  // Atomic fields
+  // ----------------------------------------------------------------------------------------------
 
-  std::shared_ptr<RpcMetrics> rpc_metrics_;
-
-  Status thread_pool_failure_;
-
-  std::shared_ptr<const OutboundMethodMetrics> method_metrics_;
+  std::atomic<State> state_{State::READY};
 
   DISALLOW_COPY_AND_ASSIGN(OutboundCall);
 };
@@ -432,5 +457,3 @@ typedef StatusErrorCodeImpl<RpcErrorTag> RpcError;
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_OUTBOUND_CALL_H_

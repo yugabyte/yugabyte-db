@@ -1,9 +1,9 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.TSERVER;
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.CONTROLLER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.CONTROLLER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSERVER;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Download;
 import static com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType.Install;
@@ -38,8 +38,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
@@ -55,7 +55,11 @@ import com.yugabyte.yw.common.NodeManager.CertRotateAction;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -90,6 +94,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -99,8 +104,8 @@ import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
 import junitparams.naming.TestCaseName;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -115,24 +120,24 @@ import org.mockito.junit.MockitoRule;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-@Slf4j
 public class NodeManagerTest extends FakeDBApplication {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
-
-  @Mock play.Configuration mockAppConfig;
-
   @Mock ShellProcessHandler shellProcessHandler;
 
   @Mock ReleaseManager releaseManager;
 
   @Mock RuntimeConfigFactory runtimeConfigFactory;
 
+  @Mock RuntimeConfGetter mockConfGetter;
+
   @Mock ConfigHelper mockConfigHelper;
 
   @InjectMocks NodeManager nodeManager;
 
   @Mock Config mockConfig;
+
+  @Mock NodeAgentClient nodeAgentClient;
 
   private final String DOCKER_NETWORK = "yugaware_bridge";
   private final String MASTER_ADDRESSES = "10.0.0.1:7100,10.0.0.2:7100,10.0.0.3:7100";
@@ -182,20 +187,20 @@ public class NodeManagerTest extends FakeDBApplication {
 
       NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
       nodeData.ip = "fake_ip";
-      nodeData.region = region.code;
-      nodeData.zone = zone.code;
+      nodeData.region = region.getCode();
+      nodeData.zone = zone.getCode();
       nodeData.instanceType = instanceTypeCode;
-      node = NodeInstance.create(zone.uuid, nodeData);
+      node = NodeInstance.create(zone.getUuid(), nodeData);
       // Update name.
       node.setNodeName("host-n" + idx);
       node.save();
 
       baseCommand.add("bin/ybcloud.sh");
-      baseCommand.add(provider.code);
+      baseCommand.add(provider.getCode());
       baseCommand.add("--region");
-      baseCommand.add(region.code);
+      baseCommand.add(region.getCode());
       baseCommand.add("--zone");
-      baseCommand.add(zone.code);
+      baseCommand.add(zone.getCode());
 
       if (cloudType == Common.CloudType.docker) {
         baseCommand.add("--network");
@@ -228,19 +233,19 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private Universe createUniverse() {
     UUID universeUUID = UUID.randomUUID();
-    return ModelFactory.createUniverse("Test Universe - " + universeUUID, universeUUID);
+    return ModelFactory.createUniverse("Test Universe-" + universeUUID, universeUUID);
   }
 
   private NodeTaskParams buildValidParams(
       TestData testData, NodeTaskParams params, Universe universe) {
-    params.azUuid = testData.zone.uuid;
+    params.azUuid = testData.zone.getUuid();
     params.instanceType = testData.node.getInstanceTypeCode();
     params.nodeName = testData.node.getNodeName();
     Iterator<NodeDetails> iter = universe.getNodes().iterator();
     if (iter.hasNext()) {
       params.nodeUuid = iter.next().nodeUuid;
     }
-    params.universeUUID = universe.universeUUID;
+    params.setUniverseUUID(universe.getUniverseUUID());
     params.placementUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     params.currentClusterType = ClusterType.PRIMARY;
     return params;
@@ -278,7 +283,7 @@ public class NodeManagerTest extends FakeDBApplication {
         configureParams.enableNodeToNodeEncrypt
             || (configureParams.rootAndClientRootCASame
                 && configureParams.enableClientToNodeEncrypt),
-        !configureParams.rootAndClientRootCASame && configureParams.enableClientToNodeEncrypt,
+        configureParams.enableClientToNodeEncrypt,
         ybHomeDir);
   }
 
@@ -295,15 +300,16 @@ public class NodeManagerTest extends FakeDBApplication {
 
       CertificateInfo rootCert = CertificateInfo.get(configureParams.rootCA);
       if (rootCert == null) {
-        throw new RuntimeException("No valid rootCA found for " + configureParams.universeUUID);
+        throw new RuntimeException(
+            "No valid rootCA found for " + configureParams.getUniverseUUID());
       }
 
       String rootCertPath = null, serverCertPath = null, serverKeyPath = null, certsLocation = null;
 
-      switch (rootCert.certType) {
+      switch (rootCert.getCertType()) {
         case SelfSigned:
           {
-            rootCertPath = rootCert.certificate;
+            rootCertPath = rootCert.getCertificate();
             serverCertPath = "cert.crt";
             serverKeyPath = "key.crt";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
@@ -343,7 +349,7 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         case HashicorpVault:
           {
-            rootCertPath = rootCert.certificate;
+            rootCertPath = rootCert.getCertificate();
             serverCertPath = "cert.crt";
             serverKeyPath = "key.crt";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
@@ -377,18 +383,18 @@ public class NodeManagerTest extends FakeDBApplication {
       expectedCommand.add("--certs_client_dir");
       expectedCommand.add(yb_home_dir + "/yugabyte-client-tls-config");
 
-      CertificateInfo clientRootCert = CertificateInfo.get(configureParams.clientRootCA);
+      CertificateInfo clientRootCert = CertificateInfo.get(configureParams.getClientRootCA());
       if (clientRootCert == null) {
         throw new RuntimeException(
-            "No valid clientRootCA found for " + configureParams.universeUUID);
+            "No valid clientRootCA found for " + configureParams.getUniverseUUID());
       }
 
       String rootCertPath = null, serverCertPath = null, serverKeyPath = null, certsLocation = null;
 
-      switch (clientRootCert.certType) {
+      switch (clientRootCert.getCertType()) {
         case SelfSigned:
           {
-            rootCertPath = clientRootCert.certificate;
+            rootCertPath = clientRootCert.getCertificate();
             serverCertPath = "cert.crt";
             serverKeyPath = "%key.cert";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
@@ -409,14 +415,14 @@ public class NodeManagerTest extends FakeDBApplication {
           {
             CertificateInfo.CustomServerCertInfo customServerCertInfo =
                 clientRootCert.getCustomServerCertInfo();
-            rootCertPath = clientRootCert.certificate;
+            rootCertPath = clientRootCert.getCertificate();
             serverCertPath = customServerCertInfo.serverCert;
             serverKeyPath = customServerCertInfo.serverKey;
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
           }
         case HashicorpVault:
           {
-            rootCertPath = clientRootCert.certificate;
+            rootCertPath = clientRootCert.getCertificate();
             serverCertPath = "cert.crt";
             serverKeyPath = "%key.cert";
             certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
@@ -441,7 +447,7 @@ public class NodeManagerTest extends FakeDBApplication {
     NodeManager.SkipCertValidationType skipType =
         NodeManager.getSkipCertValidationType(
             runtimeConfigFactory.forUniverse(
-                Universe.getOrBadRequest(configureParams.universeUUID)),
+                Universe.getOrBadRequest(configureParams.getUniverseUUID())),
             userIntent,
             configureParams);
 
@@ -469,7 +475,7 @@ public class NodeManagerTest extends FakeDBApplication {
       cert =
           CertificateInfo.create(
               rootCAuuid,
-              t.provider.customerUUID,
+              t.provider.getCustomerUUID(),
               params.nodePrefix,
               today,
               nextYear,
@@ -477,15 +483,18 @@ public class NodeManagerTest extends FakeDBApplication {
               customCertInfo);
     } else {
       when(mockConfig.getString("yb.storage.path")).thenReturn(TestHelper.TMP_PATH);
-      UUID certUUID = CertificateHelper.createRootCA(mockConfig, "foobar", t.provider.customerUUID);
+      UUID certUUID =
+          CertificateHelper.createRootCA(mockConfig, "foobar", t.provider.getCustomerUUID());
       cert = CertificateInfo.get(certUUID);
     }
 
     Universe u = createUniverse();
-    u.getUniverseDetails().rootCA = cert.uuid;
+    u.getUniverseDetails().rootCA = cert.getUuid();
     buildValidParams(
-        t, params, Universe.saveDetails(u.universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
-    return cert.uuid;
+        t,
+        params,
+        Universe.saveDetails(u.getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
+    return cert.getUuid();
   }
 
   @Before
@@ -500,19 +509,54 @@ public class NodeManagerTest extends FakeDBApplication {
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
 
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
-    when(mockAppConfig.getString(eq("yb.security.default.access.key")))
+    when(mockConfGetter.getConfForScope(
+            any(Provider.class), eq(ProviderConfKeys.universeBootScript)))
+        .thenReturn("");
+    when(mockConfig.getString(eq("yb.security.default.access.key")))
         .thenReturn(ApiUtils.DEFAULT_ACCESS_KEY_CODE);
     when(runtimeConfigFactory.forProvider(any())).thenReturn(mockConfig);
     when(runtimeConfigFactory.forUniverse(any())).thenReturn(app.config());
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(nodeAgentClient.maybeGetNodeAgent(any(), any())).thenReturn(Optional.empty());
     createTempFile("node_manager_test_ca.crt", "test-cert");
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybcEnableVervbose)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.nfsDirs)))
+        .thenReturn("/tmp/nfs,/nfs");
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybNumReleasesToKeepCloud)))
+        .thenReturn(2);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ybNumReleasesToKeepDefault)))
+        .thenReturn(3);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleStrategy)))
+        .thenReturn("linear");
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ansibleConnectionTimeoutSecs)))
+        .thenReturn(60);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleVerbosity)))
+        .thenReturn(0);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleDebug)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.ansibleDiffAlways)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.dbMemPostgresMaxMemMb)))
+        .thenReturn(0);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
+        .thenReturn(false);
+    when(mockConfGetter.getConfForScope(any(Universe.class), eq(UniverseConfKeys.ansibleLocalTemp)))
+        .thenReturn("/tmp/ansible_tmp/");
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {
     if (taskParam.deviceInfo.mountPoints != null) {
       return taskParam.deviceInfo.mountPoints;
     } else if (taskParam.deviceInfo.numVolumes != null
-        && !taskParam.getProvider().code.equals("onprem")) {
+        && !taskParam.getProvider().getCode().equals("onprem")) {
       List<String> mountPoints = new ArrayList<>();
       for (int i = 0; i < taskParam.deviceInfo.numVolumes; i++) {
         mountPoints.add("/mnt/d" + Integer.toString(i));
@@ -529,9 +573,9 @@ public class NodeManagerTest extends FakeDBApplication {
       TestData testData,
       boolean useHostname) {
     Map<String, String> gflags = new TreeMap<>();
-    gflags.put("placement_cloud", configureParams.getProvider().code);
-    gflags.put("placement_region", configureParams.getRegion().code);
-    gflags.put("placement_zone", configureParams.getAZ().code);
+    gflags.put("placement_cloud", configureParams.getProvider().getCode());
+    gflags.put("placement_region", configureParams.getRegion().getCode());
+    gflags.put("placement_zone", configureParams.getAZ().getCode());
     gflags.put("max_log_size", "256");
     gflags.put("undefok", "enable_ysql");
     gflags.put("placement_uuid", String.valueOf(configureParams.placementUuid));
@@ -596,7 +640,7 @@ public class NodeManagerTest extends FakeDBApplication {
           String.format(
               "%s:%s",
               pgsqlProxyBindAddress,
-              Universe.getOrBadRequest(configureParams.universeUUID)
+              Universe.getOrBadRequest(configureParams.getUniverseUUID())
                   .getNode(configureParams.nodeName)
                   .ysqlServerRpcPort));
       if (configureParams.enableYSQLAuth) {
@@ -616,7 +660,7 @@ public class NodeManagerTest extends FakeDBApplication {
           String.format(
               "%s:%s",
               cqlProxyBindAddress,
-              Universe.getOrBadRequest(configureParams.universeUUID)
+              Universe.getOrBadRequest(configureParams.getUniverseUUID())
                   .getNode(configureParams.nodeName)
                   .yqlServerRpcPort));
       if (configureParams.enableYCQLAuth) {
@@ -629,7 +673,7 @@ public class NodeManagerTest extends FakeDBApplication {
     }
 
     if (configureParams.isMaster) {
-      gflags.put("cluster_uuid", String.valueOf(configureParams.universeUUID));
+      gflags.put("cluster_uuid", String.valueOf(configureParams.getUniverseUUID()));
       gflags.put("replication_factor", String.valueOf(userIntent.replicationFactor));
     }
 
@@ -660,7 +704,7 @@ public class NodeManagerTest extends FakeDBApplication {
     if (configureParams.enableClientToNodeEncrypt || configureParams.enableNodeToNodeEncrypt) {
       gflags.put(
           "cert_node_filename",
-          Universe.getOrBadRequest(configureParams.universeUUID)
+          Universe.getOrBadRequest(configureParams.getUniverseUUID())
               .getNode(configureParams.nodeName)
               .cloudInfo
               .private_ip);
@@ -673,7 +717,7 @@ public class NodeManagerTest extends FakeDBApplication {
     }
     if (processType == ServerType.TSERVER.name()
         && runtimeConfigFactory
-                .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
+                .forUniverse(Universe.getOrBadRequest(configureParams.getUniverseUUID()))
                 .getInt(NodeManager.POSTGRES_MAX_MEM_MB)
             > 0) {
       gflags.put("postmaster_cgroup", GFlagsUtil.YSQL_CGROUP_PATH);
@@ -707,8 +751,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
   void addAdditionalInstanceTags(
       TestData testData, NodeTaskParams nodeTaskParam, Map<String, String> tags) {
-    tags.put("customer-uuid", testData.customer.uuid.toString());
-    tags.put("universe-uuid", nodeTaskParam.universeUUID.toString());
+    tags.put("customer-uuid", testData.customer.getUuid().toString());
+    tags.put("universe-uuid", nodeTaskParam.getUniverseUUID().toString());
     tags.put("node-uuid", nodeTaskParam.nodeUuid.toString());
   }
 
@@ -749,6 +793,12 @@ public class NodeManagerTest extends FakeDBApplication {
         CreateRootVolumes.Params crvParams = (CreateRootVolumes.Params) params;
         expectedCommand.add("--num_disks");
         expectedCommand.add(String.valueOf(crvParams.numVolumes));
+        if (Common.CloudType.aws.equals(cloud)) {
+          expectedCommand.add("--snapshot_creation_delay");
+          expectedCommand.add("1");
+          expectedCommand.add("--snapshot_creation_max_attempts");
+          expectedCommand.add("1");
+        }
         // intentional fall-thru
       case Create:
         AnsibleCreateServer.Params createParams = (AnsibleCreateServer.Params) params;
@@ -761,7 +811,7 @@ public class NodeManagerTest extends FakeDBApplication {
             expectedCommand.add("--cloud_subnet_secondary");
             expectedCommand.add(createParams.secondarySubnetId);
           }
-          String ybImage = testData.region.ybImage;
+          String ybImage = testData.region.getYbImage();
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(ybImage);
@@ -773,9 +823,9 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (cloud.equals(Common.CloudType.aws)) {
-          if (createParams.cmkArn != null) {
+          if (createParams.getCmkArn() != null) {
             expectedCommand.add("--cmk_res_name");
-            expectedCommand.add(createParams.cmkArn);
+            expectedCommand.add(createParams.getCmkArn());
           }
           if (createParams.ipArnString != null) {
             expectedCommand.add("--iam_profile_arn");
@@ -791,7 +841,7 @@ public class NodeManagerTest extends FakeDBApplication {
         }
 
         if (cloud.equals(Common.CloudType.gcp)) {
-          String ybImage = testData.region.ybImage;
+          String ybImage = testData.region.getYbImage();
           if (ybImage != null && !ybImage.isEmpty()) {
             expectedCommand.add("--machine_image");
             expectedCommand.add(ybImage);
@@ -842,7 +892,7 @@ public class NodeManagerTest extends FakeDBApplication {
           ybcFlags.put("yb_master_address", nodeIp);
           String nfsDirs =
               runtimeConfigFactory
-                  .forUniverse(Universe.getOrBadRequest(configureParams.universeUUID))
+                  .forUniverse(Universe.getOrBadRequest(configureParams.getUniverseUUID()))
                   .getString(NodeManager.YBC_NFS_DIRS);
           ybcFlags.put("nfs_dirs", nfsDirs);
         }
@@ -912,8 +962,7 @@ public class NodeManagerTest extends FakeDBApplication {
               gflags.put("certs_dir", certsDir);
               ybcFlags.put("certs_dir_name", certsDir);
             }
-            if (!configureParams.rootAndClientRootCASame
-                && configureParams.enableClientToNodeEncrypt) {
+            if (configureParams.enableClientToNodeEncrypt) {
               gflags.put("certs_for_client_dir", certsForClientDir);
             }
             expectedCommand.addAll(getCertificatePaths(userIntent, configureParams, ybHomeDir));
@@ -986,14 +1035,14 @@ public class NodeManagerTest extends FakeDBApplication {
               {
                 String rootCertPath = "";
                 String certsLocation = "";
-                if (rootCert.certType == CertConfigType.SelfSigned) {
-                  rootCertPath = rootCert.certificate;
+                if (rootCert.getCertType() == CertConfigType.SelfSigned) {
+                  rootCertPath = rootCert.getCertificate();
                   certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
-                } else if (rootCert.certType == CertConfigType.CustomCertHostPath) {
+                } else if (rootCert.getCertType() == CertConfigType.CustomCertHostPath) {
                   rootCertPath = rootCert.getCustomCertPathParams().rootCertPath;
                   certsLocation = NodeManager.CERT_LOCATION_NODE;
-                } else if (rootCert.certType == CertConfigType.HashicorpVault) {
-                  rootCertPath = rootCert.certificate;
+                } else if (rootCert.getCertType() == CertConfigType.HashicorpVault) {
+                  rootCertPath = rootCert.getCertificate();
                   certsLocation = NodeManager.CERT_LOCATION_PLATFORM;
                 }
                 expectedCommand.add("--root_cert_path");
@@ -1123,6 +1172,16 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add("--volume_size");
           expectedCommand.add(Integer.toString(deviceInfo.volumeSize));
         }
+        if (type == NodeManager.NodeCommandType.Disk_Update) {
+          if (deviceInfo.diskIops != null) {
+            expectedCommand.add("--disk_iops");
+            expectedCommand.add(Integer.toString(deviceInfo.diskIops));
+          }
+          if (deviceInfo.throughput != null) {
+            expectedCommand.add("--disk_throughput");
+            expectedCommand.add(Integer.toString(deviceInfo.throughput));
+          }
+        }
       }
 
       if (type == NodeManager.NodeCommandType.Provision
@@ -1133,12 +1192,12 @@ public class NodeManagerTest extends FakeDBApplication {
               || type == NodeManager.NodeCommandType.Create_Root_Volumes) {
             expectedCommand.add("--volume_type");
             expectedCommand.add(deviceInfo.storageType.toString().toLowerCase());
-            if (deviceInfo.storageType.isIopsProvisioning() && deviceInfo.diskIops != null) {
+            if (deviceInfo.diskIops != null && deviceInfo.storageType.isIopsProvisioning()) {
               expectedCommand.add("--disk_iops");
               expectedCommand.add(Integer.toString(deviceInfo.diskIops));
             }
-            if (deviceInfo.storageType.isThroughputProvisioning()
-                && deviceInfo.throughput != null) {
+            if (deviceInfo.throughput != null
+                && deviceInfo.storageType.isThroughputProvisioning()) {
               expectedCommand.add("--disk_throughput");
               expectedCommand.add(Integer.toString(deviceInfo.throughput));
             }
@@ -1149,7 +1208,7 @@ public class NodeManagerTest extends FakeDBApplication {
           }
         }
         if (type == NodeManager.NodeCommandType.Provision) {
-          String packagePath = mockAppConfig.getString("yb.thirdparty.packagePath");
+          String packagePath = mockConfig.getString("yb.thirdparty.packagePath");
           if (packagePath != null) {
             expectedCommand.add("--local_package_path");
             expectedCommand.add(packagePath);
@@ -1158,7 +1217,7 @@ public class NodeManagerTest extends FakeDBApplication {
           expectedCommand.add(
               Integer.toString(
                   runtimeConfigFactory
-                      .forUniverse(Universe.getOrBadRequest(params.universeUUID))
+                      .forUniverse(Universe.getOrBadRequest(params.getUniverseUUID()))
                       .getInt(NodeManager.POSTGRES_MAX_MEM_MB)));
         }
       }
@@ -1179,7 +1238,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       List<String> expectedCommand = t.baseCommand;
       params.instanceType = t.NewInstanceType;
       expectedCommand.addAll(
@@ -1202,7 +1261,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       List<String> expectedCommand = t.baseCommand;
       if (isCopy) {
         params.action = TransferXClusterCerts.Params.Action.COPY;
@@ -1235,6 +1294,8 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateRootVolumesCommand() {
+    when(mockConfGetter.getGlobalConf(GlobalConfKeys.snapshotCreationDelay)).thenReturn(1);
+    when(mockConfGetter.getGlobalConf(GlobalConfKeys.snapshotCreationMaxAttempts)).thenReturn(1);
     int idx = 0;
     for (TestData t : testData) {
       CreateRootVolumes.Params params = new CreateRootVolumes.Params();
@@ -1242,9 +1303,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
       params.numVolumes = 1;
 
       runAndVerifyNodeCommand(
@@ -1262,7 +1323,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.replacementDisk = t.replacementVolume;
 
@@ -1281,9 +1342,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
@@ -1305,9 +1366,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
       params.secondarySubnetId = "testSubnet";
 
       List<String> expectedCommand = t.baseCommand;
@@ -1324,7 +1385,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testProvisionNodeCommandWithLocalPackage() {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
-    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+    when(mockConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
     int idx = 0;
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
@@ -1332,9 +1393,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
@@ -1362,7 +1423,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         addValidDeviceInfo(t, params);
         params.useTimeSync = useTimeSync;
 
@@ -1386,7 +1447,7 @@ public class NodeManagerTest extends FakeDBApplication {
     int idx = 0;
     for (TestData t : testData) {
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
-      UUID univUUID = createUniverse().universeUUID;
+      UUID univUUID = createUniverse().getUniverseUUID();
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       addValidDeviceInfo(t, params);
@@ -1429,9 +1490,11 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
-      keyInfo.airGapInstall = true;
-      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+      getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
+
+      t.provider.getDetails().sshPort = 3333;
+      t.provider.getDetails().airGapInstall = true;
+      t.provider.save();
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -1439,14 +1502,14 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
       userIntent.regionList = new ArrayList<UUID>();
-      userIntent.regionList.add(t.region.uuid);
+      userIntent.regionList.add(t.region.getUuid());
       userIntent.providerType = t.cloudType;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       buildValidParams(
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(userIntent)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent)));
       addValidDeviceInfo(t, params);
 
       // Set up expected command
@@ -1514,7 +1577,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Provision, params);
         fail();
       } catch (RuntimeException re) {
@@ -1532,9 +1595,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
@@ -1555,9 +1618,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
       if (t.cloudType.equals(Common.CloudType.aws)) {
         params.assignPublicIP = false;
       }
@@ -1579,7 +1642,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testCreateNodeCommandWithLocalPackage() {
     String packagePath = "/tmp/third-party";
     new File(packagePath).mkdir();
-    when(mockAppConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
+    when(mockConfig.getString("yb.thirdparty.packagePath")).thenReturn(packagePath);
     int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
@@ -1587,9 +1650,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
@@ -1609,7 +1672,7 @@ public class NodeManagerTest extends FakeDBApplication {
     int idx = 0;
     for (TestData t : testData) {
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
-      UUID univUUID = createUniverse().universeUUID;
+      UUID univUUID = createUniverse().getUniverseUUID();
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       addValidDeviceInfo(t, params);
@@ -1641,9 +1704,11 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
-      keyInfo.airGapInstall = true;
-      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+      getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
+
+      t.provider.getDetails().sshPort = 3333;
+      t.provider.getDetails().airGapInstall = true;
+      t.provider.save();
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -1651,14 +1716,14 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
       userIntent.regionList = new ArrayList<>();
-      userIntent.regionList.add(t.region.uuid);
+      userIntent.regionList.add(t.region.getUuid());
       userIntent.providerType = t.cloudType;
       AnsibleCreateServer.Params params = new AnsibleCreateServer.Params();
       buildValidParams(
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(userIntent)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent)));
       addValidDeviceInfo(t, params);
 
       // Set up expected command
@@ -1722,11 +1787,11 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
       if (t.cloudType.equals(Common.CloudType.aws)) {
-        params.cmkArn = "cmkArn";
+        params.setCmkArn("cmkArn");
       }
 
       List<String> expectedCommand = t.baseCommand;
@@ -1747,9 +1812,9 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
-      params.subnetId = t.zone.subnet;
+      params.subnetId = t.zone.getSubnet();
       if (t.cloudType.equals(Common.CloudType.aws)) {
         params.ipArnString = "ipArnString";
       }
@@ -1772,7 +1837,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Create, params);
         fail();
       } catch (RuntimeException re) {
@@ -1790,7 +1855,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         fail();
       } catch (RuntimeException re) {
@@ -1808,7 +1873,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
@@ -1831,7 +1896,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
       params.ybSoftwareVersion = "0.0.1";
@@ -1855,7 +1920,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.isMasterInShellMode = false;
       params.ybSoftwareVersion = "0.0.2";
       try {
@@ -1879,8 +1944,10 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
-      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+      getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
+
+      t.provider.getDetails().sshPort = 3333;
+      t.provider.save();
 
       // Set up task params
       UniverseDefinitionTaskParams.UserIntent userIntent =
@@ -1888,14 +1955,14 @@ public class NodeManagerTest extends FakeDBApplication {
       userIntent.numNodes = 3;
       userIntent.accessKeyCode = "demo-access";
       userIntent.regionList = new ArrayList<>();
-      userIntent.regionList.add(t.region.uuid);
+      userIntent.regionList.add(t.region.getUuid());
       userIntent.providerType = t.cloudType;
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID,
+              createUniverse().getUniverseUUID(),
               ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */)));
       addValidDeviceInfo(t, params);
       params.isMasterInShellMode = true;
@@ -1933,7 +2000,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.ybSoftwareVersion = "0.0.1";
       params.setTxnTableWaitCountFlag = true;
@@ -1960,7 +2027,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
 
@@ -1981,12 +2048,11 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
 
-      for (UniverseDefinitionTaskBase.ServerType type :
-          UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseTaskBase.ServerType type : UniverseTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
           if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
@@ -2011,7 +2077,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
       params.setProperty("processType", MASTER.toString());
@@ -2035,7 +2101,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
@@ -2064,7 +2130,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.1";
       params.isMasterInShellMode = true;
@@ -2092,7 +2158,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Software;
       params.ybSoftwareVersion = "0.0.2";
       params.isMasterInShellMode = true;
@@ -2119,7 +2185,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         Set<String> gflagsToRemove = new HashSet<>();
         gflagsToRemove.add("flag1");
         gflagsToRemove.add("flag2");
@@ -2154,7 +2220,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         params.type = GFlags;
         params.enableYSQL = true;
         params.enableYSQLAuth = true;
@@ -2162,7 +2228,9 @@ public class NodeManagerTest extends FakeDBApplication {
         params.setProperty("processType", serverType);
         params.gflags.put(GFlagsUtil.FS_DATA_DIRS, "/some/other"); // will be removed on conflict
         params.gflags.put(
-            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust"); // will be merged
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            "host all all ::1/128 trust,"
+                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \""); // will be merged
         params.gflags.put(GFlagsUtil.UNDEFOK, "use_private_ip"); // will be merged
         params.gflags.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:1990"); // port replace
         params.gflags.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3"); // port append
@@ -2177,9 +2245,15 @@ public class NodeManagerTest extends FakeDBApplication {
 
         when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
         when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(false);
+        when(mockConfGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
+            .thenReturn(false);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         when(mockConfig.getBoolean("yb.gflags.allow_user_override")).thenReturn(true);
+        when(mockConfGetter.getConfForScope(
+                any(Universe.class), eq(UniverseConfKeys.gflagsAllowUserOverride)))
+            .thenReturn(true);
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
 
         verify(shellProcessHandler, times(3)).run(captor.capture(), anyMap(), anyString());
@@ -2192,7 +2266,10 @@ public class NodeManagerTest extends FakeDBApplication {
         Map<String, String> copy = new TreeMap<>(params.gflags);
         copy.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
         copy.put(
-            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust,local all yugabyte trust");
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            "host all all ::1/128 trust,"
+                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                + "local all yugabyte trust");
         copy.remove(GFlagsUtil.FS_DATA_DIRS);
         copy.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
@@ -2202,7 +2279,10 @@ public class NodeManagerTest extends FakeDBApplication {
         Map<String, String> copy2 = new TreeMap<>(params.gflags);
         copy2.put(GFlagsUtil.UNDEFOK, "use_private_ip,enable_ysql");
         copy2.put(
-            GFlagsUtil.YSQL_HBA_CONF_CSV, "host all all ::1/128 trust,local all yugabyte trust");
+            GFlagsUtil.YSQL_HBA_CONF_CSV,
+            "host all all ::1/128 trust,"
+                + "\"adb=\"\"cc,bb,aa\"\" bda=\"\"bb,aa,cc\"\" \","
+                + "local all yugabyte trust");
         copy2.put(GFlagsUtil.CSQL_PROXY_BIND_ADDRESS, "0.0.0.0:9042");
         copy2.put(GFlagsUtil.PSQL_PROXY_BIND_ADDRESS, "0.1.2.3:5433");
         assertEquals(copy2, new TreeMap<>(gflagsNotFiltered));
@@ -2215,7 +2295,7 @@ public class NodeManagerTest extends FakeDBApplication {
   private Map<String, String> extractGFlags(List<String> command) {
     String gflagsJson = mapKeysToValues(command).get("--gflags");
     if (gflagsJson == null) {
-      throw new RuntimeException("QQ! " + command);
+      throw new IllegalStateException("Empty gflags for " + command);
     }
     return Json.fromJson(Json.parse(gflagsJson), Map.class);
   }
@@ -2228,7 +2308,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       HashMap<String, String> gflags = new HashMap<>();
       gflags.put("gflagName", "gflagValue");
       params.gflags = gflags;
@@ -2252,15 +2332,14 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       HashMap<String, String> gflags = new HashMap<>();
       gflags.put("gflagName", "gflagValue");
       params.gflags = gflags;
       params.type = GFlags;
       params.isMasterInShellMode = true;
 
-      for (UniverseDefinitionTaskBase.ServerType type :
-          UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseTaskBase.ServerType type : UniverseTaskBase.ServerType.values()) {
         try {
           // master and tserver are valid process types.
           if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
@@ -2286,7 +2365,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       HashMap<String, String> gflags = new HashMap<>();
       gflags.put("gflagName", "gflagValue");
       params.gflags = gflags;
@@ -2318,7 +2397,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableYSQL = ysqlEnabled;
@@ -2364,7 +2443,7 @@ public class NodeManagerTest extends FakeDBApplication {
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
-                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+                      t.region.getProvider().getName(), t.region.getCode(), t.node.getNodeName())));
       List<String> actualCommand = captor.getValue();
       int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
       int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
@@ -2407,7 +2486,7 @@ public class NodeManagerTest extends FakeDBApplication {
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
-                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+                      t.region.getProvider().getName(), t.region.getCode(), t.node.getNodeName())));
       List<String> actualCommand = captor.getValue();
       int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
       int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
@@ -2427,12 +2506,13 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableClientToNodeEncrypt = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
+      params.setClientRootCA(params.rootCA);
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
       if (t.cloudType == CloudType.onprem) {
@@ -2449,13 +2529,13 @@ public class NodeManagerTest extends FakeDBApplication {
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
-                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+                      t.region.getProvider().getName(), t.region.getCode(), t.node.getNodeName())));
       List<String> actualCommand = captor.getValue();
       int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
       int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
-      assertEquals(expectedCommand, actualCommand);
+      checkEquality(expectedCommand, actualCommand);
       idx++;
     }
   }
@@ -2473,13 +2553,14 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableNodeToNodeEncrypt = true;
       params.enableClientToNodeEncrypt = true;
       params.allowInsecure = false;
       params.rootCA = createUniverseWithCert(t, params);
+      params.setClientRootCA(params.rootCA);
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
       if (t.cloudType == CloudType.onprem) {
@@ -2496,14 +2577,38 @@ public class NodeManagerTest extends FakeDBApplication {
               eq(
                   String.format(
                       "bin/ybcloud.sh %s --region %s instance configure %s",
-                      t.region.provider.name, t.region.code, t.node.getNodeName())));
+                      t.region.getProvider().getName(), t.region.getCode(), t.node.getNodeName())));
       List<String> actualCommand = captor.getValue();
       int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
       int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
       expectedCommand.set(serverCertPathIndex, actualCommand.get(serverCertPathIndex));
       expectedCommand.set(serverKeyPathIndex, actualCommand.get(serverKeyPathIndex));
-      assertEquals(expectedCommand, actualCommand);
+      checkEquality(expectedCommand, actualCommand);
       idx++;
+    }
+  }
+
+  // checks for presence of same options (starting with --) in the commands and
+  // makes sure values are not empty. Cert names are random temporary files,
+  // expecting them to be same is impractical
+  private void checkEquality(List<String> expectedCommand, List<String> actualCommand) {
+    if (expectedCommand != null
+        && actualCommand != null
+        && expectedCommand.size() == actualCommand.size()) {
+      for (int i = 0; i < expectedCommand.size(); i++) {
+        String expected = expectedCommand.get(i);
+        String actual = actualCommand.get(i);
+        if (expected != null
+            && ((expected.startsWith("--") && expected.equals(actual))
+                || !actual.trim().isEmpty())) {
+          continue;
+        }
+        String message =
+            String.format(
+                "ybcloud.sh command mismatch. Expected => %s, Actual => %s",
+                expectedCommand, actualCommand);
+        Assert.fail(message);
+      }
     }
   }
 
@@ -2516,7 +2621,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.callhomeLevel = CallHomeManager.CollectionLevel.valueOf("NONE");
@@ -2543,7 +2648,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Destroy, params);
         fail();
       } catch (RuntimeException re) {
@@ -2562,7 +2667,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       assertNotNull(params.nodeUuid);
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
@@ -2582,7 +2687,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
@@ -2602,7 +2707,7 @@ public class NodeManagerTest extends FakeDBApplication {
             t,
             params,
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+                createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Control, params);
         fail();
       } catch (RuntimeException re) {
@@ -2620,7 +2725,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.process = "master";
       params.command = "create";
 
@@ -2660,7 +2765,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       List<String> expectedCommand = t.baseCommand;
       expectedCommand.addAll(
@@ -2676,7 +2781,7 @@ public class NodeManagerTest extends FakeDBApplication {
     int idx = 0;
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
-      UUID univUUID = createUniverse().universeUUID;
+      UUID univUUID = createUniverse().getUniverseUUID();
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       ApiUtils.insertInstanceTags(univUUID);
@@ -2702,7 +2807,7 @@ public class NodeManagerTest extends FakeDBApplication {
     int idx = 0;
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
-      UUID univUUID = createUniverse().universeUUID;
+      UUID univUUID = createUniverse().getUniverseUUID();
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       ApiUtils.insertInstanceTags(univUUID);
@@ -2728,7 +2833,7 @@ public class NodeManagerTest extends FakeDBApplication {
     int idx = 0;
     for (TestData t : testData) {
       InstanceActions.Params params = new InstanceActions.Params();
-      UUID univUUID = createUniverse().universeUUID;
+      UUID univUUID = createUniverse().getUniverseUUID();
       Universe universe = Universe.saveDetails(univUUID, ApiUtils.mockUniverseUpdater(t.cloudType));
       buildValidParams(t, params, universe);
       List<String> expectedCommand = t.baseCommand;
@@ -2757,12 +2862,17 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
       if (t.cloudType == CloudType.onprem) {
         params.deviceInfo.mountPoints = fakeMountPaths;
+      }
+      if (t.cloudType == CloudType.aws) {
+        params.deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
+        params.deviceInfo.diskIops = 5000;
+        params.deviceInfo.throughput = 500;
       }
       params.deviceInfo.volumeSize = 500;
       List<String> expectedCommand = t.baseCommand;
@@ -2783,7 +2893,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.isMasterInShellMode = false;
       params.ybSoftwareVersion = "0.0.1";
       params.deviceInfo = new DeviceInfo();
@@ -2811,7 +2921,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       params.type = Everything;
       params.ybSoftwareVersion = "0.0.1";
       params.enableYEDIS = enableYEDIS;
@@ -2854,7 +2964,8 @@ public class NodeManagerTest extends FakeDBApplication {
       buildValidParams(
           t,
           params,
-          Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+          Universe.saveDetails(
+              universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       addValidDeviceInfo(t, params);
       params.type = GFlags;
       params.isMasterInShellMode = isMasterInShellMode;
@@ -2879,7 +2990,7 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
 
       try {
@@ -2899,11 +3010,10 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
 
-      for (UniverseDefinitionTaskBase.ServerType type :
-          UniverseDefinitionTaskBase.ServerType.values()) {
+      for (UniverseTaskBase.ServerType type : UniverseTaskBase.ServerType.values()) {
         try {
           // Master and TServer are valid process types
           if (ImmutableList.of(MASTER, TSERVER, CONTROLLER).contains(type)) {
@@ -2928,7 +3038,7 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
 
@@ -2950,7 +3060,7 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = ToggleTls;
       params.setProperty("processType", MASTER.toString());
       params.setProperty("taskSubType", UpgradeTaskParams.UpgradeTaskSubType.CopyCerts.name());
@@ -2979,7 +3089,7 @@ public class NodeManagerTest extends FakeDBApplication {
         data.privateKey = null;
       }
 
-      UUID universeUuid = createUniverse().universeUUID;
+      UUID universeUuid = createUniverse().getUniverseUUID();
       UserIntent userIntent =
           Universe.getOrBadRequest(universeUuid)
               .getUniverseDetails()
@@ -2997,6 +3107,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.enableNodeToNodeEncrypt = enableNodeToNodeEncrypt;
       params.enableClientToNodeEncrypt = enableClientToNodeEncrypt;
       params.rootCA = createUniverseWithCert(data, params);
+      params.setClientRootCA(params.rootCA);
       try {
         nodeManager.nodeCommand(NodeManager.NodeCommandType.Configure, params);
         List<String> expectedCommand = data.baseCommand;
@@ -3010,7 +3121,9 @@ public class NodeManagerTest extends FakeDBApplication {
                 eq(
                     String.format(
                         "bin/ybcloud.sh %s --region %s instance configure %s",
-                        data.region.provider.name, data.region.code, data.node.getNodeName())));
+                        data.region.getProvider().getName(),
+                        data.region.getCode(),
+                        data.node.getNodeName())));
         List<String> actualCommand = captor.getValue();
         int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
         int serverKeyPathIndex = expectedCommand.indexOf("--server_key_path") + 1;
@@ -3031,7 +3144,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testToggleTlsRound1GFlagsUpdate(int nodeToNodeChange) {
     int idx = 0;
     for (TestData data : testData) {
-      UUID universeUuid = createUniverse().universeUUID;
+      UUID universeUuid = createUniverse().getUniverseUUID();
       UserIntent userIntent =
           Universe.getOrBadRequest(universeUuid)
               .getUniverseDetails()
@@ -3069,7 +3182,7 @@ public class NodeManagerTest extends FakeDBApplication {
   public void testToggleTlsRound2GFlagsUpdate(int nodeToNodeChange) {
     int idx = 0;
     for (TestData data : testData) {
-      UUID universeUuid = createUniverse().universeUUID;
+      UUID universeUuid = createUniverse().getUniverseUUID();
       UserIntent userIntent =
           Universe.getOrBadRequest(universeUuid)
               .getUniverseDetails()
@@ -3103,7 +3216,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private UUID createCertificateConfig(CertConfigType certType, UUID customerUUID, String label)
       throws IOException, NoSuchAlgorithmException {
-    return createCertificate(certType, customerUUID, label, "", false).uuid;
+    return createCertificate(certType, customerUUID, label, "", false).getUuid();
   }
 
   private CertificateInfo createCertificate(
@@ -3175,7 +3288,7 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = Certs;
       params.certRotateAction = null;
       params.setProperty("processType", MASTER.toString());
@@ -3202,7 +3315,7 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = Certs;
       params.certRotateAction = CertRotateAction.valueOf(action);
       params.rootCARotationType = CertRotationType.None;
@@ -3229,7 +3342,7 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
       params.type = Certs;
       params.certRotateAction = CertRotateAction.valueOf(action);
       params.rootCARotationType = CertRotationType.RootCert;
@@ -3255,14 +3368,14 @@ public class NodeManagerTest extends FakeDBApplication {
           data,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(data.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(data.cloudType)));
 
       params.type = Certs;
       params.certRotateAction = CertRotateAction.valueOf(action);
       params.rootCARotationType = CertRotationType.RootCert;
       params.rootCA =
           createCertificateConfig(
-              CertConfigType.CustomServerCert, data.provider.customerUUID, params.nodePrefix);
+              CertConfigType.CustomServerCert, data.provider.getCustomerUUID(), params.nodePrefix);
       params.setProperty("processType", MASTER.toString());
 
       try {
@@ -3290,7 +3403,7 @@ public class NodeManagerTest extends FakeDBApplication {
       throws IOException, NoSuchAlgorithmException {
     int idx = 0;
     for (TestData data : testData) {
-      UUID universeUuid = createUniverse().universeUUID;
+      UUID universeUuid = createUniverse().getUniverseUUID();
       UserIntent userIntent =
           Universe.getOrBadRequest(universeUuid)
               .getUniverseDetails()
@@ -3308,7 +3421,7 @@ public class NodeManagerTest extends FakeDBApplication {
       params.rootCARotationType = CertRotationType.RootCert;
       params.rootCA =
           createCertificateConfig(
-              CertConfigType.valueOf(certType), data.provider.customerUUID, params.nodePrefix);
+              CertConfigType.valueOf(certType), data.provider.getCustomerUUID(), params.nodePrefix);
       params.setProperty("processType", MASTER.toString());
       params.deviceInfo = new DeviceInfo();
       params.deviceInfo.numVolumes = 1;
@@ -3332,7 +3445,7 @@ public class NodeManagerTest extends FakeDBApplication {
       throws IOException, NoSuchAlgorithmException {
     int idx = 0;
     for (TestData data : testData) {
-      UUID universeUuid = createUniverse().universeUUID;
+      UUID universeUuid = createUniverse().getUniverseUUID();
       UserIntent userIntent =
           Universe.getOrBadRequest(universeUuid)
               .getUniverseDetails()
@@ -3351,13 +3464,13 @@ public class NodeManagerTest extends FakeDBApplication {
         params.rootCARotationType = CertRotationType.RootCert;
         params.rootCA =
             createCertificateConfig(
-                CertConfigType.SelfSigned, data.provider.customerUUID, params.nodePrefix);
+                CertConfigType.SelfSigned, data.provider.getCustomerUUID(), params.nodePrefix);
       }
       if (isClientRootCA) {
         params.clientRootCARotationType = CertRotationType.RootCert;
-        params.clientRootCA =
+        params.setClientRootCA(
             createCertificateConfig(
-                CertConfigType.SelfSigned, data.provider.customerUUID, params.nodePrefix);
+                CertConfigType.SelfSigned, data.provider.getCustomerUUID(), params.nodePrefix));
       }
       params.setProperty("processType", MASTER.toString());
       params.deviceInfo = new DeviceInfo();
@@ -3377,7 +3490,9 @@ public class NodeManagerTest extends FakeDBApplication {
                 eq(
                     String.format(
                         "bin/ybcloud.sh %s --region %s instance configure %s",
-                        data.region.provider.name, data.region.code, data.node.getNodeName())));
+                        data.region.getProvider().getName(),
+                        data.region.getCode(),
+                        data.node.getNodeName())));
         List<String> actualCommand = captor.getValue();
         if (isRootCA) {
           int serverCertPathIndex = expectedCommand.indexOf("--server_cert_path") + 1;
@@ -3452,19 +3567,21 @@ public class NodeManagerTest extends FakeDBApplication {
       keyInfo.publicKey = "/path/to/public.key";
       keyInfo.vaultFile = "/path/to/vault_file";
       keyInfo.vaultPasswordFile = "/path/to/vault_password";
-      keyInfo.sshPort = 3333;
-      keyInfo.installNodeExporter = false;
-      getOrCreate(t.provider.uuid, "demo-access", keyInfo);
+      getOrCreate(t.provider.getUuid(), "demo-access", keyInfo);
+
+      t.provider.getDetails().sshPort = 3333;
+      t.provider.getDetails().installNodeExporter = false;
+      t.provider.save();
 
       AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
       buildValidParams(
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
 
       Universe.saveDetails(
-          params.universeUUID,
+          params.getUniverseUUID(),
           universe -> {
             NodeDetails nodeDetails = universe.getNode(params.nodeName);
             UserIntent userIntent =
@@ -3500,7 +3617,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testPrecheckNotCheckingSelfSignedCertificates()
       throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     UUID certificateUUID = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
     List<String> cmds = createPrecheckCommandForCerts(certificateUUID, null);
     checkArguments(cmds, PRECHECK_CERT_PATHS); // Check no args
@@ -3509,7 +3626,7 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testPrecheckNotCheckingTwoSelfSignedCertificates()
       throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     UUID certificateUUID1 = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
     UUID certificateUUID2 = createCertificateConfig(CertConfigType.SelfSigned, customerUUID, "SS");
     List<String> cmds = createPrecheckCommandForCerts(certificateUUID1, certificateUUID2);
@@ -3518,10 +3635,10 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testPrecheckCheckCertificates() throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo certificateInfo =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
-    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.uuid, null);
+    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.getUuid(), null);
 
     checkArguments(
         cmds,
@@ -3536,10 +3653,11 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testPrecheckCheckEqualCertificates() throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo certificateInfo =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
-    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.uuid, certificateInfo.uuid);
+    List<String> cmds =
+        createPrecheckCommandForCerts(certificateInfo.getUuid(), certificateInfo.getUuid());
 
     checkArguments(
         cmds,
@@ -3559,10 +3677,10 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testPrecheckCheckCertificatesWithClientPaths()
       throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo certificateInfo =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
-    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.uuid, null);
+    List<String> cmds = createPrecheckCommandForCerts(certificateInfo.getUuid(), null);
 
     checkArguments(
         cmds,
@@ -3582,12 +3700,12 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testPrecheckCheckBothCertificatesWithClientPaths()
       throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo cert =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
     CertificateInfo cert2 =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", true);
-    List<String> cmds = createPrecheckCommandForCerts(cert.uuid, cert2.uuid);
+    List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid());
 
     checkArguments(
         cmds,
@@ -3608,12 +3726,12 @@ public class NodeManagerTest extends FakeDBApplication {
 
   @Test
   public void testPrecheckCheckBothCertificates() throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo cert =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
     CertificateInfo cert2 =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
-    List<String> cmds = createPrecheckCommandForCerts(cert.uuid, cert2.uuid);
+    List<String> cmds = createPrecheckCommandForCerts(cert.getUuid(), cert2.getUuid());
 
     checkArguments(
         cmds,
@@ -3635,16 +3753,16 @@ public class NodeManagerTest extends FakeDBApplication {
   @Test
   public void testPrecheckCheckCertificatesSkipHostnameValidation()
       throws IOException, NoSuchAlgorithmException {
-    UUID customerUUID = testData.get(0).provider.customerUUID;
+    UUID customerUUID = testData.get(0).provider.getCustomerUUID();
     CertificateInfo cert =
         createCertificate(CertConfigType.CustomCertHostPath, customerUUID, "CS", "", false);
     List<String> cmds =
         createPrecheckCommandForCerts(
-            cert.uuid,
+            cert.getUuid(),
             null,
             params -> {
               Universe.saveDetails(
-                  params.universeUUID,
+                  params.getUniverseUUID(),
                   universe -> {
                     NodeDetails nodeDetails = universe.getNode(params.nodeName);
                     UserIntent userIntent =
@@ -3678,7 +3796,7 @@ public class NodeManagerTest extends FakeDBApplication {
           t,
           params,
           Universe.saveDetails(
-              createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(t.cloudType)));
+              createUniverse().getUniverseUUID(), ApiUtils.mockUniverseUpdater(t.cloudType)));
       List<String> expectedCommand = new ArrayList<>(t.baseCommand);
       expectedCommand.addAll(
           nodeCommand(NodeManager.NodeCommandType.Delete_Root_Volumes, params, t, NODE_IPS[idx]));
@@ -3717,24 +3835,27 @@ public class NodeManagerTest extends FakeDBApplication {
     keyInfo.publicKey = "/path/to/public.key";
     keyInfo.vaultFile = "/path/to/vault_file";
     keyInfo.vaultPasswordFile = "/path/to/vault_password";
-    keyInfo.sshPort = 3333;
-    keyInfo.airGapInstall = true;
-    getOrCreate(onpremTD.provider.uuid, "mock-access-code-key", keyInfo);
+    getOrCreate(onpremTD.provider.getUuid(), "mock-access-code-key", keyInfo);
+
+    onpremTD.provider.getDetails().sshPort = 3333;
+    onpremTD.provider.getDetails().airGapInstall = true;
+    onpremTD.provider.save();
 
     NodeTaskParams nodeTaskParams =
         buildValidParams(
             onpremTD,
             new NodeTaskParams(),
             Universe.saveDetails(
-                createUniverse().universeUUID, ApiUtils.mockUniverseUpdater(onpremTD.cloudType)));
+                createUniverse().getUniverseUUID(),
+                ApiUtils.mockUniverseUpdater(onpremTD.cloudType)));
     nodeTaskParams.rootCA = certificateUUID1;
-    nodeTaskParams.clientRootCA = certificateUUID2;
+    nodeTaskParams.setClientRootCA(certificateUUID2);
     nodeTaskParams.rootAndClientRootCASame =
         certificateUUID2 == null || Objects.equals(certificateUUID1, certificateUUID2);
 
     paramsUpdate.accept(nodeTaskParams);
     Universe.saveDetails(
-        nodeTaskParams.universeUUID,
+        nodeTaskParams.getUniverseUUID(),
         universe -> {
           NodeDetails nodeDetails = universe.getNode(nodeTaskParams.nodeName);
           UserIntent userIntent =

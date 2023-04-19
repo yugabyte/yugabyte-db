@@ -39,6 +39,7 @@
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/doc_key.h"
+#include "yb/docdb/docdb_test_util.h"
 
 #include "yb/gutil/casts.h"
 
@@ -112,6 +113,8 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_backfill_sabotage_frequency);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
 DECLARE_string(compression_type);
+DECLARE_bool(ycql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row);
 
 namespace yb {
 namespace client {
@@ -333,8 +336,9 @@ class QLTabletTest : public QLDmlTestBase<MiniCluster> {
           std::shared_ptr<std::vector<ColumnSchema>> columns =
               std::make_shared<std::vector<ColumnSchema>>(YBSchema(projection).columns());
 
-          Slice data = VERIFY_RESULT(controller.GetSidecar(ql_batch.rows_data_sidecar()));
-          yb::ql::RowsResult result(table->name(), columns, data.ToBuffer());
+          ql::RowsResult result(
+              table->name(), columns,
+              VERIFY_RESULT(controller.ExtractSidecar(ql_batch.rows_data_sidecar())));
           auto row_block = result.GetRowBlock();
           if (row_block->row_count() == 1) {
             if (found) {
@@ -1223,9 +1227,10 @@ TEST_F(QLTabletTest, BlockCacheMemTracking) {
   ASSERT_OK(client_->DeleteTable(kTable1Name, true));
   std::this_thread::sleep_for(kSleepTime);
 
-  // after table deletion, assert that there is no longer a block cache memtracker
+  // after table deletion, assert that there are no longer any tablet-level block cache memtrackers
   block_cache_tracker = server_tracker->FindChild(kBlockTrackerName);
-  ASSERT_FALSE(block_cache_tracker);
+  ASSERT_TRUE(block_cache_tracker);
+  ASSERT_TRUE(block_cache_tracker->ListChildren().empty());
 }
 
 // Checks history cutoff for cluster against previous state.
@@ -1311,7 +1316,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   }
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
     for (;;) {
       auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
       ASSERT_LE(peers.size(), 1);
@@ -1328,7 +1333,7 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   }
 
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
-    ASSERT_OK(cluster_->mini_tablet_server(i)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
   }
   ASSERT_NO_FATALS(VerifyHistoryCutoff(cluster_.get(), &committed_history_cutoff, "After restart"));
 
@@ -1348,9 +1353,21 @@ class QLTabletRf1Test : public QLTabletTest {
   }
 };
 
+class QLTabletRf1TestToggleEnablePackedRow :
+    public QLTabletRf1Test, public ::testing::WithParamInterface<bool> {
+ public:
+  void SetFlags() override {
+    QLTabletRf1Test::SetFlags();
+    ASSERT_OK(SET_FLAG(ycql_enable_packed_row, GetParam()));
+    ASSERT_OK(SET_FLAG(ysql_enable_packed_row, GetParam()));
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(, QLTabletRf1TestToggleEnablePackedRow, ::testing::Bool());
+
 // For this test we don't need actually RF3 setup which also makes test flaky because of
 // https://github.com/yugabyte/yugabyte-db/issues/4663.
-TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
+TEST_P(QLTabletRf1TestToggleEnablePackedRow, GetMiddleKey) {
   FLAGS_db_write_buffer_size = 20_KB;
 
   TestWorkload workload(cluster_.get());
@@ -1373,8 +1390,10 @@ TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
 
   // We want some compactions to happen, so largest SST file will become large enough for its
   // approximate middle key to roughly split the whole tablet into two parts that are close in size.
+  // Need to have the largest file to be more than 50% of total size of all SST -- setting to 600KB
+  // is enough to achive this condition (should give ~65% of total size when packed rows are on).
   while (tablet.TEST_db()->GetCurrentVersionDataSstFilesSize() <
-         implicit_cast<size_t>(20 * FLAGS_db_write_buffer_size)) {
+         implicit_cast<size_t>(30 * FLAGS_db_write_buffer_size)) {
     std::this_thread::sleep_for(100ms);
   }
 
@@ -1414,7 +1433,7 @@ TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
   read_opts.query_id = rocksdb::kDefaultQueryId;
   std::unique_ptr<rocksdb::Iterator> iter(tablet.TEST_db()->NewIterator(read_opts));
 
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     Slice key = iter->key();
     if (key.Less(encoded_split_key)) {
       ++num_keys_less;
@@ -1526,7 +1545,7 @@ TEST_F(QLTabletTest, LastAppliedOpIdTracking) {
   ASSERT_GT(max_applied_op_id, all_applied_op_id);
 
   LOG(INFO) << "Restarting TS-0";
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   // TS-0 should catch up on applied ops.
   ASSERT_OK(WaitFor(
@@ -1596,11 +1615,12 @@ TEST_F(QLTabletTest, ElectUnsynchronizedFollower) {
     ASSERT_FALSE(resp.has_error()) << resp.error().ShortDebugString();
   }
 
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_NO_FATALS(SetValue(session, 2, -2, table));
 
-  ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start(
+    tserver::WaitTabletsBootstrapped::kFalse));
 }
 
 TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
@@ -1634,7 +1654,8 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
 
     SetValue(session, 4, -4, table);
 
-    ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start());
+    ASSERT_OK(cluster_->mini_tablet_server(follower_idx)->Start(
+      tserver::WaitTabletsBootstrapped::kFalse));
 
     // Wait until newly started follower receive a new operation.
     // Without fix for GH #7145 it would crash in this case.
@@ -1645,6 +1666,12 @@ TEST_F(QLTabletTest, FollowerRestartDuringWrite) {
 }
 
 TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
+  // Key encoding gives benefits only when keys are nearly similar, for instance different columns
+  // of the same row.
+  // For packed row the benefit is smaller, so we disable packed row for this test, to check
+  // whether encoding works at all.
+  docdb::DisableYcqlPackedRow();
+
   constexpr auto kNumRows = 4000;
   constexpr auto kNumRowsPerBatch = 100;
   // We are testing delta encoding, but not compression.
@@ -1681,7 +1708,7 @@ TEST_F_EX(QLTabletTest, DataBlockKeyValueEncoding, QLTabletRf1Test) {
 
     auto get_tablet_size = [](tablet::Tablet* tablet) -> Result<size_t> {
       RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact());
+      RETURN_NOT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction));
       return tablet->GetCurrentVersionSstFilesSize();
     };
 
@@ -1775,6 +1802,41 @@ TEST_F_EX(QLTabletTest, ShortPKCompactionTime, QLTabletRf1Test) {
   ASSERT_OK(session->TEST_Flush());
 
   ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
+  // This test corrupts cluster by intention.
+  DontVerifyClusterBeforeNextTearDown();
+
+  constexpr auto kNumRows = 1000;
+
+  CreateTable(kTable1Name, &table1_, /* num_tablets = */ 1, /* transactional = */ false);
+  LOG(INFO) << "Created table";
+
+  FillTable(0, kNumRows, table1_);
+  LOG(INFO) << "Inserted " << kNumRows << " rows";
+
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    if (!peer->tablet()) {
+      continue;
+    }
+    auto* db = peer->tablet()->TEST_db();
+    for (const auto& sst_file : db->GetLiveFilesMetaData()) {
+      LOG(INFO) << "Found SST file: " << AsString(sst_file);
+      const auto path_to_corrupt = sst_file.DataFilePath();
+      LOG(INFO) << "Corrupting file: " << path_to_corrupt;
+      ASSERT_OK(CorruptFile(path_to_corrupt, /* offset = */ -1024, /* bytes_to_corrupt = */ 512));
+    }
+  }
+
+  auto session = CreateSession();
+  const auto rows_count_result = CountRows(session, table1_);
+  LOG(INFO) << "Rows count result: " << rows_count_result;
+  ASSERT_FALSE(rows_count_result.ok());
 }
 
 } // namespace client

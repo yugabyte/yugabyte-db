@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_CONSENSUS_CONSENSUS_ERROR_H
-#define YB_CONSENSUS_CONSENSUS_ERROR_H
+#pragma once
 
 #include "yb/consensus/consensus_types.pb.h"
 #include "yb/util/status_ec.h"
@@ -35,5 +34,3 @@ typedef StatusErrorCodeImpl<ConsensusErrorTag> ConsensusError;
 
 } // namespace consensus
 } // namespace yb
-
-#endif // YB_CONSENSUS_CONSENSUS_ERROR_H

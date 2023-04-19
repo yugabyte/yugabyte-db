@@ -29,8 +29,8 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MONOTIME_H
-#define YB_UTIL_MONOTIME_H
+
+#pragma once
 
 #include <chrono>
 #include <cstdint>
@@ -51,6 +51,8 @@ class MonoTime;
 // may not be used for any operation.
 class MonoDelta {
  public:
+  static MonoDelta FromDays(double days);
+  static MonoDelta FromHours(double hours);
   static MonoDelta FromMinutes(double minutes);
   static MonoDelta FromSeconds(double seconds);
   static MonoDelta FromMilliseconds(int64_t ms);
@@ -75,6 +77,8 @@ class MonoDelta {
   std::string ToString() const;
   double ToSeconds() const;
   double ToMinutes() const;
+  double ToHours() const;
+  double ToDays() const;
   int64_t ToMilliseconds() const;
   int64_t ToMicroseconds() const;
   int64_t ToNanoseconds() const;
@@ -149,18 +153,32 @@ class MonoTime {
   static constexpr int64_t kMillisecondsPerSecond = 1000L;
   static constexpr int64_t kSecondsPerMinute = 60L;
   static constexpr int64_t kSecondsPerHour = 60L * kSecondsPerMinute;
+  static constexpr int64_t kMinutesPerHour = 60L;
+  static constexpr int64_t kHoursPerDay = 24L;
 
-  static constexpr int64_t kNanosecondsPerMillisecond =
-      kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond;
+  static constexpr int64_t kMillisecondsPerMinute =
+      kMillisecondsPerSecond * kSecondsPerMinute;
+
+  static constexpr int64_t kMillisecondsPerHour =
+      kMillisecondsPerMinute * kMinutesPerHour;
 
   static constexpr int64_t kMicrosecondsPerSecond =
       kMillisecondsPerSecond * kMicrosecondsPerMillisecond;
+
+  static constexpr int64_t kNanosecondsPerMillisecond =
+      kNanosecondsPerMicrosecond * kMicrosecondsPerMillisecond;
 
   static constexpr int64_t kNanosecondsPerSecond =
       kNanosecondsPerMillisecond * kMillisecondsPerSecond;
 
   static constexpr int64_t kNanosecondsPerMinute =
       kNanosecondsPerSecond * kSecondsPerMinute;
+
+  static constexpr int64_t kNanosecondsPerHour =
+      kNanosecondsPerMinute * kMinutesPerHour;
+
+  static constexpr int64_t kNanosecondsPerDay =
+      kNanosecondsPerHour * kHoursPerDay;
 
   static const MonoTime kMin;
   static const MonoTime kMax;
@@ -221,6 +239,12 @@ inline MonoTime& operator+=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
   return lhs;
 }
 
+template <class Clock>
+inline auto operator+=(std::chrono::time_point<Clock>& lhs, const MonoDelta& rhs) { // NOLINT
+  lhs += rhs.ToSteadyDuration();
+  return lhs;
+}
+
 inline MonoTime operator+(MonoTime lhs, const MonoDelta& rhs) {
   lhs += rhs;
   return lhs;
@@ -233,6 +257,11 @@ inline auto operator+(const std::chrono::time_point<Clock>& lhs, const MonoDelta
 
 inline MonoDelta operator-(const MonoTime& lhs, const MonoTime& rhs) {
   return lhs.GetDeltaSince(rhs);
+}
+
+template <class Clock>
+inline auto operator-(const std::chrono::time_point<Clock>& lhs, const MonoDelta& rhs) {
+  return lhs - rhs.ToSteadyDuration();
 }
 
 inline MonoTime& operator-=(MonoTime& lhs, const MonoDelta& rhs) { // NOLINT
@@ -328,5 +357,3 @@ std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point);
 bool IsInitialized(CoarseTimePoint time_point);
 
 } // namespace yb
-
-#endif // YB_UTIL_MONOTIME_H

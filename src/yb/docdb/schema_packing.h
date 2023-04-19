@@ -15,19 +15,25 @@
 
 #include <unordered_map>
 
+#include <boost/container/small_vector.hpp>
 #include <boost/functional/hash.hpp>
 
 #include <google/protobuf/repeated_field.h>
 
 #include "yb/common/common_fwd.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/column_id.h"
+#include "yb/common/id_mapping.h"
 
 #include "yb/docdb/docdb.fwd.h"
 
 #include "yb/util/slice.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
 namespace docdb {
+
+YB_STRONGLY_TYPED_BOOL(OverwriteSchemaPacking);
 
 struct ColumnPackingData {
   ColumnId id;
@@ -59,7 +65,10 @@ struct ColumnPackingData {
 
 class SchemaPacking {
  public:
-  explicit SchemaPacking(const Schema& schema);
+  // Used to mark column as skipped by packer. For instance in case of collection column.
+  static constexpr int64_t kSkippedColumnIdx = IdMapping::kNoEntry;
+
+  SchemaPacking(TableType table_type, const Schema& schema);
   explicit SchemaPacking(const SchemaPackingPB& pb);
 
   size_t columns() const {
@@ -80,34 +89,49 @@ class SchemaPacking {
   }
 
   bool SkippedColumn(ColumnId column_id) const;
+  int64_t GetIndex(ColumnId column_id) const;
   Slice GetValue(size_t idx, const Slice& packed) const;
   std::optional<Slice> GetValue(ColumnId column_id, const Slice& packed) const;
+
+  // Fills `bounds` with pointers of all packed columns in row represented by `packed`.
+  void GetBounds(
+      const Slice& packed, boost::container::small_vector_base<const uint8_t*>* bounds) const;
   void ToPB(SchemaPackingPB* out) const;
+
+  bool CouldPack(const google::protobuf::RepeatedPtrField<QLColumnValuePB>& values) const;
 
   std::string ToString() const;
 
   bool operator==(const SchemaPacking&) const = default;
 
+  bool SchemaContainsPacking(TableType table_type, const Schema& schema) const {
+    SchemaPacking packing(table_type, schema);
+    return packing == *this;
+  }
+
  private:
   std::vector<ColumnPackingData> columns_;
-  std::unordered_map<ColumnId, int64_t, boost::hash<ColumnId>> column_to_idx_;
+  IdMapping column_to_idx_;
   size_t varlen_columns_count_;
 };
 
 class SchemaPackingStorage {
  public:
-  SchemaPackingStorage();
-  explicit SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
+  explicit SchemaPackingStorage(TableType table_type);
+  SchemaPackingStorage(const SchemaPackingStorage& rhs, SchemaVersion min_schema_version);
 
   Result<const SchemaPacking&> GetPacking(SchemaVersion schema_version) const;
   Result<const SchemaPacking&> GetPacking(Slice* packed_row) const;
+  Result<SchemaVersion> GetSchemaPackingVersion(
+      TableType table_type, const Schema& schema) const;
 
   void AddSchema(SchemaVersion version, const Schema& schema);
 
   Status LoadFromPB(const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
   Status MergeWithRestored(
       SchemaVersion schema_version, const SchemaPB& schema,
-      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas);
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
+      OverwriteSchemaPacking overwrite);
 
   // Copy all schema packings except schema_version_to_skip to out.
   void ToPB(
@@ -118,6 +142,8 @@ class SchemaPackingStorage {
     return version_to_schema_packing_.size();
   }
 
+  std::string VersionsToString() const;
+
   bool HasVersionBelow(SchemaVersion version) const;
 
   bool operator==(const SchemaPackingStorage&) const = default;
@@ -125,8 +151,22 @@ class SchemaPackingStorage {
  private:
   // Set could_present to true when schemas could contain the same packings as already present.
   Status InsertSchemas(
-      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present);
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
+      OverwriteSchemaPacking overwrite);
+  static Status InsertSchemas(
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas, bool could_present,
+      OverwriteSchemaPacking overwrite, std::unordered_map<SchemaVersion, SchemaPacking>* out);
 
+  Result<std::unordered_map<SchemaVersion, SchemaPacking>> GetMergedSchemaPackings(
+      SchemaVersion schema_version, const SchemaPB& schema,
+      const google::protobuf::RepeatedPtrField<SchemaPackingPB>& schemas,
+      OverwriteSchemaPacking overwrite) const;
+
+  static void AddSchema(
+      TableType table_type, SchemaVersion version, const Schema& schema,
+      std::unordered_map<SchemaVersion, SchemaPacking>* out);
+
+  TableType table_type_;
   std::unordered_map<SchemaVersion, SchemaPacking> version_to_schema_packing_;
 };
 

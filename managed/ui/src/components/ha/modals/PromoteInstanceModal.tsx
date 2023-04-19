@@ -66,7 +66,7 @@ export const PromoteInstanceModal: FC<PromoteInstanceModalProps> = ({
     api.promoteHAInstance(configId, instanceId, backupFile)
   );
 
-  const backupsList = (data || []).map(mapFileName);
+  const backupsList = (data ?? []).map(mapFileName);
 
   const closeModal = () => {
     if (!formik.current.isSubmitting) onClose();

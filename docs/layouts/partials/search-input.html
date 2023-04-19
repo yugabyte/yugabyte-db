@@ -1,30 +1,16 @@
-{{ if or .Site.Params.gcs_engine_id .Site.Params.algolia_docsearch -}}
-<i class="fas fa-search search-icon"></i>
-<input type="search" name="q" class="form-control td-search-input" placeholder="Search YugabyteDB Docs" aria-label="Search YugabyteDB Docs" autocomplete="off">
-{{ else if .Site.Params.offlineSearch -}}
-{{ $offlineSearchIndex := resources.Get "json/offline-search-index.json" | resources.ExecuteAsTemplate "offline-search-index.json" . -}}
-{{ if hugo.IsProduction -}}
-{{/* Use `md5` as finger print hash function to shorten file name to avoid `file name too long` error. */ -}}
-{{ $offlineSearchIndex = $offlineSearchIndex | fingerprint "md5" -}}
-{{ end -}}
-{{ $offlineSearchLink := $offlineSearchIndex.RelPermalink -}}
-
-<i class="fas fa-search search-icon"></i>
-<input
-  type="search"
-  class="form-control td-search-input"
-  placeholder="Search YugabyteDB Docs"
-  aria-label="Search YugabyteDB Docs"
-  autocomplete="off"
-  {{/*
-    The data attribute name of the json file URL must end with `src` since
-    Hugo's absurlreplacer requires `src`, `href`, `action` or `srcset` suffix for the attribute name.
-    If the absurlreplacer is not applied, the URL will start with `/`.
-    It causes the json file loading error when when relativeURLs is enabled.
-    https://github.com/google/docsy/issues/181
-  */}}
-  data-offline-search-index-json-src="{{ $offlineSearchLink }}"
-  data-offline-search-base-href="/"
-  data-offline-search-max-results="{{ .Site.Params.offlineSearchMaxResults | default 10 }}"
->
+{{ if .Site.Params.algolia_docsearch -}}
+<div class="search-area">
+  <i class="search-icon"></i>
+  <input type="search" id="search-query" name="query"  class="td-search-input" placeholder="Search documentation" aria-label="Search documentation"
+  autocomplete="off">
+  <div class="reset-input"></div>
+  {{ if ne .Type "searchpage" }}
+  <div class="search-result" style="display:none">
+    <div class="algolia-data" id="docs">
+      <ul id="doc-hit" class="content-panel"></ul>
+      <div id="pagination-docs" class="pager"></div>
+    </div>
+  </div>
+  {{ end }}
+</div>
 {{ end -}}

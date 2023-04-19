@@ -6,10 +6,11 @@ import { YBFormInput, YBFormSelect } from '../../common/forms/fields';
 import { CreateXClusterConfigFormValues } from './CreateConfigModal';
 import { Universe } from '../../../redesign/helpers/dtos';
 import { Field, FormikProps } from 'formik';
-import { getUniverseStatus, universeState } from '../../universes/helpers/universeHelpers';
+import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
 import { fetchUniversesList } from '../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { CollapsibleNote } from '../common/CollapsibleNote';
+import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
 
 import styles from './SelectTargetUniverseStep.module.scss';
 
@@ -58,11 +59,11 @@ export const SelectTargetUniverseStep = ({
     fetchUniversesList().then((res) => res.data)
   );
 
-  if (universeListQuery.isLoading) {
+  if (universeListQuery.isLoading || universeListQuery.isIdle) {
     return <YBLoading />;
   }
 
-  if (universeListQuery.isError || universeListQuery.data === undefined) {
+  if (universeListQuery.isError) {
     return <YBErrorIndicator />;
   }
 
@@ -77,7 +78,6 @@ export const SelectTargetUniverseStep = ({
           label="Replication Name"
           component={YBFormInput}
         />
-
         <Field
           name="targetUniverse"
           component={YBFormSelect}
@@ -85,7 +85,7 @@ export const SelectTargetUniverseStep = ({
             .filter(
               (universe) =>
                 universe.universeUUID !== currentUniverseUUID &&
-                getUniverseStatus(universe).state !== universeState.PAUSED
+                !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
             )
             .map((universe) => {
               return {

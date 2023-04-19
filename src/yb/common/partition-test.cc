@@ -120,4 +120,69 @@ TEST(PartitionTest, TestRedisEncoding) {
   ASSERT_EQ(pk1, pk2);
 }
 
+void CheckMiddleKey(
+    const std::string& key_start, const std::string& key_end,
+    const std::string& expected_middle_key) {
+  ASSERT_EQ(
+      ASSERT_RESULT(PartitionSchema::GetLexicographicMiddleKey(key_start, key_end)),
+      expected_middle_key);
+}
+
+void CheckMiddleKey(
+    const std::string& key_start, const std::string& key_end,
+    const std::vector<uint8_t>& expected_middle_key_arr) {
+  std::string expected_middle_key(expected_middle_key_arr.begin(), expected_middle_key_arr.end());
+  CheckMiddleKey(key_start, key_end, expected_middle_key);
+}
+
+void CheckMiddleKey(
+    const std::vector<uint8_t>& key_start_arr, const std::vector<uint8_t>& key_end_arr,
+    const std::vector<uint8_t>& expected_middle_key_arr) {
+  std::string key_start(key_start_arr.begin(), key_start_arr.end());
+  std::string key_end(key_end_arr.begin(), key_end_arr.end());
+  CheckMiddleKey(key_start, key_end, expected_middle_key_arr);
+}
+
+TEST(PartitionTest, TestLexicographicMiddleKey) {
+// Macro to make a bit easier to read.
+#define vint8 vector<uint8_t>
+
+  // Special case.
+  CheckMiddleKey("", "", vint8{128});
+
+  // Test with some default hash partitions for 6 tablets.
+  // 0x0000, 0x2AAA -> 0x1555
+  CheckMiddleKey(vint8{0, 0}, vint8{42, 170}, vint8{21, 85});
+  // 0x2AAA, 0x5554 -> 0x3FFF
+  CheckMiddleKey(vint8{42, 170}, vint8{85, 84}, vint8{63, 255});
+  // 0x5554, 0x7FFD -> 0x6AA8
+  CheckMiddleKey(vint8{85, 84}, vint8{127, 253}, vint8{106, 168});
+  // 0x7FFE, 0xAAA7 -> 0x9552
+  CheckMiddleKey(vint8{127, 253}, vint8{170, 167}, vint8{149, 82});
+  // 0xAAA8, 0xD551 -> 0xBFFC
+  CheckMiddleKey(vint8{170, 167}, vint8{213, 81}, vint8{191, 252});
+  // 0xD552, 0xFFFF -> 0xEAA8
+  CheckMiddleKey(vint8{213, 81}, vint8{255, 255}, vint8{234, 168});
+
+  // 0xFFFD, 0xFFFF -> 0xFFFE
+  CheckMiddleKey(vint8{255, 253}, vint8{255, 255}, vint8{255, 254});
+
+  // Test with some ranged partitions, these are arbitrary length strings.
+  // A = 65, so expect 65/2 = 32.5, then we have (65+256)/2 = 160.5
+  CheckMiddleKey("", "AAAAAA", vint8{32, 160, 160, 160, 160, 160});
+  // A = 65 and consider "" as 0xFFFFFF, so expect (65+255)/2 = 160
+  CheckMiddleKey("AAAAAA", "", vint8{160, 160, 160, 160, 160, 160});
+  // Simple cases.
+  CheckMiddleKey("AAAAAA", "CCCCCC", "BBBBBB");
+  CheckMiddleKey("AAAAAA", "AAAAAC", "AAAAAB");
+  // Uneven lengths.
+  CheckMiddleKey("A", "AAAAAA", vint8{65, 32, 160, 160, 160, 160});
+  CheckMiddleKey("BBBBBB", "D", vint8{67, 161, 33, 33, 33, 32});
+
+  // Example from partition.cc:
+  CheckMiddleKey(vint8{1, 255, 20}, vint8{2, 5, 101}, vint8{2, 2, 60});
+
+#undef vint8
+}
+
 } // namespace yb

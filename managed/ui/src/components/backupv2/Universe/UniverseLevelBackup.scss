@@ -1,5 +1,48 @@
+@use '../../../_style/colors.scss';
+
 #backup-tab-panel {
   .tab-content {
     padding: 30px 30px;
+  }
+
+  .advanced_configs {
+    right: 10px;
+    top: -15px;
+    position: absolute;
+
+    & > a {
+      padding: 0;
+      background: transparent;
+      border: none;
+
+      #advanced_config_but {
+        padding: 11px 15px;
+        width: 140px;
+        height: 40px;
+        background: colors.$YB_BG_WHITE_3;
+        border: 1px solid colors.$YB_BG_WHITE_4;
+        border-radius: 8px;
+        font-weight: 400;
+        font-size: 14px;
+        line-height: 17px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+
+        i {
+          color: black;
+          margin-right: 6px;
+        }
+
+        span.caret {
+          border-top: 6px dashed;
+          border-right: 6px solid transparent;
+          border-left: 6px solid transparent;
+        }
+      }
+    }
+  }
+  & > .nav.nav-tabs {
+    position: relative;
   }
 }

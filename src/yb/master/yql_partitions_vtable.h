@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_PARTITIONS_VTABLE_H
-#define YB_MASTER_YQL_PARTITIONS_VTABLE_H
+#pragma once
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/yql_virtual_table.h"
@@ -34,8 +33,8 @@ class YQLPartitionsVTable : public YQLVirtualTable {
   Result<std::shared_ptr<QLRowBlock>> RetrieveData(const QLReadRequestPB& request) const;
   Result<std::shared_ptr<QLRowBlock>> GenerateAndCacheData() const;
 
-  // Remove a table from the system.partitions vtable.
-  void RemoveFromCache(const TableId& table_id) const;
+  // Remove tables from the system.partitions vtable.
+  void RemoveFromCache(const std::vector<TableId>& table_ids) const;
 
   // Filter only tablets that have relevant system.partitions changes from a list of tablets that
   // have heartbeated in and are being processed.
@@ -97,4 +96,3 @@ class YQLPartitionsVTable : public YQLVirtualTable {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_PARTITIONS_VTABLE_H

@@ -26,7 +26,7 @@ const mapDispatchToProps = (dispatch) => {
   };
 };
 
-function mapStateToProps(state, ownProps) {
+function mapStateToProps(state) {
   return {
     universe: state.universe,
     tasks: state.tasks

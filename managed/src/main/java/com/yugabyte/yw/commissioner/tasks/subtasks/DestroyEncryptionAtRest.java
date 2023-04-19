@@ -44,16 +44,16 @@ public class DestroyEncryptionAtRest extends AbstractTaskBase {
   @Override
   public void run() {
     try {
-      Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
-      Customer c = Customer.get(u.customerId);
-      if (EncryptionAtRestUtil.getNumKeyRotations(taskParams().universeUUID) > 0) {
-        keyManager.cleanupEncryptionAtRest(c.uuid, taskParams().universeUUID);
+      Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+      Customer c = Customer.get(u.getCustomerId());
+      if (EncryptionAtRestUtil.getNumUniverseKeys(taskParams().getUniverseUUID()) > 0) {
+        keyManager.cleanupEncryptionAtRest(c.getUuid(), taskParams().getUniverseUUID());
       }
     } catch (Exception e) {
       final String errMsg =
           String.format(
               "Error caught cleaning up encryption at rest for universe %s",
-              taskParams().universeUUID);
+              taskParams().getUniverseUUID());
       log.error(errMsg, e);
     }
   }

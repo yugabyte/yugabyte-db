@@ -142,8 +142,8 @@ export default class Importer extends Component {
         (!this.props.universeImport.error && idx === currentStep && currentStep !== 0)
           ? 'finished'
           : this.props.universeImport.error && idx === currentStep + 1
-          ? 'failed'
-          : '';
+            ? 'failed'
+            : '';
       return (
         <li key={idx} className={itemClass + ' ' + item.class}>
           <span>{item.replace('_', ' ')}</span>

@@ -18,6 +18,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/docdb/primitive_value.h"
+#include "yb/docdb/value_type.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -71,8 +72,8 @@ Result<KeyEntryValue> EvalExpr(
 Result<KeyEntryValue> EvalExpr(
     const LWPgsqlExpressionPB& expr, const Schema& schema, SortingType sorting_type) {
   QLExprExecutor executor;
-  LWExprResult result(&expr.arena());
-  RETURN_NOT_OK(executor.EvalExpr(expr, nullptr, result.Writer(), &schema));
+  QLExprResult result;
+  RETURN_NOT_OK(executor.EvalExpr(expr.ToGoogleProtobuf(), nullptr, result.Writer(), &schema));
 
   return KeyEntryValue::FromQLValuePB(result.Value(), sorting_type);
 }

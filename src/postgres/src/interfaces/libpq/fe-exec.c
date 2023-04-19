@@ -18,6 +18,9 @@
 #include <fcntl.h>
 #include <limits.h>
 
+/* Yugabyte includes */
+#include <stdatomic.h>
+
 #ifdef WIN32
 #include "win32.h"
 #else
@@ -55,8 +58,8 @@ static const PGresult OOM_result = {
  * static state needed by PQescapeString and PQescapeBytea; initialize to
  * values that result in backward-compatible behavior
  */
-static int	static_client_encoding = PG_SQL_ASCII;
-static bool static_std_strings = false;
+static atomic_int	static_client_encoding = PG_SQL_ASCII;
+static atomic_bool static_std_strings = false;
 
 
 static PGEvent *dupEvents(PGEvent *events, int count, size_t *memSize);

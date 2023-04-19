@@ -21,7 +21,8 @@ const getValidationSchema = (type) => {
       .matches(/(?:(https|s3|gs):\/\/).+$/, {
         message: 'Path should starts with gs, s3 or https'
       })
-      .required('Path is required')
+      .required('Path is required'),
+    helmChart: Yup.string(),
   };
 
   switch (type) {
@@ -33,7 +34,21 @@ const getValidationSchema = (type) => {
       shape['credentialsJson'] = Yup.string().required('Credentials Json is required');
       break;
     case 'http':
-      shape['x86_64_checksum'] = Yup.string().required('Checksum is required');
+      shape['x86_64_checksum'] = Yup.string()
+      .required('Checksum is required')
+      .matches(/(MD5|SHA1|SHA256):\w+/, {
+        message: 'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];'
+          + ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
+      });
+      shape['helmChartChecksum'] = Yup.string().when('helmChart', {
+        is: (val) => val && val.length > 0,
+        then: Yup.string().required('Checksum is required'),
+        otherwise: Yup.string(),
+      })
+      .matches(/(MD5|SHA1|SHA256):\w+/, {
+        message: 'Checksum must have a pattern of [MD5|SHA1|SHA256]:[checksum_value];'
+          + ' e.g., MD5:99d42a85b0d2b2813d6cea877aaab919'
+      });
       break;
     default:
       throw new Error('Unknown import type ' + type);
@@ -47,6 +62,7 @@ const PathField = () => <Field name="x86_64" label="Path" component={YBFormInput
 const S3Fields = () => (
   <>
     <PathField />
+    <Field name="helmChart" label="Helm chart" component={YBFormInput} />
     <Field name="accessKeyId" label="Access key id" component={YBFormInput} />
     <Field name="secretAccessKey" label="Secret access key" component={YBFormInput} />
   </>
@@ -55,6 +71,7 @@ const S3Fields = () => (
 const GcsFields = () => (
   <>
     <PathField />
+    <Field name="helmChart" label="Helm chart" component={YBFormInput} />
     <Field name="credentialsJson" label="Credentials Json" component={YBFormInput} />
   </>
 );
@@ -63,6 +80,8 @@ const HttpFields = () => (
   <>
     <PathField />
     <Field name="x86_64_checksum" component={YBFormInput} label="Checksum" />
+    <Field name="helmChart" label="Helm chart" component={YBFormInput} />
+    <Field name="helmChartChecksum" label="Helm chart checksum" component={YBFormInput} />
   </>
 );
 
@@ -115,13 +134,27 @@ const preparePayload = (values) => {
   }
 
   payload[version][importType]['paths'] = {
-    x86_64: values['x86_64']
+    x86_64: values['x86_64'],
   };
 
   if (importType === 'http') {
     payload[version][importType]['paths'] = {
       ...payload[version][importType]['paths'],
       x86_64_checksum: values['x86_64_checksum']
+    };
+  }
+
+  if (values['helmChart']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChart: values['helmChart'],
+    };
+  }
+
+  if (values['helmChartChecksum']) {
+    payload[version][importType]['paths'] = {
+      ...payload[version][importType]['paths'],
+      helmChartChecksum: values['helmChartChecksum'],
     };
   }
 

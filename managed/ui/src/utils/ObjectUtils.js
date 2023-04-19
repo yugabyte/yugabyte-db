@@ -21,6 +21,7 @@ export function isNonEmptyArray(arr) {
 }
 
 export function isNullOrEmpty(obj) {
+  // eslint-disable-next-line eqeqeq
   if (obj == null) {
     return true;
   }
@@ -103,7 +104,7 @@ export function areIntentsEqual(userIntent1, userIntent2) {
     _.isEqual(userIntent1.regionList.sort(), userIntent2.regionList.sort()) &&
     // there was a bug with storageClass absent on server
     _.isEqual(_.omit(userIntent1.deviceInfo, ['storageClass']),
-              _.omit(userIntent2.deviceInfo, ['storageClass'])) &&
+      _.omit(userIntent2.deviceInfo, ['storageClass'])) &&
     _.isEqual(userIntent1.replicationFactor, userIntent2.replicationFactor) &&
     _.isEqual(userIntent1.provider, userIntent2.provider) &&
     _.isEqual(userIntent1.universeName, userIntent2.universeName) &&
@@ -258,15 +259,15 @@ export function normalizeToPositiveFloat(value) {
 // TODO: Move the functions below to StringUtils.js?
 
 export function trimString(string) {
-  return string && string.trim();
+  return string?.trim();
 }
 
 export function convertSpaceToDash(string) {
-  return string && string.replace(/\s+/g, '-');
+  return string?.string.replace(/\s+/g, '-');
 }
 
 export function trimSpecialChars(string) {
-  return string && string.replace(/[^a-zA-Z0-9/-]+/g, '');
+  return string?.replace(/[^a-zA-Z0-9/-]+/g, '');
 }
 
 export function sortInstanceTypeList(instanceTypeArr) {
@@ -368,7 +369,7 @@ export const isValidObject = isDefinedNotNull;
 export const createErrorMessage = (payload) => {
   const structuredError = payload?.response?.data?.error;
   if (structuredError) {
-    if (typeof structuredError == 'string') {
+    if (typeof structuredError === 'string') {
       return structuredError;
     }
     const message = Object.keys(structuredError)
@@ -380,4 +381,4 @@ export const createErrorMessage = (payload) => {
     return message;
   }
   return payload.message;
-}
+};

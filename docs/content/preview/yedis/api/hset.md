@@ -14,79 +14,72 @@ type: docs
 
 ## Synopsis
 
-<b>`HSET key field value`</b><br>
+**`HSET key field value`**
+
 This command sets the data for the given `field` of the hash that is associated with the given `key` with the given `value`. If the `field` already exists in the hash, it is overwritten.
 
-<li>If the given `key` does not exist, an associated hash is created, and the `field` and `value` are inserted.</li>
-<li>If the given `key` is not associated with a hash, an error is raised.</li>
+- If the given `key` does not exist, an associated hash is created, and the `field` and `value` are inserted.
+- If the given `key` is not associated with a hash, an error is raised.
 
 ## Return value
 
 Depends on the configuration parameter `emulate_redis_responses`.
-<li>
-If `emulate_redis_responses` is true, returns
- 1 if a new field is inserted and 0 if an existing field is updated.
-</li>
-<li>
-If `emulate_redis_responses` is false, returns
- OK
-</li>
+- If `emulate_redis_responses` is true, returns 1 if a new field is inserted and 0 if an existing field is updated.
+- If `emulate_redis_responses` is false, returns OK
 
 ## Examples
 
-<li> `emulate_redis_responses` is `true`.
+- `emulate_redis_responses` is `true`.
 
-```sh
-$ HSET yugahash area1 "America"
-```
+  ```sh
+  $ HSET yugahash area1 "America"
+  ```
 
-```
-1
-```
+  ```
+  1
+  ```
 
-```sh
-$ HSET yugahash area1 "North America"
-```
+  ```sh
+  $ HSET yugahash area1 "North America"
+  ```
 
-```
-0
-```
+  ```
+  0
+  ```
 
-```sh
-$ HGET yugahash area1
-```
+  ```sh
+  $ HGET yugahash area1
+  ```
 
-```
-"North America"
-```
-</li>
+  ```
+  "North America"
+  ```
 
-<li> `emulate_redis_responses` is `false`.
+- `emulate_redis_responses` is `false`.
 
-```sh
-$ HSET yugahash area1 "America"
-```
+  ```sh
+  $ HSET yugahash area1 "America"
+  ```
 
-```
-"OK"
-```
+  ```
+  "OK"
+  ```
 
-```sh
-$ HSET yugahash area1 "North America"
-```
+  ```sh
+  $ HSET yugahash area1 "North America"
+  ```
 
-```
-"OK"
-```
+  ```
+  "OK"
+  ```
 
-```sh
-$ HGET yugahash area1
-```
+  ```sh
+  $ HGET yugahash area1
+  ```
 
-```
-"North America"
-```
-</li>
+  ```
+  "North America"
+  ```
 
 ## See also
 

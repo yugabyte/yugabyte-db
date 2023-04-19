@@ -57,7 +57,7 @@
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/schema.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -83,7 +83,7 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
@@ -108,6 +108,7 @@ DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
 DECLARE_int64(reset_master_leader_timeout_ms);
 
 DECLARE_string(flagfile);
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 namespace yb {
 
@@ -246,6 +247,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE(IsCreateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteNamespaceDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsDeleteTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsFlushTablesDone);
+YB_CLIENT_SPECIALIZE_SIMPLE(GetCompactionStatus);
 YB_CLIENT_SPECIALIZE_SIMPLE(IsTruncateTableDone);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListNamespaces);
 YB_CLIENT_SPECIALIZE_SIMPLE(ListTablegroups);
@@ -254,8 +256,10 @@ YB_CLIENT_SPECIALIZE_SIMPLE(ListUDTypes);
 YB_CLIENT_SPECIALIZE_SIMPLE(TruncateTable);
 YB_CLIENT_SPECIALIZE_SIMPLE(ValidateReplicationInfo);
 YB_CLIENT_SPECIALIZE_SIMPLE(CheckIfPitrActive);
-YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, AddTransactionStatusTablet);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, CreateTransactionStatusTable);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Admin, WaitForYsqlBackendsCatalogVersion);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetIndexBackfillProgress);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTableLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTabletLocations);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetTransactionStatusTablets);
@@ -263,6 +267,7 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetYsqlCatalogConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigGet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, RedisConfigSet);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, ReservePgsqlOids);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Client, GetStatefulServiceLocation);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, GetAutoFlagsConfig);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalanced);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Cluster, IsLoadBalancerIdle);
@@ -558,7 +563,8 @@ Status YBClient::Data::DeleteTable(YBClient* client,
                                    const bool is_index_table,
                                    CoarseTimePoint deadline,
                                    YBTableName* indexed_table_name,
-                                   bool wait) {
+                                   bool wait,
+                                   const TransactionMetadata *txn) {
   DeleteTableRequestPB req;
   DeleteTableResponsePB resp;
   int attempts = 0;
@@ -568,6 +574,14 @@ Status YBClient::Data::DeleteTable(YBClient* client,
   }
   if (!table_id.empty()) {
     req.mutable_table()->set_table_id(table_id);
+  }
+  if (FLAGS_ysql_ddl_rollback_enabled && txn) {
+    // If 'txn' is set, this means this delete operation should actually result in the
+    // deletion of table data only if this transaction is a success. Therefore ensure that
+    // 'wait' is not set, because it makes no sense to wait for the deletion to complete if we want
+    // to postpone the deletion until end of transaction.
+    DCHECK(!wait);
+    txn->ToPB(req.mutable_transaction());
   }
   req.set_is_index_table(is_index_table);
   const Status status = SyncLeaderMasterRpc(
@@ -642,15 +656,14 @@ Status YBClient::Data::IsDeleteTableInProgress(YBClient* client,
   IsDeleteTableDoneResponsePB resp;
   req.set_table_id(table_id);
 
-  auto status = SyncLeaderMasterRpc(
-      deadline, req, &resp, "IsDeleteTableDone",
-      &master::MasterDdlProxy::IsDeleteTableDoneAsync);
+  const auto status = SyncLeaderMasterRpc(
+      deadline, req, &resp, "IsDeleteTableDone", &master::MasterDdlProxy::IsDeleteTableDoneAsync);
   if (resp.has_error()) {
-    if (resp.error().code() == MasterErrorPB::OBJECT_NOT_FOUND) {
-      *delete_in_progress = false;
-      return Status::OK();
-    }
+    // Set 'retry' variable in 'RetryFunc()' function into FALSE to stop the retry loop.
+    // 'RetryFunc()' is called from 'WaitForDeleteTableToFinish()'.
+    *delete_in_progress = false; // Do not retry on error.
   }
+
   RETURN_NOT_OK(status);
   *delete_in_progress = !resp.done();
   return Status::OK();
@@ -727,7 +740,8 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
                                         const std::string& namespace_name,
                                         const std::string& namespace_id,
                                         const std::string& tablegroup_id,
-                                        const std::string& tablespace_id) {
+                                        const std::string& tablespace_id,
+                                        const TransactionMetadata* txn) {
   CreateTablegroupRequestPB req;
   CreateTablegroupResponsePB resp;
   req.set_id(tablegroup_id);
@@ -736,6 +750,10 @@ Status YBClient::Data::CreateTablegroup(YBClient* client,
 
   if (!tablespace_id.empty()) {
     req.set_tablespace_id(tablespace_id);
+  }
+
+  if (txn) {
+    txn->ToPB(req.mutable_transaction());
   }
 
   int attempts = 0;
@@ -1074,10 +1092,10 @@ Status YBClient::Data::FlushTablesHelper(YBClient* client,
 }
 
 Status YBClient::Data::FlushTables(YBClient* client,
-                                           const vector<YBTableName>& table_names,
-                                           bool add_indexes,
-                                           const CoarseTimePoint deadline,
-                                           const bool is_compaction) {
+                                   const vector<YBTableName>& table_names,
+                                   bool add_indexes,
+                                   const CoarseTimePoint deadline,
+                                   const bool is_compaction) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
@@ -1089,10 +1107,10 @@ Status YBClient::Data::FlushTables(YBClient* client,
 }
 
 Status YBClient::Data::FlushTables(YBClient* client,
-                                           const vector<TableId>& table_ids,
-                                           bool add_indexes,
-                                           const CoarseTimePoint deadline,
-                                           const bool is_compaction) {
+                                   const vector<TableId>& table_ids,
+                                   bool add_indexes,
+                                   const CoarseTimePoint deadline,
+                                   const bool is_compaction) {
   FlushTablesRequestPB req;
   req.set_add_indexes(add_indexes);
   req.set_is_compaction(is_compaction);
@@ -1126,6 +1144,27 @@ Status YBClient::Data::WaitForFlushTableToFinish(YBClient* client,
   return RetryFunc(
       deadline, "Waiting for FlushTables to be completed", "Timed out waiting for FlushTables",
       std::bind(&YBClient::Data::IsFlushTableInProgress, this, client, flush_id, _1, _2));
+}
+
+Status YBClient::Data::GetCompactionStatus(
+    const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time) {
+  GetCompactionStatusRequestPB req;
+  GetCompactionStatusResponsePB resp;
+
+  if (!table_name.has_table()) {
+    const string msg = "Could not get the compaction status without the table name" +
+                       (table_name.has_table_id() ? " for table id: " + table_name.table_id() : "");
+    return STATUS(InvalidArgument, msg);
+  }
+  table_name.SetIntoTableIdentifierPB(req.mutable_table());
+
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "GetCompactionStatus",
+      &master::MasterAdminProxy::GetCompactionStatusAsync));
+
+  *last_request_time = MonoTime::FromUint64(resp.last_request_time());
+
+  return Status::OK();
 }
 
 bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
@@ -1764,12 +1803,13 @@ class GetTableLocationsRpc
  public:
   GetTableLocationsRpc(
       YBClient* client, const TableId& table_id, int32_t max_tablets,
-      RequireTabletsRunning require_tablets_running, GetTableLocationsCallback user_cb,
-      CoarseTimePoint deadline)
+      RequireTabletsRunning require_tablets_running, PartitionsOnly partitions_only,
+      GetTableLocationsCallback user_cb, CoarseTimePoint deadline)
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {
     req_.mutable_table()->set_table_id(table_id);
     req_.set_max_returned_locations(max_tablets);
     req_.set_require_tablets_running(require_tablets_running);
+    req_.set_partitions_only(partitions_only);
   }
 
   std::string ToString() const override {
@@ -2075,10 +2115,10 @@ void YBClient::Data::DeleteNotServingTablet(
 
 void YBClient::Data::GetTableLocations(
     YBClient* client, const TableId& table_id, const int32_t max_tablets,
-    const RequireTabletsRunning require_tablets_running, const CoarseTimePoint deadline,
-    GetTableLocationsCallback callback) {
+    const RequireTabletsRunning require_tablets_running, const PartitionsOnly partitions_only,
+    const CoarseTimePoint deadline, GetTableLocationsCallback callback) {
   auto rpc = StartRpc<internal::GetTableLocationsRpc>(
-      client, table_id, max_tablets, require_tablets_running, callback, deadline);
+      client, table_id, max_tablets, require_tablets_running, partitions_only, callback, deadline);
 }
 
 void YBClient::Data::LeaderMasterDetermined(const Status& status,
@@ -2370,11 +2410,9 @@ Status YBClient::Data::ValidateReplicationInfo(
   ValidateReplicationInfoResponsePB resp;
   auto new_ri = req.mutable_replication_info();
   new_ri->CopyFrom(replication_info);
-  Status status = SyncLeaderMasterRpc(
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
       deadline, req, &resp, "ValidateReplicationInfo",
-      &master::MasterReplicationProxy::ValidateReplicationInfoAsync);
-  RETURN_NOT_OK(status);
-
+      &master::MasterReplicationProxy::ValidateReplicationInfoAsync));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -2397,6 +2435,22 @@ Result<TableSizeInfo> YBClient::Data::GetTableDiskSize(
   }
 
   return TableSizeInfo{resp.size(), resp.num_missing_tablets()};
+}
+
+Status YBClient::Data::ReportYsqlDdlTxnStatus(
+    const TransactionMetadata& txn, bool is_committed, const CoarseTimePoint& deadline) {
+  master::ReportYsqlDdlTxnStatusRequestPB req;
+  master::ReportYsqlDdlTxnStatusResponsePB resp;
+
+  req.set_transaction_id(txn.transaction_id.data(), txn.transaction_id.size());
+  req.set_is_committed(is_committed);
+  RETURN_NOT_OK(SyncLeaderMasterRpc(
+      deadline, req, &resp, "ReportYsqlDdlTxnStatus",
+      &master::MasterDdlProxy::ReportYsqlDdlTxnStatusAsync));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
 }
 
 Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {

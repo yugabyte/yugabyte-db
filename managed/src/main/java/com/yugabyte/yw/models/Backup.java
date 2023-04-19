@@ -9,17 +9,22 @@ import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.TimeUnit;
+import com.yugabyte.yw.models.helpers.TransactionUtil;
 import com.yugabyte.yw.models.paging.BackupPagedApiResponse;
 import com.yugabyte.yw.models.paging.BackupPagedQuery;
 import com.yugabyte.yw.models.paging.BackupPagedResponse;
@@ -38,7 +43,6 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.UpdatedTimestamp;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -52,18 +56,26 @@ import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.IterableUtils;
+import org.apache.commons.collections4.Predicate;
+import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
 
 @ApiModel(
     description =
         "A single backup. Includes the backup's status, expiration time, and configuration.")
 @Entity
+@Getter
+@Setter
 public class Backup extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Backup.class);
-  SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+
+  // This is a key lock for Backup by UUID.
+  public static final KeyLock<UUID> BACKUP_KEY_LOCK = new KeyLock<UUID>();
 
   public enum BackupState {
     @EnumValue("In Progress")
@@ -122,6 +134,7 @@ public class Backup extends Model {
           .put(BackupState.Completed, BackupState.Stopped)
           .put(BackupState.Failed, BackupState.QueuedForDeletion)
           .put(BackupState.Stopped, BackupState.QueuedForDeletion)
+          .put(BackupState.Stopped, BackupState.InProgress)
           .put(BackupState.Stopping, BackupState.QueuedForDeletion)
           .put(BackupState.InProgress, BackupState.QueuedForDeletion)
           .put(BackupState.Completed, BackupState.QueuedForDeletion)
@@ -189,31 +202,37 @@ public class Backup extends Model {
 
   @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
   @Id
-  public UUID backupUUID;
+  private UUID backupUUID;
 
   @ApiModelProperty(value = "Customer UUID that owns this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
+  @JsonProperty
+  public UUID getCustomerUUID() {
+    return customerUUID;
+  }
+
+  @JsonIgnore
   @ApiModelProperty(value = "Universe UUID that created this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public UUID universeUUID;
+  private UUID universeUUID;
 
   @ApiModelProperty(value = "Storage Config UUID that created this backup", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public UUID storageConfigUUID;
+  private UUID storageConfigUUID;
 
   @ApiModelProperty(value = "Base backup UUID", accessMode = READ_ONLY)
   @Column(nullable = false)
-  public UUID baseBackupUUID;
+  private UUID baseBackupUUID;
 
   @ApiModelProperty(value = "Universe name that created this backup", accessMode = READ_WRITE)
   @Column
-  public String universeName;
+  private String universeName;
 
   @ApiModelProperty(value = "State of the backup", example = "DELETED", accessMode = READ_ONLY)
   @Column(nullable = false)
-  public BackupState state;
+  private BackupState state;
 
   @ApiModelProperty(value = "Details of the backup", accessMode = READ_WRITE)
   @Column(columnDefinition = "TEXT", nullable = false)
@@ -222,7 +241,7 @@ public class Backup extends Model {
 
   @ApiModelProperty(value = "Backup UUID", accessMode = READ_ONLY)
   @Column(unique = true)
-  public UUID taskUUID;
+  private UUID taskUUID;
 
   @ApiModelProperty(
       value = "Schedule UUID, if this backup is part of a schedule",
@@ -230,19 +249,22 @@ public class Backup extends Model {
   @Column
   private UUID scheduleUUID;
 
-  public UUID getScheduleUUID() {
-    return scheduleUUID;
-  }
+  @ApiModelProperty(
+      value = "Schedule Policy Name, if this backup is part of a schedule",
+      accessMode = READ_WRITE)
+  @Column
+  private String scheduleName;
 
-  @ApiModelProperty(value = "Expiry time (unix timestamp) of the backup", accessMode = READ_WRITE)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Expiry time (unix timestamp) of the backup",
+      accessMode = READ_WRITE,
+      example = "2022-12-12T13:07:18Z")
   @Column
   // Unix timestamp at which backup will get deleted.
   private Date expiry;
 
-  public Date getExpiry() {
-    return expiry;
-  }
-
+  @JsonIgnore
   private void setExpiry(long timeBeforeDeleteFromPresent) {
     this.expiry = new Date(System.currentTimeMillis() + timeBeforeDeleteFromPresent);
   }
@@ -256,110 +278,91 @@ public class Backup extends Model {
   @Column
   private TimeUnit expiryTimeUnit;
 
-  public TimeUnit getExpiryTimeUnit() {
-    return this.expiryTimeUnit;
-  }
-
-  public void setExpiryTimeUnit(TimeUnit expiryTimeUnit) {
-    this.expiryTimeUnit = expiryTimeUnit;
-  }
-
   public void updateExpiryTimeUnit(TimeUnit expiryTimeUnit) {
     setExpiryTimeUnit(expiryTimeUnit);
     save();
   }
 
   public void updateStorageConfigUUID(UUID storageConfigUUID) {
-    this.storageConfigUUID = storageConfigUUID;
+    this.setStorageConfigUUID(storageConfigUUID);
     this.backupInfo.storageConfigUUID = storageConfigUUID;
     save();
   }
 
-  public void setBackupInfo(BackupTableParams params) {
-    this.backupInfo = params;
-  }
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Backup creation time", example = "2022-12-12T13:07:18Z")
+  @CreatedTimestamp
+  private Date createTime;
 
-  public BackupTableParams getBackupInfo() {
-    return this.backupInfo;
-  }
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(value = "Backup update time", example = "2022-12-12T13:07:18Z")
+  @UpdatedTimestamp
+  private Date updateTime;
 
-  @CreatedTimestamp private Date createTime;
-
-  public Date getCreateTime() {
-    return createTime;
-  }
-
-  @UpdatedTimestamp private Date updateTime;
-
-  public Date getUpdateTime() {
-    return updateTime;
-  }
-
-  @ApiModelProperty(value = "Backup completion time", accessMode = READ_ONLY)
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  @ApiModelProperty(
+      value = "Backup completion time",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
   @Column
   private Date completionTime;
 
-  public void setCompletionTime(Date completionTime) {
-    this.completionTime = completionTime;
-  }
-
-  public Date getCompletionTime() {
-    return this.completionTime;
-  }
-
   @ApiModelProperty(value = "Category of the backup")
   @Column(nullable = false)
-  public BackupCategory category = BackupCategory.YB_BACKUP_SCRIPT;
+  private BackupCategory category = BackupCategory.YB_BACKUP_SCRIPT;
 
   @ApiModelProperty(value = "Version of the backup in a category")
   @Column(nullable = false)
-  public BackupVersion version = BackupVersion.V1;
+  private BackupVersion version = BackupVersion.V1;
 
   public static final Finder<UUID, Backup> find = new Finder<UUID, Backup>(Backup.class) {};
 
   public static Backup create(
       UUID customerUUID, BackupTableParams params, BackupCategory category, BackupVersion version) {
     Backup backup = new Backup();
-    backup.backupUUID = UUID.randomUUID();
-    backup.baseBackupUUID =
-        params.baseBackupUUID == null ? backup.backupUUID : params.baseBackupUUID;
-    backup.customerUUID = customerUUID;
-    backup.universeUUID = params.universeUUID;
-    backup.storageConfigUUID = params.storageConfigUUID;
-    Universe universe = Universe.maybeGet(params.universeUUID).orElse(null);
+    backup.setBackupUUID(UUID.randomUUID());
+    backup.setBaseBackupUUID(
+        params.baseBackupUUID == null ? backup.getBackupUUID() : params.baseBackupUUID);
+    backup.setCustomerUUID(customerUUID);
+    backup.setUniverseUUID(params.getUniverseUUID());
+    backup.setStorageConfigUUID(params.storageConfigUUID);
+    Universe universe = Universe.maybeGet(params.getUniverseUUID()).orElse(null);
     if (universe != null) {
-      backup.universeName = universe.name;
+      backup.setUniverseName(universe.getName());
       if (universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID != null) {
         params.kmsConfigUUID = universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID;
       }
     }
-    backup.state = BackupState.InProgress;
-    backup.category = category;
-    backup.version = version;
+    backup.setState(BackupState.InProgress);
+    backup.setCategory(category);
+    backup.setVersion(version);
     if (params.scheduleUUID != null) {
       backup.scheduleUUID = params.scheduleUUID;
+      backup.scheduleName = params.scheduleName;
     }
     if (params.timeBeforeDelete != 0L) {
       backup.expiry = new Date(System.currentTimeMillis() + params.timeBeforeDelete);
       backup.setExpiryTimeUnit(params.expiryTimeUnit);
     }
     if (params.backupList != null) {
-      params.backupUuid = backup.backupUUID;
+      params.backupUuid = backup.getBackupUUID();
+      params.baseBackupUUID = backup.getBaseBackupUUID();
       // In event of universe backup
       for (BackupTableParams childBackup : params.backupList) {
-        childBackup.backupUuid = backup.backupUUID;
+        childBackup.backupUuid = backup.getBackupUUID();
+        childBackup.baseBackupUUID = backup.getBaseBackupUUID();
         if (childBackup.storageLocation == null) {
-          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID, backup.category);
+          BackupUtil.updateDefaultStorageLocation(childBackup, customerUUID, backup.getCategory());
         }
       }
     } else if (params.storageLocation == null) {
-      params.backupUuid = backup.backupUUID;
+      params.backupUuid = backup.getBackupUUID();
       // We would derive the storage location based on the parameters
-      BackupUtil.updateDefaultStorageLocation(params, customerUUID, backup.category);
+      BackupUtil.updateDefaultStorageLocation(params, customerUUID, backup.getCategory());
     }
     CustomerConfig storageConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     if (storageConfig != null) {
-      params.storageConfigType = StorageConfigType.valueOf(storageConfig.name);
+      params.storageConfigType = StorageConfigType.valueOf(storageConfig.getName());
     }
     backup.setBackupInfo(params);
     backup.save();
@@ -370,44 +373,81 @@ public class Backup extends Model {
     return create(customerUUID, params, BackupCategory.YB_BACKUP_SCRIPT, BackupVersion.V1);
   }
 
-  // We need to set the taskUUID right after commissioner task is submitted.
-
-  /**
-   * @param taskUUID to set if none set previously
-   * @return true if the call ends up setting task uuid.
-   */
-  public synchronized boolean setTaskUUID(UUID taskUUID) {
-    if (this.taskUUID == null) {
-      this.taskUUID = taskUUID;
-      save();
-      return true;
-    }
-    return false;
-  }
-
   public void updateBackupInfo(BackupTableParams params) {
     this.backupInfo = params;
     save();
   }
 
-  public void onCompletion(long totalTimeTaken, long totalSizeInBytes, boolean unsetExpiry) {
-    this.completionTime = new Date(this.createTime.getTime() + totalTimeTaken);
-    this.backupInfo.backupSizeInBytes = totalSizeInBytes;
+  public void onCompletion() {
+    this.backupInfo.backupSizeInBytes =
+        this.backupInfo.backupList.stream().mapToLong(bI -> bI.backupSizeInBytes).sum();
     // Full chain size is same as total size for single backup.
-    this.backupInfo.fullChainSizeInBytes = totalSizeInBytes;
-    if (unsetExpiry) {
-      this.expiry = null;
+    this.backupInfo.fullChainSizeInBytes = this.backupInfo.backupSizeInBytes;
+
+    long totalTimeTaken = 0L;
+    if (this.getCategory().equals(BackupCategory.YB_BACKUP_SCRIPT)) {
+      totalTimeTaken =
+          this.backupInfo.backupList.stream().mapToLong(bI -> bI.timeTakenPartial).sum();
+    } else {
+      totalTimeTaken = BackupUtil.getTimeTakenForParallelBackups(this.backupInfo.backupList);
     }
-    this.state = BackupState.Completed;
+    this.completionTime = new Date(totalTimeTaken + this.createTime.getTime());
+    this.setState(BackupState.Completed);
     this.save();
   }
 
-  public void onIncrementCompletion(Date incrementExpiryDate, long incrementSizeInBytes) {
-    if (incrementExpiryDate == null
-        || (this.getExpiry() != null && this.getExpiry().before(incrementExpiryDate))) {
-      this.expiry = incrementExpiryDate;
+  public void onPartialCompletion(int idx, long totalTimeTaken, long totalSizeInBytes) {
+    this.backupInfo.backupList.get(idx).backupSizeInBytes = totalSizeInBytes;
+    this.backupInfo.backupList.get(idx).timeTakenPartial = totalTimeTaken;
+    this.save();
+  }
+
+  public static BackupTableParams getBackupTableParamsFromKeyspaceOrNull(
+      Backup backup, String keyspace) {
+    return IterableUtils.find(
+        backup.backupInfo.backupList,
+        new Predicate<BackupTableParams>() {
+          public boolean evaluate(BackupTableParams tableParams) {
+            return tableParams.getKeyspace().equals(keyspace);
+          }
+        });
+  }
+
+  public interface BackupUpdater {
+    void run(Backup backup);
+  }
+
+  public static void saveDetails(UUID customerUUID, UUID backupUUID, BackupUpdater updater) {
+    BACKUP_KEY_LOCK.acquireLock(backupUUID);
+    try {
+      TransactionUtil.doInTxn(
+          () -> {
+            Backup backup = get(customerUUID, backupUUID);
+            updater.run(backup);
+            backup.save();
+          },
+          TransactionUtil.DEFAULT_RETRY_CONFIG);
+    } finally {
+      BACKUP_KEY_LOCK.releaseLock(backupUUID);
     }
-    this.backupInfo.fullChainSizeInBytes += incrementSizeInBytes;
+  }
+
+  public void unsetExpiry() {
+    this.expiry = null;
+    this.save();
+  }
+
+  public void onIncrementCompletion(Date incrementCreateDate) {
+    Date newExpiryDate = new Date(incrementCreateDate.getTime() + this.backupInfo.timeBeforeDelete);
+    if (this.getExpiry() != null && this.getExpiry().before(newExpiryDate)) {
+      this.expiry = newExpiryDate;
+    }
+    this.backupInfo.fullChainSizeInBytes =
+        fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.getBaseBackupUUID())
+            .stream()
+            .filter(b -> b.getState() == BackupState.Completed)
+            .mapToLong(b -> b.backupInfo.backupSizeInBytes)
+            .sum();
     this.save();
   }
 
@@ -420,15 +460,33 @@ public class Backup extends Model {
             .findList();
     return backupList
         .stream()
-        .filter(backup -> backup.getBackupInfo().universeUUID.equals(universeUUID))
+        .filter(backup -> backup.getBackupInfo().getUniverseUUID().equals(universeUUID))
         .collect(Collectors.toList());
+  }
+
+  public static ImmutablePair<UUID, Long> getUniverseInProgressBackupCreateTime(
+      UUID customerUUID, UUID universeUUID) {
+    Optional<Backup> oBkp =
+        find.query()
+            .where()
+            .eq("customer_uuid", customerUUID)
+            .eq("universe_uuid", universeUUID)
+            .eq("state", BackupState.InProgress)
+            .orderBy("create_time desc")
+            .setMaxRows(1)
+            .findOneOrEmpty();
+    if (oBkp.isPresent()) {
+      Backup backup = oBkp.get();
+      return ImmutablePair.of(universeUUID, backup.getCreateTime().getTime());
+    }
+    return ImmutablePair.of(universeUUID, 0l);
   }
 
   public static List<Backup> fetchBackupToDeleteByUniverseUUID(
       UUID customerUUID, UUID universeUUID) {
     return fetchByUniverseUUID(customerUUID, universeUUID)
         .stream()
-        .filter(b -> !Backup.IN_PROGRESS_STATES.contains(b.state))
+        .filter(b -> !Backup.IN_PROGRESS_STATES.contains(b.getState()))
         .collect(Collectors.toList());
   }
 
@@ -458,6 +516,15 @@ public class Backup extends Model {
 
   public static Optional<Backup> maybeGet(UUID customerUUID, UUID backupUUID) {
     return Optional.ofNullable(get(customerUUID, backupUUID));
+  }
+
+  public static Optional<Backup> maybeGet(UUID backupUUID) {
+    Backup backup = find.byId(backupUUID);
+    if (backup == null) {
+      LOG.trace("Cannot find backup {}", backupUUID);
+      return Optional.empty();
+    }
+    return Optional.of(backup);
   }
 
   public static List<Backup> fetchAllBackupsByTaskUUID(UUID taskUUID) {
@@ -497,7 +564,7 @@ public class Backup extends Model {
                   .stream()
                   .filter(
                       backup ->
-                          !Universe.isUniversePaused(backup.getBackupInfo().universeUUID)
+                          !Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
                               && !backup.isIncrementalBackup())
                   .collect(Collectors.toList());
           ret.put(customer, backupList);
@@ -508,12 +575,14 @@ public class Backup extends Model {
   public synchronized void transitionState(BackupState newState) {
     // Need updated backup state as multiple threads can access backup object.
     this.refresh();
-    if (ALLOWED_TRANSITIONS.containsEntry(this.state, newState)) {
-      LOG.debug("Backup state transitioned from {} to {}", this.state, newState);
-      this.state = newState;
+    if (this.getState().equals(newState)) {
+      LOG.debug("Skipping state transition as backup is already in the {} state", this.getState());
+    } else if (ALLOWED_TRANSITIONS.containsEntry(this.getState(), newState)) {
+      LOG.debug("Backup state transitioned from {} to {}", this.getState(), newState);
+      this.setState(newState);
       save();
     } else {
-      LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", state, newState);
+      LOG.error("Ignored INVALID STATE TRANSITION  {} -> {}", getState(), newState);
     }
   }
 
@@ -524,13 +593,11 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).backupSizeInBytes = backupSize;
-    this.save();
   }
 
   public void setPerRegionLocations(int idx, List<BackupUtil.RegionLocations> perRegionLocations) {
     if (idx == -1) {
       this.backupInfo.regionLocations = perRegionLocations;
-      this.save();
       return;
     }
     int backupListLen = this.backupInfo.backupList.size();
@@ -539,12 +606,10 @@ public class Backup extends Model {
       return;
     }
     this.backupInfo.backupList.get(idx).regionLocations = perRegionLocations;
-    this.save();
   }
 
   public void setTotalBackupSize(long backupSize) {
     this.backupInfo.backupSizeInBytes = backupSize;
-    this.save();
   }
 
   public static List<Backup> getInProgressAndCompleted(UUID customerUUID) {
@@ -624,6 +689,41 @@ public class Backup extends Model {
     return backupList.size() != 0;
   }
 
+  public static Optional<BackupTableParams> findBackupParamsWithStorageLocation(
+      String storageLocation) {
+    List<Backup> backupList = find.query().findList();
+    List<BackupTableParams> backupParams = new ArrayList<>();
+
+    if (storageLocation == null) {
+      return Optional.empty();
+    }
+
+    for (Backup b : backupList) {
+      BackupTableParams backupInfo = b.getBackupInfo();
+      if (CollectionUtils.isEmpty(backupInfo.backupList)) {
+        BackupTableParams backupTableParams =
+            storageLocation.equals(b.getBackupInfo().storageLocation) ? b.getBackupInfo() : null;
+        if (backupTableParams != null) {
+          backupParams.add(backupTableParams);
+        }
+      } else {
+        Optional<BackupTableParams> backupTableParams =
+            backupInfo
+                .backupList
+                .stream()
+                .filter(bL -> storageLocation.equals(bL.storageLocation))
+                .findFirst();
+        if (backupTableParams.isPresent()) {
+          backupParams.add(backupTableParams.get());
+        }
+      }
+    }
+    if (backupParams.size() == 0) {
+      return Optional.empty();
+    }
+    return Optional.of(backupParams.get(0));
+  }
+
   public static Set<Universe> getAssociatedUniverses(UUID customerUUID, UUID configUUID) {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList = getInProgressAndCompleted(customerUUID);
@@ -633,7 +733,7 @@ public class Backup extends Model {
             .filter(
                 b ->
                     b.getBackupInfo().storageConfigUUID.equals(configUUID)
-                        && universeUUIDs.add(b.getBackupInfo().universeUUID))
+                        && universeUUIDs.add(b.getBackupInfo().getUniverseUUID()))
             .collect(Collectors.toList());
 
     List<Schedule> scheduleList =
@@ -684,12 +784,12 @@ public class Backup extends Model {
    * Get last backup in chain with state = 'Completed'.
    *
    * @param customerUUID
-   * @param backupUUID
+   * @param baseBackupUUID
    */
   public static Backup getLastSuccessfulBackupInChain(UUID customerUUID, UUID baseBackupUUID) {
     List<Backup> backupChain = fetchAllBackupsByBaseBackupUUID(customerUUID, baseBackupUUID);
     Optional<Backup> backup =
-        backupChain.stream().filter(b -> b.state.equals(BackupState.Completed)).findFirst();
+        backupChain.stream().filter(b -> b.getState().equals(BackupState.Completed)).findFirst();
     if (backup.isPresent()) {
       return backup.get();
     }
@@ -771,15 +871,9 @@ public class Backup extends Model {
   }
 
   public static BackupPagedApiResponse createResponse(BackupPagedResponse response) {
-
-    CustomerConfigService customerConfigService =
-        Play.current().injector().instanceOf(CustomerConfigService.class);
     List<Backup> backups = response.getEntities();
     List<BackupResp> backupList =
-        backups
-            .parallelStream()
-            .map(b -> BackupUtil.toBackupResp(b, customerConfigService))
-            .collect(Collectors.toList());
+        backups.stream().map(BackupUtil::toBackupResp).collect(Collectors.toList());
     return response.setData(backupList, new BackupPagedApiResponse());
   }
 
@@ -788,6 +882,6 @@ public class Backup extends Model {
   }
 
   public boolean isParentBackup() {
-    return this.baseBackupUUID.equals(this.backupUUID);
+    return this.getBaseBackupUUID().equals(this.getBackupUUID());
   }
 }

@@ -3,10 +3,10 @@ package com.yugabyte.yw.controllers;
 import static com.yugabyte.yw.common.AssertHelper.assertErrorNodeValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static play.test.Helpers.contentAsString;
-import com.yugabyte.yw.common.FakeApiHelper;
-import com.yugabyte.yw.common.FakeDBApplication;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.common.FakeDBApplication;
 import org.junit.Test;
 import play.libs.Json;
 import play.mvc.Result;
@@ -23,9 +23,8 @@ public class LoggingConfigControllerTest extends FakeDBApplication {
     body.put("maxHistory", 30);
     body.put("rolloverPattern", "xxxxxxx");
 
-    Result result =
-        assertPlatformException(() -> FakeApiHelper.doRequestWithBody("POST", uri, body));
+    Result result = assertPlatformException(() -> doRequestWithBody("POST", uri, body));
     JsonNode node = Json.parse(contentAsString(result));
-    assertErrorNodeValue(node, "rolloverPattern", "Invalid value");
+    assertErrorNodeValue(node, "rolloverPattern", "Incorrect pattern");
   }
 }

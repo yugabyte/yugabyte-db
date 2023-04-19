@@ -70,13 +70,15 @@ void CleanupAbortsTask::Run() {
   VLOG_WITH_PREFIX(1) << "CleanupAbortsTask: applier safe time reached " << safetime
                       << " (was waiting for " << now << ")";
 
-  for (const TransactionId& transaction_id : transactions_to_cleanup_) {
+  for (auto it = transactions_to_cleanup_.begin(); it != transactions_to_cleanup_.end();) {
     // If transaction is committed, no action required
     // TODO(dtxn) : Do batch processing of transactions,
     // because LocalCommitData will acquire lock per each call.
-    auto commit_time = status_manager_.LocalCommitTime(transaction_id);
+    auto commit_time = status_manager_.LocalCommitTime(*it);
     if (commit_time.is_valid()) {
-      transactions_to_cleanup_.erase(transaction_id);
+      it = transactions_to_cleanup_.erase(it);
+    } else {
+      ++it;
     }
   }
 
@@ -86,7 +88,8 @@ void CleanupAbortsTask::Run() {
     LOG_WITH_PREFIX(INFO) << "Failed to get last replicated data: " << status;
     return;
   }
-  WARN_NOT_OK(applier_->RemoveIntents(data, transactions_to_cleanup_),
+  WARN_NOT_OK(applier_->RemoveIntents(
+                  data, RemoveReason::kCleanupAborts, transactions_to_cleanup_),
               "RemoveIntents for transaction cleanup in compaction failed.");
   LOG_WITH_PREFIX(INFO)
       << "Number of aborted transactions cleaned up: " << transactions_to_cleanup_.size()
@@ -115,6 +118,15 @@ void CleanupAbortsTask::FilterTransactions() {
 
   for (const TransactionId& transaction_id : transactions_to_cleanup_) {
     VLOG_WITH_PREFIX(1) << "Checking if transaction needs to be cleaned up: " << transaction_id;
+
+    auto is_external_transaction_result =
+        status_manager_.IsExternalTransactionResult(transaction_id);
+    if (is_external_transaction_result && *is_external_transaction_result) {
+      // Always clean up external transactions because they use a time based retention policy,
+      // and this task is only triggered for transactions that are older than the retention window.
+      --left_wait;
+      continue;
+    }
 
     // If transaction is committed, no action required
     auto commit_time = status_manager_.LocalCommitTime(transaction_id);

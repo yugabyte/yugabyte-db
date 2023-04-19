@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SYS_CATALOG_INTERNAL_H_
-#define YB_MASTER_SYS_CATALOG_INTERNAL_H_
+#pragma once
 
 #include "yb/common/ql_expr.h"
 
@@ -72,6 +71,11 @@ Status SysCatalogTable::Upsert(int64_t leader_term, Items&&... items) {
 }
 
 template <class... Items>
+Status SysCatalogTable::ForceUpsert(int64_t leader_term, Items&&... items) {
+  return ForceMutate(QLWriteRequestPB::QL_STMT_UPDATE, leader_term, std::forward<Items>(items)...);
+}
+
+template <class... Items>
 Status SysCatalogTable::Delete(int64_t leader_term, Items&&... items) {
   return Mutate(QLWriteRequestPB::QL_STMT_DELETE, leader_term, std::forward<Items>(items)...);
 }
@@ -84,11 +88,17 @@ Status SysCatalogTable::Mutate(
   return SyncWrite(w.get());
 }
 
+template <class... Items>
+Status SysCatalogTable::ForceMutate(
+      QLWriteRequestPB::QLStmtType op_type, int64_t leader_term, Items&&... items) {
+  auto w = NewWriter(leader_term);
+  RETURN_NOT_OK(w->ForceMutate(op_type, std::forward<Items>(items)...));
+  return SyncWrite(w.get());
+}
+
 std::unique_ptr<SysCatalogWriter> SysCatalogTable::NewWriter(int64_t leader_term) {
   return std::make_unique<SysCatalogWriter>(doc_read_context_->schema, leader_term);
 }
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_SYS_CATALOG_INTERNAL_H_

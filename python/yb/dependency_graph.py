@@ -27,9 +27,6 @@ import sys
 import unittest
 import pipes
 import time
-import shutil
-import random
-import string
 
 from datetime import datetime
 from enum import Enum
@@ -142,15 +139,15 @@ class DependencyGraphBuilder:
                      (datetime.now() - start_time).total_seconds())
 
     def find_proto_files(self) -> None:
-        for src_subtree_root in self.conf.src_dir_paths:
-            logging.info("Finding .proto files in the source tree at '{}'".format(src_subtree_root))
-            source_str = 'proto files in {}'.format(src_subtree_root)
-            for root, dirs, files in os.walk(src_subtree_root):
-                for file_name in files:
-                    if file_name.endswith('.proto'):
-                        self.dep_graph.find_or_create_node(
-                                os.path.join(root, file_name),
-                                source_str=source_str)
+        logging.info("Finding .proto files in the source tree at '{}'".format(
+                self.conf.src_dir_path))
+        source_str = 'proto files in {}'.format(self.conf.src_dir_path)
+        for root, dirs, files in os.walk(self.conf.src_dir_path):
+            for file_name in files:
+                if file_name.endswith('.proto'):
+                    self.dep_graph.find_or_create_node(
+                            os.path.join(root, file_name),
+                            source_str=source_str)
 
     def find_flex_bison_files(self) -> None:
         """
@@ -462,8 +459,11 @@ class DependencyGraphTest(unittest.TestCase):
     def get_build_root(self) -> str:
         return self.get_dep_graph().conf.build_root
 
+    def is_lto(self) -> bool:
+        return is_lto_build_root(self.get_build_root())
+
     def get_dynamic_exe_suffix(self) -> str:
-        if is_lto_build_root(self.get_build_root()):
+        if self.is_lto():
             return '-dynamic'
         return ''
 
@@ -560,7 +560,10 @@ class DependencyGraphTest(unittest.TestCase):
         self.assert_all_affected_by([yb_master], 'master_call_home.cc')
         self.assert_all_unaffected_by([yb_tserver], 'master_call_home.cc')
         self.assert_all_affected_by([yb_tserver], 'tserver_call_home.cc')
-        self.assert_all_unaffected_by([yb_master], 'tserver_call_home.cc')
+        if not self.is_lto():
+            # This is only true in non-LTO mode. In LTO, yb-master and yb-tserver are the same
+            # executable.
+            self.assert_all_unaffected_by([yb_master], 'tserver_call_home.cc')
 
     def test_catalog_manager(self) -> None:
         yb_master = self.get_yb_master_target()
@@ -667,6 +670,11 @@ def main() -> None:
              'debugging, combined with --link-cmd-out-file.',
         type=arg_str_to_bool,
         default=True)
+    parser.add_argument(
+        '--symlink-as',
+        help='Create a symlink with the given name pointing to the LTO output file, in the same '
+             'directory as the output file. This option can be specified multiple times.',
+        action='append')
 
     args = parser.parse_args()
 
@@ -790,7 +798,8 @@ def main() -> None:
             run_linker=args.run_linker,
             lto_output_suffix=args.lto_output_suffix,
             lto_output_path=args.lto_output_path,
-            lto_type=args.lto_type)
+            lto_type=args.lto_type,
+            symlink_as=args.symlink_as)
         return
 
     file_changes_by_category: Dict[SourceFileCategory, List[str]] = group_by(

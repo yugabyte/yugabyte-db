@@ -27,6 +27,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+
 namespace yb {
 namespace pgwrapper {
 namespace {
@@ -34,6 +35,7 @@ namespace {
 class PgTableSizeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
+    FLAGS_tserver_heartbeat_metrics_interval_ms = 500;
     PgMiniTestBase::SetUp();
   }
 };
@@ -145,8 +147,10 @@ Status CheckSizeExpectedRange(const std::string& actual_size_string, int64 expec
   int64 lower = expected_size - expected_size * kSizeBuffer;
   int64 upper = expected_size + expected_size * kSizeBuffer;
 
-  EXPECT_GE(actual_size, lower);
-  EXPECT_LE(actual_size, upper);
+  if (actual_size < lower || actual_size > upper) {
+    return STATUS_FORMAT(IllegalState, "Size $0 does not fall into the range $1 - $2",
+                                       actual_size, lower, upper);
+  }
 
   return Status::OK();
 }
@@ -154,7 +158,6 @@ Status CheckSizeExpectedRange(const std::string& actual_size_string, int64 expec
 } // namespace
 
 TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0 with colocated='true'", kColocatedDatabase));
   auto test_conn = ASSERT_RESULT(ConnectToDB(kColocatedDatabase));
@@ -176,7 +179,6 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(ColocatedTableSize)) {
 }
 
 TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 
@@ -201,7 +203,6 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TableSize)) {
 }
 
 TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TempTableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 
@@ -220,7 +221,6 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(TempTableSize)) {
 }
 
 TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(PartitionedTableSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 
@@ -256,7 +256,6 @@ TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(PartitionedTableSize)) {
 }
 
 TEST_F(PgTableSizeTest, YB_DISABLE_TEST_IN_TSAN(MaterializedViewSize)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tserver_heartbeat_metrics_interval_ms) = 500;
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.ExecuteFormat("Create database $0", kDatabase));
 

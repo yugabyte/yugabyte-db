@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_STATE_WITH_TABLETS_H
-#define YB_MASTER_STATE_WITH_TABLETS_H
+#pragma once
 
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/multi_index/hashed_index.hpp>
@@ -33,6 +32,8 @@
 
 namespace yb {
 namespace master {
+
+YB_STRONGLY_TYPED_BOOL(ForClient);
 
 class StateWithTablets {
  public:
@@ -142,8 +143,9 @@ class StateWithTablets {
   }
 
   const std::string& LogPrefix() const;
-
-  virtual bool IsTerminalFailure(const Status& status) = 0;
+  // Determine whether we can transition to a terminal state
+  virtual std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(
+      const Status& status) = 0;
 
   virtual Status CheckDoneStatus(const Status& status) {
     return status;
@@ -190,11 +192,12 @@ class StateWithTablets {
     return tablets_;
   }
 
+  SysSnapshotEntryPB::State initial_state_;
+
  private:
   void CheckCompleteness();
 
   SnapshotCoordinatorContext& context_;
-  SysSnapshotEntryPB::State initial_state_;
   const std::string log_prefix_;
 
   Tablets tablets_;
@@ -206,5 +209,3 @@ class StateWithTablets {
 
 } // namespace master
 } // namespace yb
-
-#endif  // YB_MASTER_STATE_WITH_TABLETS_H

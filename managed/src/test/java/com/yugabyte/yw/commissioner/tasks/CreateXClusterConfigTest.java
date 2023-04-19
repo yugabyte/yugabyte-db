@@ -15,22 +15,28 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.CustomerTask;
-import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -73,6 +79,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
   private String sourceUniverseName;
   private UUID sourceUniverseUUID;
   private Universe sourceUniverse;
+  private Users defaultUser;
   private String targetUniverseName;
   private UUID targetUniverseUUID;
   private Universe targetUniverse;
@@ -96,6 +103,7 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     super.setUp();
 
     defaultCustomer = testCustomer("CreateXClusterConfig-test-customer");
+    defaultUser = ModelFactory.testUser(defaultCustomer);
 
     configName = "CreateXClusterConfigTest-test-config";
 
@@ -155,7 +163,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     GetTableSchemaResponse mockTableSchemaResponseTable2 =
         new GetTableSchemaResponse(
             0,
@@ -167,7 +176,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             null,
             true,
             CommonTypes.TableType.YQL_TABLE_TYPE,
-            Collections.emptyList());
+            Collections.emptyList(),
+            false);
     try {
       lenient()
           .when(mockClient.getTableSchemaByUUID(exampleTableID1))
@@ -190,13 +200,16 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
             Collections.emptyMap());
     try {
       UUID taskUUID = commissioner.submit(TaskType.CreateXClusterConfig, taskParams);
+
+      // Set http context.
+      TestUtils.setFakeHttpContext(defaultUser);
       CustomerTask.create(
           defaultCustomer,
-          targetUniverse.universeUUID,
+          targetUniverse.getUniverseUUID(),
           taskUUID,
           TargetType.XClusterConfig,
           CustomerTask.TaskType.CreateXClusterConfig,
-          xClusterConfig.name);
+          xClusterConfig.getName());
       return waitForTask(taskUUID);
     } catch (InterruptedException e) {
       assertNull(e.getMessage());
@@ -266,7 +279,8 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
     tableInfoList.add(table2TableInfoBuilder.build());
 
     try {
-      when(mockClient.getTablesList(null, true, null)).thenReturn(mockListTablesResponse);
+      when(mockClient.getTablesList(eq(null), anyBoolean(), eq(null)))
+          .thenReturn(mockListTablesResponse);
       when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     } catch (Exception e) {
       e.printStackTrace();
@@ -331,17 +345,19 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
-    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertEquals(1, targetUniverse.version);
+    assertEquals(1, targetUniverse.getVersion());
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
@@ -373,17 +389,19 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
     assertEquals(Success, taskInfo.getTaskState());
-    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Running, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
-    assertEquals(2, targetUniverse.version);
+    assertEquals(2, targetUniverse.getVersion());
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
     assertFalse("update completed", targetUniverse.getUniverseDetails().updateInProgress);
     assertTrue("update successful", targetUniverse.getUniverseDetails().updateSucceeded);
@@ -418,18 +436,20 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
     assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(2).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getDetails().get("errorString").asText();
     assertThat(taskErrMsg, containsString(setupErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());
@@ -467,22 +487,24 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
         XClusterConfigTaskBase.getRequestedTableInfoListAndVerify(
             mockYBClient,
             createFormData.tables,
-            createFormData.bootstrapParams != null ? createFormData.bootstrapParams.tables : null,
+            createFormData.bootstrapParams,
             sourceUniverse,
-            targetUniverse);
+            targetUniverse,
+            null,
+            ConfigType.Basic);
 
     TaskInfo taskInfo = submitTask(xClusterConfig, requestedTableInfoList);
     assertNotNull(taskInfo);
     assertEquals(Failure, taskInfo.getTaskState());
 
     assertEquals(TaskType.XClusterConfigSetup, taskInfo.getSubTasks().get(2).getTaskType());
-    String taskErrMsg = taskInfo.getSubTasks().get(2).getTaskDetails().get("errorString").asText();
+    String taskErrMsg = taskInfo.getSubTasks().get(2).getDetails().get("errorString").asText();
     String expectedErrMsg =
         String.format(
             "XClusterConfig(%s) operation failed: code: %s\nmessage: \"%s\"",
-            xClusterConfig.uuid, ErrorCode.UNKNOWN_ERROR, isSetupDoneErrMsg);
+            xClusterConfig.getUuid(), ErrorCode.UNKNOWN_ERROR, isSetupDoneErrMsg);
     assertThat(taskErrMsg, containsString(expectedErrMsg));
-    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.status);
+    assertEquals(XClusterConfigStatusType.Failed, xClusterConfig.getStatus());
 
     targetUniverse = Universe.getOrBadRequest(targetUniverseUUID);
     assertFalse("universe unlocked", targetUniverse.universeIsLocked());

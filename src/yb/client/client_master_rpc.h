@@ -11,11 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_CLIENT_MASTER_RPC_H
-#define YB_CLIENT_CLIENT_MASTER_RPC_H
+#pragma once
 
 #include "yb/client/client.h"
 #include "yb/client/client-internal.h"
+
+#include "yb/common/wire_protocol.h"
 
 #include "yb/master/master_fwd.h"
 #include "yb/master/master_error.h"
@@ -152,5 +153,3 @@ class ClientMasterRpc : public ClientMasterRpcBase {
 } // namespace internal
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_CLIENT_MASTER_RPC_H

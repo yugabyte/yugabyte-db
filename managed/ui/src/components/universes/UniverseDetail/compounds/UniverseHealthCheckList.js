@@ -1,7 +1,7 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component } from 'react';
-import { Alert, Row } from 'react-bootstrap';
+import { Alert, Row , Panel } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import { sortBy, values } from 'lodash';
@@ -9,7 +9,7 @@ import { sortBy, values } from 'lodash';
 import { YBLoading } from '../../../common/indicators';
 import TreeNode from '../../../common/TreeNode';
 import { YBPanelItem } from '../../../panels';
-import { Panel } from 'react-bootstrap';
+
 import { isNonEmptyArray, isEmptyArray, isNonEmptyString } from '../../../../utils/ObjectUtils';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
 import { UniverseAction } from '../../../universes';
@@ -46,7 +46,7 @@ export const UniverseHealthCheckList = (props) => {
     getPromiseState(healthCheck).isError() ||
     (getPromiseState(healthCheck).isSuccess() && isEmptyArray(healthCheck.data))
   ) {
-    content = <div>There're no finished Health checks available at the moment.</div>;
+    content = <div>{"There're no finished Health checks available at the moment."}</div>;
   } else if (getPromiseState(healthCheck).isSuccess() && isNonEmptyArray(healthCheck.data)) {
     const data = [...healthCheck.data].reverse();
     const timestamps = prepareData(data, currentUser.data.timezone);
@@ -236,9 +236,9 @@ const detailsFormatter = (cell, row) => {
 // For performance optimization, move this to a Redux reducer, so that it doesn't get run on each render.
 function prepareData(data, timezone) {
   return data.map((timeData) => {
-    let timestampMoment = moment.utc(timeData.timestamp).local();
+    let timestampMoment = moment.utc(timeData.timestamp_iso).local();
     if (timezone) {
-      timestampMoment = moment.utc(timeData.timestamp).tz(timezone);
+      timestampMoment = moment.utc(timeData.timestamp_iso).tz(timezone);
     }
     const nodesByIpAddress = {};
     timeData.data.forEach((check) => {
@@ -258,7 +258,7 @@ function prepareData(data, timezone) {
       const node = nodesByIpAddress[ipAddress];
       node.checks.push(check);
       node[check.has_error ? 'failedChecks' :
-                             (check.has_warning ? 'warningChecks' : 'passingChecks')].push(check);
+        (check.has_warning ? 'warningChecks' : 'passingChecks')].push(check);
       if (check.has_error) {
         node.hasError = true;
       }
@@ -268,7 +268,7 @@ function prepareData(data, timezone) {
     });
     values(nodesByIpAddress).forEach((node) => {
       node.checks = sortBy(node.checks,
-                           (check) => (check.has_error ? 0 : (check.has_warning ? 0 : 1)));
+        (check) => (check.has_error ? 0 : (check.has_warning ? 0 : 1)));
     });
     const nodes = sortBy(
       values(nodesByIpAddress),

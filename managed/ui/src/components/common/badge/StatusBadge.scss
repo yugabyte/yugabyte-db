@@ -2,8 +2,8 @@
   padding: 4px 6px;
   border-radius: 6px;
   font-family: 'Inter';
-  background: #E9EEF2;
-  color: #4E5F6D;
+  background: #e9eef2;
+  color: #4e5f6d;
   font-style: normal;
   font-weight: normal;
   font-size: 12px;
@@ -17,25 +17,27 @@
     margin-right: 6px;
   }
 
-  &.Completed {
-    background: #CDEFE1;
+  &.Completed,
+  &.Success {
+    background: #cdefe1;
     color: #097245;
   }
 
   &.Failed,
   &.FailedToDelete {
-    color: #DA1515;
-    background: #FDE2E2;
+    color: #da1515;
+    background: #fde2e2;
   }
 
   &.InProgress,
   &.DeleteInProgress {
-    background: #CBDAFF;
-    color: #1A44A5;
+    background: #cbdaff;
+    color: #1a44a5;
   }
 
-  &.QueuedForDeletion {
-    background: #FFEEC8;
-    color: #9D6C00;
+  &.QueuedForDeletion,
+  &.Stopping {
+    background: #ffeec8;
+    color: #9d6c00;
   }
 }

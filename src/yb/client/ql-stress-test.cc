@@ -72,6 +72,7 @@ DECLARE_bool(TEST_combine_batcher_errors);
 DECLARE_bool(allow_preempting_compactions);
 DECLARE_bool(detect_duplicates_for_retryable_requests);
 DECLARE_bool(enable_ondisk_compression);
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_max_write_waiters);
@@ -164,9 +165,9 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WriteRow(const YBSessionPtr& session,
-                          const TableHandle& table,
-                          int32_t key,
-                          const std::string& value) {
+                  const TableHandle& table,
+                  int32_t key,
+                  const std::string& value) {
     auto op = InsertRow(session, table, key, value);
     RETURN_NOT_OK(session->TEST_Flush());
     if (op->response().status() != QLResponsePB::YQL_STATUS_OK) {
@@ -208,8 +209,8 @@ class QLStressTest : public QLDmlTestBase<MiniCluster> {
   }
 
   Status WriteRow(const YBSessionPtr& session,
-                          int32_t key,
-                          const std::string& value) {
+                  int32_t key,
+                  const std::string& value) {
     return QLStressTest::WriteRow(session, table_, key, value);
   }
 
@@ -274,14 +275,13 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
   size_t total_leaders = 0;
   *total_entries = 0;
   bool result = true;
-  size_t replicated_limit = FLAGS_detect_duplicates_for_retryable_requests ? 1 : 0;
   auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
   for (const auto& peer : peers) {
     auto leader = peer->LeaderStatus() != consensus::LeaderStatus::NOT_LEADER;
     if (!peer->tablet() || peer->tablet()->metadata()->table_id() != table_.table()->id()) {
       continue;
     }
-    size_t tablet_entries = peer->tablet()->TEST_CountRegularDBRecords();
+    const auto tablet_entries = EXPECT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());
     auto raft_consensus = down_cast<consensus::RaftConsensus*>(peer->consensus());
     auto request_counts = raft_consensus->TEST_CountRetryableRequests();
     LOG(INFO) << "T " << peer->tablet()->tablet_id() << " P " << peer->permanent_uuid()
@@ -294,9 +294,13 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
       *total_entries += tablet_entries;
       ++total_leaders;
     }
-    // Last write request could be rejected as duplicate, so followers would not be able to
-    // cleanup replicated requests.
-    if (request_counts.running != 0 || (leader && request_counts.replicated > replicated_limit)) {
+
+    // When duplicates detection is enabled, we use the global min running request id shared by
+    // all tablets for the client so that cleanup of requests on one tablet can be withheld by
+    // requests on a different tablet. The upper bound of residual requests is not deterministic.
+    if (request_counts.running != 0 ||
+        (!FLAGS_detect_duplicates_for_retryable_requests &&
+         leader && request_counts.replicated > 0)) {
       result = false;
     }
   }
@@ -318,7 +322,7 @@ bool QLStressTest::CheckRetryableRequestsCountsAndLeaders(
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
       std::unordered_map<std::string, std::string> keys;
 
-      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      for (iter->SeekToFirst(); EXPECT_RESULT(iter->CheckedValid()); iter->Next()) {
         Slice key = iter->key();
         EXPECT_OK(DocHybridTime::DecodeFromEnd(&key));
         auto emplace_result = keys.emplace(key.ToBuffer(), iter->key().ToBuffer());
@@ -415,13 +419,13 @@ void QLStressTest::TestRetryWrites(bool restarts) {
                 expected_leaders, &total_entries),
       15s, "Retryable requests cleanup and leader wait"));
 
-  // We have 2 entries per row.
+  size_t entries_per_row = FLAGS_ycql_enable_packed_row ? 1 : 2;
   if (FLAGS_detect_duplicates_for_retryable_requests) {
-    ASSERT_EQ(total_entries, written_keys * 2);
+    ASSERT_EQ(total_entries, written_keys * entries_per_row);
   } else {
     // If duplicate request tracking is disabled, then total_entries should be greater than
     // written keys, otherwise test does not work.
-    ASSERT_GT(total_entries, written_keys * 2);
+    ASSERT_GT(total_entries, written_keys * entries_per_row);
   }
 
   ASSERT_GE(written_keys, RegularBuildVsSanitizers(100, 40));
@@ -984,14 +988,12 @@ TEST_F_EX(QLStressTest, LongRemoteBootstrap, QLStressTestLongRemoteBootstrap) {
     // Check that first log was garbage collected, so remote bootstrap will be required.
     consensus::ReplicateMsgs replicates;
     int64_t starting_op_segment_seq_num;
-    yb::SchemaPB schema;
-    uint32_t schema_version;
     return !leaders.front()->log()->GetLogReader()->ReadReplicatesInRange(
-        100, 101, 0, &replicates, &starting_op_segment_seq_num, &schema, &schema_version).ok();
+        100, 101, 0, &replicates, &starting_op_segment_seq_num).ok();
   }, 30s, "Logs cleaned"));
 
   LOG(INFO) << "Bring replica back, keys written: " << key.load(std::memory_order_acquire);
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
     while (!stop.load(std::memory_order_acquire)) {

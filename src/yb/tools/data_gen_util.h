@@ -31,8 +31,7 @@
 //
 // Utility functions for generating data for use by tools and tests.
 
-#ifndef YB_TOOLS_DATA_GEN_UTIL_H_
-#define YB_TOOLS_DATA_GEN_UTIL_H_
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -66,5 +65,3 @@ void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
 
 } // namespace tools
 } // namespace yb
-
-#endif // YB_TOOLS_DATA_GEN_UTIL_H_

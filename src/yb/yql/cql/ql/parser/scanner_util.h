@@ -27,8 +27,7 @@
 // This module consists of a list of utility functions that are provided by PostgreSQL.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PARSER_SCANNER_UTIL_H_
-#define YB_YQL_CQL_QL_PARSER_SCANNER_UTIL_H_
+#pragma once
 
 #include <stdlib.h>
 
@@ -148,5 +147,3 @@ size_t pg_encoding_mbcliplen(const char *mbstr, size_t len, size_t limit);
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PARSER_SCANNER_UTIL_H_

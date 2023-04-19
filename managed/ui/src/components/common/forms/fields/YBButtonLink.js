@@ -10,7 +10,6 @@ export default class YBButtonLink extends PureComponent {
       btnClass,
       btnText,
       btnIcon,
-      btnSize,
       link,
       btnStyle,
       disabled,
@@ -23,7 +22,7 @@ export default class YBButtonLink extends PureComponent {
       <a
         href={link}
         className={btnClass}
-        onClick={this.props.onClick}
+        onClick={onClick}
         style={btnStyle}
         disabled={disabled}
         {...otherProps}

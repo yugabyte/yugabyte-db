@@ -18,14 +18,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -33,32 +33,34 @@ type: docs
   <li>
     <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp; Azure
+      Azure
     </a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../vmware-tanzu/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
@@ -75,7 +77,7 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 You configure the TKG credentials as follows:
 
-- Navigate to **Configs > Infrastructure > VMware Tanzu**, as per the following illustration:<br><br>
+- Navigate to **Configs > Infrastructure > VMware Tanzu**, as per the following illustration:<br>
 
   ![Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-1.png)
 
@@ -92,7 +94,6 @@ You configure the TKG credentials as follows:
 
 - The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
 
-
 ## Configure region and zones
 
 You configure region and zones as follows:
@@ -103,9 +104,7 @@ You configure region and zones as follows:
 
 - Complete the fields of the expanded **Add new region** dialog shown in the following illustration:
 
-  <br>
-
-  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)<br><br>
+  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
 
   - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
 
@@ -142,19 +141,19 @@ You configure region and zones as follows:
           ysql-port: "5433"
     ```
 
-    <br>To disable LoadBalancer, use the following overrides:
+    To disable LoadBalancer, use the following overrides:
 
     ```configuration
     enableLoadBalancer: False
     ```
 
-    <br>To change the cluster domain name, use the following overrides:
+    To change the cluster domain name, use the following overrides:
 
     ```configuration
     domainName: my.cluster
     ```
 
-    <br>To add annotations at the StatefulSet level, use the following overrides:
+    To add annotations at the StatefulSet level, use the following overrides:
 
     ```configuration
     networkAnnotation:
@@ -166,7 +165,7 @@ You configure region and zones as follows:
 
   - Click **Add Region**.
 
-  - Click **Save**. <br>
+  - Click **Save**.
 
   If your configuration is successful, you are redirected to **VMware Tanzu configs**.
 
@@ -183,24 +182,24 @@ If you choose to use VMware Tanzu Application Service, before creating the servi
 
 You can create a YugabyteDB service instance via the App Manager UI or Cloud Foundry (cf) command-line interface (CLI).
 
-#### How to use the PCF app manager
+#### Use the PCF app manager
 
 - In your PCF App manager, navigate to the marketplace and select **YugabyteDB**.
-- Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration:<br><br>
+- Read descriptions of the available service plans to identify the resource requirements and intended environment, as shown in the following illustration:
 
   ![Yugabyte Service Plans](/images/deploy/pivotal-cloud-foundry/service-plan-choices.png)
 
 - Select the service plan.
-- Complete the service instance configuration, as shown in the following illustration:<br><br>
+- Complete the service instance configuration, as shown in the following illustration:
 
-  ![App Manager Config](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
+  ![App Manager Configuration](/images/deploy/pivotal-cloud-foundry/apps-manager-config.png)
 
-#### How to use the cloud foundry CLI
+#### Use the cloud foundry CLI
 
 You can view the marketplace and plan description in the cf CLI by executing the following command:
 
 ```sh
-$ cf marketplace -s yugabyte-db
+cf marketplace -s yugabyte-db
 ```
 
 The output should be similar to the following:
@@ -214,17 +213,17 @@ large          Cores: 16, Memory (GB): 15   paid
 x-large        Cores: 32, Memory (GB): 30   paid
 ```
 
-Once you decide on the service plan, you can launch the YugabyteDB service instance by executing the following command:
+After you decide on the service plan, you can launch the YugabyteDB service instance by executing the following command:
 
 ```sh
-$ cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'
+cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'
 ```
 
 ### Configure the YugabyteDB service instance
 
 You can specify override options when you create a service instance using the YugabyteDB service broker.
 
-#### How to override cloud providers
+#### Override cloud providers
 
 Depending on the cloud providers configured for your YugabyteDB Anywhere, you can create Yugabyte service instances by providing overrides.
 
@@ -248,7 +247,7 @@ To provision in Kubernetes, your overrides should include the appropriate `provi
 }
 ```
 
-#### How to override the number of nodes
+#### Override the number of nodes
 
 To override the number of nodes, include the `num_nodes` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
@@ -259,7 +258,7 @@ To override the number of nodes, include the `num_nodes` with the desired value,
 }
 ```
 
-#### How to override the replication factor
+#### Override the replication factor
 
 To override the replication factor, include `replication` with the desired value, and then include this parameter along with other parameters for the cloud provider, as follows:
 
@@ -273,7 +272,7 @@ To override the replication factor, include `replication` with the desired value
 
 *replication* must be set to 1, 3, 5, or 7.
 
-#### How to override the volume settings
+#### Override the volume settings
 
 To override the volume settings, include `num_volumes` with the desired value, as well as `volume_size` with the volume size in GB for each of those volumes. For example, to have two volumes with 100GB each, overrides should be specified as follows:
 
@@ -285,7 +284,7 @@ To override the volume settings, include `num_volumes` with the desired value, a
 }
 ```
 
-#### How to override  the YugabyteDB software version
+#### Override  the YugabyteDB software version
 
 To override the YugabyteDB software version to be used, include `yb_version` with the desired value, ensuring that this version exists in YugabyteDB Anywhere, as follows:
 

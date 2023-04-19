@@ -19,9 +19,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.yb.minicluster.YsqlSnapshotVersion;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestUsingOlderSnapshot extends BasePgSQLTest {
 
   /** Restart the cluster at earlier YSQL version and verify it worked. */

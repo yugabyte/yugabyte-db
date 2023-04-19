@@ -22,6 +22,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/util/bytes_formatter.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/result.h"
 
 using std::ostream;
@@ -37,18 +38,24 @@ void AppendLineToStream(const std::string& s, ostream* out) {
   *out << s << std::endl;
 }
 
+std::pair<Result<std::string>, Result<std::string>> DumpEntryToString(
+    Slice key, Slice value, const SchemaPackingStorage& packing_storage, StorageDbType db_type) {
+  const auto key_str = DocDBKeyToDebugStr(key, db_type);
+  if (!key_str.ok()) {
+    return { key_str.status(), value.ToDebugHexString() };
+  }
+  const KeyType key_type = GetKeyType(key, db_type);
+  return { key_str, DocDBValueToDebugStr(key_type, *key_str, value, packing_storage) };
+}
+
 template <class DumpStringFunc>
 void ProcessDumpEntry(
     Slice key, Slice value, const SchemaPackingStorage& schema_packing_storage,
     StorageDbType db_type, IncludeBinary include_binary, DumpStringFunc func) {
-  const auto key_str = DocDBKeyToDebugStr(key, db_type);
+  auto [key_str, value_str] = DumpEntryToString(key, value, schema_packing_storage, db_type);
   if (!key_str.ok()) {
     func(key_str.status().ToString());
-    return;
   }
-  const KeyType key_type = GetKeyType(key, db_type);
-  Result<std::string> value_str = DocDBValueToDebugStr(
-      key_type, *key_str, value, schema_packing_storage);
   if (!value_str.ok()) {
     func(value_str.status().CloneAndAppend(". Key: " + *key_str).ToString());
   } else {
@@ -68,10 +75,22 @@ void DocDBDebugDump(
   auto iter = std::unique_ptr<rocksdb::Iterator>(rocksdb->NewIterator(read_opts));
   iter->SeekToFirst();
 
-  while (iter->Valid()) {
-    ProcessDumpEntry(
-        iter->key(), iter->value(), schema_packing_storage, db_type, include_binary, dump_func);
-    iter->Next();
+  if (db_type == StorageDbType::kIntents) {
+    while (iter->Valid()) {
+      ProcessDumpEntry(
+          iter->key(), iter->value(), schema_packing_storage, db_type, include_binary, dump_func);
+      iter->Next();
+    }
+  } else if (iter->Valid()) {
+    rocksdb::ScanCallback scan_callback = [&](const Slice& key, const Slice& value) -> bool {
+      ProcessDumpEntry(key, value, schema_packing_storage, db_type, include_binary, dump_func);
+      return true;
+    };
+    iter->ScanForward(Slice(), /*key_filter_callback=*/ nullptr, &scan_callback);
+  }
+  const auto s = iter->status();
+  if (!s.ok()) {
+    dump_func(s.ToString());
   }
 }
 
@@ -80,11 +99,23 @@ void DocDBDebugDump(
 std::string EntryToString(
     const Slice& key, const Slice& value, const SchemaPackingStorage& schema_packing_storage,
     StorageDbType db_type) {
-  std::ostringstream out;
-  ProcessDumpEntry(
-      key, value, schema_packing_storage, db_type, IncludeBinary::kFalse,
-      std::bind(&AppendLineToStream, _1, &out));
-  return out.str();
+  auto [key_res, value_res] = DumpEntryToString(key, value, schema_packing_storage, db_type);
+  std::string value_str;
+  auto value_copy = value;
+  if (value_res.ok()) {
+    value_str = *value_res;
+  } else if (value_res.status().IsNotFound() &&
+             value_copy.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+    auto version = util::FastDecodeUnsignedVarInt(&value_copy);
+    if (!version.ok()) {
+      value_str = version.status().ToString();
+    } else {
+      value_str = Format("PACKED_ROW[$0]($1)", *version, value_copy.ToDebugHexString());
+    }
+  } else {
+    value_str = value_res.status().ToString();
+  }
+  return Format("$0 -> $1", key_res, value_str);
 }
 
 std::string EntryToString(

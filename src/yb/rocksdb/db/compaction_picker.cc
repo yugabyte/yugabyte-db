@@ -43,13 +43,14 @@
 #include "yb/rocksdb/util/logging.h"
 #include "yb/rocksdb/util/random.h"
 #include "yb/rocksdb/util/statistics.h"
-#include "yb/util/string_util.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/logging.h"
 #include <glog/logging.h>
+#include "yb/util/flags.h"
+#include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 
-DEFINE_bool(aggressive_compaction_for_read_amp, false,
+DEFINE_UNKNOWN_bool(aggressive_compaction_for_read_amp, false,
             "Determines if we should compact aggressively to reduce read amplification based on "
             "number of files alone, without regards to relative sizes of the SSTable files.");
 
@@ -63,9 +64,6 @@ uint64_t TotalCompensatedFileSize(const std::vector<FileMetaData*>& files) {
   }
   return sum;
 }
-
-// Universal compaction is not supported in ROCKSDB_LITE
-#ifndef ROCKSDB_LITE
 
 // Used in universal compaction when trivial move is enabled.
 // This structure is used for the construction of min heap
@@ -127,7 +125,6 @@ SmallestKeyHeap create_level_heap(Compaction* c, const Comparator* ucmp) {
   }
   return smallest_key_priority_q;
 }
-#endif  // !ROCKSDB_LITE
 }  // anonymous namespace
 
 // Determine compression type, based on user options, level of the output
@@ -489,7 +486,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,
     uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-    InternalKey** compaction_end, bool* manual_conflict) {
+    CompactionReason compaction_reason, InternalKey** compaction_end,
+    bool* manual_conflict) {
   // CompactionPickerFIFO has its own implementation of compact range
   assert(ioptions_.compaction_style != kCompactionStyleFIFO);
 
@@ -541,7 +539,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
         /* max_grandparent_overlap_bytes = */ LLONG_MAX, output_path_id,
         GetCompressionType(ioptions_, output_level, 1),
         /* grandparents = */ std::vector<FileMetaData*>(), ioptions_.info_log,
-        /* is_manual = */ true);
+        /* is_manual = */ true, /* score */ -1, /* deletion_compaction */ false,
+        compaction_reason);
     if (c && start_level == 0) {
       MarkL0FilesForDeletion(vstorage, &ioptions_);
       level0_compactions_in_progress_.insert(c.get());
@@ -642,7 +641,8 @@ std::unique_ptr<Compaction> CompactionPicker::CompactRange(
       mutable_cf_options.MaxFileSizeForLevel(output_level),
       mutable_cf_options.MaxGrandParentOverlapBytes(input_level), output_path_id,
       GetCompressionType(ioptions_, output_level, vstorage->base_level()), std::move(grandparents),
-      ioptions_.info_log, /* is manual compaction = */ true);
+      ioptions_.info_log, /* is manual compaction = */ true, /* score */ -1,
+      /* deletion_compaction */ false, compaction_reason);
   if (!compaction) {
     return nullptr;
   }
@@ -688,7 +688,6 @@ bool HaveOverlappingKeyRanges(
   return HaveOverlappingKeyRanges(c, a.smallest, a.largest, b.smallest, b.largest);
 }
 
-#ifndef ROCKSDB_LITE
 namespace {
 
 // Updates smallest/largest keys using keys from specified file.
@@ -891,7 +890,6 @@ Status CompactionPicker::SanitizeCompactionInputFiles(
 
   return Status::OK();
 }
-#endif  // !ROCKSDB_LITE
 
 bool LevelCompactionPicker::NeedsCompaction(const VersionStorageInfo* vstorage)
     const {
@@ -1183,7 +1181,6 @@ bool LevelCompactionPicker::PickCompactionBySize(VersionStorageInfo* vstorage,
   return inputs->size() > 0;
 }
 
-#ifndef ROCKSDB_LITE
 bool UniversalCompactionPicker::NeedsCompaction(
     const VersionStorageInfo* vstorage) const {
   const int kLevel0 = 0;
@@ -1645,10 +1642,8 @@ std::unique_ptr<Compaction> UniversalCompactionPicker::PickCompactionUniversalRe
       }
       char file_num_buf[kFormatFileNumberBufSize];
       sr->Dump(file_num_buf, sizeof(file_num_buf));
-      LOG_TO_BUFFER(log_buffer,
-                  "[%s] Universal: %s"
-                  "[%d] being compacted, skipping",
-                  cf_name.c_str(), file_num_buf, loop);
+      RDEBUG(ioptions_.info_log, "[%s] Universal: %s[%d] being compacted, skipping",
+              cf_name.c_str(), file_num_buf, loop);
 
       sr = nullptr;
     }
@@ -2049,7 +2044,8 @@ std::unique_ptr<Compaction> FIFOCompactionPicker::CompactRange(
     const std::string& cf_name, const MutableCFOptions& mutable_cf_options,
     VersionStorageInfo* vstorage, int input_level, int output_level,
     uint32_t output_path_id, const InternalKey* begin, const InternalKey* end,
-    InternalKey** compaction_end, bool* manual_conflict) {
+    CompactionReason compaction_reason, InternalKey** compaction_end,
+    bool* manual_conflict) {
   assert(input_level == 0);
   assert(output_level == 0);
   *compaction_end = nullptr;
@@ -2059,6 +2055,5 @@ std::unique_ptr<Compaction> FIFOCompactionPicker::CompactRange(
   return c;
 }
 
-#endif  // !ROCKSDB_LITE
 
 }  // namespace rocksdb

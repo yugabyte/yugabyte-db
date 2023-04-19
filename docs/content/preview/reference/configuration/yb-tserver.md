@@ -8,9 +8,6 @@ menu:
     identifier: yb-tserver
     parent: configuration
     weight: 2440
-aliases:
-  - /preview/admin/yb-tserver
-  - /preview/deploy/reference/configuration/yb-tserver
 type: docs
 ---
 
@@ -39,8 +36,6 @@ To display the online help, run `yb-tserver --help` from the YugabyteDB home dir
 ```sh
 ./bin/yb-tserver --help
 ```
-
-## Help flags
 
 ##### --help
 
@@ -113,6 +108,12 @@ Make sure that the [`server_broadcast_addresses`](#server-broadcast-addresses) f
 Specifies the public IP or DNS hostname of the server (with an optional port). This value is used by servers to communicate with one another, depending on the connection policy parameter.
 
 Default: `""`
+
+##### --tablet_server_svc_queue_length
+
+Specifies the queue size for the tablet server to serve reads and writes from applications.
+
+Default: `5000`
 
 ##### --dns_cache_expiration_ms
 
@@ -219,6 +220,12 @@ The duration, in seconds, after which a follower is considered to be failed beca
 Default: `900` (15 minutes)
 
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
+
+##### --evict_failed_followers
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
+
+Default: `true`
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
@@ -396,7 +403,19 @@ If true, local transactions using transaction status tables other than `system.t
 
 Default: `true`
 
-## YSQL flags
+## xCluster flags
+
+Settings related to managing xClusters.
+
+##### --xcluster_svc_queue_size
+
+The RPC queue size of the xCluster service. Should match the size of [tablet_server_svc_queue_length](#tablet-server-svc-queue-length) used for read and write requests.
+
+Default: `5000`
+
+## API flags
+
+### YSQL
 
 The following flags support the use of the [YSQL API](../../../api/ysql/):
 
@@ -413,6 +432,14 @@ Ensure that `enable_ysql` values in `yb-tserver` configurations match the values
 Enables YSQL authentication.
 
 When YSQL authentication is enabled, you can sign into `ysqlsh` using the default `yugabyte` user that has a default password of `yugabyte`.
+
+Default: `false`
+
+##### --ysql_enable_profile
+
+Enables YSQL [login profiles](../../../secure/enable-authentication/ysql-login-profiles/).
+
+When YSQL login profiles are enabled, you can set limits on the number of failed login attempts made by users.
 
 Default: `false`
 
@@ -500,9 +527,9 @@ Specifies the default transaction isolation level.
 
 Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNCOMMITTED`.
 
-- Default: `READ COMMITTED`<sup>$</sup>
+Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed Isolation is supported only if the YB-TServer gflag `yb_enable_read_committed_isolation` is set to `true`. By default this gflag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation). Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -512,9 +539,21 @@ For details on how online index backfill works, see the [Online Index Backfill](
 
 Default: `false`
 
+##### --ysql_sequence_cache_method
+
+Specifies where to cache sequence values.
+
+Valid values are `connection` and `server`.
+
+This flag requires the YB-TServer `yb_enable_sequence_pushdown` flag to be true (the default). Otherwise, the default behavior will occur regardless of this flag's value.
+
+For details on caching values on the server and switching between cache methods, see the semantics on the [nextval](../../../api/ysql/exprs/func_nextval/) page.
+
+Default: `connection`
+
 ##### --ysql_sequence_cache_minval
 
-Specify the minimum number of sequence values to cache in the client for every sequence object.
+Specifies the minimum number of sequence values to cache in the client for every sequence object.
 
 To turn off the default size of cache flag, set the flag to `0`.
 
@@ -552,7 +591,7 @@ Valid values are `-1` (unlimited), `integer` (in kilobytes), `xMB` (in megabytes
 
 Default: `1GB`
 
-## YCQL flags
+### YCQL
 
 The following flags support the use of the [YCQL API](../../../api/ycql/):
 
@@ -600,7 +639,15 @@ Set this flag to `true` to enable audit logging for the universe.
 
 For details, see [Audit logging for the YCQL API](../../../secure/audit-logging/audit-logging-ycql).
 
-## YEDIS flags
+##### --ycql_allow_non_authenticated_password_reset
+
+Set this flag to `true` to enable a superuser to reset a password.
+
+Default: `false`
+
+Note that to enable the password reset feature, you must first set the [`use_cassandra_authentication`](#use-cassandra-authentication) flag to false.
+
+### YEDIS
 
 The following flags support the use of the YEDIS API:
 
@@ -676,7 +723,7 @@ Rate control across all tablets being remote bootstrapped from or to this proces
 
 Default: `256MB` (256 MB/second)
 
-## Network compression
+## Network compression flags
 
 Use the following two flags to configure RPC compression:
 
@@ -705,6 +752,7 @@ To upgrade from an older version that doesn't support RPC compression (such as 2
 - Rolling restart to upgrade YugabyteDB to a version that supports compression.
 
 - Rolling restart to enable compression, on both YB-Master and YB-TServer, by setting `enable_stream_compression=true`.
+
   Note that you can omit this step if the YugabyteDB version you are upgrading to already has compression enabled by default. For the stable release series, versions from 2.6.3.0 and later (including all 2.8 releases) have `enable_stream_compression` set to true by default. For the preview release series, this is all releases beyond 2.9.0.
 
 - Rolling restart to set the compression algorithm to use, on both YB-Master and YB-TServer, such as by setting `stream_compression_algo=3`.
@@ -809,6 +857,40 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
+## Packed row flags (Beta)
+
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
+
+##### --ysql_enable_packed_row
+
+Whether packed row is enabled for YSQL.
+
+Default: `false`
+
+##### --ysql_packed_row_size_limit
+
+Packed row size limit for YSQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+##### --ycql_enable_packed_row
+
+Whether packed row is enabled for YCQL.
+
+Default: `false`
+
+##### --ycql_packed_row_size_limit
+
+Packed row size limit for YCQL. The default value is 0 (use block size as limit). For rows that are over this size limit, a greedy approach will be used to pack as many columns as possible, with the remaining columns stored as individual key-value pairs.
+
+Default: `0`
+
+##### --ysql_enable_packed_row_for_colocated_table
+
+Whether packed row is enabled for colocated tables in YSQL. The colocated table has an additional flag to mitigate [#15143](https://github.com/yugabyte/yugabyte-db/issues/15143).
+
+Default: `false`
+
 ## Change data capture (CDC) flags
 
 To learn about CDC, see [Change data capture (CDC)](../../../architecture/docdb-replication/change-data-capture/).
@@ -896,6 +978,12 @@ Default: `14400000` (4 hours)
 Enable each local peer to update its own log checkpoint instead of the leader updating all peers.
 
 Default: `false`
+
+##### --cdcsdk_table_processing_limit_per_run
+
+Number of tables to be added to the stream ID per run of the background thread which adds newly created tables to the active streams on its namespace.
+
+Default: `2`
 
 ## File expiration based on TTL flags
 

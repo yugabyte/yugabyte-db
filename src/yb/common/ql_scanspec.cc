@@ -20,16 +20,23 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-DECLARE_bool(disable_hybrid_scan);
+#include "yb/docdb/key_bytes.h"
 
 namespace yb {
 
 using std::vector;
 
 //-------------------------------------- QL scan range --------------------------------------
-QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition)
-    : schema_(schema) {
-  Init(condition);
+QLScanRange::QLScanRange(const Schema& schema, const QLConditionPB& condition) {
+  Init(schema, condition);
+}
+
+QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition) {
+  Init(schema, condition);
+}
+
+QLScanRange::QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition) {
+  Init(schema, condition);
 }
 
 template <class Value>
@@ -82,6 +89,7 @@ auto GetColumnValue(const Col& col) {
   }
   if (it->expr_case() == decltype(it->expr_case())::kTuple) {
     std::vector<ColumnId> column_ids;
+    column_ids.reserve(it->tuple().elems().size());
     for (const auto& elem : it->tuple().elems()) {
       DCHECK(elem.has_column_id());
       column_ids.emplace_back(ColumnId(elem.column_id()));
@@ -103,49 +111,39 @@ auto GetColumnValue(const Col& col) {
 }
 
 template <class Cond>
-void QLScanRange::Init(const Cond& condition) {
-  // If there is no range column, return.
-  if (schema_.num_range_key_columns() == 0) {
-    return;
-  }
-
+void QLScanRange::Init(const Schema& schema, const Cond& condition) {
   // Initialize the lower/upper bounds of each range column to null to mean it is unbounded.
-  ranges_.reserve(schema_.num_range_key_columns());
-  for (size_t i = 0; i < schema_.num_key_columns(); i++) {
-    if (schema_.is_range_column(i)) {
-      ranges_.emplace(schema_.column_id(i), QLRange());
-    }
+  ranges_.reserve(schema.num_dockey_components());
+  if (schema.has_yb_hash_code()) {
+    ranges_.emplace(kYbHashCodeColId, QLRange());
   }
 
-  // Check if there is a range column referenced in the operands.
+  for (size_t i = 0; i < schema.num_key_columns(); i++) {
+    ranges_.emplace(schema.column_id(i), QLRange());
+  }
+
+  // Check if there are range and hash columns referenced in the operands.
   const auto& operands = condition.operands();
   bool has_range_column = false;
+  bool has_hash_column = false;
   using ExprCase = decltype(operands.begin()->expr_case());
   for (const auto& operand : operands) {
-    std::vector<int> column_ids;
     if (operand.expr_case() == ExprCase::kColumnId) {
-      column_ids.push_back(operand.column_id());
+      auto id = operand.column_id();
+      has_range_column |= schema.is_range_column(ColumnId(id));
+      has_hash_column |= (id == kYbHashCodeColId || schema.is_hash_key_column(ColumnId(id)));
+
     } else if (operand.expr_case() == ExprCase::kTuple) {
       for (auto const& elem : operand.tuple().elems()) {
         DCHECK(elem.has_column_id());
-        column_ids.push_back(elem.column_id());
-      }
-    }
-    if (column_ids.empty()) {
-      continue;
-    }
+        auto id = elem.column_id();
 
-    // For operand.expr_case() == ExprCase::kColumnId, there will be just one column and
-    // for operand.expr_case() == ExprCase::kTuple, all the columns are given to be range columns,
-    // so in order to set has_range_column as true it suffices to find a single range column.
-    for (auto id : column_ids) {
-      if (schema_.is_range_column(ColumnId(id))) {
-        has_range_column = true;
-        break;
+        has_range_column |= schema.is_range_column(ColumnId(id));
+        has_hash_column |= (id == kYbHashCodeColId || schema.is_hash_key_column(ColumnId(id)));
       }
     }
 
-    if (has_range_column) {
+    if (has_range_column && has_hash_column) {
       break;
     }
   }
@@ -177,7 +175,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_LESS_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_LESS_THAN_EQUAL: {
       if (has_range_column) {
@@ -198,7 +196,7 @@ void QLScanRange::Init(const Cond& condition) {
     }
     case QL_OP_GREATER_THAN:
       // We can only process strict inequalities if we're using hybridscan
-      is_inclusive = FLAGS_disable_hybrid_scan;
+      is_inclusive = false;
       FALLTHROUGH_INTENDED;
     case QL_OP_GREATER_THAN_EQUAL: {
       if (has_range_column) {
@@ -241,7 +239,7 @@ void QLScanRange::Init(const Cond& condition) {
           }
 
           // We can only process strict inequalities if we're using hybridscan
-          if (operands.size() == 5 && !FLAGS_disable_hybrid_scan) {
+          if (operands.size() == 5) {
             ++it;
             if (it->expr_case() == ExprCase::kValue) {
               lower_bound_inclusive = it->value().bool_value();
@@ -288,39 +286,65 @@ void QLScanRange::Init(const Cond& condition) {
               size_t num_cols = col_ids.size();
               auto options_itr = options.begin();
 
-              auto lower = *options.begin();
-              auto upper = *options.begin();
+              std::vector<decltype(&*options.begin())> lower;
+              std::vector<decltype(&*options.begin())> upper;
+              // We are just setting default values for the upper and lower
+              // bounds on the first iteration to populate the lower and upper
+              // vectors.
+              bool is_init_iteration = true;
 
               while(options_itr != options.end()) {
                 DCHECK(options_itr->has_tuple_value());
                 DCHECK_EQ(num_cols, options_itr->tuple_value().elems().size());
                 auto tuple_itr = options_itr->tuple_value().elems().begin();
-                auto l_itr = lower.mutable_tuple_value()->mutable_elems()->begin();
-                auto u_itr = upper.mutable_tuple_value()->mutable_elems()->begin();
+                auto l_itr = lower.begin();
+                auto u_itr = upper.begin();
                 while(tuple_itr != options_itr->tuple_value().elems().end()) {
-                  if (*l_itr > *tuple_itr) {
-                    *l_itr = *tuple_itr;
+                  if (PREDICT_FALSE(is_init_iteration)) {
+                    lower.push_back(&*tuple_itr);
+                    upper.push_back(&*tuple_itr);
+                    ++tuple_itr;
+                    continue;
                   }
-                  if (*u_itr < *tuple_itr) {
-                    *u_itr = *tuple_itr;
+
+                  if (**l_itr > *tuple_itr) {
+                    *l_itr = &*tuple_itr;
+                  }
+                  if (**u_itr < *tuple_itr) {
+                    *u_itr = &*tuple_itr;
                   }
                   ++tuple_itr;
                   ++l_itr;
                   ++u_itr;
                 }
+                is_init_iteration = false;
                 ++options_itr;
               }
 
-              auto l_itr = lower.tuple_value().elems().begin();
-              auto u_itr = upper.tuple_value().elems().begin();
+              auto l_itr = lower.begin();
+              auto u_itr = upper.begin();
               for (size_t i = 0; i < col_ids.size(); ++i, ++l_itr, ++u_itr) {
                 auto& range = ranges_[col_ids[i]];
-                range.min_bound = QLLowerBound(*l_itr, true);
-                range.max_bound = QLUpperBound(*u_itr, true);
+                range.min_bound = QLLowerBound(**l_itr, true);
+                range.max_bound = QLUpperBound(**u_itr, true);
               }
             }
           }
           has_in_range_options_ = true;
+        }
+      }
+
+      // Check if there are hash columns as a part of IN options
+      if(has_hash_column) {
+        auto column_value = GetColumnValue(operands);
+        if (column_value.column_ids.size() > 1) {
+          for (const auto& col_id : column_value.column_ids) {
+            if (col_id.ToUint64() == kYbHashCodeColId ||
+                schema.is_hash_key_column(col_id)) {
+              has_in_hash_options_ = true;
+              break;
+            }
+          }
         }
       }
       return;
@@ -331,7 +355,7 @@ void QLScanRange::Init(const Cond& condition) {
       CHECK_GT(operands.size(), 0);
       for (const auto& operand : operands) {
         CHECK_EQ(operand.expr_case(), ExprCase::kCondition);
-        *this &= QLScanRange(schema_, operand.condition());
+        *this &= QLScanRange(schema, operand.condition());
       }
       return;
     }
@@ -339,14 +363,14 @@ void QLScanRange::Init(const Cond& condition) {
       CHECK_GT(operands.size(), 0);
       for (const auto& operand : operands) {
         CHECK_EQ(operand.expr_case(), ExprCase::kCondition);
-        *this |= QLScanRange(schema_, operand.condition());
+        *this |= QLScanRange(schema, operand.condition());
       }
       return;
     }
     case QL_OP_NOT: {
       CHECK_EQ(operands.size(), 1);
       CHECK_EQ(operands.begin()->expr_case(), ExprCase::kCondition);
-      *this = std::move(~QLScanRange(schema_, operands.begin()->condition()));
+      *this = std::move(~QLScanRange(schema, operands.begin()->condition()));
       return;
     }
 
@@ -371,16 +395,6 @@ void QLScanRange::Init(const Cond& condition) {
   }
 
   LOG(FATAL) << "Internal error: illegal or unknown operator " << condition.op();
-}
-
-QLScanRange::QLScanRange(const Schema& schema, const PgsqlConditionPB& condition)
-    : schema_(schema) {
-  Init(condition);
-}
-
-QLScanRange::QLScanRange(const Schema& schema, const LWPgsqlConditionPB& condition)
-    : schema_(schema) {
-  Init(condition);
 }
 
 QLScanRange::QLBound::QLBound(const QLValuePB &value, bool is_inclusive, bool is_lower_bound)
@@ -441,6 +455,7 @@ QLScanRange& QLScanRange::operator&=(const QLScanRange& other) {
     }
   }
   has_in_range_options_ = has_in_range_options_ || other.has_in_range_options_;
+  has_in_hash_options_ = has_in_hash_options_ || other.has_in_hash_options_;
 
   return *this;
 }
@@ -466,6 +481,7 @@ QLScanRange& QLScanRange::operator|=(const QLScanRange& other) {
     }
   }
   has_in_range_options_ = has_in_range_options_ && other.has_in_range_options_;
+  has_in_hash_options_ = has_in_hash_options_ && other.has_in_hash_options_;
 
   return *this;
 }
@@ -508,20 +524,36 @@ QLScanRange& QLScanRange::operator=(QLScanRange&& other) {
   return *this;
 }
 
+//-------------------------------------- YQL scan spec ---------------------------------------
+Result<KeyBytes> YQLScanSpec::LowerBound() const { return Bound(/* lower_bound = */ true); }
+
+Result<KeyBytes> YQLScanSpec::UpperBound() const { return Bound(/* lower_bound = */ false); }
+
 //-------------------------------------- QL scan spec ---------------------------------------
 
-QLScanSpec::QLScanSpec(QLExprExecutorPtr executor)
-    : QLScanSpec(nullptr, nullptr, true, std::move(executor)) {
-}
+QLScanSpec::QLScanSpec(
+    const Schema& schema, bool is_forward_scan, rocksdb::QueryId query_id,
+    std::unique_ptr<const QLScanRange> range_bounds, size_t prefix_length,
+    QLExprExecutorPtr executor)
+    : QLScanSpec(
+          schema, is_forward_scan, query_id, std::move(range_bounds), prefix_length, nullptr,
+          nullptr, std::move(executor)) {}
 
-QLScanSpec::QLScanSpec(const QLConditionPB* condition,
-                       const QLConditionPB* if_condition,
-                       const bool is_forward_scan,
-                       QLExprExecutorPtr executor)
-    : YQLScanSpec(YQL_CLIENT_CQL),
+QLScanSpec::QLScanSpec(
+    const Schema& schema,
+    bool is_forward_scan,
+    rocksdb::QueryId query_id,
+    std::unique_ptr<const QLScanRange>
+        range_bounds,
+    size_t prefix_length,
+    const QLConditionPB* condition,
+    const QLConditionPB* if_condition,
+    QLExprExecutorPtr executor)
+    : YQLScanSpec(
+          YQL_CLIENT_CQL, schema, is_forward_scan, query_id, std::move(range_bounds),
+          prefix_length),
       condition_(condition),
       if_condition_(if_condition),
-      is_forward_scan_(is_forward_scan),
       executor_(std::move(executor)) {
   if (executor_ == nullptr) {
     executor_ = std::make_shared<QLExprExecutor>();
@@ -544,9 +576,18 @@ Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
 
 //-------------------------------------- QL scan spec ---------------------------------------
 // Pgsql scan specification.
-PgsqlScanSpec::PgsqlScanSpec(const PgsqlExpressionPB *where_expr,
-                             QLExprExecutor::SharedPtr executor)
-    : YQLScanSpec(YQL_CLIENT_PGSQL),
+PgsqlScanSpec::PgsqlScanSpec(
+    const Schema& schema,
+    bool is_forward_scan,
+    rocksdb::QueryId query_id,
+    std::unique_ptr<const QLScanRange>
+        range_bounds,
+    size_t prefix_length,
+    const PgsqlExpressionPB* where_expr,
+    QLExprExecutor::SharedPtr executor)
+    : YQLScanSpec(
+          YQL_CLIENT_PGSQL, schema, is_forward_scan, query_id, std::move(range_bounds),
+          prefix_length),
       where_expr_(where_expr),
       executor_(executor) {
   if (executor_ == nullptr) {

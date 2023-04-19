@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_TABLE_PROPERTIES_CONSTANTS_H
-#define YB_COMMON_TABLE_PROPERTIES_CONSTANTS_H
+#pragma once
 
 #include <cstring>
 
@@ -68,5 +67,3 @@ inline static bool IsValidCachingRowsPerPartitionInt(const int64_t val) {
 
 }  // namespace common
 }  // namespace yb
-
-#endif // YB_COMMON_TABLE_PROPERTIES_CONSTANTS_H

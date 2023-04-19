@@ -16,8 +16,6 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
-#define YB_ROCKSDB_UTILITIES_STACKABLE_DB_H
 
 #pragma once
 #include <string>
@@ -262,7 +260,6 @@ class StackableDB : public DB {
     return db_->SyncWAL();
   }
 
-#ifndef ROCKSDB_LITE
 
   virtual Status DisableFileDeletions() override {
     return db_->DisableFileDeletions();
@@ -302,7 +299,6 @@ class StackableDB : public DB {
     db_->GetColumnFamiliesOptions(column_family_names, column_family_options);
   }
 
-#endif  // ROCKSDB_LITE
 
   virtual Status GetLiveFiles(std::vector<std::string>& vec, uint64_t* mfs,
                               bool flush_memtable = true) override {
@@ -361,5 +357,3 @@ class StackableDB : public DB {
 };
 
 } //  namespace rocksdb
-
-#endif // YB_ROCKSDB_UTILITIES_STACKABLE_DB_H

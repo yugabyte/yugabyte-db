@@ -1,10 +1,14 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
+import { MenuItem, Dropdown } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import moment from 'moment';
 import pluralize from 'pluralize';
-
+import { YBPanelItem } from '../../panels';
+import { NodeAction } from '../../universes';
+import { setCookiesFromLocalStorage } from '../../../routes';
+import { NodeType } from '../../../redesign/utils/dtos';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
 import {
   getPrimaryCluster,
@@ -12,14 +16,40 @@ import {
   getReadOnlyCluster
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled, isHidden } from '../../../utils/LayoutUtils';
-import { YBPanelItem } from '../../panels';
-import { NodeAction } from '../../universes';
-import { setCookiesFromLocalStorage } from '../../../routes';
-import { getUniverseStatus, universeState } from '../helpers/universeHelpers';
+import { getUniverseStatus, UniverseState } from '../helpers/universeHelpers';
 
+import './NodeDetailsTable.scss';
 import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
+const NODE_TYPE = [
+  {
+    label: 'All Nodes',
+    value: 'All Nodes'
+  },
+  {
+    label: NodeType.TServer,
+    value: NodeType.TServer
+  },
+  {
+    label: NodeType.Master,
+    value: NodeType.Master
+  }
+];
+
 export default class NodeDetailsTable extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      nodeTypeDropdownValue: NODE_TYPE[0].value
+    };
+  }
+
+  onNodeTypeChanged = (selectedNodeType) => {
+    this.setState({
+      nodeTypeDropdownValue: selectedNodeType
+    });
+  };
+
   render() {
     const {
       nodeDetails,
@@ -27,20 +57,32 @@ export default class NodeDetailsTable extends Component {
       clusterType,
       customer,
       currentUniverse,
-      providers
+      providers,
+      isDedicatedNodes
     } = this.props;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
-    const sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
+    let sortedNodeDetails = nodeDetails.sort((a, b) => a.nodeIdx - b.nodeIdx);
     const universeUUID = currentUniverse.data.universeUUID;
     const providerConfig = providers.data.find((provider) => provider.uuid === providerUUID)
       ?.config;
 
+    if (isDedicatedNodes && clusterType === 'primary') {
+      if (this.state.nodeTypeDropdownValue === NodeType.Master) {
+        sortedNodeDetails = sortedNodeDetails.filter(
+          (nodeDetails) => nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
+        );
+      } else if (this.state.nodeTypeDropdownValue === NodeType.TServer) {
+        sortedNodeDetails = sortedNodeDetails.filter(
+          (nodeDetails) => nodeDetails.dedicatedTo === NodeType.TServer.toUpperCase()
+        );
+      }
+    }
     const formatIpPort = function (cell, row, type) {
       if (cell === '-') {
         return <span>{cell}</span>;
       }
-      const isMaster = type === 'master';
+      const isMaster = type === NodeType.Master.toLowerCase();
       const href = getProxyNodeAddress(
         universeUUID,
         row.privateIP,
@@ -57,22 +99,25 @@ export default class NodeDetailsTable extends Component {
               target="_blank"
               rel="noopener noreferrer"
             >
-              {isMaster ? 'Master' : 'TServer'}
+              {isMaster ? NodeType.Master : NodeType.TServer}
             </a>
           ) : (
-            <span>{isMaster ? 'Master' : 'TServer'}</span>
+            <span>{isMaster ? NodeType.Master : NodeType.TServer}</span>
           )}
           {isMaster && row.isMasterLeader ? ' (Leader)' : ''}
         </div>
       );
-
     };
 
     const getIpPortLinks = (cell, row) => {
       return (
         <Fragment>
-          {formatIpPort(row.isMaster, row, 'master')}
-          {formatIpPort(row.isTServer, row, 'tserver')}
+          {row.dedicatedTo === NodeType.Master.toUpperCase() &&
+            formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
+          {row.dedicatedTo === NodeType.TServer.toUpperCase() &&
+            formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
+          {!row.dedicatedTo && formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
+          {!row.dedicatedTo && formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
         </Fragment>
       );
     };
@@ -213,6 +258,8 @@ export default class NodeDetailsTable extends Component {
           hideConnect={hideIP}
           hideQueries={hideQueries}
           disabled={actions_disabled}
+          clusterType={clusterType}
+          isKubernetes={isKubernetes}
         />
       );
     };
@@ -248,72 +295,108 @@ export default class NodeDetailsTable extends Component {
     const universeStatus = getUniverseStatus(currentUniverse.data);
     const displayNodeActions =
       !this.props.isReadOnlyUniverse &&
-      universeStatus.state !== universeState.PAUSED &&
+      universeStatus.state !== UniverseState.PAUSED &&
       isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
 
     return (
-      <YBPanelItem
-        className={`${clusterType}-node-details`}
-        header={<h2 className="content-title">{panelTitle}</h2>}
-        body={
-          <BootstrapTable ref="nodeDetailTable" data={sortedNodeDetails}>
-            <TableHeaderColumn
-              dataField="name"
-              isKey={true}
-              className={'node-name-field'}
-              columnClassName={'node-name-field'}
-              dataFormat={getNodeNameLink}
-            >
-              Name
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="nodeStatus"
-              dataFormat={getStatusUptime}
-              className={'yb-node-status-cell'}
-              columnClassName={'yb-node-status-cell'}
-            >
-              Status
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="cloudItem"
-              dataFormat={getCloudInfo}
-              className="cloud-info-cell"
-              columnClassName="cloud-info-cell"
-            >
-              Cloud Info
-            </TableHeaderColumn>
-            <TableHeaderColumn dataFormat={getReadableSize} dataField="ram_used">
-              RAM Used
-            </TableHeaderColumn>
-            <TableHeaderColumn dataFormat={getReadableSize} dataField="total_sst_file_size">
-              SST Size
-            </TableHeaderColumn>
-            <TableHeaderColumn dataFormat={getReadableSize} dataField="uncompressed_sst_file_size">
-              Uncompressed SST Size
-            </TableHeaderColumn>
-            <TableHeaderColumn dataFormat={getOpsSec} dataField="read_ops_per_sec">
-              Read | Write ops/sec
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="isMaster"
-              dataFormat={getIpPortLinks}
-              formatExtraData="master"
-            >
-              Processes
-            </TableHeaderColumn>
-            {displayNodeActions && (
+      <div className="node-details-table-container">
+        <YBPanelItem
+          className={`${clusterType}-node-details`}
+          header={
+            <>
+              <h2 className="content-title">{panelTitle}</h2>
+              {isDedicatedNodes && (
+                <Dropdown id="nodeTypeDropdown" className="node-type-dropdown">
+                  <Dropdown.Toggle>
+                    <>
+                      <span className="node-type-dropdown__label">{'Type'}</span>
+                      <span className="node-type-dropdown__value">
+                        {this.state.nodeTypeDropdownValue}
+                      </span>
+                    </>
+                  </Dropdown.Toggle>
+                  <Dropdown.Menu>
+                    {NODE_TYPE.map((nodeType, nodeTypeIdx) => {
+                      return (
+                        <MenuItem
+                          eventKey={`nodeId-${nodeTypeIdx}`}
+                          key={`${nodeType.label}`}
+                          active={this.state.nodeTypeDropdownValue === nodeType.value}
+                          onSelect={() => this.onNodeTypeChanged(nodeType.value)}
+                        >
+                          {nodeType.value}
+                        </MenuItem>
+                      );
+                    })}
+                  </Dropdown.Menu>
+                </Dropdown>
+              )}
+            </>
+          }
+          body={
+            // eslint-disable-next-line react/no-string-refs
+            <BootstrapTable ref={'nodeDetailTable'} data={sortedNodeDetails}>
               <TableHeaderColumn
-                dataField="nodeAction"
-                className={'yb-actions-cell'}
-                columnClassName={'yb-actions-cell'}
-                dataFormat={getNodeAction}
+                dataField="name"
+                isKey={true}
+                className={'node-name-field'}
+                columnClassName={'node-name-field'}
+                dataFormat={getNodeNameLink}
               >
-                Action
+                Name
               </TableHeaderColumn>
-            )}
-          </BootstrapTable>
-        }
-      />
+              <TableHeaderColumn
+                dataField="nodeStatus"
+                dataFormat={getStatusUptime}
+                className={'yb-node-status-cell'}
+                columnClassName={'yb-node-status-cell'}
+              >
+                Status
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="cloudItem"
+                dataFormat={getCloudInfo}
+                className="cloud-info-cell"
+                columnClassName="cloud-info-cell"
+              >
+                Cloud Info
+              </TableHeaderColumn>
+              <TableHeaderColumn dataFormat={getReadableSize} dataField="ram_used">
+                RAM Used
+              </TableHeaderColumn>
+              <TableHeaderColumn dataFormat={getReadableSize} dataField="total_sst_file_size">
+                SST Size
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataFormat={getReadableSize}
+                dataField="uncompressed_sst_file_size"
+              >
+                Uncompressed SST Size
+              </TableHeaderColumn>
+              <TableHeaderColumn dataFormat={getOpsSec} dataField="read_ops_per_sec">
+                Read | Write ops/sec
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="isMaster"
+                dataFormat={getIpPortLinks}
+                formatExtraData="master"
+              >
+                Processes
+              </TableHeaderColumn>
+              {displayNodeActions && (
+                <TableHeaderColumn
+                  dataField="nodeAction"
+                  className={'yb-actions-cell'}
+                  columnClassName={'yb-actions-cell'}
+                  dataFormat={getNodeAction}
+                >
+                  Action
+                </TableHeaderColumn>
+              )}
+            </BootstrapTable>
+          }
+        />
+      </div>
     );
   }
 }

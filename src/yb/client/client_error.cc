@@ -37,6 +37,7 @@ bool IsRetryableClientError(const Status& s) {
       // again to cover desired key range.
       return false;
     case ClientErrorCode::kTablePartitionListIsStale:
+    case ClientErrorCode::kTablePartitionListRefreshed:
     case ClientErrorCode::kExpiredRequestToBeRetried:
     case ClientErrorCode::kTabletNotYetRunning:
     case ClientErrorCode::kMetaCacheInvalidated:

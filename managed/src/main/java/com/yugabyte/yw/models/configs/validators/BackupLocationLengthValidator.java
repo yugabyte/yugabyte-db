@@ -4,7 +4,7 @@ package com.yugabyte.yw.models.configs.validators;
 
 import javax.validation.ConstraintValidator;
 import javax.validation.ConstraintValidatorContext;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 
 public class BackupLocationLengthValidator
     implements ConstraintValidator<BackupLocationLengthConstraint, String> {

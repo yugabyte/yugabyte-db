@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_cast ::= create_cast_with_function
                 | create_cast_without_function
                 | create_cast_with_inout

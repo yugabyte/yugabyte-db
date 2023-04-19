@@ -11,12 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_FWD_H
-#define YB_DOCDB_DOCDB_FWD_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
 #include "yb/docdb/docdb.fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -28,14 +28,16 @@ namespace docdb {
 class ConsensusFrontier;
 class DeadlineInfo;
 class DocDBCompactionFilterFactory;
-class DocKey;
 class DocOperation;
-class DocPath;
+class DocPgsqlScanSpec;
+class DocQLScanSpec;
 class DocRowwiseIterator;
 class DocWriteBatch;
 class ExternalTxnIntentsState;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
+class IntentAwareIteratorIf;
+class IntentIterator;
 class KeyBytes;
 class KeyEntryValue;
 class ManualHistoryRetentionPolicy;
@@ -44,10 +46,12 @@ class PrimitiveValue;
 class QLWriteOperation;
 class RedisWriteOperation;
 class RowPacker;
+class ScanChoices;
 class SchemaPacking;
 class SchemaPackingStorage;
 class SharedLockManager;
-class SubDocKey;
+class TransactionStatusCache;
+class WaitQueue;
 class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
@@ -64,6 +68,7 @@ struct ValueControlFields;
 using DocKeyHash = uint16_t;
 using LockBatchEntries = std::vector<LockBatchEntry>;
 using DocReadContextPtr = std::shared_ptr<DocReadContext>;
+using ScanChoicesPtr = std::unique_ptr<ScanChoices>;
 
 using IndexRequests = std::vector<std::pair<const IndexInfo*, QLWriteRequestPB>>;
 
@@ -72,13 +77,7 @@ enum class ValueEntryType;
 
 YB_STRONGLY_TYPED_BOOL(PartialRangeKeyIntents);
 
-// Automatically decode keys that are stored in string-typed PrimitiveValues when converting a
-// PrimitiveValue to string. This is useful when displaying write batches for secondary indexes.
-YB_STRONGLY_TYPED_BOOL(AutoDecodeKeys);
-
 YB_STRONGLY_TYPED_BOOL(SkipFlush);
-
-YB_DEFINE_ENUM(OperationKind, (kRead)(kWrite));
 
 // "Weak" intents are written for ancestor keys of a key that's being modified. For example, if
 // we're writing a.b.c with snapshot isolation, we'll write weak snapshot isolation intents for
@@ -90,5 +89,3 @@ YB_DEFINE_ENUM(IntentStrength, (kWeak)(kStrong));
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_DOCDB_FWD_H

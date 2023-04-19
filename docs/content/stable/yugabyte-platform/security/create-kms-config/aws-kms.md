@@ -12,11 +12,23 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="{{< relref "./aws-kms.md" >}}" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
+    </a>
+  </li>
+  <li >
+    <a href="{{< relref "./google-kms.md" >}}" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
+      Google KMS
+    </a>
+  </li>
+
+  <li >
+    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+      <i class="icon-azure" aria-hidden="true"></i>&nbsp;
+      Azure Key Vault
     </a>
   </li>
 
@@ -87,7 +99,7 @@ You can create a KMS configuration that uses AWS KMS as follows:
         }
     ```
 
-5. Click **Save**.<br>
+5. Click **Save**.
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 

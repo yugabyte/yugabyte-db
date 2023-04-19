@@ -169,7 +169,8 @@ public class BackupUtilTest extends FakeDBApplication {
       String defaultBackupLocationPrefix, String defaultBackupLocationSuffix, boolean expectedNfs) {
     String defaultBackupLocation =
         defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
-    String actualIdentifier = BackupUtil.getBackupIdentifier(defaultBackupLocation, false);
+    String actualIdentifier =
+        BackupUtil.getBackupIdentifier(defaultBackupLocation, false, "yugabyte_backup");
     if (expectedNfs) {
       assertTrue(
           actualIdentifier.startsWith(
@@ -209,7 +210,7 @@ public class BackupUtilTest extends FakeDBApplication {
     String backupLocation =
         defaultBackupLocationPrefix + DEFAULT_UNIVERSE_UUID + defaultBackupLocationSuffix;
     String actualRegionLocation =
-        BackupUtil.getExactRegionLocation(backupLocation, configRegionLocation);
+        BackupUtil.getExactRegionLocation(backupLocation, configRegionLocation, "yugabyte_backup");
     String expectedRegionLocation =
         expectedRegionLocationPrefix + DEFAULT_UNIVERSE_UUID + expectedRegionLocationSuffix;
     assertEquals(expectedRegionLocation, actualRegionLocation);
@@ -219,7 +220,7 @@ public class BackupUtilTest extends FakeDBApplication {
   @Parameters(value = {"true, true", "true, false", "false, false", "false, true"})
   public void testBackupLocationFormat(boolean emptyTableList, boolean isYbc) {
     BackupTableParams tableParams = new BackupTableParams();
-    tableParams.universeUUID = UUID.randomUUID();
+    tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.backupUuid = UUID.randomUUID();
     tableParams.setKeyspace("foo");
     if (emptyTableList) {
@@ -310,11 +311,11 @@ public class BackupUtilTest extends FakeDBApplication {
   public void testUpdateDefaultStorageLocationWithoutYbc(JsonNode formData) {
     CustomerConfig testConfig = CustomerConfig.createWithFormData(testCustomer.getUuid(), formData);
     BackupTableParams tableParams = new BackupTableParams();
-    tableParams.storageConfigUUID = testConfig.configUUID;
+    tableParams.storageConfigUUID = testConfig.getConfigUUID();
     tableParams.backupUuid = UUID.randomUUID();
-    tableParams.universeUUID = UUID.randomUUID();
+    tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
-    String backupIdentifier = "univ-" + tableParams.universeUUID.toString() + "/";
+    String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
     BackupUtil.updateDefaultStorageLocation(
         tableParams, testCustomer.getUuid(), BackupCategory.YB_BACKUP_SCRIPT);
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
@@ -323,7 +324,7 @@ public class BackupUtilTest extends FakeDBApplication {
             ? (expectedStorageLocation + backupIdentifier)
             : (expectedStorageLocation + "/" + backupIdentifier);
     assertTrue(tableParams.storageLocation.contains(expectedStorageLocation));
-    if (testConfig.name.equals("NFS")) {
+    if (testConfig.getName().equals("NFS")) {
       // Assert no double slash occurance
       assertEquals(1, tableParams.storageLocation.split("//").length);
     } else {
@@ -336,15 +337,15 @@ public class BackupUtilTest extends FakeDBApplication {
   public void testUpdateDefaultStorageLocationWithYbc(JsonNode formData) {
     CustomerConfig testConfig = CustomerConfig.createWithFormData(testCustomer.getUuid(), formData);
     BackupTableParams tableParams = new BackupTableParams();
-    tableParams.storageConfigUUID = testConfig.configUUID;
+    tableParams.storageConfigUUID = testConfig.getConfigUUID();
     tableParams.backupUuid = UUID.randomUUID();
-    tableParams.universeUUID = UUID.randomUUID();
+    tableParams.setUniverseUUID(UUID.randomUUID());
     tableParams.setKeyspace("foo");
-    String backupIdentifier = "univ-" + tableParams.universeUUID.toString() + "/";
+    String backupIdentifier = "univ-" + tableParams.getUniverseUUID().toString() + "/";
     BackupUtil.updateDefaultStorageLocation(
         tableParams, testCustomer.getUuid(), BackupCategory.YB_CONTROLLER);
     String expectedStorageLocation = formData.get("data").get("BACKUP_LOCATION").asText();
-    if (testConfig.name.equals("NFS")) {
+    if (testConfig.getName().equals("NFS")) {
       backupIdentifier = "yugabyte_backup/" + backupIdentifier;
       expectedStorageLocation =
           expectedStorageLocation.endsWith("/")

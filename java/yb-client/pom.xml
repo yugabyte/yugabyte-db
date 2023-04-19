@@ -25,12 +25,12 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.31-SNAPSHOT</version>
+    <version>0.8.51-SNAPSHOT</version>
   </parent>
 
   <artifactId>yb-client</artifactId>
   <name>YB Java Client</name>
-  <version>0.8.31-SNAPSHOT</version>
+  <version>0.8.51-SNAPSHOT</version>
   <properties>
     <yb.thirdparty.dir>${project.basedir}/../../thirdparty</yb.thirdparty.dir>
   </properties>
@@ -132,11 +132,6 @@
           <checkStaleness>true</checkStaleness>
           <protoSourceRoot>${project.basedir}/../../src</protoSourceRoot>
           <protocExecutable>${project.basedir}/dev-support/build-proto.sh</protocExecutable>
-          <additionalProtoPathElements>
-            <additionalProtoPathElement>
-              ${yb.thirdparty.dir}/installed/uninstrumented/include
-            </additionalProtoPathElement>
-          </additionalProtoPathElements>
           <excludes>
             <exclude>**/*test*.proto</exclude>
           </excludes>

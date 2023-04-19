@@ -1,0 +1,10 @@
+@use '../../../../_style/colors.scss';
+
+.pill {
+  height: fit-content;
+  padding: 4px 6px;
+
+  font-size: 10px;
+  border-radius: 6px;
+  background-color: colors.$YB_LABEL_NETURAL_BACKGROUND;
+}

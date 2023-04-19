@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_THREADLOCAL_H_
-#define YB_UTIL_THREADLOCAL_H_
+#pragma once
 
 // Block-scoped static thread local implementation.
 //
@@ -154,5 +153,3 @@ static void Destroy(void* t) {
 } // namespace internal
 } // namespace threadlocal
 } // namespace yb
-
-#endif // YB_UTIL_THREADLOCAL_H_

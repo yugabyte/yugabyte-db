@@ -69,8 +69,8 @@ class ScheduleDisplayItem extends Component {
     } else {
       console.error(`Unknown task type: ${schedule.taskType}`);
       taskType = 'Unknown';
-      keyspace = (schedule.taskParams && schedule.taskParams.keyspace) || 'N/A';
-      tableDetails = (schedule.taskParams && schedule.taskParams.tableName) || 'N/A';
+      keyspace = (schedule.taskParams?.keyspace) || 'N/A';
+      tableDetails = (schedule.taskParams?.tableName) || 'N/A';
     }
 
     const retentionTime =

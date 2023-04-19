@@ -22,7 +22,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 
-#ifndef ROCKSDB_LITE
 
 #include <algorithm>
 #include <vector>
@@ -188,9 +187,3 @@ int main(int argc, char** argv) {
   }
   fprintf(stderr, "PASSED\n");
 }
-#else
-int main(int argc, char** argv) {
-  fprintf(stderr, "SKIPPED as RocksDBLite does not include utilities.\n");
-  return 0;
-}
-#endif  // !ROCKSDB_LITE

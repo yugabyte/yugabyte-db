@@ -25,8 +25,9 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/ql_datatype.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 
+#include "yb/gutil/integral_types.h"
 #include "yb/util/algorithm_util.h"
 #include "yb/util/kv_util.h"
 #include "yb/util/net/inetaddress.h"
@@ -75,6 +76,10 @@ class KeyEntryValue {
   void AppendToKey(KeyBytes* key_bytes) const;
   KeyBytes ToKeyBytes() const;
 
+  // Return non-zero encoded value size if provided datatype has fixed encoded value size, otherwise
+  // return 0.
+  static size_t GetEncodedKeyEntryValueSize(const DataType& data_type);
+
   std::string ToString(AutoDecodeKeys auto_decode_keys = AutoDecodeKeys::kFalse) const;
 
   int CompareTo(const KeyEntryValue& other) const;
@@ -92,6 +97,7 @@ class KeyEntryValue {
 
   bool IsString() const;
   bool IsInt32() const;
+  bool IsUInt16Hash() const;
   bool IsInt64() const;
   bool IsFloat() const;
   bool IsDouble() const;
@@ -106,6 +112,7 @@ class KeyEntryValue {
   bool IsTimestamp() const;
 
   const std::string& GetString() const;
+  uint16_t GetUInt16Hash() const;
   int32_t GetInt32() const;
   int64_t GetInt64() const;
   float GetFloat() const;

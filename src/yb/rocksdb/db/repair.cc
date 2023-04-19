@@ -72,7 +72,6 @@
 //   Store per-table metadata (smallest, largest, largest-seq#, ...)
 //   in the table's meta section to speed up ScanTable.
 
-#ifndef ROCKSDB_LITE
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -501,5 +500,3 @@ Status RepairDB(const std::string& dbname, const Options& options) {
 }
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

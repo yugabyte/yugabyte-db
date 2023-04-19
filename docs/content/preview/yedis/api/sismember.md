@@ -14,11 +14,13 @@ type: docs
 
 ## Synopsis
 
-<b>`SISMEMBER key member_value`</b><br>
+**`SISMEMBER key member_value`**
+
 This command is a predicate for whether or not a value is a member of a set that is associated with the given  `key`.
-<li>If the `key` is associated with a value that is not a set, an error is raised.</li>
-<li>If the `key` does not exist, its associated set is empty, and the command returns 0.</li>
-<li>If the `member` belongs to the given set, an integer of 1 is returned.</li>
+
+- If the `key` is associated with a value that is not a set, an error is raised.
+- If the `key` does not exist, its associated set is empty, and the command returns 0.
+- If the `member` belongs to the given set, an integer of 1 is returned.
 
 ## Return Value
 

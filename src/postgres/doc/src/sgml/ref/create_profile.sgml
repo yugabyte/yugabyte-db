@@ -1,0 +1,31 @@
+<!--
+doc/src/sgml/ref/create_profile.sgml
+YSQL documentation
+-->
+
+<refentry id="sql-createprofile">
+ <indexterm zone="sql-createprofile">
+  <primary>CREATE PROFILE</primary>
+ </indexterm>
+
+ <refmeta>
+  <refentrytitle>CREATE PROFILE</refentrytitle>
+  <manvolnum>7</manvolnum>
+  <refmiscinfo>SQL - Language Statements</refmiscinfo>
+ </refmeta>
+
+ <refnamediv>
+  <refname>CREATE PROFILE</refname>
+  <refpurpose>define a new login profile</refpurpose>
+ </refnamediv>
+
+ <refsynopsisdiv>
+
+<synopsis>
+CREATE PROFILE <replaceable class="parameter">profile_name</replaceable> LIMIT
+  FAILED_LOGIN_ATTEMPTS <replaceable class="parameter">number</replaceable>;
+  [PASSWORD_LOCK_TIME <replaceable class="parameter">days</replaceable>];
+</synopsis>
+
+ </refsynopsisdiv>
+</refentry>

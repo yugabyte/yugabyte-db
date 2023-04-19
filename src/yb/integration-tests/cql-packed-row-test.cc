@@ -16,12 +16,28 @@
 
 using namespace std::literals;
 
+DECLARE_int32(timestamp_history_retention_interval_sec);
+
 namespace yb {
 
 class CqlPackedRowTest : public PackedRowTestBase<CqlTestBase<MiniCluster>> {
  public:
   virtual ~CqlPackedRowTest() = default;
 };
+
+Status CheckTableContent(
+    CassandraSession* session, const std::string& expected,
+    const std::string& where = "", const std::string& table_name = "t") {
+  auto expr = "SELECT * FROM " + table_name;
+  if (!where.empty()) {
+    expr += " WHERE " + where;
+  }
+  auto content = VERIFY_RESULT(session->ExecuteAndRenderToString(expr));
+  SCHECK_EQ(content, expected, IllegalState,
+            Format("Wrong table '$0' content$1",
+                   table_name, where.empty() ? "" : Format("(WHERE $0)", where)));
+  return Status::OK();
+}
 
 TEST_F(CqlPackedRowTest, Simple) {
   auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
@@ -30,21 +46,16 @@ TEST_F(CqlPackedRowTest, Simple) {
       "CREATE TABLE t (key INT PRIMARY KEY, v1 TEXT, v2 TEXT) WITH tablets = 1"));
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1, v2) VALUES (1, 'one', 'two')"));
 
-  auto value = ASSERT_RESULT(session.ExecuteAndRenderToString(
-      "SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one,two");
+  ASSERT_OK(CheckTableContent(&session, "1,one,two", "key = 1"));
 
   ASSERT_OK(session.ExecuteQuery("UPDATE t SET v2 = 'three' where key = 1"));
-  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "one,three");
+  ASSERT_OK(CheckTableContent(&session, "1,one,three", "key = 1"));
 
   ASSERT_OK(session.ExecuteQuery("DELETE FROM t WHERE key = 1"));
-  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
-  ASSERT_EQ(value, "");
+  ASSERT_OK(CheckTableContent(&session, ""));
 
   ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v2, v1) VALUES (1, 'four', 'five')"));
-  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT v1, v2 FROM t WHERE key = 1"));
-  ASSERT_EQ(value, "five,four");
+  ASSERT_OK(CheckTableContent(&session, "1,five,four", "key = 1"));
 
   ASSERT_NO_FATALS(CheckNumRecords(cluster_.get(), 4));
 }
@@ -166,6 +177,95 @@ TEST_F(CqlPackedRowTest, WriteTime) {
       "SELECT writetime(v1), writetime(v2) FROM t", processor));
   ASSERT_EQ(old_v1time, v1time);
   ASSERT_EQ(old_v2time, v2time);
+}
+
+TEST_F(CqlPackedRowTest, RetainPacking) {
+  // Set retention interval to 0, to repack all recently flushed entries.
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT) WITH tablets = 1"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (1, 1)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (2, 2)"));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_OK(session.ExecuteQuery("ALTER TABLE t ADD v2 INT"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1, v2) VALUES (3, 3, 3)"));
+
+  // The first compaction to compact all flushed entries with an old schema, so all disk entries
+  // have only the most recent schema version.
+  ASSERT_OK(cluster_->CompactTablets(docdb::SkipFlush::kTrue));
+
+  // Compaction with flush to check that we did not lost used schema versions.
+  ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F(CqlPackedRowTest, NonFullInsert) {
+  FLAGS_timestamp_history_retention_interval_sec = 0;
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT, v2 INT) WITH tablets = 1"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1, v2) VALUES (1, 1, 1)"));
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v2) VALUES (1, 2)"));
+
+  auto value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "1,1,2");
+}
+
+TEST_F(CqlPackedRowTest, LivenessColumnExpiry) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT) WITH tablets = 1"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (key, v1) VALUES (1, 1) USING TTL 1"));
+  ASSERT_OK(session.ExecuteQuery("UPDATE t SET v1 = 2 WHERE key = 1"));
+
+  std::this_thread::sleep_for(1s);
+
+  auto value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "1,2");
+
+  ASSERT_OK(session.ExecuteQuery("UPDATE t SET v1 = NULL WHERE key = 1"));
+
+  value = ASSERT_RESULT(session.ExecuteAndRenderToString("SELECT * FROM t"));
+  ASSERT_EQ(value, "");
+}
+
+TEST_F(CqlPackedRowTest, BadCast) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "CREATE TABLE test_cast (h int PRIMARY KEY, t text) WITH tablets = 1"));
+
+  ASSERT_NOK(session.ExecuteQuery("INSERT INTO test_cast (h, t) values (2, cast(22 as text))"));
+}
+
+TEST_F(CqlPackedRowTest, TimestampOverExpired) {
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  ASSERT_OK(session.ExecuteQuery("CREATE TABLE t (h INT, r INT, v INT, PRIMARY KEY((h), r))"));
+
+  ASSERT_OK(session.ExecuteQuery("INSERT INTO t (h, r, v) values (1, 2, 3) USING TTL 1"));
+  auto write_time = ASSERT_RESULT(session.FetchValue<int64_t>(
+      "SELECT writetime(v) FROM t WHERE h = 1 AND r = 2"));
+  ASSERT_OK(CheckTableContent(&session, "1,2,3", "h = 1 AND r = 2"));
+
+  std::this_thread::sleep_for(1s);
+  ASSERT_OK(CheckTableContent(&session, ""));
+
+  ASSERT_OK(session.ExecuteQuery(
+      "INSERT INTO t (h, r, v) values (1, 2, 4) USING TIMESTAMP " +
+      std::to_string(write_time - 1)));
+  ASSERT_OK(CheckTableContent(&session, ""));
 }
 
 } // namespace yb

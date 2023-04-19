@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_operator_class ::= CREATE OPERATOR CLASS operator_class_name 
                           [ DEFAULT ] FOR TYPE data_type USING 
                           index_method AS operator_class_as [ , ... ]

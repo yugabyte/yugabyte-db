@@ -11,13 +11,12 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_YB_TABLE_NAME_H_
-#define YB_CLIENT_YB_TABLE_NAME_H_
+#pragma once
 
 #include <string>
 #include <boost/optional.hpp>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/common_types.pb.h"
 
@@ -192,5 +191,3 @@ size_t hash_value(const YBTableName& table_name);
 
 }  // namespace client
 }  // namespace yb
-
-#endif  // YB_CLIENT_YB_TABLE_NAME_H_

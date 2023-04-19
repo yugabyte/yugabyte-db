@@ -20,8 +20,6 @@
 // Copyright (c) 2011 The LevelDB Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
-#ifndef YB_ROCKSDB_TABLE_BLOCK_H
-#define YB_ROCKSDB_TABLE_BLOCK_H
 
 #pragma once
 #include <stddef.h>
@@ -224,6 +222,10 @@ class BlockIter : public InternalIterator {
     return restart_index_;
   }
 
+  ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override;
+
  private:
   const Comparator* comparator_;
   const char* data_;       // underlying block contents
@@ -286,5 +288,3 @@ class BlockIter : public InternalIterator {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_BLOCK_H

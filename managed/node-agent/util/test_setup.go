@@ -5,12 +5,20 @@
 package util
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"node-agent/model"
 	"os"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -29,7 +37,7 @@ func init() {
 func setUp() {
 	// Sets the env to test to load test config.
 	os.Setenv("env", "TEST")
-	SetCurrentConfig("test-config.conf")
+	SetCurrentConfig("test-config")
 	config := CurrentConfig()
 	server := MockServer()
 	config.Update(PlatformUrlKey, server.URL)
@@ -46,6 +54,15 @@ func setUp() {
 	config.Update(NodeAzIdKey, "az1234")
 	config.Update(NodeInstanceTypeKey, dummyInstanceType)
 	config.Update(NodeLoggerKey, "node_agent_test.log")
+	config.Update(PlatformCertsKey, "test")
+	private, public := GetPublicAndPrivateKey()
+	SaveCerts(
+		context.TODO(),
+		config,
+		string(public),
+		string(private),
+		config.String(PlatformCertsKey),
+	)
 }
 
 // Sets up a mock server to test http client calls.
@@ -160,9 +177,13 @@ func GetTestRegisterResponse() model.RegisterResponseSuccess {
 }
 
 func GetTestProviderData() model.Provider {
+	config := make(map[string]string)
+	config["YB_HOME_DIR"] = "/home/yugabyte/custom"
+
 	dummyProvider := model.Provider{
 		BasicInfo: model.BasicInfo{Uuid: "12345"},
 		SshPort:   54422,
+		Config:    config,
 	}
 	return dummyProvider
 }
@@ -183,11 +204,69 @@ func GetTestInstanceTypeData() model.NodeInstanceType {
 	return result
 }
 
-func GetTestAccessKeyData() model.AccessKey {
+func GetTestAccessKeyData(
+	installNodeExporter bool,
+	skipProvisioning bool,
+	airGapInstall bool,
+) model.AccessKey {
 	result := model.AccessKey{
 		KeyInfo: model.AccessKeyInfo{
-			InstallNodeExporter: true,
+			InstallNodeExporter: installNodeExporter,
+			SkipProvisioning:    skipProvisioning,
+			AirGapInstall:       airGapInstall,
 		},
 	}
 	return result
+}
+
+func GetPublicAndPrivateKey() ([]byte, []byte) {
+	ca := &x509.Certificate{
+		SerialNumber: big.NewInt(2019),
+		Subject: pkix.Name{
+			Organization:  []string{"Yugabyte"},
+			Country:       []string{"US"},
+			Province:      []string{"CA"},
+			Locality:      []string{"Sunnyvale"},
+			StreetAddress: []string{"Yugabyte Street"},
+			PostalCode:    []string{"94085"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().AddDate(10, 0, 0),
+		IsCA:      true,
+		ExtKeyUsage: []x509.ExtKeyUsage{
+			x509.ExtKeyUsageClientAuth,
+			x509.ExtKeyUsageServerAuth,
+		},
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		BasicConstraintsValid: true,
+	}
+	// Generate RSA key.
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(err)
+	}
+	pub := key.Public()
+	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, pub, key)
+	if err != nil {
+		panic(err)
+	}
+	privateKey, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		panic(err)
+	}
+	// Encode private key to PEM.
+	keyPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: privateKey,
+		},
+	)
+	// Encode public key to PEM.
+	pubPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: caBytes,
+		},
+	)
+	return keyPEM, pubPEM
 }

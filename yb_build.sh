@@ -74,7 +74,7 @@ Build options:
     Skip PostgreSQL build
   --no-latest-symlink
     Disable the creation/overwriting of the "latest" symlink in the build directory.
-  --no-tests
+  --no-tests, --skip-tests
     Do not build tests
   --no-tcmalloc
     Do not use tcmalloc.
@@ -106,7 +106,7 @@ Build options:
   --force-run-cmake, --frcm
     Ensure that we explicitly invoke CMake from this script. CMake may still run as a result of
     changes made to CMakeLists.txt files if we just invoke make on the CMake-generated Makefile.
-  --force-no-run-cmake, --fnrcm
+  --force-no-run-cmake, --fnrcm, --skip-cmake, --no-cmake
     The opposite of --force-run-cmake. Makes sure we do not run CMake.
   --cmake-args
     Additional CMake arguments
@@ -177,6 +177,10 @@ Build options:
   --skip-final-lto-link
     For LTO builds, skip the final linking step for server executables, which could take many
     minutes.
+  --cxx-test-filter-re, --cxx-test-filter-regex
+    Regular expression for filtering C++ tests to build. This regular expression is not anchored
+    on either end, so e.g. you can specify a substring of the test name. Use ^ or $ as needed.
+
 Linting options:
 
   --shellcheck
@@ -227,7 +231,7 @@ Test options:
   --{no,skip}-{test-existence-check,check-test-existence}
     Don't check that all test binaries referenced by CMakeLists.txt files exist.
   --num-repetitions, --num-reps, -n
-    Repeat a C++ test this number of times. This delegates to the repeat_unit_test.sh script.
+    Repeat a C++/Java test this number of times. This delegates to the repeat_unit_test.sh script.
   --test-parallelism, --tp N
     When running tests repeatedly, run up to N instances of the test in parallel. Equivalent to the
     --parallelism argument of repeat_unit_test.sh.
@@ -255,6 +259,10 @@ Test options:
   --extra-daemon-flags, --extra-daemon-args <extra_daemon_flags>
     Extra flags to pass to mini-cluster daemons (master/tserver). Note that bash-style quoting won't
     work here -- they are naively split on spaces.
+  --(with|no)-fuzz-targets
+    Build|Do not build fuzz targets. By default - do not build.
+  --(with|no)-odyssey
+    Specify whether to build Odyssey (PostgreSQL connection pooler). Not building by default.
 
 Debug options:
 
@@ -434,7 +442,7 @@ capture_sec_timestamp() {
   eval "${1}_time_sec=$current_timestamp"
 }
 
-run_yugabyted-ui_build() {
+run_yugabyted_ui_build() {
   # This is a standalone build script.  It honors BUILD_ROOT from the env
   "${YB_SRC_ROOT}/yugabyted-ui/build.sh"
 }
@@ -449,9 +457,6 @@ run_cxx_build() {
           ! -f ${make_file}
         ) && ${force_no_run_cmake} == "false" ]]
   then
-    if [[ -z ${NO_REBUILD_THIRDPARTY:-} ]]; then
-      build_compiler_if_necessary
-    fi
     local cmake_binary
     if is_mac && [[ "${YB_TARGET_ARCH:-}" == "arm64" ]]; then
       cmake_binary=/opt/homebrew/bin/cmake
@@ -461,6 +466,9 @@ run_cxx_build() {
     log "Using cmake binary: $cmake_binary"
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
+    local cmake_stdout_path=${BUILD_ROOT}/cmake_stdout.txt
+    local cmake_stderr_path=${BUILD_ROOT}/cmake_stderr.txt
+    set +e
     (
       # Always disable remote build (running the compiler on a remote worker node) when running the
       # CMake step.
@@ -472,9 +480,53 @@ run_cxx_build() {
       set -x
       # We are not double-quoting $cmake_extra_args on purpose to allow multiple arguments.
       # shellcheck disable=SC2086
-      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}"
+      "${cmake_binary}" "${cmake_opts[@]}" $cmake_extra_args "${YB_SRC_ROOT}" \
+        >"${cmake_stdout_path}" 2>"${cmake_stderr_path}"
     )
+    local cmake_exit_code=$?
+    set -e
     capture_sec_timestamp "cmake_end"
+
+    # Show the contents of special CMake output files before we show CMake output itself.
+    if [[ ${cmake_exit_code} != 0 ]]; then
+      log "CMake failed with exit code ${cmake_exit_code}."
+      (
+        find "${BUILD_ROOT}" -name "CMake*.log" | while read -r cmake_log_path; do
+          echo
+          echo "--------------------------------------------------------------------------------"
+          echo "Contents of ${cmake_log_path}:"
+          echo "--------------------------------------------------------------------------------"
+          echo
+          cat "${cmake_log_path}"
+          echo
+          echo "--------------------------------------------------------------------------------"
+          echo
+        done
+      ) >&2
+    fi
+
+    if [[ -s ${cmake_stdout_path} ]]; then
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        # Only mark CMake standard output as such in case of an error. Otherwise, just pass it
+        # through.
+        echo "CMake standard output (also saved to ${cmake_stdout_path}):"
+        echo
+      fi
+      cat "${cmake_stdout_path}"
+      if [[ ${cmake_exit_code} != 0 ]]; then
+        echo
+      fi
+    fi
+    if [[ -s ${cmake_stderr_path} ]]; then
+      echo "CMake standard error (also saved to ${cmake_stderr_path}):" >&2
+      echo >&2
+      cat "${cmake_stderr_path}" >&2
+      echo >&2
+    fi
+
+    if [[ ${cmake_exit_code} != 0 ]]; then
+      fatal "CMake failed with exit code ${cmake_exit_code}. See additional logging above."
+    fi
   fi
 
   if [[ ${cmake_only} == "true" ]]; then
@@ -679,6 +731,10 @@ set_initdb_target() {
   build_java=false
 }
 
+disable_initdb() {
+  export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+}
+
 cleanup() {
   local YB_BUILD_EXIT_CODE=$?
   print_report
@@ -703,6 +759,75 @@ enable_clangd_index_build() {
   export YB_EXPORT_COMPILE_COMMANDS=1
 }
 
+set_cxx_test_filter_regex() {
+  expect_num_args 1 "$@"
+  force_run_cmake=true
+  cmake_opts+=( "-DYB_TEST_FILTER_RE=$1" )
+}
+
+# This function is used to propagate a boolean variable to a CMake variable. For example, if we have
+# a variable named build_tests, we will propagate that variable to a CMake parameter named
+# YB_BUILD_TESTS, and will replace true with ON and false with OFF. This is useful for variables
+# that are used in both build scripts and CMake files.
+propagate_bool_var_to_cmake() {
+  expect_num_args 1 "$@"
+  local var_name=$1
+  # var_name could be something build_tests. We will propagate that variable to a CMake parameter
+  # named e.g. YB_BUILD_TESTS, and will replace true with ON and false with OFF.
+  if [[ -n ${!var_name:-} ]]; then
+    local cmake_var_name
+    cmake_var_name=YB_$( tr '[:lower:]' '[:upper:]' <<<"${var_name}" )
+    local cmake_var_value
+    case "${!var_name}" in
+      true) cmake_var_value=ON ;;
+      false) cmake_var_value=OFF ;;
+      *) fatal "Invalid value of variable ${var_name}: ${!var_name}. Expected 'true' or 'false'."
+    esac
+    cmake_opts+=( "-D${cmake_var_name}=${cmake_var_value}" )
+
+    # CMakeCache.txt will contain something like
+    # YB_BUILD_ODYSSEY:UNINITIALIZED=ON
+    # Only re-run CMake if we want to put a different value of this variable there.
+    local cmake_cache_path="$BUILD_ROOT/CMakeCache.txt"
+    if [[ ${force_no_run_cmake} == "false" ]] && (
+         [[ ! -f $cmake_cache_path ]] ||
+         ! grep -Eq "^${cmake_var_name}:[A-Z]*=${cmake_var_value}$" "$cmake_cache_path"
+       ); then
+      force_run_cmake=true
+    fi
+  fi
+}
+
+use_packaged_targets() {
+  local packaged_targets=()
+  local optional_components_args=()
+  if [[ "${build_odyssey:-}" == "true" ]]; then
+    optional_components_args+=( "--with_odyssey" )
+  else
+    optional_components_args+=( "--no_odyssey" )
+  fi
+  if [[ "${build_yugabyted_ui:-}" == "true" ]]; then
+    optional_components_args+=( "--with_yugabyted_ui" )
+  else
+    optional_components_args+=( "--no_yugabyted_ui" )
+  fi
+  while IFS='' read -r line; do
+    packaged_targets+=( "$line" )
+  done < <(
+    activate_virtualenv &>/dev/null
+    set_pythonpath
+    "$YB_SRC_ROOT"/build-support/list_packaged_targets.py "${optional_components_args[@]}"
+  )
+  if [[ ${#packaged_targets[@]} -eq 0 ]]; then
+    fatal "Failed to identify the set of targets to build for the release package"
+  fi
+  make_targets+=(
+    "${packaged_targets[@]}"
+    initial_sys_catalog_snapshot
+    update_ysql_migrations
+  )
+}
+
 # -------------------------------------------------------------------------------------------------
 # Command line parsing
 # -------------------------------------------------------------------------------------------------
@@ -719,7 +844,6 @@ make_opts=()
 force=false
 build_cxx=true
 build_java=true
-build_yugabyted_ui=false
 run_java_tests=false
 save_log=false
 make_targets=()
@@ -749,6 +873,7 @@ clean_postgres=false
 make_ninja_extra_args=""
 java_lint=false
 collect_java_tests=false
+should_use_packaged_targets=false
 
 # The default value of this parameter will be set based on whether we're running on Jenkins.
 reduce_log_output=""
@@ -774,6 +899,24 @@ if [[ ${YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT:-} == "1" ]]; then
 fi
 
 export YB_RECREATE_INITIAL_SYS_CATALOG_SNAPSHOT=0
+
+cxx_test_filter_regex=""
+reset_cxx_test_filter=false
+
+# -------------------------------------------------------------------------------------------------
+# Switches deciding what components or targets to build
+# -------------------------------------------------------------------------------------------------
+
+build_tests=""
+build_fuzz_targets=""
+
+# These will influence what targets to build if invoked with the packaged_targets meta-target.
+build_odyssey="false"
+build_yugabyted_ui="false"
+
+# -------------------------------------------------------------------------------------------------
+# Actually parsing command-line arguments
+# -------------------------------------------------------------------------------------------------
 
 yb_build_args=( "$@" )
 
@@ -807,7 +950,7 @@ while [[ $# -gt 0 ]]; do
     --force-run-cmake|--frcm)
       force_run_cmake=true
     ;;
-    --force-no-run-cmake|--fnrcm)
+    --force-no-run-cmake|--fnrcm|--no-cmake|--skip-cmake)
       force_no_run_cmake=true
     ;;
     --cmake-only)
@@ -886,6 +1029,12 @@ while [[ $# -gt 0 ]]; do
     --no-tcmalloc)
       no_tcmalloc=true
     ;;
+    --no-google-tcmalloc)
+      use_google_tcmalloc=false
+    ;;
+    --use-google-tcmalloc)
+      use_google_tcmalloc=true
+    ;;
     --cxx-test|--ct)
       set_cxx_test_name "$2"
       shift
@@ -952,8 +1101,11 @@ while [[ $# -gt 0 ]]; do
       build_cxx=false
       java_only=true
     ;;
-    --build-yugabyted-ui)
+    --build-yugabyted-ui|--with-yugabyted-ui)
       build_yugabyted_ui=true
+    ;;
+    --no-yugabyted-ui|--skip-yugabyted-ui)
+      build_yugabyted_ui=false
     ;;
     --num-repetitions|--num-reps|-n)
       ensure_option_has_arg "$@"
@@ -979,7 +1131,7 @@ while [[ $# -gt 0 ]]; do
       export YB_MAKE_PARALLELISM=$2
       shift
     ;;
-    -j[1-9])
+    -j[1-9]|-j[1-9][0-9]|-j[1-9][0-9][0-9]|-j[1-9][0-9][0-9][0-9])
       export YB_MAKE_PARALLELISM=${1#-j}
     ;;
     --remote)
@@ -1025,13 +1177,7 @@ while [[ $# -gt 0 ]]; do
       make_targets+=( "yb-master" "yb-tserver" "gen_auto_flags_json" "postgres" "yb-admin" )
     ;;
     packaged|packaged-targets)
-      for packaged_target in $( "$YB_SRC_ROOT"/build-support/list_packaged_targets.py ); do
-        make_targets+=( "$packaged_target" )
-      done
-      if [[ ${#make_targets[@]} -eq 0 ]]; then
-        fatal "Failed to identify the set of targets to build for the release package"
-      fi
-      make_targets+=( "initial_sys_catalog_snapshot" "update_ysql_migrations" )
+      should_use_packaged_targets=true
     ;;
     --skip-build|--sb)
       set_flags_to_skip_build
@@ -1183,8 +1329,32 @@ while [[ $# -gt 0 ]]; do
     --resolve-java-dependencies)
       resolve_java_dependencies=true
     ;;
-    --no-tests)
-      export YB_DO_NOT_BUILD_TESTS=1
+    --no-tests|--skip-tests)
+      build_tests=false
+    ;;
+    --with-tests)
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
+      build_tests=true
+    ;;
+    --no-fuzz-targets)
+      build_fuzz_targets=false
+    ;;
+    --with-fuzz-targets)
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
+      build_fuzz_targets=true
+    ;;
+    --no-odyssey)
+      build_odyssey=false
+    ;;
+    --with-odyssey)
+      if is_mac; then
+        fatal "Cannot build Odyssey on macOS"
+      fi
+      # We use this variable indirectly via propagate_bool_var_to_cmake.
+      # shellcheck disable=SC2034
+      build_odyssey=true
     ;;
     --cmake-unit-tests)
       run_cmake_unit_tests=true
@@ -1232,13 +1402,20 @@ while [[ $# -gt 0 ]]; do
       export YB_USE_LINUXBREW=0
     ;;
     --no-initdb)
-      export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
+      disable_initdb
     ;;
     --skip-test-log-rewrite)
       export YB_SKIP_TEST_LOG_REWRITE=1
     ;;
     --skip-final-lto-link)
       export YB_SKIP_FINAL_LTO_LINK=1
+    ;;
+    --cxx-test-filter-re|--cxx-test-filter-regex)
+      cxx_test_filter_regex=$2
+      shift
+    ;;
+    --reset-cxx-test-filter)
+      reset_cxx_test_filter=true
     ;;
     *)
       if [[ $1 =~ ^(YB_[A-Z0-9_]+|postgres_FLAGS_[a-zA-Z0-9_]+)=(.*)$ ]]; then
@@ -1296,8 +1473,29 @@ fi
 decide_whether_to_use_ninja
 handle_predefined_build_root
 
-unset cmake_opts
+# Setting CMake options.
+cmake_opts=()
 set_cmake_build_type_and_compiler_type
+
+if [[ -z "${use_google_tcmalloc:-}" ]]; then
+  # Enable Google TCMalloc in fastdebug for getting long term stability results.
+  if [[ $build_type == "fastdebug" &&  ${is_linux} == "true" ]]; then
+    use_google_tcmalloc=true
+  else
+    use_google_tcmalloc=false
+  fi
+fi
+
+if [[ -n ${cxx_test_filter_regex} ]]; then
+  if [[ ${reset_cxx_test_filter} == "true" ]]; then
+    fatal "--cxx-test-filter-regex is incompatible with --reset-cxx-filter-regex"
+  fi
+  set_cxx_test_filter_regex "${cxx_test_filter_regex}"
+fi
+if [[ ${reset_cxx_test_filter} == "true" ]]; then
+  set_cxx_test_filter_regex ""
+fi
+
 log "YugabyteDB build is running on host '$HOSTNAME'"
 log "YB_COMPILER_TYPE=$YB_COMPILER_TYPE"
 
@@ -1306,7 +1504,7 @@ if [[ ${verbose} == "true" ]]; then
 fi
 export BUILD_TYPE=$build_type
 
-if "$force_run_cmake" && "$force_no_run_cmake"; then
+if [[ ${force_run_cmake} == "true" && ${force_no_run_cmake} == "true" ]]; then
   fatal "--force-run-cmake and --force-no-run-cmake are incompatible"
 fi
 
@@ -1332,7 +1530,7 @@ if [[ $num_test_repetitions -lt 1 ]]; then
   fatal "Invalid number of test repetitions: $num_test_repetitions. Must be 1 or more."
 fi
 
-if "$java_only" && ! "$build_java"; then
+if [[ ${java_only} == "true" && ${build_java} == "false" ]]; then
   fatal "--java-only specified along with an option that implies skipping the Java build, e.g." \
         "--cxx-test or --skip-java-build."
 fi
@@ -1396,6 +1594,10 @@ if [[ $build_type == "prof_use" ]] && [[ $pgo_data_path == "" ]]; then
   fatal "Please set --pgo-data-path path/to/pgo/data"
 fi
 
+if [[ "${should_use_packaged_targets}" == "true" ]]; then
+  use_packaged_targets
+fi
+
 # End of post-processing and validating command-line arguments.
 
 # -------------------------------------------------------------------------------------------------
@@ -1444,6 +1646,10 @@ fi
 
 # shellcheck disable=SC2119
 set_build_root
+
+propagate_bool_var_to_cmake build_tests
+propagate_bool_var_to_cmake build_fuzz_targets
+propagate_bool_var_to_cmake build_odyssey
 
 # -------------------------------------------------------------------------------------------------
 # Cleaning confirmation
@@ -1562,6 +1768,13 @@ if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
 fi
 
+if [[ ${use_google_tcmalloc} == "true" ]]; then
+  if [[ ${is_linux} != "true" ]]; then
+    fatal "Google TCMalloc is only supported on linux. is_linux is: '${is_linux}'."
+  fi
+  cmake_opts+=( -DYB_GOOGLE_TCMALLOC=1 )
+fi
+
 if [[ $pgo_data_path != "" ]]; then
   cmake_opts+=( "-DYB_PGO_DATA_PATH=$pgo_data_path" )
 fi
@@ -1586,6 +1799,7 @@ fi
 if [[ $build_type == "compilecmds" ]]; then
   if [[ ${#make_targets[@]} -eq 0 ]]; then
     make_targets+=( gen_proto postgres yb_bfpg yb_bfql ql_parser_flex_bison_output)
+    disable_initdb
   else
     log "Custom targets specified for a compilecmds build, not adding default targets"
   fi
@@ -1600,6 +1814,8 @@ if [[ $build_type == "compilecmds" ]]; then
   build_java=false
 fi
 
+readonly build_java=${build_java}
+
 if [[ ${build_cxx} == "true" ||
       ${force_run_cmake} == "true" ||
       ${cmake_only} == "true" ||
@@ -1609,7 +1825,7 @@ if [[ ${build_cxx} == "true" ||
 fi
 
 if [[ ${build_yugabyted_ui} == "true" && ${cmake_only} != "true" ]]; then
-  run_yugabyted-ui_build
+  run_yugabyted_ui_build
 fi
 
 export YB_JAVA_TEST_OFFLINE_MODE=0

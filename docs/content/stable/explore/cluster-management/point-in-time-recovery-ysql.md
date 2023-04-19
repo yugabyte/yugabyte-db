@@ -32,6 +32,12 @@ For more information, see [Point-in-time recovery](../../../manage/backup-restor
 
 You can try out the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
 
+{{< note title="Setup" >}}
+
+Local single-node cluster. See [Set up your YugabyteDB cluster](../../../explore/#set-up-your-yugabytedb-cluster).
+
+{{< /note >}}
+
 {{< note title="Note" >}}
 
 This document contains examples that are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.

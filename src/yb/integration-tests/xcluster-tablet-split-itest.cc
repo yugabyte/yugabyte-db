@@ -22,6 +22,7 @@
 #include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
+#include "yb/docdb/docdb_test_util.h"
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -34,7 +35,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tools/admin-test-base.h"
-#include "yb/tserver/cdc_consumer.h"
+#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
@@ -62,11 +63,10 @@ DECLARE_int64(tablet_force_split_threshold_bytes);
 DECLARE_int64(db_write_buffer_size);
 
 namespace yb {
-using client::kv_table_test::Partitioning;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TableIdentifierPB;
-
+using test::Partitioning;
 
 template <class TabletSplitBase>
 class XClusterTabletSplitITestBase : public TabletSplitBase {
@@ -107,9 +107,9 @@ class XClusterTabletSplitITestBase : public TabletSplitBase {
     consumer_session->SetTimeout(timeout);
     size_t num_rows = 0;
     Status s = WaitFor([&]() -> Result<bool> {
-      auto num_rows_result = SelectRowsCount(consumer_session, *consumer_table);
+      auto num_rows_result = CountRows(consumer_session, *consumer_table);
       if (!num_rows_result.ok()) {
-        LOG(WARNING) << "Encountered error during SelectRowsCount " << num_rows_result;
+        LOG(WARNING) << "Encountered error during CountRows " << num_rows_result;
         return false;
       }
       num_rows = num_rows_result.get();
@@ -259,6 +259,7 @@ class CdcTabletSplitITest : public XClusterTabletSplitITestBase<TabletSplitITest
 };
 
 TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
+  docdb::DisableYcqlPackedRow();
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   constexpr auto kNumRows = kDefaultNumRows;
   // Create a cdc stream for this tablet.
@@ -314,7 +315,14 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
   rpc::RpcController rpc;
   ASSERT_NOK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
   ASSERT_TRUE(change_resp.has_error());
-  ASSERT_TRUE(StatusFromPB(change_resp.error().status()).IsNotFound());
+  const auto status = StatusFromPB(change_resp.error().status());
+  // Depending on if the parent tablet has been inputted into every cdc_service's tablet_checkpoint_
+  // map, we may either return NotFound (pass all CheckTabletValidForStream checks, but then can't
+  // find tablet) or TabletSplit (from failing CheckTabletValidForStream on some tserver since the
+  // tablet can't be found).
+  // Either of these statuses is fine and means that this tablet no longer exists and was deleted.
+  LOG(INFO) << "GetChanges status: " << status;
+  ASSERT_TRUE(status.IsNotFound() || status.IsTabletSplit());
 }
 
 // For testing xCluster setups. Since most test utility functions expect there to be only one
@@ -446,13 +454,11 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
             [&](const auto& tablet) { return tablet->tablet_id() == mapped_producer_tablet; });
         ASSERT_NE(producer_tablet, producer_tablet_peers.end());
 
-        ASSERT_GT(
-            PartitionSchema::GetOverlap(
-                (*consumer_tablet)->tablet_metadata()->partition()->partition_key_start(),
-                (*consumer_tablet)->tablet_metadata()->partition()->partition_key_end(),
-                (*producer_tablet)->tablet_metadata()->partition()->partition_key_start(),
-                (*producer_tablet)->tablet_metadata()->partition()->partition_key_end()),
-            0);
+        ASSERT_TRUE(PartitionSchema::HasOverlap(
+            (*consumer_tablet)->tablet_metadata()->partition()->partition_key_start(),
+            (*consumer_tablet)->tablet_metadata()->partition()->partition_key_end(),
+            (*producer_tablet)->tablet_metadata()->partition()->partition_key_start(),
+            (*producer_tablet)->tablet_metadata()->partition()->partition_key_end()));
       }
     }
 
@@ -473,7 +479,7 @@ class xClusterTabletMapTest : public XClusterTabletSplitITest,
 
     SetNumTablets(producer_tablet_count);
     Schema schema;
-    BuildSchema(GetParam(), &schema);
+    client::kv_table_test::BuildSchema(GetParam(), &schema);
     schema.mutable_table_properties()->SetTransactional(
         GetIsolationLevel() != IsolationLevel::NON_TRANSACTIONAL);
     ASSERT_OK(client::kv_table_test::CreateTable(schema, NumTablets(), client_.get(), &table_));
@@ -668,7 +674,7 @@ TEST_F(XClusterTabletSplitITest, SplittingOnProducerAndConsumer) {
   // Verify that both sides have the same number of rows.
   client::YBSessionPtr producer_session = client_->NewSession();
   producer_session->SetTimeout(60s);
-  size_t num_rows = ASSERT_RESULT(SelectRowsCount(producer_session, table_));
+  size_t num_rows = ASSERT_RESULT(CountRows(producer_session, table_));
 
   ASSERT_OK(CheckForNumRowsOnConsumer(num_rows));
 }
@@ -1114,7 +1120,7 @@ std::string TestParamToString(const testing::TestParamInfo<T>& param_info) {
 INSTANTIATE_TEST_CASE_P(
     xClusterTabletMapTestITest,
     xClusterTabletMapTest,
-    ::testing::ValuesIn(client::kv_table_test::kPartitioningArray),
+    ::testing::ValuesIn(test::kPartitioningArray),
     TestParamToString<Partitioning>);
 
 }  // namespace yb

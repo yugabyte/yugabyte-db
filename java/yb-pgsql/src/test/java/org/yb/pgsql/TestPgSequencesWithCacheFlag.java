@@ -31,13 +31,21 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgSequencesWithCacheFlag.class);
 
-  private static final int DEFAULT_SEQUENCE_CACHE_FLAG_VALUE = 100;
+  protected static final int DEFAULT_SEQUENCE_CACHE_FLAG_VALUE = 100;
+
+  protected Connection getConnectionWithNewCache() throws Exception {
+    return getConnectionBuilder().connect();
+  }
+
+  protected int spawnTServerWithMinCacheValue(int minCacheValue) throws Exception {
+    return spawnTServerWithFlags("ysql_sequence_cache_minval", Integer.toString(minCacheValue));
+  }
 
   @After
   public void deleteSequences() throws Exception {
@@ -62,7 +70,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       assertEquals(1, rs.getInt("nextval"));
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
@@ -102,7 +110,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       }
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
@@ -122,7 +130,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       }
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
@@ -135,7 +143,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testSequencesWithHigherThanDefaultCacheAndIncrement() throws Exception {
     try (Statement statement = connection.createStatement();
-        Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+        Connection connection2 = getConnectionWithNewCache();
         Statement statement2 = connection2.createStatement()) {
 
       statement.execute("CREATE SEQUENCE s1 CACHE 150 INCREMENT 3");
@@ -214,7 +222,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       assertEquals(1, rs.getInt("nextval"));
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       // Since the previous client already got all the available sequence numbers in its cache,
       // we should get an error when we request another sequence number from another client.
@@ -490,7 +498,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       assertEquals(1, rs.getLong("currval"));
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       statement.execute("SELECT nextval('s1')");
       ResultSet rs = statement.executeQuery("SELECT currval('s1')");
@@ -595,7 +603,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testCycleOnDifferentConnection() throws Exception {
     try (Statement statement = connection.createStatement();
-        Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+        Connection connection2 = getConnectionWithNewCache();
         Statement statement2 = connection2.createStatement()) {
       statement.execute("CREATE SEQUENCE s1 CYCLE MAXVALUE 4");
 
@@ -824,7 +832,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       }
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       for (int k = 121; k <= 130; k++) {
         statement.execute("INSERT INTO t(v) VALUES (10)");
@@ -863,7 +871,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       statement.execute("ALTER SEQUENCE s1 RESTART WITH 100");
     }
 
-    try (Connection connection2 = getConnectionBuilder().connect();
+    try (Connection connection2 = getConnectionWithNewCache();
         Statement statement = connection2.createStatement()) {
       ResultSet rs = statement.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
@@ -916,8 +924,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testAlterSequence() throws Exception {
     try (Statement statement = connection.createStatement();
-        Connection connection2 = getConnectionBuilder().withTServer(1).connect();
-        Statement statement2 = connection2.createStatement()) {
+        Statement statement2 = getConnectionWithNewCache().createStatement()) {
 
       statement.execute("CREATE SEQUENCE s1");
       ResultSet rs = ExecuteQueryWithRetry(statement, "SELECT nextval('s1')");
@@ -947,11 +954,16 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
           (DEFAULT_SEQUENCE_CACHE_FLAG_VALUE * 10) +
           // increment by
           10;
-      for (int j = 1; j <= 120; j++) {
-        rs = ExecuteQueryWithRetry(statement, "SELECT nextval('s1')");
-        assertTrue(rs.next());
-        assertEquals(twoConnectionsExpectedValue, rs.getLong("nextval"));
-        twoConnectionsExpectedValue += 10;
+      // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+      // is fixed an existing statement can be reused here as their caches will be
+      // cleared.
+      try (Statement statement3 = getConnectionWithNewCache().createStatement()) {
+        for (int j = 1; j <= 120; j++) {
+          rs = ExecuteQueryWithRetry(statement3, "SELECT nextval('s1')");
+          assertTrue(rs.next());
+          assertEquals(twoConnectionsExpectedValue, rs.getLong("nextval"));
+          twoConnectionsExpectedValue += 10;
+        }
       }
 
       // Consume the rest of the numbers in the cache: 120, 130, 140,.., 1090, 1100.
@@ -1009,41 +1021,56 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       // -------------------------------------------------------------------------------------------
       // Test START WITH option.
       // -------------------------------------------------------------------------------------------
-      ExecuteWithRetry(statement2, "ALTER SEQUENCE s1 START WITH 1000");
+      ExecuteWithRetry(statement, "ALTER SEQUENCE s1 START WITH 1000");
 
       // After RESTART the sequence should start with 1000 that was set by the previous statement.
       WaitUntilTServerGetsNewYSqlCatalogVersion();
       ExecuteWithRetry(statement, "ALTER SEQUENCE s1 RESTART");
 
       WaitUntilTServerGetsNewYSqlCatalogVersion();
-      rs = ExecuteQueryWithRetry(statement2, "SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(1000, rs.getLong("nextval"));
+      // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+      // is fixed an existing statement can be reused here as their caches will be
+      // cleared.
+      try (Statement statement3 = getConnectionWithNewCache().createStatement()) {
+        rs = ExecuteQueryWithRetry(statement3, "SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(1000, rs.getLong("nextval"));
+      }
 
       // -------------------------------------------------------------------------------------------
       // Test CYCLE option.
       // -------------------------------------------------------------------------------------------
       ExecuteWithRetry(statement, "ALTER SEQUENCE s1 RESTART WITH 1 INCREMENT -1 CACHE 1");
-      rs = ExecuteQueryWithRetry(statement,"SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(1, rs.getLong("nextval"));
+      // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+      // is fixed an existing statement can be reused here as their caches will be
+      // cleared.
+      try (Statement statement3 = getConnectionWithNewCache().createStatement()) {
+        rs = ExecuteQueryWithRetry(statement3,"SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(1, rs.getLong("nextval"));
 
-      WaitUntilTServerGetsNewYSqlCatalogVersion();
-      // Verify that getting next value without CYCLE fails.
-      try {
-        rs = ExecuteQueryWithRetry(statement,"SELECT nextval('s1')");
-        fail("Expected exception but got none");
-      } catch (Exception e) {
-        assertTrue(e.getMessage().contains("reached minimum value of sequence \"s1\" (1)"));
+        WaitUntilTServerGetsNewYSqlCatalogVersion();
+        // Verify that getting next value without CYCLE fails.
+        try {
+          rs = ExecuteQueryWithRetry(statement3,"SELECT nextval('s1')");
+          fail("Expected exception but got none");
+        } catch (Exception e) {
+          assertTrue(e.getMessage().contains("reached minimum value of sequence \"s1\" (1)"));
+        }
       }
 
       // Alter sequence to add CYCLE option.
-      statement2.execute("ALTER SEQUENCE s1 CYCLE");
+      statement.execute("ALTER SEQUENCE s1 CYCLE");
 
       WaitUntilTServerGetsNewYSqlCatalogVersion();
-      rs = ExecuteQueryWithRetry(statement,"SELECT nextval('s1')");
-      assertTrue(rs.next());
-      assertEquals(Long.MAX_VALUE, rs.getLong("nextval"));
+      // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+      // is fixed an existing statement can be reused here as their caches will be
+      // cleared.
+      try (Statement statement3 = getConnectionWithNewCache().createStatement()) {
+        rs = ExecuteQueryWithRetry(statement3,"SELECT nextval('s1')");
+        assertTrue(rs.next());
+        assertEquals(Long.MAX_VALUE, rs.getLong("nextval"));
+      }
     }
   }
 
@@ -1052,7 +1079,10 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   //------------------------------------------------------------------------------------------------
   @Test
   public void testAlterSequenceCache() throws Exception {
-    try (Statement statement = connection.createStatement()) {
+    // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+    // is fixed one statement can be used here as its cache will be cleared.
+    try (Statement statement = connection.createStatement();
+        Statement statement2 = getConnectionWithNewCache().createStatement()) {
       // -------------------------------------------------------------------------------------------
       // Test increase in cache option.
       // -------------------------------------------------------------------------------------------
@@ -1066,10 +1096,11 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
       statement.execute("ALTER SEQUENCE s1 CACHE 150");
 
-      rs = statement.executeQuery("SELECT nextval('s1')");
+      rs = statement2.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 1, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 150);
+      assertOneRow(statement2, "SELECT last_value from s1",
+        DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 150);
 
       // -------------------------------------------------------------------------------------------
       // Test decrease in cache option.
@@ -1085,16 +1116,19 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       statement.execute("ALTER SEQUENCE s2 CACHE 10");
 
       // Cache size remain at maximum cache size (100) since it is larger than cache option (10).
-      rs = statement.executeQuery("SELECT nextval('s2')");
+      rs = statement2.executeQuery("SELECT nextval('s2')");
       assertTrue(rs.next());
       assertEquals(DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 1, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE * 2);
+      assertOneRow(statement2, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE * 2);
     }
   }
 
   @Test
   public void testAlterSequenceMaxvalue() throws Exception {
-    try (Statement statement = connection.createStatement()) {
+    // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+    // is fixed one statement can be used here as its cache will be cleared.
+    try (Statement statement = connection.createStatement();
+        Statement statement2 = getConnectionWithNewCache().createStatement()) {
       // -------------------------------------------------------------------------------------------
       // Test decrease in maxvalue.
       // -------------------------------------------------------------------------------------------
@@ -1112,10 +1146,10 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
       // Even if total elements decreases less than cache size (100)
       // it caches up to maximum possible elements (50).
-      rs = statement.executeQuery("SELECT nextval('s1')");
+      rs = statement2.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(1, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1", 50);
+      assertOneRow(statement2, "SELECT last_value from s1", 50);
 
       // -------------------------------------------------------------------------------------------
       // Test increase in maxvalue.
@@ -1132,16 +1166,19 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       statement.execute("ALTER SEQUENCE s2 MAXVALUE 1000");
 
       // Since total size increases, caches up to maximum cache size.
-      rs = statement.executeQuery("SELECT nextval('s2')");
+      rs = statement2.executeQuery("SELECT nextval('s2')");
       assertTrue(rs.next());
       assertEquals(11, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 10);
+      assertOneRow(statement2, "SELECT last_value from s2", DEFAULT_SEQUENCE_CACHE_FLAG_VALUE + 10);
     }
   }
 
   @Test
   public void testAlterSequenceMinvalue() throws Exception {
-    try (Statement statement = connection.createStatement()) {
+    // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+    // is fixed one statement can be used here as its cache will be cleared.
+    try (Statement statement = connection.createStatement();
+        Statement statement2 = getConnectionWithNewCache().createStatement()) {
       // -------------------------------------------------------------------------------------------
       // Test decrease in minvalue.
       // -------------------------------------------------------------------------------------------
@@ -1156,10 +1193,10 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       statement.execute("ALTER SEQUENCE s1 MINVALUE 0 INCREMENT BY -1");
 
       // Caches between 1000 to 900.
-      rs = statement.executeQuery("SELECT nextval('s1')");
+      rs = statement2.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(999, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1",
+      assertOneRow(statement2, "SELECT last_value from s1",
                    1000 - DEFAULT_SEQUENCE_CACHE_FLAG_VALUE);
 
       // -------------------------------------------------------------------------------------------
@@ -1179,7 +1216,10 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
 
   @Test
   public void testAlterSequenceIncrby() throws Exception {
-    try (Statement statement = connection.createStatement()) {
+    // TODO: once issue 16497 (https://github.com/yugabyte/yugabyte-db/issues/16497)
+    // is fixed one statement can be used here as its cache will be cleared.
+    try (Statement statement = connection.createStatement();
+        Statement statement2 = getConnectionWithNewCache().createStatement()) {
       // -------------------------------------------------------------------------------------------
       // Test decrease in increment by.
       // -------------------------------------------------------------------------------------------
@@ -1194,10 +1234,10 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       statement.execute("ALTER SEQUENCE s1 INCREMENT BY 1");
 
       // Cache size is set to maximum possible element with changed increment.
-      rs = statement.executeQuery("SELECT nextval('s1')");
+      rs = statement2.executeQuery("SELECT nextval('s1')");
       assertTrue(rs.next());
       assertEquals(952, rs.getLong("nextval"));
-      assertOneRow(statement, "SELECT last_value from s1", 1000);
+      assertOneRow(statement2, "SELECT last_value from s1", 1000);
     }
   }
 
@@ -1207,7 +1247,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testDefaultCacheOption() throws Exception {
 
-    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "0");
+    int tserver = spawnTServerWithMinCacheValue(0);
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1220,7 +1260,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testLowerThanDefaultCacheFlagValue() throws Exception {
 
-    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "5");
+    int tserver = spawnTServerWithMinCacheValue(5);
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1233,7 +1273,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testCacheFlagValueLessThanCacheOption() throws Exception {
 
-    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "5");
+    int tserver = spawnTServerWithMinCacheValue(5);
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1246,7 +1286,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testCacheFlagValueHigherThanCacheOption() throws Exception {
 
-    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "150");
+    int tserver = spawnTServerWithMinCacheValue(150);
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1259,7 +1299,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
   @Test
   public void testChangeOfCacheFlagValue() throws Exception {
 
-    int tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "5");
+    int tserver = spawnTServerWithMinCacheValue(5);
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
          Statement statement = connection.createStatement()) {
@@ -1268,7 +1308,7 @@ public class TestPgSequencesWithCacheFlag extends BasePgSQLTest {
       assertOneRow(statement, "SELECT last_value from s1", 5);
     }
 
-    tserver = spawnTServerWithFlags("ysql_sequence_cache_minval", "3");
+    tserver = spawnTServerWithMinCacheValue(3);
 
     try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
         Statement statement = connection.createStatement()) {

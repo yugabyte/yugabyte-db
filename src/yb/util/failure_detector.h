@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FAILURE_DETECTOR_H_
-#define YB_UTIL_FAILURE_DETECTOR_H_
+#pragma once
 
 #include <stddef.h>
 
@@ -41,7 +40,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
@@ -200,5 +199,3 @@ class RandomizedFailureMonitor {
 };
 
 }  // namespace yb
-
-#endif /* YB_UTIL_FAILURE_DETECTOR_H_ */

@@ -40,26 +40,27 @@ You can restore YugabyteDB universe YSQL data from a backup as follows:
 
 2. If you want to restore a backup from a specific keyspace, click on the backup and use its **Backup Details** page to perform the restore procedure.
 
-3. If you want to restore a full backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br><br>
+3. If you want to restore a complete backup, use the **Backups** page to select the backup and click its **... > Restore Entire Backup**, as per the following illustration:<br>
 
-    ![Restore backup](/images/yp/restore-entire-backup.png)<br><br><br>
+    ![Restore backup](/images/yp/restore-entire-backup-ysql.png)
 
-4. Complete the fields of the **Restore Backup** dialog shown in the following illustration:
-
-    <br/><br/>
-    ![Restore backup - YSQL](/images/yp/restore-universe-data-ysql.png)<br><br><br>
+    Complete the fields of the **Restore Backup** dialog, as follows:
 
     - Select the name of the universe to which you want to restore the backup.
 
     - Optionally and depending on your cloud provider, if the backup was from a universe that has [encryption at rest enabled](../../../security/enable-encryption-at-rest), then select the KMS configuration to use.
 
-    - Refrain from selecting  **Rename databases in this backup before restoring**.
+    - Refrain from selecting **Rename databases in this backup before restoring**.
 
     - Optionally, specify the number of parallel threads that are allowed to run. This can be any number between 1 and 100.
 
     - Click **Restore**.<br>
 
       The restore begins immediately. When finished, a completed **Restore Backup** task appears under **Tasks > Task History**.
+
+4. If your backup includes incremental backups, you can either restore the complete backup, as per step 3, or restore a part of an incremental backup chain by selecting an increment from the list in the **Backup Details** view and clicking its **Restore to this point**.
+
+    During the restore, only successful complete and incremental backups are used, whereas failed backups are discarded.
 
 5. To confirm that the restore succeeded, select **Tables** to compare the original table with the table to which you restored.
 
@@ -69,11 +70,11 @@ In addition to the basic restore, an advanced option is available if you have mo
 
 To perform this type of restore, click **... > Advanced Restore**, as per the following illustration:
 
-![Restore advanced - YSQL](/images/yp/restore-advanced.png)<br>
+![Restore advanced - YSQL](/images/yp/restore-backup-advanced-ysql.png)
 
 To proceed, complete the fields of the **Advanced Restore** dialog shown in the following illustration:
 
-![Restore advanced - YSQL](/images/yp/restore-advanced-ysql.png)<br>
+![Restore advanced - YSQL](/images/yp/restore-advanced-ysql.png)
 
 - Select YSQL as the type of API.
 
@@ -91,6 +92,11 @@ To proceed, complete the fields of the **Advanced Restore** dialog shown in the 
 
   If you select **Rename databases in this backup before restoring**, then click **Next: Rename Database/Keyspaces**, specify the new name for a keyspace or database in the backup and click **Restore**.
 
-You can access a list of all backups from all universes by navigating to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
+<br>You can access a list of all backups from all universes by navigating to **Backups** on the YugabyteDB Anywhere left-side menu, as per the following illustration:
 
-![Backups - YSQL](/images/yp/backups.png)<br>
+![Backups](/images/yp/backups-list.png)
+
+By clicking on a specific universe included in the list, you can access the backup details and trigger a restore.
+
+
+

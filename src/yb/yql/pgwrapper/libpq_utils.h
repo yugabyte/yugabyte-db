@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
-#define YB_YQL_PGWRAPPER_LIBPQ_UTILS_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -25,8 +24,6 @@
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
-
-#include <boost/optional.hpp>
 
 namespace yb {
 namespace pgwrapper {
@@ -42,32 +39,70 @@ struct PGResultClear {
 typedef std::unique_ptr<PGconn, PGConnClose> PGConnPtr;
 typedef std::unique_ptr<PGresult, PGResultClear> PGResultPtr;
 
-Result<bool> GetBool(PGresult* result, int row, int column);
-
-Result<int32_t> GetInt32(PGresult* result, int row, int column);
-
-Result<int64_t> GetInt64(PGresult* result, int row, int column);
-
-Result<double> GetDouble(PGresult* result, int row, int column);
-
-Result<std::string> GetString(PGresult* result, int row, int column);
-
-inline Result<int32_t> GetValueImpl(PGresult* result, int row, int column, int32_t*) {
-  return GetInt32(result, row, column);
-}
-
-inline Result<int64_t> GetValueImpl(PGresult* result, int row, int column, int64_t*) {
-  return GetInt64(result, row, column);
-}
-
-inline Result<std::string> GetValueImpl(PGresult* result, int row, int column, std::string*) {
-  return GetString(result, row, column);
-}
+struct PGOid {};
 
 template<class T>
-Result<T> GetValue(PGresult* result, int row, int column) {
-  // static_cast<T*>(nullptr) is a trick to use function overload from template.
-  return GetValueImpl(result, row, column, static_cast<T*>(nullptr));
+inline constexpr bool IsPGFloatType =
+    std::is_same_v<T, float> || std::is_same_v<T, double>;
+
+template<class T>
+inline constexpr bool IsPGIntType =
+    std::is_same_v<T, int16_t> || std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t>;
+
+template<class T>
+requires(IsPGIntType<T>)
+struct PGNonNeg {
+  using Type = T;
+};
+
+template<class T>
+struct IsPGNonNegImpl : std::false_type {};
+
+template<class T>
+requires(std::is_same_v<T, PGNonNeg<typename T::Type>>)
+struct IsPGNonNegImpl<T> : std::true_type {};
+
+template<class T>
+inline constexpr bool IsPGNonNeg = IsPGNonNegImpl<T>::value;
+
+template<class T>
+concept AllowedPGType =
+    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
+    std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, PGOid>;
+
+template<AllowedPGType T>
+struct PGTypeTraits {
+  using ReturnType = T;
+};
+
+template<AllowedPGType T>
+requires(IsPGNonNeg<T>)
+struct PGTypeTraits<T> {
+  using ReturnType = std::make_unsigned_t<typename T::Type>;
+};
+
+template<AllowedPGType T>
+requires(std::is_same_v<T, PGOid>)
+struct PGTypeTraits<T> {
+  using ReturnType = Oid;
+};
+
+using PGUint16 = PGNonNeg<int16_t>;
+using PGUint32 = PGNonNeg<int32_t>;
+using PGUint64 = PGNonNeg<int64_t>;
+
+template<class T>
+using GetValueResult = Result<typename PGTypeTraits<T>::ReturnType>;
+
+template<class T>
+GetValueResult<T> GetValue(PGresult* result, int row, int column);
+
+inline Result<int32_t> GetInt32(PGresult* result, int row, int column) {
+  return GetValue<int32_t>(result, row, column);
+}
+
+inline Result<std::string> GetString(PGresult* result, int row, int column) {
+  return GetValue<std::string>(result, row, column);
 }
 
 const std::string& DefaultColumnSeparator();
@@ -112,6 +147,8 @@ class PGConn {
     return Execute(Format(format, std::forward<Args>(args)...));
   }
 
+  bool IsBusy();
+
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>
@@ -127,8 +164,8 @@ class PGConn {
       const std::string& column_sep = DefaultColumnSeparator(),
       const std::string& row_sep = DefaultRowSeparator());
 
-  template <class T>
-  Result<T> FetchValue(const std::string& command) {
+  template<class T>
+  GetValueResult<T> FetchValue(const std::string& command) {
     auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
     return GetValue<T>(res.get(), 0, 0);
   }
@@ -136,6 +173,8 @@ class PGConn {
   Status StartTransaction(IsolationLevel isolation_level);
   Status CommitTransaction();
   Status RollbackTransaction();
+
+  Status TestFailDdl(const std::string& ddl_to_fail);
 
   // Would this query use an index [only] scan?
   Result<bool> HasIndexScan(const std::string& query);
@@ -195,9 +234,10 @@ class PGConnBuilder {
   const size_t connect_timeout_;
 };
 
-bool HasTryAgain(const Status& status);
+bool HasTransactionError(const Status& status);
+bool IsRetryable(const Status& status);
+
+Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
 
 } // namespace pgwrapper
 } // namespace yb
-
-#endif // YB_YQL_PGWRAPPER_LIBPQ_UTILS_H

@@ -101,7 +101,13 @@ typedef enum OidOptions
 } OidOptions;
 
 /* global decls */
+bool		g_verbose;			/* User wants verbose narration of our
+								 * activities. */
 static bool dosync = true;		/* Issue fsync() to make dump durable on disk. */
+/* Cache whether the dumped database is a colocated database. */
+static bool is_colocated_database = false;
+/* Cache whether the dumped database is a legacy colocated database. */
+static bool is_legacy_colocated_database = false;
 
 /* YB_TODO(neil) Assign this work to alex.
  * These variables might not work with the current design of pg_dump.
@@ -138,6 +144,12 @@ static SimpleStringList table_exclude_patterns = {NULL, NULL};
 static SimpleOidList table_exclude_oids = {NULL, NULL};
 static SimpleStringList tabledata_exclude_patterns = {NULL, NULL};
 static SimpleOidList tabledata_exclude_oids = {NULL, NULL};
+/*
+ * The string list records tablespaces used if the dumped database is
+ * a colocated database.
+ */
+static SimpleStringList colocated_database_tablespaces = {NULL, NULL};
+
 static SimpleStringList foreign_servers_include_patterns = {NULL, NULL};
 static SimpleOidList foreign_servers_include_oids = {NULL, NULL};
 
@@ -348,17 +360,19 @@ static char *get_synchronized_snapshot(Archive *fout);
 static void setupDumpWorker(Archive *AHX);
 static bool catalogTableExists(Archive *fout, char *tablename);
 static TableInfo *getRootTableInfo(const TableInfo *tbinfo);
+static Oid getDatabaseOid(Archive *fout);
+static PGresult* queryDatabaseData(Archive *fout, PQExpBuffer dbQry);
 static void getYbTablePropertiesAndReloptions(Archive *fout,
 						YbTableProperties properties,
-						PQExpBuffer reloptions_buf, Oid reloid, const char* relname);
+						PQExpBuffer reloptions_buf, Oid reloid, const char* relname,
+						char relkind);
+static void isDatabaseColocated(Archive *fout);
 static bool isDatabaseColocated(Archive *fout);
 #ifdef YB_TODO
 /* YB_TODO(neil) Need rework to match Pg15 */
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
 #endif
 static void ybDumpUpdatePgExtensionCatalog(Archive *fout);
-static Oid getDatabaseOid(Archive *fout);
-static PGresult* queryDatabaseData(Archive *fout, PQExpBuffer dbQry);
 
 /* YB_TODO(neil) Need rework to match Pg15.
  * This variable should be obsolete.
@@ -893,6 +907,13 @@ main(int argc, char **argv)
 	/* Update pg_tablegroup existence variables */
 	pg_yb_tablegroup_exists = catalogTableExists(fout, "pg_yb_tablegroup");
 	pg_tablegroup_exists = catalogTableExists(fout, "pg_tablegroup");
+
+	/* 
+	 * Cache (1) whether the dumped database is a colocated database and
+	 * (2) whether the dumped database is a legacy colocated database
+	 * in global variables.
+	 */
+	isDatabaseColocated(fout);
 
 	/*
 	 * Collect role names so we can map object owner OIDs to names.
@@ -3059,9 +3080,9 @@ dumpDatabase(Archive *fout)
 	 * While dumping create database statements, need to know whether the
 	 * database is colocated or not.
 	 */
-	if (isDatabaseColocated(fout))
+	if (is_colocated_database)
 	{
-		appendPQExpBufferStr(creaQry, " colocated = true");
+		appendPQExpBufferStr(creaQry, " colocation = true");
 	}
 
 	/*
@@ -15397,8 +15418,13 @@ dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo)
 {
 	DumpOptions *dopt = fout->dopt;
 
-	/* do nothing, if --no-tablegroups or --no-tablegroup-creation is supplied */
-	if (!dopt->include_yb_metadata || dopt->no_tablegroups || dopt->no_tablegroup_creations)
+	/*
+	 * Do nothing, if the dumped database is a colocated database
+	 * or if include_yb_metadata is not supplied
+	 * or if --no-tablegroups or --no-tablegroup-creation is supplied.
+	 */
+	if (is_colocated_database || !dopt->include_yb_metadata
+		|| dopt->no_tablegroups || dopt->no_tablegroup_creations)
 		return;
 
 	PQExpBuffer  q = createPQExpBuffer();
@@ -15407,6 +15433,17 @@ dumpTablegroup(Archive *fout, const TablegroupInfo *tginfo)
 
 	if (!tginfo->dobj.dump || dopt->dataOnly)
 		return;
+
+	/*
+	 * Set the next tablegroup oid to be used in yb_binary_restore mode.
+	 * It's necessary to reuse the old tablegroup oid during the backup
+	 * restoring to match tablegroup parent table.
+	 */
+	appendPQExpBufferStr(q,
+						 "\n-- For YB tablegroup backup, must preserve pg_yb_tablegroup oid\n");
+	appendPQExpBuffer(q,
+					  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+					  tginfo->dobj.catId.oid);
 
 	namecopy = pg_strdup(fmtId(tginfo->dobj.name));
 
@@ -15610,6 +15647,41 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 											 tbinfo->dobj.catId.oid, false);
 		}
 
+		/* Get the table properties from YB, if relevant. */
+		YbTableProperties yb_properties = NULL;
+		if (dopt->include_yb_metadata &&
+			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX
+			 || tbinfo->relkind == RELKIND_MATVIEW || tbinfo->relkind == RELKIND_PARTITIONED_TABLE))
+		{
+			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
+		}
+		PQExpBuffer yb_reloptions = createPQExpBuffer();
+		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
+			tbinfo->dobj.catId.oid, tbinfo->dobj.name, tbinfo->relkind);
+
+		/*
+		 * Colocation backup: preserve implicit tablegroup oid.
+		 * Legacy colocated databases skip this step.
+		 */
+		if (is_colocated_database && !is_legacy_colocated_database
+			&& (tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_MATVIEW
+				|| tbinfo->relkind == RELKIND_PARTITIONED_TABLE)
+			&& yb_properties && yb_properties->is_colocated
+			&& !simple_string_list_member(&colocated_database_tablespaces, tbinfo->reltablespace))
+		{
+			simple_string_list_append(&colocated_database_tablespaces, tbinfo->reltablespace);
+			/*
+			 * Set the next implicit tablegroup oid in a colocated database.
+			 * It's mandatory to reuse the old tablegroup oid to match tablegroup parent table
+			 * in import_snapshot step during restoring a backup.
+			 */
+			appendPQExpBufferStr(q,
+								 "\n-- For YB colocation backup, must preserve implicit tablegroup pg_yb_tablegroup oid\n");
+			appendPQExpBuffer(q,
+							  "SELECT pg_catalog.binary_upgrade_set_next_tablegroup_oid('%u'::pg_catalog.oid);\n",
+							  yb_properties->tablegroup_oid);
+		}
+
 		appendPQExpBuffer(q, "CREATE %s%s %s",
 						  tbinfo->relpersistence == RELPERSISTENCE_UNLOGGED ?
 						  "UNLOGGED " : "",
@@ -15781,7 +15853,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 								  fmtId(index->dobj.name));
 
 				bool doing_hash = false;
-				for (int n = 0; n < index->indnattrs; n++)
+				for (int n = 0; n < index->indnkeyattrs; n++)
 				{
 					char *col_name = tbinfo->attnames[index->indkeys[n] - 1];
 					int indoption = index->indoptions[n];
@@ -15809,6 +15881,18 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				}
 				if (doing_hash)
 					appendPQExpBuffer(q, ") HASH");
+
+				/* PRIMARY KEY INDEX has included columns. */
+				if (index->indnkeyattrs < index->indnattrs)
+					appendPQExpBuffer(q, ") INCLUDE (");
+
+				for (int n = index->indnkeyattrs; n < index->indnattrs; ++n)
+				{
+					if (n > index->indnkeyattrs)
+						appendPQExpBuffer(q, ", ");
+					char *col_name = tbinfo->attnames[index->indkeys[n] - 1];
+					appendPQExpBuffer(q, "%s", fmtId(col_name));
+				}
 
 				appendPQExpBuffer(q, ")");
 
@@ -15852,17 +15936,6 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				appendPQExpBuffer(q, "\nSERVER %s", fmtId(srvname));
 		}
 
-		/* Get the table properties from YB, if relevant. */
-		YbTableProperties yb_properties = NULL;
-		if (dopt->include_yb_metadata &&
-			(tbinfo->relkind == RELKIND_RELATION || tbinfo->relkind == RELKIND_INDEX))
-		{
-			yb_properties = (YbTableProperties) pg_malloc(sizeof(YbTablePropertiesData));
-		}
-		PQExpBuffer yb_reloptions = createPQExpBuffer();
-		getYbTablePropertiesAndReloptions(fout, yb_properties, yb_reloptions,
-			tbinfo->dobj.catId.oid, tbinfo->dobj.name);
-
 		YbAppendReloptions3(q, true /* newline_before*/,
 			tbinfo->reloptions, "",
 			tbinfo->toast_reloptions, "toast.",
@@ -15874,7 +15947,7 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 #ifdef YB_TODO
 		/* YB_TODO(neil) Need rework to match Pg15 */
 		/* Additional properties for YB table or index. */
-		if (yb_properties != NULL)
+		if (yb_properties != NULL && tbinfo->relkind != RELKIND_MATVIEW)
 		{
 			if (yb_properties->num_hash_key_columns > 0)
 				/* For hash-table. */
@@ -15884,10 +15957,11 @@ dumpTableSchema(Archive *fout, const TableInfo *tbinfo)
 				/* For range-table. */
 				char *range_split_clause = getYbSplitClause(fout, tbinfo);
 				appendPQExpBuffer(q, "\n%s", range_split_clause);
+				free(range_split_clause);
 			}
 			/* else - single shard table - supported, no need to add anything */
 
-			if (!dopt->no_tablegroups && dopt->include_yb_metadata &&
+			if (!is_colocated_database && !dopt->no_tablegroups && dopt->include_yb_metadata &&
 				OidIsValid(yb_properties->tablegroup_oid))
 			{
 				TablegroupInfo *tablegroup = findTablegroupByOid(yb_properties->tablegroup_oid);
@@ -16918,9 +16992,9 @@ dumpConstraint(Archive *fout, const ConstraintInfo *coninfo)
 			PQExpBuffer yb_table_reloptions = createPQExpBuffer();
 			PQExpBuffer yb_index_reloptions = createPQExpBuffer();
 			getYbTablePropertiesAndReloptions(fout, yb_table_properties, yb_table_reloptions,
-				tbinfo->dobj.catId.oid, tbinfo->dobj.name);
+				tbinfo->dobj.catId.oid, tbinfo->dobj.name, tbinfo->relkind);
 			getYbTablePropertiesAndReloptions(fout, yb_index_properties, yb_index_reloptions,
-				indxinfo->dobj.catId.oid, indxinfo->dobj.name);
+				indxinfo->dobj.catId.oid, indxinfo->dobj.name, tbinfo->relkind);
 
 #ifdef YB_TODO
 			/* YB_TODO(neil) Need rework to match Pg15 */
@@ -18931,7 +19005,7 @@ getDatabaseOid(Archive *fout)
 static void
 getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 								  PQExpBuffer reloptions_buf,
-								  Oid reloid, const char* relname)
+								  Oid reloid, const char* relname, char relkind)
 {
 	if (properties)
 	{
@@ -19004,21 +19078,22 @@ getYbTablePropertiesAndReloptions(Archive *fout, YbTableProperties properties,
 /*
  * Is the Database colocated on the YB server.
  */
-static bool
+static void
 isDatabaseColocated(Archive *fout)
 {
 	PQExpBuffer query = createPQExpBuffer();
 
 	/* Retrieve the database property from the YB server. */
 	appendPQExpBuffer(query,
-					  "SELECT yb_is_database_colocated()");
+					  "SELECT yb_is_database_colocated(false), yb_is_database_colocated(true)");
 	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
 
-	bool is_colocated = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
+	/* Cache the query result in the global variables. */
+	is_colocated_database = (strcmp(PQgetvalue(res, 0, 0), "t") == 0);
+	is_legacy_colocated_database = (strcmp(PQgetvalue(res, 0, 1), "t") == 0);
 
 	PQclear(res);
 	destroyPQExpBuffer(query);
-	return is_colocated;
 }
 
 #ifdef YB_TODO
@@ -19039,7 +19114,7 @@ getYbSplitClause(Archive *fout, const TableInfo *tbinfo)
 	PGresult* res = ExecuteSqlQueryForSingleRow(fout, query->data);
 	int i_range_split_clause = PQfnumber(res, "range_split_clause");
 
-	char *range_split_clause = PQgetvalue(res, 0, i_range_split_clause);
+	char *range_split_clause = pg_strdup(PQgetvalue(res, 0, i_range_split_clause));
 
 	PQclear(res);
 	destroyPQExpBuffer(query);

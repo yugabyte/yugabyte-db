@@ -38,8 +38,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_STRINGS_UTIL_H
-#define YB_GUTIL_STRINGS_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <stdio.h>
@@ -273,27 +272,6 @@ char* strchrnth(const char* str, const char& c, int n);
 // WARNING: Removes const-ness of string argument!
 char* AdjustedLastPos(const char* str, char separator, int n);
 
-// STL-compatible function objects for char* string keys:
-
-// Compares two char* strings for equality. (Works with NULL, which compares
-// equal only to another NULL). Useful in hash tables:
-//    hash_map<const char*, Value, hash<const char*>, streq> ht;
-struct streq : public std::binary_function<const char*, const char*, bool> {
-  bool operator()(const char* s1, const char* s2) const {
-    return ((s1 == 0 && s2 == 0) ||
-            (s1 && s2 && *s1 == *s2 && strcmp(s1, s2) == 0));
-  }
-};
-
-// Compares two char* strings. (Works with NULL, which compares greater than any
-// non-NULL). Useful in maps:
-//    map<const char*, Value, strlt> m;
-struct strlt : public std::binary_function<const char*, const char*, bool> {
-  bool operator()(const char* s1, const char* s2) const {
-    return (s1 != s2) && (s2 == 0 || (s1 != 0 && strcmp(s1, s2) < 0));
-  }
-};
-
 // Returns whether str has only Ascii characters (as defined by ascii_isascii()
 // in strings/ascii_ctype.h).
 bool IsAscii(const char* str, size_t len);
@@ -501,5 +479,3 @@ int SafeSnprintf(char* str, size_t size, const char* format, ...)
 // file, but doesn't copy it into *str. Returns true if read a delim-terminated
 // line, or false on end-of-file or error.
 bool GetlineFromStdioFile(FILE* file, std::string* str, char delim);
-
-#endif  // YB_GUTIL_STRINGS_UTIL_H

@@ -3,6 +3,7 @@ title: Upgrade a deployment
 headerTitle: Upgrade a deployment
 linkTitle: Upgrade a deployment
 description: Upgrade a deployment
+headcontent: Upgrade YugabyteDB on your deployment
 menu:
   preview:
     identifier: manage-upgrade-deployment

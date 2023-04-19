@@ -65,7 +65,7 @@ const mapDispatchToProps = (dispatch) => {
       dispatch(destroy('onPremConfigForm'));
     },
     fetchConfiguredNodeList: (pUUID) => {
-      dispatch(getInstanceTypeListLoading())
+      dispatch(getInstanceTypeListLoading());
       return dispatch(getNodeInstancesForProvider(pUUID)).then((response) => {
         dispatch(getNodesInstancesForProviderResponse(response.payload));
       });

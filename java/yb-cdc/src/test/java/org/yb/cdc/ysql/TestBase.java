@@ -28,13 +28,13 @@ import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
 import org.yb.cdc.common.ExpectedRecordYSQL;
 import org.yb.cdc.util.TestUtils;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestBase extends CDCBaseClass {
   private Logger LOG = LoggerFactory.getLogger(TestBase.class);
 

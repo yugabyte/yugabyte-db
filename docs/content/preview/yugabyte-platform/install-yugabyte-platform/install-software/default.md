@@ -17,22 +17,22 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link active">
-      <i class="fas fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Default</a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
     <a href="../airgapped/" class="nav-link">
-      <i class="fas fa-unlink"></i>Airgapped</a>
+      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
   </li>
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
 </ul>
@@ -108,6 +108,6 @@ If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../.
 
 Specify TLS versions via **Application config**, as shown in the following illustration:
 
-![Application Config](/images/replicated/application-config.png)
+![Application Config](/images/replicated/application-config1.png)
 
 The recommended TLS version is 1.2.

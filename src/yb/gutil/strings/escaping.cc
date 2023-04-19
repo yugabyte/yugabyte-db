@@ -1786,13 +1786,13 @@ string b2a_hex(const char* b, size_t len) {
   return result;
 }
 
-string b2a_hex(const GStringPiece& b) {
+std::string b2a_hex(const std::string_view& b) {
   return b2a_hex(b.data(), b.size());
 }
 
-string a2b_hex(const string& a) {
-  string result;
-  a2b_hex(a.c_str(), &result, a.size()/2);
+std::string a2b_hex(const std::string_view& a) {
+  std::string result;
+  a2b_hex(a.data(), &result, a.size()/2);
 
   return result;
 }

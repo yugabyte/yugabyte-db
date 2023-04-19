@@ -23,20 +23,31 @@ import com.yugabyte.yw.common.AlertTemplate;
 import com.yugabyte.yw.common.AlertTemplate.TestAlertSettings;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.alerts.AlertTemplateSettingsService;
 import com.yugabyte.yw.common.alerts.AlertTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
 import com.yugabyte.yw.common.alerts.TestAlertTemplateSubstitutor;
+import com.yugabyte.yw.common.alerts.impl.AlertChannelBase;
+import com.yugabyte.yw.common.alerts.impl.AlertChannelBase.Context;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.forms.AlertChannelFormData;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertDestinationFormData;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
+import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
+import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
+import com.yugabyte.yw.forms.AlertTemplateVariablesList;
+import com.yugabyte.yw.forms.NotificationPreview;
+import com.yugabyte.yw.forms.NotificationPreviewFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
@@ -45,13 +56,17 @@ import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.metrics.MetricUrlProvider;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
+import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertLabel;
 import com.yugabyte.yw.models.AlertTemplateSettings;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Audit.TargetType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
@@ -76,16 +91,20 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.mvc.Http;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Api(value = "Alerts", authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
@@ -101,6 +120,8 @@ public class AlertController extends AuthenticatedController {
 
   @Inject private AlertChannelService alertChannelService;
 
+  @Inject private AlertChannelTemplateService alertChannelTemplateService;
+
   @Inject private AlertDestinationService alertDestinationService;
 
   @Inject private AlertManager alertManager;
@@ -108,6 +129,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private MetricUrlProvider metricUrlProvider;
 
   @Inject private AlertTemplateSettingsService alertTemplateSettingsService;
+
+  @Inject private AlertTemplateVariableService alertTemplateVariableService;
 
   @ApiOperation(value = "Get details of an alert", response = Alert.class)
   public Result get(UUID customerUUID, UUID alertUUID) {
@@ -149,10 +172,10 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
-  public Result countAlerts(UUID customerUUID) {
+  public Result countAlerts(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertApiFilter apiFilter = parseJsonAndValidate(AlertApiFilter.class);
+    AlertApiFilter apiFilter = parseJsonAndValidate(request, AlertApiFilter.class);
 
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
@@ -168,10 +191,10 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.AlertPagedApiQuery",
           required = true))
-  public Result pageAlerts(UUID customerUUID) {
+  public Result pageAlerts(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertPagedApiQuery apiQuery = parseJsonAndValidate(AlertPagedApiQuery.class);
+    AlertPagedApiQuery apiQuery = parseJsonAndValidate(request, AlertPagedApiQuery.class);
     AlertApiFilter apiFilter = apiQuery.getFilter();
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
     AlertPagedQuery query = apiQuery.copyWithFilter(filter, AlertPagedQuery.class);
@@ -185,7 +208,7 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Acknowledge an alert", response = Alert.class)
-  public Result acknowledge(UUID customerUUID, UUID alertUUID) {
+  public Result acknowledge(UUID customerUUID, UUID alertUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     AlertFilter filter = AlertFilter.builder().uuid(alertUUID).build();
@@ -193,8 +216,8 @@ public class AlertController extends AuthenticatedController {
 
     Alert alert = alertService.getOrBadRequest(alertUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Alert, alertUUID.toString(), Audit.ActionType.Acknowledge);
+        .createAuditEntry(
+            request, Audit.TargetType.Alert, alertUUID.toString(), Audit.ActionType.Acknowledge);
     return PlatformResults.withData(convert(alert));
   }
 
@@ -208,10 +231,10 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertApiFilter",
           required = true))
-  public Result acknowledgeByFilter(UUID customerUUID) {
+  public Result acknowledgeByFilter(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertApiFilter apiFilter = parseJsonAndValidate(AlertApiFilter.class);
+    AlertApiFilter apiFilter = parseJsonAndValidate(request, AlertApiFilter.class);
     AlertFilter filter = apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
     alertService.acknowledge(filter);
@@ -222,7 +245,7 @@ public class AlertController extends AuthenticatedController {
     }
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Alert, alertUUIDs, Audit.ActionType.Acknowledge);
+            request, Audit.TargetType.Alert, alertUUIDs, Audit.ActionType.Acknowledge);
     return YBPSuccess.empty();
   }
 
@@ -245,10 +268,10 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertTemplateApiFilter",
           required = true))
-  public Result listAlertTemplates(UUID customerUUID) {
+  public Result listAlertTemplates(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    AlertTemplateApiFilter apiFilter = parseJsonAndValidate(AlertTemplateApiFilter.class);
+    AlertTemplateApiFilter apiFilter = parseJsonAndValidate(request, AlertTemplateApiFilter.class);
     AlertTemplateFilter filter = apiFilter.toFilter();
 
     List<AlertConfigurationTemplate> templates =
@@ -271,11 +294,11 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.AlertConfigurationPagedApiQuery",
           required = true))
-  public Result pageAlertConfigurations(UUID customerUUID) {
+  public Result pageAlertConfigurations(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     AlertConfigurationPagedApiQuery apiQuery =
-        parseJsonAndValidate(AlertConfigurationPagedApiQuery.class);
+        parseJsonAndValidate(request, AlertConfigurationPagedApiQuery.class);
     AlertConfigurationApiFilter apiFilter = apiQuery.getFilter();
     AlertConfigurationFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
@@ -297,10 +320,11 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter",
           required = true))
-  public Result listAlertConfigurations(UUID customerUUID) {
+  public Result listAlertConfigurations(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertConfigurationApiFilter apiFilter = parseJsonAndValidate(AlertConfigurationApiFilter.class);
+    AlertConfigurationApiFilter apiFilter =
+        parseJsonAndValidate(request, AlertConfigurationApiFilter.class);
     AlertConfigurationFilter filter =
         apiFilter.toFilter().toBuilder().customerUuid(customerUUID).build();
 
@@ -316,10 +340,10 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertConfiguration",
           required = true))
-  public Result createAlertConfiguration(UUID customerUUID) {
+  public Result createAlertConfiguration(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertConfiguration configuration = parseJson(AlertConfiguration.class);
+    AlertConfiguration configuration = parseJson(request, AlertConfiguration.class);
 
     if (configuration.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create configuration with uuid set");
@@ -329,11 +353,10 @@ public class AlertController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Alert,
             Objects.toString(configuration.getUuid(), null),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            Audit.ActionType.Create);
     return PlatformResults.withData(configuration);
   }
 
@@ -344,11 +367,12 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.AlertConfiguration",
           required = true))
-  public Result updateAlertConfiguration(UUID customerUUID, UUID configurationUUID) {
+  public Result updateAlertConfiguration(
+      UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     alertConfigurationService.getOrBadRequest(configurationUUID);
 
-    AlertConfiguration configuration = parseJson(AlertConfiguration.class);
+    AlertConfiguration configuration = parseJson(request, AlertConfiguration.class);
 
     if (configuration.getUuid() == null) {
       throw new PlatformServiceException(
@@ -364,16 +388,13 @@ public class AlertController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Alert,
-            configurationUUID.toString(),
-            Audit.ActionType.Update,
-            request().body().asJson());
+            request, Audit.TargetType.Alert, configurationUUID.toString(), Audit.ActionType.Update);
     return PlatformResults.withData(configuration);
   }
 
   @ApiOperation(value = "Delete an alert configuration", response = YBPSuccess.class)
-  public Result deleteAlertConfiguration(UUID customerUUID, UUID configurationUUID) {
+  public Result deleteAlertConfiguration(
+      UUID customerUUID, UUID configurationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
     alertConfigurationService.getOrBadRequest(configurationUUID);
@@ -381,21 +402,17 @@ public class AlertController extends AuthenticatedController {
     alertConfigurationService.delete(configurationUUID);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Alert,
-            configurationUUID.toString(),
-            Audit.ActionType.Delete,
-            request().body().asJson());
+        .createAuditEntry(
+            request, Audit.TargetType.Alert, configurationUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
   @ApiOperation(value = "Send test alert for alert configuration", response = YBPSuccess.class)
   public Result sendTestAlert(UUID customerUUID, UUID configurationUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
 
     AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
-    Alert alert = createTestAlert(configuration);
+    Alert alert = createTestAlert(customer, configuration);
     SendNotificationResult result = alertManager.sendNotification(alert);
     if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
       throw new PlatformServiceException(BAD_REQUEST, result.getMessage());
@@ -410,19 +427,18 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertChannelFormData",
           required = true))
-  public Result createAlertChannel(UUID customerUUID) {
+  public Result createAlertChannel(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
-    AlertChannelFormData data = parseJsonAndValidate(AlertChannelFormData.class);
+    AlertChannelFormData data = parseJsonAndValidate(request, AlertChannelFormData.class);
     AlertChannel channel =
         new AlertChannel().setCustomerUUID(customerUUID).setName(data.name).setParams(data.params);
     alertChannelService.save(channel);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AlertChannel,
             Objects.toString(channel.getUuid(), null),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            Audit.ActionType.Create);
     return PlatformResults.withData(channel);
   }
 
@@ -441,33 +457,32 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertChannelFormData",
           required = true))
-  public Result updateAlertChannel(UUID customerUUID, UUID alertChannelUUID) {
+  public Result updateAlertChannel(UUID customerUUID, UUID alertChannelUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
-    AlertChannelFormData data = parseJsonAndValidate(AlertChannelFormData.class);
+    AlertChannelFormData data = parseJsonAndValidate(request, AlertChannelFormData.class);
     channel
         .setName(data.name)
         .setParams(CommonUtils.unmaskObject(channel.getParams(), data.params));
     alertChannelService.save(channel);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AlertChannel,
             alertChannelUUID.toString(),
-            Audit.ActionType.Update,
-            request().body().asJson());
+            Audit.ActionType.Update);
     return PlatformResults.withData(CommonUtils.maskObject(channel));
   }
 
   @ApiOperation(value = "Delete an alert channel", response = YBPSuccess.class)
-  public Result deleteAlertChannel(UUID customerUUID, UUID alertChannelUUID) {
+  public Result deleteAlertChannel(UUID customerUUID, UUID alertChannelUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertChannel channel = alertChannelService.getOrBadRequest(customerUUID, alertChannelUUID);
     alertChannelService.delete(customerUUID, alertChannelUUID);
     metricService.markSourceRemoved(channel.getCustomerUUID(), alertChannelUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.AlertChannel,
             alertChannelUUID.toString(),
             Audit.ActionType.Delete);
@@ -488,6 +503,56 @@ public class AlertController extends AuthenticatedController {
             .collect(Collectors.toList()));
   }
 
+  @ApiOperation(value = "Get alert channel templates", response = AlertChannelTemplatesExt.class)
+  public Result getAlertChannelTemplates(UUID customerUUID, String channelTypeStr) {
+    Customer.getOrBadRequest(customerUUID);
+    ChannelType channelType = parseChannelType(channelTypeStr);
+    return PlatformResults.withData(
+        alertChannelTemplateService.getWithDefaults(customerUUID, channelType));
+  }
+
+  @ApiOperation(value = "Set alert channel templates", response = AlertChannelTemplates.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "SetAlertChannelTemplatesRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.models.AlertChannelTemplates",
+          required = true))
+  public Result setAlertChannelTemplates(
+      UUID customerUUID, String channelTypeStr, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+    ChannelType channelType = parseChannelType(channelTypeStr);
+    AlertChannelTemplates data = parseJson(request, AlertChannelTemplates.class);
+    data.setType(channelType);
+    data.setCustomerUUID(customerUUID);
+    AlertChannelTemplates result = alertChannelTemplateService.save(data);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request, Audit.TargetType.AlertChannelTemplates, data.getType().name(), ActionType.Set);
+    return PlatformResults.withData(CommonUtils.maskObject(result));
+  }
+
+  @ApiOperation(value = "Delete alert channel templates", response = YBPSuccess.class)
+  public Result deleteAlertChannelTemplates(
+      UUID customerUUID, String channelTypeStr, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+    ChannelType channelType = parseChannelType(channelTypeStr);
+    alertChannelTemplateService.delete(customerUUID, channelType);
+    auditService()
+        .createAuditEntry(
+            request, TargetType.AlertChannelTemplates, channelTypeStr, Audit.ActionType.Delete);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      value = "List all alert channel templates",
+      response = AlertChannelTemplatesExt.class,
+      responseContainer = "List")
+  public Result listAlertChannelTemplates(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+    return PlatformResults.withData(alertChannelTemplateService.listWithDefaults(customerUUID));
+  }
+
   @ApiOperation(value = "Create an alert destination", response = AlertDestination.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -495,10 +560,10 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertDestinationFormData",
           required = true))
-  public Result createAlertDestination(UUID customerUUID) {
+  public Result createAlertDestination(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertDestinationFormData data =
-        formFactory.getFormDataOrBadRequest(AlertDestinationFormData.class).get();
+        formFactory.getFormDataOrBadRequest(request, AlertDestinationFormData.class).get();
     AlertDestination destination =
         new AlertDestination()
             .setCustomerUUID(customerUUID)
@@ -508,11 +573,10 @@ public class AlertController extends AuthenticatedController {
     alertDestinationService.save(destination);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AlertDestination,
             Objects.toString(destination.getUuid(), null),
-            Audit.ActionType.Create,
-            request().body().asJson());
+            Audit.ActionType.Create);
     return PlatformResults.withData(destination);
   }
 
@@ -530,10 +594,11 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertDestinationFormData",
           required = true))
-  public Result updateAlertDestination(UUID customerUUID, UUID alertDestinationUUID) {
+  public Result updateAlertDestination(
+      UUID customerUUID, UUID alertDestinationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     AlertDestinationFormData data =
-        formFactory.getFormDataOrBadRequest(AlertDestinationFormData.class).get();
+        formFactory.getFormDataOrBadRequest(request, AlertDestinationFormData.class).get();
     AlertDestination destination =
         alertDestinationService.getOrBadRequest(customerUUID, alertDestinationUUID);
     destination
@@ -543,21 +608,21 @@ public class AlertController extends AuthenticatedController {
     alertDestinationService.save(destination);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.AlertDestination,
             alertDestinationUUID.toString(),
-            Audit.ActionType.Update,
-            request().body().asJson());
+            Audit.ActionType.Update);
     return PlatformResults.withData(destination);
   }
 
   @ApiOperation(value = "Delete an alert destination", response = YBPSuccess.class)
-  public Result deleteAlertDestination(UUID customerUUID, UUID alertDestinationUUID) {
+  public Result deleteAlertDestination(
+      UUID customerUUID, UUID alertDestinationUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     alertDestinationService.delete(customerUUID, alertDestinationUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.AlertDestination,
             alertDestinationUUID.toString(),
             Audit.ActionType.Delete);
@@ -597,35 +662,126 @@ public class AlertController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.AlertTemplateSettingsFormData",
           required = true))
-  public Result editAlertTemplateSettings(UUID customerUUID) {
+  public Result editAlertTemplateSettings(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
-    AlertTemplateSettingsFormData data = parseJson(AlertTemplateSettingsFormData.class);
+    AlertTemplateSettingsFormData data = parseJson(request, AlertTemplateSettingsFormData.class);
 
     List<AlertTemplateSettings> settings =
         alertTemplateSettingsService.save(customerUUID, data.settings);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             TargetType.AlertTemplateSettings,
             Objects.toString(customerUUID, null),
-            Audit.ActionType.Edit,
-            request().body().asJson());
+            Audit.ActionType.Edit);
     return PlatformResults.withData(settings);
   }
 
   @ApiOperation(value = "Delete an alert template settings", response = YBPSuccess.class)
-  public Result deleteAlertTemplateSettings(UUID customerUUID, UUID settingsUuid) {
+  public Result deleteAlertTemplateSettings(
+      UUID customerUUID, UUID settingsUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     alertTemplateSettingsService.delete(settingsUuid);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             TargetType.AlertTemplateSettings,
             settingsUuid.toString(),
             Audit.ActionType.Delete);
     return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      value = "List alert template variables",
+      response = AlertTemplateVariablesList.class)
+  public Result listAlertTemplateVariables(UUID customerUUID) {
+    Customer.getOrBadRequest(customerUUID);
+
+    List<AlertTemplateVariable> customVariables = alertTemplateVariableService.list(customerUUID);
+
+    AlertTemplateVariablesList alertTemplateVariablesList =
+        new AlertTemplateVariablesList()
+            .setCustomVariables(customVariables)
+            .setSystemVariables(Arrays.asList(AlertTemplateSystemVariable.values()));
+    return PlatformResults.withData(alertTemplateVariablesList);
+  }
+
+  @ApiOperation(
+      value = "Create or update alert template variables",
+      response = AlertTemplateVariable.class,
+      responseContainer = "List")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "EditAlertTemplateVariablesRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
+          required = true))
+  public Result editAlertTemplateVariables(UUID customerUUID, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+
+    AlertTemplateVariablesFormData data = parseJson(request, AlertTemplateVariablesFormData.class);
+
+    List<AlertTemplateVariable> variables =
+        alertTemplateVariableService.save(customerUUID, data.variables);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            TargetType.AlertTemplateVariables,
+            Objects.toString(customerUUID, null),
+            Audit.ActionType.Edit);
+    return PlatformResults.withData(variables);
+  }
+
+  @ApiOperation(value = "Delete an alert template variables", response = YBPSuccess.class)
+  public Result deleteAlertTemplateVariables(
+      UUID customerUUID, UUID variablesUuid, Http.Request request) {
+    Customer.getOrBadRequest(customerUUID);
+    alertTemplateVariableService.delete(variablesUuid);
+    auditService()
+        .createAuditEntry(
+            request,
+            TargetType.AlertTemplateVariables,
+            variablesUuid.toString(),
+            Audit.ActionType.Delete);
+    return YBPSuccess.empty();
+  }
+
+  @ApiOperation(
+      value = "Prepare alert notification preview",
+      response = AlertTemplateVariablesList.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "NotificationPreviewRequest",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.AlertTemplateVariablesFormData",
+          required = true))
+  public Result alertNotificationPreview(UUID customerUUID, Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    NotificationPreviewFormData previewFormData =
+        parseJsonAndValidate(request, NotificationPreviewFormData.class);
+
+    AlertConfiguration alertConfiguration =
+        alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
+
+    AlertChannelTemplates channelTemplates = previewFormData.getAlertChannelTemplates();
+    Alert testAlert = createTestAlert(customer, alertConfiguration);
+    AlertChannel channel = new AlertChannel().setName("Channel name");
+    List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
+    AlertChannelTemplatesExt templatesExt =
+        alertChannelTemplateService.appendDefaults(
+            channelTemplates, customerUUID, channelTemplates.getType());
+    Context context = new Context(channel, templatesExt, variables);
+
+    NotificationPreview preview = new NotificationPreview();
+    if (channelTemplates.getType().isHasTitle()) {
+      preview.setTitle(AlertChannelBase.getNotificationTitle(testAlert, context));
+    }
+    preview.setText(AlertChannelBase.getNotificationText(testAlert, context));
+    return PlatformResults.withData(preview);
   }
 
   private AlertData convert(Alert alert) {
@@ -705,7 +861,7 @@ public class AlertController extends AuthenticatedController {
   }
 
   @VisibleForTesting
-  Alert createTestAlert(AlertConfiguration configuration) {
+  Alert createTestAlert(Customer customer, AlertConfiguration configuration) {
     AlertDefinition definition =
         alertDefinitionService
             .list(
@@ -718,7 +874,7 @@ public class AlertController extends AuthenticatedController {
         definition = new AlertDefinition();
         definition.setLabels(
             MetricLabelsBuilder.create()
-                .appendSource(buildUniverseForTestAlert())
+                .appendSource(getOrCreateUniverseForTestAlert(customer))
                 .getDefinitionLabels());
       } else {
         throw new PlatformServiceException(
@@ -779,10 +935,32 @@ public class AlertController extends AuthenticatedController {
     return "[TEST ALERT!!!] " + message;
   }
 
-  private Universe buildUniverseForTestAlert() {
+  private Universe getOrCreateUniverseForTestAlert(Customer customer) {
+    Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
+    Universe firstUniverse =
+        allUniverses
+            .stream()
+            .filter(universe -> universe.getUniverseDetails().nodePrefix != null)
+            .min(Comparator.comparing(universe -> universe.getCreationDate()))
+            .orElse(null);
+    if (firstUniverse != null) {
+      return firstUniverse;
+    }
     Universe universe = new Universe();
-    universe.name = "some-universe";
-    universe.universeUUID = UUID.randomUUID();
+    universe.setName("some-universe");
+    universe.setUniverseUUID(UUID.randomUUID());
+    UniverseDefinitionTaskParams universeDefinitionTaskParams = new UniverseDefinitionTaskParams();
+    universeDefinitionTaskParams.nodePrefix = "some-universe-node";
+    universe.setUniverseDetails(universeDefinitionTaskParams);
     return universe;
+  }
+
+  private ChannelType parseChannelType(String channelTypeStr) {
+    try {
+      return ChannelType.valueOf(channelTypeStr);
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Channel type " + channelTypeStr + " does not exist");
+    }
   }
 }

@@ -30,10 +30,10 @@ public class CustomerTest extends FakeDBApplication {
     for (long i = 0; i < 2; i++) {
       Customer customer = Customer.create("tc", "Test Customer");
       customer.save();
-      assertSame(i + 1, customer.getCustomerId());
-      assertNotNull(customer.uuid);
-      assertEquals("Test Customer", customer.name);
-      assertNotNull(customer.creationDate);
+      assertSame(i + 1, customer.getId());
+      assertNotNull(customer.getUuid());
+      assertEquals("Test Customer", customer.getName());
+      assertNotNull(customer.getCreationDate());
     }
   }
 
@@ -53,7 +53,7 @@ public class CustomerTest extends FakeDBApplication {
     String customerCode = RandomStringUtils.randomAlphabetic(15);
     Customer customer = Customer.create(customerCode, "Test Customer");
     customer.save();
-    assertEquals(customerCode, customer.code);
+    assertEquals(customerCode, customer.getCode());
   }
 
   @Test
@@ -62,9 +62,9 @@ public class CustomerTest extends FakeDBApplication {
     c1.save();
     Customer c2 = Customer.create("C2", "Customer 2");
     c2.save();
-    assertNotEquals(c1.getCustomerId(), c2.getCustomerId());
-    assertTrue(c2.getCustomerId() > c1.getCustomerId());
-    assertNotEquals(c1.uuid, c2.uuid);
+    assertNotEquals(c1.getId(), c2.getId());
+    assertTrue(c2.getId() > c1.getId());
+    assertNotEquals(c1.getUuid(), c2.getUuid());
   }
 
   @Test
@@ -90,7 +90,7 @@ public class CustomerTest extends FakeDBApplication {
     Customer c = Customer.create("C1", "Customer 1");
     c.save();
 
-    assertNotNull(c.uuid);
+    assertNotNull(c.getUuid());
 
     JsonNode features =
         Json.parse("{\"TLS\": true, \"universe\": {\"foo\": \"bar\", \"backups\": false}}");
@@ -113,15 +113,15 @@ public class CustomerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
     AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
-    Universe universe = createUniverse(c.getCustomerId());
+    Universe universe = createUniverse(c.getId());
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     UUID randProviderUUID = UUID.randomUUID();
     userIntent.provider = randProviderUUID.toString();
     userIntent.regionList = new ArrayList<UUID>();
-    userIntent.regionList.add(r.uuid);
+    userIntent.regionList.add(r.getUuid());
     universe =
-        Universe.saveDetails(universe.universeUUID, ApiUtils.mockUniverseUpdater(userIntent));
+        Universe.saveDetails(universe.getUniverseUUID(), ApiUtils.mockUniverseUpdater(userIntent));
     Set<Universe> universes = c.getUniversesForProvider(randProviderUUID);
     assertEquals(1, universes.size());
   }

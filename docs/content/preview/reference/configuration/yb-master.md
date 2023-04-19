@@ -8,9 +8,6 @@ menu:
     identifier: yb-master
     parent: configuration
     weight: 2450
-aliases:
-  - /preview/admin/yb-master
-  - /preview/deploy/reference/configuration/yb-master
 type: docs
 ---
 
@@ -246,11 +243,19 @@ For a typical deployment, values used for Raft and the write ahead log (WAL) fla
 
 ##### --follower_unavailable_considered_failed_sec
 
-The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat. The follower is then evicted from the configuration and the data is re-replicated elsewhere.
+The duration, in seconds, after which a follower is considered to be failed because the leader has not received a heartbeat.
 
-Default: `900` (15 minutes)
+Default: `7200` (2 hours)
 
 The `--follower_unavailable_considered_failed_sec` value should match the value for [`--log_min_seconds_to_retain`](#log-min-seconds-to-retain).
+
+##### --evict_failed_followers
+
+Failed followers will be evicted from the Raft group and the data will be re-replicated.
+
+Default: `false`
+
+Note that it is not recommended to set the flag to true for masters as you cannot automatically recover a failed master once it is evicted.
 
 ##### --leader_failure_max_missed_heartbeat_periods
 
@@ -308,7 +313,9 @@ Default: `1`
 
 The minimum duration, in seconds, to retain WAL segments, regardless of durability requirements. WAL segments can be retained for a longer amount of time, if they are necessary for correct restart. This value should be set long enough such that a tablet server which has temporarily failed can be restarted in the given time period.
 
-Default: `900` (15 minutes)
+Default: `7200` (2 hours)
+
+The `--log_min_seconds_to_retain` value should match the value for [`--follower_unavailable_considered_failed_sec`](#follower-unavailable-considered-failed-sec).
 
 ##### --log_min_segments_to_retain
 

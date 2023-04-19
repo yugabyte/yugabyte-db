@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.yugabyte.yw.common.PlatformScheduler;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -36,20 +38,22 @@ public class TaskGarbageCollector {
 
   // Config names
   static final String YB_TASK_GC_GC_CHECK_INTERVAL = "yb.taskGC.gc_check_interval";
-  static final String YB_TASK_GC_TASK_RETENTION_DURATION = "yb.taskGC.task_retention_duration";
 
   static {
     registerMetrics();
   }
 
   private final PlatformScheduler platformScheduler;
+  private final RuntimeConfGetter confGetter;
   private final RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject
   public TaskGarbageCollector(
-      PlatformScheduler platformScheduler, RuntimeConfigFactory runtimeConfigFactory) {
-
+      PlatformScheduler platformScheduler,
+      RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter) {
     this.platformScheduler = platformScheduler;
+    this.confGetter = confGetter;
     this.runtimeConfigFactory = runtimeConfigFactory;
   }
 
@@ -120,13 +124,11 @@ public class TaskGarbageCollector {
 
   /** The interval at which the gc checker will run. */
   private Duration gcCheckInterval() {
-    return runtimeConfigFactory.staticApplicationConf().getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
+    return runtimeConfigFactory.globalRuntimeConf().getDuration(YB_TASK_GC_GC_CHECK_INTERVAL);
   }
 
   /** For how many days to retain a completed task before garbage collecting it. */
   private Duration taskRetentionDuration(Customer customer) {
-    return runtimeConfigFactory
-        .forCustomer(customer)
-        .getDuration(YB_TASK_GC_TASK_RETENTION_DURATION);
+    return confGetter.getConfForScope(customer, CustomerConfKeys.taskGcRetentionDuration);
   }
 }

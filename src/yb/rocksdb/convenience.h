@@ -38,7 +38,6 @@
 
 namespace rocksdb {
 
-#ifndef ROCKSDB_LITE
 // Take a map of option name and option value, apply them into the
 // base_options, and return the new options as a result.
 //
@@ -127,6 +126,5 @@ void CancelAllBackgroundWork(DB* db, bool wait = false);
 // Snapshots before the delete might not see the data in the given range.
 Status DeleteFilesInRange(DB* db, ColumnFamilyHandle* column_family,
                           const Slice* begin, const Slice* end);
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb

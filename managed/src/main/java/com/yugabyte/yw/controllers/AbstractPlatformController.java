@@ -16,7 +16,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.audit.AuditService;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import io.swagger.annotations.ApiKeyAuthDefinition;
 import io.swagger.annotations.Contact;
 import io.swagger.annotations.ExternalDocs;
@@ -74,10 +73,7 @@ public abstract class AbstractPlatformController extends Controller {
   @Inject private AuditService auditService;
 
   protected AuditService auditService() {
-    UserWithFeatures user = (UserWithFeatures) Http.Context.current().args.get("user");
-    if (user == null) {
-      throw new IllegalStateException("Shouldn't audit unauthenticated requests!");
-    }
+    RequestContext.get(TokenAuthenticator.USER);
     return auditService;
   }
 
@@ -91,13 +87,13 @@ public abstract class AbstractPlatformController extends Controller {
     this.formFactory = formFactory;
   }
 
-  protected <T> T parseJsonAndValidate(Class<T> expectedClass) {
-    return formFactory.getFormDataOrBadRequest(request().body().asJson(), expectedClass);
+  protected <T> T parseJsonAndValidate(Http.Request request, Class<T> expectedClass) {
+    return formFactory.getFormDataOrBadRequest(request.body().asJson(), expectedClass);
   }
 
-  protected <T> T parseJson(Class<T> expectedClass) {
+  protected <T> T parseJson(Http.Request request, Class<T> expectedClass) {
     try {
-      return Json.fromJson(request().body().asJson(), expectedClass);
+      return Json.fromJson(request.body().asJson(), expectedClass);
     } catch (Exception e) {
       throw new PlatformServiceException(
           BAD_REQUEST,

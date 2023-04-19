@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_TYPEDEFS_H
-#define YB_COMMON_TYPEDEFS_H
+#pragma once
 
 #include <cstdint>
 
@@ -21,5 +20,3 @@ namespace yb {
 using UserTimeMicros = int64_t;
 
 }  // namespace yb
-
-#endif // YB_COMMON_TYPEDEFS_H

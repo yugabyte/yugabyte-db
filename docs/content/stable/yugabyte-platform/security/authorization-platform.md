@@ -24,10 +24,10 @@ A role is a set of predefined permissions within YugabyteDB Anywhere. The follow
 * **Super Admin** is the first user that is created during the tenant registration. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin in a tenant. This Super Admin can perform the following:
 
   * Manage all resources, including universes, nodes, backup and restore, and cloud providers.
-  * Manage user access control by creating and managing users.
+  * Manage the user access control by creating and managing users.
 
   For more information, see [admin user](../../configure-yugabyte-platform/create-admin-user/).
-* **Admin** has the same privilege as the Super Admin.
+* **Admin** has privileges that are similar to the Super Admin, except that the Admin cannot manage the global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 * **Backup Admin** has access the backup related tasks, such as the following:
 
   * Manage database backups and restore operations.

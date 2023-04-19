@@ -16,6 +16,8 @@ import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -23,6 +25,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -33,7 +36,7 @@ import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.yaml.snakeyaml.Yaml;
-import play.Play;
+import play.Environment;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 // TODO is this description accurate?
@@ -41,7 +44,6 @@ import play.Play;
 @ApiModel(description = "Universe-creation response")
 @Slf4j
 public class UniverseResp {
-
   public static UniverseResp create(Universe universe, UUID taskUUID, Config config) {
     UniverseResourceDetails.Context context = new Context(config, universe);
     UniverseResourceDetails resourceDetails =
@@ -51,7 +53,7 @@ public class UniverseResp {
   }
 
   public static List<UniverseResp> create(
-      Customer customer, List<Universe> universeList, Config config) {
+      Customer customer, Collection<Universe> universeList, Config config) {
     List<UniverseDefinitionTaskParams> universeDefinitionTaskParams =
         universeList.stream().map(Universe::getUniverseDetails).collect(Collectors.toList());
     UniverseResourceDetails.Context context =
@@ -72,11 +74,18 @@ public class UniverseResp {
         .collect(Collectors.toList());
   }
 
-  private static void fillRegions(List<Universe> universes) {
-    Set<UUID> regionUuids =
+  private static void fillRegions(Collection<Universe> universes) {
+    fillClusterRegions(
         universes
             .stream()
             .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
+            .collect(Collectors.toList()));
+  }
+
+  public static void fillClusterRegions(List<Cluster> clusters) {
+    Set<UUID> regionUuids =
+        clusters
+            .stream()
             .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
             .flatMap(cluster -> cluster.userIntent.regionList.stream())
             .collect(Collectors.toSet());
@@ -86,10 +95,9 @@ public class UniverseResp {
     Map<UUID, Region> regionMap =
         Region.findByUuids(regionUuids)
             .stream()
-            .collect(Collectors.toMap(region -> region.uuid, Function.identity()));
-    universes
+            .collect(Collectors.toMap(region -> region.getUuid(), Function.identity()));
+    clusters
         .stream()
-        .flatMap(universe -> universe.getUniverseDetails().clusters.stream())
         .filter(cluster -> CollectionUtils.isNotEmpty(cluster.userIntent.regionList))
         .forEach(
             cluster -> {
@@ -146,7 +154,7 @@ public class UniverseResp {
     this(
         entity,
         taskUUID,
-        Customer.get(entity.customerId),
+        Customer.get(entity.getCustomerId()),
         Provider.getOrBadRequest(
             UUID.fromString(entity.getUniverseDetails().getPrimaryCluster().userIntent.provider)),
         resources);
@@ -158,10 +166,10 @@ public class UniverseResp {
       Customer customer,
       Provider provider,
       UniverseResourceDetails resources) {
-    universeUUID = entity.universeUUID;
-    name = entity.name;
-    creationDate = entity.creationDate.toString();
-    version = entity.version;
+    universeUUID = entity.getUniverseUUID();
+    name = entity.getName();
+    creationDate = entity.getCreationDate().toString();
+    version = entity.getVersion();
     dnsName = getDnsName(customer, provider);
     universeDetails = new UniverseDefinitionTaskParamsResp(entity.getUniverseDetails(), entity);
     this.taskUUID = taskUUID;
@@ -184,7 +192,7 @@ public class UniverseResp {
     if (dnsSuffix == null) {
       return null;
     }
-    return String.format("%s.%s.%s", name, customer.code, dnsSuffix);
+    return String.format("%s.%s.%s", name, customer.getCode(), dnsSuffix);
   }
 
   /** Returns the command to run the sample apps in the universe. */
@@ -221,18 +229,18 @@ public class UniverseResp {
       UUID certUUID =
           universe.getUniverseDetails().rootAndClientRootCASame
               ? universe.getUniverseDetails().rootCA
-              : universe.getUniverseDetails().clientRootCA;
+              : universe.getUniverseDetails().getClientRootCA();
       if (certUUID == null) {
         log.warn("CertUUID cannot be null when TLS is enabled");
       }
       if (isKubernetesProvider) {
+        Environment environment = StaticInjectorHolder.injector().instanceOf(Environment.class);
         String certContent = certUUID == null ? "" : CertificateHelper.getCertPEM(certUUID);
         Yaml yaml = new Yaml();
         String sampleAppCommandTxt =
             yaml.dump(
                 yaml.load(
-                    Play.application()
-                        .resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
+                    environment.resourceAsStream("templates/k8s-sample-app-command-pod.yml")));
         sampleAppCommandTxt =
             sampleAppCommandTxt
                 .replace("<root_cert_content>", certContent)
@@ -241,8 +249,7 @@ public class UniverseResp {
         String secretCommandTxt =
             yaml.dump(
                 yaml.load(
-                    Play.application()
-                        .resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
+                    environment.resourceAsStream("templates/k8s-sample-app-command-secret.yml")));
         secretCommandTxt =
             secretCommandTxt
                 .replace("<root_cert_content>", certContent)

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_INTERNAL_H
-#define YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_INTERNAL_H
+#pragma once
 
 #include "yb/rocksdb/table/block.h"
 #include "yb/rocksdb/table/format.h"
@@ -86,5 +85,3 @@ inline void GenerateCachePrefix(
 } // namespace block_based_table
 
 } // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_BLOCK_BASED_TABLE_INTERNAL_H

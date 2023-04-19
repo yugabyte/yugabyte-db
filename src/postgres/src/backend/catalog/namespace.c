@@ -4276,15 +4276,15 @@ RemoveTempRelations(Oid tempNamespaceId)
 	object.objectSubId = 0;
 
 	if (IsYugaByteEnabled())
-		YBIncrementDdlNestingLevel();
+		YBIncrementDdlNestingLevel(false /* is_catalog_version_increment */,
+								   false /* is_breaking_catalog_change */);
 	performDeletion(&object, DROP_CASCADE,
 					PERFORM_DELETION_INTERNAL |
 					PERFORM_DELETION_QUIETLY |
 					PERFORM_DELETION_SKIP_ORIGINAL |
 					PERFORM_DELETION_SKIP_EXTENSIONS);
 	if (IsYugaByteEnabled())
-		YBDecrementDdlNestingLevel(false /* is_catalog_version_increment */,
-								   false /* is_breaking_catalog_change */);
+		YBDecrementDdlNestingLevel();
 }
 
 /*

@@ -69,8 +69,12 @@
 
 /* Yugabyte includes */
 #include "postgres_ext.h"
+#include "catalog/pg_yb_profile_d.h"
+#include "catalog/pg_yb_role_profile_d.h"
+#include "commands/yb_profile.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+#include "pg_yb_utils.h"
 
 typedef enum
 {
@@ -389,7 +393,7 @@ changeDependencyOnOwner(Oid classId, Oid objectId, Oid newOwnerId)
  * recordDependencyOnTablespace
  *
  * A convenient wrapper of recordSharedDependencyOn -- register the specified
- * tablespace as default for the given object.
+ * tablespace to the given object.
  *
  * Note: it's the caller's responsibility to ensure that there isn't a
  * tablespace entry for the object already.
@@ -1268,6 +1272,19 @@ shdepLockAndCheckObject(Oid classId, Oid objectId)
 				break;
 			}
 
+		case YbProfileRelationId:
+			{
+				/* For lack of a syscache on yb_pg_profile, do this: */
+				char	   *profile = yb_get_profile_name(objectId);
+
+				if (profile == NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("profile %u was concurrently dropped",
+									objectId)));
+				pfree(profile);
+				break;
+			}
 
 		default:
 			elog(ERROR, "unrecognized shared classId: %u", classId);
@@ -1320,6 +1337,8 @@ storeObjectDescription(StringInfo descs,
 				appendStringInfo(descs, _("target of %s"), objdesc);
 			else if (deptype == SHARED_DEPENDENCY_TABLESPACE)
 				appendStringInfo(descs, _("tablespace for %s"), objdesc);
+			else if (deptype == SHARED_DEPENDENCY_PROFILE)
+				appendStringInfo(descs, _("profile of %s"), objdesc);
 			else
 				elog(ERROR, "unrecognized dependency type: %d",
 					 (int) deptype);
@@ -1340,13 +1359,54 @@ storeObjectDescription(StringInfo descs,
 	pfree(objdesc);
 }
 
-#ifdef NEIL
+#ifdef YB_TODO
+/* YB_TODO(neil) Check if this function is still needed */
 static bool
 isSharedObjectPinned(Oid classId, Oid objectId, Relation sdepRel)
 {
+	/*
 	if (YBIsPinnedObjectsCacheAvailable())
 		return YBIsSharedObjectPinned(classId, objectId);
-.............
+	*/
+	if (IsYugaByteEnabled() && !YBCIsInitDbModeEnvVarSet())
+		return YbIsObjectPinned(classId, objectId,
+								true /* shared_dependency */);
+
+	bool		result = false;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+
+	ScanKeyInit(&key[0],
+				Anum_pg_shdepend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(classId));
+	ScanKeyInit(&key[1],
+				Anum_pg_shdepend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(objectId));
+
+	scan = systable_beginscan(sdepRel, SharedDependReferenceIndexId, true,
+							  NULL, 2, key);
+
+	/*
+	 * Since we won't generate additional pg_shdepend entries for pinned
+	 * objects, there can be at most one entry referencing a pinned object.
+	 * Hence, it's sufficient to look at the first returned tuple; we don't
+	 * need to loop.
+	 */
+	tup = systable_getnext(scan);
+	if (HeapTupleIsValid(tup))
+	{
+		Form_pg_shdepend shdepForm = (Form_pg_shdepend) GETSTRUCT(tup);
+
+		if (shdepForm->deptype == SHARED_DEPENDENCY_PIN)
+			result = true;
+	}
+
+	systable_endscan(scan);
+
+	return result;
 }
 #endif
 
@@ -1486,6 +1546,12 @@ shdepDropOwned(List *roleids, DropBehavior behavior)
 						}
 						add_exact_object_address(&obj, deleteobjs);
 					}
+					break;
+				case SHARED_DEPENDENCY_PROFILE:
+					/*
+					 * If it is a profile object, do not delete. Profile
+					 * associations can be removed by ALTER USER <u> NOPROFILE.
+					 */
 					break;
 			}
 		}
@@ -1698,4 +1764,74 @@ shdepReassignOwned(List *roleids, Oid newrole)
 	}
 
 	table_close(sdepRel, RowExclusiveLock);
+}
+
+/*
+ * ybRecordDependencyOnProfile
+ *
+ * A convenient wrapper of recordSharedDependencyOn -- register the specified
+ * profile to the given object.
+ *
+ * Note: it's the caller's responsibility to ensure that there isn't a profile
+ * entry for the object already.
+ */
+void
+ybRecordDependencyOnProfile(Oid classId, Oid objectId, Oid profile)
+{
+	ObjectAddress myself, referenced;
+
+	ObjectAddressSet(myself, classId, objectId);
+	ObjectAddressSet(referenced, YbProfileRelationId, profile);
+
+	recordSharedDependencyOn(&myself, &referenced,
+							 SHARED_DEPENDENCY_PROFILE);
+}
+
+/*
+ * ybChangeDependencyOnProfile
+ *
+ * Update the shared dependencies to account for the new profile.
+ *
+ * Note: we don't need an objsubid argument because only whole objects
+ * have tablespaces.
+ */
+void
+ybChangeDependencyOnProfile(Oid roleId, Oid newProfileId)
+{
+	Relation	sdepRel;
+
+	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
+
+	if (newProfileId != InvalidOid)
+		shdepChangeDep(sdepRel,
+					   AuthIdRelationId, roleId, 0,
+					   YbProfileRelationId, newProfileId,
+					   SHARED_DEPENDENCY_PROFILE);
+	else
+		shdepDropDependency(sdepRel,
+							AuthIdRelationId, roleId, 0, true,
+							InvalidOid, InvalidOid,
+							SHARED_DEPENDENCY_INVALID);
+
+	heap_close(sdepRel, RowExclusiveLock);
+}
+
+/*
+ * ybDropDependencyOnProfile
+ *
+ * Delete all pg_shdepend entries corresponding to a user -> profile mapping.
+ */
+void
+ybDropDependencyOnProfile(Oid roleId)
+{
+	Relation	sdepRel;
+
+	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
+
+	shdepDropDependency(sdepRel, AuthIdRelationId, roleId, 0,
+						true,
+						YbProfileRelationId, InvalidOid,
+						SHARED_DEPENDENCY_PROFILE);
+
+	heap_close(sdepRel, RowExclusiveLock);
 }

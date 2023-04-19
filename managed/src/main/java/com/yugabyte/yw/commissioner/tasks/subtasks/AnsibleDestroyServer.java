@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -25,11 +26,15 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class AnsibleDestroyServer extends NodeTaskBase {
+  private final NodeAgentManager nodeAgentManager;
 
   @Inject
   protected AnsibleDestroyServer(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
+      BaseTaskDependencies baseTaskDependencies,
+      NodeManager nodeManager,
+      NodeAgentManager nodeAgentManager) {
     super(baseTaskDependencies, nodeManager);
+    this.nodeAgentManager = nodeAgentManager;
   }
 
   public static class Params extends NodeTaskParams {
@@ -49,7 +54,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
   }
 
   private void removeNodeFromUniverse(final String nodeName) {
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     if (u.getNode(nodeName) == null) {
       log.error("No node in universe with name " + nodeName);
       return;
@@ -61,7 +66,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
           public void run(Universe universe) {
             UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
             universeDetails.removeNode(nodeName);
-            log.debug("Removing node " + nodeName + " from universe " + taskParams().universeUUID);
+            log.debug(
+                "Removing node " + nodeName + " from universe " + taskParams().getUniverseUUID());
           }
         };
 
@@ -86,7 +92,7 @@ public class AnsibleDestroyServer extends NodeTaskBase {
       }
     }
 
-    Universe u = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
         u.getUniverseDetails()
             .getClusterByUuid(u.getNode(taskParams().nodeName).placementUuid)
@@ -111,6 +117,19 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     }
 
     NodeDetails univNodeDetails = u.getNode(taskParams().nodeName);
+
+    try {
+      deleteNodeAgent(univNodeDetails);
+    } catch (Exception e) {
+      if (!taskParams().isForceDelete) {
+        throw e;
+      } else {
+        log.debug(
+            "Ignoring error deleting node agent {} due to isForceDelete being set.",
+            taskParams().nodeName,
+            e);
+      }
+    }
 
     if (userIntent.providerType.equals(Common.CloudType.onprem)
         && univNodeDetails.state != NodeDetails.NodeState.Decommissioned) {

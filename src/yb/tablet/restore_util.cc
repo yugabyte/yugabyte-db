@@ -12,6 +12,14 @@
 //
 #include "yb/tablet/restore_util.h"
 
+#include "yb/docdb/docdb.messages.h"
+#include "yb/docdb/doc_read_context.h"
+
+#include "yb/rpc/lightweight_message.h"
+
+#include "yb/tablet/tablet_metadata.h"
+
+#include "yb/util/logging.h"
 namespace yb {
 
 Status FetchState::SetPrefix(const Slice& prefix) {
@@ -28,7 +36,7 @@ Status FetchState::SetPrefix(const Slice& prefix) {
 }
 
 Result<bool> FetchState::Update() {
-  if (!iterator_->valid()) {
+  if (iterator_->IsOutOfRecords()) {
     finished_ = true;
     return true;
   }
@@ -40,12 +48,13 @@ Result<bool> FetchState::Update() {
   }
 
   rest_of_key.remove_prefix(prefix_.size());
+  const auto key_write_time = VERIFY_RESULT(key_.write_time.Decode());
   for (auto i = key_write_stack_.begin(); i != key_write_stack_.end(); ++i) {
     if (!rest_of_key.starts_with(i->key.AsSlice())) {
       key_write_stack_.erase(i, key_write_stack_.end());
       break;
     }
-    if (i->time > key_.write_time) {
+    if (i->time > key_write_time) {
       // This key-value entry is outdated and we should pick the next one.
       return false;
     }
@@ -65,7 +74,7 @@ Result<bool> FetchState::Update() {
       .key = KeyBuffer(rest_of_key.Prefix(doc_key_size)),
       // If doc key does not have its own write time, then we use min time to avoid ignoring
       // updates for other columns.
-      .time = doc_key_size == rest_of_key.size() ? key_.write_time : DocHybridTime::kMin,
+      .time = doc_key_size == rest_of_key.size() ? key_write_time : DocHybridTime::kMin,
     });
     rest_of_key.remove_prefix(doc_key_size);
   }
@@ -76,7 +85,7 @@ Result<bool> FetchState::Update() {
     // Since complete subkey cannot be prefix of another subkey.
     key_write_stack_.push_back(KeyWriteEntry {
       .key = KeyBuffer(rest_of_key),
-      .time = key_.write_time,
+      .time = key_write_time,
     });
   }
 
@@ -99,22 +108,63 @@ Status FetchState::Next(MoveForward move_forward) {
 
 Status RestorePatch::ProcessCommonEntry(
     const Slice& key, const Slice& existing_value, const Slice& restoring_value) {
+  VLOG_WITH_FUNC(3) << "Key: " << key.ToDebugHexString() << ", existing value: "
+                    << existing_value.ToDebugHexString() << ", restoring value: "
+                    << restoring_value.ToDebugHexString();
   if (restoring_value.compare(existing_value)) {
     IncrementTicker(RestoreTicker::kUpdates);
     AddKeyValue(key, restoring_value, doc_batch_);
   }
-  return Status::OK();
+  // If this is a packed row, update the state.
+  return TryUpdateLastPackedRow(key, restoring_value);
 }
 
 Status RestorePatch::ProcessRestoringOnlyEntry(
     const Slice& restoring_key, const Slice& restoring_value) {
+  VLOG_WITH_FUNC(3) << "Restoring key: " << restoring_key.ToDebugHexString() << ", "
+                    << "restoring value: " << restoring_value.ToDebugHexString();
   IncrementTicker(RestoreTicker::kInserts);
   AddKeyValue(restoring_key, restoring_value, doc_batch_);
-  return Status::OK();
+  // If this is a packed row, update the state.
+  return TryUpdateLastPackedRow(restoring_key, restoring_value);
 }
 
 Status RestorePatch::ProcessExistingOnlyEntry(
     const Slice& existing_key, const Slice& existing_value) {
+  VLOG_WITH_FUNC(3) << "Existing key: " << existing_key.ToDebugHexString() << ", "
+                    << "existing value: " << existing_value.ToDebugHexString() << ", "
+                    << "last packed row key: "
+                    << last_packed_row_restoring_state_.key.AsSlice().ToDebugHexString()
+                    << ", last packed row value: "
+                    << last_packed_row_restoring_state_.value.AsSlice().ToDebugHexString();
+  if (!last_packed_row_restoring_state_.key.empty() &&
+      existing_key.starts_with(last_packed_row_restoring_state_.key.AsSlice())) {
+    // Find out this column's value from the packed row.
+    Slice subkey = existing_key.WithoutPrefix(last_packed_row_restoring_state_.key.size());
+    if (!subkey.empty()) {
+      char type = subkey.consume_byte();
+      if (docdb::IsColumnId(static_cast<docdb::KeyEntryType>(type))) {
+        Slice packed_value = last_packed_row_restoring_state_.value.AsSlice();
+        const docdb::SchemaPacking& packing = VERIFY_RESULT(
+            table_info_->doc_read_context->schema_packing_storage.GetPacking(&packed_value));
+        int64_t column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&subkey));
+        // Expect only one subkey.
+        SCHECK_EQ(subkey.empty(), true, Corruption, "Only one subkey expected");
+        ColumnId column_id;
+        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
+        auto value = packing.GetValue(column_id, packed_value);
+        // Insert this column's packed row value.
+        if (value) {
+          VLOG_WITH_FUNC(1) << "Inserting key: " << existing_key.ToDebugHexString()
+                            << ", value: " << (*value).ToDebugHexString();
+          AddKeyValue(existing_key, *value, doc_batch_);
+          IncrementTicker(RestoreTicker::kInserts);
+          return Status::OK();
+        }
+      }
+    }
+  }
+  // Otherwise delete this kv.
   char tombstone_char = docdb::ValueEntryTypeAsChar::kTombstone;
   Slice tombstone(&tombstone_char, 1);
   IncrementTicker(RestoreTicker::kDeletes);
@@ -173,6 +223,20 @@ Status RestorePatch::PatchCurrentStateFromRestoringState() {
   return Status::OK();
 }
 
+Status RestorePatch::TryUpdateLastPackedRow(const Slice& key, const Slice& value) {
+  VLOG_WITH_FUNC(3) << "Key: " << key.ToDebugHexString()
+                    << ", value: " << value.ToDebugHexString();
+  auto value_slice = value;
+  RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
+  if (value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow)) {
+    VLOG_WITH_FUNC(2) << "Packed row encountered in the restoring state. Key: "
+                      << key.ToDebugHexString() << ", value: " << value.ToDebugHexString();
+    last_packed_row_restoring_state_.key = key;
+    last_packed_row_restoring_state_.value = value_slice;
+  }
+  return Status::OK();
+}
+
 void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch) {
   auto& pair = write_batch->AddRaw();
   pair.key.assign(key.cdata(), key.size());
@@ -182,15 +246,15 @@ void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* wri
 void WriteToRocksDB(
     docdb::DocWriteBatch* write_batch, const HybridTime& write_time, const OpId& op_id,
     tablet::Tablet* tablet, const std::optional<docdb::KeyValuePairPB>& restore_kv) {
-  docdb::KeyValueWriteBatchPB kv_write_batch;
-  write_batch->MoveToWriteBatchPB(&kv_write_batch);
+  auto kv_write_batch = rpc::MakeSharedMessage<docdb::LWKeyValueWriteBatchPB>();
+  write_batch->MoveToWriteBatchPB(kv_write_batch.get());
 
   // Append restore entry to the write batch.
   if (restore_kv) {
-    *kv_write_batch.mutable_write_pairs()->Add() = *restore_kv;
+    kv_write_batch->add_write_pairs()->CopyFrom(*restore_kv);
   }
 
-  docdb::NonTransactionalWriter writer(kv_write_batch, write_time);
+  docdb::NonTransactionalWriter writer(*kv_write_batch, write_time);
   rocksdb::WriteBatch rocksdb_write_batch;
   rocksdb_write_batch.SetDirectWriter(&writer);
   docdb::ConsensusFrontiers frontiers;
@@ -200,4 +264,35 @@ void WriteToRocksDB(
   tablet->WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
 }
+
+int64_t GetValue(const docdb::Value& value, int64_t* type) {
+  return value.primitive_value().GetInt64();
+}
+
+bool GetValue(const docdb::Value& value, bool* type) {
+  return value.primitive_value().GetBoolean();
+}
+
+Result<std::optional<int64_t>> GetInt64ColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name) {
+  // Packed row case.
+  if (sub_doc_key.subkeys().empty()) {
+    return VERIFY_RESULT(GetColumnValuePacked<int64_t>(table_info, value, column_name));
+  }
+  return VERIFY_RESULT(GetColumnValueNotPacked<int64_t>(
+      table_info, value, column_name, sub_doc_key));
+}
+
+Result<std::optional<bool>> GetBoolColumnValue(
+    const docdb::SubDocKey& sub_doc_key, const Slice& value,
+    tablet::TableInfo* table_info, const std::string& column_name) {
+  // Packed row case.
+  if (sub_doc_key.subkeys().empty()) {
+    return VERIFY_RESULT(GetColumnValuePacked<bool>(table_info, value, column_name));
+  }
+  return VERIFY_RESULT(GetColumnValueNotPacked<bool>(
+      table_info, value, column_name, sub_doc_key));
+}
+
 } // namespace yb

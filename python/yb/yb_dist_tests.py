@@ -32,6 +32,7 @@ from yb import command_util
 from yb.common_util import get_build_type_from_build_root, \
                            get_compiler_type_from_build_root, \
                            is_macos  # nopep8
+from yb.postgres_build_util import POSTGRES_BUILD_SUBDIR
 from typing import Optional, List, Set, Dict, cast
 
 # This is used to separate relative binary path from gtest_filter for C++ tests in what we call
@@ -311,19 +312,22 @@ def set_global_conf_from_dict(global_conf_dict: Dict[str, str]) -> GlobalTestCon
 
 ARCHIVED_PATHS_IN_BUILD_DIR = [
     'bin',
-    'ent',
     'lib',
     'postgres',
     'share',
+    'test_certs',
     'auto_flags.json',
     'version_metadata.json',
     'linuxbrew_path.txt',
     'thirdparty_path.txt',
     'thirdparty_url.txt',
-    'postgres_build/contrib',
-    'postgres_build/src/test/regress',
-    'postgres_build/src/test/isolation',
-    'postgres_build/src/include/catalog/pg_yb_migration.dat',  # used by TestYsqlUpgrade
+    f'{POSTGRES_BUILD_SUBDIR}/contrib',
+    f'{POSTGRES_BUILD_SUBDIR}/src/test/regress',
+    f'{POSTGRES_BUILD_SUBDIR}/src/test/isolation',
+    f'{POSTGRES_BUILD_SUBDIR}/third-party-extensions',
+
+    # Used by TestYsqlUpgrade.
+    f'{POSTGRES_BUILD_SUBDIR}/src/include/catalog/pg_yb_migration.dat',
 ]
 
 ARCHIVED_PATHS_IN_SRC_DIR = [
@@ -346,18 +350,13 @@ ARCHIVED_PATHS_IN_SRC_DIR = [
 
 def find_rel_java_paths_to_archive(yb_src_root: str) -> List[str]:
     paths = []
-    for ent in [False, True]:
-        path_components = []
-        if ent:
-            path_components.append('ent')
-        path_components.append('java')
-        java_dir_path = os.path.join(yb_src_root, *path_components)
-        paths.append(os.path.join(java_dir_path, 'pom.xml'))
-        for submodule_dir_path in glob.glob(os.path.join(java_dir_path, '*')):
-            for name in ['pom.xml', 'src']:
-                paths.append(os.path.join(submodule_dir_path, name))
-            for classes_dir_name in ['classes', 'test-classes']:
-                paths.append(os.path.join(submodule_dir_path, 'target', classes_dir_name))
+    java_dir_path = os.path.join(yb_src_root, 'java')
+    paths.append(os.path.join(java_dir_path, 'pom.xml'))
+    for submodule_dir_path in glob.glob(os.path.join(java_dir_path, '*')):
+        for name in ['pom.xml', 'src']:
+            paths.append(os.path.join(submodule_dir_path, name))
+        for classes_dir_name in ['classes', 'test-classes']:
+            paths.append(os.path.join(submodule_dir_path, 'target', classes_dir_name))
     return [os.path.relpath(p, yb_src_root) for p in paths]
 
 

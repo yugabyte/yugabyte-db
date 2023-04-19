@@ -34,7 +34,8 @@ def construct_instance_command(args, is_preflight=False):
         '--install_node_exporter',
         {%- endif %}
     ]
-
+    if not args.disable_systemd_services:
+      cmd.append("--systemd_services")
     if is_preflight:
         cmd.extend([
             '--precheck_type', 'provision',
@@ -89,6 +90,8 @@ if __name__ == '__main__':
                         help='Private IP of the instance to provision.')
     parser.add_argument('-m', '--mount_points', required=True,
                         help='The comma-separated locations of each mounted hard drive.')
+    parser.add_argument('--disable_systemd_services', action='store_true',
+                        help='Specify this flag to disable systemd services and use cron.')
     parser.add_argument('--ask_password', action='store_true',
                         help='Specify this flag if a password is required for sudo access. '
                              'It will persist in subsequent runs even without this flag.')

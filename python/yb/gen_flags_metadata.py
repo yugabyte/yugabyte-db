@@ -21,7 +21,9 @@ import os
 import logging
 import time
 
-from yugabyte_pycommon import init_logging, run_program, WorkDirContext  # type: ignore
+from yugabyte_pycommon import run_program, WorkDirContext  # type: ignore
+
+from yb.common_util import init_logging
 
 
 def main() -> None:
@@ -53,5 +55,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    init_logging()
+    init_logging(verbose=False)
     main()

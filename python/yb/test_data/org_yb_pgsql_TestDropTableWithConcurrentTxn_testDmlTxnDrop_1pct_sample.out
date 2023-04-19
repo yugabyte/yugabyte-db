@@ -447,7 +447,7 @@ m3|pid511964|:14443     @     0xffff83891fa4 __GI___nanosleep
 
 --------------------------------------------------------------------------------
 
-Rewrites performed:
+Rewrites performed by the rewrite_test_log.py script:
 
 m1_peer_id = 337c5b8357bd4b77b0cd7fcf4ed7d3c8
 ts1_peer_id = 0e28a5c7df58445e82c1a1fd75b61473

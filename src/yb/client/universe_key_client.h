@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_UNIVERSE_KEY_CLIENT_H
-#define YB_CLIENT_UNIVERSE_KEY_CLIENT_H
+#pragma once
 
 #include <condition_variable>
 #include <mutex>
@@ -25,6 +24,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_util.h"
 
@@ -46,11 +46,12 @@ class UniverseKeyClient {
  private:
 
   void ProcessGetUniverseKeyRegistryResponse(
-    std::shared_ptr<master::GetUniverseKeyRegistryResponsePB> resp,
-    std::shared_ptr<rpc::RpcController> rpc,
-    HostPort hp);
+      std::shared_ptr<master::GetUniverseKeyRegistryResponsePB> resp,
+      std::shared_ptr<rpc::RpcController> rpc,
+      HostPort hp,
+      CoarseBackoffWaiter backoff_waiter);
 
-  void SendAsyncRequest(HostPort host_port);
+  void SendAsyncRequest(HostPort host_port, CoarseBackoffWaiter backoff_waiter);
 
   mutable std::mutex mutex_;
   mutable std::condition_variable cond_;
@@ -64,5 +65,3 @@ class UniverseKeyClient {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_UNIVERSE_KEY_CLIENT_H

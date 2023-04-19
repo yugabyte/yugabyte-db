@@ -4,8 +4,7 @@
 // This module defines and executes expression-related operations in DocDB.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_DOCDB_DOC_EXPR_H_
-#define YB_DOCDB_DOC_EXPR_H_
+#pragma once
 
 #include "yb/common/ql_expr.h"
 
@@ -25,24 +24,19 @@ class DocExprExecutor : public QLExprExecutor {
 
   // Evaluate column reference.
   Status EvalColumnRef(ColumnIdRep col_id,
-                               const QLTableRow* table_row,
-                               QLExprResultWriter result_writer) override;
+                       const QLTableRow* table_row,
+                       QLExprResultWriter result_writer) override;
 
   // Evaluate call to tablet-server builtin operator.
   Status EvalTSCall(const QLBCallPB& ql_expr,
-                            const QLTableRow& table_row,
-                            QLValuePB *result,
-                            const Schema *schema = nullptr) override;
+                    const QLTableRow& table_row,
+                    QLValuePB *result,
+                    const Schema *schema = nullptr) override;
 
   Status EvalTSCall(const PgsqlBCallPB& ql_expr,
-                            const QLTableRow& table_row,
-                            QLValuePB *result,
-                            const Schema *schema) override;
-
-  Status EvalTSCall(const LWPgsqlBCallPB& ql_expr,
-                            const QLTableRow& table_row,
-                            LWQLValuePB *result,
-                            const Schema *schema) override;
+                    const QLTableRow& table_row,
+                    QLValuePB *result,
+                    const Schema *schema) override;
 
  protected:
   // Evaluate aggregate functions for each row.
@@ -70,16 +64,9 @@ class DocExprExecutor : public QLExprExecutor {
   template <class Val>
   Status EvalAvg(const Val& val, Val *aggr_avg);
 
-  Status EvalParametricToJson(const QLExpressionPB& operand,
-                                      const QLTableRow& table_row,
-                                      QLValuePB *result,
-                                      const Schema *schema);
-
-  template <class Expr, class Val>
-  Status DoEvalTSCall(const Expr& ql_expr,
-                              const QLTableRow& table_row,
-                              Val *result,
-                              const Schema *schema);
+  Result<QLValuePB> EvalParametricToJson(const QLExpressionPB& operand,
+                                         const QLTableRow& table_row,
+                                         const Schema *schema);
 
   virtual Status GetTupleId(QLValuePB *result) const;
   std::vector<QLExprResult> aggr_result_;
@@ -87,5 +74,3 @@ class DocExprExecutor : public QLExprExecutor {
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_DOC_EXPR_H_

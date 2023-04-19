@@ -34,7 +34,7 @@
 #include <string>
 #include <utility>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
 #include "yb/client/client-test-util.h"
@@ -206,7 +206,7 @@ class AlterTableTest : public YBMiniClusterTestBase<MiniCluster>,
     if (cluster_->mini_tablet_server(idx)->server()) {
       ASSERT_OK(cluster_->mini_tablet_server(idx)->Restart());
     } else {
-      ASSERT_OK(cluster_->mini_tablet_server(idx)->Start());
+      ASSERT_OK(cluster_->mini_tablet_server(idx)->Start(tserver::WaitTabletsBootstrapped::kFalse));
     }
 
     ASSERT_OK(cluster_->mini_tablet_server(idx)->WaitStarted());

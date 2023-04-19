@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 group_by_clause ::= GROUP BY { grouping_element [ , ... ] }
 
 grouping_element ::= ( ) | ( expression [ , ... ] )

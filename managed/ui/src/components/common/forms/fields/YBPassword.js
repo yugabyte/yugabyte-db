@@ -22,7 +22,6 @@ export default class YBPassword extends Component {
       infoTitle,
       infoPlacement,
       className,
-      type,
       ...otherProps
     } = this.props;
     return (

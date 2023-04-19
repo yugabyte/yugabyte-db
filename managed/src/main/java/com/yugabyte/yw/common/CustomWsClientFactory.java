@@ -54,16 +54,16 @@ public class CustomWsClientFactory {
             .withOnlyPath("play.ws");
     // Enable trace level logging to debug actual config value being resolved:
     log.trace("Creating ws client with config: {}", customWsConfig.root().render());
-    AhcWSClient customeWsClient =
+    AhcWSClient customWsClient =
         AhcWSClient.create(
             AhcWSClientConfigFactory.forConfig(customWsConfig, environment.classLoader()),
             null, // no HTTP caching
             materializer);
     lifecycle.addStopHook(
         () -> {
-          customeWsClient.close();
+          customWsClient.close();
           return CompletableFuture.completedFuture(null);
         });
-    return customeWsClient;
+    return customWsClient;
   }
 }

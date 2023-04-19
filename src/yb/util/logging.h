@@ -41,8 +41,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_UTIL_LOGGING_H
-#define YB_UTIL_LOGGING_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -297,6 +296,7 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 #define VLOG_WITH_FUNC(verboselevel) VLOG(verboselevel) << __func__ << ": "
 #define DVLOG_WITH_FUNC(verboselevel) DVLOG(verboselevel) << __func__ << ": "
 #define VLOG_WITH_PREFIX_AND_FUNC(verboselevel) VLOG_WITH_PREFIX(verboselevel) << __func__ << ": "
+#define DVLOG_WITH_PREFIX_AND_FUNC(verboselevel) DVLOG_WITH_PREFIX(verboselevel) << __func__ << ": "
 
 #define DVLOG_WITH_PREFIX(verboselevel) DVLOG(verboselevel) << LogPrefix()
 #define LOG_IF_WITH_PREFIX(severity, condition) LOG_IF(severity, condition) << LogPrefix()
@@ -354,5 +354,3 @@ class LogFatalHandlerSink : public google::LogSink {
 #define EXPR_VALUE_FOR_LOG(expr) BOOST_PP_STRINGIZE(expr) << "=" << (yb::ToString(expr))
 
 } // namespace yb
-
-#endif // YB_UTIL_LOGGING_H

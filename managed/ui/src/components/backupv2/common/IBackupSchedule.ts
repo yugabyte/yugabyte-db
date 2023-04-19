@@ -29,6 +29,11 @@ interface ScheduleTaskParams {
   expiryTimeUnit: string;
 }
 
+export enum IBackupScheduleStatus {
+  ACTIVE = 'Active',
+  STOPPED = 'Stopped',
+  PAUSED = 'Paused'
+}
 export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'universeUUID'> {
   scheduleUUID: string;
   taskType: 'BackupUniverse' | 'MultiTableBackup';
@@ -36,7 +41,7 @@ export interface IBackupSchedule extends Pick<IBackup, 'customerUUID' | 'univers
   frequency: number;
   runningState: boolean;
   cronExpression: string;
-  status: 'Active' | 'Stopped' | 'Paused';
+  status: IBackupScheduleStatus;
   backupInfo: ScheduleTaskParams;
   scheduleName: string;
   prevCompletedTask: number;

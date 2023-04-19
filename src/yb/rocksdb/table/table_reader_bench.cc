@@ -26,7 +26,7 @@ int main() {
 }
 #else
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/slice_transform.h"
@@ -264,20 +264,20 @@ void TableReaderBenchmark(const Options& opts, const EnvOptions& env_options,
 }  // namespace
 }  // namespace rocksdb
 
-DEFINE_bool(query_empty, false, "query non-existing keys instead of existing "
+DEFINE_UNKNOWN_bool(query_empty, false, "query non-existing keys instead of existing "
             "ones.");
-DEFINE_int32(num_keys1, 4096, "number of distinguish prefix of keys");
-DEFINE_int32(num_keys2, 512, "number of distinguish keys for each prefix");
-DEFINE_int32(iter, 3, "query non-existing keys instead of existing ones");
-DEFINE_int32(prefix_len, 16, "Prefix length used for iterators and indexes");
-DEFINE_bool(iterator, false, "For test iterator");
-DEFINE_bool(through_db, false, "If enable, a DB instance will be created and "
+DEFINE_UNKNOWN_int32(num_keys1, 4096, "number of distinguish prefix of keys");
+DEFINE_UNKNOWN_int32(num_keys2, 512, "number of distinguish keys for each prefix");
+DEFINE_UNKNOWN_int32(iter, 3, "query non-existing keys instead of existing ones");
+DEFINE_UNKNOWN_int32(prefix_len, 16, "Prefix length used for iterators and indexes");
+DEFINE_UNKNOWN_bool(iterator, false, "For test iterator");
+DEFINE_UNKNOWN_bool(through_db, false, "If enable, a DB instance will be created and "
             "the query will be against DB. Otherwise, will be directly against "
             "a table reader.");
-DEFINE_bool(mmap_read, true, "Whether use mmap read");
-DEFINE_string(table_factory, "block_based",
+DEFINE_UNKNOWN_bool(mmap_read, true, "Whether use mmap read");
+DEFINE_UNKNOWN_string(table_factory, "block_based",
               "Table factory to use: `block_based` (default) or `plain_table`.");
-DEFINE_string(time_unit, "microsecond",
+DEFINE_UNKNOWN_string(time_unit, "microsecond",
               "The time unit used for measuring performance. User can specify "
               "`microsecond` (default) or `nanosecond`");
 

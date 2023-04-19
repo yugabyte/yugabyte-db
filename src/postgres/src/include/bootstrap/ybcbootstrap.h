@@ -20,8 +20,7 @@
  *--------------------------------------------------------------------------------------------------
  */
 
-#ifndef YBCBOOTSTRAP_H
-#define YBCBOOTSTRAP_H
+#pragma once
 
 #include "access/htup.h"
 #include "catalog/dependency.h"
@@ -44,5 +43,3 @@ extern void YBCCreateSysCatalogTable(const char *table_name,
 extern Oid YBCExecSysCatalogInsert(Relation rel,
                                    TupleDesc tupleDesc,
                                    HeapTuple tuple);
-
-#endif

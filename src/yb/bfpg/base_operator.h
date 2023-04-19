@@ -21,8 +21,7 @@
 // See the header of file "/util/bfpg/directory.h" for more general overall information.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BASE_OPERATOR_H
-#define YB_BFPG_BASE_OPERATOR_H
+#pragma once
 
 #include <memory>
 
@@ -87,5 +86,3 @@ class BFOperator {
 
 } // namespace bfpg
 } // namespace yb
-
-#endif  // YB_BFPG_BASE_OPERATOR_H

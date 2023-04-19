@@ -64,7 +64,7 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_region) = "rack1";
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_placement_zone) = "zone";
   // Put everything in the same cloud.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 5;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_nodes_per_cloud) = 14;
   // Reduce time spent waiting for tablespace refresh.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_tablespace_info_refresh_secs) = 1;
   // We wait for the load balancer whenever it gets triggered anyways, so there's
@@ -75,7 +75,6 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves_per_table) = 10;
 
   pgwrapper::PgMiniTestBase::SetUp();
-  client_ = ASSERT_RESULT(cluster_->CreateClient());
   transaction_pool_ = nullptr;
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto mini_ts = cluster_->mini_tablet_server(i);
@@ -185,7 +184,8 @@ void GeoTransactionsTestBase::SetupTables(size_t tables_per_region) {
 
     for (size_t j = 1; j <= tables_per_region; ++j) {
       ASSERT_OK(conn.ExecuteFormat(
-          "CREATE TABLE $0$1_$2(value int) TABLESPACE tablespace$1", kTablePrefix, i, j));
+          "CREATE TABLE $0$1_$2(value int, other_value int) TABLESPACE tablespace$1",
+          kTablePrefix, i, j));
     }
 
     if (wait_for_hash) {
@@ -235,25 +235,25 @@ void GeoTransactionsTestBase::WaitForLoadBalanceCompletion() {
 }
 
 Status GeoTransactionsTestBase::StartTabletServersByRegion(int region) {
-  return StartTabletServers(yb::Format("rack$0", region), boost::none /* zone_str */);
+  return StartTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::ShutdownTabletServersByRegion(int region) {
-  return ShutdownTabletServers(yb::Format("rack$0", region), boost::none /* zone_str */);
+  return ShutdownTabletServers(yb::Format("rack$0", region), std::nullopt /* zone_str */);
 }
 
 Status GeoTransactionsTestBase::StartTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str) {
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str) {
   return StartShutdownTabletServers(region_str, zone_str, false /* shutdown */);
 }
 
 Status GeoTransactionsTestBase::ShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str) {
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str) {
   return StartShutdownTabletServers(region_str, zone_str, true /* shutdown */);
 }
 
 Status GeoTransactionsTestBase::StartShutdownTabletServers(
-    const boost::optional<std::string>& region_str, const boost::optional<std::string>& zone_str,
+    const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str,
     bool shutdown) {
   if (tserver_placements_.empty()) {
     tserver_placements_.reserve(NumTabletServers());
@@ -273,7 +273,7 @@ Status GeoTransactionsTestBase::StartShutdownTabletServers(
         tserver->Shutdown();
       } else {
         LOG(INFO) << "Starting tserver #" << i;
-        RETURN_NOT_OK(tserver->Start());
+        RETURN_NOT_OK(tserver->Start(tserver::WaitTabletsBootstrapped::kFalse));
       }
     }
   }

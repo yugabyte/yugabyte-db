@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_PROXY_CONTEXT_H
-#define YB_RPC_PROXY_CONTEXT_H
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
 
@@ -57,5 +56,3 @@ class ProxyContext {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_PROXY_CONTEXT_H

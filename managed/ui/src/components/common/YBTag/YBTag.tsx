@@ -15,7 +15,8 @@ import './YBTag.scss';
 export enum YBTag_Types {
   PRIMARY = 'primary',
   YB_ORANGE = 'yb-orange',
-  PLAIN_TEXT = 'plain-text'
+  PLAIN_TEXT = 'plain-text',
+  YB_GRAY = 'yb-gray'
 }
 
 interface YBTagProps {

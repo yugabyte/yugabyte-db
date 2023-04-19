@@ -24,6 +24,7 @@ enum RelationType {
   USER_TABLE_RELATION = 2;
   INDEX_TABLE_RELATION = 3;
   MATVIEW_TABLE_RELATION = 4;
+  COLOCATED_PARENT_TABLE_RELATION = 5;
 }
 
 enum SysRowEntryType {
@@ -43,6 +44,7 @@ enum SysRowEntryType {
   DDL_LOG_ENTRY = 13;
   SNAPSHOT_RESTORATION = 14;
   XCLUSTER_SAFE_TIME = 15;
+  XCLUSTER_CONFIG = 16;
 }
 
 // Master specific errors use this protobuf.
@@ -141,6 +143,8 @@ message MasterErrorPB {
     TABLET_NOT_RUNNING = 38;
 
     TABLE_NOT_RUNNING = 39;
+
+    TABLE_SCHEMA_CHANGE_IN_PROGRESS = 40;
   }
 
   // The error code.

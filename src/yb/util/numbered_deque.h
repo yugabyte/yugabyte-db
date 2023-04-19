@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_NUMBERED_DEQUE_H
-#define YB_UTIL_NUMBERED_DEQUE_H
+#pragma once
 
 #include <deque>
 
@@ -160,5 +159,3 @@ class NumberedDeque {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_NUMBERED_DEQUE_H

@@ -14,3 +14,4 @@ DROP TABLE test_table; -- should fail
 DROP TABLE test_table CASCADE;
 DROP TYPE type_pair; -- should fail
 DROP TYPE type_pair CASCADE;
+DROP TYPE type_pair_with_int;

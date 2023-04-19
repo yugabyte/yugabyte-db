@@ -18,10 +18,11 @@ import com.jayway.jsonpath.spi.mapper.JacksonMappingProvider;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.controllers.RequestContext;
+import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.paging.PagedQuery;
 import com.yugabyte.yw.models.paging.PagedResponse;
@@ -63,12 +64,12 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.security.crypto.encrypt.Encryptors;
 import org.springframework.security.crypto.encrypt.TextEncryptor;
 import play.libs.Json;
-import play.mvc.Http;
 
 @Slf4j
 public class CommonUtils {
 
   public static final String DEFAULT_YB_HOME_DIR = "/home/yugabyte";
+  public static final String DEFAULT_YBC_DIR = "/tmp/yugabyte";
 
   private static final Pattern RELEASE_REGEX =
       Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+).*$");
@@ -80,6 +81,8 @@ public class CommonUtils {
   public static final int DB_MAX_IN_CLAUSE_ITEMS = 1000;
   public static final int DB_IN_CLAUSE_TO_WARN = 50000;
   public static final int DB_OR_CHAIN_TO_WARN = 100;
+
+  public static final String MIN_PROMOTE_AUTO_FLAG_RELEASE = "2.17.0.0";
 
   private static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
@@ -100,7 +103,12 @@ public class CommonUtils {
           // Azure KMS fields
           "AZU_KEY_NAME",
           "AZU_KEY_ALGORITHM",
-          "AZU_KEY_SIZE");
+          "AZU_KEY_SIZE",
+          // Hashicorp KMS fields
+          "HC_VAULT_KEY_NAME",
+          "KEYSPACETABLELIST",
+          // General API field
+          "KEYSPACE");
 
   /**
    * Checks whether the field name represents a field with a sensitive data or not.
@@ -114,7 +122,7 @@ public class CommonUtils {
       return true;
     }
 
-    // Needed for GCP KMS UI - more specifically listKMSConfigs()
+    // Needed for KMS UI - more specifically listKMSConfigs()
     // Can add more exclusions if required
     if (excludedFieldNames.contains(ucFieldname)) {
       return false;
@@ -170,6 +178,27 @@ public class CommonUtils {
     return isStrictlySensitiveField(key) || (value == null) || value.length() < 5
         ? MASKED_FIELD_VALUE
         : value.replaceAll(maskRegex, "*");
+  }
+
+  public static JsonNode getMaskedValue(JsonNode value, List<String> toMaskKeys) {
+    if (value == null) {
+      return value;
+    }
+    ObjectNode jsonNodeValue = (ObjectNode) value;
+    for (String key : toMaskKeys) {
+      if (jsonNodeValue.has(key)) {
+        String keyValue = jsonNodeValue.get(key).toString();
+        jsonNodeValue.put(key, keyValue.replaceAll(maskRegex, "*"));
+      }
+    }
+    return value;
+  }
+
+  public static String getMaskedValue(String value) {
+    if (value == null) {
+      return value;
+    }
+    return value.replaceAll(maskRegex, "*");
   }
 
   @SuppressWarnings("unchecked")
@@ -317,7 +346,7 @@ public class CommonUtils {
   /** Recursively merges second JsonNode into first JsonNode. ArrayNodes will be overwritten. */
   public static void deepMerge(JsonNode node1, JsonNode node2) {
     if (node1 == null || node1.size() == 0 || node2 == null || node2.size() == 0) {
-      throw new PlatformServiceException(BAD_REQUEST, "Cannot merge empty nodes.");
+      return;
     }
 
     if (!node1.isObject() || !node2.isObject()) {
@@ -673,7 +702,7 @@ public class CommonUtils {
             .collect(Collectors.toList());
     if (tserverLiveNodes.isEmpty()) {
       throw new IllegalStateException(
-          "No live TServers found for Universe UUID: " + universe.universeUUID);
+          "No live TServers found for Universe UUID: " + universe.getUniverseUUID());
     }
     return tserverLiveNodes.get(new Random().nextInt(tserverLiveNodes.size()));
   }
@@ -699,7 +728,7 @@ public class CommonUtils {
       Scanner scanner = new Scanner(shellResponse.message);
       int i = 0;
       while (scanner.hasNextLine()) {
-        data = new String(scanner.nextLine());
+        data = scanner.nextLine();
         if (i++ == 3) {
           break;
         }
@@ -731,16 +760,19 @@ public class CommonUtils {
   public static String generateStateLogMsg(Universe universe, boolean alreadyRunning) {
     String stateLogMsg =
         String.format(
-            "alreadyRunning={} backupInProgress={} updateInProgress={} universePaused={}",
+            "alreadyRunning=%s updateInProgress=%s universePaused=%s",
             alreadyRunning,
-            universe.getUniverseDetails().backupInProgress,
             universe.getUniverseDetails().updateInProgress,
             universe.getUniverseDetails().universePaused);
     return stateLogMsg;
   }
 
   /** Get the user sending the API request from the HTTP context. */
-  public static Users getUserFromContext(Http.Context ctx) {
-    return ((UserWithFeatures) ctx.args.get("user")).getUser();
+  public static Users getUserFromContext() {
+    return RequestContext.get(TokenAuthenticator.USER).getUser();
+  }
+
+  public static boolean isAutoFlagSupported(String dbVersion) {
+    return isReleaseEqualOrAfter(MIN_PROMOTE_AUTO_FLAG_RELEASE, dbVersion);
   }
 }

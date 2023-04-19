@@ -41,8 +41,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef YB_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
-#define YB_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
+#pragma once
 
 namespace yb {
 class Webserver;
@@ -50,5 +49,3 @@ class Webserver;
 // Adds set of path handlers to support pprof profiling of a remote server.
 void AddPprofPathHandlers(Webserver* webserver);
 }
-
-#endif // YB_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H

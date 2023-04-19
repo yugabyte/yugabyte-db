@@ -49,19 +49,19 @@ const AlertDestinationConfiguration = (props) => {
 
     values.type === 'update'
       ? props.updateAlertDestination(payload, values.uuid).then((response) => {
-          const status = response?.payload?.response?.status || response?.payload?.status;
-          if (status === 200 || status === 201) {
-            props.setInitialValues();
-            props.onAddCancel();
-          }
-        })
+        const status = response?.payload?.response?.status || response?.payload?.status;
+        if (status === 200 || status === 201) {
+          props.setInitialValues();
+          props.onAddCancel();
+        }
+      })
       : props.createAlertDestination(payload).then((response) => {
-          const status = response?.payload?.response?.status || response?.payload?.status;
-          if (status === 200 || status === 201) {
-            props.setInitialValues();
-            props.onAddCancel();
-          }
-        });
+        const status = response?.payload?.response?.status || response?.payload?.status;
+        if (status === 200 || status === 201) {
+          props.setInitialValues();
+          props.onAddCancel();
+        }
+      });
   };
 
   const {
@@ -115,19 +115,19 @@ const AlertDestinationConfiguration = (props) => {
               />
             </Col>
             {!isReadOnly && (
-            <Col md={6} className="add-destination-container">
-              <Row>
-                <Col lg={3} className="pd-0">
-                  <a href="# " className="on-prem-add-link" onClick={props.showAddChannelModal}>
-                    <i
-                      className="fa fa-plus-circle fa-2x on-prem-row-add-btn"
-                      onClick={props.showAddChannelModal}
-                    />
+              <Col md={6} className="add-destination-container">
+                <Row>
+                  <Col lg={3} className="pd-0">
+                    <a href="# " className="on-prem-add-link" onClick={props.showAddChannelModal}>
+                      <i
+                        className="fa fa-plus-circle fa-2x on-prem-row-add-btn"
+                        onClick={props.showAddChannelModal}
+                      />
                     Add Channel
-                  </a>
-                </Col>
-              </Row>
-            </Col>
+                    </a>
+                  </Col>
+                </Row>
+              </Col>
             )}
           </Row>
           <Row className="alert-action-button-container">

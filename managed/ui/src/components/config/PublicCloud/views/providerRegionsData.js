@@ -1,5 +1,5 @@
 // These should match the metadata in devops under opscli/ybops/data/aws-metadata.yml
-export const regionsData = [
+export const AWS_REGIONS = [
   {
     destVpcRegion: 'ap-northeast-1',
     zones: ['ap-northeast-1a', 'ap-northeast-1c', 'ap-northeast-1d']
@@ -9,6 +9,10 @@ export const regionsData = [
   {
     destVpcRegion: 'ap-northeast-2',
     zones: ['ap-northeast-2a', 'ap-northeast-2b', 'ap-northeast-2c', 'ap-northeast-2d']
+  },
+  {
+    destVpcRegion: 'ap-northeast-3',
+    zones: ['ap-northeast-3a', 'ap-northeast-3b', 'ap-northeast-3c']
   },
   {
     destVpcRegion: 'ap-south-1',
@@ -21,6 +25,10 @@ export const regionsData = [
   {
     destVpcRegion: 'ap-southeast-2',
     zones: ['ap-southeast-2a', 'ap-southeast-2b', 'ap-southeast-2c']
+  },
+  {
+    destVpcRegion: 'ap-southeast-3',
+    zones: ['ap-southeast-3a', 'ap-southeast-3b', 'ap-southeast-3c']
   },
   {
     destVpcRegion: 'ca-central-1',
@@ -61,6 +69,14 @@ export const regionsData = [
   {
     destVpcRegion: 'us-west-2',
     zones: ['us-west-2a', 'us-west-2b', 'us-west-2c']
+  },
+  {
+    destVpcRegion: 'us-gov-east-1',
+    zones: ['us-gov-east-1a', 'us-gov-east-1b', 'us-gov-east-1c']
+  },
+  {
+    destVpcRegion: 'us-gov-west-1',
+    zones: ['us-gov-west-1a', 'us-gov-west-1b', 'us-gov-west-1c']
   }
 ];
 

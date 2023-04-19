@@ -44,6 +44,7 @@
 
 using std::vector;
 
+DECLARE_bool(ycql_enable_packed_row);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
@@ -145,15 +146,14 @@ class DocOperationTest : public DocDBTestBase {
     SeedRandom();
   }
 
-  Schema CreateSchema() {
+  Schema CreateSchema() override {
     ColumnSchema hash_column_schema("k", INT32, false, true);
     ColumnSchema column1_schema("c1", INT32, false, false);
     ColumnSchema column2_schema("c2", INT32, false, false);
     ColumnSchema column3_schema("c3", INT32, false, false);
     const vector<ColumnSchema> columns({hash_column_schema, column1_schema, column2_schema,
                                            column3_schema});
-    Schema schema(columns, CreateColumnIds(columns.size()), 1);
-    return schema;
+    return Schema(columns, CreateColumnIds(columns.size()), 1);
   }
 
   void AddPrimaryKeyColumn(yb::QLWriteRequestPB* ql_writereq_pb, int32_t value) {
@@ -181,9 +181,10 @@ class DocOperationTest : public DocDBTestBase {
                const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
     IndexMap index_map;
-    QLWriteOperation ql_write_op(ql_writereq_pb,
-                                 std::make_shared<DocReadContext>(schema, 1),
-                                 index_map, nullptr /* unique_index_key_schema */, txn_op_context);
+    QLWriteOperation ql_write_op(
+        ql_writereq_pb, ql_writereq_pb.schema_version(),
+        std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema)), index_map,
+        nullptr /* unique_index_key_schema */, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
@@ -200,6 +201,10 @@ SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT<max>]) -> null; ttl: 2
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ <max> w: 1 }]) -> 2; ttl: 2.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> 3; ttl: 2.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> 4; ttl: 2.000s
+      )#",
+      R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> \
+{ 1: 2; ttl: 2.000s 2: 3; ttl: 2.000s 3: 4; ttl: 2.000s }; ttl: 2.000s
       )#");
     } else {
       AssertDocDbDebugDumpStrEq(R"#(
@@ -217,6 +222,9 @@ SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT<max>]) -> null
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ <max> w: 1 }]) -> 2
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> 3
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> 4
+      )#",
+      R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: 2 2: 3 3: 4 }
       )#");
     } else {
       AssertDocDbDebugDumpStrEq(R"#(
@@ -324,17 +332,18 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
     QLRocksDBStorage ql_storage(doc_db());
     const QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
-    faststring rows_data;
+    WriteBuffer rows_data(1024);
     QLResultSet resultset(&rsrow_desc, &rows_data);
     HybridTime read_restart_ht;
-    DocReadContext doc_read_context(schema, 1);
+    auto doc_read_context = DocReadContext::TEST_Create(schema);
     EXPECT_OK(read_op.Execute(
         ql_storage, CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(read_time),
         doc_read_context, projection, &resultset, &read_restart_ht));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
-    Slice data(rows_data.data(), rows_data.size());
+    auto data_str = rows_data.ToBuffer();
+    Slice data(data_str);
     EXPECT_OK(row_block.Deserialize(YQL_CLIENT_CQL, &data));
     return row_block;
   }
@@ -345,6 +354,8 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     // Normally, max_file_size_for_compaction is only used for tables with TTL.
     max_file_size_for_compaction_ = MakeMaxFileSizeFunction();
   }
+
+  void TestWriteNulls();
 };
 
 TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
@@ -372,7 +383,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   rocksdb::ReadOptions read_opts;
   auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
   ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
 
   // Verify correct ttl.
   auto value = iter->value();
@@ -396,7 +407,7 @@ TEST_F(DocOperationTest, TestQLUpdateWithoutTTL) {
   RunTestQLInsertUpdate(QLWriteRequestPB_QLStmtType_QL_STMT_UPDATE);
 }
 
-TEST_F(DocOperationTest, TestQLWriteNulls) {
+void DocOperationTest::TestWriteNulls() {
   yb::QLWriteRequestPB ql_writereq_pb;
   yb::QLResponsePB ql_writeresp_pb;
 
@@ -418,14 +429,28 @@ TEST_F(DocOperationTest, TestQLWriteNulls) {
 
   // Write to docdb.
   WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb);
+}
 
+TEST_F(DocOperationTest, TestQLWriteNulls) {
+  TestWriteNulls();
   // Null columns are converted to tombstones.
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT<max>]) -> null
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ <max> w: 1 }]) -> DEL
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ <max> w: 2 }]) -> DEL
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 3 }]) -> DEL
+      )#",
+      R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
       )#");
+}
+
+TEST_F(DocOperationTest, WritePackedNulls) {
+  FLAGS_ycql_enable_packed_row = true;
+  TestWriteNulls();
+  AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT<max>]) -> { 1: DEL 2: DEL 3: DEL }
+  )#");
 }
 
 TEST_F(DocOperationTest, TestQLReadWriteSimple) {
@@ -442,6 +467,10 @@ SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) ->
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 w: 1 }]) -> 1; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 2; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
+      )#",
+      R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT{ physical: 1000 }]) -> \
+{ 1: 1; ttl: 1.000s 2: 2; ttl: 1.000s 3: 3; ttl: 1.000s }; ttl: 1.000s
       )#");
 
   // Now read the value.
@@ -559,12 +588,12 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       )#");
 
   Schema schema = CreateSchema();
-  DocReadContext doc_read_context(schema, 1);
+  auto doc_read_context = DocReadContext::TEST_Create(schema);
   DocRowwiseIterator iter(schema, doc_read_context, kNonTransactionalOperationContext,
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
-  ASSERT_OK(iter.Init(YQL_TABLE_TYPE));
-  ASSERT_FALSE(ASSERT_RESULT(iter.HasNext()));
+  iter.Init(YQL_TABLE_TYPE);
+  ASSERT_FALSE(ASSERT_RESULT(iter.FetchNext(nullptr)));
 
   // Now verify row exists even with one valid column.
   doc_key = DocKey(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
@@ -596,9 +625,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
-  ASSERT_TRUE(ASSERT_RESULT(ql_iter.HasNext()));
   QLTableRow value_map;
-  ASSERT_OK(ql_iter.NextRow(&value_map));
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter.FetchNext(&value_map)));
   ASSERT_EQ(4, value_map.ColumnCount());
   EXPECT_EQ(100, value_map.TestValue(0).value.int32_value());
   EXPECT_TRUE(IsNull(value_map.TestValue(1).value));
@@ -644,9 +672,8 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
-  ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.HasNext()));
   QLTableRow value_map_system;
-  ASSERT_OK(ql_iter_system.NextRow(&value_map_system));
+  ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.FetchNext(&value_map_system)));
   ASSERT_EQ(4, value_map_system.ColumnCount());
   EXPECT_EQ(101, value_map_system.TestValue(0).value.int32_value());
   EXPECT_TRUE(IsNull(value_map_system.TestValue(1).value));
@@ -779,13 +806,13 @@ class DocOperationScanTest : public DocOperationTest {
     }
   }
 
-  void InitSchema(SortingType range_column_sorting) {
-    range_column_sorting_type_ = range_column_sorting;
+  Schema CreateSchema() override {
     ColumnSchema hash_column("k", INT32, false, true);
-    ColumnSchema range_column("r", INT32, false, false, false, false, 1, range_column_sorting);
+    ColumnSchema range_column(
+        "r", INT32, false, false, false, false, 1, range_column_sorting_type_);
     ColumnSchema value_column("v", INT32, false, false);
     auto columns = { hash_column, range_column, value_column };
-    doc_read_context_ = DocReadContext(Schema(columns, CreateColumnIds(columns.size()), 2), 1);
+    return Schema(columns, CreateColumnIds(columns.size()), 2);
   }
 
   void InsertRows(const size_t num_rows_per_key,
@@ -817,9 +844,11 @@ class DocOperationScanTest : public DocOperationTest {
             ResetCurrentTransactionId();
           }
         }
+        auto row_values = { row_data.k, row_data.r, row_data.v };
+        LOG(INFO) << "Writing row: " << AsString(row_values) << ", ht: " << ht;
         WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
-                   doc_read_context_.schema,
-                   { row_data.k, row_data.r, row_data.v },
+                   doc_read_context().schema,
+                   row_values,
                    1000,
                    ht,
                    txn_op_context ? *txn_op_context : kNonTransactionalOperationContext);
@@ -831,8 +860,10 @@ class DocOperationScanTest : public DocOperationTest {
       ASSERT_OK(FlushRocksDbAndWait());
     }
 
-    DumpRocksDBToLog(rocksdb(), docdb::SchemaPackingStorage(), StorageDbType::kRegular);
-    DumpRocksDBToLog(intents_db(), docdb::SchemaPackingStorage(), StorageDbType::kIntents);
+    DumpRocksDBToLog(
+        rocksdb(), doc_read_context().schema_packing_storage, StorageDbType::kRegular);
+    DumpRocksDBToLog(
+        intents_db(), doc_read_context().schema_packing_storage, StorageDbType::kIntents);
   }
 
   void PerformScans(const bool is_forward_scan,
@@ -890,17 +921,16 @@ class DocOperationScanTest : public DocOperationTest {
             std::reverse(expected_rows.begin(), expected_rows.end());
           }
           DocQLScanSpec ql_scan_spec(
-              doc_read_context_.schema, kFixedHashCode, kFixedHashCode, hashed_components,
+              doc_read_context().schema, kFixedHashCode, kFixedHashCode, hashed_components,
               &condition, nullptr /* if_ req */, rocksdb::kDefaultQueryId, is_forward_scan);
           DocRowwiseIterator ql_iter(
-              doc_read_context_.schema, doc_read_context_, txn_op_context, doc_db(),
+              doc_read_context().schema, doc_read_context(), txn_op_context, doc_db(),
               CoarseTimePoint::max() /* deadline */, read_ht);
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << AsString(expected_rows);
           it = expected_rows.begin();
-          while (ASSERT_RESULT(ql_iter.HasNext())) {
-            QLTableRow value_map;
-            ASSERT_OK(ql_iter.NextRow(&value_map));
+          QLTableRow value_map;
+          while (ASSERT_RESULT(ql_iter.FetchNext(&value_map))) {
             ASSERT_EQ(3, value_map.ColumnCount());
 
             RowData fetched_row = {value_map.TestValue(0_ColId).value.int32_value(),
@@ -911,7 +941,7 @@ class DocOperationScanTest : public DocOperationTest {
             ASSERT_EQ(fetched_row, it->data);
             it++;
           }
-          ASSERT_EQ(expected_rows.end(), it);
+          ASSERT_EQ(expected_rows.end(), it) << "Missing row: " << AsString(*it);
 
           after_scan_callback(keys_in_range);
         }
@@ -929,13 +959,17 @@ class DocOperationScanTest : public DocOperationTest {
   virtual void DoTestWithSortingType(SortingType schema_type, bool is_forward_scan,
       size_t num_rows_per_key) = 0;
 
+  void SetSortingType(SortingType value) {
+    range_column_sorting_type_ = value;
+    CHECK_EQ(doc_read_context().schema.column(1).sorting_type(), value);
+  }
+
   constexpr static int32_t kNumKeys = 20;
   constexpr static uint32_t kMinTime = 500;
   constexpr static uint32_t kMaxTime = 1500;
 
   std::mt19937_64 rng_;
   SortingType range_column_sorting_type_;
-  DocReadContext doc_read_context_{Schema(), 1};
   int32_t h_key_;
   std::vector<RowDataWithHt> rows_;
 };
@@ -952,7 +986,7 @@ void DocOperationRangeFilterTest::DoTestWithSortingType(SortingType sorting_type
     const bool is_forward_scan, const size_t num_rows_per_key) {
   ASSERT_OK(DisableCompactions());
 
-  InitSchema(sorting_type);
+  SetSortingType(sorting_type);
   InsertRows(num_rows_per_key);
 
   {
@@ -996,7 +1030,7 @@ class DocOperationTxnScanTest : public DocOperationScanTest {
       size_t num_rows_per_key) override {
     ASSERT_OK(DisableCompactions());
 
-    InitSchema(sorting_type);
+    SetSortingType(sorting_type);
 
     TransactionStatusManagerMock txn_status_manager;
     SetTransactionIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
@@ -1038,28 +1072,36 @@ TEST_F(DocOperationTest, TestQLCompactions) {
   WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
       1000, t0);
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 w: 1 }]) -> 1; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 2; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
-      )#");
+      )#",
+      R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT{ physical: 1000 }]) -> \
+{ 1: 1; ttl: 1.000s 2: 2; ttl: 1.000s 3: 3; ttl: 1.000s }; ttl: 1.000s
+      )#"));
 
   FullyCompactHistoryBefore(t1);
 
   // Verify all entries are purged.
-  AssertDocDbDebugDumpStrEq(R"#(
-      )#");
+  ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(R"#(
+      )#"));
 
   // Add a row with a TTL.
   WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
       1000, t0);
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 w: 1 }]) -> 1; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 2; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
-     )#");
+     )#",
+     R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT{ physical: 1000 }]) -> \
+{ 1: 1; ttl: 1.000s 2: 2; ttl: 1.000s 3: 3; ttl: 1.000s }; ttl: 1.000s
+     )#"));
 
   // Update the columns with a higher TTL.
   yb::QLWriteRequestPB ql_update_pb;
@@ -1075,7 +1117,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 
   // Write to docdb at the same physical time and a bumped-up logical time.
   WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb, t0prime);
 
-  AssertDocDbDebugDumpStrEq(R"#(
+  ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> \
     null; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 logical: 1 }]) -> \
@@ -1089,19 +1131,34 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 w: 2 }]) -> 
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w: 2 }]) -> \
     30; ttl: 2.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 w: 3 }]) -> 3; ttl: 1.000s
-      )#");
-
-  FullyCompactHistoryBefore(t1);
-
-  // Verify the rest of the columns still live.
-  AssertDocDbDebugDumpStrEq(R"#(
+      )#",
+      R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT{ physical: 1000 }]) -> \
+    { 1: 1; ttl: 1.000s 2: 2; ttl: 1.000s 3: 3; ttl: 1.000s }; ttl: 1.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 logical: 1 }]) -> \
     10; ttl: 2.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 logical: 1 w: 1 }]) -> \
     20; ttl: 2.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w: 2 }]) -> \
     30; ttl: 2.000s
-      )#");
+      )#"));
+
+  FullyCompactHistoryBefore(t1);
+
+  // Verify the rest of the columns still live.
+  ASSERT_NO_FATALS(AssertDocDbDebugDumpStrEq(R"#(
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(1); HT{ physical: 1000 logical: 1 }]) -> \
+    10; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 logical: 1 w: 1 }]) -> \
+    20; ttl: 2.000s
+SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w: 2 }]) -> \
+    30; ttl: 2.000s
+      )#",
+      R"#(
+SubDocKey(DocKey(0x0000, [1], []), [HT{ physical: 1000 logical: 1 }]) -> \
+{ 1: 10; ttl: 2.000s; timestamp: 1000 2: 20; ttl: 2.000s; timestamp: 1000 \
+3: 30; ttl: 2.000s; timestamp: 1000 }
+      )#"));
 
   // Verify reads work well without system column id.
   QLRowBlock row_block = ReadQLRow(schema, 1, t1);

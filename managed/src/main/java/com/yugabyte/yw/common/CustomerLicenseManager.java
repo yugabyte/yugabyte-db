@@ -5,7 +5,7 @@ package com.yugabyte.yw.common;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.forms.CustomerLicenseFormData;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.models.CustomerLicense;
 import java.io.File;
 import java.io.IOException;
@@ -25,7 +25,7 @@ public class CustomerLicenseManager {
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerLicenseManager.class);
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
 
   private String getOrCreateLicenseFilePath(UUID customerUUID) {
     String customerLicensePath = "/licenses/" + customerUUID.toString();
@@ -43,35 +43,34 @@ public class CustomerLicenseManager {
   }
 
   public CustomerLicense uploadLicenseFile(
-      UUID customerUUID, String fileName, File uploadedFile, String licenseType)
+      UUID customerUUID, String fileName, Path uploadedFile, String licenseType)
       throws IOException {
     String licenseParentPath = getOrCreateLicenseFilePath(customerUUID);
-    Path source = Paths.get(uploadedFile.getAbsolutePath());
     Path destination = Paths.get(licenseParentPath, fileName);
-    if (!Files.exists(source)) {
+    if (!Files.exists(uploadedFile)) {
       throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "License file " + source.getFileName() + " not found.");
+          INTERNAL_SERVER_ERROR, "License file " + uploadedFile.getFileName() + " not found.");
     }
     if (Files.exists(destination)) {
       throw new PlatformServiceException(
           INTERNAL_SERVER_ERROR, "File " + destination.getFileName() + " already exists.");
     }
 
-    Files.move(source, destination);
+    Files.move(uploadedFile, destination);
     return CustomerLicense.create(customerUUID, destination.toString(), licenseType);
   }
 
   public void delete(UUID customerUUID, UUID licenseUUID) {
     CustomerLicense license = CustomerLicense.getOrBadRequest(licenseUUID);
-    if (FileUtils.deleteQuietly(new File(license.license))) {
-      log.info("Successfully deleted file with path: " + license.license);
+    if (FileUtils.deleteQuietly(new File(license.getLicense()))) {
+      log.info("Successfully deleted file with path: " + license.getLicense());
       if (license.delete()) {
         log.info("Successfully deleted the license: " + licenseUUID);
       } else {
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Unable to delete the license");
       }
     } else {
-      log.info("Failed to delete file with path: " + license.license);
+      log.info("Failed to delete file with path: " + license.getLicense());
     }
   }
 }

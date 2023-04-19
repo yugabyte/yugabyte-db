@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_TRANSACTION_POOL_H
-#define YB_CLIENT_TRANSACTION_POOL_H
+#pragma once
 
 #include "yb/client/client_fwd.h"
 
@@ -66,5 +65,3 @@ class TransactionPool {
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_TRANSACTION_POOL_H

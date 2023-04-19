@@ -6,7 +6,6 @@ import clsx from 'clsx';
 
 import { fetchUniversesList } from '../../actions/xClusterReplication';
 import {
-  convertToLocalTime,
   findUniverseName,
   MaxAcceptableLag,
   CurrentReplicationLag
@@ -15,7 +14,8 @@ import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
 import { XClusterConfig } from './XClusterTypes';
 import RightArrow from './ArrowIcon';
 import { ReplicationParticipantCard } from './ReplicationParticipantCard';
-import { ReplicationStatus } from './constants';
+import { XClusterConfigStatus } from './constants';
+import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 
 import styles from './XClusterConfigCard.module.scss';
 
@@ -34,12 +34,14 @@ export const XClusterConfigCard = ({
     fetchUniversesList().then((res) => res.data)
   );
 
-  const sourceUniverseName = !universeListQuery.isLoading
-    ? findUniverseName(universeListQuery.data, xClusterConfig.sourceUniverseUUID)
-    : '';
-  const targetUniverseName = !universeListQuery.isLoading
-    ? findUniverseName(universeListQuery.data, xClusterConfig.targetUniverseUUID)
-    : '';
+  const sourceUniverseName =
+    !universeListQuery.isLoading && xClusterConfig.sourceUniverseUUID
+      ? findUniverseName(universeListQuery.data, xClusterConfig.sourceUniverseUUID)
+      : '';
+  const targetUniverseName =
+    !universeListQuery.isLoading && xClusterConfig.targetUniverseUUID
+      ? findUniverseName(universeListQuery.data, xClusterConfig.targetUniverseUUID)
+      : '';
 
   return (
     <div className={styles.configCard}>
@@ -49,11 +51,11 @@ export const XClusterConfigCard = ({
           <div className={styles.metaInfoContainer}>
             <div className={styles.metaInfo}>
               <div className={styles.label}>Started</div>
-              <div>{convertToLocalTime(xClusterConfig.createTime, currentUserTimezone)}</div>
+              <div>{ybFormatDate(xClusterConfig.createTime)}</div>
             </div>
             <div className={styles.metaInfo}>
               <div className={styles.label}>Last modified</div>
-              <div>{convertToLocalTime(xClusterConfig.modifyTime, currentUserTimezone)}</div>
+              <div>{ybFormatDate(xClusterConfig.modifyTime)}</div>
             </div>
           </div>
           <div className={styles.status}>
@@ -80,12 +82,16 @@ export const XClusterConfigCard = ({
           />
         </div>
         {_.includes(
-          [ReplicationStatus.FAILED, ReplicationStatus.INITIALIZED, ReplicationStatus.UPDATING],
+          [
+            XClusterConfigStatus.FAILED,
+            XClusterConfigStatus.INITIALIZED,
+            XClusterConfigStatus.UPDATING
+          ],
           xClusterConfig.status
         ) ? (
           <div className={styles.viewTasksPrompt}>
             <span>View progress on </span>
-            <a href={`/universes/${xClusterConfig.targetUniverseUUID}/tasks`}>Tasks</a>.
+            <a href={`/universes/${xClusterConfig.sourceUniverseUUID}/tasks`}>Tasks</a>.
           </div>
         ) : (
           <div className={styles.configMetricsContainer}>
@@ -99,7 +105,8 @@ export const XClusterConfigCard = ({
               <div className={styles.label}>Current Lag</div>
               <div className={styles.value}>
                 <CurrentReplicationLag
-                  replicationUUID={xClusterConfig.uuid}
+                  xClusterConfigUUID={xClusterConfig.uuid}
+                  xClusterConfigStatus={xClusterConfig.status}
                   sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                 />
               </div>

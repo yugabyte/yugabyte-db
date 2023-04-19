@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 frame_clause ::= [ { RANGE | ROWS | GROUPS } frame_bounds ] 
                  [ frame_exclusion ]
 

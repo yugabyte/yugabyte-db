@@ -454,6 +454,20 @@ DisownLatch(Latch *latch)
 }
 
 /*
+ * Disown a shared latch currently owned by the given process.
+ * This is useful in the event that a process was killed
+ * without being able to release its latch (for example, OOM)
+ */
+void
+DisownLatchOnBehalfOfPid(volatile Latch *latch, int owner_pid)
+{
+	Assert(latch->is_shared);
+	Assert(latch->owner_pid == owner_pid);
+
+	latch->owner_pid = 0;
+}
+
+/*
  * Wait for a given latch to be set, or for postmaster death, or until timeout
  * is exceeded. 'wakeEvents' is a bitmask that specifies which of those events
  * to wait for. If the latch is already set (and WL_LATCH_SET is given), the

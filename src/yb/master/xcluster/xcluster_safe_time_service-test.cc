@@ -24,7 +24,7 @@ using OK = Status::OK;
 class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
  public:
   XClusterSafeTimeServiceMocked()
-      : XClusterSafeTimeService(nullptr, nullptr), create_table_if_not_found_(false) {}
+      : XClusterSafeTimeService(nullptr, nullptr, nullptr), create_table_if_not_found_(false) {}
 
   ~XClusterSafeTimeServiceMocked() {}
 
@@ -35,7 +35,7 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
     return table_entries_;
   }
 
-  Status RefreshProducerTabletToNamespaceMap() override REQUIRES(mutex_) {
+  Status RefreshProducerTabletToNamespaceMap() REQUIRES(mutex_) override {
     if (producer_tablet_namespace_map_ != consumer_registry_) {
       producer_tablet_namespace_map_ = consumer_registry_;
     }
@@ -48,8 +48,9 @@ class XClusterSafeTimeServiceMocked : public XClusterSafeTimeService {
   }
 
   Status SetXClusterSafeTime(
-      const int64_t leader_term, XClusterNamespaceToSafeTimeMap new_safe_time_map_pb) override {
-    safe_time_map_ = std::move(new_safe_time_map_pb);
+      const int64_t leader_term,
+      const XClusterNamespaceToSafeTimeMap& new_safe_time_map_pb) override {
+    safe_time_map_ = new_safe_time_map_pb;
     return OK();
   }
 

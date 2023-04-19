@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 comment_on ::= COMMENT ON 
                { ACCESS METHOD access_method_name
                  | AGGREGATE aggregate_name ( aggregate_signature )

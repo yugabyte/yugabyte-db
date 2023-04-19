@@ -1,0 +1,62 @@
+.helm-overrides {
+  .add-overrides-btn {
+    font-size: 12px;
+    align-items: center;
+    display: flex;
+    height: 30px;
+    border-radius: 4px;
+  }
+}
+.helm-overrides-form {
+  .helm-overrides-text {
+    width: 100%;
+    height: 150px;
+    resize: none;
+  }
+  .helm-overrides-text::placeholder {
+    color: #a2a2a2;
+  }
+  .overrides-errors {
+    margin-top: 0px;
+    margin-bottom: 15px;
+  }
+  .az-overrides {
+    .az-override-row {
+      display: flex;
+      align-items: center;
+      padding: 0;
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 550px;
+      height: 100px;
+      resize: none;
+    }
+    textarea::placeholder {
+      color: #a2a2a2;
+    }
+    img {
+      cursor: pointer;
+    }
+  }
+  .yb-input-checkbox {
+    .yb-input-checkbox__inner {
+      background-color: transparent;
+    }
+
+    &:hover .yb-input-checkbox__inner {
+      border: 1px solid #ef5824;
+    }
+
+    input:checked + .yb-input-checkbox__inner {
+      border-color: #ef5824;
+      background-color: #ef5824;
+    }
+  }
+}
+
+.overrides-textarea {
+  resize: none;
+  width: 100%;
+  height: 50em;
+}

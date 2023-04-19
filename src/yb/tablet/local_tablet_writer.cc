@@ -70,7 +70,7 @@ Status LocalTabletWriter::WriteBatch(Batch* batch) {
 
   auto query = std::make_unique<WriteQuery>(
       OpId::kUnknownTerm, CoarseTimePoint::max() /* deadline */, this,
-      tablet_, resp_.get());
+      tablet_, nullptr, resp_.get());
   query->set_client_request(*req_);
   write_promise_ = std::promise<Status>();
   tablet_->AcquireLocksAndPerformDocOperations(std::move(query));

@@ -76,9 +76,9 @@ public class TestMasterVTableMetrics extends BaseCQLTest {
         if (h != null) {
           Integer v = stats.get(i);
           if (v == null) {
-            stats.put(i, h.totalSum);
+            stats.put(i, h.totalCount);
           } else {
-            v += h.totalSum;
+            v += h.totalCount;
           }
         }
       }

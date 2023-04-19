@@ -33,12 +33,12 @@
 #include <signal.h> // For sigaction
 #include <sys/time.h>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/util/pstack_watcher.h"
 #include "yb/util/flags.h"
+#include "yb/util/init.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/debug-util.h"
@@ -52,7 +52,7 @@ using yb::StackTraceLineFormat;
 
 using std::string;
 
-DEFINE_int32(test_timeout_after, 0,
+DEFINE_UNKNOWN_int32(test_timeout_after, 0,
              "Maximum total seconds allowed for all unit tests in the suite. Default: disabled");
 DECLARE_bool(TEST_promote_all_auto_flags);
 
@@ -112,14 +112,10 @@ int main(int argc, char **argv) {
 }
 
 static void CreateAndStartTimer() {
-  struct sigaction action;
-  struct itimerval timer;
-
   // Create the test-timeout timer.
-  memset(&action, 0, sizeof(action));
-  action.sa_handler = &KillTestOnTimeout;
-  CHECK_ERR(sigaction(SIGALRM, &action, nullptr)) << "Unable to set timeout action";
+  CHECK_OK(yb::InstallSignalHandler(SIGALRM, &KillTestOnTimeout));
 
+  struct itimerval timer;
   timer.it_interval.tv_sec = 0;                      // No repeat.
   timer.it_interval.tv_usec = 0;
   timer.it_value.tv_sec = FLAGS_test_timeout_after;  // Fire in timeout seconds.

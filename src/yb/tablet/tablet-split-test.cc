@@ -71,12 +71,13 @@ class TabletSplitTest : public YBTabletTest {
     QLReadRequestPB req;
     QLAddColumns(schema_, {}, &req);
     QLReadRequestResult result;
+    WriteBuffer rows_data(1024);
     EXPECT_OK(tablet->HandleQLReadRequest(
-        CoarseTimePoint::max(), read_time, req, TransactionMetadataPB(), &result));
+        CoarseTimePoint::max(), read_time, req, TransactionMetadataPB(), &result, &rows_data));
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 
-    return CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, result.rows_data)->rows();
+    return CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer())->rows();
   }
 
   docdb::DocKeyHash GetRowHashCode(const QLRow& row) {
@@ -127,8 +128,9 @@ TEST_F(TabletSplitTest, SplitTablet) {
   }
 
   VLOG(1) << "Source tablet:" << std::endl
-          << docdb::DocDBDebugDumpToStr(tablet()->doc_db(), docdb::SchemaPackingStorage(),
-                                        docdb::IncludeBinary::kTrue);
+          << docdb::DocDBDebugDumpToStr(
+                 tablet()->doc_db(), docdb::SchemaPackingStorage(tablet()->table_type()),
+                 docdb::IncludeBinary::kTrue);
   const auto source_docdb_dump_str = tablet()->TEST_DocDBDumpStr(IncludeIntents::kTrue);
   std::unordered_set<std::string> source_docdb_dump;
   tablet()->TEST_DocDBDumpToContainer(IncludeIntents::kTrue, &source_docdb_dump);

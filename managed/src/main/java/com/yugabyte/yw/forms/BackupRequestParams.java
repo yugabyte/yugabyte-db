@@ -2,14 +2,22 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 import org.yb.CommonTypes.TableType;
 import play.data.validation.Constraints;
 
@@ -26,7 +34,9 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @Constraints.Required
   @ApiModelProperty(value = "Universe UUID", required = true)
-  public UUID universeUUID = null;
+  @Getter
+  @Setter
+  private UUID universeUUID = null;
 
   @Constraints.Required
   @ApiModelProperty(value = "Backup type")
@@ -54,6 +64,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   public boolean disableMultipart = false;
 
   @ApiModelProperty(value = "Backup info")
+  @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY)
   public List<KeyspaceTable> keyspaceTableList;
 
   // The number of concurrent commands to run on nodes over SSH
@@ -107,10 +118,53 @@ public class BackupRequestParams extends UniverseTaskParams {
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit;
 
+  @ApiModelProperty(value = "Parallel DB backups")
+  public int parallelDBBackups = 1;
+
+  // Intermediate states to resume ybc backups
+  public UUID backupUUID;
+
+  public int currentIdx;
+
+  public String currentYbcTaskId;
+
+  @ApiModelProperty(hidden = true)
+  public final Map<String, ParallelBackupState> backupDBStates = new ConcurrentHashMap<>();
+
+  // This param precedes in value even if YBC is installed and enabled on the universe.
+  // If null, proceeds with usual behaviour.
+  @ApiModelProperty(value = "Overrides whether you want to use YBC based or script based backup.")
+  public BackupCategory backupCategory = null;
+
+  @ToString
+  public static class ParallelBackupState {
+    public String nodeIp;
+    public String currentYbcTaskId;
+    public boolean alreadyScheduled = false;
+
+    public void resetOnComplete() {
+      this.nodeIp = null;
+      this.currentYbcTaskId = null;
+      this.alreadyScheduled = true;
+    }
+
+    public void setIntermediate(String nodeIp, String currentYbcTaskId) {
+      this.nodeIp = nodeIp;
+      this.currentYbcTaskId = currentYbcTaskId;
+    }
+  }
+
+  @JsonIgnore
+  public void initializeBackupDBStates(List<BackupTableParams> backupsList) {
+    backupsList
+        .stream()
+        .forEach(bTP -> this.backupDBStates.put(bTP.getKeyspace(), new ParallelBackupState()));
+  }
+
   public BackupRequestParams(BackupRequestParams backupRequestParams) {
     this.storageConfigUUID = backupRequestParams.storageConfigUUID;
     this.kmsConfigUUID = backupRequestParams.kmsConfigUUID;
-    this.universeUUID = backupRequestParams.universeUUID;
+    this.setUniverseUUID(backupRequestParams.getUniverseUUID());
     this.backupType = backupRequestParams.backupType;
     this.timeBeforeDelete = backupRequestParams.timeBeforeDelete;
     this.frequencyTimeUnit = backupRequestParams.frequencyTimeUnit;
@@ -130,6 +184,7 @@ public class BackupRequestParams extends UniverseTaskParams {
     this.minNumBackupsToRetain = backupRequestParams.minNumBackupsToRetain;
     this.expiryTimeUnit = backupRequestParams.expiryTimeUnit;
     this.baseBackupUUID = backupRequestParams.baseBackupUUID;
+    this.parallelDBBackups = backupRequestParams.parallelDBBackups;
     this.incrementalBackupFrequency = backupRequestParams.incrementalBackupFrequency;
     this.incrementalBackupFrequencyTimeUnit =
         backupRequestParams.incrementalBackupFrequencyTimeUnit;
@@ -158,6 +213,7 @@ public class BackupRequestParams extends UniverseTaskParams {
   }
 
   @ApiModel(description = "Keyspace and table info for backup")
+  @ToString
   public static class KeyspaceTable {
     @ApiModelProperty(value = "Tables")
     public List<String> tableNameList;

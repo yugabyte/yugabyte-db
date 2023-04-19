@@ -123,8 +123,7 @@
 // (3) A null GStringPiece is empty.
 //     An empty GStringPiece may or may not be a null GStringPiece.
 
-#ifndef YB_GUTIL_STRINGS_STRINGPIECE_H
-#define YB_GUTIL_STRINGS_STRINGPIECE_H
+#pragma once
 
 #include <assert.h>
 
@@ -374,5 +373,3 @@ template<> struct GoodFastHash<GStringPiece> {
 
 // allow GStringPiece to be logged
 extern std::ostream& operator<<(std::ostream& o, GStringPiece piece);
-
-#endif  // YB_GUTIL_STRINGS_STRINGPIECE_H

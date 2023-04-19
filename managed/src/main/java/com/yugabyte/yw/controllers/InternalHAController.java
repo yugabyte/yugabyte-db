@@ -12,6 +12,8 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
@@ -20,7 +22,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
-import java.io.File;
 import java.net.URL;
 import java.util.Date;
 import java.util.List;
@@ -31,6 +32,7 @@ import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Files;
+import play.libs.Files.TemporaryFile;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -43,22 +45,26 @@ public class InternalHAController extends Controller {
 
   private final PlatformReplicationManager replicationManager;
   private final ValidatingFormFactory formFactory;
+  private final ConfigHelper configHelper;
 
   @Inject
   InternalHAController(
-      PlatformReplicationManager replicationManager, ValidatingFormFactory formFactory) {
+      PlatformReplicationManager replicationManager,
+      ValidatingFormFactory formFactory,
+      ConfigHelper configHelper) {
     this.replicationManager = replicationManager;
     this.formFactory = formFactory;
+    this.configHelper = configHelper;
   }
 
-  private String getClusterKey() {
-    return ctx().request().header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER).get();
+  private String getClusterKey(Http.Request request) {
+    return request.header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER).get();
   }
 
-  public Result getHAConfigByClusterKey() {
+  public Result getHAConfigByClusterKey(Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config =
-          HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+          HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
 
       if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Could not find HA Config by cluster key");
@@ -73,9 +79,9 @@ public class InternalHAController extends Controller {
   }
 
   // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
-  public Result syncInstances(long timestamp) {
+  public Result syncInstances(long timestamp, Http.Request request) {
     Optional<HighAvailabilityConfig> config =
-        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
     if (!config.isPresent()) {
       return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
     }
@@ -105,7 +111,7 @@ public class InternalHAController extends Controller {
       return ApiResponse.error(BAD_REQUEST, "Cannot import instances from stale leader");
     }
 
-    String content = ctx().request().body().asBytes().utf8String();
+    String content = request.body().asBytes().utf8String();
     List<PlatformInstance> newInstances = Util.parseJsonArray(content, PlatformInstance.class);
     Set<PlatformInstance> processedInstances =
         replicationManager.importPlatformInstances(config.get(), newInstances);
@@ -113,8 +119,8 @@ public class InternalHAController extends Controller {
     return PlatformResults.withData(processedInstances);
   }
 
-  public Result syncBackups() throws Exception {
-    Http.MultipartFormData<Files.TemporaryFile> body = request().body().asMultipartFormData();
+  public Result syncBackups(Http.Request request) throws Exception {
+    Http.MultipartFormData<Files.TemporaryFile> body = request.body().asMultipartFormData();
 
     Map<String, String[]> reqParams = body.asFormUrlEncoded();
     String[] leaders = reqParams.getOrDefault("leader", new String[0]);
@@ -131,7 +137,7 @@ public class InternalHAController extends Controller {
       return ApiResponse.error(BAD_REQUEST, "backup file not found in request");
     }
     String fileName = FilenameUtils.getName(filePart.getFilename());
-    File temporaryFile = (File) filePart.getFile();
+    TemporaryFile temporaryFile = filePart.getRef();
     String leader = leaders[0];
     String sender = senders[0];
 
@@ -141,7 +147,7 @@ public class InternalHAController extends Controller {
     }
 
     Optional<HighAvailabilityConfig> config =
-        HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+        HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
     if (!config.isPresent()) {
       return ApiResponse.error(BAD_REQUEST, "Could not find HA Config");
     }
@@ -156,7 +162,8 @@ public class InternalHAController extends Controller {
 
     // For all the other cases we will accept the backup without checking local config state.
     boolean success =
-        replicationManager.saveReplicationData(fileName, temporaryFile, leaderUrl, new URL(sender));
+        replicationManager.saveReplicationData(
+            fileName, temporaryFile.path(), leaderUrl, new URL(sender));
     if (success) {
       // TODO: (Daniel) - Need to cleanup backups in non-current leader dir too.
       replicationManager.cleanupReceivedBackups(leaderUrl);
@@ -166,10 +173,10 @@ public class InternalHAController extends Controller {
     }
   }
 
-  public Result demoteLocalLeader(long timestamp) {
+  public Result demoteLocalLeader(long timestamp, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config =
-          HighAvailabilityConfig.getByClusterKey(this.getClusterKey());
+          HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
       if (!config.isPresent()) {
         LOG.warn("No HA configuration configured, skipping request");
 
@@ -177,7 +184,7 @@ public class InternalHAController extends Controller {
       }
 
       DemoteInstanceFormData formData =
-          formFactory.getFormDataOrBadRequest(DemoteInstanceFormData.class).get();
+          formFactory.getFormDataOrBadRequest(request, DemoteInstanceFormData.class).get();
 
       Optional<PlatformInstance> localInstance = config.get().getLocal();
 
@@ -197,11 +204,19 @@ public class InternalHAController extends Controller {
         return ApiResponse.error(BAD_REQUEST, "Rejecting demote request from stale leader");
       } else if (localLastFailover == null || localLastFailover.before(requestLastFailover)) {
         // Otherwise, update the last failover timestamp and proceed with demotion request.
-        config.get().setLastFailover(requestLastFailover);
+        config.get().updateLastFailover(requestLastFailover);
       }
 
       // Demote the local instance.
       replicationManager.demoteLocalInstance(localInstance.get(), formData.leader_address);
+
+      String version =
+          configHelper
+              .getConfig(ConfigType.YugawareMetadata)
+              .getOrDefault("version", "UNKNOWN")
+              .toString();
+
+      localInstance.get().setYbaVersion(version);
 
       return PlatformResults.withData(localInstance);
     } catch (Exception e) {

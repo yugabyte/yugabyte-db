@@ -236,7 +236,7 @@ The output would be similar to the following:
 ...
 ```
 
-You can also federate metrics from Yugabyte Platform and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in Yugabyte Platform](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/):
+You can also federate metrics from Yugabyte Platform and configure alerting rules to trigger alerts in Prometheus. For details, see the following sections of [Alerts and Notifications in Yugabyte Platform](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/):
 
 - Scrape metrics from Yugabyte Platform
 - Configurable alerting rules

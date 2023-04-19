@@ -26,6 +26,11 @@ public class TestPgRegressPushdown extends BasePgSQLTest {
     return 1800;
   }
 
+  /**
+   * Test meaning has been reversed as of GHI #13541
+   * Expression pushdown is on now by default, so test the cases when expression pushdown is off
+   * @throws Exception
+   */
   @Test
   public void testPgRegressPushdown() throws Exception {
     runPgRegressTest("yb_pg_pushdown_serial_schedule");

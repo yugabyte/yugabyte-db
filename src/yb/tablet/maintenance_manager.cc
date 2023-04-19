@@ -42,7 +42,7 @@
 
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/debug/trace_logging.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -58,22 +58,22 @@ using strings::Substitute;
 
 using namespace std::literals;
 
-DEFINE_int32(maintenance_manager_num_threads, 1,
+DEFINE_UNKNOWN_int32(maintenance_manager_num_threads, 1,
        "Size of the maintenance manager thread pool. Beyond a value of '1', one thread is "
        "reserved for emergency flushes. For spinning disks, the number of threads should "
        "not be above the number of devices.");
 TAG_FLAG(maintenance_manager_num_threads, stable);
 
-DEFINE_int32(maintenance_manager_polling_interval_ms, 250,
+DEFINE_UNKNOWN_int32(maintenance_manager_polling_interval_ms, 250,
        "Polling interval for the maintenance manager scheduler, "
        "in milliseconds.");
 TAG_FLAG(maintenance_manager_polling_interval_ms, hidden);
 
-DEFINE_int32(maintenance_manager_history_size, 8,
+DEFINE_UNKNOWN_int32(maintenance_manager_history_size, 8,
        "Number of completed operations the manager is keeping track of.");
 TAG_FLAG(maintenance_manager_history_size, hidden);
 
-DEFINE_bool(enable_maintenance_manager, true,
+DEFINE_UNKNOWN_bool(enable_maintenance_manager, true,
        "Enable the maintenance manager, runs compaction and tablet cleaning tasks.");
 TAG_FLAG(enable_maintenance_manager, unsafe);
 
@@ -173,7 +173,7 @@ void MaintenanceManager::RegisterOp(MaintenanceOp* op) {
 
 void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
   {
-    UNIQUE_LOCK(lock, mutex_);
+    UniqueLock lock(mutex_);
 
     CHECK(op->manager_.get() == this) << "Tried to unregister " << op->name()
           << ", but it is not currently registered with this maintenance manager.";
@@ -204,7 +204,7 @@ void MaintenanceManager::UnregisterOp(MaintenanceOp* op) {
 void MaintenanceManager::RunSchedulerThread() {
   auto polling_interval = polling_interval_ms_ * 1ms;
 
-  UNIQUE_LOCK(lock, mutex_);
+  UniqueLock lock(mutex_);
   for (;;) {
     // Loop until we are shutting down or it is time to run another op.
     cond_.wait_for(GetLockForCondition(&lock), polling_interval);

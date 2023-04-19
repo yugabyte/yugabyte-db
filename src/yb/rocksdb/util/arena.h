@@ -25,8 +25,6 @@
 // it allocates a block with pre-defined block size. For a request of big
 // size, it uses malloc to directly get the requested size.
 
-#ifndef YB_ROCKSDB_UTIL_ARENA_H
-#define YB_ROCKSDB_UTIL_ARENA_H
 
 #pragma once
 #ifndef OS_WIN
@@ -164,5 +162,3 @@ inline char* Arena::Allocate(size_t bytes) {
 extern size_t OptimizeBlockSize(size_t block_size);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_UTIL_ARENA_H

@@ -31,6 +31,8 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -39,7 +41,10 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.alerts.SmtpData;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.AlertingData;
@@ -57,6 +62,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -95,7 +101,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
-import play.Configuration;
 import play.Environment;
 import play.inject.ApplicationLifecycle;
 import play.libs.Json;
@@ -116,13 +121,11 @@ public class HealthChecker {
   private static final String MAX_NUM_THREADS_NODE_CHECK_KEY =
       "yb.health.max_num_parallel_node_checks";
 
-  private static final String K8S_NODE_YW_DATA_DIR = "/mnt/disk0/yw-data";
-
   public static final String READ_WRITE_TEST_PARAM = "yb.metrics.db_read_write_test";
 
   private final Environment environment;
 
-  private final play.Configuration config;
+  private final Config config;
 
   // Last time we sent a status update email per customer.
   private final Map<UUID, Long> lastStatusUpdateTimeMap = new HashMap<>();
@@ -139,6 +142,8 @@ public class HealthChecker {
   private final MetricService metricService;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
+
+  private final RuntimeConfGetter confGetter;
 
   // The thread pool executor for parallelized health checks for multiple universes.
   private final ExecutorService universeExecutor;
@@ -161,13 +166,14 @@ public class HealthChecker {
   @Inject
   public HealthChecker(
       Environment environment,
-      Configuration config,
+      Config config,
       PlatformExecutorFactory platformExecutorFactory,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter,
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager) {
     this(
@@ -178,6 +184,7 @@ public class HealthChecker {
         emailHelper,
         metricService,
         runtimeConfigFactory,
+        confGetter,
         lifecycle,
         nodeUniverseManager,
         createUniverseExecutor(platformExecutorFactory, runtimeConfigFactory.globalRuntimeConf()),
@@ -186,12 +193,13 @@ public class HealthChecker {
 
   HealthChecker(
       Environment environment,
-      Configuration config,
+      Config config,
       PlatformScheduler platformScheduler,
       HealthCheckerReport healthCheckerReport,
       EmailHelper emailHelper,
       MetricService metricService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfGetter confGetter,
       ApplicationLifecycle lifecycle,
       NodeUniverseManager nodeUniverseManager,
       ExecutorService universeExecutor,
@@ -203,6 +211,7 @@ public class HealthChecker {
     this.emailHelper = emailHelper;
     this.metricService = metricService;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
     this.lifecycle = lifecycle;
     this.universeExecutor = universeExecutor;
     this.nodeExecutor = nodeExecutor;
@@ -352,12 +361,13 @@ public class HealthChecker {
       boolean sendMailAlways,
       boolean reportOnlyErrors,
       Details report) {
-    SmtpData smtpData = emailHelper.getSmtpData(c.uuid);
+    SmtpData smtpData = emailHelper.getSmtpData(c.getUuid());
     if (!StringUtils.isEmpty(emailDestinations)
         && (smtpData != null)
         && (sendMailAlways || report.getHasError())) {
       String subject =
-          String.format("%s - <%s> %s", report.getHasError() ? "ERROR" : "OK", c.getTag(), u.name);
+          String.format(
+              "%s - <%s> %s", report.getHasError() ? "ERROR" : "OK", c.getTag(), u.getName());
 
       // LinkedHashMap saves values order.
       JsonNode reportJson = Json.toJson(report);
@@ -393,7 +403,7 @@ public class HealthChecker {
         try {
           checkCustomer(c);
         } catch (Exception ex) {
-          log.error("Error running health check scheduler for customer " + c.uuid, ex);
+          log.error("Error running health check scheduler for customer " + c.getUuid(), ex);
         }
       }
     } catch (Exception e) {
@@ -403,14 +413,14 @@ public class HealthChecker {
 
   public void checkCustomer(Customer c) {
     // We need an alerting config to do work.
-    CustomerConfig config = CustomerConfig.getAlertConfig(c.uuid);
+    CustomerConfig config = CustomerConfig.getAlertConfig(c.getUuid());
 
     boolean shouldSendStatusUpdate = false;
     long storeIntervalMs = healthCheckStoreIntervalMs();
     AlertingData alertingData = null;
     long now = (new Date()).getTime();
-    if (config != null && config.data != null) {
-      alertingData = Json.fromJson(config.data, AlertingData.class);
+    if (config != null && config.getData() != null) {
+      alertingData = Json.fromJson(config.getData(), AlertingData.class);
       if (alertingData.checkIntervalMs > 0) {
         storeIntervalMs = alertingData.checkIntervalMs;
       }
@@ -420,23 +430,23 @@ public class HealthChecker {
               ? statusUpdateIntervalMs()
               : alertingData.statusUpdateIntervalMs;
       shouldSendStatusUpdate =
-          (now - statusUpdateIntervalMs) > lastStatusUpdateTimeMap.getOrDefault(c.uuid, 0L);
+          (now - statusUpdateIntervalMs) > lastStatusUpdateTimeMap.getOrDefault(c.getUuid(), 0L);
       if (shouldSendStatusUpdate) {
-        lastStatusUpdateTimeMap.put(c.uuid, now);
+        lastStatusUpdateTimeMap.put(c.getUuid(), now);
       }
     }
     boolean onlyMetrics =
         !shouldSendStatusUpdate
-            && ((now - storeIntervalMs) < lastCheckTimeMap.getOrDefault(c.uuid, 0L));
+            && ((now - storeIntervalMs) < lastCheckTimeMap.getOrDefault(c.getUuid(), 0L));
 
     if (!onlyMetrics) {
-      lastCheckTimeMap.put(c.uuid, now);
+      lastCheckTimeMap.put(c.getUuid(), now);
     }
     checkAllUniverses(c, alertingData, shouldSendStatusUpdate, onlyMetrics);
   }
 
   public CompletableFuture<Void> checkSingleUniverse(Customer c, Universe u) {
-    if (!runtimeConfigFactory.forUniverse(u).getBoolean("yb.health.trigger_api.enabled")) {
+    if (!confGetter.getConfForScope(u, UniverseConfKeys.enableTriggerAPI)) {
       throw new PlatformServiceException(BAD_REQUEST, "Manual health check is disabled.");
     }
     // We hardcode the parameters here as this is currently a cloud-only feature
@@ -553,8 +563,9 @@ public class HealthChecker {
 
   public CompletableFuture<Void> runHealthCheck(
       CheckSingleUniverseParams params, Boolean ignoreLastCheck) {
-    String universeName = params.universe.name;
-    CompletableFuture<Void> lastCheck = this.runningHealthChecks.get(params.universe.universeUUID);
+    String universeName = params.universe.getName();
+    CompletableFuture<Void> lastCheck =
+        this.runningHealthChecks.get(params.universe.getUniverseUUID());
     // Only schedule a task if the previous one for the given universe has completed.
     if (!ignoreLastCheck && lastCheck != null && !lastCheck.isDone()) {
       log.info("Health check for universe {} is still running. Skipping...", universeName);
@@ -586,13 +597,13 @@ public class HealthChecker {
             this.universeExecutor);
 
     // Add the task to the map of running tasks.
-    this.runningHealthChecks.put(params.universe.universeUUID, task);
+    this.runningHealthChecks.put(params.universe.getUniverseUUID(), task);
 
     return task;
   }
 
   private String getAlertDestinations(Universe u, Customer c) {
-    List<String> destinations = emailHelper.getDestinations(c.uuid);
+    List<String> destinations = emailHelper.getDestinations(c.getUuid());
     if (destinations.size() == 0) {
       return null;
     }
@@ -621,16 +632,18 @@ public class HealthChecker {
     // Validate universe data and make sure nothing is in progress.
     UniverseDefinitionTaskParams details = params.universe.getUniverseDetails();
     if (details == null) {
-      log.warn("Skipping universe " + params.universe.name + " due to invalid details json...");
+      log.warn(
+          "Skipping universe " + params.universe.getName() + " due to invalid details json...");
       setHealthCheckFailedMetric(params.customer, params.universe);
       return;
     }
     if (details.universePaused) {
-      log.warn("Skipping universe " + params.universe.name + " as it is in the paused state...");
+      log.warn(
+          "Skipping universe " + params.universe.getName() + " as it is in the paused state...");
       return;
     }
     if (isUniverseBusyByTask(details)) {
-      log.warn("Skipping universe " + params.universe.name + " due to task in progress...");
+      log.warn("Skipping universe " + params.universe.getName() + " due to task in progress...");
       return;
     }
     Date startTime = new Date();
@@ -638,29 +651,27 @@ public class HealthChecker {
     String providerCode;
     int masterIndex = 0;
     int tserverIndex = 0;
-    CustomerTask lastTask = CustomerTask.getLatestByUniverseUuid(params.universe.universeUUID);
+    CustomerTask lastTask = CustomerTask.getLastTaskByTargetUuid(params.universe.getUniverseUUID());
     Long potentialStartTime = null;
     if (lastTask != null && lastTask.getCompletionTime() != null) {
       potentialStartTime = lastTask.getCompletionTime().getTime();
     }
     boolean testReadWrite =
-        runtimeConfigFactory
-            .forUniverse(params.universe)
-            .getBoolean(HealthChecker.READ_WRITE_TEST_PARAM);
+        confGetter.getConfForScope(params.universe, UniverseConfKeys.dbReadWriteTest);
     for (UniverseDefinitionTaskParams.Cluster cluster : details.clusters) {
       UserIntent userIntent = cluster.userIntent;
       Provider provider = Provider.get(UUID.fromString(userIntent.provider));
       if (provider == null) {
         log.warn(
             "Skipping universe "
-                + params.universe.name
+                + params.universe.getName()
                 + " due to invalid provider "
                 + cluster.userIntent.provider);
         setHealthCheckFailedMetric(params.customer, params.universe);
 
         return;
       }
-      providerCode = provider.code;
+      providerCode = provider.getCode();
       List<NodeDetails> activeNodes =
           details
               .getNodesInCluster(cluster.uuid)
@@ -672,7 +683,7 @@ public class HealthChecker {
           log.warn(
               String.format(
                   "Universe %s has active unprovisioned node %s.",
-                  params.universe.name, nd.nodeName));
+                  params.universe.getName(), nd.nodeName));
           setHealthCheckFailedMetric(params.customer, params.universe);
           return;
         }
@@ -709,8 +720,11 @@ public class HealthChecker {
         if (providerCode.equals(Common.CloudType.kubernetes.toString())) {
           nodeInfo.setK8s(true);
         }
-        if (userIntent.tserverGFlags.containsKey("ssl_protocols")) {
-          nodeInfo.setSslProtocol(cluster.userIntent.tserverGFlags.get("ssl_protocols"));
+        Map<String, String> tserverGflags =
+            GFlagsUtil.getGFlagsForNode(
+                nodeDetails, UniverseTaskBase.ServerType.TSERVER, cluster, details.clusters);
+        if (tserverGflags.containsKey("ssl_protocols")) {
+          nodeInfo.setSslProtocol(tserverGflags.get("ssl_protocols"));
         }
         if (nodeInfo.enableYSQL && nodeDetails.isYsqlServer) {
           nodeInfo.setYsqlPort(nodeDetails.ysqlServerRpcPort);
@@ -722,15 +736,16 @@ public class HealthChecker {
         if (nodeInfo.enableYEDIS && nodeDetails.isRedisServer) {
           nodeInfo.setRedisPort(nodeDetails.redisServerRpcPort);
         }
-        if (!provider.code.equals(CloudType.onprem.toString())
-            && !provider.code.equals(CloudType.kubernetes.toString())) {
+        if (!provider.getCode().equals(CloudType.onprem.toString())
+            && !provider.getCode().equals(CloudType.kubernetes.toString())) {
           nodeInfo.setCheckClock(true);
         }
         if (params.universe.isYbcEnabled()) {
           nodeInfo
               .setEnableYbc(true)
               .setYbcPort(
-                  params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort);
+                  params.universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort)
+              .setYbcDir(nodeInfo.isK8s() ? CommonUtils.DEFAULT_YBC_DIR : nodeInfo.getYbHomeDir());
         }
         nodeMetadata.add(nodeInfo);
       }
@@ -739,12 +754,12 @@ public class HealthChecker {
     // If last check had errors, set the flag to send an email. If this check will have an error,
     // we would send an email anyway, but if this check shows a healthy universe, let's send an
     // email about it.
-    HealthCheck lastCheck = HealthCheck.getLatest(params.universe.universeUUID);
+    HealthCheck lastCheck = HealthCheck.getLatest(params.universe.getUniverseUUID());
     boolean lastCheckHadErrors = lastCheck != null && lastCheck.hasError();
 
     // Exit without calling script if the universe is in the "updating" state.
     // Doing the check before the Python script is executed.
-    if (!canHealthCheckUniverse(params.universe.universeUUID) || isShutdown()) {
+    if (!canHealthCheckUniverse(params.universe.getUniverseUUID()) || isShutdown()) {
       return;
     }
 
@@ -752,7 +767,7 @@ public class HealthChecker {
 
     Details fullReport =
         new Details()
-            .setTimestamp(startTime)
+            .setTimestampIso(startTime)
             .setYbVersion(details.getPrimaryCluster().userIntent.ybSoftwareVersion)
             .setData(nodeReports)
             .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))
@@ -762,7 +777,7 @@ public class HealthChecker {
     // Checking the interruption necessity after the Python script finished.
     // It is not needed to analyze results if the universe has the "update in
     // progress" state.
-    if (!canHealthCheckUniverse(params.universe.universeUUID) || isShutdown()) {
+    if (!canHealthCheckUniverse(params.universe.getUniverseUUID()) || isShutdown()) {
       return;
     }
 
@@ -773,7 +788,7 @@ public class HealthChecker {
 
     log.info(
         "Health check for universe {} reported {}. [ {} ms ]",
-        params.universe.name,
+        params.universe.getName(),
         (healthCheckReport.getHasError() ? "errors" : "success"),
         durationMs);
     if (healthCheckReport.getHasError()) {
@@ -785,7 +800,7 @@ public class HealthChecker {
               .collect(Collectors.toList());
       log.warn(
           "Following checks failed for universe {}:\n{}",
-          params.universe.name,
+          params.universe.getName(),
           failedChecks
               .stream()
               .map(NodeData::toHumanReadableString)
@@ -805,7 +820,7 @@ public class HealthChecker {
       }
 
       HealthCheck.addAndPrune(
-          params.universe.universeUUID, params.universe.customerId, healthCheckReport);
+          params.universe.getUniverseUUID(), params.universe.getCustomerId(), healthCheckReport);
     }
 
     metricService.setOkStatusMetric(
@@ -815,9 +830,9 @@ public class HealthChecker {
   private List<NodeData> checkNodes(Universe universe, List<NodeInfo> nodes) {
     // Check if it should log the output of the command.
     boolean shouldLogOutput =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.logOutput");
+        confGetter.getConfForScope(universe, UniverseConfKeys.healthLogOutput);
     int nodeCheckTimeoutSec =
-        runtimeConfigFactory.forUniverse(universe).getInt("yb.health.nodeCheckTimeoutSec");
+        confGetter.getConfForScope(universe, UniverseConfKeys.nodeCheckTimeoutSec);
 
     Map<String, CompletableFuture<Details>> nodeChecks = new HashMap<>();
     for (NodeInfo nodeInfo : nodes) {
@@ -836,7 +851,7 @@ public class HealthChecker {
               .setNode(nodeInfo.nodeHost)
               .setNodeName(nodeInfo.nodeName)
               .setMessage("Node")
-              .setTimestamp(new Date());
+              .setTimestampIso(new Date());
       try {
         CompletableFuture<Details> future = nodeChecks.get(nodeInfo.getNodeName());
         result.addAll(future.get().getData());
@@ -875,7 +890,7 @@ public class HealthChecker {
 
   private Details checkNode(
       Universe universe, NodeInfo nodeInfo, boolean logOutput, int timeoutSec) {
-    Pair<UUID, String> nodeKey = new Pair<>(universe.universeUUID, nodeInfo.getNodeName());
+    Pair<UUID, String> nodeKey = new Pair<>(universe.getUniverseUUID(), nodeInfo.getNodeName());
     NodeInfo uploadedInfo = uploadedNodeInfo.get(nodeKey);
     ShellProcessContext context =
         ShellProcessContext.builder()
@@ -886,7 +901,8 @@ public class HealthChecker {
     if (uploadedInfo == null && !nodeInfo.isK8s()) {
       // Only upload it once for new node, as it only depends on yb home dir.
       // Also skip upload for k8s as no one will call it on k8s pod.
-      String generatedScriptPath = generateCollectMetricsScript(universe.universeUUID, nodeInfo);
+      String generatedScriptPath =
+          generateCollectMetricsScript(universe.getUniverseUUID(), nodeInfo);
 
       String scriptPath = nodeInfo.getYbHomeDir() + "/bin/collect_metrics.sh";
       nodeUniverseManager
@@ -901,10 +917,15 @@ public class HealthChecker {
     }
 
     String scriptPath =
-        (nodeInfo.isK8s() ? K8S_NODE_YW_DATA_DIR : nodeInfo.getYbHomeDir()) + "/bin/node_health.py";
+        Paths.get(
+                (nodeInfo.isK8s()
+                    ? KubernetesTaskBase.K8S_NODE_YW_DATA_DIR
+                    : nodeInfo.getYbHomeDir()),
+                "/bin/node_health.py")
+            .toString();
     if (uploadedInfo == null || !uploadedInfo.equals(nodeInfo)) {
       log.info("Uploading health check script to node {}", nodeInfo.getNodeName());
-      String generatedScriptPath = generateNodeCheckScript(universe.universeUUID, nodeInfo);
+      String generatedScriptPath = generateNodeCheckScript(universe.getUniverseUUID(), nodeInfo);
 
       nodeUniverseManager
           .uploadFileToNode(
@@ -1004,7 +1025,8 @@ public class HealthChecker {
     }
 
     if (isUniverseBusyByTask(universeDetails)) {
-      log.warn("Cancelling universe " + u.get().name + " health-check, some task is in progress.");
+      log.warn(
+          "Cancelling universe " + u.get().getName() + " health-check, some task is in progress.");
       return false;
     }
     return true;
@@ -1017,6 +1039,7 @@ public class HealthChecker {
     private int tserverIndex = -1;
     private boolean isK8s = false;
     private String ybHomeDir;
+    private String ybcDir = "";
     private String nodeHost;
     private String nodeName;
     private String ybSoftwareVersion = null;
@@ -1051,7 +1074,7 @@ public class HealthChecker {
             .filter(data -> !data.getMetricsOnly())
             .collect(Collectors.toList());
     return new Details()
-        .setTimestamp(details.getTimestamp())
+        .setTimestampIso(details.getTimestampIso())
         .setYbVersion(details.getYbVersion())
         .setData(nodeReports)
         .setHasError(nodeReports.stream().anyMatch(NodeData::getHasError))

@@ -31,8 +31,7 @@
 //
 // Wrappers around the annotations from gutil/dynamic_annotations.h,
 // provided as C++-style scope guards.
-#ifndef YB_UTIL_DEBUG_SANITIZER_SCOPES_H_
-#define YB_UTIL_DEBUG_SANITIZER_SCOPES_H_
+#pragma once
 
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
@@ -57,5 +56,3 @@ class ScopedTSANIgnoreReadsAndWrites {
 
 } // namespace debug
 } // namespace yb
-
-#endif // YB_UTIL_DEBUG_SANITIZER_SCOPES_H_

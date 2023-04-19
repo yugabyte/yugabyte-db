@@ -16,15 +16,14 @@
 //   an interface with multiple implementations for different use-cases.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_COMMON_QL_RESULTSET_H_
-#define YB_COMMON_QL_RESULTSET_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_type.h"
 
-namespace yb {
+#include "yb/util/write_buffer.h"
 
-class faststring;
+namespace yb {
 
 //--------------------------------------------------------------------------------------------------
 // A rsrow descriptor represents the metadata of a row in the resultset.
@@ -67,7 +66,7 @@ class QLResultSet {
   typedef std::shared_ptr<QLResultSet> SharedPtr;
 
   // Constructor and destructor.
-  QLResultSet(const QLRSRowDesc* rsrow_desc, faststring* rows_data);
+  QLResultSet(const QLRSRowDesc* rsrow_desc, WriteBuffer* rows_data);
   virtual ~QLResultSet();
 
   // Allocate a new row at the end of result set.
@@ -78,13 +77,17 @@ class QLResultSet {
   void AppendColumn(size_t index, const QLValuePB& value);
 
   // Row count
-  size_t rsrow_count() const;
+  size_t rsrow_count() const {
+    return rsrow_count_;
+  }
+
+  void Complete();
 
  private:
   const QLRSRowDesc* rsrow_desc_ = nullptr;
-  faststring* rows_data_ = nullptr;
+  WriteBuffer* rows_data_ = nullptr;
+  WriteBufferPos count_position_;
+  size_t rsrow_count_ = 0;
 };
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_RESULTSET_H_

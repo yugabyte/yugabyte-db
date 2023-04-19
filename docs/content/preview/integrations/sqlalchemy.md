@@ -4,7 +4,7 @@ linkTitle: SQLAlchemy
 description: Using SQLAlchemy with YugabyteDB
 aliases:
 menu:
-  preview:
+  preview_integrations:
     identifier: sqlalchemy
     parent: integrations
     weight: 571
@@ -133,7 +133,7 @@ Verify the code execution by looking for the changes inside the database as foll
 
 - Obtain the list of all the tables in the database by executing the following command:
 
-  ```shell
+  ```sql
   \dt
   ```
 

@@ -21,7 +21,7 @@
 #include "yb/tablet/transaction_status_resolver.h"
 
 #include "yb/util/bitmap.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/operation_counter.h"
@@ -71,32 +71,42 @@ class TransactionLoader::Executor {
     }
     regular_iterator_ = CreateFullScanIterator(db.regular);
     intents_iterator_ = CreateFullScanIterator(db.intents);
-    auto& load_thread = loader_.load_thread_;
-    load_thread = std::thread(&Executor::Execute, this);
+    CHECK_OK(yb::Thread::Create(
+        "transaction_loader", "loader", &Executor::Execute, this, &loader_.load_thread_))
     return true;
   }
 
  private:
   void Execute() {
-    CDSAttacher attacher;
-
     SetThreadName("TransactionLoader");
 
-    auto se = ScopeExit([this] {
+    Status status;
+
+    auto se = ScopeExit([this, &status] {
       auto pending_applies = std::move(pending_applies_);
       TransactionLoaderContext& context = loader_.context_;
       loader_.executor_.reset();
 
-      context.LoadFinished(pending_applies);
+      if (status.ok()) {
+        context.LoadFinished(pending_applies);
+        return;
+      }
+
+      std::lock_guard<std::mutex> lock(loader_.mutex_);
+      loader_.load_status_ = status;
+      loader_.state_.store(TransactionLoaderState::kLoadFailed, std::memory_order_release);
     });
 
     LOG_WITH_PREFIX(INFO) << "Load transactions start";
 
-    LoadPendingApplies();
-    LoadTransactions();
+    status = LoadPendingApplies();
+    if (!status.ok()) {
+      return;
+    }
+    status = LoadTransactions();
   }
 
-  void LoadTransactions() {
+  Status LoadTransactions() {
     size_t loaded_transactions = 0;
     TransactionId id = TransactionId::Nil();
     AppendTransactionKeyPrefix(id, &current_key_);
@@ -120,17 +130,18 @@ class TransactionLoader::Executor {
         if (FLAGS_TEST_inject_load_transaction_delay_ms > 0) {
           std::this_thread::sleep_for(FLAGS_TEST_inject_load_transaction_delay_ms * 1ms);
         }
-        LoadTransaction(id);
+        RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;
       }
       current_key_.AppendKeyEntryType(docdb::KeyEntryType::kMaxByte);
       intents_iterator_.Seek(current_key_.AsSlice());
     }
+    RETURN_NOT_OK(intents_iterator_.status());
 
     intents_iterator_.Reset();
 
     context().CompleteLoad([this] {
-      loader_.all_loaded_.store(true, std::memory_order_release);
+      loader_.state_.store(TransactionLoaderState::kLoadCompleted, std::memory_order_release);
     });
     {
       // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
@@ -151,9 +162,10 @@ class TransactionLoader::Executor {
     }
     loader_.load_cond_.notify_all();
     LOG_WITH_PREFIX(INFO) << __func__ << " done: loaded " << loaded_transactions << " transactions";
+    return Status::OK();
   }
 
-  void LoadPendingApplies() {
+  Status LoadPendingApplies() {
     std::array<char, 1 + sizeof(TransactionId) + 1> seek_buffer;
     seek_buffer[0] = docdb::KeyEntryTypeAsChar::kTransactionApplyState;
     seek_buffer[seek_buffer.size() - 1] = docdb::KeyEntryTypeAsChar::kMaxByte;
@@ -205,10 +217,11 @@ class TransactionLoader::Executor {
       memcpy(seek_buffer.data() + 1, txn_id->data(), txn_id->size());
       ROCKSDB_SEEK(&regular_iterator_, Slice(seek_buffer));
     }
+    return regular_iterator_.status();
   }
 
   // id - transaction id to load.
-  void LoadTransaction(const TransactionId& id) {
+  Status LoadTransaction(const TransactionId& id) {
     metric_transaction_load_attempts_->Increment();
     VLOG_WITH_PREFIX(1) << "Loading transaction: " << id;
 
@@ -216,16 +229,12 @@ class TransactionLoader::Executor {
 
     const Slice& value = intents_iterator_.value();
     if (!metadata_pb.ParseFromArray(value.cdata(), narrow_cast<int>(value.size()))) {
-      LOG_WITH_PREFIX(DFATAL) << "Unable to parse stored metadata: "
-                              << value.ToDebugHexString();
-      return;
+      return STATUS_FORMAT(
+          IllegalState, "Unable to parse stored metadata: $0", value.ToDebugHexString());
     }
 
     auto metadata = TransactionMetadata::FromPB(metadata_pb);
-    if (!metadata.ok()) {
-      LOG_WITH_PREFIX(DFATAL) << "Loaded bad metadata: " << metadata.status();
-      return;
-    }
+    RETURN_NOT_OK_PREPEND(metadata, "Loaded bad metadata: ");
 
     if (!metadata->start_time.is_valid()) {
       metadata->start_time = HybridTime::kMin;
@@ -235,7 +244,7 @@ class TransactionLoader::Executor {
 
     TransactionalBatchData last_batch_data;
     OneWayBitmap replicated_batches;
-    FetchLastBatchData(id, &last_batch_data, &replicated_batches);
+    RETURN_NOT_OK(FetchLastBatchData(id, &last_batch_data, &replicated_batches));
 
     if (!status_resolver_) {
       status_resolver_ = &context().AddStatusResolver();
@@ -251,9 +260,10 @@ class TransactionLoader::Executor {
       loader_.last_loaded_ = id;
     }
     loader_.load_cond_.notify_all();
+    return Status::OK();
   }
 
-  void FetchLastBatchData(
+  Status FetchLastBatchData(
       const TransactionId& id,
       TransactionalBatchData* last_batch_data,
       OneWayBitmap* replicated_batches) {
@@ -262,6 +272,7 @@ class TransactionLoader::Executor {
     if (intents_iterator_.Valid()) {
       intents_iterator_.Prev();
     } else {
+      RETURN_NOT_OK(intents_iterator_.status());
       intents_iterator_.SeekToLast();
     }
     current_key_.RemoveLastByte();
@@ -272,7 +283,7 @@ class TransactionLoader::Executor {
           << intents_iterator_.key().ToDebugHexString() << " => "
           << intents_iterator_.value().ToDebugHexString() << ": " << decoded_key.status();
       if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
-        last_batch_data->hybrid_time = decoded_key->doc_ht.hybrid_time();
+        last_batch_data->hybrid_time = CHECK_RESULT(decoded_key->doc_ht.Decode()).hybrid_time();
         Slice rev_key_slice(intents_iterator_.value());
         // Required by the transaction sealing protocol.
         if (!rev_key_slice.empty() && rev_key_slice[0] == docdb::KeyEntryTypeAsChar::kBitSet) {
@@ -313,8 +324,10 @@ class TransactionLoader::Executor {
         }
         break;
       }
+      RETURN_NOT_OK(intents_iterator_.status());
       intents_iterator_.Prev();
     }
+    return intents_iterator_.status();
   }
 
   TransactionLoaderContext& context() const {
@@ -363,35 +376,37 @@ constexpr auto kWaitLoadedWakeUpInterval = 10s;
 
 }  // namespace
 
-void TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
-  if (all_loaded_.load(std::memory_order_acquire)) {
-    return;
+Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_ANALYSIS {
+  if (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted) {
+    return Status::OK();
   }
   std::unique_lock<std::mutex> lock(mutex_);
   // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
-  while (!all_loaded_.load(std::memory_order_acquire)) {
+  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadNotFinished) {
     if (last_loaded_ >= id) {
       break;
     }
     load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
+  return load_status_;
 }
 
 // Disable thread safety analysis because std::unique_lock is used.
-void TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
-  if (all_loaded_.load(std::memory_order_acquire)) {
-    return;
+Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
+  if (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted) {
+    return Status::OK();
   }
   // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   std::unique_lock<std::mutex> lock(mutex_);
-  while (!all_loaded_.load(std::memory_order_acquire)) {
+  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadNotFinished) {
     load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
+  return load_status_;
 }
 
 void TransactionLoader::Shutdown() {
-  if (load_thread_.joinable()) {
-    load_thread_.join();
+  if (load_thread_) {
+    load_thread_->Join();
   }
 }
 

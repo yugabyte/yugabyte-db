@@ -109,6 +109,7 @@ class OnPremListRegionsAndZones extends Component {
         {fields.map((fieldItem, fieldIdx) => {
           const isReadOnly = self.isFieldReadOnly(fieldIdx);
           return (
+            // eslint-disable-next-line react/no-array-index-key
             <Row key={`region-zone-${fieldIdx}`}>
               <Col lg={1}>
                 {fields.length > 1 ? (

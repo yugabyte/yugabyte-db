@@ -39,8 +39,7 @@
 // and Google friendly API.
 //
 
-#ifndef YB_GUTIL_STL_UTIL_H
-#define YB_GUTIL_STL_UTIL_H
+#pragma once
 
 #include <stddef.h>
 #include <string.h>  // for memcpy
@@ -51,13 +50,13 @@
 #include <functional>
 #include <optional>
 #include <set>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
-
-
 
 namespace yb {
 
@@ -662,156 +661,6 @@ bool STLIncludes(const SortedSTLContainerA &a,
                        b.begin(), b.end());
 }
 
-// Functors that compose arbitrary unary and binary functions with a
-// function that "projects" one of the members of a pair.
-// Specifically, if p1 and p2, respectively, are the functions that
-// map a pair to its first and second, respectively, members, the
-// table below summarizes the functions that can be constructed:
-//
-// * UnaryOperate1st<pair>(f) returns the function x -> f(p1(x))
-// * UnaryOperate2nd<pair>(f) returns the function x -> f(p2(x))
-// * BinaryOperate1st<pair>(f) returns the function (x,y) -> f(p1(x),p1(y))
-// * BinaryOperate2nd<pair>(f) returns the function (x,y) -> f(p2(x),p2(y))
-//
-// A typical usage for these functions would be when iterating over
-// the contents of an STL map. For other sample usage, see the unittest.
-
-template<typename Pair, typename UnaryOp>
-class UnaryOperateOnFirst
-    : public std::unary_function<Pair, typename UnaryOp::result_type> {
- public:
-  UnaryOperateOnFirst() {
-  }
-
-  explicit UnaryOperateOnFirst(const UnaryOp& f) : f_(f) {
-  }
-
-  typename UnaryOp::result_type operator()(const Pair& p) const {
-    return f_(p.first);
-  }
-
- private:
-  UnaryOp f_;
-};
-
-template<typename Pair, typename UnaryOp>
-UnaryOperateOnFirst<Pair, UnaryOp> UnaryOperate1st(const UnaryOp& f) {
-  return UnaryOperateOnFirst<Pair, UnaryOp>(f);
-}
-
-template<typename Pair, typename UnaryOp>
-class UnaryOperateOnSecond
-    : public std::unary_function<Pair, typename UnaryOp::result_type> {
- public:
-  UnaryOperateOnSecond() {
-  }
-
-  explicit UnaryOperateOnSecond(const UnaryOp& f) : f_(f) {
-  }
-
-  typename UnaryOp::result_type operator()(const Pair& p) const {
-    return f_(p.second);
-  }
-
- private:
-  UnaryOp f_;
-};
-
-template<typename Pair, typename UnaryOp>
-UnaryOperateOnSecond<Pair, UnaryOp> UnaryOperate2nd(const UnaryOp& f) {
-  return UnaryOperateOnSecond<Pair, UnaryOp>(f);
-}
-
-template<typename Pair, typename BinaryOp>
-class BinaryOperateOnFirst
-    : public std::binary_function<Pair, Pair, typename BinaryOp::result_type> {
- public:
-  BinaryOperateOnFirst() {
-  }
-
-  explicit BinaryOperateOnFirst(const BinaryOp& f) : f_(f) {
-  }
-
-  typename BinaryOp::result_type operator()(const Pair& p1,
-                                            const Pair& p2) const {
-    return f_(p1.first, p2.first);
-  }
-
- private:
-  BinaryOp f_;
-};
-
-// TODO(user): explicit?
-template<typename Pair, typename BinaryOp>
-BinaryOperateOnFirst<Pair, BinaryOp> BinaryOperate1st(const BinaryOp& f) {
-  return BinaryOperateOnFirst<Pair, BinaryOp>(f);
-}
-
-template<typename Pair, typename BinaryOp>
-class BinaryOperateOnSecond
-    : public std::binary_function<Pair, Pair, typename BinaryOp::result_type> {
- public:
-  BinaryOperateOnSecond() {
-  }
-
-  explicit BinaryOperateOnSecond(const BinaryOp& f) : f_(f) {
-  }
-
-  typename BinaryOp::result_type operator()(const Pair& p1,
-                                            const Pair& p2) const {
-    return f_(p1.second, p2.second);
-  }
-
- private:
-  BinaryOp f_;
-};
-
-template<typename Pair, typename BinaryOp>
-BinaryOperateOnSecond<Pair, BinaryOp> BinaryOperate2nd(const BinaryOp& f) {
-  return BinaryOperateOnSecond<Pair, BinaryOp>(f);
-}
-
-// Functor that composes a binary functor h from an arbitrary binary functor
-// f and two unary functors g1, g2, so that:
-//
-// BinaryCompose1(f, g) returns function (x, y) -> f(g(x), g(y))
-// BinaryCompose2(f, g1, g2) returns function (x, y) -> f(g1(x), g2(y))
-//
-// This is a generalization of the BinaryOperate* functors for types other
-// than pairs.
-//
-// For sample usage, see the unittest.
-//
-// F has to be a model of AdaptableBinaryFunction.
-// G1 and G2 have to be models of AdabtableUnaryFunction.
-template<typename F, typename G1, typename G2>
-class BinaryComposeBinary : public std::binary_function<typename G1::argument_type,
-                                                   typename G2::argument_type,
-                                                   typename F::result_type> {
- public:
-  BinaryComposeBinary(F f, G1 g1, G2 g2) : f_(f), g1_(g1), g2_(g2) { }
-
-  typename F::result_type operator()(typename G1::argument_type x,
-                                     typename G2::argument_type y) const {
-    return f_(g1_(x), g2_(y));
-  }
-
- private:
-  F f_;
-  G1 g1_;
-  G2 g2_;
-};
-
-template<typename F, typename G>
-BinaryComposeBinary<F, G, G> BinaryCompose1(F f, G g) {
-  return BinaryComposeBinary<F, G, G>(f, g, g);
-}
-
-template<typename F, typename G1, typename G2>
-BinaryComposeBinary<F, G1, G2> BinaryCompose2(F f, G1 g1, G2 g2) {
-  return BinaryComposeBinary<F, G1, G2>(f, g1, g2);
-}
-
 // This is a wrapper for an STL allocator which keeps a count of the
 // active bytes allocated by this class of allocators.  This is NOT
 // THREAD SAFE.  This should only be used in situations where you can
@@ -1022,6 +871,27 @@ struct StringHash {
   }
 };
 
+template<class T>
+struct PointerEqual {
+  using is_transparent = void;
+
+  bool operator()(const T* l, const T* r) const {
+    return std::equal_to<const T*>{}(l, r);
+  }
+};
+
+template<class T>
+struct PointerHash {
+  using is_transparent = void;
+
+  size_t operator()(const T* value) const {
+    return std::hash<const T*>{}(value);
+  }
+};
+
+template <class Value>
+using UnorderedStringMap = std::unordered_map<std::string, Value, StringHash, std::equal_to<void>>;
+
 } // namespace yb
 
 // For backward compatibility
@@ -1029,5 +899,3 @@ using yb::STLAppendToString;
 using yb::STLAssignToString;
 using yb::STLStringResizeUninitialized;
 using yb::string_as_array;
-
-#endif  // YB_GUTIL_STL_UTIL_H

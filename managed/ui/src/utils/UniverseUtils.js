@@ -2,9 +2,9 @@
 import _ from 'lodash';
 
 import { isNonEmptyArray, isNonEmptyObject, isDefinedNotNull } from './ObjectUtils';
-import { PROVIDER_TYPES } from '../config';
+import { PROVIDER_TYPES , BASE_URL } from '../config';
 import { NodeState } from '../redesign/helpers/dtos';
-import { BASE_URL } from '../config';
+
 
 export const nodeInClusterStates = [
   NodeState.Live,
@@ -100,17 +100,47 @@ export const getUniverseNodeCount = (nodeDetailsSet, cluster = null) => {
   ).length;
 };
 
+export const getUniverseDedicatedNodeCount = (nodeDetailsSet, cluster = null) => {
+  const nodes = nodeDetailsSet ?? [];
+  const numTserverNodes = nodes.filter(
+    (node) =>
+      (cluster === null || node.placementUuid === cluster.uuid) &&
+      _.includes(nodeInClusterStates, node.state) &&
+      node.dedicatedTo === 'TSERVER'
+  ).length;
+  const numMasterNodes = nodes.filter(
+    (node) =>
+      (cluster === null || node.placementUuid === cluster.uuid) &&
+      _.includes(nodeInClusterStates, node.state) &&
+      node.dedicatedTo === 'MASTER'
+  ).length;
+  return {
+    numTserverNodes,
+    numMasterNodes
+  };
+};
+
+export const isDedicatedNodePlacement = (currentUniverse) => {
+  let isDedicatedNodes = false;
+  if (!currentUniverse?.universeDetails) return isDedicatedNodes;
+
+  const clusters = currentUniverse.universeDetails.clusters;
+  const primaryCluster = clusters && getPrimaryCluster(clusters);
+  isDedicatedNodes = primaryCluster.userIntent.dedicatedNodes;
+  return isDedicatedNodes;
+};
+
 export function getProviderMetadata(provider) {
   return PROVIDER_TYPES.find((providerType) => providerType.code === provider.code);
 }
 
 export function getClusterIndex(nodeDetails, clusters) {
-  const cluster = clusters.find((cluster) => cluster.uuid === nodeDetails.placementUuid);
-  if (!cluster) {
+  const universeCluster = clusters.find((cluster) => cluster.uuid === nodeDetails.placementUuid);
+  if (!universeCluster) {
     // Move orphaned nodes to end of list
     return Number.MAX_SAFE_INTEGER;
   }
-  return cluster.index;
+  return universeCluster.index;
 }
 
 export function nodeComparisonFunction(nodeDetailsA, nodeDetailsB, clusters) {
@@ -139,13 +169,17 @@ export function isKubernetesUniverse(currentUniverse) {
     isDefinedNotNull(currentUniverse.universeDetails) &&
     isDefinedNotNull(getPrimaryCluster(currentUniverse.universeDetails.clusters)) &&
     getPrimaryCluster(currentUniverse.universeDetails.clusters).userIntent.providerType ===
-    'kubernetes'
+      'kubernetes'
   );
 }
 
 export const isYbcEnabledUniverse = (universeDetails) => {
   return universeDetails?.enableYbc;
-}
+};
+
+export const isYbcInstalledInUniverse = (universeDetails) => {
+  return universeDetails?.ybcInstalled;
+};
 
 /**
  * Returns an array of unique regions in the universe
@@ -170,7 +204,11 @@ export const isOnpremUniverse = (universe) => {
 };
 
 export const isPausableUniverse = (universe) => {
-  return isUniverseType(universe, 'aws') || isUniverseType(universe, 'gcp') || isUniverseType(universe, 'azu');
+  return (
+    isUniverseType(universe, 'aws') ||
+    isUniverseType(universe, 'gcp') ||
+    isUniverseType(universe, 'azu')
+  );
 };
 
 // Reads file and passes content into Promise.resolve

@@ -962,7 +962,7 @@ handle_cxx_test_failure() {
     test_failed=true
   fi
 
-  if [[ ${test_failed} == "true" ]]; then
+  if [[ ${test_failed} == "true" || ${YB_FORCE_REWRITE_TEST_LOGS:-0} == "1" ]]; then
     (
       rewrite_test_log "${test_log_path}"
       echo
@@ -1021,8 +1021,11 @@ run_postproces_test_result_script() {
       --fatal-details-path-prefix "$YB_FATAL_DETAILS_PATH_PREFIX"
     )
   fi
-  "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
-    "${args[@]}" "$@"
+  (
+    set_pythonpath
+    "$VIRTUAL_ENV/bin/python" "${YB_SRC_ROOT}/python/yb/postprocess_test_result.py" \
+      "${args[@]}" "$@"
+  )
 }
 
 rewrite_test_log() {
@@ -1158,13 +1161,8 @@ set_sanitizer_runtime_options() {
   # Don't add a hyphen after the regex so we can handle both tsan and tsan_slow.
   if [[ $build_root_basename =~ ^tsan ]]; then
     # Configure TSAN (ignored if this isn't a TSAN build).
-    #
-    # Deadlock detection (new in clang 3.5) is disabled because:
-    # 1. The clang 3.5 deadlock detector crashes in some YB unit tests. It
-    #    needs compiler-rt commits c4c3dfd, 9a8efe3, and possibly others.
-    # 2. Many unit tests report lock-order-inversion warnings; they should be
-    #    fixed before reenabling the detector.
-    TSAN_OPTIONS="detect_deadlocks=0"
+    TSAN_OPTIONS="detect_deadlocks=1"
+    TSAN_OPTIONS+=" second_deadlock_stack=1"
     TSAN_OPTIONS+=" suppressions=$YB_SRC_ROOT/build-support/tsan-suppressions.txt"
     TSAN_OPTIONS+=" history_size=7"
     TSAN_OPTIONS+=" external_symbolizer_path=$ASAN_SYMBOLIZER_PATH"
@@ -1705,13 +1703,23 @@ run_java_test() {
   process_tree_supervisor_append_log_to_on_error=$test_log_path
   stop_process_tree_supervisor
 
-  if ! "$process_supervisor_success"; then
-    log "Process tree supervisor script reported an error, marking the test as failed in" \
-        "$junit_xml_path"
-    "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
-      --result-xml "$junit_xml_path" \
-      --mark-as-failed true \
-      --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."
+  if [[ ${process_supervisor_success} == "false" ]]; then
+    if grep -Eq 'CentOS Linux release 7[.]' /etc/centos-release &&
+       ! python3 -c 'import psutil' &>/dev/null
+    then
+      log "Process tree supervisor script reported an error, but this is CentOS 7 and " \
+          "the psutil module is not available in the VM image that we are using. Ignoring " \
+          "the process supervisor for now. We will revert this temporary workaround after the " \
+          "CentOS 7 image is updated. JUnit XML path: $junit_xml_path"
+      process_supervisor_success=true
+    else
+      log "Process tree supervisor script reported an error, marking the test as failed in" \
+          "$junit_xml_path"
+      "$YB_SRC_ROOT"/build-support/update_test_result_xml.py \
+        --result-xml "$junit_xml_path" \
+        --mark-as-failed true \
+        --extra-message "Process supervisor script reported errors (e.g. unterminated processes)."
+    fi
   fi
 
   if is_jenkins ||
@@ -1742,6 +1750,7 @@ run_java_test() {
   fi
 
   if [[ -f ${test_log_path} ]]; then
+    # On Jenkins, this will only happen for failed tests. (See the logic above.)
     rewrite_test_log "${test_log_path}"
   fi
   if should_gzip_test_logs; then
@@ -1753,7 +1762,8 @@ run_java_test() {
   fi
 
   declare -i java_test_exit_code=$mvn_exit_code
-  if [[ $java_test_exit_code -eq 0 ]] && ! "$process_supervisor_success"; then
+  if [[ $java_test_exit_code -eq 0 &&
+        ${process_supervisor_success} == "false" ]]; then
     java_test_exit_code=1
   fi
 
@@ -1865,16 +1875,14 @@ run_all_java_test_methods_separately() {
 }
 
 run_python_doctest() {
-  python_root=$YB_SRC_ROOT/python
-  local PYTHONPATH
-  export PYTHONPATH=$python_root
+  set_pythonpath
 
   local IFS=$'\n'
   local file_list
   file_list=$( cd "$YB_SRC_ROOT" && git ls-files '*.py' )
 
   local python_file
-  for python_file in $file_list; do
+  for python_file in ${file_list}; do
     local basename=${python_file##*/}
     if [[ $python_file == managed/* ||
           $python_file == cloud/* ||
@@ -2060,14 +2068,11 @@ run_cmake_unit_tests() {
 
   local cmake_files=( CMakeLists.txt )
   local IFS=$'\n'
-  local src_subdir
   local line
-  for src_subdir in src ent/src; do
-    ensure_directory_exists "$YB_SRC_ROOT/$src_subdir"
-    while IFS='' read -r line; do
-      cmake_files+=( "$line" )
-    done < <( find "$YB_SRC_ROOT/$src_subdir" -name "CMakeLists*.txt" )
-  done
+  ensure_directory_exists "$YB_SRC_ROOT/src"
+  while IFS='' read -r line; do
+    cmake_files+=( "$line" )
+  done < <( find "$YB_SRC_ROOT/src" -name "CMakeLists*.txt" )
   while IFS='' read -r line; do
     cmake_files+=( "$line" )
   done < <( find "$YB_SRC_ROOT/cmake_modules" -name "*.cmake" )

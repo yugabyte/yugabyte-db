@@ -53,6 +53,13 @@ ExecUnique(PlanState *pstate)
 	PlanState  *outerPlan;
 
 	CHECK_FOR_INTERRUPTS();
+	
+	/*
+	 * SELECT DISTINCT is only enabled for an index scan. Specifically, for a scan on hash columns,
+	 * the index scan will not be used.
+	 */
+	if (IsYugaByteEnabled())
+		pstate->state->yb_exec_params.is_select_distinct = true;
 
 	/*
 	 * get information from the node

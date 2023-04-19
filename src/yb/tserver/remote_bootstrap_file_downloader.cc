@@ -26,7 +26,7 @@
 #include "yb/tserver/remote_bootstrap.proxy.h"
 
 #include "yb/util/crc.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/rate_limiter.h"
 #include "yb/util/size_literals.h"
@@ -36,22 +36,18 @@
 using namespace yb::size_literals;
 
 DECLARE_uint64(rpc_max_message_size);
-DEFINE_int32(remote_bootstrap_max_chunk_size, 64_MB,
+DEFINE_UNKNOWN_int32(remote_bootstrap_max_chunk_size, 64_MB,
              "Maximum chunk size to be transferred at a time during remote bootstrap.");
 
-// Deprecated because it's misspelled.  But if set, this flag takes precedence over
-// remote_bootstrap_rate_limit_bytes_per_sec for compatibility.
-DEFINE_int64(remote_boostrap_rate_limit_bytes_per_sec, 0,
-             "DEPRECATED. Replaced by flag remote_bootstrap_rate_limit_bytes_per_sec.");
-TAG_FLAG(remote_boostrap_rate_limit_bytes_per_sec, hidden);
+DEPRECATE_FLAG(int64, remote_boostrap_rate_limit_bytes_per_sec, "10_2022");
 
-DEFINE_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
+DEFINE_UNKNOWN_int64(remote_bootstrap_rate_limit_bytes_per_sec, 256_MB,
              "Maximum transmission rate during a remote bootstrap. This is across all the remote "
              "bootstrap sessions for which this process is acting as a sender or receiver. So "
              "the total limit will be 2 * remote_bootstrap_rate_limit_bytes_per_sec because a "
              "tserver or master can act both as a sender and receiver at the same time.");
 
-DEFINE_int32(bytes_remote_bootstrap_durable_write_mb, 1024,
+DEFINE_UNKNOWN_int32(bytes_remote_bootstrap_durable_write_mb, 1024,
              "Explicitly call fsync after downloading the specified amount of data in MB "
              "during a remote bootstrap session. If 0 fsync() is not called.");
 

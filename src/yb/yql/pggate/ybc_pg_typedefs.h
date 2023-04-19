@@ -13,8 +13,7 @@
 // This module contains C definitions for all YugaByte structures that are used to exhange data
 // and metadata between Postgres and YBClient libraries.
 
-#ifndef YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
-#define YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -293,10 +292,12 @@ typedef struct PgExecParameters {
   int wait_policy = 2; // Cast to yb::WaitPolicy for C++ use. (2 is for yb::WAIT_ERROR)
   char *bfinstr = NULL;
   uint64_t backfill_read_time = 0;
-  uint64_t* statement_in_txn_limit = NULL;
+  uint64_t* stmt_in_txn_limit_ht_for_reads = NULL;
   char *partition_key = NULL;
   PgExecOutParam *out_param = NULL;
   bool is_index_backfill = false;
+  bool is_select_distinct = false;
+  int work_mem = 4096; // Default work_mem in guc.c
 #else
   uint64_t limit_count;
   uint64_t limit_offset;
@@ -305,10 +306,12 @@ typedef struct PgExecParameters {
   int wait_policy; // Cast to LockWaitPolicy for C use
   char *bfinstr;
   uint64_t backfill_read_time;
-  uint64_t* statement_in_txn_limit;
+  uint64_t* stmt_in_txn_limit_ht_for_reads;
   char *partition_key;
   PgExecOutParam *out_param;
   bool is_index_backfill;
+  bool is_select_distinct;
+  int work_mem;
 #endif
 } YBCPgExecParameters;
 
@@ -334,15 +337,21 @@ typedef struct PgCallbacks {
 
 typedef struct PgGFlagsAccessor {
   const bool*     log_ysql_catalog_versions;
+  const bool*     ysql_catalog_preload_additional_tables;
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
   const int32_t*  ysql_max_read_restart_attempts;
   const int32_t*  ysql_max_write_restart_attempts;
+  const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;
   const uint64_t* ysql_session_max_batch_size;
   const bool*     ysql_sleep_before_retry_on_txn_conflict;
+  const bool*     ysql_colocate_database_by_default;
+  const bool*     ysql_ddl_rollback_enabled;
+  const bool*     ysql_enable_read_request_caching;
+  const bool*     ysql_enable_profile;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -391,24 +400,34 @@ typedef enum PgBoundType {
   YB_YQL_BOUND_VALID_INCLUSIVE
 } YBCPgBoundType;
 
-typedef struct YbTserverCatalogVersion {
-  uint32_t db_oid;
-  uint64_t current_version;
-  int shm_index;
-} YbTserverCatalogVersion;
+// source:
+// https://github.com/gperftools/gperftools/blob/master/src/gperftools/malloc_extension.h#L154
+typedef struct YbTcmallocStats {
+  // "generic.total_physical_bytes"
+  int64_t total_physical_bytes;
+  // "generic.heap_size"
+  int64_t heap_size_bytes;
+  // "generic.current_allocated_bytes"
+  int64_t current_allocated_bytes;
+  // "tcmalloc.pageheap_free_bytes"
+  int64_t pageheap_free_bytes;
+  // "tcmalloc.pageheap_unmapped_bytes"
+  int64_t pageheap_unmapped_bytes;
+} YbTcmallocStats;
 
-// Used to map a database OID to its catalog version info fetched from the local tserver.
-typedef struct YbTserverCatalogInfoData {
-  uint32_t num_databases;
-  YbTserverCatalogVersion* versions;
-} YbTserverCatalogInfoData;
+// In per database catalog version mode, this puts a limit on the maximum
+// number of databases that can exist in a cluster.
+static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 
-typedef struct YbTserverCatalogInfoData* YbTserverCatalogInfo;
+typedef enum PgSysTablePrefetcherCacheMode {
+  YB_YQL_PREFETCHER_TRUST_CACHE,
+  YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
+  YB_YQL_PREFETCHER_NO_CACHE
+} YBCPgSysTablePrefetcherCacheMode;
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
 #undef YB_DEFINE_HANDLE_TYPE
-
-#endif  // YB_YQL_PGGATE_YBC_PG_TYPEDEFS_H

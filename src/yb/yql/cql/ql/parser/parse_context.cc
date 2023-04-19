@@ -89,9 +89,9 @@ void ParseContext::Warn(const location& loc, const char *msg, ErrorCode error_co
 
 // Handling parsing error.
 Status ParseContext::Error(const location& loc,
-                                   const char *msg,
-                                   ErrorCode error_code,
-                                   const char* token) {
+                           const char *msg,
+                           ErrorCode error_code,
+                           const char* token) {
   return ProcessContext::Error(Location(loc), msg, error_code, token);
 }
 

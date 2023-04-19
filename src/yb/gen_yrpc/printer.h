@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_GEN_YRPC_PRINTER_H
-#define YB_GEN_YRPC_PRINTER_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -106,5 +105,3 @@ class ScopedSubstituter {
 
 } // namespace gen_yrpc
 } // namespace yb
-
-#endif // YB_GEN_YRPC_PRINTER_H

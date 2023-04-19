@@ -23,13 +23,13 @@
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/operation.h"
 #include "yb/util/countdown_latch.h"
-#include "yb/util/auto_flags_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
 
 using std::string;
 using std::vector;
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     limit_auto_flag_promote_for_new_universe, yb::to_underlying(yb::AutoFlagClass::kExternal),
     "The maximum class value up to which AutoFlags are promoted during new cluster creation. "
     "Value should be in the range [0-3]. Will not promote any AutoFlags if set to 0.");
@@ -156,7 +156,7 @@ Status CreateEmptyAutoFlagsConfig(AutoFlagsManager* auto_flag_manager) {
   LOG(INFO) << "Creating empty AutoFlags configuration.";
 
   AutoFlagsConfigPB new_config;
-  new_config.set_config_version(1);
+  new_config.set_config_version(0);
   RETURN_NOT_OK(
       auto_flag_manager->LoadFromConfig(std::move(new_config), ApplyNonRuntimeAutoFlags::kTrue));
   return OK();
@@ -184,8 +184,8 @@ Status PromoteAutoFlags(
 
   consensus::ChangeAutoFlagsConfigOpResponsePB operation_res;
   // SubmitToSysCatalog will set the correct tablet
-  auto operation =
-      std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /*tablet*/, &new_config);
+  auto operation = std::make_unique<tablet::ChangeAutoFlagsConfigOperation>(nullptr /* tablet */);
+  *operation->AllocateRequest() = new_config;
   CountDownLatch latch(1);
   operation->set_completion_callback(
       tablet::MakeLatchOperationCompletionCallback(&latch, &operation_res));

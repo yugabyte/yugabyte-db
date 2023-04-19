@@ -14,13 +14,15 @@ import {
   MetricTypesByOrigin,
   MetricMeasure,
   APIMetricToNodeFlag,
-  MetricConsts
+  MetricConsts,
+  NodeType
 } from '../../metrics/constants';
 import { graphPanelTypes } from '../GraphPanel/GraphPanel';
 import { YBTabsPanel } from '../../panels';
 import { GraphTab } from '../GraphTab/GraphTab';
 import { showOrRedirect } from '../../../utils/LayoutUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
+
 import './CustomerMetricsPanel.scss';
 
 /**
@@ -37,44 +39,60 @@ const PanelBody = ({
   nodePrefixes,
   width,
   tableName,
-  featureFlags,
-  graph
+  graph,
+  isTopKMetricsEnabled
 }) => {
-  const isTopKMetricsEnabled = featureFlags.test.enableTopKMetrics || featureFlags.released.enableTopKMetrics;
   let result = null;
 
   if (isTopKMetricsEnabled) {
-    let invalidTabType = [];
+    const invalidTabType = [];
+    const isYSQLOpsEnabled =
+      selectedUniverse?.universeDetails?.clusters?.[0]?.userIntent.enableYSQL;
     // List of default tabs to display based on metrics origin
-    let defaultTabToDisplay = MetricTypes.YSQL_OPS;
+    let defaultTabToDisplay = isYSQLOpsEnabled ? MetricTypes.YSQL_OPS : MetricTypes.YCQL_OPS;
+
     if (origin === MetricOrigin.TABLE) {
       defaultTabToDisplay = MetricTypes.LSMDB_TABLE;
     } else if (origin === MetricOrigin.CUSTOMER) {
-      defaultTabToDisplay = MetricTypes.SERVER;
+      if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
+        defaultTabToDisplay = MetricTypes.CONTAINER;
+      } else {
+        defaultTabToDisplay = MetricTypes.SERVER;
+      }
     }
 
     const metricMeasure = graph?.graphFilter?.metricMeasure;
-    if (metricMeasure === MetricMeasure.OUTLIER || selectedUniverse === MetricConsts.ALL
-      || metricMeasure === MetricMeasure.OVERALL) {
+    const currentSelectedNodeType = graph?.graphFilter?.currentSelectedNodeType;
+    if (
+      metricMeasure === MetricMeasure.OUTLIER ||
+      selectedUniverse === MetricConsts.ALL ||
+      metricMeasure === MetricMeasure.OVERALL
+    ) {
       invalidTabType.push(MetricTypes.OUTLIER_TABLES);
     }
-    selectedUniverse && isKubernetesUniverse(selectedUniverse)
-      ? invalidTabType.push(MetricTypes.SERVER)
-      : invalidTabType.push(MetricTypes.CONTAINER);
 
-    if (metricMeasure === MetricMeasure.OUTLIER
-      || metricMeasure === MetricMeasure.OVERALL
-      || origin === MetricOrigin.TABLE) {
+    if (!(selectedUniverse === MetricConsts.ALL)) {
+      selectedUniverse && isKubernetesUniverse(selectedUniverse)
+        ? invalidTabType.push(MetricTypes.SERVER)
+        : invalidTabType.push(MetricTypes.CONTAINER);
+    }
+
+    if (currentSelectedNodeType !== NodeType.ALL) {
+      currentSelectedNodeType === NodeType.MASTER
+        ? invalidTabType.push(MetricTypes.TSERVER, MetricTypes.YSQL_OPS, MetricTypes.YCQL_OPS)
+        : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
+      defaultTabToDisplay =
+        currentSelectedNodeType === NodeType.MASTER ? MetricTypes.MASTER : MetricTypes.TSERVER;
+    }
+
+    if (
+      metricMeasure === MetricMeasure.OUTLIER ||
+      metricMeasure === MetricMeasure.OVERALL ||
+      origin === MetricOrigin.TABLE
+    ) {
       result = (
-        <YBTabsPanel
-          defaultTab={defaultTabToDisplay}
-          className="overall-metrics-by-origin"
-        >
+        <YBTabsPanel defaultTab={defaultTabToDisplay} className="overall-metrics-by-origin">
           {MetricTypesByOrigin[origin].data.reduce((prevTabs, type, idx) => {
-
-
-
-
             const tabTitle = MetricTypesWithOperations[type].title;
             const metricContent = MetricTypesWithOperations[type];
             if (
@@ -83,7 +101,7 @@ const PanelBody = ({
                 (node) => node[APIMetricToNodeFlag[type]]
               )
             ) {
-              if (!(invalidTabType.includes(type))) {
+              if (!invalidTabType.includes(type)) {
                 prevTabs.push(
                   <Tab
                     eventKey={type}
@@ -107,7 +125,8 @@ const PanelBody = ({
             }
             return prevTabs;
           }, [])}
-        </YBTabsPanel>);
+        </YBTabsPanel>
+      );
     } else if (metricMeasure === MetricMeasure.OUTLIER_TABLES) {
       result = (
         <YBTabsPanel
@@ -177,12 +196,8 @@ const PanelBody = ({
 
 export default class CustomerMetricsPanel extends Component {
   static propTypes = {
-    origin: PropTypes.oneOf(
-      [
-        MetricOrigin.CUSTOMER,
-        MetricOrigin.UNIVERSE,
-        MetricOrigin.TABLE
-      ]).isRequired,
+    origin: PropTypes.oneOf([MetricOrigin.CUSTOMER, MetricOrigin.UNIVERSE, MetricOrigin.TABLE])
+      .isRequired,
     nodePrefixes: PropTypes.array,
     width: PropTypes.number,
     tableName: PropTypes.string
@@ -202,9 +217,9 @@ export default class CustomerMetricsPanel extends Component {
   }
 
   render() {
-    const { origin } = this.props;
+    const { origin, isTopKMetricsEnabled } = this.props;
     return (
-      <GraphPanelHeaderContainer origin={origin}>
+      <GraphPanelHeaderContainer origin={origin} isTopKMetricsEnabled={!!isTopKMetricsEnabled}>
         <PanelBody {...this.props} />
       </GraphPanelHeaderContainer>
     );

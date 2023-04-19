@@ -11,14 +11,17 @@ import axios from 'axios';
 import { Dictionary, groupBy } from 'lodash';
 import { IBackup, Keyspace_Table, RESTORE_ACTION_TYPE, TIME_RANGE_STATE } from '..';
 import { ROOT_URL } from '../../../config';
+import { convertToISODateString } from '../../../redesign/helpers/DateUtils';
 import { MILLISECONDS_IN } from '../scheduled/ScheduledBackupUtils';
+
 import {
   BACKUP_API_TYPES,
   Backup_Options_Type,
   ICommonBackupInfo,
   IStorageConfig,
   ITable,
-  ThrottleParameters
+  ThrottleParameters,
+  IBackupEditParams
 } from './IBackup';
 
 export function getBackupsList(
@@ -59,8 +62,8 @@ export function getBackupsList(
     payload.filter['states'] = [states[0].value];
   }
   if (timeRange.startTime && timeRange.endTime) {
-    payload.filter['dateRangeStart'] = timeRange.startTime.toISOString();
-    payload.filter['dateRangeEnd'] = timeRange.endTime.toISOString();
+    payload.filter['dateRangeStart'] = convertToISODateString(timeRange.startTime);
+    payload.filter['dateRangeEnd'] = convertToISODateString(timeRange.endTime);
   }
 
   if (Array.isArray(moreFilters) && moreFilters?.length > 0) {
@@ -74,7 +77,7 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
   const cUUID = localStorage.getItem('customerId');
   const backupStorageInfoList = values['keyspaces'].map(
     (keyspace: Keyspace_Table, index: number) => {
-      return {
+      const infoList = {
         backupType: backup.backupType,
         keyspace: keyspace || backup.commonBackupInfo.responseList[index].keyspace,
         sse: backup.commonBackupInfo.sse,
@@ -82,6 +85,10 @@ export function restoreEntireBackup(backup: IBackup, values: Record<string, any>
           backup.commonBackupInfo.responseList[index].storageLocation ??
           backup.commonBackupInfo.responseList[index].defaultLocation
       };
+      if (values.allow_YCQL_conflict_keyspace) {
+        infoList['tableNameList'] = backup.commonBackupInfo.responseList[index].tablesList;
+      }
+      return infoList;
     }
   );
   const payload = {
@@ -114,7 +121,7 @@ export function deleteBackup(backupList: IBackup[]) {
 export function cancelBackup(backup: IBackup) {
   const cUUID = localStorage.getItem('customerId');
   return axios.post(
-    `${ROOT_URL}/customers/${cUUID}/backups/${backup.commonBackupInfo.backupUUID}/stop`
+    `${ROOT_URL}/customers/${cUUID}/tasks/${backup.commonBackupInfo.taskUUID}/abort`
   );
 }
 
@@ -135,6 +142,14 @@ export function createBackup(values: Record<string, any>, isIncrementalBackup = 
   }
 
   return axios.post(requestUrl, payload);
+}
+
+export function editBackup(values: IBackupEditParams) {
+  const cUUID = localStorage.getItem('customerId');
+  const backupUUID = values.backupUUID;
+  const requestUrl = `${ROOT_URL}/customers/${cUUID}/backups/${backupUUID}`;
+
+  return axios.put(requestUrl, values);
 }
 
 export const prepareBackupCreationPayload = (values: Record<string, any>, cUUID: string | null) => {
@@ -215,8 +230,14 @@ export const fetchThrottleParameters = (universeUUID: string) => {
 
 export const setThrottleParameters = (universeUUID: string, values: ThrottleParameters) => {
   const cUUID = localStorage.getItem('customerId');
+  const payload = {
+    maxConcurrentUploads: values.max_concurrent_uploads,
+    perUploadNumObjects: values.per_upload_num_objects,
+    maxConcurrentDownloads: values.max_concurrent_downloads,
+    perDownloadNumObjects: values.per_download_num_objects
+  };
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
-  return axios.post<ThrottleParameters>(requestUrl, values);
+  return axios.post<ThrottleParameters>(requestUrl, payload);
 };
 
 export const resetThrottleParameterToDefaults = (universeUUID: string) => {
@@ -250,3 +271,15 @@ export const addIncrementalBackup = (backup: IBackup) => {
 
   return axios.post(requestUrl, payload);
 };
+
+export function deleteIncrementalBackup(incrementalBackup: ICommonBackupInfo) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/backups/delete`, {
+    deleteBackupInfos: [
+      {
+        backupUUID: incrementalBackup.backupUUID,
+        storageConfigUUID: incrementalBackup.storageConfigUUID
+      }
+    ]
+  });
+}

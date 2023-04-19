@@ -22,10 +22,11 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_bool(TEST_transaction_allow_rerequest_status, true,
+DEFINE_UNKNOWN_bool(TEST_transaction_allow_rerequest_status, true,
             "Allow rerequest transaction status when TryAgain is received.");
 
 namespace yb {

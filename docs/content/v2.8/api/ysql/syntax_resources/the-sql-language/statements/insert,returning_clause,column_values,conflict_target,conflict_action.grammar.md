@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 insert ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
             INSERT INTO table_name [ AS alias ] [ ( column_names ) ]  
            { DEFAULT VALUES

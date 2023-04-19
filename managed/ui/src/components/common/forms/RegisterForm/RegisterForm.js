@@ -33,7 +33,7 @@ class RegisterForm extends Component {
       type: 'PASSWORD_POLICY',
       name: 'password policy',
       data: this.props.passwordValidationInfo,
-    }
+    };
     const { registerCustomer, addCustomerConfig } = this.props;
     registerCustomer(formValues);
     addCustomerConfig(config);
@@ -121,7 +121,7 @@ class RegisterForm extends Component {
                 <div className="clearfix form-register__footer">
                   <div className="confirm-eula">
                     <Field name="confirmEULA" component={YBCheckBox} />
-                    <div>I agree to Yugabyte, Inc's <a href="https://www.yugabyte.com/eula/" target="_blank" rel="noreferrer noopener">End User License Agreement</a>.</div>
+                    <div>{"I agree to Yugabyte, Inc's"} <a href="https://www.yugabyte.com/eula/" target="_blank" rel="noreferrer noopener">{"End User License Agreement"}</a>.</div>
                   </div>
                   <YBButton
                     btnType="submit"

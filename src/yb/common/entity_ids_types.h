@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_ENTITY_IDS_TYPES_H
-#define YB_COMMON_ENTITY_IDS_TYPES_H
+#pragma once
 
 #include <string>
 
@@ -51,5 +50,3 @@ using FlushRequestId = std::string;
 using RedisConfigKey = std::string;
 
 }  // namespace yb
-
-#endif  // YB_COMMON_ENTITY_IDS_TYPES_H

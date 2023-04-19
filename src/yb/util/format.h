@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_FORMAT_H
-#define YB_UTIL_FORMAT_H
+#pragma once
 
 #include "yb/util/tostring.h" // for ToString
 
@@ -181,8 +180,17 @@ Out DoFormat(const char* format, const Tuple& tuple, Out out) {
     position = FormatCopy(previous, p, position);
     char ch = p[1];
     if (ch >= '0' && ch <= '9') {
-      position = tuple.Add(ch - '0', position);
-      ++p;
+      size_t index = 0;
+      for (;;) {
+        index += ch - '0';
+        ++p;
+        ch = p[1];
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        index *= 10;
+      }
+      position = tuple.Add(index, position);
     } else if (ch == '$') {
       position = FormatPut('$', position);
       ++p;  // Skip next char.
@@ -225,5 +233,3 @@ inline std::string Format(const char* format) {
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_FORMAT_H

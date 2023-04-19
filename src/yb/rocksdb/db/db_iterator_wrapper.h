@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_ROCKSDB_DB_DB_ITERATOR_WRAPPER_H
-#define YB_ROCKSDB_DB_DB_ITERATOR_WRAPPER_H
+#pragma once
 
 #include <memory>
 
@@ -66,6 +65,16 @@ class DBIteratorWrapper : public Iterator {
     return wrapped_->GetProperty(prop_name, prop);
   }
 
+  bool ScanForward(
+      Slice upperbound, KeyFilterCallback* key_filter_callback,
+      ScanCallback* scan_callback) override {
+    return wrapped_->ScanForward(upperbound, key_filter_callback, scan_callback);
+  }
+
+  void UseFastNext(bool value) override {
+    wrapped_->UseFastNext(value);
+  }
+
  protected:
   std::unique_ptr<Iterator> wrapped_;
 };
@@ -96,5 +105,3 @@ class TransitionLoggingIteratorWrapper : public DBIteratorWrapper {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_DB_DB_ITERATOR_WRAPPER_H

@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.certmgmt.providers.CertificateProviderInterface;
 import com.yugabyte.yw.common.certmgmt.providers.CertificateSelfSigned;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.FileData;
 import io.ebean.annotation.EnumValue;
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -28,7 +29,6 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
-import java.security.Security;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -41,6 +41,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Calendar;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -97,6 +98,7 @@ public class CertificateHelper {
   public static final String CLIENT_KEY = "yugabytedb.key";
 
   public static final String SIGNATURE_ALGO = "SHA256withRSA";
+  public static final String STORAGE_PATH = "yb.storage.path";
 
   private static final String CERTS_NODE_SUBDIR = "/yugabyte-tls-config";
   private static final String CERT_CLIENT_NODE_SUBDIR = "/yugabyte-client-tls-config";
@@ -118,7 +120,7 @@ public class CertificateHelper {
   public static String getClientCertPath(Config config, UUID customerUUID, UUID clientRootCA) {
     return String.format(
         CertificateHelper.CERT_PATH,
-        config.getString("yb.storage.path"),
+        config.getString(STORAGE_PATH),
         customerUUID.toString(),
         clientRootCA.toString());
   }
@@ -137,6 +139,10 @@ public class CertificateHelper {
         CERT_PATH + "/ca.key.pem", storagePath, customerUUID.toString(), caCertUUID.toString());
   }
 
+  public static String getCADirPath(String storagePath, UUID customerUUID, UUID caCertUUID) {
+    return String.format(CERT_PATH, storagePath, customerUUID.toString(), caCertUUID.toString());
+  }
+
   private static String generateUniqueRootCALabel(String nodePrefix, CertConfigType certType) {
 
     // Default the cert label with node prefix.
@@ -146,8 +152,8 @@ public class CertificateHelper {
     List<CertificateInfo> certificateInfoList =
         CertificateInfo.getWhereLabelStartsWith(nodePrefix, certType);
     if (!certificateInfoList.isEmpty()) {
-      certificateInfoList.sort(Comparator.comparing(a -> a.label, Comparator.reverseOrder()));
-      String[] labelArray = certificateInfoList.get(0).label.split("~");
+      certificateInfoList.sort(Comparator.comparing(a -> a.getLabel(), Comparator.reverseOrder()));
+      String[] labelArray = certificateInfoList.get(0).getLabel().split("~");
       int lastCount = 0;
       try {
         lastCount = Integer.parseInt(labelArray[labelArray.length - 1]);
@@ -162,7 +168,7 @@ public class CertificateHelper {
     LOG.info("Creating root certificate for {}", nodePrefix);
 
     try {
-      String storagePath = config.getString("yb.storage.path");
+      String storagePath = config.getString(STORAGE_PATH);
       CertConfigType certType = CertConfigType.SelfSigned;
       String certLabel = generateUniqueRootCALabel(nodePrefix, certType);
 
@@ -196,7 +202,7 @@ public class CertificateHelper {
               certType);
 
       LOG.info("Created Root CA for universe {}.", certLabel);
-      return cert.uuid;
+      return cert.getUuid();
     } catch (Exception e) {
       LOG.error(String.format("Unable to create RootCA for universe %s", nodePrefix), e);
       return null;
@@ -213,7 +219,8 @@ public class CertificateHelper {
       String certFileName,
       String certKeyName,
       X509Certificate clientCert,
-      PrivateKey pKey)
+      PrivateKey pKey,
+      boolean syncCertsToDB)
       throws IOException {
     CertificateDetails certificateDetails = new CertificateDetails();
 
@@ -221,6 +228,7 @@ public class CertificateHelper {
       // get file path write it there
       String clientCertPath = String.format("%s/%s", storagePath, certFileName);
       String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
+
       writeCertFileContentToCertPath(clientCert, clientCertPath);
       writeKeyFileContentToKeyPath(pKey, clientKeyPath);
       LOG.info(
@@ -228,6 +236,18 @@ public class CertificateHelper {
           clientCert.getSubjectDN().toString(),
           clientCertPath);
 
+      if (syncCertsToDB) {
+        /**
+         * We generate certs for two scenarios. 1. Node<->Node Encryption 2. Client<->Node
+         * Encryption For the first case, we generate the certs which are specific to node & are
+         * copied over to the node(platform doesn't store the same). For the second case, platform
+         * generate those certs with DEFAULT_CLIENT, i.e, yugabyte, that we need to store
+         * corresponding to that certificate. Therefore, we are storing only the later certs in the
+         * DB.
+         */
+        FileData.writeFileToDB(clientCertPath);
+        FileData.writeFileToDB(clientKeyPath);
+      }
     } else {
       // storagePath is null, converting it to string and returning it.
       certificateDetails.crt = getAsPemString(clientCert);
@@ -508,7 +528,7 @@ public class CertificateHelper {
           certPath,
           keyPath,
           Json.toJson(customCertInfo));
-      return cert.uuid;
+      return cert.getUuid();
     } catch (IOException | NoSuchAlgorithmException e) {
       LOG.error(
           "uploadRootCA: Could not generate checksum for cert {} for customer {}",
@@ -521,7 +541,7 @@ public class CertificateHelper {
 
   public static String getCertPEMFileContents(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    return FileUtils.readFileToString(new File(cert.certificate));
+    return FileUtils.readFileToString(new File(cert.getCertificate()));
   }
 
   public static String getCertPEM(UUID rootCA) {
@@ -531,17 +551,17 @@ public class CertificateHelper {
   }
 
   public static String getCertPEM(CertificateInfo cert) {
-    String certPEM = FileUtils.readFileToString(new File(cert.certificate));
+    String certPEM = FileUtils.readFileToString(new File(cert.getCertificate()));
     certPEM = Base64.getEncoder().encodeToString(certPEM.getBytes());
     return certPEM;
   }
 
   public static String getKeyPEM(CertificateInfo cert) {
-    if (cert.certType == CertConfigType.HashicorpVault
-        || (cert.certType == CertConfigType.K8SCertManager)) {
+    if (cert.getCertType() == CertConfigType.HashicorpVault
+        || (cert.getCertType() == CertConfigType.K8SCertManager)) {
       return "";
     }
-    String privateKeyPEM = FileUtils.readFileToString(new File(cert.privateKey));
+    String privateKeyPEM = FileUtils.readFileToString(new File(cert.getPrivateKey()));
     privateKeyPEM = Base64.getEncoder().encodeToString(privateKeyPEM.getBytes());
     return privateKeyPEM;
   }
@@ -553,14 +573,14 @@ public class CertificateHelper {
 
   public static String getClientCertFile(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    File certFile = new File(cert.certificate);
+    File certFile = new File(cert.getCertificate());
     String path = certFile.getParentFile().toString();
     return String.format("%s/%s", path, CLIENT_CERT);
   }
 
   public static String getClientKeyFile(UUID rootCA) {
     CertificateInfo cert = CertificateInfo.get(rootCA);
-    File certFile = new File(cert.certificate);
+    File certFile = new File(cert.getCertificate());
     String path = certFile.getParentFile().toString();
     return String.format("%s/%s", path, CLIENT_KEY);
   }
@@ -569,8 +589,8 @@ public class CertificateHelper {
     try {
       CertificateInfo cer1 = CertificateInfo.get(cert1);
       CertificateInfo cer2 = CertificateInfo.get(cert2);
-      FileInputStream is1 = new FileInputStream(cer1.certificate);
-      FileInputStream is2 = new FileInputStream(cer2.certificate);
+      FileInputStream is1 = new FileInputStream(cer1.getCertificate());
+      FileInputStream is2 = new FileInputStream(cer2.getCertificate());
       CertificateFactory fact = CertificateFactory.getInstance("X.509");
       X509Certificate certObj1 = (X509Certificate) fact.generateCertificate(is1);
       X509Certificate certObj2 = (X509Certificate) fact.generateCertificate(is2);
@@ -596,10 +616,10 @@ public class CertificateHelper {
     List<CertificateInfo> certs = CertificateInfo.getAllNoChecksum();
     for (CertificateInfo cert : certs) {
       try {
-        cert.setChecksum();
+        cert.updateChecksum();
       } catch (IOException | NoSuchAlgorithmException e) {
         // Log error, but don't cause it to error out.
-        LOG.error("Could not generate checksum for cert: {}", cert.certificate);
+        LOG.error("Could not generate checksum for cert: {}", cert.getCertificate());
       }
     }
   }
@@ -635,7 +655,6 @@ public class CertificateHelper {
 
   @SuppressWarnings("unchecked")
   public static List<X509Certificate> convertStringToX509CertList(String certContent) {
-    java.security.Security.addProvider(new BouncyCastleProvider());
     try {
       InputStream in;
       byte[] certEntryBytes = certContent.getBytes();
@@ -649,8 +668,6 @@ public class CertificateHelper {
   }
 
   public static X509Certificate convertStringToX509Cert(String certificate) throws Exception {
-    java.security.Security.addProvider(new BouncyCastleProvider());
-
     certificate = certificate.replace("\\n", "");
     certificate = certificate.replaceAll("^\"+|\"+$", "");
     certificate = certificate.replace("-----BEGIN CERTIFICATE-----", "");
@@ -662,9 +679,6 @@ public class CertificateHelper {
   }
 
   public static PrivateKey convertStringToPrivateKey(String strKey) throws Exception {
-
-    java.security.Security.addProvider(new BouncyCastleProvider());
-
     strKey = strKey.replace(System.lineSeparator(), "");
     strKey = strKey.replaceAll("^\"+|\"+$", "");
     strKey = strKey.replace("-----BEGIN PRIVATE KEY-----", "");
@@ -732,8 +746,6 @@ public class CertificateHelper {
   }
 
   public static KeyPair getKeyPairObject() throws NoSuchAlgorithmException {
-    // Add the security provider in case it was never called.
-    Security.addProvider(new BouncyCastleProvider());
     KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
     keypairGen.initialize(2048);
     return keypairGen.generateKeyPair();
@@ -851,7 +863,7 @@ public class CertificateHelper {
               .setProvider(new BouncyCastleProvider())
               .getCertificate(newCertHolder);
 
-      newCert.verify(caCert.getPublicKey(), "BC");
+      newCert.verify(caCert.getPublicKey(), BouncyCastleProvider.PROVIDER_NAME);
 
       return newCert;
     } catch (Exception e) {
@@ -867,6 +879,17 @@ public class CertificateHelper {
       return certOutput.toString();
     } catch (Exception e) {
       LOG.error(e.getMessage(), e);
+      throw new RuntimeException(e.getMessage(), e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  public static Collection<X509Certificate> getCertsFromFile(String path) {
+    try (FileInputStream in = new FileInputStream(path)) {
+      CertificateFactory fact = CertificateFactory.getInstance("X.509");
+      return (List<X509Certificate>) fact.generateCertificates(in);
+    } catch (Exception e) {
+      LOG.error("Failed to read cert file {}", path, e);
       throw new RuntimeException(e.getMessage(), e);
     }
   }

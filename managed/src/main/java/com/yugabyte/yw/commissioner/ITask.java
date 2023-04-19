@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.models.TaskInfo;
-
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -31,13 +30,18 @@ public interface ITask extends Runnable {
   /** Initialize the task by reading various parameters. */
   void initialize(ITaskParams taskParams);
 
+  /** Returns the retry limit on failure. */
   default int getRetryLimit() {
     return 1;
   }
 
+  /** Invoked when the current task fails. */
   default void onFailure(TaskInfo taskInfo, Throwable cause) {}
 
-  /** Clean up the initialization */
+  /** Invoked when the current task is cancelled/aborted. */
+  default void onCancelled(TaskInfo taskInfo) {}
+
+  /** Clean up the initialization. */
   void terminate();
 
   /** A short name representing the task. */

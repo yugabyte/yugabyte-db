@@ -75,12 +75,14 @@ public class StorageUtilTest extends FakeDBApplication {
     when(mockNfsUtil.createRestoreCloudStoreSpec(anyString(), anyString(), any(), anyBoolean()))
         .thenCallRealMethod();
     doCallRealMethod().when(mockAZUtil).checkStoragePrefixValidity(anyString(), anyString());
-    s3ConfigWithSlash = CustomerConfig.createWithFormData(testCustomer.uuid, s3FormDataWithSlash);
+    s3ConfigWithSlash =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormDataWithSlash);
     s3ConfigWithoutSlash =
-        CustomerConfig.createWithFormData(testCustomer.uuid, s3FormDataWithoutSlash);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), s3FormDataWithoutSlash);
     nfsConfigWithoutSlash =
-        CustomerConfig.createWithFormData(testCustomer.uuid, nfsFormDataNoSlash);
-    nfsConfigWithSlash = CustomerConfig.createWithFormData(testCustomer.uuid, nfsFormDataWithSlash);
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), nfsFormDataNoSlash);
+    nfsConfigWithSlash =
+        CustomerConfig.createWithFormData(testCustomer.getUuid(), nfsFormDataWithSlash);
   }
 
   @Test(expected = Test.None.class)
@@ -115,11 +117,11 @@ public class StorageUtilTest extends FakeDBApplication {
   @Test(expected = PlatformServiceException.class)
   @Parameters(
       value = {
-        "NFS, /yugabyte_backup, "
+        "NFS, /yugabyte_backup1, "
             + "/yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "NFS, /, /yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
+        "NFS, /, yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
         "NFS, //, /yugabyte_backup/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
-        "NFS, /tmp/nfs/yugabyte_backup, /tmp/nfs/yugabyte_backup"
+        "NFS, /tmp/nfs/yugabyte_backup, /tmp/nfs/yugabte_backup"
             + "/univ-00000000-0000-0000-0000-000000000000/ybc_backup-foo/bar",
         "S3, s3://backup-1, s3://backup/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
         "S3, s3://backup-1/test, s3://backup/univ-00000000-0000-0000-0000-000000000000"
@@ -128,7 +130,7 @@ public class StorageUtilTest extends FakeDBApplication {
             + "/backup-foo/bar",
         "AZ, https://x.y.z.first/test, https://x.y.z.next/test"
             + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
-        "AZ, https://x.y.z.first/test, https://x.y.z.first/test-1"
+        "AZ, https://x.y.z.first/test, https://x.y.z.first/tes-1"
             + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",
         "GCS, https://storage.googleapis.com/test-1, gs://test"
             + "/univ-00000000-0000-0000-0000-000000000000/backup-foo/bar",

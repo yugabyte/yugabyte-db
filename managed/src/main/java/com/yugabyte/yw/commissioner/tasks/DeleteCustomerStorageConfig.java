@@ -55,7 +55,7 @@ public class DeleteCustomerStorageConfig extends AbstractTaskBase {
         backupList.forEach(backup -> backup.transitionState(BackupState.QueuedForDeletion));
         configValidator.validateConfigRemoval(customerConfig);
       }
-      customerConfig.setState(ConfigState.QueuedForDeletion);
+      customerConfig.updateState(ConfigState.QueuedForDeletion);
     } catch (Exception e) {
       log.error("Error while deleting Configuration {}: ", params().configUUID, e);
       throw new RuntimeException(e.getMessage());

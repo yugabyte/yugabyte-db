@@ -54,7 +54,7 @@
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
 #include "yb/util/faststring.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/net/inetaddress.h"
 #include "yb/util/net/sockaddr.h"
@@ -77,7 +77,7 @@ using std::string;
 using std::numeric_limits;
 using strings::Substitute;
 
-DEFINE_string(
+DEFINE_UNKNOWN_string(
     net_address_filter,
     "ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,ipv6_all",
     "Order in which to select ip addresses returned by the resolver"

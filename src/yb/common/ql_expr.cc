@@ -76,9 +76,9 @@ bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr) {
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
-                                        const QLTableRow& table_row,
-                                        QLExprResultWriter result_writer,
-                                        const Schema *schema) {
+                                const QLTableRow& table_row,
+                                QLExprResultWriter result_writer,
+                                const Schema *schema) {
   switch (ql_expr.expr_case()) {
     case QLExpressionPB::ExprCase::kValue:
       result_writer.SetExisting(&ql_expr.value());
@@ -126,7 +126,9 @@ Status QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
       break;
 
     case QLExpressionPB::ExprCase::kBfcall:
-      return EvalBFCall<bfql::BFOpcode>(ql_expr.bfcall(), table_row, &result_writer.NewValue());
+      result_writer.NewValue() = VERIFY_RESULT(
+          EvalBFCall<bfql::BFOpcode>(ql_expr.bfcall(), table_row));
+      return Status::OK();
 
     case QLExpressionPB::ExprCase::kTscall:
       return EvalTSCall(ql_expr.tscall(), table_row, &result_writer.NewValue(), schema);
@@ -145,8 +147,8 @@ Status QLExprExecutor::EvalExpr(const QLExpressionPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalExpr(QLExpressionPB* ql_expr,
-                                        const QLTableRow& table_row,
-                                        const Schema *schema) {
+                                const QLTableRow& table_row,
+                                const Schema *schema) {
   if (!ql_expr->has_value()) {
     QLExprResult temp;
     RETURN_NOT_OK(EvalExpr(*ql_expr, table_row, temp.Writer(), schema));
@@ -158,8 +160,8 @@ Status QLExprExecutor::EvalExpr(QLExpressionPB* ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::ReadExprValue(const QLExpressionPB& ql_expr,
-                                             const QLTableRow& table_row,
-                                             QLExprResultWriter result_writer) {
+                                     const QLTableRow& table_row,
+                                     QLExprResultWriter result_writer) {
   if (ql_expr.expr_case() == QLExpressionPB::ExprCase::kTscall) {
     return ReadTSCallValue(ql_expr.tscall(), table_row, result_writer);
   } else {
@@ -169,17 +171,8 @@ Status QLExprExecutor::ReadExprValue(const QLExpressionPB& ql_expr,
 
 //--------------------------------------------------------------------------------------------------
 
-void AddArgs(QLValuePB* result, std::vector<QLValuePB>* args) {
-  args->emplace_back();
-}
-
-void AddArgs(LWQLValuePB* result, std::vector<LWQLValuePB>* args) {
-  args->emplace_back(&result->arena());
-}
-
-template <class OpCode, class Expr, class Value>
-Status QLExprExecutor::EvalBFCall(
-    const Expr& bfcall, const QLTableRow& table_row, Value* result) {
+template <class OpCode, class Expr>
+Result<QLValuePB> QLExprExecutor::EvalBFCall(const Expr& bfcall, const QLTableRow& table_row) {
   // TODO(neil)
   // - Use TSOpode for collection expression if only TabletServer can execute.
   // OR
@@ -196,32 +189,32 @@ Status QLExprExecutor::EvalBFCall(
   //   "SubListList"
 
   // First evaluate the arguments.
-  std::vector<Value> args;
+  std::vector<QLValuePB> args;
   args.reserve(bfcall.operands().size());
-  ExprResult<Value> temp(result);
+  ExprResult<QLValuePB> temp;
   for (const auto& operand : bfcall.operands()) {
     RETURN_NOT_OK(EvalExpr(operand, table_row, temp.Writer()));
-    AddArgs(result, &args);
+    args.emplace_back();
     temp.MoveTo(&args.back());
   }
 
   // Execute the builtin call associated with the given opcode.
-  return ExecBfunc(static_cast<OpCode>(bfcall.opcode()), &args, result);
+  return ExecBfunc(static_cast<OpCode>(bfcall.opcode()), args);
 }
 
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalTSCall(const QLBCallPB& ql_expr,
-                                          const QLTableRow& table_row,
-                                          QLValuePB *result,
-                                          const Schema *schema) {
+                                  const QLTableRow& table_row,
+                                  QLValuePB *result,
+                                  const Schema *schema) {
   SetNull(result);
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
 
 Status QLExprExecutor::ReadTSCallValue(const QLBCallPB& ql_expr,
-                                               const QLTableRow& table_row,
-                                               QLExprResultWriter result_writer) {
+                                       const QLTableRow& table_row,
+                                       QLExprResultWriter result_writer) {
   result_writer.SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
@@ -229,8 +222,8 @@ Status QLExprExecutor::ReadTSCallValue(const QLBCallPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
-                                             const QLTableRow& table_row,
-                                             bool* result) {
+                                     const QLTableRow& table_row,
+                                     bool* result) {
   QLValuePB result_pb;
   RETURN_NOT_OK(EvalCondition(condition, table_row, &result_pb));
   *result = result_pb.bool_value();
@@ -313,8 +306,8 @@ Result<bool> Between(
 }
 
 Status QLExprExecutor::EvalCondition(const QLConditionPB& condition,
-                                             const QLTableRow& table_row,
-                                             QLValuePB *result) {
+                                     const QLTableRow& table_row,
+                                     QLValuePB *result) {
 #define QL_EVALUATE_RELATIONAL_OP(op) \
   result->set_bool_value(VERIFY_RESULT(EvalRelationalOp(this, operands, table_row, op, &temp))); \
   return Status::OK();
@@ -448,24 +441,17 @@ bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr) {
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalExpr(const PgsqlExpressionPB& ql_expr,
-                                        const QLTableRow* table_row,
-                                        QLExprResultWriter result_writer,
-                                        const Schema *schema) {
-  return DoEvalExpr(ql_expr, table_row, result_writer, schema);
-}
-
-Status QLExprExecutor::EvalExpr(const LWPgsqlExpressionPB& ql_expr,
-                                        const QLTableRow* table_row,
-                                        LWExprResultWriter result_writer,
-                                        const Schema *schema) {
+                                const QLTableRow* table_row,
+                                QLExprResultWriter result_writer,
+                                const Schema *schema) {
   return DoEvalExpr(ql_expr, table_row, result_writer, schema);
 }
 
 template <class PB, class Writer>
 Status QLExprExecutor::DoEvalExpr(const PB& ql_expr,
-                                          const QLTableRow* table_row,
-                                          Writer result_writer,
-                                          const Schema *schema) {
+                                  const QLTableRow* table_row,
+                                  Writer result_writer,
+                                  const Schema *schema) {
   switch (ql_expr.expr_case()) {
     case PgsqlExpressionPB::ExprCase::kValue:
       result_writer.SetExisting(&ql_expr.value());
@@ -475,7 +461,9 @@ Status QLExprExecutor::DoEvalExpr(const PB& ql_expr,
       return EvalColumnRef(ql_expr.column_id(), table_row, result_writer);
 
     case PgsqlExpressionPB::ExprCase::kBfcall:
-      return EvalBFCall<bfpg::BFOpcode>(ql_expr.bfcall(), *table_row, &result_writer.NewValue());
+      result_writer.NewValue() = VERIFY_RESULT(
+          EvalBFCall<bfpg::BFOpcode>(ql_expr.bfcall(), *table_row));
+      return Status::OK();
 
     case PgsqlExpressionPB::ExprCase::kTscall:
       return EvalTSCall(ql_expr.tscall(), *table_row, &result_writer.NewValue(), schema);
@@ -496,8 +484,8 @@ Status QLExprExecutor::DoEvalExpr(const PB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
-                                             const QLTableRow& table_row,
-                                             QLExprResultWriter result_writer) {
+                                     const QLTableRow& table_row,
+                                     QLExprResultWriter result_writer) {
   if (ql_expr.expr_case() == PgsqlExpressionPB::ExprCase::kTscall) {
     return ReadTSCallValue(ql_expr.tscall(), table_row, result_writer);
   } else {
@@ -508,14 +496,14 @@ Status QLExprExecutor::ReadExprValue(const PgsqlExpressionPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                             const QLTableRow* table_row,
-                                             QLExprResultWriter result_writer) {
+                                     const QLTableRow* table_row,
+                                     QLExprResultWriter result_writer) {
   return DoEvalColumnRef(col_id, table_row, result_writer);
 }
 
 Status QLExprExecutor::EvalColumnRef(ColumnIdRep col_id,
-                                             const QLTableRow* table_row,
-                                             LWExprResultWriter result_writer) {
+                                     const QLTableRow* table_row,
+                                     LWExprResultWriter result_writer) {
   return DoEvalColumnRef(col_id, table_row, result_writer);
 }
 
@@ -533,24 +521,16 @@ Status QLExprExecutor::DoEvalColumnRef(
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalTSCall(const PgsqlBCallPB& ql_expr,
-                                          const QLTableRow& table_row,
-                                          QLValuePB *result,
-                                          const Schema *schema) {
-  SetNull(result);
-  return STATUS(RuntimeError, "Only tablet server can execute this operator");
-}
-
-Status QLExprExecutor::EvalTSCall(const LWPgsqlBCallPB& ql_expr,
-                                          const QLTableRow& table_row,
-                                          LWQLValuePB *result,
-                                          const Schema *schema) {
+                                  const QLTableRow& table_row,
+                                  QLValuePB *result,
+                                  const Schema *schema) {
   SetNull(result);
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
 
 Status QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
-                                               const QLTableRow& table_row,
-                                               QLExprResultWriter result_writer) {
+                                       const QLTableRow& table_row,
+                                       QLExprResultWriter result_writer) {
   result_writer.SetNull();
   return STATUS(RuntimeError, "Only tablet server can execute this operator");
 }
@@ -558,8 +538,8 @@ Status QLExprExecutor::ReadTSCallValue(const PgsqlBCallPB& ql_expr,
 //--------------------------------------------------------------------------------------------------
 
 Status QLExprExecutor::EvalCondition(const PgsqlConditionPB& condition,
-                                             const QLTableRow& table_row,
-                                             bool* result) {
+                                     const QLTableRow& table_row,
+                                     bool* result) {
   QLValuePB result_pb;
   RETURN_NOT_OK(EvalCondition(condition, table_row, &result_pb));
   *result = result_pb.bool_value();
@@ -769,8 +749,8 @@ Status QLTableRow::ReadColumn(ColumnIdRep col_id, LWExprResultWriter result_writ
 }
 
 Status QLTableRow::ReadSubscriptedColumn(const QLSubscriptedColPB& subcol,
-                                                 const QLValuePB& index_arg,
-                                                 QLExprResultWriter result_writer) const {
+                                         const QLValuePB& index_arg,
+                                         QLExprResultWriter result_writer) const {
   const auto* value = GetColumn(subcol.column_id());
   if (!value) {
     // Does not exist.
@@ -807,7 +787,8 @@ Result<const QLTableColumn&> QLTableRow::Column(ColumnIdRep col_id) const {
   const auto* column = FindColumn(col_id);
   if (column == nullptr) {
     // Does not exist.
-    return STATUS(InternalError, "Column unexpectedly not found in cache");
+    return STATUS_FORMAT(
+        InternalError, "Column ($0) unexpectedly not found in cache", col_id);
   }
 
   return *column;

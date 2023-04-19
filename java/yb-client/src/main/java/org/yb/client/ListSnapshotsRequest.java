@@ -64,14 +64,16 @@ public class ListSnapshotsRequest extends YRpc<ListSnapshotsResponse> {
 
         final ListSnapshotsResponsePB.Builder respBuilder = ListSnapshotsResponsePB.newBuilder();
         readProtobuf(callResponse.getPBMessage(), respBuilder);
+        boolean hasErr = respBuilder.hasError();
         MasterTypes.MasterErrorPB serverError =
-                respBuilder.hasError() ? respBuilder.getError() : null;
+                hasErr ? respBuilder.getError() : null;
 
         List<SnapshotInfo> snapshotInfoList = new LinkedList<>();
-        for (SnapshotInfoPB snapshot: respBuilder.getSnapshotsList()) {
-            snapshotInfoList.add(SnapshotUtil.parseSnapshotInfoPB(snapshot));
+        if (!hasErr) {
+            for (SnapshotInfoPB snapshot: respBuilder.getSnapshotsList()) {
+                snapshotInfoList.add(SnapshotUtil.parseSnapshotInfoPB(snapshot));
+            }
         }
-
         ListSnapshotsResponse response =
                 new ListSnapshotsResponse(deadlineTracker.getElapsedMillis(),
                         masterUUID, serverError, snapshotInfoList);

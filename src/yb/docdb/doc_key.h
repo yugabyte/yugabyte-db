@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_KEY_H_
-#define YB_DOCDB_DOC_KEY_H_
+#pragma once
 
 #include <ostream>
 #include <vector>
@@ -22,12 +21,9 @@
 
 #include "yb/common/constants.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
-
-#include "yb/rocksdb/env.h"
-#include "yb/rocksdb/filter_policy.h"
 
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/slice.h"
@@ -218,6 +214,8 @@ class DocKey {
   static Result<DocKeySizes> EncodedHashPartAndDocKeySizes(
       Slice slice, AllowSpecial allow_special = AllowSpecial::kFalse);
 
+  static yb::DocKeyOffsets ComputeKeyColumnOffsets(const Schema& schema);
+
   // Decode the current document key from the given slice, but expect all bytes to be consumed, and
   // return an error status if that is not the case.
   Status FullyDecodeFrom(const Slice& slice);
@@ -398,6 +396,7 @@ class DocKeyDecoder {
   Result<bool> DecodeCotableId(Uuid* uuid = nullptr);
   Result<bool> DecodeColocationId(ColocationId* colocation_id = nullptr);
 
+  Status DecodeToKeys();
   Result<bool> HasPrimitiveValue(AllowSpecial allow_special = AllowSpecial::kFalse);
 
   Result<bool> DecodeHashCode(
@@ -426,8 +425,6 @@ class DocKeyDecoder {
     return &input_;
   }
 
-  Status DecodeToRangeGroup();
-
  private:
   Slice input_;
 };
@@ -440,6 +437,8 @@ Result<bool> ClearRangeComponents(KeyBytes* out, AllowSpecial allow_special = Al
 Result<bool> HashedOrFirstRangeComponentsEqual(const Slice& lhs, const Slice& rhs);
 
 bool DocKeyBelongsTo(Slice doc_key, const Schema& schema);
+
+Result<bool> IsColocatedTableTombstoneKey(Slice doc_key);
 
 // Consumes single primitive value from start of slice.
 // Returns true when value was consumed, false when group end is found. The group end byte is
@@ -587,8 +586,8 @@ class SubDocKey {
   //     Whether it is allowed to have special value types in slice, that are used during seek.
   //     If such value type is found, decoding is stopped w/o error.
   Status DecodeFrom(Slice* slice,
-                            HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue,
-                            AllowSpecial allow_special = AllowSpecial::kFalse);
+                    HybridTimeRequired require_hybrid_time = HybridTimeRequired::kTrue,
+                    AllowSpecial allow_special = AllowSpecial::kFalse);
 
   // Similar to DecodeFrom, but requires that the entire slice is decoded, and thus takes a const
   // reference to a slice. This still respects the require_hybrid_time parameter, but in case a
@@ -821,68 +820,5 @@ inline std::ostream& operator <<(std::ostream& out, const SubDocKey& subdoc_key)
 std::string BestEffortDocDBKeyToStr(const KeyBytes &key_bytes);
 std::string BestEffortDocDBKeyToStr(const Slice &slice);
 
-class DocDbAwareFilterPolicyBase : public rocksdb::FilterPolicy {
- public:
-  explicit DocDbAwareFilterPolicyBase(size_t filter_block_size_bits, rocksdb::Logger* logger) {
-    builtin_policy_.reset(rocksdb::NewFixedSizeFilterPolicy(
-        filter_block_size_bits, rocksdb::FilterPolicy::kDefaultFixedSizeFilterErrorRate, logger));
-  }
-
-  void CreateFilter(const Slice* keys, int n, std::string* dst) const override;
-
-  bool KeyMayMatch(const Slice& key, const Slice& filter) const override;
-
-  rocksdb::FilterBitsBuilder* GetFilterBitsBuilder() const override;
-
-  rocksdb::FilterBitsReader* GetFilterBitsReader(const Slice& contents) const override;
-
-  FilterType GetFilterType() const override;
-
- private:
-  std::unique_ptr<const rocksdb::FilterPolicy> builtin_policy_;
-};
-
-// This filter policy only takes into account hashed components of keys for filtering.
-class DocDbAwareHashedComponentsFilterPolicy : public DocDbAwareFilterPolicyBase {
- public:
-  DocDbAwareHashedComponentsFilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
-      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
-
-  const char* Name() const override { return "DocKeyHashedComponentsFilter"; }
-
-  const KeyTransformer* GetKeyTransformer() const override;
-};
-
-// Together with the fix for BlockBasedTableBuild::Add
-// (https://github.com/yugabyte/yugabyte-db/issues/6435) we also disable DocKeyV2Filter
-// for range-partitioned tablets. For hash-partitioned tablets it will be supported during read
-// path and will work the same way as DocDbAwareV3FilterPolicy.
-class DocDbAwareV2FilterPolicy : public DocDbAwareFilterPolicyBase {
- public:
-  DocDbAwareV2FilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
-      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
-
-  const char* Name() const override { return "DocKeyV2Filter"; }
-
-  const KeyTransformer* GetKeyTransformer() const override;
-};
-
-// This filter policy takes into account following parts of keys for filtering:
-// - For range-based partitioned tables (such tables have 0 hashed components):
-// use all hash components of the doc key.
-// - For hash-based partitioned tables (such tables have >0 hashed components):
-// use first range component of the doc key.
-class DocDbAwareV3FilterPolicy : public DocDbAwareFilterPolicyBase {
- public:
-  DocDbAwareV3FilterPolicy(size_t filter_block_size_bits, rocksdb::Logger* logger)
-      : DocDbAwareFilterPolicyBase(filter_block_size_bits, logger) {}
-
-  const char* Name() const override { return "DocKeyV3Filter"; }
-
-  const KeyTransformer* GetKeyTransformer() const override;
-};
-
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOC_KEY_H_

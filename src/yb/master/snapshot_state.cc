@@ -27,35 +27,34 @@
 #include "yb/tablet/tablet_snapshots.h"
 
 #include "yb/tserver/backup.pb.h"
+#include "yb/tserver/tserver_error.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 
 using namespace std::literals;
 
-DEFINE_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
+DEFINE_UNKNOWN_uint64(snapshot_coordinator_cleanup_delay_ms, 30000,
               "Delay for snapshot cleanup after deletion.");
 
-DEFINE_int64(max_concurrent_snapshot_rpcs, -1,
-             "Maximum number of tablet snapshot RPCs that can be outstanding. "
-             "Only used if its value is >= 0. If its value is 0 then it means that "
-             "INT_MAX number of snapshot rpcs can be concurrent. "
-             "If its value is < 0 then the max_concurrent_snapshot_rpcs_per_tserver gflag and "
-             "the number of TServers in the primary cluster are used to determine "
-             "the number of maximum number of tablet snapshot RPCs that can be outstanding.");
-TAG_FLAG(max_concurrent_snapshot_rpcs, runtime);
+DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs, -1,
+    "Maximum number of tablet snapshot RPCs that can be outstanding. "
+    "Only used if its value is >= 0. If its value is 0 then it means that "
+    "INT_MAX number of snapshot rpcs can be concurrent. "
+    "If its value is < 0 then the max_concurrent_snapshot_rpcs_per_tserver gflag and "
+    "the number of TServers in the primary cluster are used to determine "
+    "the number of maximum number of tablet snapshot RPCs that can be outstanding.");
 
-DEFINE_int64(max_concurrent_snapshot_rpcs_per_tserver, 1,
-             "Maximum number of tablet snapshot RPCs per tserver that can be outstanding. "
-             "Only used if the value of the gflag max_concurrent_snapshot_rpcs is < 0. "
-             "When used it is multiplied with the number of TServers in the active cluster "
-             "(not read-replicas) to obtain the total maximum concurrent snapshot RPCs. If "
-             "the cluster config is not found and we are not able to determine the number of "
-             "live tservers then the total maximum concurrent snapshot RPCs is just the "
-             "value of this flag.");
-TAG_FLAG(max_concurrent_snapshot_rpcs_per_tserver, runtime);
+DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs_per_tserver, 1,
+    "Maximum number of tablet snapshot RPCs per tserver that can be outstanding. "
+    "Only used if the value of the gflag max_concurrent_snapshot_rpcs is < 0. "
+    "When used it is multiplied with the number of TServers in the active cluster "
+    "(not read-replicas) to obtain the total maximum concurrent snapshot RPCs. If "
+    "the cluster config is not found and we are not able to determine the number of "
+    "live tservers then the total maximum concurrent snapshot RPCs is just the "
+    "value of this flag.");
 
 namespace yb {
 namespace master {
@@ -206,16 +205,22 @@ bool SnapshotState::NeedCleanup() const {
          !cleanup_tracker_.Started();
 }
 
-bool SnapshotState::IsTerminalFailure(const Status& status) {
+std::optional<SysSnapshotEntryPB::State> SnapshotState::GetTerminalStateForStatus(
+    const Status& status) {
   // Table was removed.
   if (status.IsExpired()) {
-    return true;
+    return SysSnapshotEntryPB::FAILED;
   }
   // Would not be able to create snapshot at specific time, since history was garbage collected.
   if (TransactionError(status) == TransactionErrorCode::kSnapshotTooOld) {
-    return true;
+    return SysSnapshotEntryPB::FAILED;
   }
-  return false;
+  // Trying to delete a snapshot of an already deleted tablet.
+  if (tserver::TabletServerError(status) == tserver::TabletServerErrorPB::TABLET_NOT_FOUND &&
+      initial_state() == SysSnapshotEntryPB::DELETING) {
+    return SysSnapshotEntryPB::DELETED;
+  }
+  return std::nullopt;
 }
 
 bool SnapshotState::ShouldUpdate(const SnapshotState& other) const {

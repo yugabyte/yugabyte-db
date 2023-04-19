@@ -12,14 +12,11 @@ menu:
     weight: 1110
 type: indexpage
 ---
-{{< note title="Note" >}}
 
 YugabyteDB has an extensible query layer. It currently implements the following APIs:
 
 * **YSQL**, a distributed SQL API wire compatible with PostgreSQL
 * **YCQL**, a semi-relational API built for high performance and massive scale, with its roots in Cassandra Query Language
-
-{{</note >}}
 
 <div class="row">
 

@@ -17,7 +17,6 @@ import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpdateGFlags;
 import static com.yugabyte.yw.models.helpers.NodeDetails.NodeState.UpgradeSoftware;
 
 import com.google.common.collect.ImmutableList;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
@@ -28,9 +27,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
-import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
@@ -63,7 +62,6 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
-import play.api.Play;
 
 /** @deprecated Use separate tasks based on UpgradeTaskBase */
 @Deprecated
@@ -136,9 +134,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<InstanceType> instanceTypes =
             InstanceType.findByProvider(
-                Provider.getOrBadRequest(UUID.fromString(provider)),
-                Play.current().injector().instanceOf(Config.class),
-                Play.current().injector().instanceOf(ConfigHelper.class));
+                Provider.getOrBadRequest(UUID.fromString(provider)), config);
         log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes
@@ -155,10 +151,10 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         }
 
         // Make sure instance type has the right storage
-        if (newInstanceType.instanceTypeDetails != null
-            && newInstanceType.instanceTypeDetails.volumeDetailsList != null
-            && newInstanceType.instanceTypeDetails.volumeDetailsList.size() > 0
-            && newInstanceType.instanceTypeDetails.volumeDetailsList.get(0).volumeType
+        if (newInstanceType.getInstanceTypeDetails() != null
+            && newInstanceType.getInstanceTypeDetails().volumeDetailsList != null
+            && newInstanceType.getInstanceTypeDetails().volumeDetailsList.size() > 0
+            && newInstanceType.getInstanceTypeDetails().volumeDetailsList.get(0).volumeType
                 == InstanceType.VolumeType.NVME) {
           throw new IllegalArgumentException(
               "Instance type "
@@ -187,18 +183,18 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           if (node.isMaster || node.isTserver) {
             Region region =
                 AvailabilityZone.maybeGet(node.azUuid)
-                    .map(az -> az.region)
+                    .map(az -> az.getRegion())
                     .orElseThrow(
                         () ->
                             new IllegalArgumentException(
                                 "Could not find region for AZ " + node.cloudInfo.az));
 
-            if (!taskParams().machineImages.containsKey(region.uuid)) {
+            if (!taskParams().machineImages.containsKey(region.getUuid())) {
               throw new IllegalArgumentException(
                   "No VM image was specified for region " + node.cloudInfo.region);
             }
 
-            nodeToRegion.putIfAbsent(node.nodeUuid, region.uuid);
+            nodeToRegion.putIfAbsent(node.nodeUuid, region.getUuid());
           }
         }
         break;
@@ -407,12 +403,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   }
 
   private SubTaskGroup createChangeInstanceTypeTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("ChangeInstanceType", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ChangeInstanceType");
     ChangeInstanceType.Params params = new ChangeInstanceType.Params();
 
     params.nodeName = node.nodeName;
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.azUuid = node.azUuid;
     params.instanceType = taskParams().getPrimaryCluster().userIntent.instanceType;
 
@@ -424,11 +419,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   }
 
   private SubTaskGroup createRootVolumeReplacementTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("ReplaceRootVolume", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("ReplaceRootVolume");
     ReplaceRootVolume.Params replaceParams = new ReplaceRootVolume.Params();
     replaceParams.nodeName = node.nodeName;
     replaceParams.azUuid = node.azUuid;
-    replaceParams.universeUUID = taskParams().universeUUID;
+    replaceParams.setUniverseUUID(taskParams().getUniverseUUID());
     replaceParams.bootDisksPerZone = this.replacementRootVolumes;
 
     ReplaceRootVolume replaceDiskTask = createTask(ReplaceRootVolume.class);
@@ -441,7 +436,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   private SubTaskGroup createRootVolumeCreationTasks(List<NodeDetails> nodes) {
     Map<UUID, List<NodeDetails>> rootVolumesPerAZ =
         nodes.stream().collect(Collectors.groupingBy(n -> n.azUuid));
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("CreateRootVolumes", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CreateRootVolumes");
     rootVolumesPerAZ
         .entrySet()
         .forEach(
@@ -469,13 +464,13 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
               fillCreateParamsForNode(params, userIntent, node);
               params.numVolumes = numVolumes;
-              params.machineImage = machineImage;
+              params.setMachineImage(machineImage);
               params.bootDisksPerZone = replacementRootVolumes;
 
               log.info(
                   "Creating {} root volumes using {} in AZ {}",
                   params.numVolumes,
-                  params.machineImage,
+                  params.getMachineImage(),
                   node.cloudInfo.az);
 
               CreateRootVolumes task = createTask(CreateRootVolumes.class);
@@ -487,9 +482,9 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   }
 
   private SubTaskGroup createNodeDetailsUpdateTask(NodeDetails node) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup("UpdateNodeDetails", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateNodeDetails");
     UpdateNodeDetails.Params updateNodeDetailsParams = new UpdateNodeDetails.Params();
-    updateNodeDetailsParams.universeUUID = taskParams().universeUUID;
+    updateNodeDetailsParams.setUniverseUUID(taskParams().getUniverseUUID());
     updateNodeDetailsParams.azUuid = node.azUuid;
     updateNodeDetailsParams.nodeName = node.nodeName;
     updateNodeDetailsParams.details = node;
@@ -531,7 +526,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     nodes.addAll(tServerNodes);
 
     UserIntent currUserIntent =
-        Universe.getOrBadRequest(taskParams().universeUUID)
+        Universe.getOrBadRequest(taskParams().getUniverseUUID())
             .getUniverseDetails()
             .getPrimaryCluster()
             .userIntent;
@@ -593,11 +588,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           if (currUserIntent.replicationFactor != 1) {
             createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.ChangeInstanceType);
-            createChangeConfigTask(
-                node,
-                false /* isAdd */,
-                SubTaskGroupType.ChangeInstanceType,
-                true /* useHostPort */);
+            createChangeConfigTask(node, false /* isAdd */, SubTaskGroupType.ChangeInstanceType);
           }
         }
 
@@ -724,7 +715,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       if (taskParams().taskType == UpgradeTaskType.ToggleTls) {
         int nodeToNodeChange =
             getNodeToNodeChangeForToggleTls(
-                Universe.getOrBadRequest(taskParams().universeUUID)
+                Universe.getOrBadRequest(taskParams().getUniverseUUID())
                     .getUniverseDetails()
                     .getPrimaryCluster()
                     .userIntent,
@@ -798,7 +789,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
           continue;
         }
 
-        List<UniverseDefinitionTaskBase.ServerType> processTypes = new ArrayList<>();
+        List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
         if (node.isMaster) processTypes.add(ServerType.MASTER);
         if (node.isTserver) processTypes.add(ServerType.TSERVER);
 
@@ -1054,7 +1045,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.DownloadingSoftware, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getConfigureTask(
@@ -1069,7 +1060,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.RotatingCert, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getConfigureTask(
@@ -1089,7 +1080,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.ToggleTls, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getConfigureTask(
@@ -1108,7 +1099,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.UpdatingGFlags, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getConfigureTask(node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None));
@@ -1128,7 +1119,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
         String.format(
             "AnsibleConfigureServers (%s) for: %s",
             SubTaskGroupType.ToggleTls, taskParams().nodePrefix);
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(subGroupDescription, executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
     for (NodeDetails node : nodes) {
       subTaskGroup.addSubTask(
           getConfigureTask(
@@ -1144,16 +1135,15 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
   }
 
   private void createUniverseSetTlsParamsTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("UniverseSetTlsParams", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseSetTlsParams");
     UniverseSetTlsParams.Params params = new UniverseSetTlsParams.Params();
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enableNodeToNodeEncrypt = taskParams().enableNodeToNodeEncrypt;
     params.enableClientToNodeEncrypt = taskParams().enableClientToNodeEncrypt;
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
     params.allowInsecure = taskParams().allowInsecure;
     params.rootCA = taskParams().rootCA;
-    params.clientRootCA = taskParams().clientRootCA;
+    params.clientRootCA = taskParams().getClientRootCA();
 
     UniverseSetTlsParams task = createTask(UniverseSetTlsParams.class);
     task.initialize(params);
@@ -1174,7 +1164,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
     AnsibleConfigureServers.Params params = new AnsibleConfigureServers.Params();
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     UserIntent userIntent =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
     // Set the device information (numVolumes, volumeSize, etc.)
@@ -1182,7 +1172,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     // Add the node name.
     params.nodeName = node.nodeName;
     // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     // Add the az uuid.
     params.azUuid = node.azUuid;
     // Add in the node placement uuid.
@@ -1203,7 +1193,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
-    params.ybcSoftwareVersion = taskParams().ybcSoftwareVersion;
+    params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
     params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1213,11 +1203,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.allowInsecure = universe.getUniverseDetails().allowInsecure;
     params.setTxnTableWaitCountFlag = universe.getUniverseDetails().setTxnTableWaitCountFlag;
     params.rootCA = universe.getUniverseDetails().rootCA;
-    params.clientRootCA = universe.getUniverseDetails().clientRootCA;
+    params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
     params.enableYEDIS = userIntent.enableYEDIS;
     params.useSystemd = userIntent.useSystemd;
 
-    UUID custUUID = Customer.get(universe.customerId).uuid;
+    UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
     params.callhomeLevel = CustomerConfig.getCallhomeLevel(custUUID);
 
     if (type == UpgradeTaskType.Software) {
@@ -1226,21 +1216,11 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       if (processType.equals(ServerType.MASTER)) {
         params.gflags = taskParams().masterGFlags;
         params.gflagsToRemove =
-            userIntent
-                .masterGFlags
-                .keySet()
-                .stream()
-                .filter(flag -> !taskParams().masterGFlags.containsKey(flag))
-                .collect(Collectors.toSet());
+            GFlagsUtil.getDeletedGFlags(userIntent.masterGFlags, taskParams().masterGFlags);
       } else {
         params.gflags = taskParams().tserverGFlags;
         params.gflagsToRemove =
-            userIntent
-                .tserverGFlags
-                .keySet()
-                .stream()
-                .filter(flag -> !taskParams().tserverGFlags.containsKey(flag))
-                .collect(Collectors.toSet());
+            GFlagsUtil.getDeletedGFlags(userIntent.tserverGFlags, taskParams().tserverGFlags);
       }
     } else if (type == UpgradeTaskType.Certs) {
       params.rootCA = taskParams().certUUID;
@@ -1250,7 +1230,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
       params.allowInsecure = taskParams().allowInsecure;
       params.rootCA = taskParams().rootCA;
-      params.clientRootCA = taskParams().clientRootCA;
+      params.setClientRootCA(taskParams().getClientRootCA());
       params.nodeToNodeChange = getNodeToNodeChangeForToggleTls(userIntent, taskParams());
     }
 

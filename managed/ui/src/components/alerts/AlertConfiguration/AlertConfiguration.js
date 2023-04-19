@@ -24,6 +24,7 @@ export const AlertConfiguration = (props) => {
   const [alertUniverseList, setAlertUniverseList] = useState([]);
   const [enablePlatformAlert, setPlatformAlert] = useState(false);
   const [alertDestinationListView, setAlertDestinationListView] = useState(false);
+
   const {
     activeTab,
     apiToken,

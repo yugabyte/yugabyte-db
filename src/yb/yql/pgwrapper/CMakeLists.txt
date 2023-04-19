@@ -18,6 +18,7 @@ set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
     yb_common
+    yb_ql_common
     yb_pggate_flags
     yb_util)
 ADD_YB_LIBRARY(yb_pgwrapper
@@ -37,11 +38,13 @@ add_dependencies(
   gen_src_yb_tserver_tserver_proto
   gen_src_yb_tserver_tserver_types_proto
   gen_src_yb_cdc_cdc_consumer_proto
+  gen_src_yb_cdc_xcluster_producer_proto
   gen_src_yb_encryption_encryption_proto
   gen_src_yb_master_master_heartbeat_proto
   gen_src_yb_master_master_types_proto
   gen_src_yb_tserver_tserver_service_proto
   gen_src_yb_rpc_any_proto
+  gen_src_yb_consensus_consensus_types_proto
   )
 
 set(PQ_UTILS_SRCS
@@ -60,7 +63,8 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     pg_tablet_split_test_base.cc
     pg_wrapper_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
-    pq_utils)
+    pq_utils
+    yb_client_test_util)
 ADD_YB_LIBRARY(pg_wrapper_test_base
                SRCS ${PG_WRAPPER_TEST_BASE_SRCS}
                DEPS ${PG_WRAPPER_TEST_BASE_DEPS})
@@ -87,8 +91,11 @@ ADD_YB_LIBRARY(ysql_upgrade
                DEPS ${YSQL_UPGRADE_DEPS})
 
 set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_test_utils
-    geo_transactions_test_base ${YB_MIN_TEST_LIBS})
+    geo_transactions_test_base rocksdb_tools ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(pg_auto_analyze-test)
+ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_catalog_perf-test)
+ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)
 ADD_YB_TEST(pg_fkey-test)
@@ -97,11 +104,14 @@ ADD_YB_TEST(pg_index_backfill-test)
 ADD_YB_TEST(pg_libpq-test)
 ADD_YB_TEST(pg_libpq_err-test)
 ADD_YB_TEST(pg_load_balancer-test)
+ADD_YB_TEST(pg_master_failover-test)
 ADD_YB_TEST(pg_mini-test)
 ADD_YB_TEST(pg_on_conflict-test)
 ADD_YB_TEST(pg_op_buffering-test)
 ADD_YB_TEST(pg_packed_row-test)
-ADD_YB_TEST(pg_pessimistic_locking-test)
+ADD_YB_TEST(pg_single_tserver-test)
+ADD_YB_TEST(pg_row_lock-test)
+ADD_YB_TEST(pg_wait_on_conflict-test)
 ADD_YB_TEST(pg_table_size-test)
 ADD_YB_TEST(pg_tablet_split-test)
 ADD_YB_TEST(pg_txn-test)
@@ -112,6 +122,9 @@ ADD_YB_TEST(geo_transactions_promotion-test)
 ADD_YB_TEST(pg_explicit_lock-test)
 ADD_YB_TEST(alter_schema_abort_txn-test)
 ADD_YB_TEST(pg_cache_refresh-test)
+ADD_YB_TEST(pg_ddl_atomicity-test)
+ADD_YB_TEST(colocation-test)
+ADD_YB_TEST(pg_namespace-test)
 
 # This is really a tool, not a test, but uses a lot of existing test infrastructure.
 ADD_YB_TEST(create_initial_sys_catalog_snapshot)
@@ -126,20 +139,13 @@ if(NOT "${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}" STREQUAL "")
        "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}")
 endif()
 
-if ("${YB_BUILD_TYPE}" STREQUAL "tsan")
-  # Don't build the initial sys catalog snapshot target automatically in TSAN. But still create the
-  # target so it could be built explicitly.
-  add_custom_target(
-    initial_sys_catalog_snapshot  # Don't add "ALL" here.
-    COMMAND ${gen_initial_sys_catalog_snapshot_cmd})
-else()
-  add_custom_target(
-    initial_sys_catalog_snapshot ALL
-    COMMAND ${gen_initial_sys_catalog_snapshot_cmd})
-endif()
+add_custom_target(
+  initial_sys_catalog_snapshot ALL
+  COMMAND ${gen_initial_sys_catalog_snapshot_cmd})
 
 add_dependencies(
   initial_sys_catalog_snapshot
+  run-with-timeout
   "${CREATE_INITIAL_SYS_CATALOG_SNAPSHOT_TARGET_NAME}"
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"

@@ -23,6 +23,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.MaintenanceService;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.AlertConfiguration.Severity;
@@ -74,6 +76,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
   private AlertDestination alertDestination;
 
   private MaintenanceService maintenanceService;
+  private AlertTemplateVariableService alertTemplateVariableService;
 
   @Before
   public void setUp() {
@@ -82,6 +85,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
     otherUniverse = ModelFactory.createUniverse("some other");
 
     maintenanceService = app.injector().instanceOf(MaintenanceService.class);
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
 
     alertDestination =
         ModelFactory.createAlertDestination(
@@ -466,7 +470,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -492,7 +496,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     AlertDefinitionFilter definitionFilter =
         AlertDefinitionFilter.builder()
-            .label(KnownAlertLabels.SOURCE_UUID, universe.universeUUID.toString())
+            .label(KnownAlertLabels.SOURCE_UUID, universe.getUniverseUUID().toString())
             .build();
 
     List<AlertDefinition> universeDefinitions = alertDefinitionService.list(definitionFilter);
@@ -547,8 +551,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(universeDefinitions, hasSize(3));
 
-    Universe universe3 = ModelFactory.createUniverse("one more", customer.getCustomerId());
-    Universe universe4 = ModelFactory.createUniverse("another more", customer.getCustomerId());
+    Universe universe3 = ModelFactory.createUniverse("one more", customer.getId());
+    Universe universe4 = ModelFactory.createUniverse("another more", customer.getId());
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
     List<Future<Void>> futures = new ArrayList<>();
@@ -556,7 +560,8 @@ public class AlertConfigurationTest extends FakeDBApplication {
       futures.add(
           executor.submit(
               () -> {
-                alertConfigurationService.save(ImmutableList.of(configuration, configuration2));
+                alertConfigurationService.save(
+                    customer.getUuid(), ImmutableList.of(configuration, configuration2));
                 return null;
               }));
     }
@@ -580,11 +585,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setCustomerUUID(null),
-        "errorJson: {\"customerUUID\":[\"may not be null\"]}");
+        "errorJson: {\"customerUUID\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setName(null),
-        "errorJson: {\"name\":[\"may not be null\"]}");
+        "errorJson: {\"name\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setName(StringUtils.repeat("a", 1001)),
@@ -592,11 +597,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setTargetType(null),
-        "errorJson: {\"targetType\":[\"may not be null\"]}");
+        "errorJson: {\"targetType\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setTarget(null),
-        "errorJson: {\"target\":[\"may not be null\"]}");
+        "errorJson: {\"target\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration ->
@@ -625,7 +630,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setTemplate(null),
-        "errorJson: {\"template\":[\"may not be null\"]}");
+        "errorJson: {\"template\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setTemplate(ALERT_CONFIG_WRITING_FAILED),
@@ -633,7 +638,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setThresholds(null),
-        "errorJson: {\"thresholds\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setDestinationUUID(randomUUID),
@@ -649,7 +654,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(null),
-        "errorJson: {\"thresholdUnit\":[\"may not be null\"]}");
+        "errorJson: {\"thresholdUnit\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.setThresholdUnit(Unit.STATUS),
@@ -657,11 +662,11 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setCondition(null),
-        "errorJson: {\"thresholds[SEVERE].condition\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds[SEVERE].condition\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(null),
-        "errorJson: {\"thresholds[SEVERE].threshold\":[\"may not be null\"]}");
+        "errorJson: {\"thresholds[SEVERE].threshold\":[\"must not be null\"]}");
 
     testValidationCreate(
         configuration -> configuration.getThresholds().get(Severity.SEVERE).setThreshold(-100D),
@@ -670,6 +675,17 @@ public class AlertConfigurationTest extends FakeDBApplication {
     testValidationCreate(
         configuration -> configuration.setDurationSec(-1),
         "errorJson: {\"durationSec\":[\"must be greater than or equal to 0\"]}");
+
+    testValidationCreate(
+        configuration -> configuration.setLabels(ImmutableMap.of("test", "some_value")),
+        "errorJson: {\"labels\":[\"variable 'test' does not exist\"]}");
+
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "test");
+    alertTemplateVariableService.save(variable);
+    testValidationCreate(
+        configuration -> configuration.setLabels(ImmutableMap.of("test", "some_value")),
+        "errorJson: {\"labels\":[\"variable 'test' does not have value 'some_value'\"]}");
 
     testValidationUpdate(
         configuration -> configuration.setCustomerUUID(randomUUID).setDestinationUUID(null),
@@ -727,7 +743,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
   private void assertTestConfiguration(AlertConfiguration configuration) {
     AlertTemplate template = MEMORY_CONSUMPTION;
-    assertThat(configuration.getCustomerUUID(), equalTo(customer.uuid));
+    assertThat(configuration.getCustomerUUID(), equalTo(customer.getUuid()));
     assertThat(configuration.getName(), equalTo(template.getName()));
     assertThat(configuration.getDescription(), equalTo(template.getDescription()));
     assertThat(configuration.getTemplate(), equalTo(template));

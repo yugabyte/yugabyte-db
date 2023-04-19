@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_RPC_SERVICE_IF_H_
-#define YB_RPC_SERVICE_IF_H_
+#pragma once
 
 #include <string>
 
@@ -85,5 +84,3 @@ class ServiceIf {
 
 }  // namespace rpc
 }  // namespace yb
-
-#endif  // YB_RPC_SERVICE_IF_H_

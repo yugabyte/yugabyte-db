@@ -1,7 +1,7 @@
 ---
-title: Data Types
-linkTitle: Data Types
-description: Data Types in YSQL
+title: Data types
+linkTitle: Data types
+description: Data types in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -15,6 +15,8 @@ This document describes the data types supported in YSQL, from the basic data ty
 
 The [JSONB document data type](../../json-support/jsonb-ysql/) is described in a separate section.
 
+{{% explore-setup-single %}}
+
 ## Strings
 
 The following character types are supported:
@@ -23,7 +25,7 @@ The following character types are supported:
 * `char(n)`: fixed-length, blank padded
 * `text`, `varchar`: variable unlimited length
 
-To test YugabyteDB’s support for character types, create a table that has columns with the following types specified:
+To test YugabyteDB support for character types, create a table that has columns with the following types specified:
 
 ```sql
 CREATE TABLE char_types (
@@ -42,7 +44,7 @@ INSERT INTO char_types (a, b, c) VALUES (
 );
 ```
 
-## Numeric Types
+## Numeric types
 
 The following numeric types are supported:
 
@@ -82,7 +84,7 @@ VALUES
   (9223372036854775800, 2147483640, 9.99);
 ```
 
-## `SERIAL` Pseudotype
+## SERIAL pseudotype
 
 In YugabyteDB, just like in PostgreSQL, a sequence is a special kind of database object that generates a sequence of integers. A sequence is often used as the primary key column in a table.
 
@@ -98,7 +100,7 @@ YSQL supports the following pseudotypes:
 * `SERIAL`:  4 bytes (1 to 2,147,483,647)
 * `BIGSERIAL`: 8 bytes (1 to 9,223,372,036,854,775,807)
 
-## Date and Time
+## Date and time
 
 Temporal data types allow us to store date and time data. The following date and time types are supported in PostgreSQL and YugabyteDB:
 
@@ -274,11 +276,11 @@ Expect the following output:
 (1 row)
 ```
 
-## Enumerations - `ENUM` Type
+## Enumerations - ENUM type
 
 YugabyteDB supports the `ENUM` type in PostgreSQL. The following examples are adapted from [Enums](http://postgresguide.com/cool/enums.html):
 
-### 1. Create `ENUM`
+### 1. Create ENUM
 
 ```sql
 CREATE TYPE e_contact_method AS ENUM (
@@ -287,7 +289,7 @@ CREATE TYPE e_contact_method AS ENUM (
   'Phone');
 ```
 
-### 2. View the `ENUM`
+### 2. View the ENUM
 
 To view the list of values across all `ENUM` types, execute the following:
 
@@ -307,7 +309,7 @@ The output should be as follows:
  e_contact_method | Phone
 ```
 
-### 3. Create a table with an `ENUM` column
+### 3. Create a table with an ENUM column
 
 ```sql
 CREATE TABLE contact_method_info (
@@ -317,7 +319,7 @@ CREATE TABLE contact_method_info (
 );
 ```
 
-### 4. Insert a row with `ENUM`
+### 4. Insert a row with ENUM
 
 The `ENUM` should have a valid value, as follows:
 
@@ -351,7 +353,7 @@ ERROR:  22P02: invalid input value for enum e_contact_method: "Fax"
 LINE 1: INSERT INTO contact_method_info VALUES ('Jeff', 'Fax', '4563...
 ```
 
-## Composite Types
+## Composite types
 
 A composite type (also known as a *user-defined type*) is a collection of data types similar to a `struct` in a programming language. The examples in this section are adapted from [PostgreSQL Data Types](https://www.tutorialspoint.com/postgresql/postgresql_data_types.htm):
 
@@ -405,9 +407,9 @@ Expect the following output:
 (1 row)
 ```
 
-## Range Types
+## Range types
 
-Range data types represent a range of values of an element type. Range types are usually referred to as the subtype of the range. The subtype needs to follow a strict order because it must be well-defined regardless of the position of element values which can be within, before, or after a value range.
+Range data types represent a range of values of an element type. Range types are usually referred to as the subtype of the range. The subtype needs to follow a strict order because it must be well-defined regardless of the position of element values, which can be within, before, or after a value range.
 
 YSQL supports the following range types:
 
@@ -446,7 +448,7 @@ The following is a syntax of an input for a range value, where *empty* is a repr
 empty
 ```
 
-*lowerbound* could be a string of a valid input for the subtype or empty if there is no lower bound. The same logic is applicable to *upperbound*. You can enclose bound values in double quotes, which is a requirement in cases when the value includes parentheses, brackets, commas, double quotes, backslashes. To define an empty-string value, you use `""` (not providing anything is interpreted as defing  an infinite bound). You may use whitespaces before and after values, but not between the parentheses or brackets, as this is interpreted as part of the lower or upper bound value.
+*lowerbound* could be a string of a valid input for the subtype or empty if there is no lower bound. The same logic is applicable to *upperbound*. You can enclose bound values in double quotes, which is a requirement in cases when the value includes parentheses, brackets, commas, double quotes, or backslashes. To define an empty-string value, you use `""` (not providing anything is interpreted as defining an infinite bound). You may use whitespaces before and after values, but not between the parentheses or brackets, as this is interpreted as part of the lower or upper bound value.
 
 You can create a range type using a constructor function named identically to the range type. The constructor functions typically have two or three arguments, with the former constructing a range in standard form (lower bound inclusive, upper bound exclusive), and the latter constructing a range with bounds specified by the third argument (one of strings "`()`", "`(]`", "`[)`", or "`[]`"). The following example shows the constructor with a lower bound, upper bound, and text argument:
 
@@ -465,4 +467,4 @@ CREATE TYPE textrange
 SELECT '( " a " " a ", " z " " z " )'::textrange;
 ```
 
-For more information on range types, see [Range Data Types](/preview/api/ysql/datatypes/type_range/).
+For more information on range types, see [Range data types](../../../api/ysql/datatypes/type_range/).

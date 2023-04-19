@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_RW_SEMAPHORE_H
-#define YB_UTIL_RW_SEMAPHORE_H
+#pragma once
 
 #include <boost/smart_ptr/detail/yield_k.hpp>
 #include <glog/logging.h>
@@ -207,4 +206,3 @@ class rw_semaphore {
 };
 
 } // namespace yb
-#endif /* YB_UTIL_RW_SEMAPHORE_H */

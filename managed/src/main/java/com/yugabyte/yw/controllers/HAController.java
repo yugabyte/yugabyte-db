@@ -27,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -37,9 +38,10 @@ public class HAController extends AuthenticatedController {
   @Inject private PlatformReplicationManager replicationManager;
 
   // TODO: (Daniel) - This could be a task
-  public Result createHAConfig() {
+  public Result createHAConfig(Http.Request request) {
     try {
-      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
+      Form<HAConfigFormData> formData =
+          formFactory.getFormDataOrBadRequest(request, HAConfigFormData.class);
 
       if (HighAvailabilityConfig.get().isPresent()) {
         LOG.error("An HA Config already exists");
@@ -50,11 +52,10 @@ public class HAController extends AuthenticatedController {
       HighAvailabilityConfig config = HighAvailabilityConfig.create(formData.get().cluster_key);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.HAConfig,
-              Objects.toString(config.getUUID(), null),
-              Audit.ActionType.Create,
-              Json.toJson(formData));
+              Objects.toString(config.getUuid(), null),
+              Audit.ActionType.Create);
       return PlatformResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error creating HA config", e);
@@ -82,25 +83,22 @@ public class HAController extends AuthenticatedController {
     }
   }
 
-  public Result editHAConfig(UUID configUUID) {
+  public Result editHAConfig(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
       if (!config.isPresent()) {
         return ApiResponse.error(NOT_FOUND, "Invalid config UUID");
       }
 
-      Form<HAConfigFormData> formData = formFactory.getFormDataOrBadRequest(HAConfigFormData.class);
+      Form<HAConfigFormData> formData =
+          formFactory.getFormDataOrBadRequest(request, HAConfigFormData.class);
 
       replicationManager.stop();
       HighAvailabilityConfig.update(config.get(), formData.get().cluster_key);
       replicationManager.start();
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
-              Audit.TargetType.HAConfig,
-              configUUID.toString(),
-              Audit.ActionType.Edit,
-              Json.toJson(formData));
+              request, Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Edit);
       return PlatformResults.withData(config);
     } catch (Exception e) {
       LOG.error("Error updating cluster key", e);
@@ -110,7 +108,7 @@ public class HAController extends AuthenticatedController {
   }
 
   // TODO: (Daniel) - This could be a task
-  public Result deleteHAConfig(UUID configUUID) {
+  public Result deleteHAConfig(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
       if (!config.isPresent()) {
@@ -127,8 +125,8 @@ public class HAController extends AuthenticatedController {
       replicationManager.stopAndDisable();
       HighAvailabilityConfig.delete(configUUID);
       auditService()
-          .createAuditEntryWithReqBody(
-              ctx(), Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Delete);
+          .createAuditEntry(
+              request, Audit.TargetType.HAConfig, configUUID.toString(), Audit.ActionType.Delete);
       return ok();
     } catch (Exception e) {
       LOG.error("Error deleting HA config", e);

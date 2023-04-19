@@ -21,5 +21,5 @@ export const FirstStep = ({ onCreateSupportBundle }) => {
         the bundle to Yugabyte Support team.
       </p>
     </div>
-  )
-}
+  );
+};

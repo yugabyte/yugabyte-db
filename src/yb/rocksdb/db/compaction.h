@@ -21,8 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef YB_ROCKSDB_DB_COMPACTION_H
-#define YB_ROCKSDB_DB_COMPACTION_H
 
 #pragma once
 
@@ -294,7 +292,7 @@ class Compaction {
 
   Slice GetLargestUserKey() const { return largest_user_key_; }
 
-  CompactionReason compaction_reason() { return compaction_reason_; }
+  CompactionReason compaction_reason() const { return compaction_reason_; }
 
   yb::PriorityThreadPoolSuspender* suspender() { return suspender_; }
   void SetSuspender(yb::PriorityThreadPoolSuspender* value) { suspender_ = value; }
@@ -394,5 +392,3 @@ class Compaction {
 extern uint64_t TotalFileSize(const std::vector<FileMetaData*>& files);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_COMPACTION_H

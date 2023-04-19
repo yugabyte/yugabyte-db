@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_VTABLE_ITERATOR_H
-#define YB_MASTER_YQL_VTABLE_ITERATOR_H
+#pragma once
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
@@ -31,19 +30,19 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
   virtual ~YQLVTableIterator();
 
-  void SkipRow() override;
-
-  Result<bool> HasNext() const override;
+  Result<bool> DoFetchNext(
+      QLTableRow* table_row,
+      const Schema* projection,
+      QLTableRow* static_row,
+      const Schema* static_projection) override;
 
   std::string ToString() const override;
 
   const Schema &schema() const override;
 
-  HybridTime RestartReadHt() override;
+  Result<HybridTime> RestartReadHt() override;
 
  private:
-  Status DoNextRow(const Schema& projection, QLTableRow* table_row) override;
-
   void Advance(bool increment);
 
   std::shared_ptr<QLRowBlock> vtable_;
@@ -53,4 +52,3 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_VTABLE_ITERATOR_H

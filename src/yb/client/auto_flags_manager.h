@@ -17,7 +17,7 @@
 #include "yb/server/server_base_options.h"
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
-#include "yb/util/auto_flags_util.h"
+#include "yb/util/flags/auto_flags_util.h"
 
 namespace yb {
 

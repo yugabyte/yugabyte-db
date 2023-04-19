@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_UUID_H
-#define YB_UTIL_UUID_H
+#pragma once
 
 #include <uuid/uuid.h>
 
@@ -274,5 +273,3 @@ inline size_t hash_value(const Uuid& uuid) {
 using UuidHash = boost::hash<Uuid>;
 
 } // namespace yb
-
-#endif // YB_UTIL_UUID_H

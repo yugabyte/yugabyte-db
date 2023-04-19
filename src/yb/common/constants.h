@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_CONSTANTS_H
-#define YB_COMMON_CONSTANTS_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -39,7 +38,6 @@ enum SortingType : uint8_t {
 
 static const char* const kObsoleteShortPrimaryTableId = "sys.catalog.uuid";
 
+constexpr auto kPitrFeatureName = "PITR";
 
 } // namespace yb
-
-#endif  // YB_COMMON_CONSTANTS_H

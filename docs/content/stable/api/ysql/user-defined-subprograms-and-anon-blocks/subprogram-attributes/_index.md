@@ -28,13 +28,13 @@ You can see the names of all of these rules in the grammars for `create [or repl
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -58,13 +58,13 @@ The _unalterable subprogram attributes_ can be set _only_ with the `create [or r
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-2" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram-2" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -81,7 +81,7 @@ The _unalterable subprogram attributes_ can be set _only_ with the `create [or r
 
 As of the current _latest_ version of YugabyteDB, user-defined subprograms can be implemented in SQL, PL/pgSQL, or C. (However, this section does not address implementing user-defined subprograms in C.)
 
-See the section [PL/pgSQL](_to_do_) for an account of that language's syntax and semantics.
+<!-- See the section [PL/pgSQL](_to_do_) for an account of that language's syntax and semantics. -->
 
 See the section [Window functions](../../exprs/window_functions/) for an account of this special kind of function.
 
@@ -92,13 +92,13 @@ The special subprogram attributes are set using a general syntax style with the 
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-3" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram-3" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -119,7 +119,7 @@ The _schema_ and the _name_ of a subprogram are set using dedicated explicit syn
 
 As it happens, and just for PostgreSQL-historical reasons, if you want to specify the _extension_ on which a new subprogram depends you can do this only by _first_ creating the subprogram and _then_ specifying the name of the _extension_ using the subprogram-specific `alter` statement.
 
-See the section [The semantics of the "depends on extension" subprogram attribute](../depends-on-extension-semantics/) for more information about this attribute.
+See the section [The semantics of the "depends on extension" subprogram attribute](depends-on-extension-semantics/) for more information about this attribute.
 
 ## Alterable subprogram attributes
 
@@ -128,13 +128,13 @@ These attributes are common for both functions and procedures:
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-4" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram-4" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -158,13 +158,13 @@ Notice that there are no procedure-specific alterable attributes. These attribut
 <ul class="nav nav-tabs nav-tabs-yb">
   <li>
     <a href="#grammar-5" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram-5" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>

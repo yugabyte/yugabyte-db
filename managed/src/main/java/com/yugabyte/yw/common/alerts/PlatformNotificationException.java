@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.common.alerts;
 
-public class PlatformNotificationException extends Exception {
+public class PlatformNotificationException extends RuntimeException {
 
   private static final long serialVersionUID = 1L;
 

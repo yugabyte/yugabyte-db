@@ -13,10 +13,7 @@
 
 package org.yb.pgsql;
 
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.fail;
+import static org.yb.AssertionWrappers.*;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -31,7 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.BuildTypeUtil;
 import org.yb.util.MiscUtil;
-import org.yb.util.MiscUtil.ThrowingRunnable;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.ProcessUtil;
 import org.yb.util.YBTestRunnerNonTsanOnly;
 
@@ -50,22 +47,6 @@ public class TestPgYbStat extends BasePgSQLTest {
     } catch (PSQLException exception) {
       assertEquals("No results were returned by the query.", exception.getMessage());
     }
-  }
-
-  // TODO: Will remove this when blocking upgrade issue lands that prohibits a system
-  // view from being properly added moving between different versions.
-  private void createQueryTerminationView(final Connection inputConnection) throws Exception {
-    String createViewQuery = "CREATE VIEW yb_terminated_queries AS " +
-      "SELECT " +
-            "D.datname AS databasename," +
-            "S.backend_pid AS backend_pid," +
-            "S.query_text AS query_text," +
-            "S.termination_reason AS termination_reason," +
-            "S.query_start AS query_start_time," +
-            "S.query_end AS query_end_time " +
-      "FROM yb_pg_stat_get_queries(NULL) AS S " +
-      "LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);";
-    executeQueryAndExpectNoResults(createViewQuery, inputConnection);
   }
 
   private void executeQueryAndExpectTempFileLimitExceeded(final String query,
@@ -187,8 +168,6 @@ public class TestPgYbStat extends BasePgSQLTest {
     executeQueryAndExpectTempFileLimitExceeded(oversized_query, connection);
 
     try (Statement statement = connection.createStatement()) {
-      createQueryTerminationView(connection);
-
       // By current implementation, we expect that the queries will overflow from the end
       // of the array and start overwiting the oldest entries stored at the beginning of
       // the array. Consider this a circular buffer.
@@ -241,8 +220,6 @@ public class TestPgYbStat extends BasePgSQLTest {
 
       executeQueryAndExpectNoResults("SET work_mem TO 2048", connection);
 
-      createQueryTerminationView(connection);
-
       // By current implementation, we expect that the queries will overflow from the end
       // of the array and start overwiting the oldest entries stored at the beginning of
       // the array. Consider this a circular buffer.
@@ -285,8 +262,6 @@ public class TestPgYbStat extends BasePgSQLTest {
     final String statement2 = "SELECT * FROM generate_series(6, 1234567)";
     executeQueryAndExpectTempFileLimitExceeded(statement1, connection1);
     executeQueryAndExpectTempFileLimitExceeded(statement2, connection2);
-
-    createQueryTerminationView(connection1);
 
     assertTrue(waitUntilConditionSatisfiedOrTimeout(
       "SELECT backend_pid, query_text FROM yb_terminated_queries", connection1,

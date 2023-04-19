@@ -29,8 +29,9 @@
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(cql_always_return_metadata_in_execute_response, false,
+DEFINE_UNKNOWN_bool(cql_always_return_metadata_in_execute_response, false,
             "Force returning the table metadata in the EXECUTE request response");
 
 namespace yb {
@@ -68,8 +69,8 @@ constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
 Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
-                                                                 const size_t pos,
-                                                                 const Value** value) const {
+                                                         const size_t pos,
+                                                         const Value** value) const {
   if (!value_map.empty()) {
     const auto itr = value_map.find(name);
     if (itr == value_map.end()) {
@@ -1635,7 +1636,7 @@ void RowsResultResponse::SerializeResultBody(faststring* mesg) const {
   LOG_IF(DFATAL, result_->rows_data().size() < 4)
       << "Absent rows_count for the CQL ROWS Result Response (rows_data: "
       << result_->rows_data().size() << " bytes, expected >= 4)";
-  mesg->append(result_->rows_data());
+  mesg->append(result_->rows_data().cdata(), result_->rows_data().size());
 }
 
 //----------------------------------------------------------------------------------------
@@ -1873,8 +1874,8 @@ CQLServerEvent::CQLServerEvent(std::unique_ptr<EventResponse> event_response)
   serialized_response_ = RefCntBuffer(temp);
 }
 
-void CQLServerEvent::Serialize(boost::container::small_vector_base<RefCntBuffer>* output) const {
-  output->push_back(serialized_response_);
+void CQLServerEvent::Serialize(rpc::ByteBlocks* output) const {
+  output->emplace_back(serialized_response_);
 }
 
 std::string CQLServerEvent::ToString() const {
@@ -1890,8 +1891,7 @@ void CQLServerEventList::Transferred(const Status& status, rpc::Connection*) {
   }
 }
 
-void CQLServerEventList::Serialize(
-    boost::container::small_vector_base<RefCntBuffer>* output) {
+void CQLServerEventList::Serialize(rpc::ByteBlocks* output) {
   for (const auto& cql_server_event : cql_server_events_) {
     cql_server_event->Serialize(output);
   }

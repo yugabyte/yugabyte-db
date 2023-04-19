@@ -26,7 +26,7 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="build-from-src-macos/">
+    <a class="section-link icon-offset" href="build-from-src-almalinux/">
       <div class="head">
         <img class="icon" src="/images/section_icons/index/troubleshoot.png" aria-hidden="true" />
         <div class="title">Build from source</div>
@@ -50,13 +50,13 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="run-unit-tests/">
+    <a class="section-link icon-offset" href="build-and-test/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/json_documents.png" aria-hidden="true" />
-        <div class="title">Run unit tests</div>
+        <div class="title">Build and test</div>
       </div>
       <div class="body">
-        Run unit tests.
+        Building and testing with yb_build.sh.
       </div>
     </a>
   </div>

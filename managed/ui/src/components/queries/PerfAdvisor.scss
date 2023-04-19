@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .parentPerfAdvisor {
   margin: 20px 20px 20px 20px;
@@ -19,7 +19,7 @@
 
   &__containerTitleFlex {
     display: flex;
-    align-items: center;
+    align-items: baseline;
   }
 
   &__containerRecommendationFlex {
@@ -134,6 +134,27 @@
   font-family: "Inter", sans-serif;
   font-weight: 700;
   line-height: 1.25;
+}
+
+.scanFailureContainer {
+  height: 46px;
+  background: rgba(231, 62, 54, 0.15);
+  border: 1px solid rgba(231, 62, 54, 0.25);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.scanFailureMessage {
+  font-size: 13px;
+  font-family: "Inter";
+  line-height: 16px;
+  font-weight: 600;
+}
+
+.warningIcon {
+  margin-right: 8px;
+  margin-top: -3px;
 }
 
 .scanTime {

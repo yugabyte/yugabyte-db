@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Vert.x PG Client for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Vert.x PG Client for YSQL
+description: Connect a Java application using Vert.x PG driver
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,20 +12,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../yugabyte-jdbc/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li>
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../yugabyte-jdbc/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 

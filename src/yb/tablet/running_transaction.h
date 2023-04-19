@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_RUNNING_TRANSACTION_H
-#define YB_TABLET_RUNNING_TRANSACTION_H
+#pragma once
 
 #include <memory>
 
@@ -58,7 +57,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   MUST_USE_RESULT bool UpdateStatus(
       TransactionStatus transaction_status, HybridTime time_of_status,
-      HybridTime coordinator_safe_time, AbortedSubTransactionSet aborted_subtxn_set);
+      HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
 
@@ -82,11 +81,19 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
     return local_commit_time_;
   }
 
-  const AbortedSubTransactionSet& last_known_aborted_subtxn_set() const {
+  const SubtxnSet& last_known_aborted_subtxn_set() const {
     return last_known_aborted_subtxn_set_;
   }
 
-  void SetLocalCommitData(HybridTime time, const AbortedSubTransactionSet& aborted_subtxn_set);
+  const HybridTime last_known_status_hybrid_time() const {
+    return last_known_status_hybrid_time_;
+  }
+
+  const IsExternalTransaction external_transaction() const {
+    return metadata_.external_transaction;
+  }
+
+  void SetLocalCommitData(HybridTime time, const SubtxnSet& aborted_subtxn_set);
   void AddReplicatedBatch(
       size_t batch_idx, boost::container::small_vector_base<uint8_t>* encoded_replicated_batches);
   void BatchReplicated(const TransactionalBatchData& value);
@@ -101,7 +108,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
              std::unique_lock<std::mutex>* lock);
 
   std::string ToString() const;
-  void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self);
+  void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self, RemoveReason reason);
 
   // Sets apply state for this transaction.
   // If data is not null, then apply intents task will be initiated if was not previously started.
@@ -128,7 +135,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   static boost::optional<TransactionStatus> GetStatusAt(
       HybridTime time,
       HybridTime last_known_status_hybrid_time,
-      TransactionStatus last_known_status);
+      TransactionStatus last_known_status,
+      bool external_transaction);
 
   void SendStatusRequest(int64_t serial_no, const RunningTransactionPtr& shared_self);
 
@@ -150,7 +158,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   // Notify provided status waiters.
   void NotifyWaiters(int64_t serial_no, HybridTime time_of_status,
                      TransactionStatus transaction_status,
-                     const AbortedSubTransactionSet& aborted_subtxn_set,
+                     const SubtxnSet& aborted_subtxn_set,
                      const std::vector<StatusRequest>& status_waiters);
 
   static Result<TransactionStatusResult> MakeAbortResult(
@@ -170,7 +178,7 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   TransactionStatus last_known_status_ = TransactionStatus::CREATED;
   HybridTime last_known_status_hybrid_time_ = HybridTime::kMin;
-  AbortedSubTransactionSet last_known_aborted_subtxn_set_;
+  SubtxnSet last_known_aborted_subtxn_set_;
   std::vector<StatusRequest> status_waiters_;
   rpc::Rpcs::Handle get_status_handle_;
   rpc::Rpcs::Handle abort_handle_;
@@ -191,5 +199,3 @@ Status MakeAbortedStatus(const TransactionId& id);
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_RUNNING_TRANSACTION_H

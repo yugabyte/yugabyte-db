@@ -42,7 +42,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"
@@ -62,7 +62,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
@@ -94,7 +94,7 @@ OperationDriver::OperationDriver(OperationTracker *operation_tracker,
     : operation_tracker_(operation_tracker),
       consensus_(consensus),
       preparer_(preparer),
-      trace_(Trace::NewTraceForParent(Trace::CurrentTrace())),
+      trace_(Trace::MaybeGetNewTraceForParent(Trace::CurrentTrace())),
       start_time_(MonoTime::Now()),
       replication_state_(NOT_REPLICATING),
       prepare_state_(NOT_PREPARED),
@@ -130,7 +130,7 @@ Status OperationDriver::Init(std::unique_ptr<Operation>* operation, int64_t term
   }
 
   if (term == OpId::kUnknownTerm && operation_) {
-    operation_->AddedToFollower();
+    RETURN_NOT_OK(operation_->AddedToFollower());
   }
 
   return Status::OK();
@@ -175,14 +175,20 @@ void OperationDriver::ExecuteAsync() {
   TRACE_FUNC();
 
   auto delay = GetAtomicFlag(&FLAGS_TEST_delay_execute_async_ms);
-  if (delay != 0 &&
-      operation_type() == OperationType::kWrite &&
-      operation_->tablet()->tablet_id() != master::kSysCatalogTabletId) {
-    LOG_WITH_PREFIX(INFO) << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n"
-                          << GetStackTrace();
-    std::this_thread::sleep_for(1ms * delay);
-  }
+  if (delay != 0 && operation_type() == OperationType::kWrite) {
+    auto tablet_result = operation_->tablet_safe();
+    if (!tablet_result.ok()) {
+      HandleFailure(tablet_result.status());
+      return;
+    }
+    auto tablet = *tablet_result;
 
+    if (tablet->tablet_id() != master::kSysCatalogTabletId) {
+      LOG_WITH_PREFIX(INFO) << " Debug sleep for: " << MonoDelta(1ms * delay) << "\n"
+                            << GetStackTrace();
+      std::this_thread::sleep_for(1ms * delay);
+    }
+  }
   auto s = preparer_->Submit(this);
 
   if (operation_) {
@@ -194,19 +200,20 @@ void OperationDriver::ExecuteAsync() {
   }
 }
 
-void OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
+Status OperationDriver::AddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
   ADOPT_TRACE(trace());
   CHECK(!GetOpId().valid());
   op_id_copy_.store(op_id, boost::memory_order_release);
 
-  operation_->AddedToLeader(op_id, committed_op_id);
+  RETURN_NOT_OK(operation_->AddedToLeader(op_id, committed_op_id));
 
   StartOperation();
+  return Status::OK();
 }
 
 void OperationDriver::PrepareAndStartTask() {
   TRACE_EVENT_FLOW_END0("operation", "PrepareAndStartTask", this);
-  Status prepare_status = PrepareAndStart();
+  Status prepare_status = PrepareAndStart(IsLeaderSide::kFalse);
   if (PREDICT_FALSE(!prepare_status.ok())) {
     HandleFailure(prepare_status);
   }
@@ -223,14 +230,14 @@ bool OperationDriver::StartOperation() {
   return true;
 }
 
-Status OperationDriver::PrepareAndStart() {
+Status OperationDriver::PrepareAndStart(IsLeaderSide is_leader_side) {
   ADOPT_TRACE(trace());
   TRACE_EVENT1("operation", "PrepareAndStart", "operation", this);
   VLOG_WITH_PREFIX(4) << "PrepareAndStart()";
   // Actually prepare and start the operation.
   prepare_physical_hybrid_time_ = GetMonoTimeMicros();
   if (operation_) {
-    RETURN_NOT_OK(operation_->Prepare());
+    RETURN_NOT_OK(operation_->Prepare(is_leader_side));
   }
 
   // Only take the lock long enough to take a local copy of the
@@ -468,6 +475,12 @@ int64_t OperationDriver::SpaceUsed() {
     return consensus_round->replicate_msg()->SpaceUsedLong();
   }
   return operation()->request()->SpaceUsedLong();
+}
+
+size_t OperationDriver::ReplicateMsgSize() {
+  return consensus_round() && consensus_round()->replicate_msg()
+             ? consensus_round()->replicate_msg()->SerializedSize()
+             : 0;
 }
 
 }  // namespace tablet

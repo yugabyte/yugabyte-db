@@ -54,6 +54,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/consensus/log_util.h"
+#include "yb/consensus/log.messages.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
@@ -62,11 +63,11 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/env.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     entries_per_index_block, 10000, "Number of entries per index block stored in WAL segment file");
 TAG_FLAG(entries_per_index_block, advanced);
 
@@ -208,7 +209,7 @@ Status LogIndex::IndexChunk::Open() {
                                         MAP_SHARED, fd_, 0));
   if (mapping_ == MAP_FAILED) {
     mapping_ = nullptr;
-    return STATUS(IOError, "Unable to mmap()", Errno(err));
+    return STATUS(IOError, "Unable to mmap()", Errno(errno));
   }
 
   return Status::OK();

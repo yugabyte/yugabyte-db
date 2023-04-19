@@ -6,8 +6,6 @@ import (
 	"context"
 	"fmt"
 	"node-agent/app/executor"
-	"node-agent/app/scheduler"
-	"node-agent/app/task"
 	"node-agent/util"
 	"os"
 	"os/signal"
@@ -23,7 +21,8 @@ var (
 )
 
 func init() {
-	ctx, cancelFunc = context.WithCancel(context.Background())
+	ctx = util.WithCorrelationID(context.Background(), util.NewUUID().String())
+	ctx, cancelFunc = context.WithCancel(ctx)
 }
 
 func Context() context.Context {
@@ -41,8 +40,9 @@ func Start() {
 	config := util.CurrentConfig()
 	nodeAgentId := config.String(util.NodeAgentIdKey)
 	if nodeAgentId == "" {
-		util.FileLogger().Fatalf("Node Agent ID must be set")
+		util.FileLogger().Fatalf(Context(), "Node Agent ID must be set")
 	}
+	executor.Init(Context())
 	host := config.String(util.NodeIpKey)
 	port := config.String(util.NodePortKey)
 
@@ -52,26 +52,23 @@ loop:
 	for {
 		select {
 		case <-ticker.C:
-			err := task.HandleUpgradedStateAfterRestart(ctx, config)
+			err := HandleRestart(Context(), config)
 			if err == nil {
 				ticker.Stop()
 				break loop
 			}
-			util.FileLogger().Errorf("Error while handling node agent UPGRADED state - %s", err.Error())
+			util.FileLogger().Errorf(Context(), "Error handling restart - %s", err.Error())
 		case <-sigs:
 			cancelFunc()
 			return
 		}
 	}
-	server, err := NewRPCServer(ctx, fmt.Sprintf("%s:%s", host, port), true)
+	addr := fmt.Sprintf("%s:%s", host, port)
+	server, err := NewRPCServer(Context(), addr, true)
 	if err != nil {
-		util.FileLogger().Fatalf("Error in starting RPC server - %s", err.Error())
+		util.FileLogger().Fatalf(Context(), "Error in starting RPC server - %s", err.Error())
 	}
-	pingStateInterval := time.Duration(config.Int(util.NodePingIntervalKey)) * time.Second
-	scheduler.GetInstance(ctx).Schedule(ctx, pingStateInterval, task.HandleAgentState(config))
-	util.ConsoleLogger().Infof("Started Service")
+	util.FileLogger().Infof(Context(), "Started Service on %s", addr)
 	<-sigs
 	server.Stop()
-	cancelFunc()
-	executor.GetInstance(ctx).WaitOnShutdown()
 }

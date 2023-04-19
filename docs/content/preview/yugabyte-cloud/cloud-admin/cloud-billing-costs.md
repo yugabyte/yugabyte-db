@@ -60,13 +60,15 @@ Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 day
 
 At the end of September, you would calculate the cost as follows.
 
-**Total instance-minutes**\
-[(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]\
-= 388800
+Total instance-minutes
+: [(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]
+: = 388800
 
-**Total vCPU cost/month** = Total instance minutes x Per minute base rate \
-\
-**Total vCPU cost/month** = 388800 x $.00416666666 ~ $1619.99
+Total vCPU cost/month
+: Total instance minutes x Per minute base rate
+
+Total vCPU cost/month
+: 388800 x $.00416666666 ~ $1619.99
 
 ## Disk storage cost
 
@@ -104,30 +106,32 @@ Then scale up to the following configuration for the final 15 days in September:
 
 At the end of September, you would have the following total usage cost:
 
-**Total disk storage**\
-[(300 GB x 15 days x 24 hours) + (1500 GB x 15 days x 24 hours)]\
-= 648000 GB-hours
+Total disk storage
+: [(300 GB x 15 days x 24 hours) + (1500 GB x 15 days x 24 hours)]
+: = 648000 GB-hours
 
-**Total instance-minutes**\
-[(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]\
-= 388800 instance-minutes
+Total instance-minutes
+: [(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]
+: = 388800 instance-minutes
 
-**Total vCPUs**\
-388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )\
-= 9 vCPUs
+Total vCPUs
+: 388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )
+: = 9 vCPUs
 
-**Free allowance (GB/month)**\
-9 vCPUs x 50 GB/month = 450 GB
+Free allowance (GB/month)
+: 9 vCPUs x 50 GB/month = 450 GB
 
-**Free allowance (GB-hours)**\
-450 GB x 30 days x 24 hours = 324000 GB-hours
+Free allowance (GB-hours)
+: 450 GB x 30 days x 24 hours = 324000 GB-hours
 
-**Disk storage overages**\
-648000 GB-hours - 324000 GB-hours = 324000 GB-hours
+Disk storage overages
+: 648000 GB-hours - 324000 GB-hours = 324000 GB-hours
 
-**Total disk storage cost/month** = Total overages (GB-hours) x Per hour base rate
+Total disk storage cost/month
+: Total overages (GB-hours) x Per hour base rate
 
-**Total disk storage cost/month** = 324000 x 0.0001388888889 = $45
+Total disk storage cost/month
+: 324000 x 0.0001388888889 = $45
 
 ## Backup storage costs
 
@@ -153,22 +157,22 @@ Assume you start a cluster with 3 nodes x 2 vCPUs (6 vCPUs) for the first 15 day
 
 At the end of September, you would have the following total backup cost.
 
-**Total instance-minutes**\
-[(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]\
-= 388800 instance-minutes
+Total instance-minutes
+: [(6 vCPUs x 15 days x 24 hours x 60 min) + (12 vCPUs x 15 days x 24 hours x 60 min)]
+: = 388800 instance-minutes
 
-**Total vCPUs**\
-388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )\
-= 9 vCPUs
+Total vCPUs
+: 388800 instance-minutes / ( 30 days x 24 hours x 60 minutes )
+: = 9 vCPUs
 
-**Free allowance (GB-month)**\
-9 vCPUs x 100 GB/month = 900 GB
+Free allowance (GB-month)
+: 9 vCPUs x 100 GB/month = 900 GB
 
-**Free allowance (GB-hours)**\
-900 GB x 30 days x 24 hours = 648000 GB-hours
+Free allowance (GB-hours)
+: 900 GB x 30 days x 24 hours = 648000 GB-hours
 
-**Backup storage overages**\
-720000 GB-hours - 648000 GB-hours = 72000 GB-hours
+Backup storage overages
+: 720000 GB-hours - 648000 GB-hours = 72000 GB-hours
 
 **Total backup storage cost/month** = Total overages (GB-hours) x Per hour base rate
 
@@ -253,11 +257,11 @@ While active, disk and backup storage are covered by the free allowance, and the
 
 When paused, instance vCPU capacity is no longer charged, while disk and backup storage are charged at the standard rate, as follows:
 
-**Disk storage (Paused)** = disk storage x hourly rate\
-200gb x 0.000138888889 = $0.0277777778/hour
+Disk storage (Paused) = disk storage x hourly rate
+: 200gb x 0.000138888889 = $0.0277777778/hour
 
-**Backup storage (Paused)**  = backup storage x hourly rate\
-400gb x 0.00003472222222 = $0.0138888889/hour
+Backup storage (Paused) = backup storage x hourly rate
+: 400gb x 0.00003472222222 = $0.0138888889/hour
 
 **Paused cluster hourly rate** = $0.0416666667/hour
 

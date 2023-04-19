@@ -2,7 +2,7 @@
 title: Add database users
 linkTitle: Add database users
 description: Add users to YugabyteDB Managed clusters
-headcontent: Provide team members and applications access to the cluster's YugabyteDB database
+headcontent: Grant team members and applications access to your database
 image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
@@ -100,9 +100,9 @@ cassandra@ycqlsh> ALTER ROLE <username> WITH PASSWORD = 'new-password';
 ## Learn more
 
 - [Manage users and roles in YugabyteDB](../../../secure/authorization/create-roles/)
-
 - [Database authorization in YugabyteDB Managed clusters](../cloud-users/)
 
 ## Next steps
 
+- [Connect using a shell](../../cloud-connect/connect-client-shell/)
 - [Connect an application](../../cloud-connect/connect-applications/)

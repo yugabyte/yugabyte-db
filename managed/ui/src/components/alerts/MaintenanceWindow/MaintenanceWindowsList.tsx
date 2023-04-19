@@ -6,12 +6,12 @@ import {
   convertUTCStringToMoment,
   deleteMaintenanceWindow,
   formatDateToUTC,
-  formatUTCStringToLocal,
   getMaintenanceWindowList,
   MaintenanceWindowSchema,
   MaintenanceWindowState,
   updateMaintenanceWindow
 } from '.';
+import { convertToISODateString, dateStrToMoment, ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { YBButton, YBCheckBox } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
@@ -77,13 +77,13 @@ const GetMaintenanceWindowActions = ({
 
   const extendTime = useMutation(
     ({ window, minutesToExtend }: { window: MaintenanceWindowSchema; minutesToExtend: number }) => {
-      const currentEndTime = convertUTCStringToMoment(window.endTime).add(
+      const currentEndTime = dateStrToMoment(window.endTime).add(
         minutesToExtend,
         'minute'
       );
       return updateMaintenanceWindow({
         ...window,
-        endTime: formatDateToUTC(currentEndTime.toDate())
+        endTime: convertToISODateString(currentEndTime.toDate())
       });
     },
     {
@@ -170,7 +170,7 @@ const GetMaintenanceWindowActions = ({
           setVisibleModal(null);
         }}
       >
-        Are you sure you want to delete "{currentWindow?.name}" maintenance window?
+        {`Are you sure you want to delete "${currentWindow?.name}" maintenance window?`}
       </YBConfirmModal>
     </div>
   );
@@ -266,7 +266,7 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
                 className="no-border"
                 dataAlign="left"
                 width={'20%'}
-                dataFormat={(cell) => formatUTCStringToLocal(cell)}
+                dataFormat={(cell) => ybFormatDate(cell)}
                 dataSort
               >
                 Start Time
@@ -277,7 +277,7 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
                 className="no-border"
                 dataAlign="left"
                 width={'20%'}
-                dataFormat={(cell) => formatUTCStringToLocal(cell)}
+                dataFormat={(cell) => ybFormatDate(cell)}
                 dataSort
               >
                 End Time

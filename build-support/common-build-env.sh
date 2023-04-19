@@ -178,10 +178,9 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc11
   gcc12
   clang
-  clang12
-  clang13
   clang14
   clang15
+  clang16
 )
 make_regex_from_list VALID_COMPILER_TYPES "${VALID_COMPILER_TYPES[@]}"
 
@@ -196,7 +195,6 @@ readonly -a VALID_ARCHITECTURES=(
   x86_64
   aarch64
   arm64
-  graviton2
 )
 make_regex_from_list VALID_ARCHITECTURES "${VALID_ARCHITECTURES[@]}"
 
@@ -248,6 +246,10 @@ readonly YB_DEFAULT_MVN_SETTINGS_PATH=$HOME/.m2/settings.xml
 MVN_OUTPUT_FILTER_REGEX='^\[INFO\] (Download(ing|ed)( from [-a-z0-9.]+)?): '
 MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] [^ ]+ already added, skipping$'
 MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Copying .*[.]jar to .*[.]jar$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Resolved: .*$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Resolved plugin: .*$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Resolved dependency: .*$'
+MVN_OUTPUT_FILTER_REGEX+='|^\[INFO\] Installing .* to .*$'
 MVN_OUTPUT_FILTER_REGEX+='|^Generating .*[.]html[.][.][.]$'
 readonly MVN_OUTPUT_FILTER_REGEX
 
@@ -487,13 +489,10 @@ set_default_compiler_type() {
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     if is_mac; then
       YB_COMPILER_TYPE=clang
+      adjust_compiler_type_on_mac
     elif [[ $OSTYPE =~ ^linux ]]; then
       detect_architecture
-      if [[ ${YB_TARGET_ARCH} == "x86_64" && ${build_type} == "asan" ]]; then
-        YB_COMPILER_TYPE=clang13
-      else
-        YB_COMPILER_TYPE=clang15
-      fi
+      YB_COMPILER_TYPE=clang15
     else
       fatal "Cannot set default compiler type on OS $OSTYPE"
     fi
@@ -503,7 +502,7 @@ set_default_compiler_type() {
 }
 
 is_clang() {
-  if [[ $YB_COMPILER_TYPE == "clang" ]]; then
+  if [[ $YB_COMPILER_TYPE == clang* ]]; then
     return 0
   else
     return 1
@@ -520,14 +519,6 @@ is_gcc() {
 
 is_ubuntu() {
   [[ -f /etc/issue ]] && grep -q Ubuntu /etc/issue
-}
-
-build_compiler_if_necessary() {
-  # Sometimes we have to build the compiler before we can run CMake.
-  if is_clang && is_linux; then
-    log "Building clang before we can run CMake with compiler pointing to clang"
-    "$YB_THIRDPARTY_DIR/build_thirdparty.sh" llvm
-  fi
 }
 
 set_compiler_type_based_on_jenkins_job_name() {
@@ -554,6 +545,7 @@ set_compiler_type_based_on_jenkins_job_name() {
       return
     fi
   fi
+  adjust_compiler_type_on_mac
   validate_compiler_type
   readonly YB_COMPILER_TYPE
   export YB_COMPILER_TYPE
@@ -600,8 +592,13 @@ set_cmake_build_type_and_compiler_type() {
   fi
 
   if [[ -z ${build_type:-} ]]; then
-    log "Setting build type to 'debug' by default"
-    build_type=debug
+    if [[ ${YB_LINKING_TYPE:-} == *-lto ]]; then
+      log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      build_type=release
+    else
+      log "Setting build type to 'debug' by default"
+      build_type=debug
+    fi
   fi
 
   normalize_build_type
@@ -1999,7 +1996,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${build_type:-} ]]; then
     build_type=$_build_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Setting build type to '$build_type' based on predefined build root ('$basename')"
     fi
     validate_build_type "$build_type"
@@ -2010,7 +2007,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_COMPILER_TYPE:-} ]]; then
     export YB_COMPILER_TYPE=$_compiler_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting compiler type to '$YB_COMPILER_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
@@ -2021,7 +2018,7 @@ handle_predefined_build_root() {
 
   if [[ -z ${YB_LINKING_TYPE:-} ]]; then
     export YB_LINKING_TYPE=$_linking_type
-    if ! "$handle_predefined_build_root_quietly"; then
+    if [[ ${handle_predefined_build_root_quietly} == "false" ]]; then
       log "Automatically setting linking type to '$YB_LINKING_TYPE' based on predefined build" \
           "root ('$basename')"
     fi
@@ -2186,10 +2183,13 @@ run_shellcheck() {
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
+    build-support/jenkins/common-lto.sh
     build-support/compiler-wrappers/compiler-wrapper.sh
     build-support/find_linuxbrew.sh
-    build-support/jenkins/build-and-test.sh
+    build-support/jenkins/build.sh
+    build-support/jenkins/test.sh
     build-support/jenkins/yb-jenkins-build.sh
+    build-support/jenkins/yb-jenkins-test.sh
     build-support/run-test.sh
     yb_build.sh
   )
@@ -2212,6 +2212,7 @@ run_shellcheck() {
 }
 
 activate_virtualenv() {
+  detect_architecture
   local virtualenv_parent_dir=$YB_BUILD_PARENT_DIR
   local virtualenv_dir=$virtualenv_parent_dir/$YB_VIRTUALENV_BASENAME
 
@@ -2253,6 +2254,14 @@ activate_virtualenv() {
       if is_mac && [[ ${YB_TARGET_ARCH:-} == "arm64" ]]; then
         python3_interpreter=/opt/homebrew/bin/python3
       fi
+
+      # Require Python version at least 3.7.
+      local python3_version
+      python3_version=$("$python3_interpreter" -V)
+      if [ "$(echo "$python3_version" | cut -d. -f2)" -lt 7 ]; then
+        fatal "Python version too low: $python3_version"
+      fi
+
       set -x
       "$python3_interpreter" -m venv "${virtualenv_dir##*/}"
     )
@@ -2489,6 +2498,9 @@ set_prebuilt_thirdparty_url() {
         # Transform "thin-lto" or "full-lto" into "thin" or "full" respectively.
         thirdparty_tool_cmd_line+=( "--lto=${YB_LINKING_TYPE%%-lto}" )
       fi
+      if [[ ! ${build_type} =~ ^(asan|tsan)$ && ${YB_COMPILER_TYPE} == clang* ]]; then
+        thirdparty_tool_cmd_line+=( "--allow-older-os" )
+      fi
       "${thirdparty_tool_cmd_line[@]}"
       YB_THIRDPARTY_URL=$(<"$BUILD_ROOT/thirdparty_url.txt")
       export YB_THIRDPARTY_URL
@@ -2637,14 +2649,31 @@ build_clangd_index() {
   log "Building Clangd index at ${clangd_index_path}"
   (
     set -x
+    # The location of the final compilation database file needs to be consistent with that in the
+    # compile_commands.py module.
     time "${YB_LLVM_TOOLCHAIN_DIR}/bin/clangd-indexer" \
         --executor=all-TUs \
         "--format=${format}" \
-        "${BUILD_ROOT}/compile_commands.json" \
+        "${BUILD_ROOT}/compile_commands/combined_postprocessed/compile_commands.json" \
         >"${clangd_index_path}"
   )
 }
 
+adjust_compiler_type_on_mac() {
+  # A workaround for old macOS build workers where the default Clang version is 13 or older.
+  if is_mac &&
+    ! is_apple_silicon &&
+    [[ ${YB_COMPILER_TYPE:-clang} == "clang" ]] &&
+    [[ $(clang --version) =~ clang\ version\ ([0-9]+) ]]
+  then
+    clang_major_version=${BASH_REMATCH[1]}
+    if [[ ${clang_major_version} -lt 14 ]]; then
+      export YB_COMPILER_TYPE=clang14
+      # Used in common-build-env-test.sh to avoid failing when the compiler type is adjusted.
+      export YB_COMPILER_TYPE_WAS_ADJUSTED=true
+    fi
+  fi
+}
 
 # -------------------------------------------------------------------------------------------------
 # Initialization

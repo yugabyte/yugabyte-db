@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_domain_default ::= ALTER DOMAIN name 
                          { SET DEFAULT expression | DROP DEFAULT }
 

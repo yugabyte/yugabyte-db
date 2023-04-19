@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_RPC_PERIODIC_H
-#define YB_RPC_PERIODIC_H
+#pragma once
 
 #include <cstdint>
 #include <functional>
@@ -209,4 +208,3 @@ class PeriodicTimer : public std::enable_shared_from_this<PeriodicTimer> {
 
 } // namespace rpc
 } // namespace yb
-#endif // YB_RPC_PERIODIC_H

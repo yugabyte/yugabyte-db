@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_PEER_H_
-#define YB_TABLET_TABLET_PEER_H_
+#pragma once
 
 #include <atomic>
 #include <future>
@@ -214,9 +213,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   void UpdateClock(HybridTime hybrid_time) override;
 
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      TransactionStatePB* request) override;
+      std::shared_ptr<LWTransactionStatePB> request) override;
 
-  void SubmitUpdateTransaction(
+  Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
 
   HybridTime SafeTimeForTransactionParticipant() override;
@@ -285,7 +284,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   }
 
   Status UpdateState(RaftGroupStatePB expected, RaftGroupStatePB new_state,
-                             const std::string& error_message);
+                     const std::string& error_message);
 
   // sets the tablet state to FAILED additionally setting the error to the provided
   // one.
@@ -317,6 +316,11 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // If details is specified then this function appends explanation of how index was calculated
   // to it.
   Result<int64_t> GetEarliestNeededLogIndex(std::string* details = nullptr) const;
+
+  // Returns the the minimum log index for transaction tables and latest log index for other tables.
+  // If FLAGS_abort_active_txns_during_cdc_bootstrap is set then all active transactions are
+  // aborted.
+  Result<OpId> GetCdcBootstrapOpIdByTableType();
 
   // Returns the amount of bytes that would be GC'd if RunLogGC() was called.
   //
@@ -404,12 +408,19 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
   Status set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id);
 
+  Status set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
+
+  HybridTime get_cdc_sdk_safe_time();
+
   OpId cdc_sdk_min_checkpoint_op_id();
 
   CoarseTimePoint cdc_sdk_min_checkpoint_op_id_expiration();
 
+  bool is_under_cdc_sdk_replication();
+
   Status SetCDCSDKRetainOpIdAndTime(
-      const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration);
+      const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+      const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
 
   Result<MonoDelta> GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_latest_active_time);
 
@@ -444,11 +455,11 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   // that were not complete on bootstrap.
   // Not implemented yet. See .cc file.
   Status StartPendingOperations(PeerRole my_role,
-                                        const consensus::ConsensusBootstrapInfo& bootstrap_info);
+                                const consensus::ConsensusBootstrapInfo& bootstrap_info);
 
   scoped_refptr<OperationDriver> CreateOperationDriver();
 
-  virtual std::unique_ptr<Operation> CreateOperation(consensus::ReplicateMsg* replicate_msg);
+  virtual std::unique_ptr<Operation> CreateOperation(consensus::LWReplicateMsg* replicate_msg);
 
   const RaftGroupMetadataPtr meta_;
 
@@ -472,7 +483,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   TabletWeakPtr tablet_weak_;
   std::atomic<TabletObjectState> tablet_obj_state_{TabletObjectState::kUninitialized};
 
-  rpc::ProxyCache* proxy_cache_;
   std::shared_ptr<consensus::RaftConsensus> consensus_;
   std::unique_ptr<TabletStatusListener> status_listener_;
   simple_spinlock prepare_replicate_lock_;
@@ -543,8 +553,6 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
     return LeaderTerm() != OpId::kUnknownTerm;
   }
 
-  void PollWaitQueue() const;
-
   TabletSplitter* tablet_splitter_;
 
   std::shared_future<client::YBClient*> client_future_;
@@ -556,5 +564,3 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif /* YB_TABLET_TABLET_PEER_H_ */

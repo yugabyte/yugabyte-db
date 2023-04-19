@@ -5,7 +5,6 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.models.XClusterConfig;
-import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
 import com.yugabyte.yw.models.XClusterTableConfig;
 import java.util.Set;
 import javax.inject.Inject;
@@ -50,7 +49,7 @@ public class XClusterConfigSetStatusForTables extends XClusterConfigTaskBase {
 
     try {
       // Save the desired status in the DB.
-      xClusterConfig.setStatusForTables(taskParams().tableIds, taskParams().desiredStatus);
+      xClusterConfig.updateStatusForTables(taskParams().tableIds, taskParams().desiredStatus);
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

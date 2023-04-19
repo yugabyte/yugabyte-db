@@ -19,7 +19,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 
 #include <array>
 #include "yb/util/slice.h"
@@ -194,5 +193,3 @@ class PlainTableKeyDecoder {
 };
 
 }  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

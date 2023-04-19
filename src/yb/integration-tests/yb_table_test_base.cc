@@ -216,7 +216,7 @@ void YBTableTestBase::CreateAdminClient() {
     }  else {
       addrs = mini_cluster_->GetMasterAddresses();
     }
-    yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
         addrs, MonoDelta::FromMilliseconds(client_rpc_timeout_ms()));
 
     ASSERT_OK(yb_admin_client_->Init());
@@ -309,6 +309,7 @@ Result<uint32_t> YBTableTestBase::GetLoadOnTserver(ExternalTabletServer* server)
       req.mutable_table()->set_table_name(table_name.table_name());
       req.mutable_table()->mutable_namespace_()->set_name(table_name.namespace_name());
     }
+    req.set_max_returned_locations(num_tablets());
     master::GetTableLocationsResponsePB resp;
 
     rpc::RpcController rpc;

@@ -17,7 +17,7 @@ For additional information, see the following:
 
 - [Alerts](../../alerts-monitoring/alert/)
 - [Metrics](../../troubleshoot/universe-issues/#use-metrics/)
-- [Alerts and Notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
+- [Alerts and Notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/)
 
 You can use preconfigured alerts provided by YugabyteDB Anywhere, or create and configure your own alerts based on the metrics' conditions.
 
@@ -40,11 +40,11 @@ Regardless of the alert level, you create an alert as follows:
 
 - Click either **Create Alert Config > Universe Alert** or **Create Alert Config > Platform Alert**, depending on the scope of the alert. Note that the scope of **Platform Alert** is YugabyteDB Anywhere.
 
-- Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration: <br><br>
+- Select a template to use, and then configure settings by completing the fields whose default values depend on the template, as per the following illustration:<br>
 
   ![Create alert](/images/yp/config-alerts2.png)
 
-  <br><br>
+  <br>
 
   Templates are available for alerts related to YugabyteDB Anywhere operations, YugabyteDB operations, as well as YSQL and YCQL performance. For supplemental information on templates, see [Templates reference](#templates-reference).
 
@@ -362,7 +362,7 @@ In YugabyteDB Anywhere, a notification channel defines how an alert is issued (v
 
 - Navigate to **Alert Configurations > Notification Channels**, as per the following illustration:
 
-  <br><br>
+  <br>
 
   ![Notification channel](/images/yp/config-alerts7.png)
 
@@ -372,7 +372,7 @@ In YugabyteDB Anywhere, a notification channel defines how an alert is issued (v
 
   ![New channel](/images/yp/config-alerts6.png)
 
-  <br><br>
+  <br>
 
   If you select **Email** as a notification delivery method, perform the following:
 
@@ -407,14 +407,14 @@ In YugabyteDB Anywhere, a notification channel defines how an alert is issued (v
 
 When an alert is triggered, alert data is sent to a specific alert destination that consists of one or more channels. You can define a new destination for your alerts, view details of an existing destination, edit or delete an existing destination as follows:
 
-- Navigate to **Alert Configurations > Alert Destinations**, as per the following illustration: <br><br>
+- Navigate to **Alert Configurations > Alert Destinations**, as per the following illustration: <br>
 
   ![Destinations](/images/yp/config-alerts3.png)<br>
-- To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:<br><br>
+- To add a new alert destination, click **Add Destination** and then complete the form shown in the following illustration:<br>
 
   ![Add destination](/images/yp/config-alerts4.png)
 
-  <br>The preceding form allows you to either select an existing notification channel or create a new one by clicking **Add Channel** and completing the **Create new alert channel** dialog, as described in [Define notification channels](#define-notification-channels).
+  The preceding form allows you to either select an existing notification channel or create a new one by clicking **Add Channel** and completing the **Create new alert channel** dialog, as described in [Define notification channels](#define-notification-channels).
 
 - Click **Save**.
 
@@ -424,7 +424,7 @@ When an alert is triggered, alert data is sent to a specific alert destination t
 
 You can define parameters and fine-tune health check that YugabyteDB Anywhere performs on its universes, as follows:
 
-- Navigate to **Alert Configurations > Health** to open the **Alerting controls** view shown in the following illustration:<br><br>
+- Navigate to **Alert Configurations > Health** to open the **Alerting controls** view shown in the following illustration:<br>
 
   ![Health](/images/yp/config-alerts5.png)<br>
 
@@ -452,6 +452,6 @@ The preceding view allows you to do the following:
 
 - Mark the maintenance as completed, modify its parameters, or delete it by clicking **Action** and selecting one of the options.
 
-- Add a new maintenance period for all or only specific universes by clicking **Add Maintenance Window** and completing the fields shown in the following illustration:<br><br>
+- Add a new maintenance period for all or only specific universes by clicking **Add Maintenance Window** and completing the fields shown in the following illustration:<br>
 
   ![Maintenance](/images/yp/config-alerts10.png)<br><br>

@@ -59,6 +59,8 @@ class AzureCreateInstancesMethod(CreateInstancesMethod):
                                  help="Desired iops for ultrassd instance volumes.")
         self.parser.add_argument("--disk_throughput", type=int, default=None,
                                  help="Desired throughput for ultrassd instance volumes.")
+        self.parser.add_argument("--spot_price", default=None,
+                                 help="Spot price for each instance")
 
     def preprocess_args(self, args):
         super(AzureCreateInstancesMethod, self).preprocess_args(args)
@@ -283,4 +285,6 @@ class AzureResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(args, [args.custom_ssh_port])
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(args, server_ports)

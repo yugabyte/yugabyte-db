@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
@@ -228,5 +227,3 @@ Slice PlainTableIndexBuilder::FillIndexes(
 const std::string PlainTableIndexBuilder::kPlainTableIndexBlock =
     "PlainTableIndexBlock";
 };  // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

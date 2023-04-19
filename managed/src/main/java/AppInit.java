@@ -1,16 +1,22 @@
 // Copyright (c) YugaByte, Inc.
 
+import static com.yugabyte.yw.forms.AbstractTaskParams.platformVersion;
 import static com.yugabyte.yw.models.MetricConfig.METRICS_CONFIG_PATH;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
 import com.yugabyte.yw.commissioner.BackupGarbageCollector;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.HealthChecker;
-import com.yugabyte.yw.commissioner.SetUniverseKey;
+import com.yugabyte.yw.commissioner.NodeAgentPoller;
+import com.yugabyte.yw.commissioner.PerfAdvisorGarbageCollector;
+import com.yugabyte.yw.commissioner.PerfAdvisorScheduler;
 import com.yugabyte.yw.commissioner.PitrConfigPoller;
+import com.yugabyte.yw.commissioner.RefreshKmsService;
+import com.yugabyte.yw.commissioner.SetUniverseKey;
 import com.yugabyte.yw.commissioner.SupportBundleCleanup;
 import com.yugabyte.yw.commissioner.TaskGarbageCollector;
 import com.yugabyte.yw.commissioner.YbcUpgrade;
@@ -19,8 +25,9 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.ExtraMigrationManager;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellLogsManager;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.SnapshotCleanup;
 import com.yugabyte.yw.common.YamlWrapper;
+import com.yugabyte.yw.common.operator.KubernetesOperator;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
@@ -30,7 +37,7 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
-import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
+import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ExtraMigration;
 import com.yugabyte.yw.models.InstanceType;
@@ -42,14 +49,16 @@ import io.ebean.Ebean;
 import io.prometheus.client.hotspot.DefaultExports;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import play.Application;
-import play.Configuration;
 import play.Environment;
-import play.Logger;
 
 /** We will use this singleton to do actions specific to the app environment, like db seed etc. */
+@Slf4j
 @Singleton
 public class AppInit {
+
+  private static final long MAX_APP_INITIALIZATION_TIME = 30;
 
   @Inject
   public AppInit(
@@ -64,7 +73,9 @@ public class AppInit {
       PitrConfigPoller pitrConfigPoller,
       TaskGarbageCollector taskGC,
       SetUniverseKey setUniverseKey,
+      RefreshKmsService refreshKmsService,
       BackupGarbageCollector backupGC,
+      PerfAdvisorScheduler perfAdvisorScheduler,
       PlatformReplicationManager replicationManager,
       AlertsGarbageCollector alertsGC,
       QueryAlerts queryAlerts,
@@ -80,59 +91,42 @@ public class AppInit {
       ShellLogsManager shellLogsManager,
       Config config,
       SupportBundleCleanup supportBundleCleanup,
-      NodeAgentHandler nodeAgentHandler,
-      YbcUpgrade ybcUpgrade)
+      NodeAgentPoller nodeAgentPoller,
+      YbcUpgrade ybcUpgrade,
+      PerfAdvisorGarbageCollector perfRecGC,
+      SnapshotCleanup snapshotCleanup,
+      FileDataService fileDataService,
+      KubernetesOperator kubernetesOperator,
+      @Named("AppStartupTimeMs") Long startupTime)
       throws ReflectiveOperationException {
-    Logger.info("Yugaware Application has started");
+    log.info("Yugaware Application has started");
 
-    Configuration appConfig = application.configuration();
-    String mode = appConfig.getString("yb.mode", "PLATFORM");
-
-    String version = ConfigHelper.getCurrentVersion(application);
-
-    String previousSoftwareVersion =
-        configHelper
-            .getConfig(ConfigHelper.ConfigType.YugawareMetadata)
-            .getOrDefault("version", "")
-            .toString();
-
-    boolean isPlatformDowngradeAllowed =
-        application.configuration().getBoolean("yb.is_platform_downgrade_allowed");
-
-    if (Util.compareYbVersions(previousSoftwareVersion, version, true) > 0
-        && !isPlatformDowngradeAllowed) {
-
-      String msg =
-          String.format(
-              "Platform does not support version downgrades, %s"
-                  + " has downgraded to %s. Shutting down. To override this check"
-                  + " (not recommended) and continue startup,"
-                  + " set the application config setting yb.is_platform_downgrade_allowed"
-                  + "or the environment variable"
-                  + " YB_IS_PLATFORM_DOWNGRADE_ALLOWED to true."
-                  + " Otherwise, upgrade your YBA version back to or above %s to proceed.",
-              previousSoftwareVersion, version, previousSoftwareVersion);
-
-      throw new RuntimeException(msg);
-    }
+    String mode = config.getString("yb.mode");
 
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
-      if (Customer.find.query().where().findCount() == 0
-          && appConfig.getBoolean("yb.seedData", false)) {
-        Logger.debug("Seed the Yugaware DB");
+      if (Customer.find.query().where().findCount() == 0 && config.getBoolean("yb.seedData")) {
+        log.debug("Seed the Yugaware DB");
 
         List<?> all =
             yaml.load(environment.resourceAsStream("db_seed.yml"), application.classloader());
         Ebean.saveAll(all);
         Customer customer = Customer.getAll().get(0);
-        alertDestinationService.createDefaultDestination(customer.uuid);
+        alertDestinationService.createDefaultDestination(customer.getUuid());
         alertConfigurationService.createDefaultConfigs(customer);
       }
 
+      boolean ywFileDataSynced =
+          Boolean.parseBoolean(
+              configHelper
+                  .getConfig(ConfigHelper.ConfigType.FileDataSync)
+                  .getOrDefault("synced", "false")
+                  .toString());
+      String storagePath = config.getString("yb.storage.path");
+      fileDataService.syncFileData(storagePath, ywFileDataSynced);
+
       if (mode.equals("PLATFORM")) {
-        String devopsHome = appConfig.getString("yb.devops.home");
-        String storagePath = appConfig.getString("yb.storage.path");
+        String devopsHome = config.getString("yb.devops.home");
         if (devopsHome == null || devopsHome.length() == 0) {
           throw new RuntimeException("yb.devops.home is not set in application.conf");
         }
@@ -149,12 +143,12 @@ public class AppInit {
       // Initialize AWS if any of its instance types have an empty volumeDetailsList
       List<Provider> providerList = Provider.find.query().where().findList();
       for (Provider provider : providerList) {
-        if (provider.code.equals("aws")) {
+        if (provider.getCode().equals("aws")) {
           for (InstanceType instanceType :
-              InstanceType.findByProvider(provider, application.config(), configHelper)) {
-            if (instanceType.instanceTypeDetails != null
-                && (instanceType.instanceTypeDetails.volumeDetailsList == null)) {
-              awsInitializer.initialize(provider.customerUUID, provider.uuid);
+              InstanceType.findByProvider(provider, application.config())) {
+            if (instanceType.getInstanceTypeDetails() != null
+                && (instanceType.getInstanceTypeDetails().volumeDetailsList == null)) {
+              awsInitializer.initialize(provider.getCustomerUUID(), provider.getUuid());
               break;
             }
           }
@@ -169,8 +163,8 @@ public class AppInit {
 
       // Enter all the configuration data. This is the first thing that should be
       // done as the other init steps may depend on this data.
-      configHelper.loadConfigsToDB(application);
-      configHelper.loadSoftwareVersiontoDB(application);
+      configHelper.loadConfigsToDB(environment);
+      configHelper.loadSoftwareVersiontoDB(environment);
 
       // Run and delete any extra migrations.
       for (ExtraMigration m : ExtraMigration.getAll()) {
@@ -180,21 +174,42 @@ public class AppInit {
       // Import new local releases into release metadata
       releaseManager.importLocalReleases();
       releaseManager.updateCurrentReleases();
+      // Background thread to query for latest ARM release version.
+      Thread armReleaseThread =
+          new Thread(
+              () -> {
+                try {
+                  log.info("Attempting to query latest ARM release link.");
+                  releaseManager.findLatestArmRelease(ConfigHelper.getCurrentVersion(environment));
+                  log.info("Imported ARM release download link.");
+                } catch (Exception e) {
+                  log.warn("Error importing ARM release download link", e);
+                }
+              });
+      armReleaseThread.start();
 
       // initialize prometheus exports
       DefaultExports.initialize();
 
-      // Fail incomplete tasks
-      taskManager.failAllPendingTasks();
+      // Handle incomplete tasks
+      taskManager.handleAllPendingTasks();
 
       // Schedule garbage collection of old completed tasks in database.
       taskGC.start();
       alertsGC.start();
+      perfRecGC.start();
 
       setUniverseKey.start();
+      // Refreshes all the KMS providers. Useful for renewing tokens, ttls, etc.
+      refreshKmsService.start();
 
       // Schedule garbage collection of backups
       backupGC.start();
+
+      // Cleanup orphan snapshots
+      snapshotCleanup.start();
+
+      perfAdvisorScheduler.start();
 
       // Cleanup old support bundles
       supportBundleCleanup.start();
@@ -210,15 +225,29 @@ public class AppInit {
       queryAlerts.start();
       healthChecker.initialize();
       shellLogsManager.startLogsGC();
-      nodeAgentHandler.init();
+      nodeAgentPoller.init();
       pitrConfigPoller.start();
 
       ybcUpgrade.start();
 
+      if (config.getBoolean("yb.kubernetesOperator.enabled")) {
+        kubernetesOperator.init();
+      }
+
       // Add checksums for all certificates that don't have a checksum.
       CertificateHelper.createChecksums();
 
-      Logger.info("AppInit completed");
+      long elapsed = (System.currentTimeMillis() - startupTime) / 1000;
+      String elapsedStr = String.valueOf(elapsed);
+      if (elapsed > MAX_APP_INITIALIZATION_TIME) {
+        log.warn("Completed initialization in " + elapsedStr + " seconds.");
+      } else {
+        log.info("Completed initialization in " + elapsedStr + " seconds.");
+      }
+
+      platformVersion = ConfigHelper.getCurrentVersion(environment);
+
+      log.info("AppInit completed");
     }
   }
 }

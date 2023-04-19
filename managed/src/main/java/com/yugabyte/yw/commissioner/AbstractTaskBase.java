@@ -13,6 +13,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
+import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
@@ -20,7 +21,9 @@ import com.yugabyte.yw.common.TableManager;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.ITaskParams;
@@ -36,7 +39,6 @@ import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
-import play.api.Play;
 import play.libs.Json;
 
 @Slf4j
@@ -44,11 +46,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   private static final String SLEEP_DISABLED_PATH = "yb.tasks.disabled_timeouts";
 
+  // The threadpool on which the subtasks are executed.
+  private ExecutorService executor;
+
   // The params for this task.
   protected ITaskParams taskParams;
-
-  // The threadpool on which the tasks are executed.
-  protected ExecutorService executor;
 
   // The UUID of this task.
   protected UUID taskUUID;
@@ -64,6 +66,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final Config config;
   protected final ConfigHelper configHelper;
   protected final RuntimeConfigFactory runtimeConfigFactory;
+  protected final RuntimeConfGetter confGetter;
   protected final MetricService metricService;
   protected final AlertConfigurationService alertConfigurationService;
   protected final YBClientService ybService;
@@ -72,6 +75,8 @@ public abstract class AbstractTaskBase implements ITask {
   protected final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final TaskExecutor taskExecutor;
+  protected final HealthChecker healthChecker;
+  protected final NodeManager nodeManager;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -80,6 +85,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.config = baseTaskDependencies.getConfig();
     this.configHelper = baseTaskDependencies.getConfigHelper();
     this.runtimeConfigFactory = baseTaskDependencies.getRuntimeConfigFactory();
+    this.confGetter = baseTaskDependencies.getConfGetter();
     this.metricService = baseTaskDependencies.getMetricService();
     this.alertConfigurationService = baseTaskDependencies.getAlertConfigurationService();
     this.ybService = baseTaskDependencies.getYbService();
@@ -88,6 +94,8 @@ public abstract class AbstractTaskBase implements ITask {
     this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
     this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
     this.taskExecutor = baseTaskDependencies.getTaskExecutor();
+    this.healthChecker = baseTaskDependencies.getHealthChecker();
+    this.nodeManager = baseTaskDependencies.getNodeManager();
   }
 
   protected ITaskParams taskParams() {
@@ -118,19 +126,26 @@ public abstract class AbstractTaskBase implements ITask {
   public abstract void run();
 
   @Override
-  public void terminate() {
+  public synchronized void terminate() {
     if (executor != null && !executor.isShutdown()) {
       MoreExecutors.shutdownAndAwaitTermination(
           executor, SHUTDOWN_TIMEOUT_MINUTES, TimeUnit.MINUTES);
+      executor = null;
     }
   }
 
-  // Create an task pool which can handle an unbounded number of tasks, while using an initial set
-  // of threads which get spawned upto TASK_THREADS limit.
-  public void createThreadpool() {
-    ThreadFactory namedThreadFactory =
-        new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
-    executor = platformExecutorFactory.createExecutor("task", namedThreadFactory);
+  protected synchronized ExecutorService getOrCreateExecutorService() {
+    if (executor == null) {
+      log.info("Executor name: {}", getExecutorPoolName());
+      ThreadFactory namedThreadFactory =
+          new ThreadFactoryBuilder().setNameFormat("TaskPool-" + getName() + "-%d").build();
+      executor = platformExecutorFactory.createExecutor(getExecutorPoolName(), namedThreadFactory);
+    }
+    return executor;
+  }
+
+  protected String getExecutorPoolName() {
+    return "task";
   }
 
   @Override
@@ -158,8 +173,7 @@ public abstract class AbstractTaskBase implements ITask {
     return Util.convertStringToJson(response.message);
   }
 
-  public UniverseUpdater nodeStateUpdater(
-      final UUID universeUUID, final String nodeName, final NodeStatus nodeStatus) {
+  public UniverseUpdater nodeStateUpdater(final String nodeName, final NodeStatus nodeStatus) {
     UniverseUpdater updater =
         universe -> {
           UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -173,7 +187,7 @@ public abstract class AbstractTaskBase implements ITask {
               nodeName,
               currentStatus,
               nodeStatus,
-              universeUUID);
+              universe.getUniverseUUID());
           nodeStatus.fillNodeStates(node);
           if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
             node.cloudInfo.private_ip = null;
@@ -193,8 +207,8 @@ public abstract class AbstractTaskBase implements ITask {
    * @param taskClass task class
    * @return Task instance with injected dependencies
    */
-  public static <T> T createTask(Class<T> taskClass) {
-    return Play.current().injector().instanceOf(taskClass);
+  public static <T extends ITask> T createTask(Class<T> taskClass) {
+    return StaticInjectorHolder.injector().instanceOf(TaskExecutor.class).createTask(taskClass);
   }
 
   public int getSleepMultiplier() {
@@ -214,14 +228,24 @@ public abstract class AbstractTaskBase implements ITask {
     return getTaskExecutor().getRunnableTask(userTaskUUID);
   }
 
-  // Returns a SubTaskGroup to which subtasks can be added.
   protected SubTaskGroup createSubTaskGroup(String name) {
     return createSubTaskGroup(name, SubTaskGroupType.Invalid);
   }
 
+  protected SubTaskGroup createSubTaskGroup(String name, boolean ignoreErrors) {
+    return createSubTaskGroup(name, SubTaskGroupType.Invalid);
+  }
+
   protected SubTaskGroup createSubTaskGroup(String name, SubTaskGroupType subTaskGroupType) {
-    SubTaskGroup subTaskGroup = getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, false);
-    subTaskGroup.setSubTaskExecutor(executor);
+    return createSubTaskGroup(name, subTaskGroupType, false);
+  }
+
+  // Returns a SubTaskGroup to which subtasks can be added.
+  protected SubTaskGroup createSubTaskGroup(
+      String name, SubTaskGroupType subTaskGroupType, boolean ignoreErrors) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor().createSubTaskGroup(name, subTaskGroupType, ignoreErrors);
+    subTaskGroup.setSubTaskExecutor(getOrCreateExecutorService());
     return subTaskGroup;
   }
 

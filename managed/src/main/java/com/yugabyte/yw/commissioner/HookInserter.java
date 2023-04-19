@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.commissioner;
 
-import com.typesafe.config.Config;
 import com.yugabyte.yw.models.Hook;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.utils.NaturalOrderComparator;
@@ -39,7 +39,7 @@ public class HookInserter {
       AbstractTaskBase task,
       UniverseTaskParams universeParams,
       Collection<NodeDetails> nodes) {
-    if (!task.runtimeConfigFactory.globalRuntimeConf().getBoolean(ENABLE_CUSTOM_HOOKS_PATH)) return;
+    if (!task.confGetter.getGlobalConf(GlobalConfKeys.enableCustomHooks)) return;
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
         getExecutionPlan(trigger, universeParams, task.runtimeConfigFactory, nodes);
 
@@ -50,17 +50,17 @@ public class HookInserter {
       // Create the hook script to run
       SubTaskGroup subTaskGroup =
           task.createSubTaskGroup(
-              "Hook-" + task.userTaskUUID + "-" + hook.name, SubTaskGroupType.RunningHooks);
+              "Hook-" + task.userTaskUUID + "-" + hook.getName(), SubTaskGroupType.RunningHooks);
       for (NodeDetails node : targetNodes) {
         RunHooks.Params taskParams = new RunHooks.Params();
         taskParams.creatingUser = universeParams.creatingUser;
         taskParams.hook = hook;
-        taskParams.hookPath = HOOK_ROOT_PATH + "/" + node.nodeUuid + "-" + hook.name;
+        taskParams.hookPath = HOOK_ROOT_PATH + "/" + node.nodeUuid + "-" + hook.getName();
         taskParams.trigger = trigger;
         taskParams.nodeName = node.nodeName;
         taskParams.nodeUuid = node.nodeUuid;
         taskParams.azUuid = node.azUuid;
-        taskParams.universeUUID = universeParams.universeUUID;
+        taskParams.setUniverseUUID(universeParams.getUniverseUUID());
         taskParams.parentTask = task.getClass().getSimpleName();
         RunHooks runHooks = AbstractTaskBase.createTask(RunHooks.class);
         runHooks.initialize(taskParams);
@@ -80,12 +80,12 @@ public class HookInserter {
     boolean isSudoEnabled = rConfig.globalRuntimeConf().getBoolean(ENABLE_SUDO_PATH);
     List<Pair<Hook, Collection<NodeDetails>>> executionPlan =
         new ArrayList<Pair<Hook, Collection<NodeDetails>>>();
-    UUID universeUUID = universeParams.universeUUID;
+    UUID universeUUID = universeParams.getUniverseUUID();
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    UUID customerUUID = Customer.get(universe.customerId).uuid;
+    UUID customerUUID = Customer.get(universe.getCustomerId()).getUuid();
 
     // Get global hooks
-    HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null);
+    HookScope globalScope = HookScope.getByTriggerScopeId(customerUUID, trigger, null, null, null);
     addHooksToExecutionPlan(executionPlan, globalScope, nodes, isSudoEnabled);
 
     // Get provider hooks
@@ -102,21 +102,35 @@ public class HookInserter {
       UUID providerUUID = entry.getKey();
       List<NodeDetails> providerNodes = entry.getValue();
       HookScope providerScope =
-          HookScope.getByTriggerScopeId(customerUUID, trigger, null, providerUUID);
+          HookScope.getByTriggerScopeId(customerUUID, trigger, null, providerUUID, null);
       addHooksToExecutionPlan(executionPlan, providerScope, providerNodes, isSudoEnabled);
     }
 
     // Get universe hooks
     HookScope universeScope =
-        HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null);
+        HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, null);
     addHooksToExecutionPlan(executionPlan, universeScope, nodes, isSudoEnabled);
+
+    // Get the cluster hooks
+    Map<UUID, List<NodeDetails>> nodeClusterMap = new HashMap<>();
+    for (NodeDetails node : nodes) {
+      Cluster cluster = universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
+      nodeClusterMap.computeIfAbsent(cluster.uuid, k -> new ArrayList<>()).add(node);
+    }
+    for (Map.Entry<UUID, List<NodeDetails>> entry : nodeClusterMap.entrySet()) {
+      UUID clusterUUID = entry.getKey();
+      List<NodeDetails> clusterNodes = entry.getValue();
+      HookScope clusterScope =
+          HookScope.getByTriggerScopeId(customerUUID, trigger, universeUUID, null, clusterUUID);
+      addHooksToExecutionPlan(executionPlan, clusterScope, clusterNodes, isSudoEnabled);
+    }
 
     // Sort in natural order
     NaturalOrderComparator comparator = new NaturalOrderComparator();
     Collections.sort(
         executionPlan,
         (a, b) -> {
-          return comparator.compare(a.getFirst().name, b.getFirst().name);
+          return comparator.compare(a.getFirst().getName(), b.getFirst().getName());
         });
 
     return executionPlan;
@@ -129,8 +143,8 @@ public class HookInserter {
       boolean isSudoEnabled) {
     if (hookScope == null) return;
     for (Hook hook : hookScope.getHooks()) {
-      if (!isSudoEnabled && hook.useSudo) {
-        log.debug("Sudo execution is not enabled, ignoring {}", hook.name);
+      if (!isSudoEnabled && hook.isUseSudo()) {
+        log.debug("Sudo execution is not enabled, ignoring {}", hook.getName());
         continue;
       }
       executionPlan.add(new Pair<Hook, Collection<NodeDetails>>(hook, nodes));

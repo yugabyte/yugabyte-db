@@ -51,6 +51,20 @@ Status SetColumnId(
   return Status::OK();
 }
 
+Status ReadNextSysCatalogRow(
+    const QLTableRow& value_map, const Schema& schema, int8_t entry_type,
+    ssize_t type_col_idx, ssize_t entry_id_col_idx, ssize_t metadata_col_idx,
+    const EnumerationCallback& callback) {
+  QLValue found_entry_type, entry_id, metadata;
+  RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
+  SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
+  RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
+  RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+  SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
+  RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
+  return Status::OK();
+}
+
 } // namespace
 
 bool IsWrite(QLWriteRequestPB::QLStmtType op_type) {
@@ -69,10 +83,11 @@ Status SysCatalogWriter::DoMutateItem(
     const std::string& item_id,
     const google::protobuf::Message& prev_pb,
     const google::protobuf::Message& new_pb,
-    QLWriteRequestPB::QLStmtType op_type) {
+    QLWriteRequestPB::QLStmtType op_type,
+    bool skip_if_clean) {
   const bool is_write = IsWrite(op_type);
 
-  if (is_write) {
+  if (is_write && skip_if_clean) {
     std::string diff;
 
     if (pb_util::ArePBsEqual(prev_pb, new_pb, VLOG_IS_ON(2) ? &diff : nullptr)) {
@@ -170,12 +185,11 @@ Status FillSysCatalogWriteRequest(
 Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback) {
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
       schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
       CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
 
-  return EnumerateSysCatalog(
-      down_cast<docdb::DocRowwiseIterator*>(iter.get()), schema, entry_type, callback);
+  return EnumerateSysCatalog(iter.get(), schema, entry_type, callback);
 }
 
 Status EnumerateSysCatalog(
@@ -195,29 +209,14 @@ Status EnumerateSysCatalog(
       empty_hash_components, &cond, nullptr /* if_req */, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(doc_iter->Init(spec));
 
-  while (VERIFY_RESULT(doc_iter->HasNext())) {
+  QLTableRow value_map;
+  while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
     YB_RETURN_NOT_OK_PREPEND(
         ReadNextSysCatalogRow(
-            doc_iter, schema, entry_type,
+            value_map, schema, entry_type,
             type_col_idx, entry_id_col_idx, metadata_col_idx, callback),
         "System catalog snapshot is corrupted or built using different build type");
   }
-  return Status::OK();
-}
-
-Status ReadNextSysCatalogRow(
-    docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
-    ssize_t type_col_idx, ssize_t entry_id_col_idx, ssize_t metadata_col_idx,
-    const EnumerationCallback& callback) {
-  QLTableRow value_map;
-  QLValue found_entry_type, entry_id, metadata;
-  RETURN_NOT_OK(doc_iter->NextRow(&value_map));
-  RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
-  SCHECK_EQ(found_entry_type.int8_value(), entry_type, Corruption, "Found wrong entry type");
-  RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
-  RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
-  SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption, "Found wrong metadata type");
-  RETURN_NOT_OK(callback(entry_id.binary_value(), metadata.binary_value()));
   return Status::OK();
 }
 

@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_SERVER_CLOCK_H_
-#define YB_SERVER_CLOCK_H_
+#pragma once
 
 #include <functional>
 #include <string>
@@ -92,5 +91,3 @@ void UpdateClock(const Request& request, Clock* clock) {
 
 } // namespace server
 } // namespace yb
-
-#endif /* YB_SERVER_CLOCK_H_ */

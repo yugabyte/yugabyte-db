@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_TABLET_SERVER_TEST_UTIL_H_
-#define YB_TSERVER_TABLET_SERVER_TEST_UTIL_H_
+#pragma once
 
 #include <memory>
 
@@ -61,5 +60,3 @@ void CreateTsClientProxies(const HostPort& addr,
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_TABLET_SERVER_TEST_UTIL_H_

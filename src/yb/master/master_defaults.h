@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_DEFAULTS_H
-#define YB_MASTER_MASTER_DEFAULTS_H
+#pragma once
 
 #include <string>
 
@@ -30,6 +29,8 @@ static const char* const kSystemAuthNamespaceId = "00000000000000000000000000000
 
 static const char* const kSystemDistributedNamespaceName = "system_distributed";
 static const char* const kSystemTracesNamespaceName = "system_traces";
+
+static const char* const kSystemPlatformNamespace = "system_platform";
 
 static const char* const kSystemPeersTableName = "peers";
 static const char* const kSystemPeersV2TableName = "peers_v2";
@@ -74,6 +75,16 @@ constexpr size_t kXCProducerTabletIdIdx = 1;
 static const char* const kXCSafeTime  = "safe_time";
 constexpr size_t kXCSafeTimeIdx = 2;
 
+static const char* const kPgAutoAnalyzeTableName = "pg_auto_analyze";
+static const char* const kPgAutoAnalyzeTableId = "table_id";
+constexpr size_t kPgAutoAnalyzeTableIdIdx = 0;
+static const char* const kPgAutoAnalyzeMutations = "mutations_since_last_analyze";
+constexpr size_t kPgAutoAnalyzeMutationsIdx = 1;
+static const char* const kPgAutoAnalyzeLastAnalyzeInfo = "last_analyze_info";
+constexpr size_t kPgAutoAnalyzeLastAnalyzeInfoIdx = 2;
+static const char* const kPgAutoAnalyzeCurrentAnalyzeInfo = "current_analyze_info";
+constexpr size_t kPgAutoAnalyzeCurrentAnalyzeInfoIdx = 3;
+
 static const char* const kSystemAuthRolesTableName = "roles";
 static const char* const kSystemAuthRolePermissionsTableName = "role_permissions";
 static const char* const kSystemAuthResourceRolePermissionsIndexTableName =
@@ -100,5 +111,3 @@ constexpr uint16_t kMasterDefaultWebPort = 7000;
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_DEFAULTS_H

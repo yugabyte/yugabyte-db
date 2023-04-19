@@ -4,7 +4,11 @@ import moment from 'moment';
 import { ROOT_URL } from '../config';
 import { XClusterConfig, Metrics } from '../components/xcluster';
 import { getCustomerEndpoint } from './common';
-import { MetricName, XClusterConfigState } from '../components/xcluster/constants';
+import {
+  MetricName,
+  XClusterConfigState,
+  XClusterConfigType
+} from '../components/xcluster/constants';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -18,15 +22,28 @@ export function fetchUniversesList() {
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
 }
 
-export function fetchTablesInUniverse(universeUUID: string) {
-  const customerId = localStorage.getItem('customerId');
-  return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`);
+export type UniverseTableFilters = {
+  excludeColocatedTables?: boolean;
+  includeParentTableInfo?: boolean;
+};
+export function fetchTablesInUniverse(
+  universeUUID: string | undefined,
+  filters?: { excludeColocatedTables?: boolean; includeParentTableInfo?: boolean }
+) {
+  if (universeUUID) {
+    const customerId = localStorage.getItem('customerId');
+    return axios.get(`${ROOT_URL}/customers/${customerId}/universes/${universeUUID}/tables`, {
+      params: filters
+    });
+  }
+  return Promise.reject('Querying universe tables failed: No universe UUID provided.');
 }
 
 export function createXClusterReplication(
   targetUniverseUUID: string,
   sourceUniverseUUID: string,
   name: string,
+  configType: XClusterConfigType,
   tables: string[],
   bootstrapParams?: {
     tables: string[];
@@ -38,6 +55,7 @@ export function createXClusterReplication(
     sourceUniverseUUID,
     targetUniverseUUID,
     name,
+    configType,
     tables,
     ...(bootstrapParams !== undefined && { bootstrapParams })
   });
@@ -55,14 +73,19 @@ export function restartXClusterConfig(
   });
 }
 
-export function isBootstrapRequired(sourceUniverseUUID: string, tableUUIDs: string[]) {
+export function isBootstrapRequired(
+  sourceUniverseUUID: string,
+  tableUUIDs: string[],
+  configType: XClusterConfigType = XClusterConfigType.BASIC
+) {
   const customerId = localStorage.getItem('customerId');
   return Promise.all(
     tableUUIDs.map((tableUUID) => {
       return axios
         .post<{ [tableUUID: string]: boolean }>(
           `${ROOT_URL}/customers/${customerId}/universes/${sourceUniverseUUID}/need_bootstrap`,
-          { tables: [tableUUID] }
+          { tables: [tableUUID] },
+          { params: { configType } }
         )
         .then((response) => response.data);
     })
@@ -94,7 +117,7 @@ export function fetchXClusterConfig(uuid: string) {
   const customerId = localStorage.getItem('customerId');
   return axios
     .get<XClusterConfig>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}`)
-    .then((resp) => resp.data);
+    .then((response) => response.data);
 }
 
 export function editXClusterState(replication: XClusterConfig, state: XClusterConfigState) {
@@ -111,17 +134,26 @@ export function editXclusterName(replication: XClusterConfig) {
   });
 }
 
-export function editXClusterTables(replication: XClusterConfig) {
+export function editXClusterConfigTables(
+  xClusterUUID: string,
+  tables: string[],
+  bootstrapParams?: {
+    tables: string[];
+    backupRequestParams: any;
+  }
+) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${replication.uuid}`, {
-    tables: replication.tables
+  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+    tables: tables,
+    ...(bootstrapParams !== undefined && { bootstrapParams })
   });
 }
 
 export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
   const customerId = localStorage.getItem('customerId');
   return axios.delete(
-    `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`);
+    `${ROOT_URL}/customers/${customerId}/xcluster_configs/${uuid}?isForceDelete=${isForceDelete}`
+  );
 }
 
 export function queryLagMetricsForUniverse(
@@ -213,6 +245,7 @@ export function fetchTaskUntilItCompletes(
       } else {
         setTimeout(retryTask, interval);
       }
+      // eslint-disable-next-line no-empty
     } catch {}
   }
   return retryTask();

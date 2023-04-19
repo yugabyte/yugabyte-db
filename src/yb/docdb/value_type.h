@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_VALUE_TYPE_H_
-#define YB_DOCDB_VALUE_TYPE_H_
+#pragma once
 
 #include <bitset>
 #include <string>
@@ -306,7 +305,9 @@ inline bool IsMergeRecord(const Slice& value) {
   return DecodeKeyEntryType(value) == KeyEntryType::kMergeFlags;
 }
 
+inline bool IsColumnId(KeyEntryType type) {
+  return type == KeyEntryType::kColumnId || type == KeyEntryType::kSystemColumnId;
+}
+
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_VALUE_TYPE_H_

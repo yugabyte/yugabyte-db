@@ -17,6 +17,10 @@ export const REGISTER_RESPONSE = 'REGISTER_RESPONSE';
 export const FETCH_PASSWORD_POLICY = 'FETCH_PASSWORD_POLICY';
 export const FETCH_PASSWORD_POLICY_RESPONSE = 'FETCH_PASSWORD_POLICY_RESPONSE';
 
+// Validate Customer registration
+export const FETCH_ADMIN_NOTIFICATIONS = 'FETCH_ADMIN_NOTIFICATIONS';
+export const FETCH_ADMIN_NOTIFICATIONS_RESPONSE = 'FETCH_ADMIN_NOTIFICATIONS_RESPONSE';
+
 // Sign In Customer
 export const LOGIN = 'LOGIN';
 export const LOGIN_RESPONSE = 'LOGIN_RESPONSE';
@@ -112,6 +116,9 @@ export const FETCH_CUSTOMER_CONFIGS_RESPONSE = 'FETCH_CUSTOMER_CONFIGS_RESPONSE'
 export const FETCH_RUNTIME_CONFIGS = 'FETCH_RUNTIME_CONFIGS';
 export const FETCH_RUNTIME_CONFIGS_RESPONSE = 'FETCH_RUNTIME_CONFIGS_RESPONSE';
 
+export const FETCH_RUNTIME_CONFIGS_KEY_INFO = 'FETCH_RUNTIME_CONFIGS_KEY_INFO';
+export const FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE = 'FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE';
+
 export const SET_RUNTIME_CONFIG = 'SET_RUNTIME_CONFIG';
 export const SET_RUNTIME_CONFIG_RESPONSE = 'SET_RUNTIME_CONFIG_RESPONSE';
 
@@ -170,6 +177,10 @@ export const CHANGE_USER_ROLE = 'CHANGE_USER_ROLE';
 
 export const UPDATE_TLS = 'UPDATE_TLS';
 
+export const RESET_RUNTIME_CONFIGS = 'RESET_RUNTIME_CONFIGS';
+
+export const DEFAULT_RUNTIME_GLOBAL_SCOPE = '00000000-0000-0000-0000-000000000000';
+
 export function validateToken() {
   let cUUID = Cookies.get('customerId');
   if (cUUID) {
@@ -179,11 +190,11 @@ export function validateToken() {
   }
 
   // we support both sso and user login together
-  const authToken = Cookies.get('authToken') || localStorage.getItem('authToken');
+  const authToken = Cookies.get('authToken') ?? localStorage.getItem('authToken');
   if (authToken && authToken !== '') {
     axios.defaults.headers.common['X-AUTH-TOKEN'] = authToken;
   }
-  const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+  const apiToken = Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
   if (apiToken && apiToken !== '') {
     axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
   }
@@ -237,6 +248,22 @@ export function fetchPasswordPolicy() {
 export function fetchPasswordPolicyResponse(response) {
   return {
     type: FETCH_PASSWORD_POLICY_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchAdminNotifications() {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(`${ROOT_URL}/customers/${cUUID}/admin_notifications`);
+  return {
+    type: FETCH_ADMIN_NOTIFICATIONS,
+    payload: request
+  };
+}
+
+export function fetchAdminNotificationsResponse(response) {
+  return {
+    type: FETCH_ADMIN_NOTIFICATIONS_RESPONSE,
     payload: response
   };
 }
@@ -899,7 +926,7 @@ export function fetchCustomerConfigsResponse(response) {
 }
 
 export function fetchRunTimeConfigs(
-  scope = '00000000-0000-0000-0000-000000000000',
+  scope = DEFAULT_RUNTIME_GLOBAL_SCOPE,
   includeInherited = false
 ) {
   const cUUID = localStorage.getItem('customerId');
@@ -919,7 +946,22 @@ export function fetchRunTimeConfigsResponse(response) {
   };
 }
 
-export function setRunTimeConfig({ key, value, scope = '00000000-0000-0000-0000-000000000000' }) {
+export function fetchRunTimeConfigsKeyInfo() {
+  const request = axios.get(`${ROOT_URL}/runtime_config/mutable_key_info`);
+  return {
+    type: FETCH_RUNTIME_CONFIGS_KEY_INFO,
+    payload: request
+  };
+}
+
+export function fetchRunTimeConfigsKeyInfoResponse(response) {
+  return {
+    type: FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
+    payload: response
+  };
+}
+
+export function setRunTimeConfig({ key, value, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }) {
   const cUUID = localStorage.getItem('customerId');
   const headers = {
     'Content-Type': 'text/plain'
@@ -944,7 +986,7 @@ export function setRunTimeConfigResponse(response) {
   };
 }
 
-export function deleteRunTimeConfig({ key, scope = '00000000-0000-0000-0000-000000000000' }) {
+export function deleteRunTimeConfig({ key, scope = DEFAULT_RUNTIME_GLOBAL_SCOPE }) {
   const cUUID = localStorage.getItem('customerId');
   const request = axios.delete(`${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}/key/${key}`);
   return {
@@ -1193,5 +1235,11 @@ export function updateTLS(universeUuid, formValues) {
   return {
     type: UPDATE_TLS,
     payload: request
+  };
+}
+
+export function resetRuntimeConfigs() {
+  return {
+    type: RESET_RUNTIME_CONFIGS
   };
 }

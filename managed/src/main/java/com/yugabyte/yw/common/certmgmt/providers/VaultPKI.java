@@ -18,6 +18,8 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.FileData;
+
 import io.ebean.annotation.EnumValue;
 import java.security.KeyPair;
 import java.security.PrivateKey;
@@ -111,7 +113,7 @@ public class VaultPKI extends CertificateProviderBase {
 
   public static VaultPKI getVaultPKIInstance(CertificateInfo caCertConfigInfo) throws Exception {
     HashicorpVaultConfigParams hcConfigInfo = caCertConfigInfo.getCustomHCPKICertInfoInternal();
-    return getVaultPKIInstance(caCertConfigInfo.uuid, hcConfigInfo);
+    return getVaultPKIInstance(caCertConfigInfo.getUuid(), hcConfigInfo);
   }
 
   public static VaultPKI getVaultPKIInstance(UUID uuid, HashicorpVaultConfigParams configInfo)
@@ -186,6 +188,7 @@ public class VaultPKI extends CertificateProviderBase {
     try {
       String path = params.mountPath + VaultOperationsForCert.ISSUE + "/" + params.role;
       Map<String, String> result = vAccessor.writeAt(path, input);
+      boolean syncCertsToDB = CertificateHelper.DEFAULT_CLIENT.equals(username);
 
       // fetch certificate
       String newCertPemStr = result.get(ISSUE_FIELD_CERT);
@@ -207,7 +210,7 @@ public class VaultPKI extends CertificateProviderBase {
 
       // for client certificate: later it is read using CertificateHelper.getClientCertFile
       return CertificateHelper.dumpNewCertsToFile(
-          storagePath, certFileName, newCertKeyStrName, certObj, pKeyObj);
+          storagePath, certFileName, newCertKeyStrName, certObj, pKeyObj, syncCertsToDB);
 
     } catch (Exception e) {
       LOG.error("Unable to create certificate for {} using CA {}", username, caCertUUID, e);
@@ -234,6 +237,7 @@ public class VaultPKI extends CertificateProviderBase {
       String certPath = CertificateHelper.getCACertPath(storagePath, customerUUID, caCertUUIDParam);
       LOG.info("Dumping CA certs @{}", certPath);
       CertificateHelper.writeCertBundleToCertPath(list, certPath);
+      FileData.writeFileToDB(certPath);
       return new ImmutablePair<>(certPath, "");
     } catch (Exception e) {
       throw new Exception("Hashicorp: Failed to dump CA Certificate:" + e.getMessage());

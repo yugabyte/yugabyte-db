@@ -58,6 +58,7 @@ set(PGGATE_LIBS
     consensus_error
     yb_util
     yb_common
+    yb_ql_common
     yb_client
     tserver_util
     yb_pggate_util

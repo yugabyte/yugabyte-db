@@ -16,7 +16,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.models.MetricConfigDefinition;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout;
 import com.yugabyte.yw.models.MetricConfigDefinition.Layout.Axis;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -42,7 +41,7 @@ public class MetricQueryResponseTest {
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
 
-    ArrayList<MetricGraphData> data =
+    List<MetricGraphData> data =
         queryResponse.getGraphData(METRIC_NAME, new MetricConfigDefinition(), METRIC_SETTINGS);
 
     assertEquals(data.size(), 2);
@@ -63,7 +62,7 @@ public class MetricQueryResponseTest {
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
 
-    ArrayList<MetricGraphData> data =
+    List<MetricGraphData> data =
         queryResponse.getGraphData(METRIC_NAME, new MetricConfigDefinition(), METRIC_SETTINGS);
     assertEquals(data.size(), 1);
     assertThat(data.get(0).name, allOf(notNullValue(), equalTo("system")));
@@ -82,7 +81,7 @@ public class MetricQueryResponseTest {
                 + " [1479281734,\"139952128\"]]},{\"metric\":{\"memory\":\"used\"},\"values\":[[1479281730,\"4193042432\"],[1479281732,\"4192290133.3333335\"],[1479281734,\"4192290133.3333335\"]]}]}}");
 
     MetricQueryResponse queryResponse = Json.fromJson(responseJson, MetricQueryResponse.class);
-    ArrayList<MetricGraphData> data =
+    List<MetricGraphData> data =
         queryResponse.getGraphData(METRIC_NAME, new MetricConfigDefinition(), METRIC_SETTINGS);
     List<JsonNode> memoryTags = responseJson.findValues("memory");
 
@@ -116,8 +115,7 @@ public class MetricQueryResponseTest {
                             "ProcessRequest", "Process")));
 
     MetricConfigDefinition config = new MetricConfigDefinition().setLayout(layout);
-    ArrayList<MetricGraphData> data =
-        queryResponse.getGraphData(METRIC_NAME, config, METRIC_SETTINGS);
+    List<MetricGraphData> data = queryResponse.getGraphData(METRIC_NAME, config, METRIC_SETTINGS);
     assertEquals(data.size(), 3);
     assertThat(data.get(0).type, allOf(notNullValue(), equalTo("scatter")));
     assertThat(data.get(0).x, allOf(notNullValue(), instanceOf(ArrayNode.class)));
@@ -147,8 +145,7 @@ public class MetricQueryResponseTest {
                             "local,write", "Local Write")));
 
     MetricConfigDefinition config = new MetricConfigDefinition().setLayout(layout);
-    ArrayList<MetricGraphData> data =
-        queryResponse.getGraphData(METRIC_NAME, config, METRIC_SETTINGS);
+    List<MetricGraphData> data = queryResponse.getGraphData(METRIC_NAME, config, METRIC_SETTINGS);
     assertEquals(data.size(), 4);
     assertThat(data.get(0).type, allOf(notNullValue(), equalTo("scatter")));
     assertThat(data.get(0).x, allOf(notNullValue(), instanceOf(ArrayNode.class)));

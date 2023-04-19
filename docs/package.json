@@ -21,6 +21,7 @@
   "license": "Apache License 2.0",
   "homepage": "https://github.com/yugabyte/yugabyte-db/docs#readme",
   "dependencies": {
+    "algoliasearch": "^4.14.3",
     "babel": "6.23.0",
     "babel-core": "6.26.3",
     "babel-eslint": "10.1.0",

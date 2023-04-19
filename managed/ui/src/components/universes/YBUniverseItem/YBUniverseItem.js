@@ -15,6 +15,7 @@ import { timeFormatter } from '../../../utils/TableFormatters';
 export const YBUniverseItem = (props) => {
   const {
     universe,
+    runtimeConfigs,
     customer: { currentCustomer }
   } = props;
   const isPricingKnown = universe.resources?.pricingKnown;
@@ -37,6 +38,7 @@ export const YBUniverseItem = (props) => {
               currentUniverse={universe}
               showLabelText={true}
               refreshUniverseData={props.fetchUniverseMetadata}
+              shouldDisplayTaskButton={false}
               showAlertsBadge={true}
             />
           </div>
@@ -59,6 +61,7 @@ export const YBUniverseItem = (props) => {
                 value={props.universe.pricePerHour}
                 multiplier="month"
                 isPricingKnown={isPricingKnown}
+                runtimeConfigs={runtimeConfigs}
               />
             </div>
             /month

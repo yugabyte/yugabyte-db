@@ -41,18 +41,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.DomainValidator;
 
 @Singleton
 public class CustomerConfigValidator extends BaseBeanValidator {
 
-  private static final String[] TLD_OVERRIDE = {"local"};
-
   private final CloudClientsFactory factory;
-
-  static {
-    DomainValidator.updateTLDOverride(DomainValidator.ArrayType.LOCAL_PLUS, TLD_OVERRIDE);
-  }
 
   private final Map<Class<? extends CustomerConfigData>, ConfigDataValidator> validators =
       new HashMap<>();
@@ -99,7 +92,8 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     beanValidator.validate(customerConfig);
 
     String configName = customerConfig.getConfigName();
-    CustomerConfig existentConfig = CustomerConfig.get(customerConfig.customerUUID, configName);
+    CustomerConfig existentConfig =
+        CustomerConfig.get(customerConfig.getCustomerUUID(), configName);
     if (existentConfig != null) {
       if (!existentConfig.getConfigUUID().equals(customerConfig.getConfigUUID())) {
         beanValidator
@@ -170,7 +164,7 @@ public class CustomerConfigValidator extends BaseBeanValidator {
     }
   }
 
-  private class CloudClientsFactoryImpl implements CloudClientsFactory {
+  private static class CloudClientsFactoryImpl implements CloudClientsFactory {
     @Override
     public Storage createGcpStorage(CustomerConfigStorageGCSData configData)
         throws IOException, UnsupportedEncodingException {

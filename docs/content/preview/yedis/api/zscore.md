@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`ZSCORE key member`</b><br>
+**`ZSCORE key member`**
+
 Returns the score of the member in the sorted set at key. If member does not exist in the sorted set,
 or key does not exist, null is returned. If `key` is associated with non sorted set data,
 an error is returned.

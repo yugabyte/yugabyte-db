@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_
-#define YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -23,7 +22,7 @@
 namespace yb {
 namespace pggate {
 
-Status WriteColumn(const QLValuePB& col_value, faststring *buffer);
+Status WriteColumn(const QLValuePB& col_value, WriteBuffer *buffer);
 
 class PgDocData : public PgWire {
  public:
@@ -34,5 +33,3 @@ class PgDocData : public PgWire {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_UTIL_PG_DOC_DATA_H_

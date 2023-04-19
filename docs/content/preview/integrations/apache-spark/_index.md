@@ -6,7 +6,7 @@ description: Use Apache Spark with YugabyteDB
 headcontent: Use Apache Spark with YugabyteDB
 image: /images/develop/ecosystem-integrations/apache-spark.png
 menu:
-  preview:
+  preview_integrations:
     identifier: apache-spark
     parent: integrations
     weight: 571

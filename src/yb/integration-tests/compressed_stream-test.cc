@@ -42,24 +42,6 @@ class CompressedStreamTest : public client::KeyValueTableTest<MiniCluster> {
     KeyValueTableTest::SetUp();
   }
 
-  Status CreateClient() override {
-    auto host = "127.0.0.52";
-    client_ = VERIFY_RESULT(DoCreateClient(host, host));
-    return Status::OK();
-  }
-
-  Result<std::unique_ptr<client::YBClient>> DoCreateClient(
-      const std::string& name, const std::string& host) {
-    rpc::MessengerBuilder messenger_builder("test_client");
-    messenger_builder.SetListenProtocol(rpc::CompressedStreamProtocol());
-    messenger_builder.AddStreamFactory(
-        rpc::CompressedStreamProtocol(),
-        CompressedStreamFactory(rpc::TcpStream::Factory(), MemTracker::GetRootTracker()));
-    auto messenger = VERIFY_RESULT(messenger_builder.Build());
-    messenger->TEST_SetOutboundIpBase(VERIFY_RESULT(HostToAddress(host)));
-    return cluster_->CreateClient(std::move(messenger));
-  }
-
   void TestSimpleOps();
 };
 

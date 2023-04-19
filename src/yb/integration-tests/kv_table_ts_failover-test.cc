@@ -24,8 +24,9 @@
 #include "yb/integration-tests/yb_table_test_base.h"
 
 #include "yb/util/test_util.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(test_num_iter,
+DEFINE_UNKNOWN_int32(test_num_iter,
              1,
              "Number of iterations for key-value table tablet server failover test");
 

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SERVICE_BASE_H
-#define YB_MASTER_MASTER_SERVICE_BASE_H
+#pragma once
 
 #include "yb/gutil/macros.h"
 #include "yb/util/strongly_typed_bool.h"
@@ -29,6 +28,7 @@ namespace master {
 class Master;
 class CatalogManager;
 class FlushManager;
+class YsqlBackendsManager;
 class PermissionsManager;
 class EncryptionManager;
 
@@ -96,8 +96,9 @@ class MasterServiceBase {
       const char* function_name,
       HoldCatalogLock hold_catalog_lock);
 
-  enterprise::CatalogManager* handler(CatalogManager*);
+  CatalogManager* handler(CatalogManager*);
   FlushManager* handler(FlushManager*);
+  YsqlBackendsManager* handler(YsqlBackendsManager*);
   PermissionsManager* handler(PermissionsManager*);
   EncryptionManager* handler(EncryptionManager*);
 
@@ -109,5 +110,3 @@ class MasterServiceBase {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_SERVICE_BASE_H

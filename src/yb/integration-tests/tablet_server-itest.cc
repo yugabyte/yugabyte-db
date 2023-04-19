@@ -15,8 +15,14 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/ts_itest-base.h"
-
+#include "yb/tserver/mini_tablet_server.h"
 #include "yb/util/status_log.h"
+#include "yb/client/table.h"
+#include "yb/consensus/log-test-base.h"
+
+DECLARE_bool(TEST_simulate_fs_create_with_empty_uuid);
+DECLARE_int32(num_replicas);
+DECLARE_int32(num_tablet_servers);
 
 using std::string;
 
@@ -29,6 +35,51 @@ class TabletServerITest : public TabletServerIntegrationTestBase {
 // Given a host:port string, return the host part as a string.
 std::string GetHost(const std::string& val) {
   return CHECK_RESULT(HostPort::FromString(val, 0)).host();
+}
+
+TEST_F(TabletServerITest, TestNumberOfSegmentInCrashloop) {
+  // Instead of safe shutdown, we will just kill the process to simulate crash.
+  FLAGS_num_tablet_servers = 1;
+  FLAGS_num_replicas = 1;
+  // Enable reuse log, threshold will be maximized in testing mode.
+  BuildAndStart(std::vector<string>{"--reuse_unclosed_segment_threshold=524288"});
+  ExternalTabletServer* ts = cluster_->tablet_server(0);
+  itest::TServerDetails* ts_details = tablet_servers_[ts->instance_id().permanent_uuid()].get();
+  string wal_dir = JoinPathSegments(cluster_->data_root(), ts->id(), "yb-data", "tserver", "wals",
+                      Substitute("table-$0", table_->id()), Substitute("tablet-$0", tablet_id_));
+
+  // Simulate crashloop.
+  int restart_num = 50;
+  // Make sure segment number doesn't get increase in a crashloop
+  for (int i = 1; i <= restart_num; i++) {
+    WaitForTSAndReplicas();
+    ASSERT_OK(StartElection(ts_details, tablet_id_, MonoDelta::FromSeconds(10)));
+    ASSERT_OK(WaitUntilCommittedOpIdIndexIs(i,
+                  ts_details, tablet_id_, MonoDelta::FromSeconds(10)));
+    // The number of segments should remain 1.
+    auto current_segment_size = ASSERT_RESULT(log::GetSegmentsCount(wal_dir));
+    ASSERT_EQ(1, current_segment_size);
+
+    ts->Shutdown();
+    ASSERT_OK(cluster_->WaitForTSToCrash(ts, MonoDelta::FromSeconds(10)));
+    // Restart the server.
+    ASSERT_OK(ts->Restart());
+  }
+  // Every time server starts, it will Initiate a NO_OP operation.
+  // So, we expect that the number of entries is equal to restart_num.
+  auto num_entries = ASSERT_RESULT(log::GetEntries(wal_dir));
+  ASSERT_EQ(restart_num, num_entries);
+}
+
+TEST_F(TabletServerITest, TestTServerCrashWithEmptyUUID) {
+  // Testing tablet server crash at startup because of empty UUID
+  FLAGS_TEST_simulate_fs_create_with_empty_uuid = true;
+  auto mini_ts =
+      MiniTabletServer::CreateMiniTabletServer(GetTestPath("TabletServerTest-fsroot"), 0);
+  CHECK_OK(mini_ts);
+  mini_server_ = std::move(*mini_ts);
+  auto status = mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse);
+  ASSERT_TRUE(status.IsCorruption());
 }
 
 TEST_F(TabletServerITest, TestProxyAddrs) {

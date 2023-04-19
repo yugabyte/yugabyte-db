@@ -13,8 +13,7 @@
 
 #include "yb/docdb/doc_kv_util.h"
 
-#include "yb/docdb/docdb_fwd.h"
-#include "yb/docdb/docdb.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 #include "yb/docdb/value_type.h"
 
 #include "yb/util/bytes_formatter.h"

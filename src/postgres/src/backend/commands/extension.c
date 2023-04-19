@@ -937,6 +937,15 @@ execute_extension_script(Oid extensionOid, ExtensionControlFile *control,
 								 GUC_ACTION_SAVE, true, 0, false);
 
 	/*
+	 * Similarly disable check_function_bodies, to ensure that SQL functions
+	 * won't be parsed during creation.
+	 */
+	if (check_function_bodies)
+		(void) set_config_option("check_function_bodies", "off",
+								 PGC_USERSET, PGC_S_SESSION,
+								 GUC_ACTION_SAVE, true, 0, false);
+
+	/*
 	 * Set up the search path to have the target schema first, making it be
 	 * the default creation target namespace.  Then add the schemas of any
 	 * prerequisite extensions, unless they are in pg_catalog which would be

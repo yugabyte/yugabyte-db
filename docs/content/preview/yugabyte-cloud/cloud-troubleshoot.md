@@ -1,5 +1,6 @@
 ---
-title: Troubleshoot
+title: Troubleshoot YugabyteDB Managed
+headerTitle: Troubleshoot
 linkTitle: Troubleshoot
 description: Troubleshoot issues in YugabyteDB Managed.
 headcontent: Diagnose and troubleshoot issues with YugabyteDB clusters and YugabyteDB Managed
@@ -28,7 +29,9 @@ ysqlsh: could not connect to server: Operation timed out
 
 If you are trying to connect to a cluster from your local computer, add your computer to the cluster [IP allow list](../cloud-secure-clusters/add-connections/). If your IP address has changed, add the new IP address.
 
-If you have a VPC configured, add one or more IP addresses from the peered VPC to the cluster [IP allow list](../cloud-secure-clusters/add-connections/).
+If your cluster is deployed in a VPC and you are trying to connect from a public address (that is, outside your VPC network), you need to enable **Public Access** on the **Settings** tab and connect to the cluster public IP address that is exposed.
+
+If your cluster is deployed in a VPC and you are trying to connect from a peered VPC, add one or more IP addresses from the peered VPC to the cluster IP allow list.
 
 ### Connection closed in Cloud Shell
 
@@ -141,3 +144,11 @@ YugabyteDB uses [role-based access control](../../secure/authorization/) (RBAC) 
 ### You are editing your cluster infrastructure and are unable to reduce disk size per node
 
 50GB of disk space per vCPU is included in the base price for Dedicated clusters. If you increased the disk size per node for your cluster, you cannot reduce it. If you need to reduce the disk size for your cluster, contact {{% support-cloud %}}.
+
+### You edited your cluster infrastructure and status is stuck at 'Editing cluster'
+
+If you changed the number of nodes in your cluster (horizontal scaling), the length of time that the operation takes depends on the quantity of data in your cluster, as adding or removing nodes requires moving data between nodes. For example, when you remove nodes, the data must be drained from the nodes to be removed to the other nodes in the cluster. This can take awhile (even hours) for large datasets.
+
+On the cluster **Nodes** tab, check the Memory Used column of the nodes to be removed. You should be able to see the nodes slowly draining as the data migrates.
+
+If the condition persists, contact {{% support-cloud %}}.

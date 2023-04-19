@@ -21,8 +21,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_DB_BUILDER_H
-#define YB_ROCKSDB_DB_BUILDER_H
+#pragma once
 
 #include <string>
 #include <utility>
@@ -99,5 +98,3 @@ extern Status BuildTable(
     TableProperties* table_properties = nullptr);
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_DB_BUILDER_H

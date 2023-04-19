@@ -19,8 +19,7 @@
 // and thus isn't thread-safe.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
-#define YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_
+#pragma once
 
 #include <boost/uuid/uuid_generators.hpp>
 
@@ -57,7 +56,7 @@ class AuditLogger {
   //
   // If this returns non-OK status, batch mode isn't activated.
   Status StartBatchRequest(size_t statements_count,
-                                   IsRescheduled is_rescheduled);
+                           IsRescheduled is_rescheduled);
 
   // Exits the batch request mode. Does nothing outside of a batch request.
   Status EndBatchRequest();
@@ -68,21 +67,21 @@ class AuditLogger {
   // Log the statement execution start.
   // tnode might be nullptr, in which case this does nothing.
   Status LogStatement(const TreeNode* tnode,
-                              const std::string& statement,
-                              IsPrepare is_prepare);
+                      const std::string& statement,
+                      IsPrepare is_prepare);
 
   // Log the statement analysis/execution failure.
   // tnode might be nullptr, in which case this does nothing.
   Status LogStatementError(const TreeNode* tnode,
-                                   const std::string& statement,
-                                   const Status& error_status,
-                                   ErrorIsFormatted error_is_formatted);
+                           const std::string& statement,
+                           const Status& error_status,
+                           ErrorIsFormatted error_is_formatted);
 
   // Log a general statement processing failure.
   // We should only use this directly when the parse tree is not present.
   Status LogStatementError(const std::string& statement,
-                                   const Status& error_status,
-                                   ErrorIsFormatted error_is_formatted);
+                           const Status& error_status,
+                           ErrorIsFormatted error_is_formatted);
 
  private:
   using GflagName = std::string;
@@ -125,6 +124,3 @@ class AuditLogger {
 } // namespace audit
 } // namespace ql
 } // namespace yb
-
-
-#endif // YB_YQL_CQL_QL_AUDIT_AUDIT_LOGGER_H_

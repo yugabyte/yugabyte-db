@@ -13,9 +13,9 @@
 // C wrappers around some YB utilities. Suitable for inclusion into C codebases such as our modified
 // version of PostgreSQL.
 
-#ifndef YB_COMMON_YBC_UTIL_H
-#define YB_COMMON_YBC_UTIL_H
+#pragma once
 
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -50,6 +50,11 @@ extern bool yb_non_ddl_txn_for_sys_tables_allowed;
 extern bool yb_force_global_transaction;
 
 /*
+ * Guc that toggles whether strict inequalities are pushed down.
+ */
+extern bool yb_pushdown_strict_inequality;
+
+/*
  * Guc variable to suppress non-Postgres logs from appearing in Postgres log file.
  */
 extern bool suppress_nonpg_logs;
@@ -72,6 +77,17 @@ extern int ysql_max_in_flight_ops;
 extern bool yb_binary_restore;
 
 /*
+ * Set to true only for runs with EXPLAIN ANALYZE
+ */
+extern bool yb_run_with_explain_analyze;
+
+/*
+ * GUC variable that enables batching RPCs of generated for IN queries
+ * on hash keys issued to the same tablets.
+ */
+extern bool yb_enable_hash_batch_in;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -87,18 +103,20 @@ typedef struct YBCStatusStruct* YBCStatus;
 
 bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
+bool YBCStatusIsSnapshotTooOld(YBCStatus s);
+bool YBCStatusIsTryAgain(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
 
+const char* YBCStatusFilename(YBCStatus s);
+int YBCStatusLineNumber(YBCStatus s);
+const char* YBCStatusFuncname(YBCStatus s);
 size_t YBCStatusMessageLen(YBCStatus s);
 const char* YBCStatusMessageBegin(YBCStatus s);
-const char* YBCStatusCodeAsCString(YBCStatus s);
-
-typedef const char* (*GetUniqueConstraintNameFn)(unsigned int);
-
-const char* BuildYBStatusMessage(YBCStatus status,
-                                 GetUniqueConstraintNameFn get_constraint_name);
+const char* YBCMessageAsCString(YBCStatus s);
+unsigned int YBCStatusRelationOid(YBCStatus s);
+const char** YBCStatusArguments(YBCStatus s, size_t* nargs);
 
 bool YBCIsRestartReadError(uint16_t txn_errcode);
 
@@ -119,8 +137,6 @@ CHECKED_YBCSTATUS YBCInit(
     const char* argv0,
     YBCPAllocFn palloc_fn,
     YBCCStringToTextWithLenFn cstring_to_text_with_len_fn);
-
-CHECKED_YBCSTATUS YBCInitGFlags(const char* argv0);
 
 // From glog's log_severity.h:
 // const int GLOG_INFO = 0, GLOG_WARNING = 1, GLOG_ERROR = 2, GLOG_FATAL = 3;
@@ -168,6 +184,14 @@ void YBCLogImpl(int severity,
                 const char* format,
                 ...) __attribute__((format(printf, 5, 6)));
 
+// VA version of YBCLogImpl
+void YBCLogVA(int severity,
+              const char* file_name,
+              int line_number,
+              bool stack_trace,
+              const char* format,
+              va_list args);
+
 // Returns a string representation of the given block of binary data. The memory for the resulting
 // string is allocated using palloc.
 const char* YBCFormatBytesAsStr(const char* data, size_t size);
@@ -182,5 +206,3 @@ double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 #ifdef __cplusplus
 } // extern "C"
 #endif
-
-#endif  // YB_COMMON_YBC_UTIL_H

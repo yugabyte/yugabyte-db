@@ -25,7 +25,7 @@ public interface INodeTaskParams {
 
   @JsonIgnore
   default Region getRegion() {
-    return getAZ() == null ? null : getAZ().region;
+    return getAZ() == null ? null : getAZ().getRegion();
   }
 
   @JsonIgnore

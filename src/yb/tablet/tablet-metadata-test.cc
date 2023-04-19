@@ -140,7 +140,8 @@ TEST_F(TestRaftGroupMetadata, TestDeleteTabletDataClearsDisk) {
   const string snapshotId = "0123456789ABCDEF0123456789ABCDEF";
   tserver::TabletSnapshotOpRequestPB request;
   request.set_snapshot_id(snapshotId);
-  tablet::SnapshotOperation operation(tablet, &request);
+  tablet::SnapshotOperation operation(tablet);
+  operation.AllocateRequest()->CopyFrom(request);
   operation.set_hybrid_time(tablet->clock()->Now());
   operation.set_op_id(OpId(-1, 2));
   ASSERT_OK(tablet->snapshots().Create(&operation));

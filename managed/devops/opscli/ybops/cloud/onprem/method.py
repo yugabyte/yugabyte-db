@@ -20,8 +20,8 @@ from ybops.utils import validate_instance, get_datafile_path, YB_HOME_DIR, \
                         DEFAULT_MASTER_HTTP_PORT, \
                         DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
                         DEFAULT_TSERVER_RPC_PORT, DEFAULT_NODE_EXPORTER_HTTP_PORT
-from ybops.utils.remote_shell import RemoteShell
-from ybops.utils.ssh import wait_for_ssh, scp_to_tmp, get_ssh_host_port, SSH_RETRY_LIMIT_PRECHECK
+from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, RemoteShell
+from ybops.utils.ssh import SSH_RETRY_LIMIT_PRECHECK
 
 import json
 import logging
@@ -74,11 +74,11 @@ class OnPremValidateMethod(AbstractInstancesMethod):
         """args.search_pattern should be a private ip address for the device for OnPrem.
         """
         self.extra_vars.update(
-            get_ssh_host_port({"private_ip": args.search_pattern}, args.custom_ssh_port))
-        print(validate_instance(self.extra_vars["ssh_host"],
-                                self.extra_vars["ssh_port"],
-                                self.SSH_USER,
-                                args.private_key_file,
+            self.get_server_host_port({"private_ip": args.search_pattern}, args.custom_ssh_port))
+        connect_options = {}
+        connect_options.update(self.extra_vars)
+
+        print(validate_instance(self.extra_vars,
                                 self.mount_points.split(','),
                                 ssh2_enabled=args.ssh2_enabled
                                 ))
@@ -99,19 +99,20 @@ class OnPremListInstancesMethod(ListInstancesMethod):
 
         if 'server_type' in host_infos and host_infos['server_type'] is None:
             del host_infos['server_type']
-
+        self.update_ansible_vars_with_args(args)
         if args.mount_points:
             for host_info in host_infos:
                 try:
-                    ssh_options = {
+                    connect_options = {}
+                    connect_options.update(self.extra_vars)
+                    connect_options.update({
                         "ssh_user": host_info['ssh_user'],
-                        "private_key_file": args.private_key_file,
-                        "ssh2_enabled": args.ssh2_enabled
-                    }
-                    ssh_options.update(get_ssh_host_port(
+                        "node_agent_user": host_info['ssh_user']
+                    })
+                    connect_options.update(self.get_server_host_port(
                                         self.cloud.get_host_info(args),
                                         args.custom_ssh_port))
-                    host_info['mount_roots'] = get_mount_roots(ssh_options, args.mount_points)
+                    host_info['mount_roots'] = get_mount_roots(connect_options, args.mount_points)
 
                 except Exception as e:
                     logging.info("Error {} locating mount root for host '{}', ignoring.".format(
@@ -145,6 +146,7 @@ class OnPremDestroyInstancesMethod(DestroyInstancesMethod):
 
         # Run non-db related tasks.
         self.update_ansible_vars_with_args(args)
+        self.extra_vars.update(self.get_server_host_port(host_info, args.custom_ssh_port))
         if args.install_node_exporter:
             logging.info(("[app] Running control script stop " +
                           "against thirdparty services at {}").format(host_info['name']))
@@ -186,13 +188,9 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         host_info = self.cloud.get_host_info(args)
         if host_info:
             self.extra_vars.update(
-                get_ssh_host_port(host_info, args.custom_ssh_port))
+                self.get_server_host_port(host_info, args.custom_ssh_port))
             # Expect onprem nodes to already exist.
-            if wait_for_ssh(self.extra_vars["ssh_host"],
-                            self.extra_vars["ssh_port"],
-                            self.extra_vars["ssh_user"],
-                            args.private_key_file,
-                            num_retries=SSH_RETRY_LIMIT_PRECHECK, ssh2_enabled=args.ssh2_enabled):
+            if wait_for_server(self.extra_vars, num_retries=SSH_RETRY_LIMIT_PRECHECK):
                 return host_info
         else:
             raise YBOpsRuntimeError("Unable to find host info.")
@@ -234,10 +232,10 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
         self.parser.add_argument("--skip_ntp_check", action="store_true",
                                  help='Skip check for time synchronization.')
 
-    def verify_certificates(self, cert_type, root_cert_path, cert_path, key_path, ssh_options,
+    def verify_certificates(self, cert_type, root_cert_path, cert_path, key_path, connect_options,
                             skip_cert_validation, results):
         result_var = True
-        remote_shell = RemoteShell(ssh_options)
+        remote_shell = RemoteShell(connect_options)
         if not self.test_file_readable(remote_shell, root_cert_path):
             results["File {} is present and readable".format(root_cert_path)] = False
             result_var = False
@@ -249,7 +247,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             result_var = False
         if result_var and skip_cert_validation != 'ALL':
             try:
-                self.cloud.verify_certs(root_cert_path, cert_path, ssh_options,
+                self.cloud.verify_certs(root_cert_path, cert_path, connect_options,
                                         skip_cert_validation != 'HOSTNAME')
             except YBOpsRuntimeError as e:
                 result_var = False
@@ -285,26 +283,22 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             print(json.dumps(results, indent=2))
             return
 
-        scp_result = scp_to_tmp(
-            get_datafile_path('preflight_checks.sh'), self.extra_vars["private_ip"],
-            self.extra_vars["ssh_user"], self.extra_vars["ssh_port"], args.private_key_file,
-            ssh2_enabled=args.ssh2_enabled)
+        scp_result = copy_to_tmp(self.extra_vars, get_datafile_path('preflight_checks.sh'))
 
         results["SSH Connection"] = scp_result == 0
 
-        ssh_options = {
+        connect_options = {}
+        connect_options.update(self.extra_vars)
+        connect_options.update({
             "ssh_user": "yugabyte",
-            "ssh_host": self.extra_vars["private_ip"],
-            "ssh_port": self.extra_vars["ssh_port"],
-            "private_key_file": args.private_key_file,
-            "ssh2_enabled": args.ssh2_enabled
-        }
+            "node_agent_user": "yugabyte"
+        })
 
         if args.root_cert_path is not None:
             self.verify_certificates("Server", args.root_cert_path,
                                      args.server_cert_path,
                                      args.server_key_path,
-                                     ssh_options,
+                                     connect_options,
                                      args.skip_cert_validation,
                                      results)
 
@@ -312,7 +306,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             self.verify_certificates("Server clientRootCA", args.root_cert_path_client_to_server,
                                      args.server_cert_path_client_to_server,
                                      args.server_key_path_client_to_server,
-                                     ssh_options,
+                                     connect_options,
                                      args.skip_cert_validation,
                                      results)
 
@@ -322,7 +316,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
             self.verify_certificates("Client", root_cert_path,
                                      args.client_cert_path,
                                      args.client_key_path,
-                                     ssh_options,
+                                     connect_options,
                                      'HOSTNAME',  # not checking hostname for that serts
                                      results)
 
@@ -356,10 +350,7 @@ class OnPremPrecheckInstanceMethod(AbstractInstancesMethod):
 
         self.update_ansible_vars_with_args(args)
         self.update_ansible_vars_with_host_info(host_info, args.custom_ssh_port)
-        rc, stdout, stderr = remote_exec_command(
-            self.extra_vars["private_ip"], self.extra_vars["ssh_port"],
-            self.extra_vars["ssh_user"], args.private_key_file, cmd,
-            ssh2_enabled=args.ssh2_enabled)
+        rc, stdout, stderr = remote_exec_command(self.extra_vars, cmd)
 
         if rc != 0:
             results["Preflight Script Error"] = stderr

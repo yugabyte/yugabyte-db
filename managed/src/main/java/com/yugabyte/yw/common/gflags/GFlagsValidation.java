@@ -2,8 +2,10 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.JacksonXmlModule;
@@ -11,11 +13,12 @@ import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.fasterxml.jackson.dataformat.xml.annotation.JacksonXmlElementWrapper;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -27,9 +30,14 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
@@ -44,64 +52,70 @@ public class GFlagsValidation {
 
   private final Environment environment;
 
-  private final RuntimeConfigFactory runtimeConfigFactory;
+  private final RuntimeConfGetter confGetter;
 
   public static final Logger LOG = LoggerFactory.getLogger(GFlagsValidation.class);
 
   public static final List<String> GFLAG_FILENAME_LIST =
-      ImmutableList.of("master_flags.xml", "tserver_flags.xml");
+      ImmutableList.of("master_flags.xml", "tserver_flags.xml", "auto_flags.json");
 
   @Inject
-  public GFlagsValidation(Environment environment, RuntimeConfigFactory runtimeConfigFactory) {
+  public GFlagsValidation(Environment environment, RuntimeConfGetter confGetter) {
     this.environment = environment;
-    this.runtimeConfigFactory = runtimeConfigFactory;
+    this.confGetter = confGetter;
   }
 
   public List<GFlagDetails> extractGFlags(String version, String serverType, boolean mostUsedGFlags)
       throws IOException {
-    String releasesPath =
-        runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
     File file =
         new File(
             String.format("%s/%s/%s_flags.xml", releasesPath, version, serverType.toLowerCase()));
-    InputStream flagStream;
-    if (Files.exists(Paths.get(file.getAbsolutePath()))) {
-      flagStream = FileUtils.getInputStreamOrFail(file);
-    } else {
-      String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
-      flagStream =
-          environment.resourceAsStream(
-              "gflags_metadata/" + majorVersion + "/" + serverType.toLowerCase() + ".xml");
-      if (flagStream == null) {
-        LOG.error("GFlags metadata file for " + majorVersion + " is not present");
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "GFlags metadata file for " + majorVersion + " is not present");
-      }
-    }
-    JacksonXmlModule xmlModule = new JacksonXmlModule();
-    xmlModule.setDefaultUseWrapper(false);
-    XmlMapper xmlMapper = new XmlMapper(xmlModule);
-    AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
-    if (mostUsedGFlags) {
-      InputStream inputStream =
-          environment.resourceAsStream("gflags_metadata/" + "most_used_gflags.json");
-      ObjectMapper mapper = new ObjectMapper();
-      MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
-      List<GFlagDetails> result = new ArrayList<>();
-      for (GFlagDetails flag : data.flags) {
-        if (serverType.equals(ServerType.MASTER.name())) {
-          if (freqUsedGFlags.masterGFlags.contains(flag.name)) {
-            result.add(flag);
-          }
-        } else {
-          if (freqUsedGFlags.tserverGFlags.contains(flag.name)) {
-            result.add(flag);
-          }
+    InputStream flagStream = null;
+    try {
+      if (Files.exists(Paths.get(file.getAbsolutePath()))) {
+        flagStream = FileUtils.getInputStreamOrFail(file);
+      } else {
+        String majorVersion = version.substring(0, StringUtils.ordinalIndexOf(version, ".", 2));
+        flagStream =
+            environment.resourceAsStream(
+                "gflags_metadata/" + majorVersion + "/" + serverType.toLowerCase() + ".xml");
+        if (flagStream == null) {
+          LOG.error("GFlags metadata file for " + majorVersion + " is not present");
+          throw new PlatformServiceException(
+              INTERNAL_SERVER_ERROR,
+              "GFlags metadata file for " + majorVersion + " is not present");
         }
       }
-      return result;
+      JacksonXmlModule xmlModule = new JacksonXmlModule();
+      xmlModule.setDefaultUseWrapper(false);
+      XmlMapper xmlMapper = new XmlMapper(xmlModule);
+      AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
+      if (mostUsedGFlags) {
+        InputStream inputStream =
+            environment.resourceAsStream("gflags_metadata/" + "most_used_gflags.json");
+        ObjectMapper mapper = new ObjectMapper();
+        MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
+        List<GFlagDetails> result = new ArrayList<>();
+        for (GFlagDetails flag : data.flags) {
+          if (serverType.equals(ServerType.MASTER.name())) {
+            if (freqUsedGFlags.masterGFlags.contains(flag.name)) {
+              result.add(flag);
+            }
+          } else {
+            if (freqUsedGFlags.tserverGFlags.contains(flag.name)) {
+              result.add(flag);
+            }
+          }
+        }
+        return result;
+      }
+      return data.flags;
+    } finally {
+      if (flagStream != null) {
+        flagStream.close();
+      }
     }
-    return data.flags;
   }
 
   public void fetchGFlagFilesFromTarGZipInputStream(
@@ -114,8 +128,8 @@ public class GFlagsValidation {
         new TarArchiveInputStream(new GzipCompressorInputStream(inputStream))) {
       TarArchiveEntry currentEntry;
       while ((currentEntry = tarInput.getNextTarEntry()) != null) {
-        // Ignore all non-flag xml files.
-        if (!currentEntry.isFile() || !currentEntry.getName().endsWith("flags.xml")) {
+        // Ignore all non-flag xml and auto flags files.
+        if (!currentEntry.isFile() || !isFlagFile(currentEntry.getName())) {
           continue;
         }
         // Generally, we get the currentEntry variable value for the
@@ -156,19 +170,78 @@ public class GFlagsValidation {
     }
   }
 
-  private boolean checkGFlagFileExists(
-      String releasesPath, String dbVersion, String gFlagFileName) {
+  public boolean checkGFlagFileExists(String releasesPath, String dbVersion, String gFlagFileName) {
     String filePath = String.format("%s/%s/%s", releasesPath, dbVersion, gFlagFileName);
     return Files.exists(Paths.get(filePath));
   }
 
   public List<String> getMissingGFlagFileList(String dbVersion) {
-    String releasesPath =
-        runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
-    return GFLAG_FILENAME_LIST
-        .stream()
-        .filter((gFlagFileName) -> !checkGFlagFileExists(releasesPath, dbVersion, gFlagFileName))
-        .collect(Collectors.toList());
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    List<String> fileNameList =
+        GFLAG_FILENAME_LIST
+            .stream()
+            .filter(
+                (gFlagFileName) -> !checkGFlagFileExists(releasesPath, dbVersion, gFlagFileName))
+            .collect(Collectors.toList());
+    if (fileNameList.contains(Util.AUTO_FLAG_FILENAME)
+        && !CommonUtils.isAutoFlagSupported(dbVersion)) {
+      fileNameList.remove(Util.AUTO_FLAG_FILENAME);
+    }
+    return fileNameList;
+  }
+
+  public AutoFlagsPerServer extractAutoFlags(String version, String serverType) throws IOException {
+    String releasesPath = confGetter.getStaticConf().getString(Util.YB_RELEASES_PATH);
+    File autoFlagFile = Paths.get(releasesPath, version, Util.AUTO_FLAG_FILENAME).toFile();
+    ObjectMapper objectMapper = new ObjectMapper();
+    try (InputStream inputStream = FileUtils.getInputStreamOrFail(autoFlagFile)) {
+      AutoFlags data = objectMapper.readValue(inputStream, AutoFlags.class);
+      return data.autoFlagsPerServers
+          .stream()
+          .filter(flags -> flags.serverType.equals(serverType))
+          .findFirst()
+          .get();
+    }
+  }
+
+  public Map<String, String> getFilteredAutoFlagsWithNonInitialValue(
+      Map<String, String> flags, String version, ServerType serverType) throws IOException {
+    Map<String, String> filteredList = new HashMap<>();
+    if (MapUtils.isEmpty(flags)) {
+      return filteredList;
+    }
+    List<GFlagDetails> allGFlags = extractGFlags(version, serverType.name(), false);
+    for (Map.Entry<String, String> entry : flags.entrySet()) {
+      String flag = entry.getKey();
+      GFlagDetails flagDetail =
+          allGFlags
+              .stream()
+              .filter(gflag -> gflag.name.equals(flag))
+              .findFirst()
+              .orElseThrow(
+                  () ->
+                      new PlatformServiceException(
+                          BAD_REQUEST, flag + " is not present in metadata."));
+      if (isAutoFlag(flagDetail) && !flagDetail.initial.equals(entry.getValue())) {
+        filteredList.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return filteredList;
+  }
+
+  private Set<String> getFlagsTagList(GFlagDetails flagDetails) {
+    if (StringUtils.isEmpty(flagDetails.tags)) {
+      return new HashSet<>();
+    }
+    return new HashSet<>(Arrays.asList(StringUtils.splitPreserveAllTokens(flagDetails.tags, ",")));
+  }
+
+  public boolean isAutoFlag(GFlagDetails flag) {
+    return getFlagsTagList(flag).contains("auto");
+  }
+
+  private boolean isFlagFile(String fileName) {
+    return fileName.endsWith("flags.xml") || fileName.endsWith(Util.AUTO_FLAG_FILENAME);
   }
 
   /** Structure to capture GFlags metadata from xml file. */
@@ -191,5 +264,30 @@ public class GFlagsValidation {
 
     @JsonProperty(value = "TSERVER")
     List<String> tserverGFlags;
+  }
+
+  /** Structure to capture Auto Flags details from json file */
+  public static class AutoFlags {
+    @JsonProperty(value = "auto_flags")
+    public List<AutoFlagsPerServer> autoFlagsPerServers;
+  }
+
+  public static class AutoFlagsPerServer {
+    @JsonAlias(value = "program")
+    public String serverType;
+
+    @JsonAlias(value = "flags")
+    public List<AutoFlagDetails> autoFlagDetails;
+  }
+
+  public static class AutoFlagDetails {
+    @JsonAlias(value = "name")
+    public String name;
+
+    @JsonAlias(value = "class")
+    public int flagClass;
+
+    @JsonAlias(value = "is_runtime")
+    public boolean runtime;
   }
 }

@@ -11,7 +11,7 @@ import './AddDestinationChannelForm.scss';
 export const AddDestinationChannelForm = (props) => {
   const { customer, visible, onHide, onError, defaultChannel, enableNotificationTemplates } = props;
   const [channelType, setChannelType] = useState(defaultChannel);
-  const [customSMTP, setCustomSMTP] = useState(props.customSmtp ? props.customSmtp : false);
+  const [defaultSMTP, setDefaultSMTP] = useState(props.defaultSmtp ? props.defaultSmtp : false);
   const [defaultRecipients, setDefaultRecipients] = useState(
     props.defaultRecipients ? props.defaultRecipients : false
   );
@@ -37,7 +37,7 @@ export const AddDestinationChannelForm = (props) => {
    */
   const onModalHide = () => {
     setChannelType(defaultChannel);
-    setCustomSMTP(false);
+    setDefaultSMTP(false);
     setDefaultRecipients(false);
     onHide();
   };
@@ -70,7 +70,7 @@ export const AddDestinationChannelForm = (props) => {
         } else {
           payload['params']['defaultRecipients'] = true;
         }
-        if (customSMTP) {
+        if (!defaultSMTP) {
           payload['params']['smtpData'] = values.smtpData;
           payload['params']['smtpData']['useSSL'] = values.smtpData.useSSL || false;
           payload['params']['smtpData']['useTLS'] = values.smtpData.useTLS || false;
@@ -125,8 +125,8 @@ export const AddDestinationChannelForm = (props) => {
   const handleOnToggle = (event) => {
     const name = event.target.name;
     const value = event.target.checked;
-    if (name === 'customSmtp') {
-      setCustomSMTP(value);
+    if (name === 'defaultSmtp') {
+      setDefaultSMTP(value);
     }
     if (name === 'defaultRecipients') {
       setDefaultRecipients(value);
@@ -163,10 +163,10 @@ export const AddDestinationChannelForm = (props) => {
       return (<span />);
     }
     const defaultNotificationTitle = "YugabyteDB Anywhere {{ $labels.severity }} alert"
-      + " {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}"
+      + " {{ $labels.definition_name }} {{ $labels.alert_state }} for {{ $labels.source_name }}";
     const defaultNotificationText = "{{ $labels.definition_name }} alert with severity level"
       + " '{{ $labels.severity }}' for {{ $labels.source_type }} '{{ $labels.source_name }}'"
-      + " is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}"
+      + " is {{ $labels.alert_state }}.\n\n{{ $annotations.message }}";
     return (
       <>
         <Row>
@@ -195,7 +195,7 @@ export const AddDestinationChannelForm = (props) => {
         </Row>
       </>
     );
-  }
+  };
 
   const getChannelForm = () => {
     switch (channelType) {
@@ -335,7 +335,7 @@ export const AddDestinationChannelForm = (props) => {
                     </Field>
                   </Col>
                   <Col lg={11} className="component-label">
-                    <strong>Use Default Recipients</strong>
+                    <strong>Use Recipients specified on &quot;Health&quot; tab</strong>
                   </Col>
                 </Row>
 
@@ -355,11 +355,11 @@ export const AddDestinationChannelForm = (props) => {
               <Col lg={12}>
                 <Row className="component-flex">
                   <Col lg={1} className="noLeftPadding">
-                    <Field name="customSmtp">
+                    <Field name="defaultSmtp">
                       {({ field }) => (
                         <YBToggle
                           onToggle={handleOnToggle}
-                          name="customSmtp"
+                          name="defaultSmtp"
                           isReadOnly={isReadOnly}
                           input={{
                             value: field.value,
@@ -370,11 +370,11 @@ export const AddDestinationChannelForm = (props) => {
                     </Field>
                   </Col>
                   <Col lg={11} className="component-label">
-                    <strong>Custom SMTP Configuration</strong>
+                    <strong>Use SMTP server specified on &quot;Health&quot; tab</strong>
                   </Col>
                 </Row>
 
-                {customSMTP && (
+                {!defaultSMTP && (
                   <>
                     <Field
                       name="smtpData.smtpServer"
@@ -479,10 +479,10 @@ export const AddDestinationChannelForm = (props) => {
     props.type === 'edit' ? 'Edit alert channel' : 'Create new alert channel';
   const validationSchema =
     channelType === 'email' ? validationSchemaEmail :
-    channelType === 'slack' ? validationSchemaSlack :
-    channelType === 'pagerduty' ? validationSchemaPagerDuty :
-    channelType === 'webhook' ? validationSchemaWebHook :
-    null;
+      channelType === 'slack' ? validationSchemaSlack :
+        channelType === 'pagerduty' ? validationSchemaPagerDuty :
+          channelType === 'webhook' ? validationSchemaWebHook :
+            null;
   return (
     <YBModalForm
       formName="alertDestinationForm"

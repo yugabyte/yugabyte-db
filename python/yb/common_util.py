@@ -14,17 +14,20 @@
 This module provides common utility functions.
 """
 
+import atexit
 import itertools
 import logging
 import os
 import re
-import sys
-import json
+import shutil
 import subprocess
 import shlex
 import io
 import platform
 import argparse
+import uuid
+import pathlib
+import random
 
 import typing
 from typing import (
@@ -107,7 +110,25 @@ def make_set(obj: Union[str, List[Any]]) -> Set[Any]:
     return set(make_list(obj))
 
 
-def init_env(verbose: bool) -> None:
+g_init_logging_verbose_value: Optional[bool] = None
+
+
+def init_logging(verbose: bool) -> None:
+    global g_init_logging_verbose_value
+
+    if g_init_logging_verbose_value is not None:
+        # This function has already been called.
+        if verbose == g_init_logging_verbose_value:
+            # The same value of the verbose argument, skip.
+            return
+        logging.warning(
+            f"init_logging() has already been called with verbose={g_init_logging_verbose_value}, "
+            f"ignoring a subsequent call with verbose={verbose}"
+        )
+        return
+
+    g_init_logging_verbose_value = verbose
+
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s [%(filename)s:%(lineno)d %(levelname)s] %(message)s")
@@ -251,24 +272,6 @@ def ensure_yb_src_root_from_build_root(build_dir: str, verbose: bool = False) ->
 
 def is_macos() -> bool:
     return platform.system() == 'Darwin'
-
-
-def write_json_file(
-        json_data: Any, output_path: str, description_for_log: Optional[str] = None) -> None:
-    with open(output_path, 'w') as output_file:
-        json.dump(json_data, output_file, indent=JSON_INDENTATION)
-        if description_for_log is not None:
-            logging.info("Wrote %s: %s", description_for_log, output_path)
-
-
-def read_json_file(input_path: str) -> Any:
-    try:
-        with open(input_path) as input_file:
-            return json.load(input_file)
-    except:  # noqa: E129
-        # We re-throw the exception anyway.
-        logging.error("Failed reading JSON file %s", input_path)
-        raise
 
 
 def read_file(file_path: str) -> str:
@@ -446,14 +449,30 @@ def arg_str_to_bool(v: Any) -> bool:
 
 
 g_home_dir: Optional[str] = None
+g_home_dir_aliases: Set[str] = set()
 
 
 def get_home_dir() -> str:
-    global g_home_dir
+    global g_home_dir, g_home_dir_aliases
     if g_home_dir is not None:
         return g_home_dir
-    g_home_dir = os.path.realpath(os.path.expanduser('~'))
+
+    home_dir_raw = os.path.expanduser('~')
+    home_dir_realpath = os.path.realpath(os.path.expanduser('~'))
+    g_home_dir = home_dir_realpath
+    g_home_dir_aliases = {home_dir_raw, home_dir_realpath}
     return g_home_dir
+
+
+def get_home_dir_aliases() -> Set[str]:
+    """
+    Returns aliases for the home directory (the home directory itself and its real path).
+    """
+    global g_home_dir_aliases
+    if not g_home_dir_aliases:
+        get_home_dir()
+    assert g_home_dir_aliases
+    return g_home_dir_aliases
 
 
 def get_relative_path_or_none(abs_path: str, relative_to: str) -> Optional[str]:
@@ -542,3 +561,93 @@ def assert_set_contains_all(a: Set[Any], b: Set[Any], message: str = '') -> None
             f"{set_to_str_one_element_per_line(b)}. "
             f"Elements in the second set but not in the first: "
             f"{set_to_str_one_element_per_line(d)}.")
+
+
+def create_temp_dir(keep_tmp_dir: bool = False) -> str:
+    """
+    Creates a temporary directory inside the "build" directory and returns its path.
+
+    :param keep_tmp_dir: If true, the temporary directory will not be deleted at exit.
+    """
+
+    tmp_dir = os.path.join(
+        YB_SRC_ROOT,
+        "build",
+        "yb_tmp_{}_{}".format(
+            str(uuid.uuid4()),
+            ''.join([str(random.randint(0, 9)) for _ in range(16)])
+        )
+    )
+    try:
+        pathlib.Path(tmp_dir).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logging.error("Could not create directory at '{}'".format(tmp_dir))
+        raise e
+    if not keep_tmp_dir:
+        atexit.register(lambda: shutil.rmtree(tmp_dir))
+    return tmp_dir
+
+
+def create_symlink(src: str, dst: str) -> None:
+    logging.info("Creating symbolic link %s -> %s", dst, src)
+    if os.path.islink(dst):
+        existing_link_src = os.readlink(dst)
+        if existing_link_src == src:
+            logging.info("Symlink %s already exists and points to %s", dst, src)
+            return
+        raise ValueError(
+                "Symlink %s already exists and points to %s instead of %s" % (
+                    dst, existing_link_src, src))
+    os.symlink(src, dst)
+
+
+def ensure_starts_with(s: str, prefix: str) -> str:
+    """
+    >>> ensure_starts_with('foo', 'a')
+    'afoo'
+    >>> ensure_starts_with('foo', 'f')
+    'foo'
+    """
+    if not s.startswith(prefix):
+        return prefix + s
+    return s
+
+
+def ensure_ends_with(s: str, suffix: str) -> str:
+    """
+    >>> ensure_ends_with('foo', 'f')
+    'foof'
+    >>> ensure_ends_with('foo', 'o')
+    'foo'
+    """
+    if not s.endswith(suffix):
+        return s + suffix
+    return s
+
+
+def ensure_enclosed_by(s: str, prefix: str, suffix: str) -> str:
+    """
+    >>> ensure_enclosed_by('abc', '{', '}')
+    '{abc}'
+    >>> ensure_enclosed_by('<abc', '<', '>')
+    '<abc>'
+    >>> ensure_enclosed_by('abc]', '[', ']')
+    '[abc]'
+    """
+    return ensure_ends_with(ensure_starts_with(s, prefix), suffix)
+
+
+def are_files_equal(path1: str, path2: str) -> bool:
+    size1 = os.path.getsize(path1)
+    size2 = os.path.getsize(path2)
+    if size1 != size2:
+        return False
+    with open(path1, "rb") as file1, open(path2, "rb") as file2:
+        buf_size = 512 * 1024
+        while True:
+            chunk1 = file1.read(buf_size)
+            chunk2 = file2.read(buf_size)
+            if chunk1 != chunk2:
+                return False
+            if len(chunk1) == 0 and len(chunk2) == 0:
+                return True

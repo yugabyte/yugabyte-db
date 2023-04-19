@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_OPERATIONS_OPERATION_H
-#define YB_TABLET_OPERATIONS_OPERATION_H
+#pragma once
 
 #include <mutex>
 #include <string>
@@ -39,10 +38,13 @@
 #include <boost/optional/optional.hpp>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus_types.pb.h"
+
+#include "yb/rpc/lightweight_message.h"
 
 #include "yb/tablet/tablet_fwd.h"
 
@@ -72,6 +74,7 @@ YB_DEFINE_ENUM(
     ((kChangeAutoFlagsConfig, consensus::CHANGE_AUTO_FLAGS_CONFIG_OP)));
 
 YB_STRONGLY_TYPED_BOOL(WasPending);
+YB_STRONGLY_TYPED_BOOL(IsLeaderSide);
 
 // Base class for transactions.  There are different implementations for different types (Write,
 // AlterSchema, etc.) OperationDriver implementations use Operations along with Consensus to execute
@@ -96,7 +99,7 @@ class Operation {
   // Executes the prepare phase of this transaction. The actual actions of this phase depend on the
   // transaction type, but usually are limited to what can be done without actually changing shared
   // data structures (such as the RocksDB memtable) and without side-effects.
-  virtual Status Prepare() = 0;
+  virtual Status Prepare(IsLeaderSide is_leader_side) = 0;
 
   // Applies replicated operation, the actual actions of this phase depend on the
   // operation type, but usually this is the method where data-structures are changed.
@@ -121,7 +124,7 @@ class Operation {
 
   // Returns the request PB associated with this transaction. May be NULL if the transaction's state
   // has been reset.
-  virtual const google::protobuf::Message* request() const { return nullptr; }
+  virtual const rpc::LightweightMessage* request() const { return nullptr; }
 
   // Sets the ConsensusRound for this transaction, if this transaction is being executed through the
   // consensus system.
@@ -141,10 +144,6 @@ class Operation {
     return consensus_round_atomic_.load(std::memory_order_acquire);
   }
 
-  // Returns the shared pointer to the tablet which is guaranteed to be non-null.
-  // Fatals in case tablet is null.
-  TabletPtr tablet() const;
-
   // Returns a non-null shared pointer to the tablet or an error.
   Result<TabletPtr> tablet_safe() const;
 
@@ -154,8 +153,10 @@ class Operation {
 
   virtual void Release();
 
-  void SetTablet(TabletWeakPtr tablet) {
-    tablet_ = std::move(tablet);
+  void SetTablet(const TabletPtr& tablet) {
+    CHECK_NOTNULL(tablet);
+    tablet_ = tablet;
+    tablet_is_set_.store(true, std::memory_order_release);
   }
 
   // Completion callback must be set while the operation is only known to the thread creating it.
@@ -174,19 +175,17 @@ class Operation {
   void set_hybrid_time(const HybridTime& hybrid_time) EXCLUDES(mutex_);
 
   HybridTime hybrid_time() const EXCLUDES(mutex_) {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    DCHECK(hybrid_time_.is_valid());
-    return hybrid_time_;
+    auto hybrid_time = hybrid_time_.load(std::memory_order_acquire);
+    DCHECK(hybrid_time.is_valid());
+    return hybrid_time;
   }
 
   HybridTime hybrid_time_even_if_unset() const EXCLUDES(mutex_) {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    return hybrid_time_;
+    return hybrid_time_.load(std::memory_order_acquire);
   }
 
   bool has_hybrid_time() const {
-    std::lock_guard<simple_spinlock> l(mutex_);
-    return hybrid_time_.is_valid();
+    return hybrid_time_even_if_unset().is_valid();
   }
 
   // Returns hybrid time that should be used for storing this operation result in RocksDB.
@@ -214,13 +213,15 @@ class Operation {
   // Initialize operation at leader side.
   // op_id - operation id.
   // committed_op_id - current committed operation id.
-  void AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
-  void AddedToFollower();
+  Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id);
+  Status AddedToFollower();
 
   void Aborted(bool was_pending);
   void Replicated(WasPending was_pending);
 
   virtual ~Operation();
+
+  bool tablet_is_set() { return tablet_is_set_.load(std::memory_order_acquire); }
 
  private:
 
@@ -236,11 +237,22 @@ class Operation {
   // Operation methods on destructors.
   const OperationType operation_type_;
 
-  virtual void AddedAsPending() {}
-  virtual void RemovedFromPending() {}
+  // These functions take a tablet shared pointer to avoid handling errors in case the tablet has
+  // already been destroyed.
+  virtual void AddedAsPending(const TabletPtr& tablet) {}
+  virtual void RemovedFromPending(const TabletPtr& tablet) {}
 
-  // The tablet peer that is coordinating this transaction.
+  // This function is OK to call only if log prefix is already initialized.
+  std::string GetLogPrefixUnsafe() const NO_THREAD_SAFETY_ANALYSIS { return log_prefix_; }
+
+  // Sets the *tablet shared pointer if it is not already set. Returns true in case of success. Logs
+  // the error as DFATAL and returns false in release mode in case the tablet is unavailable.
+  __attribute__ ((warn_unused_result)) bool GetTabletOrLogError(
+      TabletPtr* tablet, const char* state_str);
+
+  // The tablet that is coordinating this transaction.
   TabletWeakPtr tablet_;
+  std::atomic<bool> tablet_is_set_{false};
 
   // Optional callback to be called once the transaction completes.
   OperationCompletionCallback completion_clbk_;
@@ -250,7 +262,7 @@ class Operation {
   mutable simple_spinlock mutex_;
 
   // This transaction's hybrid_time.
-  HybridTime hybrid_time_ GUARDED_BY(mutex_);
+  std::atomic<HybridTime> hybrid_time_{HybridTime::kInvalid};
 
   // This OpId stores the canonical "anchor" OpId for this transaction.
   std::atomic<OpId> op_id_;
@@ -260,17 +272,21 @@ class Operation {
   std::atomic<consensus::ConsensusRound*> consensus_round_atomic_{nullptr};
 
   ScopedOperation preparing_token_;
+
+  mutable std::atomic<bool> log_prefix_initialized_{false};
+  mutable simple_spinlock log_prefix_mutex_;
+  mutable std::string log_prefix_ GUARDED_BY(log_prefix_mutex_);
 };
 
 template <class Request>
 struct RequestTraits {
   static void SetAllocatedRequest(
-      consensus::ReplicateMsg* replicate, Request* request);
+      consensus::LWReplicateMsg* replicate, Request* request);
 
-  static Request* MutableRequest(consensus::ReplicateMsg* replicate);
+  static Request* MutableRequest(consensus::LWReplicateMsg* replicate);
 };
 
-consensus::ReplicateMsgPtr CreateReplicateMsg(OperationType op_type);
+consensus::LWReplicateMsg* CreateReplicateMsg(ThreadSafeArena* arena, OperationType op_type);
 
 // Request here actually means serializable part of operation state.
 // When creating new XxxOperation class inherited from OperationBase, it is better to declare
@@ -288,7 +304,7 @@ class OperationBase : public Base {
   }
 
   Request* AllocateRequest() {
-    request_holder_ = std::make_unique<Request>();
+    request_holder_ = rpc::MakeSharedMessage<Request>();
     request_.store(request_holder_.get(), std::memory_order_release);
     return request_holder_.get();
   }
@@ -297,25 +313,15 @@ class OperationBase : public Base {
     return request_holder_.get();
   }
 
-  Request* ReleaseRequest() {
-    return request_holder_.release();
-  }
-
-  void TakeRequest(Request* request) {
-    request_holder_.reset(new Request);
+  void TakeRequest(std::shared_ptr<Request> request) {
+    request_holder_ = std::move(request);
     request_.store(request_holder_.get(), std::memory_order_release);
-    request_holder_->Swap(request);
   }
 
   consensus::ReplicateMsgPtr NewReplicateMsg() override {
-    auto result = CreateReplicateMsg(op_type);
-    auto* request = request_holder_.release();
-    if (request) {
-      RequestTraits<Request>::SetAllocatedRequest(result.get(), request);
-    } else {
-      *RequestTraits<Request>::MutableRequest(result.get()) = *request_;
-    }
-    return result;
+    auto result = CreateReplicateMsg(&request_holder_->arena(), op_type);
+    RequestTraits<Request>::SetAllocatedRequest(result, request_holder_.get());
+    return consensus::ReplicateMsgPtr(request_holder_, result);
   }
 
   void UpdateRequestFromConsensusRound() override {
@@ -329,7 +335,7 @@ class OperationBase : public Base {
   }
 
  private:
-  std::unique_ptr<Request> request_holder_;
+  std::shared_ptr<Request> request_holder_;
   std::atomic<const Request*> request_;
 };
 
@@ -384,5 +390,3 @@ OperationCompletionCallback MakeWeakSynchronizerOperationCompletionCallback(
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_OPERATIONS_OPERATION_H

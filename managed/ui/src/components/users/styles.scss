@@ -1,7 +1,7 @@
-@import '../../_style/colors.scss';
+@use '../../_style/colors.scss';
 
 .user-tab-logo {
-  fill: $YB_TEXT_BLACK;
+  fill: colors.$YB_TEXT_BLACK;
   margin-right: 5px;
   font-size: medium;
   vertical-align: middle;
@@ -80,14 +80,14 @@
   .ua-sec-divider {
     display: flex;
     opacity: 0.1;
-    border: 1px solid $YB_TEXT_BLACK;
+    border: 1px solid colors.$YB_TEXT_BLACK;
   }
 
   .ua-tab-item {
     display: flex;
     width: 220px;
     height: 40px;
-    background: $YB_WHITE;
+    background: colors.$YB_WHITE;
     box-sizing: border-box;
     border-radius: 8px;
     margin: 5px 20px 10px 10px;
@@ -97,7 +97,7 @@
   }
 
   .ua-active-tab {
-    border: 1px solid $YB_BG_WHITE_4;
+    border: 1px solid colors.$YB_BG_WHITE_4;
   }
 
   .ua-field-row-c {
@@ -205,17 +205,17 @@
 
 .ldap-cancel-btn,
 .oidc-cancel-btn {
-  background: $YB_WHITE;
-  border: 1px solid $YB_BLACK;
+  background: colors.$YB_WHITE;
+  border: 1px solid colors.$YB_BLACK;
   border-radius: 8px;
   font-size: 16px;
-  color: $YB_TEXT_BLACK_2;
+  color: colors.$YB_TEXT_BLACK_2;
   font-weight: 500;
 }
 
 .ldap-cancel-btn:hover,
 .oidc-cancel-btn:hover {
-  border: 1px solid $YB_BLACK;
+  border: 1px solid colors.$YB_BLACK;
 }
 
 .ldap-modal-c {
@@ -250,8 +250,8 @@
   height: fit-content;
   display: inline-flex;
   align-items: flex-start;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
-  background: $YB_LIGHT_BLUE_BACKGROUND;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+  background: colors.$YB_LIGHT_BLUE_BACKGROUND;
   border-radius: 8px;
   padding: 12px;
   font-weight: normal;

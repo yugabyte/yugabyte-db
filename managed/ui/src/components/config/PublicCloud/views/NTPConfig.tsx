@@ -138,6 +138,7 @@ export const NTPConfig: FC<NTPConfigProps> = ({
           <div className="info-text">Specify NTP servers you want to use</div>
           {GET_FIELD(fieldType, {
             name: 'ntpServers',
+            // eslint-disable-next-line react/display-name
             component: (field: any) => {
               const values =
                 fieldType === FIELD_TYPE.REDUX ? field.input.value : field.form.values.ntpServers;
@@ -146,7 +147,9 @@ export const NTPConfig: FC<NTPConfigProps> = ({
                   <YBMultiEntryInput
                     isDisabled={disabled || !isAllReqCompleted}
                     isLoading={!isAllReqCompleted}
-                    placeholder={isAllReqCompleted ? "Add NTP Servers" : "Loading NTP servers list..."}
+                    placeholder={
+                      isAllReqCompleted ? 'Add NTP Servers' : 'Loading NTP servers list...'
+                    }
                     defaultOptions={configured_ntp_servers.map((t: any) => {
                       return { value: t, label: t };
                     })}

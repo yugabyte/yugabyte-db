@@ -45,7 +45,7 @@ public class BackupTableYb extends AbstractTaskBase {
     backup = Backup.get(taskParams().customerUuid, taskParams().backupUuid);
 
     try {
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       Map<String, String> config = universe.getConfig();
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         long totalBackupSize = 0L;
@@ -73,11 +73,13 @@ public class BackupTableYb extends AbstractTaskBase {
             backup.setPerRegionLocations(backupIdx, locations);
           }
           backup.setBackupSizeInBackupList(backupIdx, backupSize);
+          backup.save();
           totalBackupSize += backupSize;
           backupIdx++;
         }
         backup.setCompletionTime(backup.getUpdateTime());
         backup.setTotalBackupSize(totalBackupSize);
+        backup.save();
         backup.transitionState(Backup.BackupState.Completed);
       } else {
         backup.transitionState(Backup.BackupState.Skipped);

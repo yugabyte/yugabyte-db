@@ -19,7 +19,7 @@ export default class YBInfoTip extends Component {
     );
     return (
       <OverlayTrigger trigger={['hover', 'focus']} placement={placement} overlay={popover}>
-        {this.props.children || <i className="fa fa-question-circle yb-help-color yb-info-tip" />}
+        {this.props.children ?? <i className="fa fa-question-circle yb-help-color yb-info-tip" />}
       </OverlayTrigger>
     );
   }

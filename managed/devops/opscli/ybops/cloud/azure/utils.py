@@ -5,6 +5,7 @@
 # may obtain a copy of the License at
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+import time
 
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.network import NetworkManagementClient
@@ -18,13 +19,15 @@ from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
 from ybops.utils.ssh import format_rsa_key, validated_key_file
 from threading import Thread
 
+import adal
+import base64
+import datetime
+import json
 import logging
 import os
 import re
 import requests
-import adal
-import json
-import datetime
+import yaml
 
 SUBSCRIPTION_ID = os.environ.get("AZURE_SUBSCRIPTION_ID")
 RESOURCE_GROUP = os.environ.get("AZURE_RG")
@@ -54,6 +57,11 @@ VM_PRICING_URL_FORMAT = "https://prices.azure.com/api/retail/prices?$filter=" \
 PRIVATE_DNS_ZONE_ID_REGEX = re.compile(
     "/subscriptions/(?P<subscription_id>[^/]*)/resourceGroups/(?P<resource_group>[^/]*)"
     "/providers/Microsoft.Network/privateDnsZones/(?P<zone_name>[^/]*)")
+CLOUDINIT_EPHEMERAL_MNTPOINT = {
+    "mounts": [
+        ["ephemeral0", "/mnt/resource"]
+    ]
+}
 
 
 class GetPriceWorker(Thread):
@@ -106,6 +114,43 @@ def id_to_name(resourceId):
 def get_zones(region, metadata):
     return ["{}-{}".format(region, zone)
             for zone in metadata["regions"].get(region, {}).get("zones", [])]
+
+
+def cloud_init_encoded(**kwargs):
+    """
+    Create base64 encoded cloud init data.
+
+    **kwargs are additional key/values to add to the cloud init
+    """
+    ci_header = "#cloud-config"
+    cloud_init = CLOUDINIT_EPHEMERAL_MNTPOINT.copy()
+
+    # Handle additional mounts. Allow overriding of ephemeral0 to /mnt/resource.
+    # If ephemeral0 is provided in kwargs, we want to use the user defined mount point over what
+    # we specify as the default. We will loop through all 'additional mounts', looking for
+    # ephemeral0. If it is found, we want to override our default (which only includes an option
+    # for ephemeral0). If ephemeral0 is not found in additional mounts, we want our ephemeral0
+    # default + the other user provided mount points.
+    # Remember, mounts is a list of lists - [ [ "ephemeral0", "/mnt/resource"] ]
+    additional_mounts = kwargs.pop("mounts", [])
+    for am in additional_mounts:
+        # ephemeral and ephemeral0 refer to the same mount point, either may be used.
+        if am[0] == "ephemeral" or am[0] == "ephemeral0":
+            cloud_init["mounts"] = additional_mounts
+            break
+    else:
+        cloud_init["mounts"].extend(additional_mounts)
+
+    cloud_init.update(**kwargs)
+    ci_data = yaml.dump(cloud_init)
+    logging.debug("created cloud init data: {}".format(ci_data))
+
+    lines = [
+        ci_header,
+        ci_data
+    ]
+    cloud_file = '\n'.join(lines)
+    return base64.b64encode(cloud_file.encode('utf-8')).decode('utf-8')
 
 
 class AzureBootstrapClient():
@@ -170,7 +215,7 @@ class AzureBootstrapClient():
                    self.network_client.subnets.list(RESOURCE_GROUP, vnet)]
         for subnet in subnets:
             # Maybe change to tags rather than filtering on name prefix
-            if(subnet.get("name").startswith(YUGABYTE_SUBNET_PREFIX.format(''))):
+            if subnet.get("name").startswith(YUGABYTE_SUBNET_PREFIX.format('')):
                 logging.debug("Found default subnet {}".format(subnet.get("name")))
                 return subnet.get("name")
         logging.info("Could not find default {} in vnet {}".format(YUGABYTE_SUBNET_PREFIX, vnet))
@@ -481,18 +526,35 @@ class AzureCloudAdmin():
 
         nic_name = self.get_nic_name(vm_name)
         ip_name = self.get_public_ip_name(vm_name)
-        try:
-            nic_info = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
-            if nic_info.tags and nic_info.tags.get('node-uuid') == node_uuid:
-                logging.info("[app] Deleted nic {}".format(nic_name))
-                nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP, nic_name)
-                nic_del.wait()
-                logging.info("[app] Deleted nic {}".format(nic_name))
-        except CloudError as e:
-            if e.error and e.error.error == 'ResourceNotFound':
-                logging.info("[app] Resource nic {} is not found".format(nic_name))
-            else:
-                raise e
+
+        max_attempts = 10
+        sleep_sec = 60
+        for i in range(1, max_attempts + 1):
+            try:
+                nic_info = self.network_client.network_interfaces.get(RESOURCE_GROUP, nic_name)
+                if nic_info.tags and nic_info.tags.get('node-uuid') == node_uuid:
+                    logging.info("[app] Deleting nic {}".format(nic_name))
+                    nic_del = self.network_client.network_interfaces.delete(RESOURCE_GROUP,
+                                                                            nic_name)
+                    nic_del.wait()
+                    logging.info("[app] Deleted nic {}".format(nic_name))
+            except CloudError as e:
+                if e.error and e.error.error in ['ResourceNotFound', 'NotFound']:
+                    logging.info("[app] Resource nic {} is not found".format(nic_name))
+                    break
+                elif e.error and e.error.error == 'NicReservedForAnotherVm':
+                    # In case VM wasn't created, Azure reserves the NICs for the VMs
+                    # for 180 seconds and throws NicReservedForAnotherVm error code,
+                    # and suggests to retry after 180 seconds.
+                    if i < max_attempts:
+                        logging.info("[app] Resource NIC is {} reserved for another VM, waiting "
+                                     "for {} seconds before re-trying deletion of NIC (this was "
+                                     "attempt {} out of {}).".format(nic_name, sleep_sec, i,
+                                                                     max_attempts))
+                        time.sleep(sleep_sec)
+                else:
+                    raise e
+
         try:
             ip_addr = self.network_client.public_ip_addresses.get(RESOURCE_GROUP, ip_name)
             if ip_addr and ip_addr.tags and ip_addr.tags.get('node-uuid') == node_uuid:
@@ -578,7 +640,8 @@ class AzureCloudAdmin():
 
     def create_or_update_vm(self, vm_name, zone, num_vols, private_key_file, volume_size,
                             instance_type, ssh_user, nsg, image, vol_type, server_type,
-                            region, nic_id, tags, disk_iops, disk_throughput, is_edit=False,
+                            region, nic_id, tags, disk_iops, disk_throughput, spot_price,
+                            use_spot_instance, is_edit=False,
                             json_output=True):
         disk_names = [vm_name + "-Disk-" + str(i) for i in range(1, num_vols + 1)]
         private_key = validated_key_file(private_key_file)
@@ -601,6 +664,10 @@ class AzureCloudAdmin():
             plan = self.compute_client.virtual_machine_images \
                 .get(region, pub, offer, sku, version).as_dict().get('plan')
 
+        # Base64 encode the cloud init data. Python base64 takes in and returns
+        # byte-like objects, so we must encode the yaml and then decode the output.
+        # This allows us to pass the cloud init as a base64 encoded string.
+        cloud_init = cloud_init_encoded()
         vm_parameters = {
             "location": region,
             "os_profile": {
@@ -614,7 +681,8 @@ class AzureCloudAdmin():
                             "key_data": format_rsa_key(private_key, public_key=True)
                         }]
                     }
-                }
+                },
+                "custom_data": cloud_init,
             },
             "hardware_profile": {
                 "vm_size": instance_type
@@ -634,6 +702,14 @@ class AzureCloudAdmin():
                 }]
             }
         }
+        if use_spot_instance:
+            vm_parameters["priority"] = "Spot"
+            # Default price is -1 which means we pay up to on-demand price
+            if spot_price is not None:
+                vm_parameters["billingProfile"] = {
+                    "maxPrice": spot_price
+                }
+            logging.info(f'[app] Using Azure spot instance')
         if plan is not None:
             vm_parameters["plan"] = plan
 
@@ -829,6 +905,7 @@ class AzureCloudAdmin():
                 if len(parts) != 2 or parts[0] != "PowerState":
                     continue
                 instance_state = parts[1]
+                break
         is_running = True if instance_state == "running" else False
         return {"private_ip": private_ip, "public_ip": public_ip, "region": region,
                 "zone": zone_full, "name": vm.name, "ip_name": ip_name,

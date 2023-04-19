@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_QL_ROCKSDB_STORAGE_H
-#define YB_DOCDB_QL_ROCKSDB_STORAGE_H
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -57,12 +56,13 @@ class QLRocksDBStorage : public YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      YQLRowwiseIteratorIf::UniPtr* iter) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter,
+      const docdb::DocDBStatistics* statistics = nullptr) const override;
 
-  Status InitIterator(YQLRowwiseIteratorIf* doc_iter,
-                              const PgsqlReadRequestPB& request,
-                              const Schema& schema,
-                              const QLValuePB& ybctid) const override;
+  Status InitIterator(DocRowwiseIterator* doc_iter,
+                      const PgsqlReadRequestPB& request,
+                      const Schema& schema,
+                      const QLValuePB& ybctid) const override;
 
   Status GetIterator(
       const PgsqlReadRequestPB& request,
@@ -72,7 +72,9 @@ class QLRocksDBStorage : public YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const DocKey& start_doc_key,
-      YQLRowwiseIteratorIf::UniPtr* iter) const override;
+      YQLRowwiseIteratorIf::UniPtr* iter,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none,
+      const docdb::DocDBStatistics* statistics = nullptr) const override;
 
   Status GetIterator(
       uint64 stmt_id,
@@ -81,8 +83,10 @@ class QLRocksDBStorage : public YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const QLValuePB& ybctid,
-      YQLRowwiseIteratorIf::UniPtr* iter) const override;
+      const QLValuePB& min_ybctid,
+      const QLValuePB& max_ybctid,
+      YQLRowwiseIteratorIf::UniPtr* iter,
+      const docdb::DocDBStatistics* statistics = nullptr) const override;
 
  private:
   const DocDB doc_db_;
@@ -90,4 +94,3 @@ class QLRocksDBStorage : public YQLStorageIf {
 
 }  // namespace docdb
 }  // namespace yb
-#endif // YB_DOCDB_QL_ROCKSDB_STORAGE_H

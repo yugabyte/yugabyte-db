@@ -64,6 +64,13 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   scoped_refptr<Log> log;
   auto tablet_ptr = harness_->tablet();
   auto tablet_id = tablet_ptr->tablet_id();
+  log::NewSegmentAllocationCallback noop = {};
+  auto new_segment_allocation_callback =
+      tablet()->metadata()->IsLazySuperblockFlushEnabled()
+          ? std::bind(
+                &tablet::RaftGroupMetadata::Flush, tablet()->metadata(),
+                tablet::OnlyIfDirty::kTrue)
+          : noop;
   ASSERT_OK(Log::Open(LogOptions(), tablet_id,
                      fs_manager()->GetFirstTabletWalDirOrDie(tablet_ptr->metadata()->table_id(),
                                                              tablet_id),
@@ -76,7 +83,8 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
                      log_thread_pool_.get(),
                      log_thread_pool_.get(),
                      std::numeric_limits<int64_t>::max(), // cdc_min_replicated_index
-                     &log));
+                     &log,
+                     new_segment_allocation_callback));
 
   scoped_refptr<MetricEntity> table_metric_entity =
     METRIC_ENTITY_table.Instantiate(&metric_registry_, Format("table-$0", CURRENT_TEST_NAME()));
@@ -166,7 +174,7 @@ void RemoteBootstrapSessionTest::PopulateTablet() {
 
     auto query = std::make_unique<tablet::WriteQuery>(
         kLeaderTerm, CoarseTimePoint::max() /* deadline */, tablet_peer_.get(),
-        tablet_ptr, &resp);
+        tablet_ptr, nullptr, &resp);
     query->set_client_request(req);
     query->set_callback(tablet::MakeLatchOperationCompletionCallback(&latch, &resp));
     tablet_peer_->WriteAsync(std::move(query));

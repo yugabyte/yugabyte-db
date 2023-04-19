@@ -30,8 +30,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef YB_GUTIL_WALLTIME_H
-#define YB_GUTIL_WALLTIME_H
+#pragma once
 
 #include <sys/resource.h>
 #include <sys/time.h>
@@ -179,4 +178,3 @@ class CycleClock {
 };
 
 #include "yb/gutil/cycleclock-inl.h"  // inline method bodies
-#endif  // YB_GUTIL_WALLTIME_H

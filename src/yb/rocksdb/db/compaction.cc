@@ -39,11 +39,11 @@
 #include "yb/rocksdb/db/compaction_picker.h"
 #include "yb/rocksdb/db/version_set.h"
 #include "yb/rocksdb/util/logging.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/sync_point.h"
 
 using namespace yb::size_literals;
 
@@ -289,9 +289,6 @@ Compaction::Compaction(VersionStorageInfo* vstorage,
       compaction_reason_(_compaction_reason) {
   seen_key_.store(false, std::memory_order_release);
   MarkFilesBeingCompacted(true);
-  if (is_manual_compaction_) {
-    compaction_reason_ = CompactionReason::kManualCompaction;
-  }
 
 #ifndef NDEBUG
   for (size_t i = 1; i < inputs_.size(); ++i) {

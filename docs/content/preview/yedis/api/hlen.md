@@ -14,10 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`HLEN key`</b><br>
+**`HLEN key`**
+
 This command fetches the number of fields in the hash that is associated with the given `key`.
-<li>If the `key` does not exist, 0 is returned.</li>
-<li>If the `key` is associated with non-hash data, an error is raised.</li>
+
+- If the `key` does not exist, 0 is returned.
+- If the `key` is associated with non-hash data, an error is raised.
 
 ## Return value
 

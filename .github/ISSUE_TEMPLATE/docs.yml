@@ -1,7 +1,7 @@
 name: Docs
 description: Create a documentation issue.
 title: "[Docs] Title"
-labels: ["area/documentation"]
+labels: ["area/documentation", "status/awaiting-triage"]
 body:
 - type: textarea
   id: documentation
@@ -10,4 +10,17 @@ body:
     placeholder: |
       **Provide a detailed description of the information you want to update/include in the YugabyteDB docs.**
   validations:
-    required: true 
+    required: true
+- type: checkboxes
+  id: warning
+  attributes:
+    label: "Warning: Please confirm that this issue does not contain any sensitive information"
+    description: >
+      Sensitive Information includes any customer names, regulated data (e.g. privacy data,
+      cardholder data, protected health information, etc.), confidential or proprietary information
+      including but not limited to company identifying information, network proprietary information,
+      proprietary database schema information, log data, etc. If you are unsure whether your ticket
+      contains any sensitive information, please reach out to your security team for assistance.
+    options:
+      - label: I confirm this issue does not contain any sensitive information.
+        required: true

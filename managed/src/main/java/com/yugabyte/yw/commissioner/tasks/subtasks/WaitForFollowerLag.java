@@ -3,9 +3,10 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.metrics.MetricQueryResponse;
 import com.yugabyte.yw.models.Universe;
@@ -49,14 +50,14 @@ public class WaitForFollowerLag extends AbstractTaskBase {
 
   @Override
   public void run() {
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     NodeDetails node = taskParams().node;
     ServerType serverType = taskParams().serverType;
     double epsilon = 0.00001d;
     String ip = null;
     int httpPort = 0;
     int maxFollowerLagThresholdMs =
-        runtimeConfigFactory.forUniverse(universe).getInt(MAX_FOLLOWER_LAG_THRESHOLD_MS);
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeMaxFollowerLagThresholdMs);
     double followerLagMs = maxFollowerLagThresholdMs + 1;
     int numIters = 0;
     long startTimeMs = System.currentTimeMillis();

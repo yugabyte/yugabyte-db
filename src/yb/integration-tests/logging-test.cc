@@ -36,9 +36,12 @@
 #include <glog/logging.h>
 #include <gmock/gmock.h>
 
+#include "yb/util/flags.h"
 #include "yb/util/logging_test_util.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
+#include "yb/util/test_macros.h"
+#include "yb/util/test_util.h"
 
 DECLARE_string(vmodule);
 
@@ -78,7 +81,7 @@ TEST(LoggingTest, TestThrottledLogging) {
 TEST(LoggingTest, VModule) {
   google::FlagSaver flag_saver;
 
-  FLAGS_vmodule = "logging-test=1";
+  ASSERT_OK(EnableVerboseLoggingForModule("logging-test", 1));
 
   ASSERT_TRUE(VLOG_IS_ON(1));
 

@@ -68,7 +68,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.ListTabletServersResponse;
@@ -114,10 +113,10 @@ public class ImportController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Import a universe", response = ImportUniverseFormData.class)
-  public Result importUniverse(UUID customerUUID) {
+  public Result importUniverse(UUID customerUUID, Http.Request request) {
     // Get the submitted form data.
     Form<ImportUniverseFormData> formData =
-        formFactory.getFormDataOrBadRequest(ImportUniverseFormData.class);
+        formFactory.getFormDataOrBadRequest(request, ImportUniverseFormData.class);
     if (formData.hasErrors()) {
       return ApiResponse.error(BAD_REQUEST, formData.errorsAsJson());
     }
@@ -139,7 +138,7 @@ public class ImportController extends AuthenticatedController {
       res = finishUniverseImport(importForm, customer, results);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Universe,
               Objects.toString(results.universeUUID, null),
               Audit.ActionType.Import,
@@ -166,11 +165,10 @@ public class ImportController extends AuthenticatedController {
       }
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.Universe,
               Objects.toString(results.universeUUID, null),
-              Audit.ActionType.Import,
-              Json.toJson(formData.rawData()));
+              Audit.ActionType.Import);
       return res;
     }
   }
@@ -264,10 +262,10 @@ public class ImportController extends AuthenticatedController {
             createNewUniverseForImport(
                 customer,
                 importForm,
-                Util.getNodePrefix(customer.getCustomerId(), universeName),
+                Util.getNodePrefix(customer.getId(), universeName),
                 universeName);
       }
-      List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+      List<Provider> providerList = Provider.get(customer.getUuid(), importForm.providerType);
       Provider provider;
       if (!providerList.isEmpty()) {
         provider = providerList.get(0);
@@ -277,7 +275,7 @@ public class ImportController extends AuthenticatedController {
         results.error =
             String.format(
                 "Providers for the customer: %s and type: %s" + " are not present",
-                customer.uuid, importForm.providerType);
+                customer.getUuid(), importForm.providerType);
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, results.error);
       }
       Region region = Region.getByCode(provider, importForm.regionCode);
@@ -288,7 +286,7 @@ public class ImportController extends AuthenticatedController {
           addServersToUniverse(
               userMasterIpPorts, taskParams, provider, region, zone, true /*isMaster*/);
       results.checks.put("create_db_entry", "OK");
-      results.universeUUID = universe.universeUUID;
+      results.universeUUID = universe.getUniverseUUID();
     } catch (Exception e) {
       results.checks.put("create_db_entry", "FAILURE");
       results.error = e.getMessage();
@@ -327,7 +325,7 @@ public class ImportController extends AuthenticatedController {
           universeDetails.importedState = newState;
           universe1.setUniverseDetails(universeDetails);
         };
-    Universe.saveDetails(universe.universeUUID, updater, false);
+    Universe.saveDetails(universe.getUniverseUUID(), updater, false);
   }
 
   /** Import the various tablet servers from the masters. */
@@ -354,7 +352,7 @@ public class ImportController extends AuthenticatedController {
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     // TODO: move this into a common location.
-    results.universeUUID = universe.universeUUID;
+    results.universeUUID = universe.getUniverseUUID();
 
     // ---------------------------------------------------------------------------------------------
     // Verify tservers count and list.
@@ -373,7 +371,7 @@ public class ImportController extends AuthenticatedController {
     // Update the universe object in the DB with new information : complete set of nodes.
     // ---------------------------------------------------------------------------------------------
     // Find the provider, region and zone. These should have been created during master info update.
-    List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+    List<Provider> providerList = Provider.get(customer.getUuid(), importForm.providerType);
     Provider provider;
     if (!providerList.isEmpty()) {
       provider = providerList.get(0);
@@ -383,7 +381,7 @@ public class ImportController extends AuthenticatedController {
       results.error =
           String.format(
               "Providers for the customer: %s and type: %s" + " are not present",
-              customer.uuid, importForm.providerType);
+              customer.getUuid(), importForm.providerType);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
 
@@ -452,7 +450,7 @@ public class ImportController extends AuthenticatedController {
 
     UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
     // TODO: move to common location.
-    results.universeUUID = universe.universeUUID;
+    results.universeUUID = universe.getUniverseUUID();
 
     // ---------------------------------------------------------------------------------------------
     // Configure metrics.
@@ -508,7 +506,7 @@ public class ImportController extends AuthenticatedController {
 
     results.state = State.FINISHED;
 
-    log.info("Completed " + universe.universeUUID + " import.");
+    log.info("Completed " + universe.getUniverseUUID() + " import.");
 
     return PlatformResults.withData(results);
   }
@@ -572,7 +570,7 @@ public class ImportController extends AuthenticatedController {
         };
     // Save the updated universe object and return the updated universe.
     // saveUniverseDetails(taskParams.universeUUID);
-    return Universe.saveDetails(taskParams.universeUUID, updater, false);
+    return Universe.saveDetails(taskParams.getUniverseUUID(), updater, false);
   }
 
   /**
@@ -640,13 +638,13 @@ public class ImportController extends AuthenticatedController {
       String nodePrefix,
       String universeName) {
     // Find the provider by the code given, or create a new provider if one does not exist.
-    List<Provider> providerList = Provider.get(customer.uuid, importForm.providerType);
+    List<Provider> providerList = Provider.get(customer.getUuid(), importForm.providerType);
     Provider provider = null;
     if (!providerList.isEmpty()) {
       provider = providerList.get(0);
     }
     if (provider == null) {
-      provider = Provider.create(customer.uuid, importForm.providerType, importForm.cloudName);
+      provider = Provider.create(customer.getUuid(), importForm.providerType, importForm.cloudName);
     }
     // Find the region by the code given, or create a new provider if one does not exist.
     Region region = getOrCreateRegion(importForm, provider);
@@ -662,9 +660,9 @@ public class ImportController extends AuthenticatedController {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     // We will assign this universe a random UUID if not given one.
     if (importForm.universeUUID == null) {
-      taskParams.universeUUID = UUID.randomUUID();
+      taskParams.setUniverseUUID(UUID.randomUUID());
     } else {
-      taskParams.universeUUID = importForm.universeUUID;
+      taskParams.setUniverseUUID(importForm.universeUUID);
     }
     taskParams.nodePrefix = nodePrefix;
     taskParams.importedState = ImportedState.STARTED;
@@ -674,9 +672,9 @@ public class ImportController extends AuthenticatedController {
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.universeName = universeName;
-    userIntent.provider = provider.uuid.toString();
+    userIntent.provider = provider.getUuid().toString();
     userIntent.regionList = new ArrayList<>();
-    userIntent.regionList.add(region.uuid);
+    userIntent.regionList.add(region.getUuid());
     userIntent.providerType = importForm.providerType;
     userIntent.instanceType = importForm.instanceType;
     userIntent.replicationFactor = importForm.replicationFactor;
@@ -686,7 +684,7 @@ public class ImportController extends AuthenticatedController {
         (String) configHelper.getConfig(ConfigHelper.ConfigType.SoftwareVersion).get("version");
 
     InstanceType.upsert(
-        provider.uuid,
+        provider.getUuid(),
         importForm.instanceType,
         0 /* numCores */,
         0.0 /* memSizeGB */,
@@ -696,22 +694,22 @@ public class ImportController extends AuthenticatedController {
     PlacementInfo placementInfo = new PlacementInfo();
 
     PlacementCloud placementCloud = new PlacementCloud();
-    placementCloud.uuid = provider.uuid;
-    placementCloud.code = provider.code;
+    placementCloud.uuid = provider.getUuid();
+    placementCloud.code = provider.getCode();
     placementCloud.regionList = new ArrayList<>();
 
     PlacementRegion placementRegion = new PlacementRegion();
-    placementRegion.uuid = region.uuid;
-    placementRegion.name = region.name;
-    placementRegion.code = region.code;
+    placementRegion.uuid = region.getUuid();
+    placementRegion.name = region.getName();
+    placementRegion.code = region.getCode();
     placementRegion.azList = new ArrayList<>();
     placementCloud.regionList.add(placementRegion);
 
     PlacementAZ placementAZ = new PlacementAZ();
-    placementAZ.name = zone.name;
-    placementAZ.subnet = zone.subnet;
+    placementAZ.name = zone.getName();
+    placementAZ.subnet = zone.getSubnet();
     placementAZ.replicationFactor = 1;
-    placementAZ.uuid = zone.uuid;
+    placementAZ.uuid = zone.getUuid();
     placementAZ.numNodesInAZ = 1;
     placementRegion.azList.add(placementAZ);
 
@@ -725,7 +723,7 @@ public class ImportController extends AuthenticatedController {
     cluster.index = 1;
 
     // Return the universe we just created.
-    return Universe.create(taskParams, customer.getCustomerId());
+    return Universe.create(taskParams, customer.getId());
   }
 
   private Region getOrCreateRegion(ImportUniverseFormData importForm, Provider provider) {
@@ -760,7 +758,7 @@ public class ImportController extends AuthenticatedController {
     // Set the node index and node details.
     nodeDetails.nodeIdx = index;
     nodeDetails.nodeName = taskParams.nodePrefix + Universe.NODEIDX_PREFIX + nodeDetails.nodeIdx;
-    nodeDetails.azUuid = zone.uuid;
+    nodeDetails.azUuid = zone.getUuid();
 
     // Set this node as a part of the primary cluster.
     nodeDetails.placementUuid = taskParams.getPrimaryCluster().uuid;
@@ -771,9 +769,9 @@ public class ImportController extends AuthenticatedController {
     // Set the node name and the private ip address. TODO: Set public ip.
     nodeDetails.cloudInfo = new CloudSpecificInfo();
     nodeDetails.cloudInfo.private_ip = nodeIP;
-    nodeDetails.cloudInfo.cloud = provider.code;
-    nodeDetails.cloudInfo.region = region.code;
-    nodeDetails.cloudInfo.az = zone.code;
+    nodeDetails.cloudInfo.cloud = provider.getCode();
+    nodeDetails.cloudInfo.region = region.getCode();
+    nodeDetails.cloudInfo.az = zone.getCode();
     nodeDetails.cloudInfo.instance_type = instanceType;
 
     taskParams.nodeDetailsSet.add(nodeDetails);

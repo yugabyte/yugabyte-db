@@ -95,6 +95,7 @@ yb_readonly_virtualenv=true
 
 detect_architecture
 activate_virtualenv
+set_pythonpath
 
 if [[ -n ${YB_LIST_CTEST_TESTS_ONLY:-} ]]; then
   # This has to match CTEST_TEST_PROGRAM_RE in run_tests_on_spark.py.
@@ -130,18 +131,10 @@ fi
 
 yb_ninja_executable_not_needed=true
 if [[ -z ${BUILD_ROOT:-} ]]; then
+  # shellcheck disable=SC2119
   set_build_root
-else
-  preset_build_root=$BUILD_ROOT
-  set_build_root --no-readonly
-  if [[ $preset_build_root != "$BUILD_ROOT" ]] &&
-     ! "$YB_BUILD_SUPPORT_DIR/is_same_path.py" "$preset_build_root" "$BUILD_ROOT"; then
-    fatal "Build root was already set to $preset_build_root, but we determined it must be set" \
-          "to $BUILD_ROOT, and these two paths do not point to the same location."
-  fi
-  readonly BUILD_ROOT
-  unset preset_build_root
 fi
+readonly BUILD_ROOT
 
 find_or_download_ysql_snapshots
 find_or_download_thirdparty

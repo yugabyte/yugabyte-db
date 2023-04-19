@@ -72,7 +72,7 @@
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -86,16 +86,16 @@
 
 using namespace std::literals;
 
-DEFINE_int32(metrics_snapshotter_interval_ms, 30 * 1000,
+DEFINE_UNKNOWN_int32(metrics_snapshotter_interval_ms, 30 * 1000,
              "Interval at which the metrics are snapshotted.");
 TAG_FLAG(metrics_snapshotter_interval_ms, advanced);
 
-DEFINE_string(metrics_snapshotter_tserver_metrics_whitelist,
+DEFINE_UNKNOWN_string(metrics_snapshotter_tserver_metrics_whitelist,
     "handler_latency_yb_client_read_local_sum,handler_latency_yb_client_read_local_count",
     "Tserver metrics to record in native metrics storage.");
 TAG_FLAG(metrics_snapshotter_tserver_metrics_whitelist, advanced);
 
-DEFINE_string(metrics_snapshotter_table_metrics_whitelist,
+DEFINE_UNKNOWN_string(metrics_snapshotter_table_metrics_whitelist,
     "rocksdb_sst_read_micros_sum,rocksdb_sst_read_micros_count",
     "Table metrics to record in native metrics storage.");
 TAG_FLAG(metrics_snapshotter_table_metrics_whitelist, advanced);
@@ -103,13 +103,13 @@ TAG_FLAG(metrics_snapshotter_table_metrics_whitelist, advanced);
 constexpr int kTServerMetricsSnapshotterYbClientDefaultTimeoutMs =
   yb::RegularBuildVsSanitizers(5, 60) * 1000;
 
-DEFINE_int32(tserver_metrics_snapshotter_yb_client_default_timeout_ms,
+DEFINE_UNKNOWN_int32(tserver_metrics_snapshotter_yb_client_default_timeout_ms,
     kTServerMetricsSnapshotterYbClientDefaultTimeoutMs,
     "Default timeout for the YBClient embedded into the tablet server that is used "
     "by metrics snapshotter.");
 TAG_FLAG(tserver_metrics_snapshotter_yb_client_default_timeout_ms, advanced);
 
-DEFINE_uint64(metrics_snapshotter_ttl_ms, 7 * 24 * 60 * 60 * 1000 /* 1 week */,
+DEFINE_UNKNOWN_uint64(metrics_snapshotter_ttl_ms, 7 * 24 * 60 * 60 * 1000 /* 1 week */,
              "Ttl for snapshotted metrics.");
 TAG_FLAG(metrics_snapshotter_ttl_ms, advanced);
 

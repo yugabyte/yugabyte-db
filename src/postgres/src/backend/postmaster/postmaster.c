@@ -95,6 +95,7 @@
 
 #include "access/transam.h"
 #include "access/xlog.h"
+#include "access/xact.h"
 #include "access/xlogrecovery.h"
 #include "catalog/pg_control.h"
 #include "common/file_perm.h"
@@ -118,12 +119,17 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "replication/logicallauncher.h"
+#include "replication/slot.h"
+#include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
+#include "storage/procarray.h"
+#include "storage/procsignal.h"
+#include "storage/sinvaladt.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
 #include "utils/datetime.h"
@@ -409,6 +415,7 @@ static void process_startup_packet_die(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
 static void StartupPacketTimeoutHandler(void);
 static void CleanupBackend(int pid, int exitstatus);
+static void CleanupKilledProcess(PGPROC *proc);
 static bool CleanupBackgroundWorker(int pid, int exitstatus);
 static void HandleChildCrash(int pid, int exitstatus, const char *procname);
 static void LogChildExit(int lev, const char *procname,
@@ -3114,16 +3121,29 @@ reaper(SIGNAL_ARGS)
 		for (i = 0; i < ProcGlobal->allProcCount; i++)
 		{
 			PGPROC	   *proc = &ProcGlobal->allProcs[i];
+
+			if (!proc || proc->pid != pid)
+				continue;
+
 			/*
 			 * We take a conservative approach and restart the postmaster if
 			 * a process dies while holding a lock.
 			 */
-			if (pid == proc->pid && proc->ybAnyLockAcquired)
+			if (proc->ybAnyLockAcquired)
 			{
 				YbCrashWhileLockIntermediateState = true;
 				ereport(LOG,
 						(errmsg("terminating active server processes due to backend crash while "
 						"acquiring LWLock")));
+				break;
+			}
+
+			/*
+			 * If the process died but was not holding a lock, then we can do some cleanup
+			 */
+			if (WIFSIGNALED(exitstatus))
+			{
+				CleanupKilledProcess(proc);
 				break;
 			}
 		}
@@ -3534,6 +3554,84 @@ CleanupBackgroundWorker(int pid,
 	return false;
 }
 
+static void CleanupKilledProcess(PGPROC *proc)
+{
+	PGPROC	   *volatile *procgloballist;
+
+	if (proc->backendId == InvalidBackendId)
+	{
+		/* These come from ShutdownAuxiliaryProcess */
+		ConditionVariableCancelSleepForProc(proc);
+		pgstat_report_wait_end_for_proc(proc);
+	}
+	else
+	{
+		/* From InitProcessPhase2 */
+		ProcArrayRemove(proc, InvalidTransactionId);
+
+		/* From ProcSignalInit */
+		CleanupProcSignalStateForProc(proc);
+
+		/* From SharedInvalBackendInit */
+		CleanupInvalidationStateForProc(proc);
+
+		/* From ProcKill */
+		ReplicationSlotCleanupForProc(proc);
+		SyncRepCleanupAtProcExit(proc);
+		ConditionVariableCancelSleepForProc(proc);
+
+		/*
+		* Detach from any lock group of which we are a member.  If the leader
+		* exist before all other group members, it's PGPROC will remain allocated
+		* until the last group process exits; that process must return the
+		* leader's PGPROC to the appropriate list.
+		*/
+		if (proc->lockGroupLeader != NULL)
+		{
+			PGPROC	   *leader = proc->lockGroupLeader;
+
+			if (leader)
+			{
+				Assert(!dlist_is_empty(&leader->lockGroupMembers));
+				dlist_delete(&proc->lockGroupLink);
+				if (dlist_is_empty(&leader->lockGroupMembers))
+				{
+					leader->lockGroupLeader = NULL;
+					if (leader != proc)
+					{
+						procgloballist = leader->procgloballist;
+
+						/* Leader exited first; return its PGPROC. */
+						leader->links.next = (SHM_QUEUE *) *procgloballist;
+						*procgloballist = leader;
+					}
+				}
+				else if (leader != proc)
+					proc->lockGroupLeader = NULL;
+			}
+		}
+
+		procgloballist = proc->procgloballist;
+
+		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
+
+		/*
+		* If we're still a member of a locking group, that means we're a leader
+		* which has somehow exited before its children.  The last remaining child
+		* will release our PGPROC.  Otherwise, release it now.
+		*/
+		if (proc->lockGroupLeader == NULL)
+		{
+			/* Since lockGroupLeader is NULL, lockGroupMembers should be empty. */
+			Assert(dlist_is_empty(&proc->lockGroupMembers));
+
+			/* Return PGPROC structure (and semaphore) to appropriate freelist */
+			proc->links.next = (SHM_QUEUE *) *procgloballist;
+			*procgloballist = proc;
+		}
+	}
+}
+
 /*
  * CleanupBackend -- cleanup after terminated backend.
  *
@@ -3547,7 +3645,10 @@ CleanupBackend(int pid,
 {
 	dlist_mutable_iter iter;
 
-	LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
+	if (YBIsEnabledInPostgresEnvVar())
+		LogChildExit(EXIT_STATUS_0(exitstatus) ? DEBUG2 : WARNING, _("server process"), pid, exitstatus);
+	else
+		LogChildExit(DEBUG2, _("server process"), pid, exitstatus);
 
 	/*
 	 * If a backend dies in an ugly way then we must signal all other backends

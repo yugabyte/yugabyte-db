@@ -2,7 +2,7 @@
 # Default architecture is x86_64
 jobs:
   - os: alma8
-    compiler: clang13
+    compiler: clang15
     build_type: asan
     release_artifact: false
 
@@ -38,14 +38,16 @@ jobs:
     build_type: fastdebug
     release_artifact: false
 
-  - os: mac11.6
+  - os: mac12
     compiler: clang
     build_type: debug
+    architecture: arm64
     release_artifact: false
 
-  - os: mac11.6
+  - os: mac11
     compiler: clang
     build_type: release
+    architecture: x86_64
     release_artifact: true
 
   - os: ubuntu20.04

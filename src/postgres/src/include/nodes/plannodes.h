@@ -797,21 +797,31 @@ typedef struct NestLoop
 	List	   *nestParams;		/* list of NestLoopParam nodes */
 } NestLoop;
 
+/*
+ * Information to use for each hashable clause in a batched nested loop join.
+ * This is used by the hash batching strategy of BNL.
+ */
+typedef struct YbBNLHashClauseInfo
+{
+	Oid hashOp;				/* Operator to hash the outer side of this clause 
+							   with. */
+	int innerHashAttNo;		/* Attno of inner side variable. */
+	Expr *outerParamExpr;	/* Outer expression of this clause. */
+} YbBNLHashClauseInfo;
+
 typedef struct YbBatchedNestLoop
 {
 	NestLoop nl;
 
-	/* 
+	/*
 	 * Only relevant if we're using the hash batching strategy.
 	 */
-	List	   *hashOps;		 /* List of operators to hash with for local 
-									join phase of batching */
-	List	   *innerHashAttNos; /* List of attributes of inner tuple that
-									are to be hashed if we are using the hash
-									strategy. */
-	List	   *outerParamExprs; /* List of expressions on outer tuple that
-									are to be hashed if we are using the hash
-									strategy. */
+
+	YbBNLHashClauseInfo *hashClauseInfos; /*
+										   * Array of information about each
+										   * hashable join clause.
+										   */
+	int num_hashClauseInfos;
 } YbBatchedNestLoop;
 
 typedef struct NestLoopParam

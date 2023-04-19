@@ -233,7 +233,6 @@ class ChangeFilterFactory : public CompactionFilterFactory {
   const char* Name() const override { return "ChangeFilterFactory"; }
 };
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBTestCompactionFilter, CompactionFilter) {
   Options options = CurrentOptions();
   options.max_open_files = -1;
@@ -289,6 +288,7 @@ TEST_F(DBTestCompactionFilter, CompactionFilter) {
       }
       iter->Next();
     }
+    ASSERT_OK(iter->status());
   }
   ASSERT_EQ(total, 100000);
   ASSERT_EQ(count, 1);
@@ -351,7 +351,7 @@ TEST_F(DBTestCompactionFilter, CompactionFilter) {
         db_->NewIterator(ReadOptions(), handles_[1]));
     iter->SeekToFirst();
     count = 0;
-    while (iter->Valid()) {
+    while (ASSERT_RESULT(iter->CheckedValid())) {
       count++;
       iter->Next();
     }
@@ -374,6 +374,7 @@ TEST_F(DBTestCompactionFilter, CompactionFilter) {
       count++;
       iter->Next();
     }
+    ASSERT_OK(iter->status());
     ASSERT_EQ(count, 0);
   }
 }
@@ -406,11 +407,10 @@ TEST_F(DBTestCompactionFilter, CompactionFilterDeletesAll) {
   Iterator* itr = db_->NewIterator(ReadOptions());
   itr->SeekToFirst();
   // empty db
-  ASSERT_TRUE(!itr->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(itr->CheckedValid()));
 
   delete itr;
 }
-#endif  // ROCKSDB_LITE
 
 TEST_F(DBTestCompactionFilter, CompactionFilterWithValueChange) {
   do {
@@ -553,7 +553,6 @@ TEST_F(DBTestCompactionFilter, CompactionFilterWithMergeOperator) {
   ASSERT_EQ(newvalue, four);
 }
 
-#ifndef ROCKSDB_LITE
 TEST_F(DBTestCompactionFilter, CompactionFilterContextManual) {
   KeepFilterFactory* filter = new KeepFilterFactory(true, true);
 
@@ -607,11 +606,11 @@ TEST_F(DBTestCompactionFilter, CompactionFilterContextManual) {
       }
       iter->Next();
     }
+    ASSERT_OK(iter->status());
     ASSERT_EQ(total, 700);
     ASSERT_EQ(count, 2);
   }
 }
-#endif  // ROCKSDB_LITE
 
 TEST_F(DBTestCompactionFilter, CompactionFilterContextCfId) {
   KeepFilterFactory* filter = new KeepFilterFactory(false, true);
@@ -642,7 +641,6 @@ TEST_F(DBTestCompactionFilter, CompactionFilterContextCfId) {
   ASSERT_TRUE(filter->compaction_filter_created());
 }
 
-#ifndef ROCKSDB_LITE
 // Compaction filters should only be applied to records that are newer than the
 // latest snapshot. This test inserts records and applies a delete filter.
 TEST_F(DBTestCompactionFilter, CompactionFilterSnapshot) {
@@ -718,7 +716,7 @@ TEST_F(DBTestCompactionFilter, CompactionFilterIgnoreSnapshot) {
     std::unique_ptr<Iterator> iter(db_->NewIterator(read_options));
     iter->SeekToFirst();
     int count = 0;
-    while (iter->Valid()) {
+    while (ASSERT_RESULT(iter->CheckedValid())) {
       count++;
       iter->Next();
     }
@@ -727,7 +725,7 @@ TEST_F(DBTestCompactionFilter, CompactionFilterIgnoreSnapshot) {
     std::unique_ptr<Iterator> iter1(db_->NewIterator(read_options));
     iter1->SeekToFirst();
     count = 0;
-    while (iter1->Valid()) {
+    while (ASSERT_RESULT(iter1->CheckedValid())) {
       count++;
       iter1->Next();
     }
@@ -740,7 +738,6 @@ TEST_F(DBTestCompactionFilter, CompactionFilterIgnoreSnapshot) {
   // removed.
   db_->ReleaseSnapshot(snapshot);
 }
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
 

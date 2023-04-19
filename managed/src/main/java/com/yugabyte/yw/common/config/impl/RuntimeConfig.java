@@ -22,7 +22,6 @@ import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Universe;
 import io.ebean.Model;
 import java.util.function.Supplier;
-import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,16 +83,16 @@ public class RuntimeConfig<M extends Model> extends DelegatingConfig {
     if (scope == null) {
       RuntimeConfigEntry.getOrBadRequest(GLOBAL_SCOPE_UUID, path).delete();
     } else if (scope instanceof Customer) {
-      RuntimeConfigEntry.getOrBadRequest(((Customer) scope).uuid, path).delete();
+      RuntimeConfigEntry.getOrBadRequest(((Customer) scope).getUuid(), path).delete();
     } else if (scope instanceof Universe) {
-      RuntimeConfigEntry.getOrBadRequest(((Universe) scope).universeUUID, path).delete();
+      RuntimeConfigEntry.getOrBadRequest(((Universe) scope).getUniverseUUID(), path).delete();
     } else if (scope instanceof Provider) {
-      RuntimeConfigEntry.getOrBadRequest(((Provider) scope).uuid, path).delete();
+      RuntimeConfigEntry.getOrBadRequest(((Provider) scope).getUuid(), path).delete();
     } else {
       throw new UnsupportedOperationException("Unsupported Scope: " + scope);
     }
     super.deleteValueInternal(path);
-    LOG.trace("After setValue {}", this);
+    LOG.trace("After deleteEntry {}", this);
     return this;
   }
 }

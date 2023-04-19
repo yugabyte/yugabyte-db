@@ -14,8 +14,7 @@
 // This file contains the CQLServiceImpl class that implements the CQL server to handle requests
 // from Cassandra clients using the CQL native protocol.
 
-#ifndef YB_YQL_CQL_CQLSERVER_CQL_SERVICE_H_
-#define YB_YQL_CQL_CQLSERVER_CQL_SERVICE_H_
+#pragma once
 
 #include <vector>
 
@@ -25,7 +24,7 @@
 
 #include "yb/util/object_pool.h"
 
-#include "yb/yql/cql/cqlserver/cqlserver_fwd.h"
+#include "yb/yql/cql/cqlserver/cql_processor.h"
 #include "yb/yql/cql/cqlserver/cql_server_options.h"
 #include "yb/yql/cql/cqlserver/cql_service.service.h"
 #include "yb/yql/cql/cqlserver/cql_statement.h"
@@ -187,5 +186,3 @@ class CQLServiceImpl : public CQLServerServiceIf,
 
 }  // namespace cqlserver
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_CQLSERVER_CQL_SERVICE_H_

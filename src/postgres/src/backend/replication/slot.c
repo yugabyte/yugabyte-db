@@ -601,9 +601,17 @@ ReplicationSlotRelease(void)
 void
 ReplicationSlotCleanup(void)
 {
-	int			i;
-
 	Assert(MyReplicationSlot == NULL);
+	ReplicationSlotCleanupForProc(MyProc);
+}
+
+/*
+ * Cleanup all temporary slots created in current session.
+ */
+void
+ReplicationSlotCleanupForProc(PGPROC *proc)
+{
+	int			i;
 
 restart:
 	LWLockAcquire(ReplicationSlotControlLock, LW_SHARED);
@@ -615,7 +623,7 @@ restart:
 			continue;
 
 		SpinLockAcquire(&s->mutex);
-		if (s->active_pid == MyProcPid)
+		if (s->active_pid == proc->pid)
 		{
 			Assert(s->data.persistency == RS_TEMPORARY);
 			SpinLockRelease(&s->mutex);

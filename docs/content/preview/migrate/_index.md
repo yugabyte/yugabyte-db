@@ -1,11 +1,9 @@
 ---
-title: YugabyteDB Voyager
+title: Migrate to YugabyteDB Voyager
 headerTitle: YugabyteDB Voyager
 linkTitle: YugabyteDB Voyager
-description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
-image: /images/section_icons/develop/learn.png
 headcontent: Migrate your database with YugabyteDB Voyager.
+description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
 type: indexpage
 showRightNav: true
 menu:
@@ -18,18 +16,19 @@ YugabyteDB Voyager is a powerful open-source data migration engine that accelera
 
 YugabyteDB Voyager manages the entire lifecycle of a database migration, including cluster preparation for data import, schema-migration, and data-migration, using the [yb-voyager](https://github.com/yugabyte/yb-voyager) command line utility.
 
+![Voyager Architecture](/images/migrate/voyager_architecture.png)
+
 ## Features
 
 - Free and completely open source.
 - Supports widely used databases for migration and doesn't require changes to the [source databases](#source-databases) in most cases.
-- Supports all YugabyteDB products (v2.12 and above) as the [target database](#target-database).
-- Provides a unified [CLI](yb-voyager-cli/) experience for all different source databases.
+- Supports all YugabyteDB products (YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later) as the [target database](#target-database).
+- Provides a unified [CLI](reference/yb-voyager-cli/) experience for all different source databases.
 - Auto-tuneable based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Monitor the import status, and expected time for data export and import to complete using progress bars.
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.
 - Supports direct data import from CSV files.
-- Currently, supports migrating up to 1TB of data.
 - Live migration - Coming soon. For more details, refer to the [GitHub issue](https://github.com/yugabyte/yb-voyager/issues/50) and for any questions, contact [Yugabyte Support](https://support.yugabyte.com/hc/en-us/requests/new).
 
 ## Source databases
@@ -44,7 +43,7 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 ## Target database
 
-You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/) (v2.12 and above). To create a cluster:
+You can migrate data to any one of the three YugabyteDB [products](https://www.yugabyte.com/compare-products/) (YugabyteDB Voyager supports YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.). To create a cluster:
 
 - Create a local YugabyteDB cluster using the [Quick start](../quick-start/).
 - Deploy a YugabyteDB Anywhere universe; refer to [Create YugabyteDB universe deployments](../yugabyte-platform/create-deployments/).
@@ -63,6 +62,7 @@ A typical migration workflow using yb-voyager consists of the following steps:
 - Dump the source database in the local files on the machine where yb-voyager is installed, using the [`yb-voyager export data`](migrate-steps/#export-data) command.
 - Import the schema to the target YugabyteDB database using the [`yb-voyager import schema`](migrate-steps/#import-schema) command.
 - Import the data to the target YugabyteDB database using the [`yb-voyager import data`](migrate-steps/#import-data) command.
+- Import indexes and triggers to the target YugabyteDB database using the [`yb-voyager import schema`](migrate-steps/#import-indexes-and-triggers) command with an additional `--post-import-data` flag.
 
 ![Migration workflow](/images/migrate/migration-workflow.png)
 
@@ -102,13 +102,35 @@ A typical migration workflow using yb-voyager consists of the following steps:
     </a>
   </div>
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="yb-voyager-cli/">
+    <a class="section-link icon-offset" href="known-issues/">
       <div class="head">
-       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
-        <div class="title">yb-voyager CLI</div>
+       <img class="icon" src="/images/section_icons/troubleshoot/troubleshoot.png" aria-hidden="true">
+        <div class="title">Known issues</div>
       </div>
       <div class="body">
-        Learn about the yb-voyager CLI options and SSL connectivity.
+        Learn about the existing issues and workarounds you can do before migrating data using yb-voyager.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="reference/">
+      <div class="head">
+       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
+        <div class="title">Reference</div>
+      </div>
+      <div class="body">
+        Learn about the yb-voyager CLI options, data modeling strategies, and data type mapping support.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="release-notes/">
+      <div class="head">
+       <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true">
+        <div class="title">What's new</div>
+      </div>
+      <div class="body">
+        Learn about new features, enhancements, and bugs fixes.
       </div>
     </a>
   </div>

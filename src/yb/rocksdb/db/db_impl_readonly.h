@@ -17,12 +17,9 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef ROCKSDB_DB_DB_IMPL_READONLY_H
-#define ROCKSDB_DB_DB_IMPL_READONLY_H
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/db/db_impl.h"
 #include <vector>
@@ -96,7 +93,6 @@ class DBImplReadOnly : public DBImpl {
     return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
 
-#ifndef ROCKSDB_LITE
   virtual Status DisableFileDeletions() override {
     return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
@@ -109,7 +105,6 @@ class DBImplReadOnly : public DBImpl {
                               bool flush_memtable = true) override {
     return STATUS(NotSupported, "Not supported operation in read only mode.");
   }
-#endif  // ROCKSDB_LITE
 
   using DBImpl::Flush;
   virtual Status Flush(const FlushOptions& options,
@@ -130,7 +125,3 @@ class DBImplReadOnly : public DBImpl {
   void operator=(const DBImplReadOnly&);
 };
 } // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE
-
-#endif // ROCKSDB_DB_DB_IMPL_READONLY_H

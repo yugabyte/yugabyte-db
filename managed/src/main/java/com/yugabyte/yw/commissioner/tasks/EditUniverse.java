@@ -10,6 +10,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
@@ -18,6 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -26,6 +28,9 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -36,8 +41,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -53,9 +56,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
     String errorString = null;
-
     try {
       checkUniverseVersion();
       if (isFirstTry()) {
@@ -193,6 +195,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                         .nodeDetailsSet
                         .stream()
                         .allMatch(n -> n.ybPrebuiltAmi))));
+        universe.save();
       }
     }
     log.info("Finished {} task.", getName());
@@ -219,6 +222,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     Set<NodeDetails> existingNodesToStartMaster =
         newMasters.stream().filter(n -> n.state != NodeState.ToBeAdded).collect(Collectors.toSet());
+
+    boolean isWaitForLeadersOnPreferred =
+        confGetter.getConfForScope(universe, UniverseConfKeys.ybEditWaitForLeadersOnPreferred);
 
     // Set the old nodes' state to to-be-removed.
     if (!nodesToBeRemoved.isEmpty()) {
@@ -294,6 +300,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           true /* isShell */,
           false /* ignore node status check */,
           ignoreUseCustomImageConfig);
+
+      // Copy the source root certificate to the provisioned nodes.
+      createTransferXClusterCertsCopyTasks(
+          nodesToProvision, universe, SubTaskGroupType.Provisioning);
     }
 
     Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
@@ -349,7 +359,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
       // Start tservers on all nodes.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(newTservers, userIntent.enableYSQL);
 
       if (universe.isYbcEnabled()) {
         createStartYbcProcessTasks(
@@ -362,37 +372,46 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
-    // Swap the blacklisted tservers.
-    // Idempotent as same set of servers are either blacklisted or removed.
-    createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
+    if (!newTservers.isEmpty() || !tserversToBeRemoved.isEmpty()) {
+      // Swap the blacklisted tservers.
+      // Idempotent as same set of servers are either blacklisted or removed.
+      createModifyBlackListTask(tserversToBeRemoved, newTservers, false /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
     // Update placement info on master leader.
     createPlacementInfoTask(null /* additional blacklist */)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
-    // Update the swamper target file.
-    createSwamperTargetUpdateTask(false /* removeFile */);
+    if (!newTservers.isEmpty()
+        || !newMasters.isEmpty()
+        || !tserversToBeRemoved.isEmpty()
+        || !removeMasters.isEmpty()
+        || !nodesToBeRemoved.isEmpty()) {
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+    }
 
     if (!nodesToBeRemoved.isEmpty()) {
       // Wait for %age completion of the tablet move from master.
       createWaitForDataMoveTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
     } else {
       if (!tserversToBeRemoved.isEmpty()) {
-        String errMsg = "Universe shrink should have been handled using node decommision.";
+        String errMsg = "Universe shrink should have been handled using node decommission.";
         log.error(errMsg);
         throw new IllegalStateException(errMsg);
       }
-      if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.wait_for_lb_for_added_nodes")) {
+      if (confGetter.getConfForScope(universe, UniverseConfKeys.waitForLbForAddedNodes)
+          && !newTservers.isEmpty()) {
         // If only tservers are added, wait for load to balance across all tservers.
         createWaitForLoadBalanceTask().setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
       }
     }
 
-    if (cluster.clusterType == ClusterType.PRIMARY
-        && PlacementInfoUtil.didAffinitizedLeadersChange(
-            universe.getUniverseDetails().getPrimaryCluster().placementInfo,
-            cluster.placementInfo)) {
+    // Add new nodes to load balancer.
+    createManageLoadBalancerTasks(
+        createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), null, null));
+
+    if (cluster.clusterType == ClusterType.PRIMARY && isWaitForLeadersOnPreferred) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
 
@@ -410,7 +429,8 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
       // Update these older ones to be not masters anymore so tserver info can be updated with the
       // final master list and other future cluster client operations.
-      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false);
+      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
 
     if (updateMasters) {
@@ -469,6 +489,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Finally send destroy to the old set of nodes and remove them from this universe.
     if (!nodesToBeRemoved.isEmpty()) {
+      // Remove nodes from load balancer.
+      createManageLoadBalancerTasks(
+          createLoadBalancerMap(taskParams(), ImmutableList.of(cluster), nodesToBeRemoved, null));
+
       // Set the node states to Removing.
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
@@ -481,9 +505,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
     }
 
-    // Clear blacklisted tservers.
-    createModifyBlackListTask(null, tserversToBeRemoved, false /* isLeaderBlacklist */)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    if (!tserversToBeRemoved.isEmpty()) {
+      // Clear blacklisted tservers.
+      createModifyBlackListTask(null, tserversToBeRemoved, false /* isLeaderBlacklist */)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
   }
 
   /**
@@ -507,10 +533,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
       createChangeConfigTask(mastersToAdd.get(idx), true, subTask);
-      // Do not use useHostPort = true because retry is not done for the option
-      // when the leader itself is being removed. The retryable error code
-      // LEADER_NEEDS_STEP_DOWN is reported only when useHostPort = false.
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, false);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
 
     // Perform any additions still left.
@@ -520,7 +543,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     // Perform any removals still left.
     for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTask(mastersToRemove.get(idx), false, subTask, false);
+      createChangeConfigTask(mastersToRemove.get(idx), false, subTask);
     }
   }
 }

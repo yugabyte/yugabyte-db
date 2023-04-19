@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STRING_TRIM_H
-#define YB_UTIL_STRING_TRIM_H
+#pragma once
 
 #include <string>
 
@@ -67,5 +66,3 @@ std::string TrimTrailingWhitespaceFromEveryLine(std::string s);
 
 }  // namespace util
 }  // namespace yb
-
-#endif  // YB_UTIL_STRING_TRIM_H

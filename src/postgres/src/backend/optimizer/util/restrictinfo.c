@@ -20,6 +20,9 @@
 #include "optimizer/optimizer.h"
 #include "optimizer/restrictinfo.h"
 
+/* Yugabyte includes */
+#include "catalog/pg_operator.h"
+#include "catalog/pg_type.h"
 
 static RestrictInfo *make_restrictinfo_internal(PlannerInfo *root,
 												Expr *clause,
@@ -267,8 +270,12 @@ get_batched_restrictinfo(RestrictInfo *rinfo,
 		}
 	}
 
-	/* Make sure this satisfies the outer_batched_relids constraint. */
-	if (!bms_overlap(ret->clause_relids, outer_batched_relids))
+	/*
+	 * Make sure this clause involves both outer_batched_relids and
+	 * inner_relids.
+	 */
+	if (!bms_overlap(ret->right_relids, outer_batched_relids) ||
+		!bms_overlap(ret->left_relids, inner_relids))
 		return NULL;
 
 	return ret;
@@ -461,31 +468,218 @@ restriction_is_securely_promotable(RestrictInfo *restrictinfo,
 		return false;
 }
 
-List *
-get_actual_batched_clauses(Relids batchedrelids,
-						   List *restrictinfo_list,
-						   IndexPath *inner_index)
+/* Simple integer comparison function. */
+static int _exprcol_cmp(const void *a, const void *b, void *cxt)
 {
+	int a_int = ((Var *) get_leftop(*((const Expr**) a)))->varattno;
+	int b_int = ((Var *) get_leftop(*((const Expr**) b)))->varattno;
+
+	return a_int - b_int;
+}
+
+/*
+ * Takes a list of batched clauses (those with clauses of the form
+ * var1 = BatchedExpr(f(o_var1, o_var2...)))) and zips them up to form
+ * one singular batched clause of the form
+ * (var1, var2 ...) =
+ * BatchedExpr(f1(o_var1, o_var2...), f2(o_var1, o_var2...)...)
+ * where the LHS is sorted ascendingly by attribute number.
+ */
+static Expr *zip_batched_exprs(List *b_exprs)
+{
+	Assert(b_exprs != NIL);
+	if (list_length(b_exprs) == 1)
+	{
+		return linitial(b_exprs);
+	}
+
+	Expr **exprcols =
+		palloc(sizeof(Expr*) * list_length(b_exprs));
+
+	int i = 0;
+	ListCell *lc;
+	foreach(lc, b_exprs)
+	{
+		Expr *b_expr = lfirst(lc);
+		exprcols[i] = b_expr;
+		i++;
+	}
+
+	/* Sort based on index column. */
+	qsort_arg(exprcols, list_length(b_exprs), sizeof(Expr*),
+			  _exprcol_cmp, NULL);
+
+	/*
+	 * v1 = BatchedExpr(f1(o)) AND v2 = BatchedExpr(f2(o))
+	 * becomes ROW(v1, v2) = BatchedExpr(ROW(f1(o),f2(o)))
+	 */
+
+	RowExpr *leftop = makeNode(RowExpr);
+	RowExpr *rightop = makeNode(RowExpr);
+
+	Oid opresulttype = -1;
+	bool opretset = false;
+	Oid opcolloid = -1;
+	Oid inputcollid = -1;
+
+	for (i = 0; i < list_length(b_exprs); i++)
+	{
+		Expr *b_expr = (Expr *) exprcols[i];
+		OpExpr *opexpr = (OpExpr *) b_expr;
+		opresulttype = opexpr->opresulttype;
+		opretset = opexpr->opretset;
+		opcolloid = opexpr->opcollid;
+		inputcollid = opexpr->inputcollid;
+
+		Var *left_var = (Var *) get_leftop(b_expr);
+		leftop->args = lappend(leftop->args, left_var);
+
+		Expr *right_expr =
+			(Expr *) ((YbBatchedExpr *) get_rightop(b_expr))->orig_expr;
+		rightop->args = lappend(rightop->args, right_expr);
+	}
+
+	pfree(exprcols);
+
+	leftop->colnames = NIL;
+	leftop->row_format = COERCE_EXPLICIT_CALL;
+	leftop->row_typeid = RECORDOID;
+
+	rightop->colnames = NIL;
+	rightop->row_format = COERCE_EXPLICIT_CALL;
+	rightop->row_typeid = RECORDOID;
+
+	YbBatchedExpr *right_batched_expr = makeNode(YbBatchedExpr);
+	right_batched_expr->orig_expr = (Expr*) rightop;
+
+	return (Expr*) make_opclause(RECORD_EQ_OP, opresulttype, opretset,
+						 		 (Expr*) leftop, (Expr*) right_batched_expr,
+						 		 opcolloid, inputcollid);
+}
+
+/* 
+ * Add a given batched RestrictInfo to rinfo if it hasn't already been added.
+ */
+void add_batched_rinfo(RestrictInfo *rinfo, RestrictInfo *batched)
+{
+	ListCell *lc;
+	foreach(lc, rinfo->yb_batched_rinfo)
+	{
+		RestrictInfo *current = lfirst(lc);
+		/* If we already have a batched clause with this LHS we don't bother.*/
+		if (equal(get_leftop(current->clause), get_leftop(batched->clause)))
+			return;	
+	}
+
+	rinfo->yb_batched_rinfo = lappend(rinfo->yb_batched_rinfo, batched);
+}
+
+
+List *
+yb_get_actual_batched_clauses(PlannerInfo *root,
+						   	  List *restrictinfo_list,
+							  IndexPath *inner_index)
+{
+	Relids 		batchedrelids = root->yb_cur_batched_relids;
 	List	   *result = NIL;
 	ListCell   *l;
+	ListCell   *lc;
 
-	foreach(l, restrictinfo_list)
+	Relids inner_req_rels = PATH_REQ_OUTER(&inner_index->path);
+
+	/*
+	 * We only zip up clauses involving outer relations A and B if they can
+	 * be found under the same element in yb_availBatchedRelids.
+	 */
+	
+	Relids cumulative_rels = NULL;
+	foreach(lc, root->yb_availBatchedRelids)
 	{
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
-		RestrictInfo *tmp_batched =
-			get_batched_restrictinfo(rinfo,
-									 batchedrelids,
-									 inner_index->indexinfo->rel->relids);
+		Relids cur_relgroup = (Relids) lfirst(lc);
 
-		if (tmp_batched)
+		/* Check if clause will be even relevant to this relgroup. */
+		if (!bms_overlap(cur_relgroup, inner_req_rels))
+			continue;
+
+		/* Check to make sure we haven't already seen these rels. */
+		if (bms_is_subset(cur_relgroup, cumulative_rels))
+			continue;
+
+		Assert(!bms_overlap(cur_relgroup, cumulative_rels));
+
+		cumulative_rels = bms_add_members(cumulative_rels, cur_relgroup);
+		List *batched_list = NIL;
+		List *batched_rinfos = NIL;
+
+		Index security_level;
+		Relids required_relids = NULL;
+		Relids outer_relids = NULL;
+		Relids nullable_relids = NULL;
+
+		foreach(l, restrictinfo_list)
 		{
-			rinfo = tmp_batched;
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+			security_level = rinfo->security_level;
+			RestrictInfo *tmp_batched =
+				get_batched_restrictinfo(rinfo,
+										batchedrelids,
+										inner_index->indexinfo->rel->relids);
+
+			if (tmp_batched)
+			{
+				if (!bms_overlap(tmp_batched->clause_relids, cur_relgroup))
+					continue;
+
+				batched_list =
+					list_append_unique_ptr(batched_list, tmp_batched->clause);
+				required_relids =
+					bms_union(required_relids, tmp_batched->required_relids);
+				outer_relids =
+					bms_union(outer_relids, tmp_batched->outer_relids);
+				nullable_relids =
+					bms_union(nullable_relids, tmp_batched->nullable_relids);
+				batched_rinfos = lappend(batched_rinfos, rinfo);
+				continue;
+			}
+
+			Assert(!rinfo->pseudoconstant);
+
+			result = lappend(result, rinfo->clause);
 		}
 
-		Assert(!rinfo->pseudoconstant);
+		if (!batched_list)
+		{
+			continue;
+		}
 
-		result = lappend(result, rinfo->clause);
+		Expr *zipped = zip_batched_exprs(batched_list);
+		result = lappend(result, zipped);
+
+		/* This is needed to make this method idempotent. */
+		if (list_length(batched_rinfos) == 1)
+		{
+			bms_free(required_relids);
+			bms_free(outer_relids);
+			bms_free(nullable_relids);
+			continue;
+		}
+
+		RestrictInfo *zipped_rinfo =
+			make_restrictinfo(zipped, false, false, false, security_level,
+							required_relids, outer_relids, nullable_relids);
+
+		foreach(l, batched_rinfos)
+		{
+			RestrictInfo *rinfo = lfirst_node(RestrictInfo, l);
+			list_free(rinfo->yb_batched_rinfo);
+			rinfo->yb_batched_rinfo = list_make1(zipped_rinfo);
+		}
+
+		bms_free(required_relids);
+		bms_free(outer_relids);
+		bms_free(nullable_relids);
 	}
+
 	return result;
 }
 

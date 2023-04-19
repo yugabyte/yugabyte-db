@@ -33,7 +33,7 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/consensus/log-test-base.h"
 
@@ -67,6 +67,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
+#include "yb/util/flags.h"
 
 using yb::consensus::RaftConfigPB;
 using yb::consensus::RaftPeerPB;
@@ -81,15 +82,14 @@ using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-DEFINE_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
+DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
              "Number of rows to insert in the warmup phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DEFINE_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
+DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DECLARE_int32(scanner_batch_size_rows);
 DECLARE_int32(metrics_retirement_age_ms);
 DECLARE_string(block_manager);
 DECLARE_string(rpc_bind_addresses);
@@ -115,9 +115,8 @@ class TabletServerTest : public TabletServerTestBase {
     StartTabletServer();
   }
 
-  Status CallDeleteTablet(const std::string& uuid,
-                    const char* tablet_id,
-                    tablet::TabletDataState state) {
+  Status CallDeleteTablet(
+      const string& uuid, const char* tablet_id, tablet::TabletDataState state) {
     DeleteTabletRequestPB req;
     DeleteTabletResponsePB resp;
     RpcController rpc;
@@ -138,6 +137,8 @@ class TabletServerTest : public TabletServerTestBase {
     }
     return Status::OK();
   }
+
+  string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
 };
 
 TEST_F(TabletServerTest, TestPingServer) {
@@ -197,7 +198,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     ASSERT_OK(proxy.SetFlag(req, &resp, &controller));
     SCOPED_TRACE(resp.DebugString());
     EXPECT_EQ(server::SetFlagResponsePB::BAD_VALUE, resp.result());
-    EXPECT_EQ(resp.msg(), "Unable to set flag: bad value");
+    EXPECT_EQ(resp.msg(), "Unable to set flag: bad value. Check stderr for more information.");
     EXPECT_EQ(12345, FLAGS_metrics_retirement_age_ms);
   }
 
@@ -264,7 +265,7 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
     // bugs in the past.
     ASSERT_STR_CONTAINS(buf.ToString(), "hybrid_clock_hybrid_time");
     ASSERT_STR_CONTAINS(buf.ToString(), "threads_started");
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
     ASSERT_STR_CONTAINS(buf.ToString(), "tcmalloc_max_total_thread_cache_bytes");
 #endif
     ASSERT_STR_CONTAINS(buf.ToString(), "glog_info_messages");
@@ -310,11 +311,11 @@ TEST_F(TabletServerTest, TestSetFlagsAndCheckWebPages) {
                 &buf));
   // Find our target metric and concatenate value zero to it. metric_instance_with_zero_value is a
   // string looks like: handler_latency_yb_tserver_TabletServerService_Write{quantile=p50.....} 0
-  std::string page_content = buf.ToString();
+  string page_content = buf.ToString();
   std::size_t begin = page_content.find("handler_latency_yb_tserver_TabletServerService_Write"
                                         "{quantile=\"p50\"");
   std::size_t end = page_content.find("}", begin);
-  std::string metric_instance_with_zero_value = page_content.substr(begin, end-begin+1)+" 0";
+  string metric_instance_with_zero_value = page_content.substr(begin, end - begin + 1) + " 0";
 
   ASSERT_STR_CONTAINS(buf.ToString(), metric_instance_with_zero_value);
 
@@ -690,6 +691,9 @@ TEST_F(TabletServerTest, TestDeleteTablet) {
   ASSERT_TRUE(s.IsNotFound()) << s.ToString();
   ASSERT_TRUE(ResultToStatus(
       mini_server_->server()->tablet_manager()->GetTablet(kTabletId)).IsNotFound());
+
+  // Verify that the BlockBasedTable mem tracker is still attached to the server mem tracker.
+  ASSERT_TRUE(mini_server_->server()->mem_tracker()->FindChild("BlockBasedTable") != nullptr);
 }
 
 TEST_F(TabletServerTest, TestDeleteTablet_TabletNotCreated) {
@@ -859,8 +863,9 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
 
   Partition partition;
   auto table_info = std::make_shared<tablet::TableInfo>(
-      tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId, YQL_TABLE_TYPE,
-      schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+      "TEST: ", tablet::Primary::kTrue, "TestWriteOutOfBoundsTable", "test_ns", tabletId,
+      YQL_TABLE_TYPE, schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+      partition_schema);
   ASSERT_OK(mini_server_->server()->tablet_manager()->CreateNewTablet(
       table_info, tabletId, partition, mini_server_->CreateLocalConfig()));
 
@@ -887,7 +892,7 @@ void CalcTestRowChecksum(uint64_t *out, int32_t key, uint8_t string_field_define
   QLValue value;
 
   string strval = strings::Substitute("original$0", key);
-  std::string buffer;
+  string buffer;
   uint32_t index = 0;
   buffer.append(pointer_cast<const char*>(&index), sizeof(index));
   value.set_int32_value(key);
@@ -947,7 +952,6 @@ TEST_F(TabletServerTest, TestChecksumScan) {
 
   // Finally, delete row 2, so we're back to the row 1 checksum.
   ASSERT_NO_FATALS(DeleteTestRowsRemote(key, 1));
-  FLAGS_scanner_batch_size_rows = 100;
   controller.Reset();
   ASSERT_OK(proxy_->Checksum(req, &resp, &controller));
   ASSERT_NE(total_crc, resp.checksum());
@@ -955,7 +959,7 @@ TEST_F(TabletServerTest, TestChecksumScan) {
 }
 
 TEST_F(TabletServerTest, TestCallHome) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<TabletServer, TserverCallHome>(
       webserver_dir, {} /*additional_collections*/, mini_server_->server());
@@ -964,9 +968,14 @@ TEST_F(TabletServerTest, TestCallHome) {
 // This tests whether the enabling/disabling of callhome is happening dynamically
 // during runtime.
 TEST_F(TabletServerTest, TestCallHomeFlag) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHomeFlag<TabletServer, TserverCallHome>(webserver_dir, mini_server_->server());
+}
+
+TEST_F(TabletServerTest, TestGFlagsCallHome) {
+  CHECK_OK(env_->CreateDir(GetWebserverDir()));
+  TestGFlagsCallHome<TabletServer, TserverCallHome>(mini_server_->server());
 }
 
 } // namespace tserver

@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType.MASTER;
+import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,7 +13,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -110,20 +110,20 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testOnpremManualProvisionException() {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
-    keyInfo.skipProvisioning = true;
-    AccessKey.create(onPremProvider.uuid, ApiUtils.DEFAULT_ACCESS_KEY_CODE, keyInfo);
+    onPremProvider.getDetails().skipProvisioning = true;
+    onPremProvider.save();
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         details -> {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getUniverseDetails().getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.uuid.toString();
+          userIntent.provider = onPremProvider.getUuid().toString();
           userIntent.providerType = Common.CloudType.onprem;
           userIntent.accessKeyCode = ApiUtils.DEFAULT_ACCESS_KEY_CODE;
         });
     expectedUniverseVersion++;
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
     TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
@@ -132,13 +132,14 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testOnpremOK() {
-    AccessKey.create(gcpProvider.uuid, ApiUtils.DEFAULT_ACCESS_KEY_CODE, new AccessKey.KeyInfo());
+    AccessKey.create(
+        gcpProvider.getUuid(), ApiUtils.DEFAULT_ACCESS_KEY_CODE, new AccessKey.KeyInfo());
     Universe.saveDetails(
-        defaultUniverse.universeUUID,
+        defaultUniverse.getUniverseUUID(),
         details -> {
           UniverseDefinitionTaskParams.UserIntent userIntent =
               details.getUniverseDetails().getPrimaryCluster().userIntent;
-          userIntent.provider = onPremProvider.uuid.toString();
+          userIntent.provider = onPremProvider.getUuid().toString();
           userIntent.providerType = Common.CloudType.onprem;
           userIntent.accessKeyCode = ApiUtils.DEFAULT_ACCESS_KEY_CODE;
         });
@@ -147,8 +148,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   }
 
   @Override
-  protected List<Integer> getRollingUpgradeNodeOrder(
-      UniverseDefinitionTaskBase.ServerType serverType) {
+  protected List<Integer> getRollingUpgradeNodeOrder(UniverseTaskBase.ServerType serverType) {
     return super.getRollingUpgradeNodeOrder(serverType)
         .stream()
         .filter(idx -> !nodesToFilter.contains(idx))
@@ -158,7 +158,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
   private void testInstanceReprovision(boolean forceAll) {
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
     taskParams.setForceAll(forceAll);
-    taskParams.universeUUID = defaultUniverse.universeUUID;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
 
     TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);

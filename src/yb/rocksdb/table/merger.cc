@@ -34,10 +34,12 @@
 #include "yb/rocksdb/util/autovector.h"
 #include "yb/rocksdb/util/heap.h"
 #include "yb/rocksdb/util/perf_context_imp.h"
-#include "yb/rocksdb/util/sync_point.h"
+
+#include "yb/rocksdb/db/dbformat.h"
 
 #include "yb/util/stats/perf_step_timer.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 
 namespace rocksdb {
 // Without anonymous namespace here, we fail the warning -Wmissing-prototypes
@@ -317,6 +319,68 @@ class MergingIterator : public InternalIterator {
   bool IsKeyPinned() const override {
     assert(Valid());
     return current_->IsKeyPinned();
+  }
+
+  ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
+    LOG_IF(DFATAL, !Valid()) << "Iterator should be valid.";
+
+    ScanForwardResult result;
+    do {
+      const auto key = rocksdb::ExtractUserKey(current_->key());
+      if (!upperbound.empty() && user_key_comparator->Compare(key, upperbound) >= 0) {
+        break;
+      }
+
+      // Compute the next upperbound.
+      Slice next_upperbound = upperbound;
+      if (minHeap_.size() > 1) {
+        auto next_iterator = minHeap_.second_top();
+        LOG_IF(DFATAL, !next_iterator->Valid()) << "Second top iterator should be valid.";
+        const auto next_user_key = rocksdb::ExtractUserKey(next_iterator->key());
+        if (upperbound.empty() || user_key_comparator->Compare(next_user_key, upperbound) < 0) {
+          next_upperbound = next_user_key;
+
+          // Handle the duplicate keys. Currently YB RegularDB only has duplicate keys for
+          // TransactionApplyState.
+          if (key == next_user_key) {
+            bool skip_key = false;
+            if (key_filter_callback) {
+              auto kf_result =
+                  (*key_filter_callback)(/*prefixed_key=*/Slice(), /*shared_bytes=*/0, key);
+              skip_key = kf_result.skip_key;
+            }
+
+            if (!skip_key) {
+              if (!(*scan_callback)(key, value())) {
+                result.reached_upperbound = false;
+                return result;
+              }
+            }
+
+            Next();
+            result.number_of_keys_visited++;
+            if (!Valid()) {
+              break;
+            }
+          }
+        }
+      }
+
+      auto current_result = current_->ScanForward(
+          user_key_comparator, next_upperbound, key_filter_callback, scan_callback);
+      result.number_of_keys_visited += current_result.number_of_keys_visited;
+      if (!current_result.reached_upperbound) {
+        result.reached_upperbound = false;
+        return result;
+      }
+
+      UpdateHeapAfterCurrentAdvancement();
+    } while (Valid());
+
+    result.reached_upperbound = true;
+    return result;
   }
 
  private:

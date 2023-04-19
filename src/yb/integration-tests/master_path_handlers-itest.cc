@@ -30,6 +30,7 @@
 #include "yb/tools/yb-admin_client.h"
 
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/curl_util.h"
@@ -44,12 +45,18 @@ DECLARE_string(TEST_master_extra_list_host_port);
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 
+DECLARE_uint64(master_maximum_heartbeats_without_lease);
+DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
+
 namespace yb {
 namespace master {
 
 using std::string;
 
+using namespace std::literals;
+
 const std::string kKeyspaceName("my_keyspace");
+const std::string kTableName("test_table");
 const uint kNumMasters(3);
 const uint kNumTablets(3);
 
@@ -132,7 +139,7 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
   ASSERT_TRUE(result_str.find(kTserverDead, pos + 1) == string::npos);
 
   // Startup the tserver and wait for heartbeats.
-  ASSERT_OK(cluster_->mini_tablet_server(0)->Start());
+  ASSERT_OK(cluster_->mini_tablet_server(0)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([&]() -> bool {
     TestUrl("/tablet-servers", &result);
@@ -171,7 +178,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   for (const auto& replica : orphan_tablet.replicas()) {
     const auto uuid = replica.ts_info().permanent_uuid();
     auto* tserver = cluster_->find_tablet_server(uuid);
-    ASSERT_NOTNULL(tserver);
+    ASSERT_ONLY_NOTNULL(tserver);
     if (replica.role() == PeerRole::LEADER) {
       leader = tserver;
     } else {
@@ -180,10 +187,10 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
     // Shutdown all tservers.
     tserver->Shutdown();
   }
-  ASSERT_NOTNULL(leader);
+  ASSERT_ONLY_NOTNULL(leader);
 
   // Restart the server which was previously the leader of the now orphaned tablet.
-  ASSERT_OK(leader->Start());
+  ASSERT_OK(leader->Start(tserver::WaitTabletsBootstrapped::kFalse));
   // Sleep here to give the master's catalog_manager time to receive heartbeat from "leader".
   std::this_thread::sleep_for(std::chrono::milliseconds(6 * FLAGS_heartbeat_interval_ms));
 
@@ -333,28 +340,33 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     HostPort master_http_endpoint = cluster_->master(0)->bound_http_hostport();
     master_http_url_ = "http://" + ToString(master_http_endpoint);
   }
+
+  std::shared_ptr<client::YBTable> CreateTestTable(int num_tablets) {
+    auto client = CHECK_RESULT(cluster_->CreateClient());
+    CHECK_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
+
+    // Create table.
+    client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, kTableName);
+    client::YBSchema schema;
+    client::YBSchemaBuilder b;
+    b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(INT32)->NotNull();
+    b.AddColumn("string_val")->Type(STRING)->NotNull();
+    CHECK_OK(b.Build(&schema));
+    std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
+    CHECK_OK(table_creator->table_name(table_name)
+        .num_tablets(num_tablets)
+        .schema(&schema)
+        .hash_schema(YBHashSchema::kMultiColumnHash)
+        .Create());
+    std::shared_ptr<client::YBTable> table;
+    CHECK_OK(client->OpenTable(table_name, &table));
+    return table;
+  }
 };
 
 TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExternalItest) {
-  auto client = ASSERT_RESULT(cluster_->CreateClient());
-  ASSERT_OK(client->CreateNamespaceIfNotExists(kKeyspaceName));
-
-  // Create table.
-  // TODO(5016): Consolidate into some standardized helper code.
-  client::YBTableName table_name(YQL_DATABASE_CQL, kKeyspaceName, "test_table");
-  client::YBSchema schema;
-  client::YBSchemaBuilder b;
-  b.AddColumn("key")->Type(INT32)->NotNull()->PrimaryKey();
-  b.AddColumn("int_val")->Type(INT32)->NotNull();
-  b.AddColumn("string_val")->Type(STRING)->NotNull();
-  ASSERT_OK(b.Build(&schema));
-  std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
-  ASSERT_OK(table_creator->table_name(table_name)
-      .schema(&schema)
-      .hash_schema(YBHashSchema::kMultiColumnHash)
-      .Create());
-  std::shared_ptr<client::YBTable> table;
-  ASSERT_OK(client->OpenTable(table_name, &table));
+  std::shared_ptr<client::YBTable> table = CreateTestTable(/* num_tablets */ 1);
 
   // Verify replication info is empty.
   faststring result;
@@ -366,8 +378,8 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   ASSERT_EQ(result_str.find("live_replicas", pos + 1), string::npos);
 
   // Verify cluster level replication info.
-  auto yb_admin_client_ = std::make_unique<yb::tools::enterprise::ClusterAdminClient>(
-    cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
+  auto yb_admin_client_ = std::make_unique<yb::tools::ClusterAdminClient>(
+      cluster_->GetMasterAddresses(), MonoDelta::FromSeconds(30));
   ASSERT_OK(yb_admin_client_->Init());
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("cloud.region.zone", 3, "table_uuid"));
   TestUrl(url, &result);
@@ -388,6 +400,81 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
   pos = table_str.find("placement_zone", pos + 1);
   ASSERT_NE(pos, string::npos);
   ASSERT_EQ(table_str.substr(pos + 17, 11), "anotherzone");
+}
+
+class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest {
+ public:
+  void CreateSingleTabletTestTable() {
+    table_ = CreateTestTable(1);
+  }
+
+  TabletId GetSingleTabletId() const {
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); ++i) {
+      const auto ts = cluster_->tablet_server(i);
+      const auto tablets = CHECK_RESULT(cluster_->GetTablets(ts));
+      for (auto& tablet : tablets) {
+        if (tablet.table_name() == table_->name().table_name()) {
+          return tablet.tablet_id();
+        }
+      }
+    }
+    LOG(FATAL) << "Didn't find a tablet id for table " << table_->name().table_name();
+    return "";
+  }
+
+  string GetLeaderlessTabletsString() {
+    faststring result;
+    auto url = "/tablet-replication";
+    TestUrl(url, &result);
+    const string& result_str = result.ToString();
+    size_t pos_leaderless = result_str.find("Leaderless Tablets", 0);
+    size_t pos_underreplicated = result_str.find("Underreplicated Tablets", 0);
+    CHECK_NE(pos_leaderless, string::npos);
+    CHECK_NE(pos_underreplicated, string::npos);
+    CHECK_GT(pos_underreplicated, pos_leaderless);
+    return result_str.substr(pos_leaderless, pos_underreplicated - pos_leaderless);
+  }
+
+  std::shared_ptr<client::YBTable> table_;
+};
+
+TEST_F(MasterPathHandlersLeaderlessITest, TestHeartbeatsWithoutLeaderLease) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("master_maximum_heartbeats_without_lease", "2"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("tserver_heartbeat_metrics_interval_ms", "1000"));
+  CreateSingleTabletTestTable();
+  auto tablet_id = GetSingleTabletId();
+
+  // Verify leaderless tablets list is empty.
+  string result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet_id), string::npos);
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto follower_idx = (leader_idx + 1) % 3;
+  const auto follower = cluster_->tablet_server(follower_idx);
+  const auto other_follower_idx = (leader_idx + 2) % 3;
+  const auto other_follower = cluster_->tablet_server(other_follower_idx);
+
+  // Pause both followers.
+  ASSERT_OK(follower->Pause());
+  ASSERT_OK(other_follower->Pause());
+
+  // Leaderless endpoint should catch the tablet.
+  Status wait_status = WaitFor([&] {
+    string result = GetLeaderlessTabletsString();
+    return result.find(tablet_id) != string::npos;
+  }, 20s * kTimeMultiplier, "leaderless tablet endpoint catch the tablet");
+
+  ASSERT_OK(other_follower->Resume());
+  ASSERT_OK(follower->Resume());
+
+  if (!wait_status.ok()) {
+    ASSERT_OK(wait_status);
+  }
+
+  ASSERT_OK(WaitFor([&] {
+    string result = GetLeaderlessTabletsString();
+    return result.find(tablet_id) == string::npos;
+  }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
 }
 
 } // namespace master

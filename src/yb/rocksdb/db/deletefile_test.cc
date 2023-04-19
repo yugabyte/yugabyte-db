@@ -21,7 +21,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
-#ifndef ROCKSDB_LITE
 
 #include <stdlib.h>
 
@@ -284,7 +283,7 @@ TEST_F(DeleteFileTest, DeleteFileWithIterator) {
   ASSERT_TRUE(status.ok());
   it->SeekToFirst();
   int numKeysIterated = 0;
-  while(it->Valid()) {
+  while(ASSERT_RESULT(it->CheckedValid())) {
     numKeysIterated++;
     it->Next();
   }
@@ -371,8 +370,7 @@ TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
   {
     std::unique_ptr<Iterator> itr(db->NewIterator(ReadOptions(), handles[1]));
     int count = 0;
-    for (itr->SeekToFirst(); itr->Valid(); itr->Next()) {
-      ASSERT_OK(itr->status());
+    for (itr->SeekToFirst(); ASSERT_RESULT(itr->CheckedValid()); itr->Next()) {
       ++count;
     }
     ASSERT_EQ(count, 1000);
@@ -386,8 +384,7 @@ TEST_F(DeleteFileTest, DeleteNonDefaultColumnFamily) {
   {
     std::unique_ptr<Iterator> itr(db->NewIterator(ReadOptions(), handles[1]));
     int count = 0;
-    for (itr->SeekToFirst(); itr->Valid(); itr->Next()) {
-      ASSERT_OK(itr->status());
+    for (itr->SeekToFirst(); ASSERT_RESULT(itr->CheckedValid()); itr->Next()) {
       ++count;
     }
     ASSERT_EQ(count, 1000);
@@ -426,7 +423,7 @@ size_t DeleteFileTest::TryDeleteFiles(
         continue;
       }
       if (db_->DeleteFile(file.Name()).ok()) {
-        const auto file_path = file.FullName();
+        const auto file_path = file.BaseFilePath();
 
         std::vector<LiveFileMetaData> current_files;
         dbfull()->GetLiveFilesMetaData(&current_files);
@@ -451,7 +448,7 @@ constexpr auto kNumKeysPerSst = 10000;
 } // namespace compaction_race
 
 TEST_F(DeleteFileTest, DeleteWithManualCompaction) {
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
+  yb::SyncPoint::GetInstance()->LoadDependency({
       {"DBImpl::DeleteFile:DecidedToDelete", "DBImpl::RunManualCompaction"}
   });
 
@@ -460,7 +457,7 @@ TEST_F(DeleteFileTest, DeleteWithManualCompaction) {
 
     auto metadata = ASSERT_RESULT(AddFiles(num_sst_files, compaction_race::kNumKeysPerSst));
 
-    rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+    yb::SyncPoint::GetInstance()->EnableProcessing();
 
     std::atomic<bool> manual_compaction_done{false};
     Status manual_compaction_status;
@@ -483,13 +480,13 @@ TEST_F(DeleteFileTest, DeleteWithManualCompaction) {
 
     CloseDB();
 
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-    rocksdb::SyncPoint::GetInstance()->ClearTrace();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
+    yb::SyncPoint::GetInstance()->ClearTrace();
   }
 }
 
 TEST_F(DeleteFileTest, DeleteWithBackgroundCompaction) {
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
+  yb::SyncPoint::GetInstance()->LoadDependency({
       {"DBImpl::DeleteFile:DecidedToDelete", "DBImpl::EnableAutoCompaction"},
       {"DBImpl::SchedulePendingCompaction:Done", "VersionSet::LogAndApply:WriteManifest"},
   });
@@ -505,7 +502,7 @@ TEST_F(DeleteFileTest, DeleteWithBackgroundCompaction) {
 
     const bool expect_compaction = num_sst_files > 1;
 
-    rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+    yb::SyncPoint::GetInstance()->EnableProcessing();
 
     std::atomic<bool> pending_compaction{false};
     std::thread enable_compactions([this, &pending_compaction] {
@@ -528,8 +525,8 @@ TEST_F(DeleteFileTest, DeleteWithBackgroundCompaction) {
                  dbfull()->TEST_NumTotalRunningCompactions() == 0;
         });
 
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-    rocksdb::SyncPoint::GetInstance()->ClearTrace();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
+    yb::SyncPoint::GetInstance()->ClearTrace();
 
     enable_compactions.join();
     EXPECT_EQ(files_deleted, 1);
@@ -551,14 +548,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-#else
-#include <stdio.h>
-
-int main(int argc, char** argv) {
-  fprintf(stderr,
-          "SKIPPED as DBImpl::DeleteFile is not supported in ROCKSDB_LITE\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE

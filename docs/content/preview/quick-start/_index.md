@@ -1,63 +1,62 @@
 ---
-title: YugabyteDB Quick Start
+title: YugabyteDB Quick start for macOS
 headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Create a local cluster on a single host
 description: Get started using YugabyteDB in less than five minutes on macOS.
 aliases:
-  - /quick-start/
+  - /preview/quick-start/create-local-cluster/
+  - /preview/quick-start/install/
 layout: single
 type: docs
-body_class: yb-page-style
 rightNav:
   hideH4: true
+unversioned: true
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../quick-start/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
 The local cluster setup on a single host is intended for development and learning. For production deployment, performance benchmarking, or deploying a true multi-node on multi-host setup, see [Deploy YugabyteDB](../deploy/).
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/linux/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/docker/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../quick-start/" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/kubernetes/" class="nav-link">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 ## Install YugabyteDB
 
@@ -67,7 +66,7 @@ Installing YugabyteDB involves completing [prerequisites](#prerequisites) and [d
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-- <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+- <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
 - Python 3. To check the version, execute the following command:
 
@@ -192,7 +191,7 @@ You download YugabyteDB as follows:
 
 ## Create a local cluster
 
-{{< tabpane code=false >}}
+{{< tabpane text=true >}}
 
   {{% tab header="macOS Pre-Monterey" lang="Pre-Monterey" %}}
 
@@ -287,6 +286,19 @@ yugabyte=#
 
 To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../sample-data/retail-analytics/).
 
+## Build an application
+
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). This section shows how to connect applications to your cluster using your favorite programming language.
+
+### Choose your language
+
+{{< readfile "/preview/quick-start-yugabytedb-managed/quick-start-buildapps-include.md" >}}
+
+## Next step
+
+[Explore YugabyteDB](../explore/)
+
+<!--
 ## Build a Java application
 
 The following tutorial shows a small Java application that connects to a YugabyteDB cluster using the topology-aware YugabyteDB JDBC driver and performs basic SQL operations.
@@ -332,7 +344,7 @@ Add two more nodes to the cluster using the join option:
 After starting the yugabyted processes on all the nodes, configure the data placement constraint of the YugabyteDB cluster:
 
 ```sh
-./bin/yugabyted configure --fault_tolerance=zone
+./bin/yugabyted configure --fault_tolerance=zone --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
 ```
 
 ### Create and configure the Java project
@@ -370,7 +382,7 @@ Perform the following to create a sample Java project:
     </dependency>
 
     <!-- https://mvnrepository.com/artifact/com.zaxxer/HikariCP -->
-    <dependency>
+<!--    <dependency>
       <groupId>com.zaxxer</groupId>
       <artifactId>HikariCP</artifactId>
       <version>5.0.0</version>
@@ -596,3 +608,4 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
     ```sh
      mvn -q package exec:java -DskipTests -Dexec.mainClass=com.yugabyte.TopologyAwareLoadBalanceApp
     ```
+-->

@@ -41,7 +41,7 @@
 #include "yb/master/master_cluster.proxy.h"
 
 #include "yb/util/async_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/net_util.h"
 
 using std::shared_ptr;
@@ -54,7 +54,7 @@ using yb::rpc::Rpc;
 
 using namespace std::placeholders;
 
-DEFINE_int32(master_leader_rpc_timeout_ms, 500,
+DEFINE_RUNTIME_int32(master_leader_rpc_timeout_ms, 500,
              "Number of milliseconds that the tserver will keep querying for master leader before"
              "selecting a follower.");
 TAG_FLAG(master_leader_rpc_timeout_ms, advanced);
@@ -187,9 +187,11 @@ void GetLeaderMasterRpc::SendRpc() {
   {
     std::lock_guard<simple_spinlock> l(lock_);
     pending_responses_ = size;
-    for (size_t i = 0; i < size; i++) {
-      auto handle = rpcs_.RegisterConstructed([this, i, self](const rpc::Rpcs::Handle& handle) {
-        return std::make_shared<GetMasterRegistrationRpc>(
+  }
+
+  for (size_t i = 0; i < size; i++) {
+    auto handle = rpcs_.RegisterConstructed([this, i, self](const rpc::Rpcs::Handle& handle) {
+      return std::make_shared<GetMasterRegistrationRpc>(
           std::bind(
               &GetLeaderMasterRpc::GetMasterRegistrationRpcCbForNode, this, i, _1, self, handle),
           addrs_[i],
@@ -197,13 +199,12 @@ void GetLeaderMasterRpc::SendRpc() {
           retrier().messenger(),
           &retrier().proxy_cache(),
           &responses_[i]);
-      });
-      if (handle == rpcs_.InvalidHandle()) {
-        GetMasterRegistrationRpcCbForNode(i, STATUS(Aborted, "Stopping"), self, handle);
-        continue;
-      }
-      handles.push_back(handle);
+    });
+    if (handle == rpcs_.InvalidHandle()) {
+      GetMasterRegistrationRpcCbForNode(i, STATUS(Aborted, "Stopping"), self, handle);
+      continue;
     }
+    handles.push_back(handle);
   }
 
   for (const auto& handle : handles) {

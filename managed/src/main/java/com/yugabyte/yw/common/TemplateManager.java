@@ -7,7 +7,10 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,7 +21,7 @@ public class TemplateManager extends DevopsBase {
   private static final String COMMAND_TYPE = "instance";
   public static final String PROVISION_SCRIPT = "provision_instance.py";
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
 
   @Override
   protected String getCommandType() {
@@ -51,8 +54,8 @@ public class TemplateManager extends DevopsBase {
       String nodeExporterUser,
       boolean setUpChrony,
       List<String> ntpServers) {
-    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     String path = getOrCreateProvisionFilePath(accessKey.getProviderUUID());
+    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
 
     // Construct template command.
     List<String> commandArgs = new ArrayList<>();
@@ -60,8 +63,12 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(PROVISION_SCRIPT);
     commandArgs.add("--destination");
     commandArgs.add(path);
+
+    Provider provider = Provider.getOrBadRequest(accessKey.getProviderUUID());
+    ProviderDetails details = provider.getDetails();
     commandArgs.add("--ssh_user");
-    commandArgs.add(keyInfo.sshUser);
+    commandArgs.add(details.sshUser);
+
     commandArgs.add("--vars_file");
     commandArgs.add(keyInfo.vaultFile);
     commandArgs.add("--vault_password_file");
@@ -70,8 +77,9 @@ public class TemplateManager extends DevopsBase {
     commandArgs.add(keyInfo.privateKey);
     commandArgs.add("--local_package_path");
     commandArgs.add(appConfig.getString("yb.thirdparty.packagePath"));
+
     commandArgs.add("--custom_ssh_port");
-    commandArgs.add(keyInfo.sshPort.toString());
+    commandArgs.add(details.sshPort.toString());
 
     if (airGapInstall) {
       commandArgs.add("--air_gap");
@@ -100,19 +108,23 @@ public class TemplateManager extends DevopsBase {
     }
 
     JsonNode result =
-        execAndParseCommandCloud(accessKey.getProviderUUID(), "template", commandArgs);
+        execAndParseShellResponse(
+            DevopsCommand.builder()
+                .providerUUID(accessKey.getProviderUUID())
+                .command("template")
+                .commandArgs(commandArgs)
+                .build());
 
     if (result.get("error") == null) {
-      keyInfo.passwordlessSudoAccess = passwordlessSudoAccess;
-      keyInfo.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
-      keyInfo.airGapInstall = airGapInstall;
-      keyInfo.installNodeExporter = installNodeExporter;
-      keyInfo.nodeExporterPort = nodeExporterPort;
-      keyInfo.nodeExporterUser = nodeExporterUser;
-      keyInfo.setUpChrony = setUpChrony;
-      keyInfo.ntpServers = ntpServers;
-      accessKey.setKeyInfo(keyInfo);
-      accessKey.save();
+      details.passwordlessSudoAccess = passwordlessSudoAccess;
+      details.provisionInstanceScript = path + "/" + PROVISION_SCRIPT;
+      details.airGapInstall = airGapInstall;
+      details.installNodeExporter = installNodeExporter;
+      details.nodeExporterPort = nodeExporterPort;
+      details.nodeExporterUser = nodeExporterUser;
+      details.setUpChrony = setUpChrony;
+      details.ntpServers = ntpServers;
+      provider.save();
     } else {
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, result);
     }

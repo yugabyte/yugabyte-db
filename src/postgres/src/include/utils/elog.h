@@ -138,12 +138,16 @@
 	do { \
 		pg_prevent_errno_in_scope(); \
 		if (IsMultiThreadedMode()) { \
-		   yb_pgbackend_ereport(elevel, NULL); \
+			if (yb_errstart(elevel, __FILE__, __LINE__, PG_FUNCNAME_MACRO)) \
+				yb_errfinish rest; \
 		} \
-		if (__builtin_constant_p(elevel) && (elevel) >= ERROR ? \
-			errstart_cold(elevel, domain) : \
-			errstart(elevel, domain)) \
-			__VA_ARGS__, errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
+		else \
+		{ \
+			if (__builtin_constant_p(elevel) && (elevel) >= ERROR ? \
+				errstart_cold(elevel, domain) : \
+				errstart(elevel, domain)) \
+				__VA_ARGS__, errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
+		} \
 		if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 			pg_unreachable(); \
 	} while(0)
@@ -152,11 +156,16 @@
 	do { \
 		const int elevel_ = (elevel); \
 		pg_prevent_errno_in_scope(); \
-		if (IsMultiThreadedMode()) { \
-		   yb_pgbackend_ereport(elevel, NULL); \
-		} \		const int elevel_ = (elevel); \
-		if (errstart(elevel_, domain)) \
-			__VA_ARGS__, errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
+		if (IsMultiThreadedMode()) \
+		{ \
+			if (yb_errstart(elevel_, __FILE__, __LINE__, PG_FUNCNAME_MACRO)) \
+				yb_errfinish rest; \
+		} \
+		else \
+		{ \
+			if (errstart(elevel_, domain)) \
+				__VA_ARGS__, errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
+		} \
 		if (elevel_ >= ERROR) \
 			pg_unreachable(); \
 	} while(0)
@@ -166,6 +175,9 @@
 	ereport_domain(elevel, TEXTDOMAIN, __VA_ARGS__)
 
 #define TEXTDOMAIN NULL
+
+extern bool yb_errstart(int elevel, const char *filename, int lineno, const char *funcname);
+extern void yb_errfinish(int dummy,...);
 
 extern bool message_level_is_interesting(int elevel);
 
@@ -180,6 +192,8 @@ extern int	errcode_for_file_access(void);
 extern int	errcode_for_socket_access(void);
 
 extern int	errmsg(const char *fmt,...) pg_attribute_printf(1, 2);
+extern int	yb_errmsg_from_status_data(const char *fmt, const size_t nargs, const char** args);
+extern int	yb_detail_from_status_data(const char *fmt, const size_t nargs, const char** args);
 extern int	errmsg_internal(const char *fmt,...) pg_attribute_printf(1, 2);
 
 extern int	errmsg_plural(const char *fmt_singular, const char *fmt_plural,
@@ -231,10 +245,6 @@ extern int	err_generic_string(int field, const char *str);
 extern int	geterrcode(void);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
-
-void yb_pgbackend_ereport(int elevel, const char *fmt,...);
-
-void yb_pgbackend_ereport_dummy(int dummy,...);
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -323,19 +333,19 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
  */
 #define PG_TRY()  \
 	do { \
-		sigjmp_buf *_save_exception_stack = PG_exception_stack; \
+		sigjmp_buf *_save_exception_stack = yb_get_exception_stack(); \
 		ErrorContextCallback *_save_context_stack = error_context_stack; \
 		sigjmp_buf _local_sigjmp_buf; \
 		bool _do_rethrow = false; \
 		if (sigsetjmp(_local_sigjmp_buf, 0) == 0) \
 		{ \
-			PG_exception_stack = &_local_sigjmp_buf
+			yb_set_exception_stack(&_local_sigjmp_buf)
 
 #define PG_CATCH()	\
 		} \
 		else \
 		{ \
-			PG_exception_stack = _save_exception_stack; \
+			yb_set_exception_stack(_save_exception_stack); \
 			error_context_stack = _save_context_stack
 
 #define PG_FINALLY() \
@@ -343,14 +353,15 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 		else \
 			_do_rethrow = true; \
 		{ \
-			PG_exception_stack = _save_exception_stack; \
+			yb_set_exception_stack(_save_exception_stack);	\
 			error_context_stack = _save_context_stack
 
 #define PG_END_TRY()  \
 		} \
 		if (_do_rethrow) \
 				PG_RE_THROW(); \
-		PG_exception_stack = _save_exception_stack; \
+		yb_reset_error_status(); \
+		yb_set_exception_stack(_save_exception_stack); \
 		error_context_stack = _save_context_stack; \
 	} while (0)
 
@@ -414,6 +425,9 @@ typedef struct ErrorData
 	struct MemoryContextData *assoc_context;
 } ErrorData;
 
+extern sigjmp_buf *yb_get_exception_stack(void);
+extern void yb_set_exception_stack(sigjmp_buf *new_sigjmp_buf);
+extern void yb_reset_error_status(void);
 extern void EmitErrorReport(void);
 extern ErrorData *CopyErrorData(void);
 extern void FreeErrorData(ErrorData *edata);

@@ -32,7 +32,7 @@
 
 #include "yb/master/master_defaults.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/memory/mc_types.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
@@ -46,11 +46,11 @@
 #include "yb/yql/cql/ql/ptree/yb_location.h"
 #include "yb/yql/cql/ql/ptree/ycql_predtest.h"
 
-DEFINE_bool(ycql_allow_in_op_with_order_by, false,
+DEFINE_UNKNOWN_bool(ycql_allow_in_op_with_order_by, false,
             "Allow IN to be used with ORDER BY clause");
 TAG_FLAG(ycql_allow_in_op_with_order_by, advanced);
 
-DEFINE_bool(enable_uncovered_index_select, true,
+DEFINE_UNKNOWN_bool(enable_uncovered_index_select, true,
             "Enable executing select statements using uncovered index");
 TAG_FLAG(enable_uncovered_index_select, advanced);
 
@@ -474,6 +474,7 @@ Status PTSelectStmt::Analyze(SemContext *sem_context) {
     // select_scan_info_ is used to collect information on references for columns, operators, etc.
     SelectScanInfo select_scan_info(sem_context->PTempMem(),
                                     num_columns(),
+                                    &partition_key_ops_,
                                     &filtering_exprs_,
                                     &column_map_);
     select_scan_info_ = &select_scan_info;
@@ -513,6 +514,9 @@ Status PTSelectStmt::Analyze(SemContext *sem_context) {
       sem_context->set_void_primary_key_condition(true);
     }
   }
+
+  // Prevent double filling. It's filled in AnalyzeReferences() and in AnalyzeWhereClause().
+  partition_key_ops_.clear();
 
   // Run error checking on the WHERE conditions.
   RETURN_NOT_OK(AnalyzeWhereClause(sem_context));
@@ -875,6 +879,8 @@ Status PTSelectStmt::SetupScanPath(SemContext *sem_context, const SelectScanSpec
     // the LIMIT and OFFSET should be applied to the PRIMARY ReadRequest.
     child_select_->limit_clause_ = nullptr;
     child_select_->offset_clause_ = nullptr;
+    // Pass is_aggregate_ flag to allow the child ignore PAGING.
+    child_select_->is_parent_aggregate_ = is_aggregate_;
   }
 
   // Compile the child tree.
@@ -1031,8 +1037,8 @@ PTOrderBy::Direction directionFromSortingType(SortingType sorting_type) {
 } // namespace
 
 Status PTSelectStmt::AnalyzeOrderByClause(SemContext *sem_context,
-                                                  const TableId& index_id,
-                                                  bool *is_forward_scan) {
+                                          const TableId& index_id,
+                                          bool *is_forward_scan) {
   if (order_by_clause_ == nullptr) {
     return Status::OK();
   }
@@ -1220,9 +1226,11 @@ Status PTTableRef::Analyze(SemContext *sem_context) {
 
 SelectScanInfo::SelectScanInfo(MemoryContext *memctx,
                                size_t num_columns,
+                               MCList<PartitionKeyOp> *partition_key_ops,
                                MCVector<const PTExpr*> *scan_filtering_exprs,
                                MCMap<MCString, ColumnDesc> *scan_column_map)
-    : col_ops_(memctx),
+    : AnalyzeStepState(partition_key_ops),
+      col_ops_(memctx),
       col_op_counters_(memctx),
       col_json_ops_(memctx),
       col_subscript_ops_(memctx),

@@ -22,6 +22,7 @@
 #include "yb/docdb/doc_ttl_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/packed_row.h"
+#include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/schema_packing.h"
 #include "yb/docdb/value.h"
 #include "yb/docdb/value_type.h"
@@ -42,7 +43,6 @@ using std::unordered_set;
 using rocksdb::VectorToString;
 
 DECLARE_bool(ycql_enable_packed_row);
-DECLARE_bool(ysql_enable_packed_row);
 
 DECLARE_uint64(ycql_packed_row_size_limit);
 DECLARE_uint64(ysql_packed_row_size_limit);
@@ -198,8 +198,8 @@ class PackedRowData {
   // lazy_ht - in/out parameter to access entry hybrid time.
   Result<bool> ProcessColumn(
       ColumnId column_id, const Slice& value, const EncodedDocHybridTime& column_doc_ht,
-      const ValueControlFields& control_fields, size_t encoded_control_fields_size,
-      LazyHybridTime* lazy_ht) {
+      const ValueControlFields& control_fields, bool has_intent_doc_ht,
+      size_t encoded_control_fields_size, LazyHybridTime* lazy_ht) {
     if (!packing_started_) {
       RETURN_NOT_OK(StartRepacking());
     }
@@ -237,11 +237,19 @@ class PackedRowData {
     }
     VLOG(4) << "Update value: " << column_id << ", " << value.ToDebugHexString() << ", tail size: "
             << tail_size;
+    std::optional<ValueControlFields> control_fields_copy;
+    if (has_intent_doc_ht) {
+      control_fields_copy = control_fields;
+    }
     if (new_packing_.keep_write_time() && !control_fields.has_timestamp()) {
-      auto control_fields_copy = control_fields;
-      control_fields_copy.timestamp = VERIFY_RESULT(lazy_ht->Get()).GetPhysicalValueMicros();
+      if (!control_fields_copy) {
+        control_fields_copy = control_fields;
+      }
+      control_fields_copy->timestamp = VERIFY_RESULT(lazy_ht->Get()).GetPhysicalValueMicros();
+    }
+    if (control_fields_copy) {
       control_fields_buffer_.clear();
-      control_fields_copy.AppendEncoded(&control_fields_buffer_);
+      control_fields_copy->AppendEncoded(&control_fields_buffer_);
       return packer_->AddValue(
           column_id, control_fields_buffer_.AsSlice(),
           value.WithoutPrefix(encoded_control_fields_size), tail_size);
@@ -354,7 +362,7 @@ class PackedRowData {
     active_coprefix_ = coprefix;
     active_coprefix_dropped_ = false;
     new_packing_ = *packing;
-    can_start_packing_ = packing->enabled();
+    can_start_packing_ = packing->enabled;
     used_schema_versions_it_ = used_schema_versions_.find(new_packing_.cotable_id);
     return Status::OK();
   }
@@ -774,9 +782,12 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   //
   // TODO: When more merge records are supported, isTtlRow should be redefined appropriately.
   bool is_ttl_row = IsMergeRecord(value);
+  bool skip = encoded_doc_ht < prev_overwrite_ht && !is_ttl_row;
   VLOG_WITH_FUNC(4) << "Ht: " << encoded_doc_ht.ToString()
-                    << ", prev_overwrite_ht: " << prev_overwrite_ht.ToString();
-  if (encoded_doc_ht < prev_overwrite_ht && !is_ttl_row) {
+                    << ", prev_overwrite_ht: " << prev_overwrite_ht.ToString()
+                    << ", is_ttl_row: " << is_ttl_row
+                    << ", skip: " << skip;
+  if (skip) {
     return Status::OK();
   }
 
@@ -820,7 +831,9 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   }
 
   Slice value_slice = value;
-  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_slice));
+  Slice intent_doc_ht;
+  ValueControlFields control_fields = VERIFY_RESULT(ValueControlFields::DecodeWithIntentDocHt(
+      &value_slice, &intent_doc_ht));
   LazyHybridTime lazy_ht(encoded_doc_ht);
 
   // Check for columns deleted from the schema. This is done regardless of whether this is a
@@ -835,7 +848,7 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     // Column ID is the first subkey in every row.
     auto doc_key_size = sub_key_ends_[1];
     auto key_type = DecodeKeyEntryType(key[doc_key_size]);
-    VLOG(4) << "First subkey type: " << key_type;
+    VLOG_WITH_FUNC(4) << "First subkey type: " << key_type;
     if (key_type == KeyEntryType::kColumnId || key_type == KeyEntryType::kSystemColumnId) {
       Slice column_id_slice = key.WithoutPrefix(doc_key_size + 1);
       auto column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&column_id_slice));
@@ -846,14 +859,21 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         return Status::OK();
       }
 
-      VLOG(4) << "Packed row active: " << packed_row_.active();
-      // TODO(packed_row) remove control fields from value
-      if (!packed_row_.active() &&
+      bool start_packing =
+          !packed_row_.active() &&
           packed_row_.can_start_packing() &&
+          !value_slice.starts_with(ValueEntryTypeAsChar::kTombstone) &&
           // Don't start packing if we already passed columns for this key.
           // Could happen because of history retention.
           doc_key_serial_ != last_passed_doc_key_serial_ &&
-          !CanHaveOtherDataBefore(encoded_doc_ht)) {
+          !CanHaveOtherDataBefore(encoded_doc_ht);
+      VLOG_WITH_FUNC(4)
+          << "Packed row active: " << packed_row_.active() << ", can start packing: "
+          << packed_row_.can_start_packing() << ", doc_key_serial: " << doc_key_serial_
+          << ", last_passed_doc_key_serial: " << last_passed_doc_key_serial_
+          << ", can have other data before: " << CanHaveOtherDataBefore(encoded_doc_ht)
+          << ", start packing: " << start_packing;
+      if (start_packing) {
         packed_row_.StartPacking(internal_key, doc_key_size, encoded_doc_ht, doc_key_serial_);
         AssignPrevSubDocKey(key.cdata(), same_bytes);
       }
@@ -865,8 +885,8 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
         // Return if column was processed by packed row.
         auto encoded_control_fields_size = value_slice.data() - value.data();
         if (VERIFY_RESULT(packed_row_.ProcessColumn(
-                column_id, value, encoded_doc_ht, control_fields, encoded_control_fields_size,
-                &lazy_ht))) {
+                column_id, value, encoded_doc_ht, control_fields, !intent_doc_ht.empty(),
+                encoded_control_fields_size, &lazy_ht))) {
           return Status::OK();
         }
       }
@@ -908,13 +928,6 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
   // more entries appearing at earlier hybrid times.
   if (value_type == ValueEntryType::kTombstone && !CanHaveOtherDataBefore(encoded_doc_ht)) {
     return Status::OK();
-  }
-
-  // TODO(packed_row) combine non packed columns into packed row
-  if (value_type == ValueEntryType::kPackedRow) {
-    return packed_row_.ProcessPackedRow(
-        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
-        encoded_doc_ht, doc_key_serial_);
   }
 
   // If the entry has the TTL flag, delete the entry.
@@ -960,11 +973,13 @@ Status DocDBCompactionFeed::Feed(const Slice& internal_key, const Slice& value) 
     new_value_buffer_.Append(value_slice);
     new_value = new_value_buffer_.AsSlice();
     within_merge_block_ = false;
-  } else if (control_fields.intent_doc_ht.is_valid()) {
+  } else if (value_type == ValueEntryType::kPackedRow) {
+    return packed_row_.ProcessPackedRow(
+        internal_key, sub_key_ends_.back(), value, value_slice.data() - value.data(),
+        encoded_doc_ht, doc_key_serial_);
+  } else if (!intent_doc_ht.empty()) {
     // Cleanup intent doc hybrid time when we don't need it anymore.
     // See https://github.com/yugabyte/yugabyte-db/issues/4535 for details.
-    control_fields.intent_doc_ht = DocHybridTime::kInvalid;
-
     new_value_buffer_.Clear();
 
     // We are reusing the existing encoded value without decoding/encoding it.
@@ -1082,12 +1097,12 @@ HybridTime MinHybridTime(const std::vector<rocksdb::FileMetaData*>& inputs) {
 
 } // namespace
 
-bool CompactionSchemaInfo::enabled() const {
+bool PackedRowEnabled(TableType table_type, bool is_colocated) {
   switch (table_type) {
     case TableType::YQL_TABLE_TYPE:
       return FLAGS_ycql_enable_packed_row;
     case TableType::PGSQL_TABLE_TYPE:
-      return FLAGS_ysql_enable_packed_row;
+      return ShouldYsqlPackRow(is_colocated);
     case TableType::REDIS_TABLE_TYPE: [[fallthrough]];
     case TableType::TRANSACTION_STATUS_TABLE_TYPE:
       return false;
@@ -1151,6 +1166,10 @@ HistoryRetentionDirective ManualHistoryRetentionPolicy::GetRetentionDirective() 
   return {history_cutoff_.load(std::memory_order_acquire),
           table_ttl_.load(std::memory_order_acquire),
           ShouldRetainDeleteMarkersInMajorCompaction::kFalse};
+}
+
+HybridTime ManualHistoryRetentionPolicy::ProposedHistoryCutoff() {
+  return history_cutoff_.load(std::memory_order_acquire);
 }
 
 void ManualHistoryRetentionPolicy::SetHistoryCutoff(HybridTime history_cutoff) {

@@ -12,8 +12,9 @@ package com.yugabyte.yw.common.config;
 import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.yugabyte.yw.common.config.impl.HAWSClientKeyListener;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelListener;
+import com.yugabyte.yw.common.config.impl.WSClientKeyListener;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import java.util.ArrayList;
@@ -21,11 +22,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 @Singleton
 public class RuntimeConfigChangeNotifier {
+
+  private static final String WS_RUNTIME_CONFIG_SUFFIX = ".ws";
 
   private final Map<String, List<RuntimeConfigChangeListener>> listenerMap = new HashMap<>();
 
@@ -36,9 +40,16 @@ public class RuntimeConfigChangeNotifier {
 
   @Inject
   public RuntimeConfigChangeNotifier(
-      HAWSClientKeyListener hawsClientKeyListener,
-      MetricCollectionLevelListener metricCollectionLevelListener) {
-    addListener(hawsClientKeyListener);
+      Config config, MetricCollectionLevelListener metricCollectionLevelListener) {
+    List<String> refreshableClients =
+        config
+            .getStringList(RuntimeConfService.INCLUDED_OBJECTS_KEY)
+            .stream()
+            .filter(object -> object.endsWith(WS_RUNTIME_CONFIG_SUFFIX))
+            .collect(Collectors.toList());
+    for (String wsClientKey : refreshableClients) {
+      addListener(new WSClientKeyListener(wsClientKey));
+    }
     addListener(metricCollectionLevelListener);
   }
 

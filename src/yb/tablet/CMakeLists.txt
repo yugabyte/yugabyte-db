@@ -66,7 +66,6 @@ set(TABLET_SRCS
   operations/write_operation.cc
   maintenance_manager.cc
   mvcc.cc
-  tablet_metadata.cc
   tablet_retention_policy.cc
   preparer.cc
   write_query.cc
@@ -76,6 +75,7 @@ set(TABLET_DEPS pq_utils)
 
 YRPC_GENERATE(
   TABLET_PROTO_SRCS TABLET_PROTO_HDRS TABLET_PROTO_TGTS
+  MESSAGES TRUE
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   NO_SERVICE_PROTO_FILES
@@ -94,6 +94,27 @@ ADD_YB_LIBRARY(tablet_proto
   SRCS ${TABLET_PROTO_SRCS}
   DEPS ${TABLET_PROTO_LIBS} opid_proto
   NONLINK_DEPS ${TABLET_PROTO_TGTS})
+
+ADD_YB_LIBRARY(
+  tablet_metadata
+  SRCS kv_formatter.cc tablet_metadata.cc
+  DEPS tablet_proto yb_docdb)
+
+add_dependencies(tablet_metadata gen_src_yb_cdc_cdc_consumer_proto)
+add_dependencies(tablet_metadata gen_src_yb_cdc_cdc_service_proto)
+add_dependencies(tablet_metadata gen_src_yb_cdc_xcluster_producer_proto)
+add_dependencies(tablet_metadata gen_src_yb_consensus_consensus_proto)
+add_dependencies(tablet_metadata gen_src_yb_consensus_consensus_types_proto)
+add_dependencies(tablet_metadata gen_src_yb_master_catalog_entity_info_proto)
+add_dependencies(tablet_metadata gen_src_yb_master_master_backup_proto)
+add_dependencies(tablet_metadata gen_src_yb_master_master_client_proto)
+add_dependencies(tablet_metadata gen_src_yb_master_master_ddl_proto)
+add_dependencies(tablet_metadata gen_src_yb_master_master_replication_proto)
+add_dependencies(tablet_metadata gen_src_yb_master_master_types_proto)
+add_dependencies(tablet_metadata gen_src_yb_rpc_any_proto)
+add_dependencies(tablet_metadata gen_src_yb_tserver_backup_proto)
+add_dependencies(tablet_metadata gen_src_yb_tserver_tserver_proto)
+add_dependencies(tablet_metadata gen_src_yb_tserver_tserver_types_proto)
 
 ADD_YB_LIBRARY(
   tablet
@@ -119,6 +140,7 @@ target_link_libraries(tablet
   yb_util
   consensus
   rocksdb
+  tablet_metadata
   yb_docdb
   yb_client
   yb_pggate_util

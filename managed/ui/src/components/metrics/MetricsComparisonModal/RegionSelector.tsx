@@ -1,21 +1,20 @@
 import React, { Fragment, FC } from 'react';
 import { Dropdown, MenuItem } from 'react-bootstrap';
-
 import { MetricConsts } from '../../metrics/constants';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 
 interface RegionSelectorData {
-  selectedUniverse: any | null;
-  onRegionChanged: any;
+  onRegionChanged: (displayName: string, regionCode?: string | null, clusterUUID?: string) => void;
   currentSelectedRegion: string | null;
   selectedRegionClusterUUID: string | null;
+  selectedUniverse: any | null;
 }
 
 export const RegionSelector: FC<RegionSelectorData> = ({
   selectedUniverse,
   onRegionChanged,
   currentSelectedRegion,
-  selectedRegionClusterUUID,
+  selectedRegionClusterUUID
 }) => {
   let regionItems = [];
   let isDisabled = selectedUniverse === MetricConsts.ALL;
@@ -35,48 +34,63 @@ export const RegionSelector: FC<RegionSelectorData> = ({
     } else if (universeClustersLength >= 1) {
       regionItems = universeClusters.map((cluster: any, clusterIdx: number) => {
         // Universe in YBA cannot have more than 1 Read Replica cluster
-        const clusterDisplayName = cluster.clusterType === MetricConsts.PRIMARY ?
-          'Primary Cluster' : `Read Replica Cluster`;
+        const clusterDisplayName =
+          cluster.clusterType === MetricConsts.PRIMARY ? 'Primary Cluster' : `Read Replica Cluster`;
 
-        return cluster.regions?.map((region: any, regionIdx: number) => {
-          const key = `${clusterIdx}-region-${regionIdx}`;
-          const matches = region.name.match(/\((.*?)\)/);
-          // Return display name based on region name and code
-          const regionDisplayName = matches
-            ? `${matches?.[1]} (${region.code})`
-            : `${region.name} (${region.code})`;
+        return cluster.placementInfo?.cloudList?.[0]?.regionList?.map(
+          // eslint-disable-next-line react/display-name
+          (region: any, regionIdx: number) => {
+            const key = `${clusterIdx}-region-${regionIdx}`;
+            const matches = region.name.match(/\((.*?)\)/);
+            // Return display name based on region name and code
+            const regionDisplayName = matches
+              ? `${matches?.[1]} (${region.code})`
+              : `${region.name} (${region.code})`;
 
-          return (
-            <Fragment>
-              {clusterIdx > 0 && regionIdx === 0 &&
-                <div id="region-divider" className="divider" />
-              }
-              {/* Display cluster name only when there are multiple clusters */}
-              {universeClustersLength > 1 && regionIdx === 0 ?
+            return (
+              // eslint-disable-next-line react/jsx-key
+              <Fragment>
+                {clusterIdx > 0 && regionIdx === 0 && (
+                  <div id="region-divider" className="divider" />
+                )}
+                {/* Display cluster name only when there are multiple clusters */}
+                {universeClustersLength > 1 && regionIdx === 0 ? (
+                  <MenuItem
+                    key={`${cluster.clusterType}-${clusterIdx}`}
+                    onSelect={() => onRegionChanged(clusterDisplayName, null, cluster.uuid)}
+                    onClick={() => {
+                      document.body.click();
+                    }}
+                    eventKey={`${cluster.clusterType}-${regionIdx}`}
+                    active={
+                      cluster.uuid === selectedRegionClusterUUID &&
+                      currentSelectedRegion === clusterDisplayName
+                    }
+                  >
+                    <span className="cluster-az-name">{clusterDisplayName}</span>
+                  </MenuItem>
+                ) : null}
                 <MenuItem
-                  key={`${cluster.clusterType}-${clusterIdx}`}
-                  onSelect={() => onRegionChanged(clusterDisplayName, null, cluster.uuid)}
-                  onClick={() => { document.body.click() }}
-                  eventKey={`${cluster.clusterType}-${regionIdx}`}
-                  active={cluster.uuid === selectedRegionClusterUUID && currentSelectedRegion === clusterDisplayName}
+                  onSelect={() => onRegionChanged(regionDisplayName, region.code, cluster.uuid)}
+                  key={key}
+                  // Added this line due to the issue that dropdown does not close
+                  // when a menu item is selected
+                  onClick={() => {
+                    document.body.click();
+                  }}
+                  eventKey={`${region.uuid}-${regionIdx}`}
+                  active={
+                    currentSelectedRegion === regionDisplayName &&
+                    cluster.uuid === selectedRegionClusterUUID
+                  }
                 >
-                  <span className="cluster-az-name">{clusterDisplayName}</span>
-                </MenuItem> : null}
-              <MenuItem
-                onSelect={() => onRegionChanged(regionDisplayName, region.code, cluster.uuid)}
-                key={key}
-                // Added this line due to the issue that dropdown does not close
-                // when a menu item is selected
-                onClick={() => { document.body.click() }}
-                eventKey={`${region.uuid}-${regionIdx}`}
-                active={currentSelectedRegion === regionDisplayName && cluster.uuid === selectedRegionClusterUUID}
-              >
-                <span className="region-name">{regionDisplayName}</span>
-              </MenuItem>
-            </Fragment>
-          );
-        })
-      })
+                  <span className="region-name">{regionDisplayName}</span>
+                </MenuItem>
+              </Fragment>
+            );
+          }
+        );
+      });
     }
   }
 
@@ -89,7 +103,9 @@ export const RegionSelector: FC<RegionSelectorData> = ({
         active={currentSelectedRegion === MetricConsts.ALL}
         // Added this line due to the issue that dropdown does not close
         // when a menu item is selected
-        onClick={() => { document.body.click() }}
+        onClick={() => {
+          document.body.click();
+        }}
         eventKey={MetricConsts.ALL}
       >
         {'All clusters & regions'}
@@ -101,12 +117,15 @@ export const RegionSelector: FC<RegionSelectorData> = ({
   return (
     <div className="region-picker-container pull-left">
       <Dropdown
-        id="region-filter-dropdown"
+        id="regionFilterDropdown"
+        className="region-filter-dropdown"
         disabled={isDisabled}
-        title={isDisabled ? "Select a specific universe with more than single cluster or region" : ""}
+        title={
+          isDisabled ? 'Select a specific universe with more than single cluster or region' : ''
+        }
       >
         <Dropdown.Toggle className="dropdown-toggle-button">
-          <span className="default-region-value">
+          <span className="default-value">
             {currentSelectedRegion === MetricConsts.ALL ? regionItems[0] : currentSelectedRegion}
           </span>
         </Dropdown.Toggle>

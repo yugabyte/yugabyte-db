@@ -1,4 +1,5 @@
 ---
+title: Alerts in YugabyteDB Anywhere
 headerTitle: Alerts
 linkTitle: Alerts
 description: Use alerts
@@ -26,5 +27,5 @@ To summarize, the alert status can be active, acknowledged, or resolved. You cha
 
 For additional information, see the following:
 
-- [Alerts and notifications in YugabyteDB Anywhere](https://blog.yugabyte.com/yugabytedb-2-8-alerts-and-notifications/)
+- [Alerts and notifications in YugabyteDB Anywhere](https://www.yugabyte.com/blog/yugabytedb-2-8-alerts-and-notifications/)
 - [Metrics in YugabyteDB Anywhere](../../troubleshoot/universe-issues/#use-metrics)

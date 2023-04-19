@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_CQL_OPERATION_H
-#define YB_DOCDB_CQL_OPERATION_H
+#pragma once
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/typedefs.h"
@@ -32,10 +31,19 @@ class QLWriteOperation :
     public DocExprExecutor {
  public:
   QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                   SchemaVersion schema_version,
+                   DocReadContextPtr doc_read_context,
+                   std::shared_ptr<IndexMap> index_map,
+                   const Schema* unique_index_key_schema,
+                   const TransactionOperationContext& txn_op_context);
+
+  QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
+                   SchemaVersion schema_version,
                    DocReadContextPtr doc_read_context,
                    std::reference_wrapper<const IndexMap> index_map,
                    const Schema* unique_index_key_schema,
                    const TransactionOperationContext& txn_op_context);
+
   ~QLWriteOperation();
 
   // Construct a QLWriteOperation. Content of request will be swapped out by the constructor.
@@ -61,33 +69,29 @@ class QLWriteOperation :
   MonoDelta request_ttl() const;
 
  private:
-  using JsonColumnMap = std::unordered_map<ColumnId, std::vector<int>>;
+  using JsonColumnMap = std::unordered_map<ColumnId, std::vector<const QLColumnValuePB*>>;
+  struct ApplyContext;
 
   Status ApplyForJsonOperators(
     const ColumnSchema& column_schema,
     const ColumnId col_id,
     const JsonColumnMap& col_map,
-    const DocOperationApplyData& data,
-    const ValueControlFields& control_fields,
+    const ApplyContext& context,
     IsInsert is_insert,
-    QLTableRow* current_row,
-    RowPacker* row_packer);
+    QLTableRow* current_row);
 
   Status ApplyForSubscriptArgs(const QLColumnValuePB& column_value,
                                const QLTableRow& current_row,
-                               const DocOperationApplyData& data,
-                               const ValueControlFields& control_fields,
+                               const ApplyContext& context,
                                const ColumnSchema& column,
                                ColumnId column_id);
 
   Status ApplyForRegularColumns(const QLColumnValuePB& column_value,
                                 const QLTableRow& current_row,
-                                const DocOperationApplyData& data,
-                                const ValueControlFields& control_fields,
+                                const ApplyContext& context,
                                 const ColumnSchema& column,
                                 ColumnId column_id,
-                                QLTableRow* new_row,
-                                RowPacker* row_packer);
+                                QLTableRow* new_row);
 
   void ClearResponse() override {
     if (response_) {
@@ -124,8 +128,17 @@ class QLWriteOperation :
       IntentAwareIterator* iter, const SubDocKey& sub_doc_key,
       HybridTime min_hybrid_time);
 
+  // Deletes an element (key/index) from a subscripted column.
+  //
+  // data - apply data that is updated per the operations performed.
+  // column_schema - schema of the column from which the element will be deleted.
+  // column_value - request proto identifying the element in the column and it's new value (empty).
+  // column_id - the id of the subscripted column.
+  Status DeleteSubscriptedColumnElement(
+      const DocOperationApplyData& data, const ColumnSchema& column_schema,
+      const QLColumnValuePB& column_value, ColumnId column_id);
   Status DeleteRow(const DocPath& row_path, DocWriteBatch* doc_write_batch,
-                           const ReadHybridTime& read_ht, CoarseTimePoint deadline);
+                   const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   Result<bool> IsRowDeleted(const QLTableRow& current_row, const QLTableRow& new_row) const;
   UserTimeMicros user_timestamp() const;
@@ -138,17 +151,17 @@ class QLWriteOperation :
       const DocOperationApplyData& data, QLTableRow* existing_row, QLTableRow* new_row);
   DocPath MakeSubPath(const ColumnSchema& column_schema, ColumnId column_id);
   Status InsertScalar(
-      const DocOperationApplyData& data,
+      const ApplyContext& apply_context,
       const ColumnSchema& column_schema,
       ColumnId column_id,
-      const ValueControlFields& control_fields,
       const QLValuePB& value,
-      bfql::TSOpcode op_code,
-      RowPacker* row_packer);
+      bfql::TSOpcode op_code);
 
-  docdb::DocReadContextPtr doc_read_context_;
+  const SchemaVersion schema_version_;
+  const docdb::DocReadContextPtr doc_read_context_;
+  const std::shared_ptr<IndexMap> index_map_holder_;
   const IndexMap& index_map_;
-  const Schema* unique_index_key_schema_ = nullptr;
+  const Schema* const unique_index_key_schema_ = nullptr;
 
   // Doc key and encoded Doc key for hashed key (i.e. without range columns). Present when there is
   // a static column being written.
@@ -226,14 +239,14 @@ class QLReadOperation : public DocExprExecutor {
                         int* match_count,
                         size_t* num_rows_skipped);
 
-  Status GetIntents(const Schema& schema, KeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
 
   QLResponsePB& response() { return response_; }
 
  private:
   // Checks whether we have processed enough rows for a page and sets the appropriate paging
   // state in the response object.
-  Status SetPagingStateIfNecessary(const YQLRowwiseIteratorIf* iter,
+  Status SetPagingStateIfNecessary(YQLRowwiseIteratorIf* iter,
                                    const QLResultSet* resultset,
                                    const size_t row_count_limit,
                                    const size_t num_rows_skipped,
@@ -246,5 +259,3 @@ class QLReadOperation : public DocExprExecutor {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_CQL_OPERATION_H

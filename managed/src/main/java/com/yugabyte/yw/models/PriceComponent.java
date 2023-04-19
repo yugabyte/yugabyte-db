@@ -1,30 +1,35 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
 import io.ebean.Model;
+import io.ebean.annotation.DbJson;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.EmbeddedId;
 import javax.persistence.Entity;
 import javax.persistence.JoinColumn;
 import javax.persistence.ManyToOne;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.validation.Constraints;
-import play.libs.Json;
 
 @Entity
+@Getter
+@Setter
 public class PriceComponent extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(PriceComponent.class);
 
@@ -42,6 +47,7 @@ public class PriceComponent extends Model {
     return idKey;
   }
 
+  @JsonIgnore
   public Provider getProvider() {
     if (this.provider == null) {
       setProviderUuid(this.idKey.providerUuid);
@@ -49,15 +55,18 @@ public class PriceComponent extends Model {
     return this.provider;
   }
 
+  @JsonIgnore
   public void setProvider(Provider aProvider) {
     provider = aProvider;
-    idKey.providerUuid = aProvider.uuid;
+    idKey.providerUuid = aProvider.getUuid();
   }
 
+  @JsonIgnore
   public UUID getProviderUuid() {
     return this.idKey.providerUuid;
   }
 
+  @JsonIgnore
   public void setProviderUuid(UUID providerUuid) {
     Provider provider = Provider.get(providerUuid);
     if (provider != null) {
@@ -67,9 +76,10 @@ public class PriceComponent extends Model {
     }
   }
 
+  @JsonIgnore
   public String getProviderCode() {
     Provider provider = getProvider();
-    return provider != null ? provider.code : null;
+    return provider != null ? provider.getCode() : null;
   }
 
   public String getRegionCode() {
@@ -80,15 +90,9 @@ public class PriceComponent extends Model {
     return this.idKey.componentCode;
   }
 
-  @Column(nullable = false, columnDefinition = "TEXT")
-  private String priceDetailsJson;
-
-  public void setPriceDetails(PriceDetails details) {
-    this.priceDetailsJson = Json.stringify(Json.toJson(details));
-    this.save();
-  }
-
-  public PriceDetails priceDetails = new PriceDetails();
+  @Column(name = "price_details_json")
+  @DbJson
+  private PriceDetails priceDetails = new PriceDetails();
 
   private static final Finder<PriceComponentKey, PriceComponent> find =
       new Finder<PriceComponentKey, PriceComponent>(PriceComponent.class) {};
@@ -103,8 +107,7 @@ public class PriceComponent extends Model {
    */
   public static PriceComponent get(UUID providerUuid, String regionCode, String componentCode) {
     PriceComponentKey pcKey = PriceComponentKey.create(providerUuid, regionCode, componentCode);
-    PriceComponent pc = PriceComponent.find.byId(pcKey);
-    return populateDetails(pc);
+    return PriceComponent.find.byId(pcKey);
   }
 
   /**
@@ -114,14 +117,7 @@ public class PriceComponent extends Model {
    * @return A list of pricing components in the cloud provider.
    */
   public static List<PriceComponent> findByProvider(Provider provider) {
-    return PriceComponent.find
-        .query()
-        .where()
-        .eq("provider_uuid", provider.uuid)
-        .findList()
-        .stream()
-        .map(PriceComponent::populateDetails)
-        .collect(Collectors.toList());
+    return PriceComponent.find.query().where().eq("provider_uuid", provider.getUuid()).findList();
   }
 
   public static List<PriceComponent> findByProvidersAndRegions(Collection<ProviderAndRegion> keys) {
@@ -137,23 +133,7 @@ public class PriceComponent extends Model {
       andExpr.eq("region_code", key.getRegionCode());
       orExpr.endAnd();
     }
-    return query
-        .endOr()
-        .findList()
-        .stream()
-        .map(PriceComponent::populateDetails)
-        .collect(Collectors.toList());
-  }
-
-  private static PriceComponent populateDetails(PriceComponent priceComponent) {
-    if (priceComponent != null) {
-      priceComponent.priceDetails = new PriceDetails();
-      if (priceComponent.priceDetailsJson != null && !priceComponent.priceDetailsJson.isEmpty()) {
-        priceComponent.priceDetails =
-            Json.fromJson(Json.parse(priceComponent.priceDetailsJson), PriceDetails.class);
-      }
-    }
-    return priceComponent;
+    return new ArrayList<>(query.endOr().findList());
   }
 
   /**
@@ -175,6 +155,7 @@ public class PriceComponent extends Model {
     }
     PriceDetails details = priceDetails == null ? new PriceDetails() : priceDetails;
     component.setPriceDetails(details);
+    component.save();
     return component;
   }
 

@@ -1,7 +1,7 @@
 ---
 title: Create your cluster
 linkTitle: Create your cluster
-description: Deploy clusters in YugabyteDB Managed.
+description: Create clusters in YugabyteDB Managed.
 headcontent: Create a cluster in YugabyteDB Managed
 image: /images/section_icons/index/quick_start.png
 menu:
@@ -53,9 +53,9 @@ type: indexpage
       </div>
     </a>
   </div>
-<!--
+
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="create-clusters-multisync/">
+    <a class="section-link icon-offset" href="create-clusters-geopartition/">
       <div class="head">
         <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
         <div class="title">Partition by region</div>
@@ -65,5 +65,5 @@ type: indexpage
       </div>
     </a>
   </div>
--->
+
 </div>

@@ -36,7 +36,7 @@
 #include "yb/gutil/bind.h"
 #include "yb/gutil/callback.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/size_literals.h"
 
@@ -45,7 +45,7 @@ using std::string;
 using namespace yb::size_literals;
 using yb::consensus::MakeOpIdPB;
 
-DEFINE_int32(
+DEFINE_UNKNOWN_int32(
     remote_bootstrap_anchor_session_timeout_ms, 5000,
     "Tablet server RPC client timeout for RemoteBootstrapAnchor Service calls.");
 TAG_FLAG(remote_bootstrap_anchor_session_timeout_ms, hidden);
@@ -91,8 +91,14 @@ Status RemoteBootstrapAnchorClient::ProcessLogAnchorRefreshStatus() {
   return log_anchor_refresh_status_;
 }
 
+// SetLogAnchorRefreshStatus is used as a callback in functions ::UpdateLogAnchorAsync and
+// ::KeepLogAnchorAliveAsync. It takes as input the corresponding shared_ptrs so that the
+// underlying async call(s) can access the managed object safely. nullptr validation should
+// be performed on accesses, if any.
 void RemoteBootstrapAnchorClient::SetLogAnchorRefreshStatus(
-    std::shared_ptr<rpc::RpcController> controller) {
+    std::shared_ptr<rpc::RpcController> controller,
+    const std::shared_ptr<UpdateLogAnchorResponsePB>& update_anchor_resp,
+    const std::shared_ptr<KeepLogAnchorAliveResponsePB>& keep_anchor_alive_resp) {
   auto status = controller->status();
   if (!status.ok()) {
     std::lock_guard<std::mutex> lock(log_anchor_status_mutex_);
@@ -109,7 +115,8 @@ Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const OpId& op_id) {
   *req.mutable_op_id() = MakeOpIdPB(op_id);
   req.set_owner_info(owner_info_);
 
-  UpdateLogAnchorResponsePB* resp = new UpdateLogAnchorResponsePB();
+  const std::shared_ptr<UpdateLogAnchorResponsePB>
+      shared_resp_ptr = std::make_shared<UpdateLogAnchorResponsePB>();
 
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   controller->set_timeout(
@@ -118,14 +125,15 @@ Status RemoteBootstrapAnchorClient::UpdateLogAnchorAsync(const OpId& op_id) {
 
   const scoped_refptr<RemoteBootstrapAnchorClient> shared_self(this);
 
-  yb::Callback<void(std::shared_ptr<rpc::RpcController>)>
+  yb::Callback<SetLogAnchorRefreshStatusFunc>
       callback = yb::Bind(&RemoteBootstrapAnchorClient::SetLogAnchorRefreshStatus,
                           shared_self);
 
   proxy_->UpdateLogAnchorAsync(
-      req, resp, controller.get(),
-      std::bind(&yb::Callback<void(std::shared_ptr<rpc::RpcController>)>::Run,
-                callback, controller));
+      req, shared_resp_ptr.get(), controller.get(),
+      std::bind(&yb::Callback<SetLogAnchorRefreshStatusFunc>::Run, callback, controller,
+                shared_resp_ptr,
+                nullptr /* shared_ptr<KeepLogAnchorAliveResponsePB> */));
 
   return Status::OK();
 }
@@ -137,21 +145,24 @@ Status RemoteBootstrapAnchorClient::KeepLogAnchorAliveAsync() {
   KeepLogAnchorAliveRequestPB req;
   req.set_owner_info(owner_info_);
 
-  KeepLogAnchorAliveResponsePB* resp = new KeepLogAnchorAliveResponsePB();
+  const std::shared_ptr<KeepLogAnchorAliveResponsePB>
+      shared_resp_ptr = std::make_shared<KeepLogAnchorAliveResponsePB>();
+
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   controller->set_timeout(
       MonoDelta::FromMilliseconds(FLAGS_remote_bootstrap_anchor_session_timeout_ms));
 
   const scoped_refptr<RemoteBootstrapAnchorClient> shared_self(this);
 
-  yb::Callback<void(std::shared_ptr<rpc::RpcController>)>
+  yb::Callback<SetLogAnchorRefreshStatusFunc>
       callback = yb::Bind(&RemoteBootstrapAnchorClient::SetLogAnchorRefreshStatus,
                           shared_self);
 
   proxy_->KeepLogAnchorAliveAsync(
-      req, resp, controller.get(),
-      std::bind(&yb::Callback<void(std::shared_ptr<rpc::RpcController>)>::Run,
-                callback, controller));
+      req, shared_resp_ptr.get(), controller.get(),
+      std::bind(&yb::Callback<SetLogAnchorRefreshStatusFunc>::Run, callback, controller,
+                nullptr /* shared_ptr<UpdateLogAnchorResponsePB> */,
+                shared_resp_ptr));
 
   return Status::OK();
 }

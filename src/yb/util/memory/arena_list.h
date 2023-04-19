@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_MEMORY_ARENA_LIST_H
-#define YB_UTIL_MEMORY_ARENA_LIST_H
+#pragma once
 
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
@@ -62,9 +61,9 @@ class ArenaList {
       ConstExtractor, typename List::const_reverse_iterator>;
   using value_type = Entry;
 
-  explicit ArenaList(Arena* arena) : arena_(*arena) {}
+  explicit ArenaList(ThreadSafeArena* arena) : arena_(arena) {}
 
-  ArenaList(Arena* arena, const ArenaList<Entry>& rhs) : arena_(*arena) {
+  ArenaList(ThreadSafeArena* arena, const ArenaList<Entry>& rhs) : arena_(arena) {
     for (const auto& entry : rhs) {
       emplace_back(entry);
     }
@@ -79,14 +78,13 @@ class ArenaList {
 
   template <class... Args>
   Entry& emplace_back(Args&&... args) {
-    auto node = arena_.NewObject<ArenaListNodeWithValue<Entry>>(
-        &arena_, std::forward<Args>(args)...);
+    auto node = arena_->NewArenaObject<ArenaListNodeWithValue<Entry>>(std::forward<Args>(args)...);
     list_.push_back(*node);
     return *node->value_ptr;
   }
 
   Entry& push_back_ref(Entry* entry) {
-    auto node = arena_.NewObject<ArenaListNode<Entry>>();
+    auto node = arena_->NewObject<ArenaListNode<Entry>>();
     node->value_ptr = entry;
     list_.push_back(*node);
     return *entry;
@@ -122,6 +120,14 @@ class ArenaList {
 
   iterator erase(iterator it) {
     return iterator(list_.erase(it.base()));
+  }
+
+  iterator erase(iterator it, iterator stop) {
+    return iterator(list_.erase(it.base(), stop.base()));
+  }
+
+  const_iterator erase(const_iterator it, const_iterator stop) {
+    return const_iterator(list_.erase(it.base(), stop.base()));
   }
 
   bool empty() const {
@@ -202,11 +208,31 @@ class ArenaList {
     assign(collection.begin(), collection.end());
   }
 
+  void swap(ArenaList* rhs) {
+    std::swap(arena_, rhs->arena_);
+    list_.swap(rhs->list_);
+  }
+
+  ThreadSafeArena& arena() const {
+    return *arena_;
+  }
+
+  // RepeatedPtrField compatibility
+  void Clear() {
+    clear();
+  }
+
+  Entry* Add() {
+    return &emplace_back();
+  }
+
+  void RemoveLast() {
+    pop_back();
+  }
+
  private:
-  Arena& arena_;
+  ThreadSafeArena* arena_;
   List list_;
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_MEMORY_ARENA_LIST_H

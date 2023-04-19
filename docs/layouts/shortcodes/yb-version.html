@@ -19,7 +19,7 @@ Formats:
 {{- $version := .Get "version" -}}
 {{- $format := .Get "format" -}}
 
-{{ range .Site.Data.currentVersions.docVersions }}
+{{ range .Site.Data.currentVersions.dbVersions }}
 
   {{- if eq $version "preview" -}}
     {{- if eq .alias "preview" -}}

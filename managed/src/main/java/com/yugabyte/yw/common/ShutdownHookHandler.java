@@ -18,7 +18,6 @@ import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.Getter;
-import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import play.inject.ApplicationLifecycle;
 
@@ -30,7 +29,6 @@ import play.inject.ApplicationLifecycle;
  */
 @Slf4j
 @Singleton
-@Setter
 public class ShutdownHookHandler {
 
   private final ApplicationLifecycle lifecycle;

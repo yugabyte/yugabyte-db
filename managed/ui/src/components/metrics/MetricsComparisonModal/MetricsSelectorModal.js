@@ -51,7 +51,7 @@ export const MetricsSelectorModal = ({ visible, onHide, selectedUniverse }) => {
       if (!invalidPanelType) {
         MetricTypesWithOperations[key].metrics.forEach((filter) => {
           if (filter.replace('_', '').toLowerCase().includes(lowerSearchString)) {
-            if (!(newMetricsToDisplay.hasOwnProperty(key))) {
+            if (!(Object.prototype.hasOwnProperty.call(newMetricsToDisplay, key))) {
               newMetricsToDisplay[key] = [];
             }
             newMetricsToDisplay[key].push(filter);

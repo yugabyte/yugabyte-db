@@ -33,8 +33,7 @@
 // they want something more sophisticated (like scan-resistance, a
 // custom eviction policy, variable cache sizing, etc.)
 
-#ifndef YB_ROCKSDB_CACHE_H
-#define YB_ROCKSDB_CACHE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -204,5 +203,3 @@ class Cache {
 };
 
 }  // namespace rocksdb
-
-#endif  // YB_ROCKSDB_CACHE_H

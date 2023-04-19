@@ -19,7 +19,7 @@ For meaningful results, run your workload for at least an hour before running th
 
 To monitor clusters in real time, use the performance metrics on the cluster [Overview and Performance](../overview/) tabs.
 
-![Performance Advisor](/images/yb-cloud/cloud-clusters-advisor.png)
+![Performance Advisor](/images/yb-cloud/managed-monitor-advisor.png)
 
 ## Recommendations
 
@@ -118,11 +118,10 @@ Review the sharding strategies for your primary and secondary indexes. Consisten
 
 - At 80%+ CPU use, [Index](#index-suggestions) and [Schema](#schema-suggestions) suggestions may not provide any results.
 - On clusters with more than 3 databases and multiple unused indexes, the Index suggestions may not provide optimal results.
-- For clusters running YugabyteDB 2.8 and earlier, the [Connection skew](#connection-skew) may not offer any suggestions.
 
 ## Learn more
 
 - [Sharding data across nodes](../../../explore/linear-scalability/sharding-data/)
-- [Distributed SQL Sharding: How Many Tablets, and at What Size?](https://blog.yugabyte.com/distributed-sql-sharding-how-many-tablets-size/)
-- [How Data Sharding Works in a Distributed SQL Database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
-- [Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
+- [Distributed SQL Sharding: How Many Tablets, and at What Size?](https://www.yugabyte.com/blog/distributed-sql-sharding-how-many-tablets-size/)
+- [How Data Sharding Works in a Distributed SQL Database](https://www.yugabyte.com/blog/how-data-sharding-works-in-a-distributed-sql-database/)
+- [Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)

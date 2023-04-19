@@ -4,8 +4,10 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"node-agent/model"
 	"node-agent/util"
+	"reflect"
 	"testing"
 )
 
@@ -14,49 +16,100 @@ func TestShellTaskProcess(t *testing.T) {
 	ctx := context.Background()
 	result, err := testShellTask.Process(ctx)
 	if err != nil {
-		t.Errorf("Error while running shell task")
+		t.Fatalf("Error while running shell task - %s", err.Error())
 	}
 
-	if result != "test\n" {
-		t.Errorf("Unexpected result")
-	}
-}
-
-func TestPreflightCheckTask(t *testing.T) {
-	providerData := util.GetTestProviderData()
-	accessKeyData := util.GetTestAccessKeyData()
-	dummyInstanceType := util.GetTestInstanceTypeData()
-	handler := NewPreflightCheckHandler(&providerData, &dummyInstanceType, &accessKeyData)
-	ctx := context.Background()
-	result, err := handler.Handle(ctx)
-	if err != nil {
-		t.Errorf("Error while running preflight checks test")
-	}
-	data, ok := result.(map[string]model.PreflightCheckVal)
-	if !ok {
-		t.Errorf("Did not receive expected result map")
-		return
+	if result.ExitStatus.Code != 0 {
+		t.Fatalf("Error while running shell task - %d", result.ExitStatus.Code)
 	}
 
-	if _, ok := data["ports:54422"]; !ok {
-		t.Errorf("Did not find expected key in the result map")
+	if result.Info.String() != "test\n" {
+		t.Fatalf("Unexpected result")
 	}
 }
 
 func TestGetOptions(t *testing.T) {
 	providerData := util.GetTestProviderData()
-	accessKeyData := util.GetTestAccessKeyData()
 	dummyInstanceType := util.GetTestInstanceTypeData()
-	handler := NewPreflightCheckHandler(&providerData, &dummyInstanceType, &accessKeyData)
-	result := handler.getOptions("./dummy.sh")
-	check := false
-	for i, v := range result {
-		if v == "--ports_to_check" && result[i+1] == "54422" {
-			check = true
-		}
-	}
-	if !check {
-		t.Errorf("Incorrect preflight run options. ")
+
+	flagTests := []struct {
+		provider     model.Provider
+		accessKey    model.AccessKey
+		instanceType model.NodeInstanceType
+		expected     []string
+	}{
+		{
+			providerData,
+			util.GetTestAccessKeyData(true, false, false),
+			dummyInstanceType,
+			[]string{
+				"./dummy.sh",
+				"-t",
+				"provision",
+				"--yb_home_dir",
+				"'/home/yugabyte/custom'",
+				"--ssh_port",
+				"54422",
+				"--mount_points",
+				"/home",
+				"--install_node_exporter",
+			},
+		},
+		{
+			providerData,
+			util.GetTestAccessKeyData(false, true, false),
+			dummyInstanceType,
+			[]string{
+				"./dummy.sh",
+				"-t",
+				"configure",
+				"--yb_home_dir",
+				"'/home/yugabyte/custom'",
+				"--ssh_port",
+				"54422",
+				"--mount_points",
+				"/home",
+			},
+		},
+		{
+			providerData,
+			util.GetTestAccessKeyData(true, false, true),
+			dummyInstanceType,
+			[]string{
+				"./dummy.sh",
+				"-t",
+				"provision",
+				"--yb_home_dir",
+				"'/home/yugabyte/custom'",
+				"--ssh_port",
+				"54422",
+				"--mount_points",
+				"/home",
+				"--install_node_exporter",
+				"--airgap",
+			},
+		},
 	}
 
+	for _, tt := range flagTests {
+		testName := fmt.Sprintf(
+			"InstallNodeExporter: %t, SkipProvisioning: %t, AirGapInstall: %t",
+			tt.accessKey.KeyInfo.InstallNodeExporter,
+			tt.accessKey.KeyInfo.SkipProvisioning,
+			tt.accessKey.KeyInfo.AirGapInstall,
+		)
+		t.Run(testName, func(t *testing.T) {
+			param := CreatePreflightCheckParam(&tt.provider, &tt.instanceType, &tt.accessKey)
+			handler := NewPreflightCheckHandler(param)
+			result := handler.getOptions("./dummy.sh")
+			isEqual := reflect.DeepEqual(result, tt.expected)
+			if !isEqual {
+				t.Fatalf(
+					"Incorrect preflight run options - expected %v, found %v",
+					tt.expected,
+					result,
+				)
+			}
+		})
+	}
 }

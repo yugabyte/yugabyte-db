@@ -16,7 +16,7 @@
 #include <cstdlib>
 #include <future>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/client/callbacks.h"

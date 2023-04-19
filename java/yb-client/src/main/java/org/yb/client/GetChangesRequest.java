@@ -35,9 +35,19 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
   private final int write_id;
   private final long time;
   private final boolean needSchemaInfo;
+  private final CdcSdkCheckpoint explicitCheckpoint;
+  private final String tableId;
+  private final long safeHybridTime;
 
   public GetChangesRequest(YBTable table, String streamId, String tabletId,
    long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo) {
+    this(table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+         null, new String(""), -1);
+  }
+
+  public GetChangesRequest(YBTable table, String streamId, String tabletId,
+   long term, long index, byte[] key, int write_id, long time, boolean needSchemaInfo,
+   CdcSdkCheckpoint explicitCheckpoint, String tableId, long safeHybridTime) {
     super(table);
     this.streamId = streamId;
     this.tabletId = tabletId;
@@ -47,6 +57,9 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     this.write_id = write_id;
     this.time = time;
     this.needSchemaInfo = needSchemaInfo;
+    this.explicitCheckpoint = explicitCheckpoint;
+    this.tableId = tableId;
+    this.safeHybridTime = safeHybridTime;
   }
 
   @Override
@@ -55,15 +68,35 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
     final GetChangesRequestPB.Builder builder = GetChangesRequestPB.newBuilder();
     builder.setDbStreamId(ByteString.copyFromUtf8(this.streamId));
     builder.setTabletId(ByteString.copyFromUtf8(this.tabletId));
+
+    if (this.tableId.length() != 0) {
+      builder.setTableId(ByteString.copyFromUtf8(this.tableId));
+    }
+
     builder.setNeedSchemaInfo(this.needSchemaInfo);
     if (term != 0 || index != 0) {
       CdcService.CDCSDKCheckpointPB.Builder checkpointBuilder =
               CdcService.CDCSDKCheckpointPB.newBuilder();
       checkpointBuilder.setIndex(this.index).setTerm(this.term)
-      .setKey(ByteString.copyFrom(this.key)).setWriteId(this.write_id)
+        .setKey(ByteString.copyFrom(this.key)).setWriteId(this.write_id)
         .setSnapshotTime(this.time);
       builder.setFromCdcSdkCheckpoint(checkpointBuilder.build());
     }
+
+    if (explicitCheckpoint != null) {
+      CdcService.CDCSDKCheckpointPB.Builder checkpointBuilder =
+              CdcService.CDCSDKCheckpointPB.newBuilder();
+      checkpointBuilder.setIndex(explicitCheckpoint.getIndex())
+        .setTerm(explicitCheckpoint.getTerm())
+        .setKey(ByteString.copyFrom(explicitCheckpoint.getKey()))
+        .setWriteId(explicitCheckpoint.getWriteId()).setSnapshotTime(explicitCheckpoint.getTime());
+      builder.setExplicitCdcSdkCheckpoint(checkpointBuilder.build());
+    }
+
+    if (safeHybridTime != -1) {
+      builder.setSafeHybridTime(safeHybridTime);
+    }
+
     return toChannelBuffer(header, builder.build());
   }
 

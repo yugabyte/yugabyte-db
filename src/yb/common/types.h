@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_TYPES_H
-#define YB_COMMON_TYPES_H
+#pragma once
 
 #include <stdint.h>
 
@@ -746,5 +745,3 @@ class Variant {
 };
 
 }  // namespace yb
-
-#endif  // YB_COMMON_TYPES_H

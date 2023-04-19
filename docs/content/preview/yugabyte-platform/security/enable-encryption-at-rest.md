@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. The YugabyteDB Anywhere UI allows you to do the following:
+Data at rest within a YugabyteDB universe should be protected from unauthorized users by encrypting it. YugabyteDB Anywhere allows you to do the following:
 
  <!-- no toc -->
 
@@ -36,7 +36,7 @@ You can enable encryption at rest during the universe creation as follows:
 2. Click **Create Universe** to open the **Universe Configuration** page.
 3. After you select a provider, the **Instance Configuration** section expands to show more options.
 4. Select the **Enable Encryption at Rest** option. The **Key Management Service Config** option appears.
-5. Select your key management service (KMS) configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/) or [Create a KMS configuration using HashiCorp Vault](../create-kms-config/hashicorp-kms/).
+5. Select your key management service (KMS) configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/).
 6. Continue with your universe creation, then click **Create**.
 
 You can verify that encryption at rest has been successfully configured as follows:
@@ -72,7 +72,7 @@ You can enable encryption at rest on an existing universe as follows:
 
    When the encryption is enabled, the **Key Management Service Config** option appears.
 
-5. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/) or [Create a KMS configuration using HashiCorp Vault](../create-kms-config/hashicorp-kms/).
+5. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/).
 
 6. Click **Submit**.
 

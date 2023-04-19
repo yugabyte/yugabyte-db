@@ -14,20 +14,20 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../oidc-authentication/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       OIDC
     </a>
   </li>
   <li>
     <a href="../ldap-authentication/" class="nav-link active">
-      <i class="fas fa-cubes"></i>
+      <i class="fa-solid fa-cubes"></i>
       LDAP
     </a>
   </li>
 
 </ul>
 
-LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
+<br>LDAP provides means for querying directory services. A directory typically stores credentials and permissions assigned to a user, therefore allowing to maintain a single repository of user information for all applications across the organization. In addition, having a hierarchical structure, LDAP allows creation of user groups requiring the same credentials.
 
 LDAP authentication is similar to a direct password authentication, except that it employs the LDAP protocol to verify the password. This means that only users who already exist in the database and have appropriate permissions can be authenticated via LDAP.
 
@@ -43,17 +43,17 @@ You can use the YugabyteDB Anywhere UI to enable LDAP authentication for Yugabyt
 
 - Navigate to **Admin > User Management > User Authentication**.
 
-- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br><br>
+- Complete the fields in the **LDAP Configuration** page shown in the following illustration:<br>
 
   ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)<br>
 
-  <br>
+  
 
-  With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api). 
+  With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 
   - The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as in `0.0.0.0:9000`.
 
-  - The **Binding Mechanism** field allows you to select one of the following: 
+  - The **Binding Mechanism** field allows you to select one of the following:
     - **Simple Bind**, in which case you can proceed with the typical configuration.
     - **Search and Bind**, in which case you are presented with a dialog to enter the **Search Attribute** value used for searching and binding. Note that this requires you to complete the **Service Account Details** fields.
 

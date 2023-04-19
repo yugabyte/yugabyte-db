@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_BACKFILL_INDEX_H
-#define YB_MASTER_BACKFILL_INDEX_H
+#pragma once
 
 #include <float.h>
 
@@ -25,7 +24,7 @@
 #include <vector>
 
 #include <boost/mpl/and.hpp>
-#include <gflags/gflags_declare.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
@@ -152,7 +151,11 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
 
   const TableId& indexed_table_id() const { return indexed_table_->id(); }
 
+  scoped_refptr<TableInfo> table() { return indexed_table_; }
+
   Status UpdateRowsProcessedForIndexTable(const uint64_t number_rows_processed);
+
+  const uint64_t number_rows_processed() const { return number_rows_processed_; }
 
  private:
   void LaunchBackfillOrAbort();
@@ -241,10 +244,7 @@ class BackfillTableJob : public server::MonitoredTask {
 
   server::MonitoredTaskState AbortAndReturnPrevState(const Status& status) override;
 
-  void MarkDone() {
-    completion_timestamp_ = MonoTime::Now();
-    backfill_table_ = nullptr;
-  }
+  void MarkDone();
 
  private:
   MonoTime start_timestamp_, completion_timestamp_;
@@ -405,5 +405,3 @@ class BackfillChunk : public RetryingTSRpcTask {
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_BACKFILL_INDEX_H

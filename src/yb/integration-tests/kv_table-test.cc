@@ -16,7 +16,7 @@
 #include <cstdlib>
 #include <future>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/client/callbacks.h"
@@ -248,7 +248,7 @@ TEST_F_EX(KVTableTest, BigValues, KVTableSingleTabletTest) {
   while (writer.num_writes() - start_writes < 50) {
     std::this_thread::sleep_for(100ms);
   }
-  ASSERT_OK(mini_cluster_->mini_tablet_server(1)->Start());
+  ASSERT_OK(mini_cluster_->mini_tablet_server(1)->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   ASSERT_OK(WaitFor([] {
     std::vector<MemTrackerData> trackers;

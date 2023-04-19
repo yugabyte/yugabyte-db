@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOCDB_TEST_UTIL_H_
-#define YB_DOCDB_DOCDB_TEST_UTIL_H_
+#pragma once
 
 #include <random>
 #include <string>
@@ -81,8 +80,8 @@ const T& RandomElementOf(const std::vector<T>& v, RandomNumberGenerator* rng) {
 class LogicalRocksDBDebugSnapshot {
  public:
   LogicalRocksDBDebugSnapshot() {}
-  void Capture(rocksdb::DB* rocksdb);
-  void RestoreTo(rocksdb::DB *rocksdb) const;
+  Status Capture(rocksdb::DB* rocksdb);
+  Status RestoreTo(rocksdb::DB *rocksdb) const;
  private:
   std::vector<std::pair<std::string, std::string>> kvs;
   std::string docdb_debug_dump_str;
@@ -90,7 +89,8 @@ class LogicalRocksDBDebugSnapshot {
 
 class DocDBRocksDBFixture : public DocDBRocksDBUtil {
  public:
-  void AssertDocDbDebugDumpStrEq(const std::string &expected);
+  void AssertDocDbDebugDumpStrEq(
+      const std::string &expected, const std::string& packed_row_expected = "");
   void FullyCompactHistoryBefore(HybridTime history_cutoff);
 
   // num_files_to_compact - number of files that should participate in the minor compaction
@@ -243,7 +243,8 @@ std::string TrimDocDbDebugDumpStr(const std::string& debug_dump);
         ::yb::util::ApplyEagerLineContinuation(expected), DocDBDebugDumpToStr()); \
   } while(false)
 
+void DisableYcqlPackedRow();
+bool YcqlPackedRowEnabled();
+
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOCDB_TEST_UTIL_H_

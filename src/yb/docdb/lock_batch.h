@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_LOCK_BATCH_H
-#define YB_DOCDB_LOCK_BATCH_H
+#pragma once
 
 #include <string>
 
@@ -83,6 +82,8 @@ class LockBatch {
   // re-lock the keys.
   std::optional<UnlockedBatch> Unlock();
 
+  const LockBatchEntries& Get() const { return data_.key_to_type; }
+
  private:
   void MoveFrom(LockBatch* other);
 
@@ -139,5 +140,3 @@ class UnlockedBatch {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_LOCK_BATCH_H

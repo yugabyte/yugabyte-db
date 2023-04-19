@@ -896,3 +896,13 @@ StatisticsGetRelation(Oid statId, bool missing_ok)
 	ReleaseSysCache(tuple);
 	return result;
 }
+
+/*
+ * YB wrapper for invoking the static ChooseExtendedStatisticName function.
+ */
+char *
+YbChooseExtendedStatisticName(const char *name1, const char *name2,
+							  const char *label, Oid namespaceid)
+{
+	return ChooseExtendedStatisticName(name1, name2, label, namespaceid);
+}

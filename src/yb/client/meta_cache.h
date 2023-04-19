@@ -30,8 +30,7 @@
 // under the License.
 //
 // This module is internal to the client and not a public API.
-#ifndef YB_CLIENT_META_CACHE_H
-#define YB_CLIENT_META_CACHE_H
+#pragma once
 
 #include <shared_mutex>
 #include <map>
@@ -48,7 +47,6 @@
 
 #include "yb/common/partition.h"
 #include "yb/common/placement_info.h"
-#include "yb/common/wire_protocol.h"
 #include "yb/consensus/metadata.pb.h"
 
 #include "yb/gutil/macros.h"
@@ -72,6 +70,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/status_callback.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/memory/arena.h"
 #include "yb/util/net/net_util.h"
@@ -187,7 +186,7 @@ struct RemoteReplica {
   std::string ToString() const;
 };
 
-typedef std::unordered_map<std::string, std::unique_ptr<RemoteTabletServer>> TabletServerMap;
+typedef std::unordered_map<std::string, std::shared_ptr<RemoteTabletServer>> TabletServerMap;
 
 YB_STRONGLY_TYPED_BOOL(UpdateLocalTsState);
 YB_STRONGLY_TYPED_BOOL(IncludeFailedReplicas);
@@ -485,6 +484,8 @@ class LookupCallbackVisitor : public boost::static_visitor<> {
   const boost::optional<Status> error_status_;
 };
 
+YB_STRONGLY_TYPED_BOOL(FailOnPartitionListRefreshed);
+
 // Manager of RemoteTablets and RemoteTabletServers. The client consults
 // this class to look up a given tablet or server.
 //
@@ -503,7 +504,11 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Look up which tablet hosts the given partition key for a table. When it is
   // available, the tablet is stored in 'remote_tablet' (if not NULL) and the
-  // callback is fired. Only tablets with non-failed LEADERs are considered.
+  // lookup callback is fired. Only tablets with non-failed LEADERs are considered.
+  // Partition list can be refreshed if repartitioning is being detected in durint the method
+  // executing (by checking ArePartitionsStale()). If `fail_on_partition_list_refreshed` is true
+  // the callback is fired with ClientErrorCode::kTablePartitionListRefreshed status after
+  // the partitions are being refreshed, or lookup is transparently retried in the other case.
   //
   // NOTE: the callback may be called from an IO thread or inline with this
   // call if the cached data is already available.
@@ -513,7 +518,9 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   void LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                          const PartitionKey& partition_key,
                          CoarseTimePoint deadline,
-                         LookupTabletCallback callback);
+                         LookupTabletCallback callback,
+                         FailOnPartitionListRefreshed fail_on_partition_list_refreshed =
+                             FailOnPartitionListRefreshed::kFalse);
 
   std::future<Result<internal::RemoteTabletPtr>> LookupTabletByKeyFuture(
       const std::shared_ptr<YBTable>& table,
@@ -566,6 +573,8 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
       boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc);
 
   void InvalidateTableCache(const YBTable& table);
+
+  std::shared_ptr<RemoteTabletServer> GetRemoteTabletServer(const std::string& permanent_uuid);
 
   const std::string& LogPrefix() const { return log_prefix_; }
 
@@ -634,15 +643,6 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   boost::optional<std::vector<RemoteTabletPtr>> FastLookupAllTabletsUnlocked(
       const std::shared_ptr<const YBTable>& table) REQUIRES_SHARED(mutex_);
 
-  // If `tablet` is a result of splitting of pre-split tablet for which we already have
-  // TabletRequests structure inside YBClient - updates TabletRequests.request_id_seq for the
-  // `tablet` based on value for pre-split tablet.
-  // This is required for correct tracking of duplicate requests to post-split tablets, if we
-  // start from scratch - tserver will treat these requests as duplicates/incorrect, because
-  // on tserver side related structure for tracking duplicate requests is also copied from
-  // pre-split tablet to post-split tablets.
-  void MaybeUpdateClientRequests(const RemoteTablet& tablet);
-
   std::unordered_map<TableId, TableData>::iterator InitTableDataUnlocked(
       const TableId& table_id, const VersionedTablePartitionListPtr& partitions)
       REQUIRES_SHARED(mutex_);
@@ -668,9 +668,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
                           CoarseTimePoint deadline,
                           LookupTabletRangeCallback* callback);
 
-  template <class Func, class Callback>
-  void RefreshTablePartitions(
-      Func&& func, const std::shared_ptr<YBTable>& table, Callback&& callback);
+  void RefreshTablePartitions(const std::shared_ptr<YBTable>& table, StdStatusCallback callback);
 
   Result<RemoteTabletPtr> ProcessTabletLocation(
       const master::TabletLocationsPB& locations, ProcessedTablesMap* processed_tables,
@@ -718,5 +716,3 @@ int64_t TEST_GetLookupSerial();
 } // namespace internal
 } // namespace client
 } // namespace yb
-
-#endif /* YB_CLIENT_META_CACHE_H */

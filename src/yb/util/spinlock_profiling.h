@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_SPINLOCK_PROFILING_H
-#define YB_UTIL_SPINLOCK_PROFILING_H
+#pragma once
 
 #include <iosfwd>
 
@@ -84,4 +83,3 @@ void FlushSynchronizationProfile(std::stringstream* out, int64_t* drop_count);
 void StopSynchronizationProfiling();
 
 } // namespace yb
-#endif /* YB_UTIL_SPINLOCK_PROFILING_H */

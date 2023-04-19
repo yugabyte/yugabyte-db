@@ -9,10 +9,10 @@ export default class YBCheckBox extends Component {
   render() {
     const { input, field, label, checkState, onClick, disabled } = this.props;
     const onCheckClick = (event) => {
-      if (input && input.onChange) {
+      if (input?.onChange) {
         input.onChange(event);
       }
-      if (field && field.onChange) {
+      if (field?.onChange) {
         field.onChange(event);
       }
       if (isValidObject(onClick)) {
@@ -26,7 +26,7 @@ export default class YBCheckBox extends Component {
             className="yb-input-checkbox__input"
             {...input}
             type="checkbox"
-            name={field && field.name}
+            name={field?.name}
             defaultChecked={checkState}
             id={this.props.id}
             onClick={onCheckClick}

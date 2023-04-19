@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 delete ::= [ WITH [ RECURSIVE ] { common_table_expression [ , ... ] } ] 
             DELETE FROM [ ONLY ] table_name [ * ] [ [ AS ] alias ]  
            [ WHERE boolean_expression | WHERE CURRENT OF cursor_name ] 

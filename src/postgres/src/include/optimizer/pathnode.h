@@ -342,4 +342,7 @@ extern RelOptInfo *build_child_join_rel(PlannerInfo *root,
 										RelOptInfo *parent_joinrel, List *restrictlist,
 										SpecialJoinInfo *sjinfo, JoinType jointype);
 
+extern void yb_accumulate_batching_info(List *paths, 
+										Relids *batchedrelids, Relids *unbatchedrelids);
+
 #endif							/* PATHNODE_H */

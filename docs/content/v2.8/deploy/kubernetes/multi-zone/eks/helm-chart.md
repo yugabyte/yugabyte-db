@@ -15,7 +15,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="/preview/deploy/kubernetes/multi-zone/eks/helm-chart" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
@@ -156,7 +156,7 @@ $ helm search repo yugabytedb/yugabyte --version {{<yb-version version="v2.8" fo
 ```
 
 ```output
-NAME                    CHART VERSION   APP VERSION     DESCRIPTION
+NAME                    CHART VERSION    APP VERSION     DESCRIPTION
 yugabytedb/yugabyte     {{<yb-version version="v2.8" format="short">}}           {{<yb-version version="v2.8" format="build">}}    YugabyteDB is the high-performance distributed ...
 ```
 

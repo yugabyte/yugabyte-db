@@ -5368,6 +5368,10 @@
   proargmodes => '{i,o,o,o,o,o,o}',
   proargnames => '{db_oid,db_oid,backend_pid,query_text,termination_reason,query_start,query_end}',
   prosrc => 'yb_pg_stat_get_queries'},
+# YB_TODO(neil) talk to Fizaa about her changes for "pg_stat_get_progress_info".
+# commit ced7c32846e4adbe2a93ca20fc64fd648bec8851
+# Author: Fizaa Luthra <fizaaluthra@gmail.com>
+# Date:   Fri Jan 27 12:14:34 2023 -0500
 { oid => '3318',
   descr => 'statistics: information about progress of backends running maintenance command',
   proname => 'pg_stat_get_progress_info', prorows => '100', proretset => 't',
@@ -8099,6 +8103,23 @@
   proallargtypes => '{text,int8,int8,int8}', proargmodes => '{o,o,o,o}',
   proargnames => '{name,off,size,allocated_size}',
   prosrc => 'pg_get_shmem_allocations' },
+
+# YB_TODO(neil) Ask if this change is needed.
+# commit 5f9a7fafccc50dde8e036130bb9bf64176cf72b6
+# Author: Hemant Bhanawat <hbhanawat@yugabyte.com>
+# Date:   Fri Mar 17 09:57:28 2023 +0530
+# memory context of local backend
+# TODO(#13568): In Postgres 14, the opaque type was removed, and its OID is reused for
+# pg_get_backend_memory_contexts. As of D18777, opaque type exists in YugabyteDB,
+# we need to use a different OID for pg_get_backend_memory_contexts. The original
+# OID from Postgres should be used when opaque type is removed.
+# { oid => '8058', descr => 'information about all memory contexts of local backend',
+#   proname => 'pg_get_backend_memory_contexts', prorows => '100', proretset => 't',
+#   provolatile => 'v', proparallel => 'r', prorettype => 'record', proargtypes => '',
+#   proallargtypes => '{text,text,text,int4,int8,int8,int8,int8,int8}',
+#   proargmodes => '{o,o,o,o,o,o,o,o,o}',
+#   proargnames => '{name, ident, parent, level, total_bytes, total_nblocks, free_bytes, free_chunks, used_bytes}',
+#   prosrc => 'pg_get_backend_memory_contexts' },
 
 # memory context of local backend
 { oid => '2282',
@@ -11902,7 +11923,8 @@
 
 { oid => '8034', descr => 'is the database colocated in the YB server?',
   proname => 'yb_is_database_colocated', provolatile => 's',
-  prorettype => 'bool', proargtypes => '',
+  prorettype => 'bool', proargtypes => 'bool',
+  proargnames => '{check_legacy}',
   prosrc => 'yb_is_database_colocated' },
 
 # getting YB range-split table SPLIT AT clause
@@ -11913,6 +11935,12 @@
   proargmodes => '{i,o}',
   proargnames => '{table_oid,range_split_clause}',
   prosrc => 'yb_get_range_split_clause' },
+
+{ oid => '8035',
+  descr => 'statistics: YB catalog version of this backend',
+  proname => 'yb_pg_stat_get_backend_catalog_version', provolatile => 's',
+  proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
+  prosrc => 'yb_pg_stat_get_backend_catalog_version' },
 
 { oid => '8042', descr => 'get the region of the currently connected node',
   proname => 'yb_server_region', provolatile => 's',
@@ -11928,4 +11956,41 @@
   proname => 'yb_server_zone', provolatile => 's',
   prorettype => 'varchar', proargtypes => '',
   prosrc => 'yb_server_zone' },
+
+{ oid => '8045', descr => 'function to preserve tablegroup oid',
+  proname => 'binary_upgrade_set_next_tablegroup_oid', provolatile => 'v',
+  proparallel => 'r', prorettype => 'void', proargtypes => 'oid',
+  prosrc => 'binary_upgrade_set_next_tablegroup_oid' },
+
+{ oid => '8046', descr => 'statistics: memory usage of backend from TCMalloc, including PostgreSQL
+  memory usage + pggate memory usage + cached memory - memory that was freed but not recycled',
+  proname => 'yb_pg_stat_get_backend_allocated_mem_bytes', provolatile => 's',
+  proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
+  prosrc => 'yb_pg_stat_get_backend_allocated_mem_bytes' },
+
+{ oid => '8047', descr => 'statistics: RSS memory usage of backend retrieved from OS',
+  proname => 'yb_pg_stat_get_backend_rss_mem_bytes', provolatile => 's',
+  proparallel => 'r', prorettype => 'int8', proargtypes => 'int4',
+  prosrc => 'yb_pg_stat_get_backend_rss_mem_bytes' },
+
+{ oid => '8048', descr => 'get TCMalloc, PG and PGgate usage for the current connection',
+  proname => 'yb_heap_stats', provolatile => 'v',
+  prorettype => 'record', proargtypes => '',
+  proallargtypes => '{int8,int8,int8,int8,int8,int8,int8}',
+  proargmodes => '{o,o,o,o,o,o,o}',
+  proargnames => '{total_heap_requested, total_heap_usage, total_heap_allocation, cached_free_memory, total_heap_released, PostgreSQL_memory_usage, PostgreSQL_storage_gateway_usage}',
+  prosrc => 'yb_heap_stats' },
+
+{ oid => '8049',
+  descr => 'Get the current distributed transaction\'s priority. If no distributed transaction is active, return 0.',
+  proname => 'yb_get_current_transaction_priority', provolatile => 'v',
+  prorettype => 'cstring', proargtypes => '',
+  prosrc => 'yb_get_current_transaction_priority' },
+
+{ oid => '8050',
+  descr => 'Get the effective YugabyteDB transaction isolation level used by the current active transaction',
+  proname => 'yb_get_effective_transaction_isolation_level', provolatile => 'v',
+  prorettype => 'cstring', proargtypes => '',
+  prosrc => 'yb_get_effective_transaction_isolation_level' },
+
 ]

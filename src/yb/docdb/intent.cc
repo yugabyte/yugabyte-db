@@ -30,6 +30,25 @@
 namespace yb {
 namespace docdb {
 
+Status RemoveGroupEndSuffix(RefCntPrefix* key) {
+  size_t size = DCHECK_NOTNULL(key)->size();
+  if (size > 0) {
+    if (key->data()[0] == KeyEntryTypeAsChar::kGroupEnd) {
+      if (size != 1) {
+        return STATUS_FORMAT(Corruption, "Key starting with group end: $0",
+            key->as_slice().ToDebugHexString());
+      }
+      size = 0;
+    } else {
+      while (key->data()[size - 1] == KeyEntryTypeAsChar::kGroupEnd) {
+        --size;
+      }
+    }
+  }
+  key->Resize(size);
+  return Status::OK();
+}
+
 Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
   DecodedIntentKey result;
   auto& intent_prefix = result.intent_prefix;
@@ -45,9 +64,8 @@ Result<DecodedIntentKey> DecodeIntentKey(const Slice &encoded_intent_key) {
     return STATUS_FORMAT(
         Corruption, "Intent key is too short: $0 bytes", encoded_intent_key.size());
   }
+  result.doc_ht.Assign(intent_prefix.Suffix(doc_ht_size));
   intent_prefix.remove_suffix(doc_ht_size + kBytesBeforeDocHt);
-  result.doc_ht = VERIFY_RESULT(DocHybridTime::FullyDecodeFrom(
-      Slice(intent_prefix.data() + intent_prefix.size() + kBytesBeforeDocHt, doc_ht_size)));
   auto* prefix_end = intent_prefix.end();
 
   if (prefix_end[2] != KeyEntryTypeAsChar::kHybridTime)
@@ -161,7 +179,7 @@ bool HasStrong(IntentTypeSet inp) {
 
 Result<DecodedIntentValue> DecodeIntentValue(
     const Slice& encoded_intent_value, const Slice* verify_transaction_id_slice,
-    bool has_strong_intent) {
+    bool require_write_id) {
   DecodedIntentValue decoded_value;
   auto intent_value = encoded_intent_value;
   auto transaction_id_slice = Slice();
@@ -184,11 +202,14 @@ Result<DecodedIntentValue> DecodeIntentValue(
     decoded_value.subtransaction_id = kMinSubTransactionId;
   }
 
-  if (has_strong_intent) {
-    RETURN_NOT_OK(intent_value.consume_byte(ValueEntryTypeAsChar::kWriteId));
+  if (intent_value.TryConsumeByte(ValueEntryTypeAsChar::kWriteId)) {
     INTENT_VALUE_SCHECK(intent_value.size(), GE, sizeof(IntraTxnWriteId), "write id expected");
     decoded_value.write_id = BigEndian::Load32(intent_value.data());
     intent_value.remove_prefix(sizeof(IntraTxnWriteId));
+  } else {
+    RSTATUS_DCHECK(
+      !require_write_id, Corruption, "Expected IntraTxnWriteId in value, found: $0",
+      intent_value.ToDebugHexString());
   }
 
   decoded_value.body = intent_value;

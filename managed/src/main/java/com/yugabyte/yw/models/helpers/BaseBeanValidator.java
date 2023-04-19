@@ -18,6 +18,15 @@ public abstract class BaseBeanValidator {
     beanValidator.error().forField(fieldFullName(fieldName), exceptionMsg).throwError();
   }
 
+  protected void throwBeanValidatorError(
+      String fieldName, String exceptionMsg, String errorSource) {
+    beanValidator
+        .error()
+        .forField(fieldFullName(fieldName), exceptionMsg)
+        .forField("errorSource", errorSource)
+        .throwError();
+  }
+
   public static String fieldFullName(String fieldName) {
     if (StringUtils.isEmpty(fieldName)) {
       return "data";

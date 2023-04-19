@@ -27,20 +27,20 @@ import datetime
 import random
 import atexit
 
-from sys_detection import is_macos
-
 from typing import List, Optional, Set, Any, Tuple, Dict
 
-from yb.common_util import init_env, shlex_join
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from yb.common_util import init_logging, shlex_join  # noqa
 
 UUID_RE_STR = '[0-9a-f]{32}'
 TABLET_OR_PEER_ID_RE_STR = r'\b[T|P] [0-9a-f]{32}\b'
-
+RUNNING_ON_HOST_PREFIX = 'Running on host'
+RUNNING_ON_HOST_RE_STR = RUNNING_ON_HOST_PREFIX + ':? [a-zA-Z0-9_.-]+$'
 SYS_CATALOG_TABLET_ID = '0' * 32
 
-# E.g. "[m-1]" or "[ts-1]" prefix for C++ tests, and "m1|" or "ts1|" prefix for tests.
+# E.g. "[m-1]" or "[ts-1]" or "[P-m-1]"" prefix for C++ tests, and "m1|" or "ts1|" prefix for tests.
 DAEMON_ID_PREFIX_RE_STR = '|'.join([
-    r'^\[(m|ts)-[0-9]+\]',
+    r'^\[((\w-)*(m|ts))-[0-9]+\]',
     r'(m|ts)[0-9]+[|]'
 ])
 
@@ -54,6 +54,8 @@ PROCESSING_CREATE_TABLET_RE_STR = ''.join([
 
 PROCESSING_CREATE_TABLET_RE = re.compile(PROCESSING_CREATE_TABLET_RE_STR)
 
+SYS_CATALOG_TABLET_ID = '0' * 32
+
 
 def normalize_daemon_id(s: str) -> str:
     '''
@@ -61,6 +63,8 @@ def normalize_daemon_id(s: str) -> str:
     'm1'
     >>> normalize_daemon_id('m1|')
     'm1'
+    >>> normalize_daemon_id('[P-m-1]')
+    'Pm1'
     '''
     if s.startswith('['):
         assert s.endswith(']')
@@ -91,6 +95,20 @@ def do_popen(cmd_line: List[str], stdin: Any = None) -> subprocess.Popen:
 
 def escape_for_perl(s: str) -> str:
     return s.replace(r'/', r'\/').replace(r'$', r'\$')
+
+
+def get_stack_trace_replacements() -> List[Tuple[str, str]]:
+    """
+    Returns string replacements to use for cleaning up symbolized C++ function signatures in stack
+    traces.
+    """
+    return [
+        (
+            'std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char>>',
+            'string'
+        ),
+        ('std::__1::', 'std::'),
+    ]
 
 
 class LogRewriterConf:
@@ -140,6 +158,7 @@ class LogRewriter:
 
     # Replacements to perform in the log file.
     regex_replacements: List[Tuple[str, str]]
+    test_host_name: Optional[str]
 
     def __init__(self, conf: LogRewriterConf) -> None:
         self.propagated_messages = []
@@ -212,11 +231,7 @@ class LogRewriter:
         return self.execute_pipeline(pipe_to_sort_uniq(egrep_process2, count=count))
 
     def get_perl_replacement_cmd(self, a: str, b: str) -> str:
-        if b.startswith('${'):
-            replacement_str = b
-        else:
-            replacement_str = '{%s}' % b
-        return '/'.join(['s', escape_for_perl(a), escape_for_perl(replacement_str), 'g'])
+        return '/'.join(['s', escape_for_perl(a), escape_for_perl(b), 'g'])
 
     def find_tablet_and_peer_ids(self) -> None:
         # Find all tablet ids and peer ids (UUIDs).
@@ -352,11 +367,41 @@ class LogRewriter:
                 if not self.add_tablet_details(tablet_id, table_id, partition):
                     break
 
-    def add_tablet_id_mapping(self, old_tablet_id: str, new_tablet_id: str) -> None:
-        self.add_propagated_msg(f'{new_tablet_id} = {old_tablet_id}')
-        self.regex_replacements.append((rf'\b{old_tablet_id}\b', new_tablet_id))
+    def find_test_host_name(self) -> None:
+        lines = self.egrep_sort_uniq(['-o', RUNNING_ON_HOST_RE_STR], count=False)
+        host_name_candidates = set()
+        for line in lines:
+            line = line.strip()
+            if line.startswith(RUNNING_ON_HOST_PREFIX):
+                line = line[len(RUNNING_ON_HOST_PREFIX):]
+            line = line.strip()
+            if line.startswith(':'):
+                line = line[1:]
+            line = line.strip()
+            if line:
+                host_name_candidates.add(line)
+        self.test_host_name = None
+        if len(host_name_candidates) == 1:
+            self.test_host_name = list(host_name_candidates)[0]
 
-    def add_directory_mapping(self, dir_path: str, env_var_name: str) -> None:
+    def add_value_to_var_mapping(self, value_str: str, var_name: str) -> None:
+        """
+        Add a replacement of a string value with a variable name. The variable name appears in
+        curly braces in the output of the log, resembling Python format() substitutions. This
+        mapping is reported at the bottom of the new log. Word boundaries (\b) are required around
+        the matched string.
+        """
+        self.add_propagated_msg(f'{var_name} = {value_str}')
+        replacement = '{%s}' % var_name
+        # In Perl regular expressions, \b is word boundary.
+        self.regex_replacements.append((rf'\b%s\b' % value_str, replacement))
+
+    def add_env_var_mapping(self, dir_path: str, env_var_name: str) -> None:
+        """
+        Add a replacement of a string value with a ${...} reference to an environment variable.
+        This is typically used for environment variables of our build system, e.g. ${BUILD_ROOT},
+        ${YB_SRC_ROOT}, ${TEST_TMPDIR}. No word boundaries are required around the matched string.
+        """
         replacement = '${%s}' % env_var_name
         self.add_propagated_msg('%s = %s', env_var_name, dir_path)
         self.regex_replacements.append((dir_path, replacement))
@@ -373,42 +418,43 @@ class LogRewriter:
         self.find_daemon_peer_mapping()
         self.find_tablet_to_table_and_partition_mapping()
 
-        self.regex_replacements = []
+        self.regex_replacements = get_stack_trace_replacements()
+        self.find_test_host_name()
+        if self.test_host_name:
+            self.add_value_to_var_mapping(self.test_host_name, 'test_host_name')
+
         if self.rewriting_peer_ids:
             for peer_id, daemon_id in sorted(
                     self.peer_to_daemon_id.items(),
                     # Sort by the daemon id.
                     key=lambda t: t[1]):
-                new_peer_id = f'{daemon_id}_peer_id'
-                self.regex_replacements.append((peer_id, new_peer_id))
-                self.add_propagated_msg(f'{new_peer_id} = {peer_id}')
+                peer_id_var_name = daemon_id + '_peer_id'
+                self.add_value_to_var_mapping(peer_id, peer_id_var_name)
 
         if self.rewriting_tablet_ids:
             # Mapping of UUID tablet ids to human-readable tablet ids.
-            tablet_id_to_new = {}
+            tablet_id_to_var_name = {}
             for table_id, tablet_ids in self.table_id_to_tablet_ids.items():
                 sorted_tablet_ids = sorted(tablet_ids)
                 table_name = self.table_id_to_name[table_id]
                 # TODO: sort tablets by their partitions, not by UUID.
                 for i, tablet_id in enumerate(sorted_tablet_ids):
-                    tablet_id_to_new[tablet_id] = f'{table_name}_tablet_id{i + 1}'
+                    tablet_id_to_var_name[tablet_id] = f'{table_name}_tablet_id{i + 1}'
 
             for tablet_id, (table_id, partition) in sorted(
                     self.tablet_id_to_table_id_and_partition.items(),
                     # Sort by table id and tablet id.
                     # TODO: change to sort by partition id for each table.
                     key=lambda t: (t[1][0], t[0])):
-                table_name = self.table_id_to_name[table_id]
-                new_tablet_id = tablet_id_to_new[tablet_id]
-                self.add_tablet_id_mapping(tablet_id, new_tablet_id)
+                self.add_value_to_var_mapping(tablet_id, tablet_id_to_var_name[tablet_id])
 
             # Special case for the system catalog tablet id.
-            self.add_tablet_id_mapping('0' * 32, 'sys_catalog_tablet_id')
+            self.add_value_to_var_mapping(SYS_CATALOG_TABLET_ID, 'sys_catalog_tablet_id')
 
         for dir_arg_name in ['build_root', 'yb_src_root', 'test_tmpdir']:
             arg_value = getattr(self.conf, dir_arg_name)
             if arg_value:
-                self.add_directory_mapping(arg_value, dir_arg_name.upper())
+                self.add_env_var_mapping(arg_value, dir_arg_name.upper())
 
         # Perl seems to be faster than sed and awk at replacing multiple regular expressions.
         perl_commands = [self.get_perl_replacement_cmd(a, b) for a, b in self.regex_replacements]
@@ -462,8 +508,13 @@ class LogRewriter:
         with open(self.conf.output_log_path, 'a') as append_to_file:
             horizontal_line = '-' * 80
             append_to_file.write('\n'.join(
-                ['', horizontal_line, '', 'Rewrites performed:', ''] + self.propagated_messages +
-                ['', horizontal_line]
+                [
+                    '',
+                    horizontal_line,
+                    '',
+                    'Rewrites performed by the rewrite_test_log.py script:',
+                    ''
+                ] + self.propagated_messages + ['', horizontal_line]
             ))
 
 
@@ -512,7 +563,7 @@ class LogRewriterTool:
 
         args = parser.parse_args()
 
-        init_env(verbose=args.verbose)
+        init_logging(verbose=args.verbose)
 
         if args.output_extension:
             input_path, input_ext = os.path.splitext(args.input_log_path)

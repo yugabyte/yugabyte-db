@@ -7,17 +7,20 @@ menu:
   preview_faq:
     identifier: faq-operations
     parent: faq
-    weight: 2720
+    weight: 30
 type: docs
+showRightNav: false
 ---
 
-## Do YugabyteDB clusters need an external load balancer?
+### Do YugabyteDB clusters need an external load balancer?
 
-For YSQL, an external load balancer is recommended, or you can use a YugabyteDB smart driver. To learn more about smart drivers, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/) and the [Smart driver FAQ](../../drivers-orms/smart-drivers-faq/).
+For YSQL, you should use a YugabyteDB smart driver. YugabyteDB smart drivers automatically balance connections to the database and eliminate the need for an external load balancer. If you are not using a smart driver, you will need an external load balancer. To learn more about smart drivers, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/).
 
 For YCQL, YugabyteDB provides automatic load balancing.
 
-## Can write ahead log (WAL) files be cleaned up or reduced in size?
+[YugabyteDB Managed](../../yugabyte-cloud/) clusters automatically use the uniform load balancing provided by the cloud provider where the cluster is provisioned. YugabyteDB Managed creates an external load balancer to distribute the connection load across the nodes in a particular region. For multi-region clusters, each region has its own external load balancer. For regular connections, you need to connect to the region of choice, and application connections are then uniformly distributed across the region without the need for any special coding. For more information on connection load balancing in YugabyteDB Managed, refer to [YugabyteDB smart drivers for YSQL](../../drivers-orms/smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+### Can write ahead log (WAL) files be cleaned up or reduced in size?
 
 For most YugabyteDB deployments, you should not need to adjust the configuration flags for the write ahead log (WAL). While your data size is small and growing, the WAL files may seem to be much larger, but over time, the WAL files should reach their steady state while the data size continues to grow and become larger than the WAL files.
 

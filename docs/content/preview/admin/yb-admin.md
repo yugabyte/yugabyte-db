@@ -7,7 +7,7 @@ menu:
   preview:
     identifier: yb-admin
     parent: admin
-    weight: 2465
+    weight: 30
 type: docs
 ---
 
@@ -931,7 +931,7 @@ yb-admin create_snapshot_schedule \
 * *retention-time*: The number of minutes to keep a snapshot before deleting it.
 * *filter-expression*: The set of objects to include in the snapshot.
 
-The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) or databases (YSQL). For proper consistency guarantees, **Yugabyte recommends setting this up on a per-keyspace (YCQL) or per-database (YSQL) level**.
+The filter expression is a list of acceptable objects, which can be either raw tables, or keyspaces (YCQL) or databases (YSQL). For proper consistency guarantees, **it is recommended to set this up on a per-keyspace (YCQL) or per-database (YSQL) level**.
 
 **Example**
 
@@ -1141,11 +1141,11 @@ curl -s http://<any-master-ip>:7000/cluster-config
 
 Sets the preferred availability zones (AZs) and regions. Tablet leaders are placed in alive and healthy nodes of AZs in order of preference. When no healthy node is available in the most preferred AZs (preference value 1), then alive and healthy nodes from the next preferred AZs are picked. AZs with no preference are equally eligible to host tablet leaders.
 
+Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
+
 {{< note title="Note" >}}
 
 * Make sure you've already run [`modify_placement_info`](#modify-placement-info) command beforehand.
-
-* Having all tablet leaders reside in a single region reduces the number of network hops for the database to write transactions, which increases performance and reduces latency.
 
 * By default, the transaction status tablet leaders don't respect these preferred zones and are balanced across all nodes. Transactions include a roundtrip from the user to the transaction status tablet serving the transaction - using the leader closest to the user rather than forcing a roundtrip to the preferred zone improves performance.
 
@@ -1154,6 +1154,8 @@ Sets the preferred availability zones (AZs) and regions. Tablet leaders are plac
 * Cluster configuration stores preferred zones in either affinitized_leaders or multi_affinitized_leaders object.
 
 * Tablespaces don't inherit cluster-level placement information, leader preference, or read replica configurations.
+
+* If the client application uses a smart driver, set the [topology keys](../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing) to target the preferred zones.
 
 {{< /note >}}
 
@@ -1359,7 +1361,7 @@ yb-admin \
 
 For details on using encryption at rest, see [Encryption at rest](../../secure/encryption-at-rest).
 
-#### add_universe_keys_to_all_masters
+#### add_universe_key_to_all_masters
 
 Sets the contents of `key_path` in-memory on each YB-Master node.
 
@@ -1368,7 +1370,7 @@ Sets the contents of `key_path` in-memory on each YB-Master node.
 ```sh
 yb-admin \
     -master_addresses <master-addresses> \
-    add_universe_keys_to_all_masters <key_id> <key_path>
+    add_universe_key_to_all_masters <key_id> <key_path>
 ```
 
 * *key_id*: Universe-unique identifier (can be any string, such as a string of a UUID) that will be associated to the universe key contained in the contents of `key_path` as a byte[].
@@ -1480,6 +1482,23 @@ For example:
     -master_addresses 127.0.0.1:7100 \
     create_change_data_stream ysql.yugabyte
 ```
+
+##### Enabling before image
+
+To create a change data capture (CDC) DB stream which also supports sending the before image of the record, use the following command.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    create_change_data_stream ysql.<namespace_name> IMPLICIT ALL
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *namespace_name*: The namespace on which the DB stream ID is to be created.
+* `IMPLICIT`: Checkpointing type on the server.
+* `ALL`: Record type indicating the server that the stream should send the before image too.
 
 A successful operation of the above command returns a message with a DB stream ID:
 
@@ -1839,6 +1858,38 @@ The CDC bootstrap ids are the ones that should be used with [`setup_universe_rep
 {{< /note >}}
 
 ---
+
+#### get_replication_status
+
+Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> get_replication_status [ <producer_universe_uuid> ]
+```
+
+* *producer_universe_uuid*: Optional universe-unique identifier (can be any string, such as a string of a UUID).
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses 172.0.0.11:7100,127.0.0.12:7100,127.0.0.13:7100 \
+    get_replication_status e260b8b6-e89f-4505-bb8e-b31f74aa29f3
+```
+
+```output
+statuses {
+  table_id: "03ee1455f2134d5b914dd499ccad4377"
+  stream_id: "53441ad2dd9f4e44a76dccab74d0a2ac"
+  errors {
+    error: REPLICATION_MISSING_OP_ID
+    error_detail: "Unable to find expected op id on the producer"
+  }
+}
+```
 
 ### Decommissioning commands
 

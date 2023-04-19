@@ -3,7 +3,7 @@ title: YSQL Aiopg
 linkTitle: YSQL Aiopg
 description: Build a sample Python application with aiopg that uses YSQL
 menu:
-  preview:
+  preview_integrations:
     identifier: ysql-aiopg
     parent: integrations
     weight: 571
@@ -21,7 +21,7 @@ Before you start using Aiopg, ensure you have the following:
 - [aiopg](https://aiopg.readthedocs.io/en/stable/) package is installed. Install the package using the following command:
 
     ```sh
-    $ pip3 install aiopg
+    pip3 install aiopg
     ```
 
     For details about using this database adapter, see [aiopg documentation](https://aiopg.readthedocs.io/en/stable/).
@@ -67,10 +67,10 @@ loop.run_until_complete(go())
 
 ### Run the application
 
-To use the application, run the following Python script as follows:
+To use the application, run the following Python script:
 
 ```sh
-$ python yb-sql-helloworld.py
+python yb-sql-helloworld.py
 ```
 
 You should see the following output:

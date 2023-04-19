@@ -9,19 +9,17 @@ import {
   queryMetricsFailure,
   currentTabSelected
 } from '../../../actions/graph';
+import { getTabContent } from '../../../utils/GraphUtils';
+import { isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
+import { MetricsData, GraphFilter, MetricQueryParams } from '../../../redesign/helpers/dtos';
 import {
-  getTabContent
-} from '../../../utils/GraphUtils';
-import {
-  isNonEmptyArray,
-  isNonEmptyString,
-} from '../../../utils/ObjectUtils';
-import {
-  MetricsData,
-  GraphFilter,
-  MetricQueryParams
-} from '../../../redesign/helpers/dtos';
-import { MetricMeasure, MetricConsts, SplitType, MetricTypes } from '../../metrics/constants';
+  MetricMeasure,
+  MetricConsts,
+  SplitType,
+  MetricTypes,
+  NodeAggregation,
+  NodeType
+} from '../../metrics/constants';
 
 export const GraphTab: FC<MetricsData> = ({
   type,
@@ -39,6 +37,7 @@ export const GraphTab: FC<MetricsData> = ({
     startMoment,
     endMoment,
     nodeName,
+    currentSelectedNodeType,
     nodePrefix,
     currentSelectedRegion,
     metricMeasure,
@@ -53,10 +52,10 @@ export const GraphTab: FC<MetricsData> = ({
   const queryMetricsType = () => {
     const metricsWithSettings = metricsKey.map((metricKey) => {
       const settings: any = {
-        metric: metricKey,
-      }
+        metric: metricKey
+      };
       if (metricMeasure === MetricMeasure.OUTLIER) {
-        settings.nodeAggregation = "AVG";
+        settings.nodeAggregation = NodeAggregation.AVERAGE;
         settings.splitMode = outlierType;
         settings.splitCount = outlierNumNodes;
         settings.splitType = SplitType.NODE;
@@ -73,7 +72,7 @@ export const GraphTab: FC<MetricsData> = ({
     const params: any = {
       metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
-      end: endMoment.format('X'),
+      end: endMoment.format('X')
     };
     if (isNonEmptyString(nodePrefix) && nodePrefix !== MetricConsts.ALL) {
       params.nodePrefix = nodePrefix;
@@ -85,12 +84,20 @@ export const GraphTab: FC<MetricsData> = ({
     }
 
     // Top K tables section should not have the below query params
-    if (isNonEmptyString(nodeName) && nodeName !== MetricConsts.ALL && nodeName !== MetricConsts.TOP) {
+    if (
+      isNonEmptyString(nodeName) &&
+      nodeName !== MetricConsts.ALL &&
+      nodeName !== MetricConsts.TOP
+    ) {
       params.nodeNames = [nodeName];
     }
     // If specific region or cluster is selected from region dropdown, pass clusterUUID and region code
     if (isNonEmptyString(selectedRegionClusterUUID)) {
       params.clusterUuids = [selectedRegionClusterUUID];
+    }
+
+    if (isNonEmptyString(currentSelectedNodeType) && currentSelectedNodeType !== NodeType.ALL) {
+      params.serverType = currentSelectedNodeType?.toUpperCase();
     }
 
     if (isNonEmptyString(selectedZoneName)) {
@@ -125,7 +132,9 @@ export const GraphTab: FC<MetricsData> = ({
   useEffect(() => {
     setSelectedTabName(type);
     queryMetricsType();
-  }, [nodeName, // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    nodeName,
     nodePrefix,
     startMoment,
     endMoment,
@@ -145,9 +154,5 @@ export const GraphTab: FC<MetricsData> = ({
     insecureLoginToken
   );
 
-  return (
-    <>
-      {tabContent}
-    </>
-  );
-}
+  return <>{tabContent}</>;
+};

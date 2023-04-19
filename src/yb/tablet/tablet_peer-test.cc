@@ -34,8 +34,8 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/hybrid_time.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol-test-util.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_fwd.h"
@@ -180,12 +180,18 @@ class TabletPeerTest : public YBTabletTest {
                  .unlimited_threads()
                  .Build(&log_thread_pool_));
     scoped_refptr<Log> log;
-    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(),
-                        tablet()->metadata()->wal_dir(), tablet()->metadata()->fs_manager()->uuid(),
-                        *tablet()->schema(), tablet()->metadata()->schema_version(),
-                        table_metric_entity_.get(), tablet_metric_entity_.get(),
-                        log_thread_pool_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
-                        tablet()->metadata()->cdc_min_replicated_index(), &log));
+    auto metadata = tablet()->metadata();
+    log::NewSegmentAllocationCallback noop = {};
+    auto new_segment_allocation_callback =
+        metadata->IsLazySuperblockFlushEnabled()
+            ? std::bind(&RaftGroupMetadata::Flush, metadata, OnlyIfDirty::kTrue)
+            : noop;
+    ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(), metadata->wal_dir(),
+                        metadata->fs_manager()->uuid(), *tablet()->schema(),
+                        metadata->schema_version(), table_metric_entity_.get(),
+                        tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
+                        log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
+                        new_segment_allocation_callback));
 
     ASSERT_OK(tablet_peer_->SetBootstrapping());
     ASSERT_OK(tablet_peer_->InitTabletPeer(tablet(),
@@ -252,7 +258,7 @@ class TabletPeerTest : public YBTabletTest {
     WriteResponsePB resp;
     auto query = std::make_unique<WriteQuery>(
         /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
-        ASSERT_RESULT(tablet_peer->shared_tablet_safe()), &resp);
+        ASSERT_RESULT(tablet_peer->shared_tablet_safe()), nullptr, &resp);
     query->set_client_request(req);
 
     CountDownLatch rpc_latch(1);
@@ -465,6 +471,21 @@ TEST_F(TabletPeerTest, TestGCEmptyLog) {
   ASSERT_OK(tablet_peer_->RunLogGC());
 }
 
+TEST_F(TabletPeerTest, TestAddTableUpdatesLastChangeMetadataOpId) {
+  auto tablet = ASSERT_RESULT(tablet_peer_->shared_tablet_safe());
+  TableInfoPB table_info;
+  table_info.set_table_id("00004000000030008000000000004020");
+  table_info.set_table_name("test");
+  table_info.set_table_type(PGSQL_TABLE_TYPE);
+  ColumnSchema col("a", UINT32);
+  ColumnId col_id(1);
+  Schema schema({col}, {col_id}, 1);
+  SchemaToPB(schema, table_info.mutable_schema());
+  OpId op_id(100, 5);
+  ASSERT_OK(tablet->AddTable(table_info, op_id));
+  ASSERT_EQ(tablet->metadata()->TEST_LastAppliedChangeMetadataOperationOpId(), op_id);
+}
+
 class TabletPeerProtofBufSizeLimitTest : public TabletPeerTest {
  public:
   TabletPeerProtofBufSizeLimitTest() : TabletPeerTest(GetSimpleTestSchema()) {
@@ -508,7 +529,7 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
     req->set_tablet_id(tablet()->tablet_id());
     AddTestRowInsert(i, i, value, req);
     auto query = std::make_unique<WriteQuery>(
-        /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet(), resp);
+        /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet(), nullptr, resp);
     query->set_client_request(*req);
     query->set_callback([&latch, resp](const Status& status) {
       if (!status.ok()) {
@@ -575,7 +596,7 @@ TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLim
   AddTestRowInsert(1, 1, value, &req);
   auto query = std::make_unique<WriteQuery>(
       /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer,
-      ASSERT_RESULT(tablet_peer->shared_tablet_safe()), &resp);
+      ASSERT_RESULT(tablet_peer->shared_tablet_safe()), nullptr, &resp);
   query->set_client_request(req);
   query->set_callback([&latch, &resp](const Status& status) {
       if (!status.ok()) {

@@ -427,7 +427,7 @@ TEST_F(LeaderElectionTest, TestHigherTermBeforeDecision) {
 
   // This guy has a higher term.
   down_cast<DelayablePeerProxy<MockedPeerProxy>*>(proxies_[voter_uuids_[0]])
-      ->Respond(TestPeerProxy::kRequestVote);
+      ->Respond(TestPeerProxy::Method::kRequestVote);
   latch_.Wait();
 
   ASSERT_EQ(kElectionTerm, result_->election_term);
@@ -438,7 +438,7 @@ TEST_F(LeaderElectionTest, TestHigherTermBeforeDecision) {
 
   // This guy will vote "yes".
   down_cast<DelayablePeerProxy<MockedPeerProxy>*>(proxies_[voter_uuids_[1]])
-      ->Respond(TestPeerProxy::kRequestVote);
+      ->Respond(TestPeerProxy::Method::kRequestVote);
 
   pool_->Wait(); // Wait for the election callbacks to finish before we destroy proxies.
 }
@@ -452,7 +452,7 @@ TEST_F(LeaderElectionTest, TestHigherTermAfterDecision) {
 
   // This guy will vote "yes".
   down_cast<DelayablePeerProxy<MockedPeerProxy>*>(proxies_[voter_uuids_[1]])
-      ->Respond(TestPeerProxy::kRequestVote);
+      ->Respond(TestPeerProxy::Method::kRequestVote);
   latch_.Wait();
 
   ASSERT_EQ(kElectionTerm, result_->election_term);
@@ -463,7 +463,7 @@ TEST_F(LeaderElectionTest, TestHigherTermAfterDecision) {
 
   // This guy has a higher term.
   down_cast<DelayablePeerProxy<MockedPeerProxy>*>(proxies_[voter_uuids_[0]])
-      ->Respond(TestPeerProxy::kRequestVote);
+      ->Respond(TestPeerProxy::Method::kRequestVote);
 
   pool_->Wait(); // Wait for the election callbacks to finish before we destroy proxies.
 }

@@ -19,12 +19,16 @@ namespace master {
 
 // Available overloaded handlers of different types:
 
-enterprise::CatalogManager* MasterServiceBase::handler(CatalogManager*) {
+CatalogManager* MasterServiceBase::handler(CatalogManager*) {
   return server_->catalog_manager_impl();
 }
 
 FlushManager* MasterServiceBase::handler(FlushManager*) {
   return server_->flush_manager();
+}
+
+YsqlBackendsManager* MasterServiceBase::handler(YsqlBackendsManager*) {
+  return server_->ysql_backends_manager();
 }
 
 PermissionsManager* MasterServiceBase::handler(PermissionsManager*) {

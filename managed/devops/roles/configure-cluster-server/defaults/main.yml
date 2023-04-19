@@ -47,3 +47,4 @@ yb_logs_dir: "{{ yb_home_dir }}/{{ yb_process_type }}/logs"
 yb_conf_file: "{{ yb_conf_dir }}/server.conf"
 yb_metrics_dir: "/tmp/yugabyte/metrics"
 systemd_option: false
+systemd_unit_dir: "/lib/systemd/system"

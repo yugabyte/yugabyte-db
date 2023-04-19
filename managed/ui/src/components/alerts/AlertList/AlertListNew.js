@@ -157,29 +157,29 @@ export class AlertListNew extends Component {
                 </Row>
                 {filter_groups[GROUP_TYPE_FILTER_KEY] &&
                   filter_groups[GROUP_TYPE_FILTER_KEY].indexOf('UNIVERSE') !== -1 && (
-                    <Row className="filter-group noPaddingLeft">
-                      <Col lg={12} className="noPaddingLeft">
-                        <h6 className="to-uppercase">Universe</h6>
-                        <Row>
-                          <Col lg={12} lgOffset={1} className="noMargin noPaddingLeft">
-                            <Select
-                              isMulti={false}
-                              options={universesList}
-                              onChange={this.updateSourceName}
-                              menuPortalTarget={document.body}
-                              styles={{
-                                menuPortal: (base) => ({ ...base, zIndex: 999 }),
-                                menu: (styles) => ({
-                                  ...styles,
-                                  ...REACT_FILTER_MENU_STYLES
-                                })
-                              }}
-                            />
-                          </Col>
-                        </Row>
-                      </Col>
-                    </Row>
-                  )}
+                  <Row className="filter-group noPaddingLeft">
+                    <Col lg={12} className="noPaddingLeft">
+                      <h6 className="to-uppercase">Universe</h6>
+                      <Row>
+                        <Col lg={12} lgOffset={1} className="noMargin noPaddingLeft">
+                          <Select
+                            isMulti={false}
+                            options={universesList}
+                            onChange={this.updateSourceName}
+                            menuPortalTarget={document.body}
+                            styles={{
+                              menuPortal: (base) => ({ ...base, zIndex: 999 }),
+                              menu: (styles) => ({
+                                ...styles,
+                                ...REACT_FILTER_MENU_STYLES
+                              })
+                            }}
+                          />
+                        </Col>
+                      </Row>
+                    </Col>
+                  </Row>
+                )}
                 {[STATUS_FILTER_KEY, SEVERITY_FILTER_KEY].map((filter_key) => (
                   <Row className="filter-group noPaddingLeft" key={filter_key}>
                     <Col lg={12} className="noPaddingLeft">

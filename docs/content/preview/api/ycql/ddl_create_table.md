@@ -8,7 +8,6 @@ menu:
     parent: api-cassandra
     weight: 1240
 aliases:
-  - /preview/api/cassandra/ddl_create_table
   - /preview/api/ycql/ddl_create_table
 type: docs
 ---
@@ -35,7 +34,7 @@ Use the `CREATE TABLE` statement to create a new table in a keyspace. It defines
 
 ### Grammar
 
-```
+```ebnf
 create_table ::= CREATE TABLE [ IF NOT EXISTS ] table_name
                      '(' table_element [ ',' table_element ...] ')'
                      [WITH table_properties];
@@ -59,7 +58,6 @@ table_properties = [table_options]
 table_options = property_name '=' property_literal [AND property_name '=' property_literal ...]
 
 column_ordering_property ::= column_name [ ASC | DESC ]
-
 ```
 
 Where
@@ -93,7 +91,7 @@ Where
 
 ### STATIC COLUMNS
 
-- Columns declared as `STATIC` will share the same value for all rows within a partition (i.e. rows having the same partition key).
+- Columns declared as `STATIC` will share the same value for all rows within a partition (that is, rows having the same partition key).
 - Columns in the primary key cannot be static.
 - A table without clustering columns cannot have static columns (without clustering columns the primary key and the partition key are identical so static columns would be the same as regular columns).
 
@@ -111,7 +109,7 @@ Where
 
 ### Use column constraint to define primary key
 
- 'user_id' is the partitioning column and there are no clustering columns.
+'user_id' is the partitioning column and there are no clustering columns.
 
 ```sql
 ycqlsh:example> CREATE TABLE users(user_id INT PRIMARY KEY, full_name TEXT);
@@ -152,10 +150,10 @@ ycqlsh:example> INSERT INTO items(supplier_id, item_id, supplier_name, item_name
 ```
 
 ```sql
-ycqlsh:example> SELECT * FROM devices;
+ycqlsh:example> SELECT * FROM items;
 ```
 
-```
+```output
  supplier_id | item_id | supplier_name    | item_name
 -------------+---------+------------------+-------------------
            1 |       1 | Acme Corporation |     Wrought Anvil
@@ -190,7 +188,7 @@ ycqlsh:example> INSERT INTO user_actions(user_id, ts, action) VALUES (1, '2000-1
 ycqlsh:example> SELECT * FROM user_actions;
 ```
 
-```
+```output
  user_id | ts                              | action
 ---------+---------------------------------+-----------------
        1 | 2000-12-02 19:30:35.000000+0000 |         log out
@@ -228,7 +226,7 @@ First select 3 seconds later (at time T + 6).
 ycqlsh:example> SELECT * FROM sensor_data;
 ```
 
-```
+```output
  sensor_id | ts                              | value
 -----------+---------------------------------+-------
          2 | 2017-10-01 18:22:34.000000+0000 |   3.4
@@ -240,7 +238,7 @@ Second select 3 seconds later (at time T + 9).
 ycqlsh:example> SELECT * FROM sensor_data;
 ```
 
-```
+```output
  sensor_id | ts | value
 -----------+----+-------
 

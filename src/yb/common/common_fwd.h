@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_COMMON_FWD_H
-#define YB_COMMON_COMMON_FWD_H
+#pragma once
 
 #include <memory>
 #include <vector>
@@ -29,6 +28,7 @@ class ClockBase;
 class ColumnId;
 class ColumnSchema;
 class DocHybridTime;
+class EncodedDocHybridTime;
 class HybridTime;
 class IndexInfo;
 class IndexMap;
@@ -86,5 +86,3 @@ class Jsonb;
 } // namespace common
 
 } // namespace yb
-
-#endif // YB_COMMON_COMMON_FWD_H

@@ -16,8 +16,9 @@
 #include "yb/docdb/shared_lock_manager.h"
 
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
-DEFINE_bool(dump_lock_keys, true,
+DEFINE_UNKNOWN_bool(dump_lock_keys, true,
             "Whether to add keys to error message when lock batch timed out");
 
 namespace yb {

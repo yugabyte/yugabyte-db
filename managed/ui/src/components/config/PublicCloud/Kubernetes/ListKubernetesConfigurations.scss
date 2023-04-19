@@ -1,3 +1,5 @@
+@use '../../../../_style/colors.scss';
+
 .k8s-providers-list {
   &__cell-subrow {
     display: flex;
@@ -33,5 +35,12 @@
     display: flex;
     align-items: center;
     padding-bottom: 8px !important;
+  }
+}
+
+.editor-container{
+  .fetch-kube-config-but{
+    width: auto;
+    margin-top: 10px;
   }
 }

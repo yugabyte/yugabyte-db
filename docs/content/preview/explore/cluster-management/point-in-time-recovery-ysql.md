@@ -35,11 +35,9 @@ For more information, see [Point-in-time recovery](../../../manage/backup-restor
 
 You can try out the PITR feature by creating a database and populating it, creating a snapshot schedule, and restoring from a snapshot on the schedule.
 
-{{< note title="Note" >}}
+Note that the examples are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
 
-This document contains examples that are deliberately simplified. In many of the scenarios, you could drop the index or table to recover. Consider the examples as part of an effort to undo a larger schema change, such as a database migration, which has performed several operations.
-
-{{< /note >}}
+{{% explore-setup-single-local %}}
 
 ## Undo data changes
 

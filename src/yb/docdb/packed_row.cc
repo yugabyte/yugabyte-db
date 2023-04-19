@@ -16,6 +16,7 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
+#include "yb/docdb/doc_key.h"
 #include "yb/docdb/docdb.pb.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/schema_packing.h"
@@ -24,6 +25,7 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/gutil/map-util.h"
 #include "yb/util/coding_consts.h"
 #include "yb/util/fast_varint.h"
 #include "yb/util/status.h"
@@ -40,9 +42,10 @@ bool IsNull(const Slice& slice) {
   return slice.empty();
 }
 
-using ValuePair = std::pair<Slice, Slice>;
+using ValueSlicePair = std::pair<Slice, Slice>;
+using ValuePair = std::pair<Slice, const QLValuePB&>;
 
-bool IsNull(const ValuePair& value) {
+bool IsNull(const ValueSlicePair& value) {
   return value.first.empty() && value.second.empty();
 }
 
@@ -54,6 +57,19 @@ size_t PackedValueSize(const QLValuePB& value) {
   return EncodedValueSize(value);
 }
 
+void PackValue(const ValuePair& value, ValueBuffer* result) {
+  result->Append(value.first);
+  AppendEncodedValue(value.second, result);
+}
+
+size_t PackedValueSize(const ValuePair& value) {
+  return value.first.size() + EncodedValueSize(value.second);
+}
+
+bool IsNull(const ValuePair& value) {
+  return value.first.empty() && IsNull(value.second);
+}
+
 void PackValue(const Slice& value, ValueBuffer* result) {
   result->Append(value);
 }
@@ -62,11 +78,11 @@ size_t PackedValueSize(const Slice& value) {
   return value.size();
 }
 
-size_t PackedValueSize(const ValuePair& value) {
+size_t PackedValueSize(const ValueSlicePair& value) {
   return value.first.size() + value.second.size();
 }
 
-void PackValue(const ValuePair& value, ValueBuffer* result) {
+void PackValue(const ValueSlicePair& value, ValueBuffer* result) {
   result->Reserve(result->size() + PackedValueSize(value));
   result->Append(value.first);
   result->Append(value.second);
@@ -74,6 +90,31 @@ void PackValue(const ValuePair& value, ValueBuffer* result) {
 
 size_t PackedSizeLimit(size_t value) {
   return value ? value : make_unsigned(FLAGS_db_block_size_bytes);
+}
+
+std::string ValueToString(const QLValuePB& value) {
+  return value.ShortDebugString();
+}
+
+std::string ValueToString(const ValuePair& value) {
+  auto result = value.second.ShortDebugString();
+  if (!value.first.empty()) {
+    Slice control_fields_slice = value.first;
+    auto control_fields = ValueControlFields::Decode(&control_fields_slice);
+    result += AsString(control_fields);
+  }
+  return result;
+}
+
+std::string ValueToString(const Slice& value) {
+  return value.ToDebugHexString();
+}
+
+std::string ValueToString(const ValueSlicePair& value) {
+  if (value.first.empty()) {
+    return value.second.ToDebugHexString();
+  }
+  return value.first.ToDebugHexString() + "+" + value.second.ToDebugHexString();
 }
 
 } // namespace
@@ -122,28 +163,62 @@ Result<bool> RowPacker::AddValue(ColumnId column_id, const QLValuePB& value) {
   return DoAddValue(column_id, value, 0);
 }
 
+Result<bool> RowPacker::AddValue(
+    ColumnId column_id, const Slice& control_fields, const QLValuePB& value) {
+  return DoAddValue(column_id, ValuePair(control_fields, value), 0);
+}
+
 Result<bool> RowPacker::AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size) {
   return DoAddValue(column_id, value, tail_size);
 }
 
 Result<bool> RowPacker::AddValue(
     ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size) {
-  return DoAddValue(column_id, ValuePair(value_prefix, value_suffix), tail_size);
+  return DoAddValue(column_id, ValueSlicePair(value_prefix, value_suffix), tail_size);
+}
+
+// Replaces the schema version in packed value with the provided schema version.
+// Note: Value starts with the schema version (does not contain control fields, value type).
+Status ReplaceSchemaVersionInPackedValue(const Slice& value,
+                                         const ValueControlFields& control_fields,
+                                         const cdc::XClusterSchemaVersionMap schema_versions_map,
+                                         ValueBuffer *out) {
+  CHECK(out != nullptr);
+  out->Truncate(0);
+  control_fields.AppendEncoded(out);
+  out->Reserve(out->size() + 1 + kMaxVarint32Length + value.size());
+  out->PushBack(ValueEntryTypeAsChar::kPackedRow);
+
+  // Consume the bytes for existing schema version and append the mapped schema version and
+  // rest of the value.
+  Slice value_slice = value;
+  auto schema_version = (SchemaVersion)VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value_slice));
+  auto mapped_version = FindOrNull(schema_versions_map, schema_version);
+  SCHECK(mapped_version, NotFound, "Schema version mapping for $0 not found", schema_version);
+  util::FastAppendUnsignedVarInt(*mapped_version, out);
+  out->Append(value_slice);
+  return Status::OK();
 }
 
 template <class Value>
 Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size) {
-  RSTATUS_DCHECK(
-      idx_ < packing_.columns(),
-      InvalidArgument, "Add extra column $0, while already have $1 of $2 columns",
-      column_id, idx_, packing_.columns());
+  if (idx_ >= packing_.columns()) {
+    RSTATUS_DCHECK(
+        packing_.SkippedColumn(column_id),
+        InvalidArgument, "Add extra column $0, while already have $1 of $2 columns",
+        column_id, idx_, packing_.columns());
+    return false;
+  }
 
   bool result = true;
   for (;;) {
     const auto& column_data = packing_.column_packing_data(idx_);
-    RSTATUS_DCHECK(
-        column_data.id <= column_id, InvalidArgument,
-        "Add unexpected column $0, while $1 is expected", column_id, column_data.id);
+    if (column_data.id > column_id) {
+      RSTATUS_DCHECK(
+          packing_.SkippedColumn(column_id), InvalidArgument,
+          "Add unexpected column $0, while $1 is expected", column_id, column_data.id);
+      return false;
+    }
 
     ++idx_;
     size_t prev_size = result_.size();
@@ -166,7 +241,8 @@ Result<bool> RowPacker::DoAddValue(ColumnId column_id, const Value& value, ssize
     } else {
       RSTATUS_DCHECK(
           prev_size + column_data.size == result_.size(), Corruption,
-          "Wrong encoded size: $0 vs $1", result_.size() - prev_size, column_data.size);
+          "Wrong encoded size: $0, column: $1, value: $2",
+          result_.size() - prev_size, column_data, ValueToString(value));
     }
 
     if (column_data.id == column_id) {
@@ -181,7 +257,11 @@ Result<Slice> RowPacker::Complete() {
   // In case of concurrent schema change YSQL does not send recently added columns.
   // Fill them with NULLs to keep the same behaviour like we have w/o packed row.
   while (idx_ < packing_.columns()) {
-    RETURN_NOT_OK(AddValue(packing_.column_packing_data(idx_).id, Slice(), 0));
+    const auto& packing_data = packing_.column_packing_data(idx_);
+    RSTATUS_DCHECK(
+        packing_data.nullable, InvalidArgument, "Non nullable column $0 was not specified",
+        packing_data);
+    RETURN_NOT_OK(AddValue(packing_data.id, Slice(), 0));
   }
   RSTATUS_DCHECK_EQ(
       varlen_write_pos_, prefix_end_, InvalidArgument, "Not all varlen columns packed");

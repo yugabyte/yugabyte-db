@@ -104,7 +104,8 @@ public class QueryAlerts {
   void scheduleRunner() {
     try {
       if (HighAvailabilityConfig.isFollower()) {
-        log.debug("Skipping querying for alerts for follower platform");
+        log.debug("Resolving all the alerts on the standby instance and skipping alerts query");
+        resolveAllAlerts();
         return;
       }
       try {
@@ -241,7 +242,14 @@ public class QueryAlerts {
   }
 
   private void resolveAlerts(List<UUID> activeAlertsUuids) {
-    AlertFilter toResolveFilter = AlertFilter.builder().excludeUuids(activeAlertsUuids).build();
+    resolveAlerts(AlertFilter.builder().excludeUuids(activeAlertsUuids).build());
+  }
+
+  private void resolveAllAlerts() {
+    resolveAlerts(AlertFilter.builder().build());
+  }
+
+  private void resolveAlerts(AlertFilter toResolveFilter) {
     List<Alert> resolved = alertService.markResolved(toResolveFilter);
     if (!resolved.isEmpty()) {
       log.info("Resolved {} alerts", resolved.size());

@@ -26,37 +26,39 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
 
     Universe sourceUniverse = null;
     Universe targetUniverse = null;
-    if (xClusterConfig.sourceUniverseUUID != null) {
-      sourceUniverse = Universe.getOrBadRequest(xClusterConfig.sourceUniverseUUID);
+    if (xClusterConfig.getSourceUniverseUUID() != null) {
+      sourceUniverse = Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID());
     }
-    if (xClusterConfig.targetUniverseUUID != null) {
-      targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    if (xClusterConfig.getTargetUniverseUUID() != null) {
+      targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     }
     try {
       if (sourceUniverse != null) {
         // Lock the source universe.
-        lockUniverseForUpdate(sourceUniverse.universeUUID, sourceUniverse.version);
+        lockUniverseForUpdate(sourceUniverse.getUniverseUUID(), sourceUniverse.getVersion());
       }
       try {
         if (targetUniverse != null) {
           // Lock the target universe.
-          lockUniverseForUpdate(targetUniverse.universeUUID, targetUniverse.version);
+          lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
         }
 
-        createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
-            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+        if (!isInMustDeleteStatus(xClusterConfig)) {
+          createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+        }
 
         // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
         // to them if any.
         createDeleteXClusterConfigSubtasks(xClusterConfig, taskParams().isForced());
 
         if (targetUniverse != null) {
-          createMarkUniverseUpdateSuccessTasks(targetUniverse.universeUUID)
+          createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
 
         if (sourceUniverse != null) {
-          createMarkUniverseUpdateSuccessTasks(sourceUniverse.universeUUID)
+          createMarkUniverseUpdateSuccessTasks(sourceUniverse.getUniverseUUID())
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
         }
 
@@ -64,7 +66,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
       } finally {
         if (targetUniverse != null) {
           // Unlock the target universe.
-          unlockUniverseForUpdate(targetUniverse.universeUUID);
+          unlockUniverseForUpdate(targetUniverse.getUniverseUUID());
         }
       }
     } catch (Exception e) {
@@ -78,7 +80,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
     } finally {
       if (sourceUniverse != null) {
         // Unlock the source universe.
-        unlockUniverseForUpdate(sourceUniverse.universeUUID);
+        unlockUniverseForUpdate(sourceUniverse.getUniverseUUID());
       }
     }
 

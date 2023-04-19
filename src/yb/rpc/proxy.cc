@@ -56,11 +56,12 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(num_connections_to_server, 8,
+DEFINE_UNKNOWN_int32(num_connections_to_server, 8,
              "Number of underlying connections to each server");
 
-DEFINE_int32(proxy_resolve_cache_ms, 5000,
+DEFINE_UNKNOWN_int32(proxy_resolve_cache_ms, 5000,
              "Time in milliseconds to cache resolution result in Proxy");
 
 using namespace std::literals;
@@ -164,7 +165,8 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
     return false;
   }
 
-  if (controller->timeout().Initialized() && controller->timeout() > 3600s) {
+  // Sanity check to make sure timeout is setup and has some sensible value (to prevent infinity).
+  if (controller->timeout().Initialized() && controller->timeout() > 7200s) {
     LOG(DFATAL) << "Too big timeout specified: " << controller->timeout();
   }
 
@@ -173,10 +175,12 @@ bool Proxy::PrepareCall(AnyMessageConstPtr req, RpcController* controller) {
 
 void Proxy::AsyncLocalCall(
     const RemoteMethod* method, AnyMessageConstPtr req, AnyMessagePtr resp,
-    RpcController* controller, ResponseCallback callback) {
+    RpcController* controller, ResponseCallback callback,
+    const bool force_run_callback_on_reactor) {
   controller->call_ = std::make_shared<LocalOutboundCall>(
-      method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
-      std::move(callback));
+      *method, outbound_call_metrics_, resp, controller, context_->rpc_metrics(),
+      std::move(callback),
+      GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
   if (!PrepareCall(req, controller)) {
     return;
   }
@@ -202,9 +206,9 @@ void Proxy::AsyncLocalCall(
 void Proxy::AsyncRemoteCall(
     const RemoteMethod* method, std::shared_ptr<const OutboundMethodMetrics> method_metrics,
     AnyMessageConstPtr req, AnyMessagePtr resp, RpcController* controller,
-    ResponseCallback callback, bool force_run_callback_on_reactor) {
+    ResponseCallback callback, const bool force_run_callback_on_reactor) {
   controller->call_ = std::make_shared<OutboundCall>(
-      method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
+      *method, outbound_call_metrics_, std::move(method_metrics), resp, controller,
       context_->rpc_metrics(), std::move(callback),
       GetCallbackThreadPool(force_run_callback_on_reactor, controller->invoke_callback_mode()));
   if (!PrepareCall(req, controller)) {
@@ -225,11 +229,12 @@ void Proxy::DoAsyncRequest(const RemoteMethod* method,
                            AnyMessagePtr resp,
                            RpcController* controller,
                            ResponseCallback callback,
-                           bool force_run_callback_on_reactor) {
+                           const bool force_run_callback_on_reactor) {
   CHECK(controller->call_.get() == nullptr) << "Controller should be reset";
 
   if (call_local_service_) {
-    AsyncLocalCall(method, req, resp, controller, std::move(callback));
+    AsyncLocalCall(
+        method, req, resp, controller, std::move(callback), force_run_callback_on_reactor);
   } else {
     AsyncRemoteCall(
         method, std::move(method_metrics), req, resp, controller, std::move(callback),

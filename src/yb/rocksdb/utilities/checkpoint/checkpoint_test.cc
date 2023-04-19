@@ -22,7 +22,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
 // Syncpoint prevents us building and running tests in release
-#ifndef ROCKSDB_LITE
 
 #ifndef OS_WIN
 #include <unistd.h>
@@ -35,11 +34,10 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/env.h"
 #include "yb/rocksdb/utilities/checkpoint.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
-#include "yb/rocksdb/util/xfunc.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_util.h"
 
 namespace rocksdb {
@@ -75,9 +73,9 @@ class DBTest : public RocksDBTest {
   }
 
   ~DBTest() {
-    rocksdb::SyncPoint::GetInstance()->DisableProcessing();
-    rocksdb::SyncPoint::GetInstance()->LoadDependency({});
-    rocksdb::SyncPoint::GetInstance()->ClearAllCallBacks();
+    yb::SyncPoint::GetInstance()->DisableProcessing();
+    yb::SyncPoint::GetInstance()->LoadDependency({});
+    yb::SyncPoint::GetInstance()->ClearAllCallBacks();
     Close();
     Options options;
     options.db_paths.emplace_back(dbname_, 0);
@@ -291,13 +289,13 @@ TEST_F(DBTest, GetSnapshotLink) {
 TEST_F(DBTest, CheckpointCF) {
   Options options = CurrentOptions();
   CreateAndReopenWithCF({"one", "two", "three", "four", "five"}, options);
-  rocksdb::SyncPoint::GetInstance()->LoadDependency(
+  yb::SyncPoint::GetInstance()->LoadDependency(
       {{"DBTest::CheckpointCF:2",
         "DBImpl::GetLiveFiles:2"},
        {"DBImpl::GetLiveFiles:1",
         "DBTest::CheckpointCF:1"}});
 
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   ASSERT_OK(Put(0, "Default", "Default"));
   ASSERT_OK(Put(1, "one", "one"));
@@ -331,7 +329,7 @@ TEST_F(DBTest, CheckpointCF) {
   ASSERT_OK(Put(5, "five", "fifteen"));
   TEST_SYNC_POINT("DBTest::CheckpointCF:2");
   t.join();
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
   ASSERT_OK(Put(1, "one", "twentyone"));
   ASSERT_OK(Put(2, "two", "twentytwo"));
   ASSERT_OK(Put(3, "three", "twentythree"));
@@ -370,13 +368,3 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-#else
-#include <stdio.h>
-
-int main(int argc, char** argv) {
-  fprintf(stderr, "SKIPPED as Checkpoint is not supported in ROCKSDB_LITE\n");
-  return 0;
-}
-
-#endif  // !ROCKSDB_LITE

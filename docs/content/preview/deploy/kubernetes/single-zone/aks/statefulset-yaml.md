@@ -18,13 +18,13 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="../helm-chart/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Helm chart
     </a>
   </li>
   <li >
     <a href="../statefulset-yaml/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       StatefulSet YAML
     </a>
   </li>
@@ -54,7 +54,7 @@ Before deploying YugabyteDB on AKS, perform the following:
 
 ## Create an Azure cluster
 
-Create an Azure resource group, a logical group in which Azure resources are deployed and managed. 
+Create an Azure resource group, a logical group in which Azure resources are deployed and managed.
 
 Execute the following command to specify a default location or pass the location parameter to create the resource:
 

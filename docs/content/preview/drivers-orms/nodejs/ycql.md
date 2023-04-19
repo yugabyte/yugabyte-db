@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Node.js Driver for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Node.js drivers for YCQL
+description: Connect an application using YugabyteDB Node.js driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,20 +12,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../yugabyte-node-driver/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li class="active">
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../yugabyte-node-driver/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li class="active">
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >

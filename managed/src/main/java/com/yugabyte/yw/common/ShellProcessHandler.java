@@ -14,10 +14,14 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_EXECUTION_CANCELLE
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_GENERIC_ERROR;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.password.RedactingService;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -36,10 +40,12 @@ import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
+import com.typesafe.config.Config;
 
 @Singleton
 @Slf4j
@@ -47,7 +53,7 @@ public class ShellProcessHandler {
 
   private static final Duration DESTROY_GRACE_TIMEOUT = Duration.ofMinutes(5);
 
-  private final play.Configuration appConfig;
+  private final Config appConfig;
   private final boolean cloudLoggingEnabled;
   private final ShellLogsManager shellLogsManager;
 
@@ -63,7 +69,7 @@ public class ShellProcessHandler {
   static final String YB_LOGS_MAX_MSG_SIZE = "yb.logs.max_msg_size";
 
   @Inject
-  public ShellProcessHandler(play.Configuration appConfig, ShellLogsManager shellLogsManager) {
+  public ShellProcessHandler(Config appConfig, ShellLogsManager shellLogsManager) {
     this.appConfig = appConfig;
     this.cloudLoggingEnabled = appConfig.getBoolean("yb.cloud.enabled");
     this.shellLogsManager = shellLogsManager;
@@ -108,7 +114,14 @@ public class ShellProcessHandler {
                 redactedCommand.add(key);
                 command.add(key);
                 command.add(value);
-                redactedCommand.add(Util.redactString(value));
+
+                try {
+                  JsonNode valueJson = Json.mapper().readTree(value);
+                  redactedCommand.add(RedactingService.filterSecretFields(valueJson).toString());
+
+                } catch (JsonProcessingException e) {
+                  redactedCommand.add(RedactingService.redactString(value));
+                }
               });
     }
     // If there are entries with redacted values, update them.
@@ -124,7 +137,7 @@ public class ShellProcessHandler {
     Map<String, String> envVars = pb.environment();
     Map<String, String> extraEnvVars = context.getExtraEnvVars();
     if (MapUtils.isNotEmpty(extraEnvVars)) {
-      envVars.putAll(context.getExtraEnvVars());
+      envVars.putAll(extraEnvVars);
     }
     String devopsHome = appConfig.getString("yb.devops.home");
     if (devopsHome != null) {
@@ -133,11 +146,11 @@ public class ShellProcessHandler {
 
     ShellResponse response = new ShellResponse();
     response.code = ERROR_CODE_GENERIC_ERROR;
-    if (context.getDescription() == null) {
-      response.setDescription(redactedCommand);
-    } else {
-      response.description = context.getDescription();
-    }
+    String description =
+        context.getDescription() == null
+            ? StringUtils.abbreviateMiddle(String.join(" ", redactedCommand), " ... ", 140)
+            : context.getDescription();
+    response.description = description;
 
     File tempOutputFile = null;
     File tempErrorFile = null;
@@ -158,7 +171,7 @@ public class ShellProcessHandler {
         log.info(logMsg);
       }
       String fullCommand = "'" + String.join("' '", redactedCommand) + "'";
-      if (appConfig.getBoolean("yb.log.logEnvVars", false) && extraEnvVars != null) {
+      if (appConfig.getBoolean("yb.log.logEnvVars") && extraEnvVars != null) {
         fullCommand = Joiner.on(" ").withKeyValueSeparator("=").join(extraEnvVars) + fullCommand;
       }
       logMsg =
@@ -179,8 +192,7 @@ public class ShellProcessHandler {
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(
-          process, context.getDescription(), tempOutputFile, tempErrorFile, endTimeSecs);
+      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeSecs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       boolean logCmdOutput = context.isLogCmdOutput();
@@ -365,7 +377,8 @@ public class ShellProcessHandler {
     // with the process output being appended to this file but for the purposes
     // of logging, it is ok to log partial lines.
     while ((line = br.readLine()) != null) {
-      if (line.contains("[app]")) {
+      line = line.trim();
+      if (line.startsWith("[app]")) {
         log.info(line);
       }
       count++;

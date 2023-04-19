@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TOOLS_BULK_LOAD_DOCDB_UTIL_H
-#define YB_TOOLS_BULK_LOAD_DOCDB_UTIL_H
+#pragma once
 
 #include "yb/docdb/docdb_util.h"
 
@@ -28,6 +27,7 @@ class BulkLoadDocDBUtil : public docdb::DocDBRocksDBUtil {
   std::string tablet_id() override;
   size_t block_cache_size() const override  { return 0; }
   const std::string& rocksdb_dir();
+  Schema CreateSchema() override { return Schema(); }
 
  private:
   const std::string tablet_id_;
@@ -39,5 +39,3 @@ class BulkLoadDocDBUtil : public docdb::DocDBRocksDBUtil {
 
 } // namespace tools
 } // namespace yb
-
-#endif // YB_TOOLS_BULK_LOAD_DOCDB_UTIL_H

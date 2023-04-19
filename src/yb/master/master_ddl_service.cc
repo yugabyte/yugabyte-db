@@ -57,6 +57,7 @@ class MasterDdlServiceImpl : public MasterServiceBase, public MasterDdlIf {
     (ListTablegroups)
     (ListTables)
     (ListUDTypes)
+    (ReportYsqlDdlTxnStatus)
     (TruncateTable)
   )
 };

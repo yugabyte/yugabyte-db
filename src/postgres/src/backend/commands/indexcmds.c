@@ -70,8 +70,10 @@
 
 /* YB includes. */
 #include "catalog/pg_database.h"
+#include "commands/progress.h"
 #include "commands/tablegroup.h"
 #include "pg_yb_utils.h"
+#include "pgstat.h"
 
 /* non-export function prototypes */
 static bool CompareOpclassOptions(Datum *opts1, Datum *opts2, int natts);
@@ -112,6 +114,9 @@ static bool ReindexRelationConcurrently(Oid relationOid,
 										ReindexParams *params);
 static void update_relispartition(Oid relationId, bool newval);
 static inline void set_indexsafe_procflags(void);
+
+/* YB function declarations. */
+static void YbWaitForBackendsCatalogVersion();
 
 /*
  * callback argument type for RangeVarCallbackForReindexIndex()
@@ -652,6 +657,26 @@ DefineIndex(Oid relationId,
 				(errcode(ERRCODE_TOO_MANY_COLUMNS),
 				 errmsg("cannot use more than %d columns in an index",
 						INDEX_MAX_KEYS)));
+
+#ifdef YB_TODO
+	/* YB_TODO(neil) Need to redo the work on index to reintro Postgres code.
+	 * Code is not mergeable at the current state.
+	 */
+	if (IsYugaByteEnabled())
+	{
+		const int	cols[] = {
+			PROGRESS_CREATEIDX_PHASE,
+			PROGRESS_CREATEIDX_TUPLES_TOTAL,
+			PROGRESS_CREATEIDX_TUPLES_DONE,
+		};
+		const int64	values[] = {
+			YB_PROGRESS_CREATEIDX_INITIALIZING,
+			rel->rd_rel->reltuples,
+			0
+		};
+		pgstat_progress_update_multi_param(3, cols, values);
+	}
+#endif
 
 	/*
 	 * Only SELECT ... FOR UPDATE/SHARE are allowed while doing a standard
@@ -1413,7 +1438,7 @@ DefineIndex(Oid relationId,
 					 flags, constr_flags,
 					 allowSystemTableMods, !check_rights,
 					 &createdConstraintId, stmt->split_options,
-					 !concurrent, tablegroupId, colocation_id);
+					 !concurrent, is_colocated, tablegroupId, colocation_id);
 
 	ObjectAddressSet(address, RelationRelationId, indexRelationId);
 
@@ -2211,7 +2236,7 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									errmsg("hash column not allowed after an ASC/DESC column")));
-						else if (tablegroupId != InvalidOid)
+						else if (tablegroupId != InvalidOid && !MyDatabaseColocated)
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 									 errmsg("cannot create a hash partitioned"

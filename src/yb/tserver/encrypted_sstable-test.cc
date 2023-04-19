@@ -47,7 +47,6 @@ DECLARE_int64(encryption_counter_max);
 DECLARE_bool(TEST_encryption_use_openssl_compatible_counter_overflow);
 
 namespace yb {
-namespace enterprise {
 
 namespace {
 
@@ -173,7 +172,7 @@ void EncryptedSSTableTest::CounterOverflow(
       table_reader->NewIterator(rocksdb::ReadOptions()));
   it->SeekToFirst();
   int i = 0;
-  while (it->Valid()) {
+  while (ASSERT_RESULT(it->CheckedValid())) {
     ASSERT_EQ(it->key(), GetKey(i));
     ASSERT_EQ(it->value(), GetValue(i));
     i++;
@@ -196,5 +195,4 @@ TEST_P(EncryptedSSTableTest, CounterOverflow100000Keys) {
   CounterOverflow(100 * 1000, 0xffffff00);
 }
 
-} // namespace enterprise
 } // namespace yb

@@ -22,7 +22,7 @@ Use the `DROP INDEX` statement to remove an index and all of its data from the d
 
 ### Grammar
 
-```
+```ebnf
 drop_index ::= DROP INDEX [ IF EXISTS ] index_name;
 ```
 

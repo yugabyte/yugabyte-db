@@ -11,11 +11,13 @@ public class SupportBundleComponentFactory {
   private final UniverseLogsComponent universeLogsComponent;
   private final OutputFilesComponent outputFilesComponent;
   private final ErrorFilesComponent errorFilesComponent;
+  private final CoreFilesComponent coreFilesComponent;
   private final GFlagsComponent gFlagsComponent;
   private final InstanceComponent instanceComponent;
   private final ConsensusMetaComponent consensusMetaComponent;
   private final TabletMetaComponent tabletMetaComponent;
   private final YbcLogsComponent ybcLogsComponent;
+  private final K8sInfoComponent k8sInfoComponent;
 
   @Inject
   public SupportBundleComponentFactory(
@@ -23,20 +25,24 @@ public class SupportBundleComponentFactory {
       UniverseLogsComponent universeLogsComponent,
       OutputFilesComponent outputFilesComponent,
       ErrorFilesComponent errorFilesComponent,
+      CoreFilesComponent coreFilesComponent,
       GFlagsComponent gFlagsComponent,
       InstanceComponent instanceComponent,
       ConsensusMetaComponent consensusMetaComponent,
       TabletMetaComponent tabletMetaComponent,
-      YbcLogsComponent ybcLogsComponent) {
+      YbcLogsComponent ybcLogsComponent,
+      K8sInfoComponent k8sInfoComponent) {
     this.applicationLogsComponent = applicationLogsComponent;
     this.universeLogsComponent = universeLogsComponent;
     this.outputFilesComponent = outputFilesComponent;
     this.errorFilesComponent = errorFilesComponent;
+    this.coreFilesComponent = coreFilesComponent;
     this.gFlagsComponent = gFlagsComponent;
     this.instanceComponent = instanceComponent;
     this.consensusMetaComponent = consensusMetaComponent;
     this.tabletMetaComponent = tabletMetaComponent;
     this.ybcLogsComponent = ybcLogsComponent;
+    this.k8sInfoComponent = k8sInfoComponent;
   }
 
   // Maps the support bundle component type to its respective implementation
@@ -56,6 +62,9 @@ public class SupportBundleComponentFactory {
       case ErrorFiles:
         supportBundleComponent = this.errorFilesComponent;
         break;
+      case CoreFiles:
+        supportBundleComponent = this.coreFilesComponent;
+        break;
       case GFlags:
         supportBundleComponent = this.gFlagsComponent;
         break;
@@ -71,6 +80,8 @@ public class SupportBundleComponentFactory {
       case YbcLogs:
         supportBundleComponent = this.ybcLogsComponent;
         break;
+      case K8sInfo:
+        supportBundleComponent = this.k8sInfoComponent;
       default:
         break;
     }

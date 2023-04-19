@@ -155,7 +155,7 @@ public class MetricService {
 
   public static Metric buildMetricTemplate(
       PlatformMetrics metric, Universe universe, long metricExpiryPeriodSec) {
-    Customer customer = Customer.get(universe.customerId);
+    Customer customer = Customer.get(universe.getCustomerId());
     return buildMetricTemplate(metric, customer, universe, metricExpiryPeriodSec);
   }
 

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_YB_MINI_CLUSTER_TEST_BASE_H_
-#define YB_INTEGRATION_TESTS_YB_MINI_CLUSTER_TEST_BASE_H_
+#pragma once
 
 #include <memory>
 
@@ -21,6 +20,12 @@
 #include "yb/client/client.h"
 
 namespace yb {
+
+namespace test {
+
+YB_DEFINE_ENUM(Partitioning, (kHash)(kRange))
+
+}
 
 template <class T>
 class YBMiniClusterTestBase: public YBTest {
@@ -64,5 +69,3 @@ class MiniClusterTestWithClient : public YBMiniClusterTestBase<T> {
 };
 
 } // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_YB_MINI_CLUSTER_TEST_BASE_H_

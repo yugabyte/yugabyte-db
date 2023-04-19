@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: PostgreSQL Psycopg2 Driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Python drivers for YSQL
+description: Connect a Python application using PostgreSQL Psycopg2 Driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,20 +12,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../yugabyte-psycopg2/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li>
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../yugabyte-psycopg2/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
@@ -203,6 +202,10 @@ Query returned: John, 35, Python
 ```
 
 If there is no output or you get an error, verify the parameters included in the connection string.
+
+### Limitations
+
+Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.
 
 ## Learn more
 

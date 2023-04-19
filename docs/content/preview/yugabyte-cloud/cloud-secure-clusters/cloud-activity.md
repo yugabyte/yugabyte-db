@@ -29,15 +29,17 @@ To filter the activity list, enter a search term. You can also filter the list b
 The following table lists the activity that is logged.
 
 | Source | Activity |
-| --- | --- |
-| Cluster | Create Cluster<br>Delete Cluster<br>Edit Cluster<br>Upgrade Cluster<br>Pause Cluster<br>Resume Cluster |
+| :----- | :------- |
 | Allow List | Create Allow List<br>Delete Allow List |
+| API Key | Create API Key<br>Expire API Key<br>Revoke API Key |
 | Backup | Create Backup<br>Delete Backup<br>Restore Backup |
-| Maintenance | Edit Maintenance Window<br>Edit Maintenance Exclusion<br>Schedule Maintenance Event |
-| Billing | Add Billing<br>Edit Billing |
-| Payment | Add Payment<br>Edit Payment<br>Delete Payment |
-| Account | Add User<br>Edit User<br>Remove User<!-- <br>Activate user -->|
 | Backup Schedule | Add Backup Schedule<br>Edit Backup Schedule<br>Delete Backup Schedule |
+| Billing | Add Billing<br>Edit Billing |
+| Cluster | Create Cluster<br>Delete Cluster<br>Edit Cluster<br>Upgrade Cluster<br>Pause Cluster<br>Resume Cluster |
+| Login Types | Edit Login Types |
+| Maintenance | Edit Maintenance Window<br>Edit Maintenance Exclusion<br>Schedule Maintenance Event |
+| Payment | Add Payment<br>Edit Payment<br>Delete Payment |
+| Read Replica | Create read replica<br>Edit read replica<br>Delete read replica |
+| User | Add User<br>Edit User<br>Remove User<br>Activate user |
 | VPC | Create VPC<br>Delete VPC |
 | VPC Peering | Create VPC Peering<br>Delete VPC Peering |
-| API Key | Create API Key<br>Expire API Key<br>Revoke API Key |

@@ -6,8 +6,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
@@ -35,7 +33,7 @@ public class PersistSystemdUpgrade extends UniverseTaskBase {
     String ret =
         super.getName()
             + "("
-            + taskParams().universeUUID
+            + taskParams().getUniverseUUID()
             + ", useSystemd: "
             + taskParams().useSystemd
             + ")";
@@ -52,9 +50,11 @@ public class PersistSystemdUpgrade extends UniverseTaskBase {
             @Override
             public void run(Universe universe) {
               UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-              UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
-              // Update useSystemd to true
-              userIntent.useSystemd = true;
+              // Update useSystemd to true for all clusters in the universe.
+              universeDetails.getPrimaryCluster().userIntent.useSystemd = true;
+              universeDetails
+                  .getReadOnlyClusters()
+                  .forEach((readReplica) -> readReplica.userIntent.useSystemd = true);
               universe.setUniverseDetails(universeDetails);
             }
           };

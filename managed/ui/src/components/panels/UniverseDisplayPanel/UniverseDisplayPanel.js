@@ -4,11 +4,11 @@ import React, { Component } from 'react';
 import { Link } from 'react-router';
 import { Row, Col } from 'react-bootstrap';
 import { isFinite } from 'lodash';
+
 import { YBLoading } from '../../common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBCost, DescriptionItem } from '../../../components/common/descriptors';
 import { UniverseStatusContainer } from '../../../components/universes';
-import './UniverseDisplayPanel.scss';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { YBButton } from '../../common/forms/fields';
 import {
@@ -18,7 +18,9 @@ import {
   getUniverseNodeCount
 } from '../../../utils/UniverseUtils';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
-import { TimestampWithTimezone } from '../../common/timestampWithTimezone/TimestampWithTimezone';
+import { ybFormatDate, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
+
+import './UniverseDisplayPanel.scss';
 
 class CTAButton extends Component {
   render() {
@@ -39,7 +41,7 @@ class CTAButton extends Component {
 
 class UniverseDisplayItem extends Component {
   render() {
-    const { universe, providers, refreshUniverseData } = this.props;
+    const { universe, providers, refreshUniverseData, runtimeConfigs } = this.props;
     if (!isNonEmptyObject(universe)) {
       return <span />;
     }
@@ -60,18 +62,23 @@ class UniverseDisplayItem extends Component {
     const pricePerHour = universe.pricePerHour;
     const numNodes = <span>{nodeCount}</span>;
     let costPerMonth = <span>n/a</span>;
+
     if (isFinite(pricePerHour)) {
-      costPerMonth = <YBCost
-        value={pricePerHour}
-        multiplier={'month'}
-        isPricingKnown={isPricingKnown}
-      />;
+      costPerMonth = (
+        <YBCost
+          value={pricePerHour}
+          multiplier={'month'}
+          isPricingKnown={isPricingKnown}
+          runtimeConfigs={runtimeConfigs}
+        />
+      );
     }
     const universeCreationDate = universe.creationDate ? (
-      <TimestampWithTimezone timeFormat="MM/DD/YYYY" timestamp={universe.creationDate} />
+      ybFormatDate(universe.creationDate, YBTimeFormats.YB_DATE_ONLY_TIMESTAMP)
     ) : (
       ''
     );
+
     return (
       <Col sm={4} md={3} lg={2}>
         <Link to={'/universes/' + universe.universeUUID}>
@@ -80,6 +87,7 @@ class UniverseDisplayItem extends Component {
               <UniverseStatusContainer
                 currentUniverse={universe}
                 refreshUniverseData={refreshUniverseData}
+                shouldDisplayTaskButton={false}
               />
             </div>
             <div className="display-name">{universe.name}</div>
@@ -106,12 +114,19 @@ class UniverseDisplayItem extends Component {
 }
 
 export default class UniverseDisplayPanel extends Component {
+  componentDidMount() {
+    if (!this.props.runtimeConfigs) {
+      this.props.fetchGlobalRunTimeConfigs();
+    }
+  }
+
   render() {
     const self = this;
     const {
       universe: { universeList },
       cloud: { providers },
-      customer: { currentCustomer }
+      customer: { currentCustomer },
+      runtimeConfigs
     } = this.props;
     if (getPromiseState(providers).isSuccess()) {
       let universeDisplayList = <span />;
@@ -127,6 +142,7 @@ export default class UniverseDisplayPanel extends Component {
                 universe={universeItem}
                 providers={providers}
                 refreshUniverseData={self.props.fetchUniverseMetadata}
+                runtimeConfigs={runtimeConfigs}
               />
             );
           });

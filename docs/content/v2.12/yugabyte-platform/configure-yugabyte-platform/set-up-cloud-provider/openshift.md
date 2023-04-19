@@ -13,48 +13,48 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
-      <i class="fab fa-aws"></i>
+    <a href="../aws" class="nav-link">
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+    <a href="../gcp" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../kubernetes" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../vmware-tanzu" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+    <a href="../openshift" class="nav-link active">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
-      <i class="fas fa-building"></i>
+    <a href="../on-premises" class="nav-link">
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
@@ -135,8 +135,9 @@ You can create a provider as follows:
   - Use the **Kube Config** field to select the file that you created in the preceding step.
   - In the **Service Account** field, enter yugabyte-platform-universe-management.
   - In the **Image Registry** field, if you are performing Operator-based installation, use  `registry.connect.redhat.com/yugabytedb/yugabyte`, and if you are performing Helm-based installation, use  `quay.io/yugabyte/yugabyte-ubi`
-  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support. <br><br>
-![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
+  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support.
+
+    ![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
 
 - Click **Add Region** and complete the **Add new region** dialog shown in the following illustration by first selecting the region you found previously (US East), and then entering the following information:
   - In the **Zone** field, enter the exact zone label (us-east4-a).
@@ -160,7 +161,7 @@ You can create a universe using the provider as follows:
   - In the **Name** field, enter universe-1.
   - In the **Provider** field, enter ocp-test.
   - In the **Regions** field, enter US East.
-  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).<br><br>
+  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).
 
   ![Create Universe](/images/ee/openshift-create-uni.png)
 

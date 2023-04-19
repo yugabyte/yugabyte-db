@@ -16,7 +16,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Audit;
@@ -27,9 +26,9 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.util.Objects;
 import java.util.UUID;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -52,13 +51,19 @@ public class UniverseClustersController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true))
-  public Result createAllClusters(UUID customerUUID) {
+  public Result createAllClusters(UUID customerUUID, Http.Request request) {
     // TODO: add assertions that only expected params are set or bad_request
     // Basically taskParams.clusters[]->userIntent and may be few more things
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+
+    // explicitly setting useSystemd as true while creating new universe cluster if this property
+    // is not already set by caller.
+    if (taskParams.getPrimaryCluster().userIntent.useSystemd == null) {
+      taskParams.getPrimaryCluster().userIntent.useSystemd = true;
+    }
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
     taskParams.currentClusterType = ClusterType.PRIMARY;
@@ -74,11 +79,10 @@ public class UniverseClustersController extends AuthenticatedController {
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             Objects.toString(universeResp.universeUUID, null),
             Audit.ActionType.CreateCluster,
-            request().body().asJson(),
             universeResp.taskUUID);
 
     return new YBPTask(universeResp.taskUUID, universeResp.universeUUID).asResult();
@@ -101,11 +105,11 @@ public class UniverseClustersController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true))
-  public Result updatePrimaryCluster(UUID customerUUID, UUID universeUUID) {
+  public Result updatePrimaryCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.PRIMARY;
@@ -114,11 +118,10 @@ public class UniverseClustersController extends AuthenticatedController {
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.UpdatePrimaryCluster,
-            request().body().asJson(),
             taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
@@ -136,23 +139,23 @@ public class UniverseClustersController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseDefinitionTaskParams",
           required = true))
-  public Result createReadOnlyCluster(UUID customerUUID, UUID universeUUID) {
+  public Result createReadOnlyCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    UniverseConfigureTaskParams taskParams =
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
+    taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+    taskParams.currentClusterType = ClusterType.ASYNC;
+    universeCRUDHandler.configure(customer, taskParams);
 
-    UUID taskUUID =
-        universeCRUDHandler.createCluster(
-            customer,
-            universe,
-            bindFormDataToTaskParams(ctx(), request(), UniverseDefinitionTaskParams.class));
+    UUID taskUUID = universeCRUDHandler.createCluster(customer, universe, taskParams);
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.CreateReadOnlyCluster,
-            request().body().asJson(),
             taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }
@@ -163,7 +166,11 @@ public class UniverseClustersController extends AuthenticatedController {
       response = YBPTask.class,
       nickname = "deleteReadonlyCluster")
   public Result deleteReadonlyCluster(
-      UUID customerUUID, UUID universeUUID, UUID clusterUUID, Boolean isForceDelete) {
+      UUID customerUUID,
+      UUID universeUUID,
+      UUID clusterUUID,
+      Boolean isForceDelete,
+      Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
@@ -172,7 +179,7 @@ public class UniverseClustersController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.DeleteReadOnlyCluster,
@@ -200,11 +207,11 @@ public class UniverseClustersController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true))
-  public Result updateReadOnlyCluster(UUID customerUUID, UUID universeUUID) {
+  public Result updateReadOnlyCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     UniverseConfigureTaskParams taskParams =
-        bindFormDataToTaskParams(ctx(), request(), UniverseConfigureTaskParams.class);
+        bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.EDIT;
     taskParams.currentClusterType = ClusterType.ASYNC;
@@ -213,11 +220,10 @@ public class UniverseClustersController extends AuthenticatedController {
     UUID taskUUID = universeCRUDHandler.update(customer, universe, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.UpdateReadOnlyCluster,
-            request().body().asJson(),
             taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
   }

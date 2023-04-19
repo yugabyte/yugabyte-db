@@ -11,6 +11,8 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
@@ -42,6 +44,7 @@ import com.google.cloud.kms.v1.CryptoKey.CryptoKeyPurpose;
 import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm;
 import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionState;
 import com.google.protobuf.ByteString;
+import com.yugabyte.yw.common.PlatformServiceException;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -49,20 +52,16 @@ import java.security.GeneralSecurityException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.apache.commons.lang3.StringUtils;
 
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class GcpEARServiceUtil {
-
-  public static final String GCP_CONFIG_FIELDNAME = "GCP_CONFIG";
-  public static final String LOCATION_ID_FIELDNAME = "LOCATION_ID";
-  public static final String PROTECTION_LEVEL_FIELDNAME = "PROTECTION_LEVEL";
-  public static final String GCP_KMS_ENDPOINT_FIELDNAME = "GCP_KMS_ENDPOINT";
-  public static final String KEY_RING_ID_FIELDNAME = "KEY_RING_ID";
-  public static final String CRYPTO_KEY_ID_FIELDNAME = "CRYPTO_KEY_ID";
 
   // bare minimum permissions required for using GCP KMS in YBA
   public static final List<String> minRequiredPermissionsList =
@@ -72,6 +71,50 @@ public class GcpEARServiceUtil {
           "cloudkms.cryptoKeyVersions.useToEncrypt",
           "cloudkms.cryptoKeyVersions.useToDecrypt",
           "cloudkms.locations.generateRandomBytes");
+
+  // All fields in Google KMS authConfig object sent from UI
+  public enum GcpKmsAuthConfigField {
+    GCP_CONFIG("GCP_CONFIG", true, false),
+    LOCATION_ID("LOCATION_ID", false, true),
+    PROTECTION_LEVEL("PROTECTION_LEVEL", false, false),
+    GCP_KMS_ENDPOINT("GCP_KMS_ENDPOINT", false, false),
+    KEY_RING_ID("KEY_RING_ID", false, true),
+    CRYPTO_KEY_ID("CRYPTO_KEY_ID", false, true);
+
+    public final String fieldName;
+    public final boolean isEditable;
+    public final boolean isMetadata;
+
+    GcpKmsAuthConfigField(String fieldName, boolean isEditable, boolean isMetadata) {
+      this.fieldName = fieldName;
+      this.isEditable = isEditable;
+      this.isMetadata = isMetadata;
+    }
+
+    public static List<String> getEditableFields() {
+      return Arrays.asList(values())
+          .stream()
+          .filter(configField -> configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+
+    public static List<String> getNonEditableFields() {
+      return Arrays.asList(values())
+          .stream()
+          .filter(configField -> !configField.isEditable)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+
+    public static List<String> getMetadataFields() {
+      return Arrays.asList(values())
+          .stream()
+          .filter(configField -> configField.isMetadata)
+          .map(configField -> configField.fieldName)
+          .collect(Collectors.toList());
+    }
+  }
 
   public ObjectNode getAuthConfig(UUID configUUID) {
     return EncryptionAtRestUtil.getAuthConfig(configUUID);
@@ -86,9 +129,10 @@ public class GcpEARServiceUtil {
    */
   public CredentialsProvider getCredentialsProvider(ObjectNode authConfig) {
     CredentialsProvider credentialsProvider = null;
-    if (authConfig.has(GCP_CONFIG_FIELDNAME)
-        && !StringUtils.isBlank(authConfig.path(GCP_CONFIG_FIELDNAME).toString())) {
-      String credentials = authConfig.path(GCP_CONFIG_FIELDNAME).toString();
+    if (authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+        && !StringUtils.isBlank(
+            authConfig.path(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).toString())) {
+      String credentials = authConfig.path(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).toString();
       try {
         ServiceAccountCredentials serviceAccountCredentials =
             ServiceAccountCredentials.fromStream(new ByteArrayInputStream(credentials.getBytes()));
@@ -117,10 +161,11 @@ public class GcpEARServiceUtil {
     if (credentialsProvider != null) {
       keyManagementServiceSettingsBuilder.setCredentialsProvider(credentialsProvider);
     }
-    if (authConfig.has(GCP_KMS_ENDPOINT_FIELDNAME)
-        && !StringUtils.isBlank(authConfig.path(GCP_KMS_ENDPOINT_FIELDNAME).asText())) {
+    if (authConfig.has(GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName)
+        && !StringUtils.isBlank(
+            authConfig.path(GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName).asText())) {
       keyManagementServiceSettingsBuilder.setEndpoint(
-          authConfig.path(GCP_KMS_ENDPOINT_FIELDNAME).asText());
+          authConfig.path(GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName).asText());
     }
     KeyManagementServiceSettings keyManagementServiceSettings;
     KeyManagementServiceClient gcpKmsClient = null;
@@ -143,9 +188,10 @@ public class GcpEARServiceUtil {
    */
   public String getConfigProjectId(ObjectNode authConfig) {
     String projectId = "";
-    if (authConfig.has(GCP_CONFIG_FIELDNAME)
-        && authConfig.get(GCP_CONFIG_FIELDNAME).has("project_id")) {
-      projectId = authConfig.get(GCP_CONFIG_FIELDNAME).get("project_id").asText();
+    if (authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+        && authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).has("project_id")) {
+      projectId =
+          authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).get("project_id").asText();
     } else {
       log.info("Could not get GCP config project ID. 'GCP_CONFIG.project_id' not found.");
       return null;
@@ -161,8 +207,8 @@ public class GcpEARServiceUtil {
    */
   public String getConfigEndpoint(ObjectNode authConfig) {
     String endpoint = "";
-    if (authConfig.has(GCP_KMS_ENDPOINT_FIELDNAME)) {
-      endpoint = authConfig.path(GCP_KMS_ENDPOINT_FIELDNAME).asText();
+    if (authConfig.has(GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName)) {
+      endpoint = authConfig.path(GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName).asText();
     } else {
       log.info("Could not get GCP config endpoint from auth config. 'GCP_KMS_ENDPOINT' not found.");
       return null;
@@ -178,8 +224,8 @@ public class GcpEARServiceUtil {
    */
   public String getConfigKeyRingId(ObjectNode authConfig) {
     String keyRingId = "";
-    if (authConfig.has(KEY_RING_ID_FIELDNAME)) {
-      keyRingId = authConfig.path(KEY_RING_ID_FIELDNAME).asText();
+    if (authConfig.has(GcpKmsAuthConfigField.KEY_RING_ID.fieldName)) {
+      keyRingId = authConfig.path(GcpKmsAuthConfigField.KEY_RING_ID.fieldName).asText();
     } else {
       log.info("Could not get GCP config key ring from auth config. 'KEY_RING_ID' not found.");
       return null;
@@ -195,8 +241,8 @@ public class GcpEARServiceUtil {
    */
   public String getConfigCryptoKeyId(ObjectNode authConfig) {
     String cryptoKeyId = "";
-    if (authConfig.has(CRYPTO_KEY_ID_FIELDNAME)) {
-      cryptoKeyId = authConfig.path(CRYPTO_KEY_ID_FIELDNAME).asText();
+    if (authConfig.has(GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName)) {
+      cryptoKeyId = authConfig.path(GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName).asText();
     } else {
       log.info(
           "Could not get GCP config crypto key ID from auth config. 'CRYPTO_KEY_ID' not found.");
@@ -214,13 +260,26 @@ public class GcpEARServiceUtil {
    */
   public String getConfigLocationId(ObjectNode authConfig) {
     String locationId = "";
-    if (authConfig.has(LOCATION_ID_FIELDNAME)) {
-      locationId = authConfig.path(LOCATION_ID_FIELDNAME).asText();
+    if (authConfig.has(GcpKmsAuthConfigField.LOCATION_ID.fieldName)) {
+      locationId = authConfig.path(GcpKmsAuthConfigField.LOCATION_ID.fieldName).asText();
     } else {
       log.info("Could not get GCP config location ID from auth config. 'LOCATION_ID' not found.");
       return null;
     }
     return locationId;
+  }
+
+  public ProtectionLevel getConfigProtectionLevel(ObjectNode authConfig) {
+    String protectionLevel = "";
+    if (authConfig.has(GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName)) {
+      protectionLevel = authConfig.path(GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName).asText();
+    } else {
+      log.info(
+          "Could not get GCP config protection level from auth config. "
+              + "'GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName' not found.");
+      return null;
+    }
+    return ProtectionLevel.valueOf(protectionLevel);
   }
 
   /**
@@ -415,7 +474,44 @@ public class GcpEARServiceUtil {
           String.format("Key ring doesn't exist, while checking for crypto key '%s'", cryptoKeyRN));
       return false;
     }
-    return getCryptoKey(authConfig) != null;
+    CryptoKey cryptoKey = getCryptoKey(authConfig);
+    if (cryptoKey == null) {
+      return false;
+    }
+    // Sets the correct protection level for existing crypto key
+    CryptoKeyVersion cryptoKeyVersion = cryptoKey.getPrimary();
+    ProtectionLevel configProtectionLevel = getConfigProtectionLevel(authConfig);
+    if (cryptoKeyVersion != null
+        && !cryptoKeyVersion.getProtectionLevel().equals(configProtectionLevel)) {
+      log.info(
+          "Found existing key with different protection level. "
+              + "Changed protection level from {} to {}.",
+          configProtectionLevel,
+          cryptoKeyVersion.getProtectionLevel());
+      authConfig.put(
+          GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
+          cryptoKeyVersion.getProtectionLevel().toString());
+    }
+    return true;
+  }
+
+  /**
+   * Tests both the encrypt and decrypt operations with fake data. Mostly used for testing the
+   * permissions.
+   *
+   * @param authConfig the gcp auth config object
+   * @throws RuntimeException if wrap and unwrap operations don't give same output as original
+   */
+  public void testWrapAndUnwrapKey(ObjectNode authConfig) throws RuntimeException {
+    byte[] fakeKeyBytes = new byte[32];
+    new Random().nextBytes(fakeKeyBytes);
+    byte[] wrappedKey = encryptBytes(authConfig, fakeKeyBytes);
+    byte[] unwrappedKey = decryptBytes(authConfig, wrappedKey);
+    if (!Arrays.equals(fakeKeyBytes, unwrappedKey)) {
+      String errMsg = "Wrap and unwrap operations gave different key in GCP KMS.";
+      log.error(errMsg);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
   }
 
   /**
@@ -427,21 +523,21 @@ public class GcpEARServiceUtil {
    */
   public boolean validateCryptoKeySettings(ObjectNode authConfig) {
     if (!checkCryptoKeyExists(authConfig)) {
-      log.info("Crypto key doesn't exist while validating crypto key settings.");
+      log.error("Crypto key doesn't exist while validating crypto key settings.");
       return false;
     }
     CryptoKey cryptoKey = getCryptoKey(authConfig);
     if (cryptoKey.hasRotationPeriod()) {
-      log.info("Crypto key has a rotation period. Please set it to manual rotation (never).");
+      log.error("Crypto key has a rotation period. Please set it to manual rotation (never).");
       return false;
     }
     if (cryptoKey.getPurpose() != CryptoKeyPurpose.ENCRYPT_DECRYPT) {
-      log.info("Crypto key purpose is not 'ENCRYPT_DECRYPT'. Please set correctly.");
+      log.error("Crypto key purpose is not 'ENCRYPT_DECRYPT'. Please set correctly.");
       return false;
     }
     CryptoKeyVersion cryptoKeyVersion = cryptoKey.getPrimary();
     if (cryptoKeyVersion.getState() != CryptoKeyVersionState.ENABLED) {
-      log.info("Primary crypto key version is not enabled. Please enable it.");
+      log.error("Primary crypto key version is not enabled. Please enable it.");
       return false;
     }
     return true;
@@ -511,8 +607,11 @@ public class GcpEARServiceUtil {
     // Set the protection level to either HSM or default SOFTWARE
     CryptoKeyVersionTemplate.Builder cryptoKeyVersionTemplateBuilder =
         CryptoKeyVersionTemplate.newBuilder();
-    if (authConfig.has(PROTECTION_LEVEL_FIELDNAME)
-        && authConfig.path(PROTECTION_LEVEL_FIELDNAME).asText().equals("HSM")) {
+    if (authConfig.has(GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName)
+        && authConfig
+            .path(GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName)
+            .asText()
+            .equals("HSM")) {
       cryptoKeyVersionTemplateBuilder.setProtectionLevel(ProtectionLevel.HSM);
     }
     // Use default google symmetric encryption algorithm
@@ -655,7 +754,7 @@ public class GcpEARServiceUtil {
 
   public CloudResourceManager createCloudResourceManagerService(ObjectNode authConfig)
       throws IOException, GeneralSecurityException {
-    String credentials = authConfig.path(GCP_CONFIG_FIELDNAME).toString();
+    String credentials = authConfig.path(GcpKmsAuthConfigField.GCP_CONFIG.fieldName).toString();
 
     GoogleCredentials credential =
         GoogleCredentials.fromStream(new ByteArrayInputStream(credentials.getBytes()))
@@ -680,10 +779,10 @@ public class GcpEARServiceUtil {
   public boolean checkFieldsExist(ObjectNode formData) {
     List<String> fieldsList =
         Arrays.asList(
-            GCP_CONFIG_FIELDNAME,
-            LOCATION_ID_FIELDNAME,
-            KEY_RING_ID_FIELDNAME,
-            CRYPTO_KEY_ID_FIELDNAME);
+            GcpKmsAuthConfigField.GCP_CONFIG.fieldName,
+            GcpKmsAuthConfigField.LOCATION_ID.fieldName,
+            GcpKmsAuthConfigField.KEY_RING_ID.fieldName,
+            GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName);
     for (String fieldKey : fieldsList) {
       if (!formData.has(fieldKey) || StringUtils.isBlank(formData.path(fieldKey).toString())) {
         return false;
@@ -713,7 +812,7 @@ public class GcpEARServiceUtil {
     client.close();
     // Check if custom key ring id and crypto key id is given
     if (checkFieldsExist(formData)) {
-      String keyRingId = formData.path(KEY_RING_ID_FIELDNAME).asText();
+      String keyRingId = formData.path(GcpKmsAuthConfigField.KEY_RING_ID.fieldName).asText();
       log.info("validateKMSProviderConfigFormData: Checked all required fields exist.");
       // If given a custom key ring, validate its permissions
       if (testGcpPermissions(formData, minRequiredPermissionsList) == false) {

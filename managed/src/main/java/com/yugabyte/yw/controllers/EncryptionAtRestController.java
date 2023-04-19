@@ -12,7 +12,6 @@ package com.yugabyte.yw.controllers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.cloud.kms.v1.KeyManagementServiceClient;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
@@ -27,7 +26,11 @@ import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.HashicorpEARServiceUtil;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
+import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.AzuEARServiceUtil.AzuKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil.GcpKmsAuthConfigField;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
@@ -42,22 +45,21 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import io.swagger.annotations.ApiResponse;
+import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.mvc.Http;
+import play.mvc.Http.Request;
 import play.mvc.Result;
 
 @Api(
@@ -66,21 +68,17 @@ import play.mvc.Result;
 public class EncryptionAtRestController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(EncryptionAtRestController.class);
 
+  // All these fields must be kept the same from the old authConfig (if it has)
+  public static final List<String> awsKmsNonEditableFields =
+      AwsKmsAuthConfigField.getNonEditableFields();
+  // Below AWS fields can be editable. If no new field is specified, use the same old one.
+  public static final List<String> awsKmsEditableFields = AwsKmsAuthConfigField.getEditableFields();
+
   private static Set<String> API_URL =
       ImmutableSet.of("api.amer.smartkey.io", "api.eu.smartkey.io", "api.uk.smartkey.io");
 
-  public static final String AWS_ACCESS_KEY_ID_FIELDNAME = "AWS_ACCESS_KEY_ID";
-  public static final String AWS_SECRET_ACCESS_KEY_FIELDNAME = "AWS_SECRET_ACCESS_KEY";
-  public static final String AWS_REGION_FIELDNAME = "AWS_REGION";
-  public static final String AWS_KMS_ENDPOINT_FIELDNAME = "AWS_KMS_ENDPOINT";
-
   public static final String SMARTKEY_API_KEY_FIELDNAME = "api_key";
   public static final String SMARTKEY_BASE_URL_FIELDNAME = "base_url";
-
-  public static final String HC_ADDR_FNAME = HashicorpVaultConfigParams.HC_VAULT_ADDRESS;
-  public static final String HC_TOKEN_FNAME = HashicorpVaultConfigParams.HC_VAULT_TOKEN;
-  public static final String HC_ENGINE_FNAME = HashicorpVaultConfigParams.HC_VAULT_ENGINE;
-  public static final String HC_MPATH_FNAME = HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH;
 
   @Inject EncryptionAtRestManager keyManager;
 
@@ -96,7 +94,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     String kmsConfigName = formData.get("name").asText();
     if (KmsConfig.listKMSConfigs(customerUUID)
         .stream()
-        .anyMatch(config -> config.name.equals(kmsConfigName))) {
+        .anyMatch(config -> config.getName().equals(kmsConfigName))) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Kms config with %s name already exists", kmsConfigName));
     }
@@ -123,16 +121,16 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         if (formData.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
           try {
-            Function<ObjectNode, String> token =
-                new SmartKeyEARService()::retrieveSessionAuthorization;
-            token.apply(formData);
+            ((SmartKeyEARService) keyManager.getServiceInstance(KeyProvider.SMARTKEY.name()))
+                .retrieveSessionAuthorization(formData);
           } catch (Exception e) {
             throw new PlatformServiceException(BAD_REQUEST, "Invalid API Key.");
           }
         }
         break;
       case HASHICORP:
-        if (formData.get(HC_ADDR_FNAME) == null || formData.get(HC_TOKEN_FNAME) == null) {
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_ADDRESS) == null
+            || formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null) {
           throw new PlatformServiceException(BAD_REQUEST, "Invalid VAULT URL OR TOKEN");
         }
         try {
@@ -159,10 +157,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
           LOG.info(
               "Finished validating AZU provider config form data for key vault = "
                   + azuEARServiceUtil.getConfigFieldValue(
-                      formData, AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME)
+                      formData, AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName)
                   + ", key name = "
                   + azuEARServiceUtil.getConfigFieldValue(
-                      formData, AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME));
+                      formData, AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName));
         } catch (Exception e) {
           LOG.warn("Could not finish validating AZU provider config form data.");
           throw new PlatformServiceException(BAD_REQUEST, e.toString());
@@ -178,41 +176,49 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
     KmsConfig config = KmsConfig.get(configUUID);
     ObjectNode authconfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
-    if (formData.get("name") != null && !config.name.equals(formData.get("name").asText())) {
+    if (formData.get("name") != null && !config.getName().equals(formData.get("name").asText())) {
       throw new PlatformServiceException(BAD_REQUEST, "KmsConfig name cannot be changed.");
     }
 
     switch (keyProvider) {
       case AWS:
-        if (formData.get(AWS_REGION_FIELDNAME) != null
-            && !authconfig.get(AWS_REGION_FIELDNAME).equals(formData.get(AWS_REGION_FIELDNAME))) {
-          throw new PlatformServiceException(BAD_REQUEST, "KmsConfig region cannot be changed.");
+        for (String field : awsKmsNonEditableFields) {
+          if (formData.has(field)) {
+            if (!authconfig.has(field)
+                || (authconfig.has(field) && !authconfig.get(field).equals(formData.get(field)))) {
+              throw new PlatformServiceException(
+                  BAD_REQUEST, String.format("AWS KmsConfig field '%s' cannot be changed.", field));
+            }
+          }
         }
+        LOG.debug("Verified that all the fields in the AWS KMS request are editable");
         break;
       case SMARTKEY:
         // NO checks required
         break;
       case HASHICORP:
-        if (formData.get(HC_ENGINE_FNAME) != null
-            && !authconfig.get(HC_ENGINE_FNAME).equals(formData.get(HC_ENGINE_FNAME))) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "KmsConfig vault engine cannot be changed.");
-        }
-        if (formData.get(HC_MPATH_FNAME) != null
-            && !authconfig.get(HC_MPATH_FNAME).equals(formData.get(HC_MPATH_FNAME))) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "KmsConfig vault engine path cannot be changed.");
+        List<String> hashicorpKmsNonEditableFields =
+            Arrays.asList(
+                HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+                HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+                HashicorpVaultConfigParams.HC_VAULT_ADDRESS);
+        for (String field : hashicorpKmsNonEditableFields) {
+          if (formData.get(field) != null && !authconfig.get(field).equals(formData.get(field))) {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format("Hashicorp KmsConfig field '%s' cannot be changed.", field));
+          }
         }
         break;
       case GCP:
         // All the below fields are non editable
         List<String> nonEditableFields =
             Arrays.asList(
-                GcpEARServiceUtil.LOCATION_ID_FIELDNAME,
-                GcpEARServiceUtil.PROTECTION_LEVEL_FIELDNAME,
-                GcpEARServiceUtil.GCP_KMS_ENDPOINT_FIELDNAME,
-                GcpEARServiceUtil.KEY_RING_ID_FIELDNAME,
-                GcpEARServiceUtil.CRYPTO_KEY_ID_FIELDNAME);
+                GcpKmsAuthConfigField.LOCATION_ID.fieldName,
+                GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
+                GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName,
+                GcpKmsAuthConfigField.KEY_RING_ID.fieldName,
+                GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName);
         for (String field : nonEditableFields) {
           if (formData.has(field)) {
             if (!authconfig.has(field)
@@ -228,10 +234,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All the below fields are non editable in AZU
         List<String> nonEditableFieldsAzu =
             Arrays.asList(
-                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+                AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName);
         for (String field : nonEditableFieldsAzu) {
           if (formData.has(field)) {
             if (!authconfig.has(field)
@@ -255,17 +261,15 @@ public class EncryptionAtRestController extends AuthenticatedController {
     ObjectNode authConfig = EncryptionAtRestUtil.getAuthConfig(configUUID);
     switch (keyProvider) {
       case AWS:
-        formData.set(AWS_REGION_FIELDNAME, authConfig.get(AWS_REGION_FIELDNAME));
-        if (formData.get(AWS_ACCESS_KEY_ID_FIELDNAME) == null
-            && authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME) != null) {
-          formData.set(AWS_ACCESS_KEY_ID_FIELDNAME, authConfig.get(AWS_ACCESS_KEY_ID_FIELDNAME));
+        // Make a copy of the original authConfig object and edit the editable fields.
+        ObjectNode updatedFormData = authConfig.deepCopy();
+        for (String fieldName : awsKmsEditableFields) {
+          if (formData.has(fieldName)) {
+            updatedFormData.set(fieldName, formData.get(fieldName));
+          }
         }
-        if (formData.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) == null
-            && authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME) != null) {
-          formData.set(
-              AWS_SECRET_ACCESS_KEY_FIELDNAME, authConfig.get(AWS_SECRET_ACCESS_KEY_FIELDNAME));
-        }
-        break;
+        LOG.debug("Added all required AWS KMS fields to the formData to be edited");
+        return updatedFormData;
       case SMARTKEY:
         if (formData.get(SMARTKEY_API_KEY_FIELDNAME) == null
             && authConfig.get(SMARTKEY_API_KEY_FIELDNAME) != null) {
@@ -273,33 +277,40 @@ public class EncryptionAtRestController extends AuthenticatedController {
         }
         break;
       case HASHICORP:
-        formData.set(HC_ENGINE_FNAME, authConfig.get(HC_ENGINE_FNAME));
-        formData.set(HC_MPATH_FNAME, authConfig.get(HC_MPATH_FNAME));
+        formData.set(
+            HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+            authConfig.get(HashicorpVaultConfigParams.HC_VAULT_ENGINE));
+        formData.set(
+            HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+            authConfig.get(HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH));
 
-        if (formData.get(HC_TOKEN_FNAME) == null && authConfig.get(HC_TOKEN_FNAME) != null) {
-          formData.set(HC_TOKEN_FNAME, authConfig.get(HC_TOKEN_FNAME));
+        if (formData.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) == null
+            && authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN) != null) {
+          formData.set(
+              HashicorpVaultConfigParams.HC_VAULT_TOKEN,
+              authConfig.get(HashicorpVaultConfigParams.HC_VAULT_TOKEN));
         }
         break;
       case GCP:
         // All these fields must be kept the same from the old authConfig (if it has)
         List<String> nonEditableFields =
             Arrays.asList(
-                GcpEARServiceUtil.LOCATION_ID_FIELDNAME,
-                GcpEARServiceUtil.PROTECTION_LEVEL_FIELDNAME,
-                GcpEARServiceUtil.GCP_KMS_ENDPOINT_FIELDNAME,
-                GcpEARServiceUtil.KEY_RING_ID_FIELDNAME,
-                GcpEARServiceUtil.CRYPTO_KEY_ID_FIELDNAME);
+                GcpKmsAuthConfigField.LOCATION_ID.fieldName,
+                GcpKmsAuthConfigField.PROTECTION_LEVEL.fieldName,
+                GcpKmsAuthConfigField.GCP_KMS_ENDPOINT.fieldName,
+                GcpKmsAuthConfigField.KEY_RING_ID.fieldName,
+                GcpKmsAuthConfigField.CRYPTO_KEY_ID.fieldName);
         for (String field : nonEditableFields) {
           if (authConfig.has(field)) {
             formData.set(field, authConfig.get(field));
           }
         }
         // GCP_CONFIG field can change. If no config is specified, use the same old one.
-        if (!formData.has(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME)
-            && authConfig.has(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME)) {
+        if (!formData.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)
+            && authConfig.has(GcpKmsAuthConfigField.GCP_CONFIG.fieldName)) {
           formData.set(
-              GcpEARServiceUtil.GCP_CONFIG_FIELDNAME,
-              authConfig.get(GcpEARServiceUtil.GCP_CONFIG_FIELDNAME));
+              GcpKmsAuthConfigField.GCP_CONFIG.fieldName,
+              authConfig.get(GcpKmsAuthConfigField.GCP_CONFIG.fieldName));
         }
         LOG.info("Added all required fields to the formData to be edited");
         break;
@@ -307,10 +318,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // All these fields must be kept the same from the old authConfig (if it has)
         List<String> nonEditableFieldsAzu =
             Arrays.asList(
-                AzuEARServiceUtil.AZU_VAULT_URL_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_NAME_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_ALGORITHM_FIELDNAME,
-                AzuEARServiceUtil.AZU_KEY_SIZE_FIELDNAME);
+                AzuKmsAuthConfigField.AZU_VAULT_URL.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_NAME.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_ALGORITHM.fieldName,
+                AzuKmsAuthConfigField.AZU_KEY_SIZE.fieldName);
         for (String field : nonEditableFieldsAzu) {
           if (authConfig.has(field)) {
             formData.set(field, authConfig.get(field));
@@ -319,9 +330,9 @@ public class EncryptionAtRestController extends AuthenticatedController {
         // Below fields can change. If no new field is specified, use the same old one.
         List<String> editableFieldsAzu =
             Arrays.asList(
-                AzuEARServiceUtil.CLIENT_ID_FIELDNAME,
-                AzuEARServiceUtil.CLIENT_SECRET_FIELDNAME,
-                AzuEARServiceUtil.TENANT_ID_FIELDNAME);
+                AzuKmsAuthConfigField.CLIENT_ID.fieldName,
+                AzuKmsAuthConfigField.CLIENT_SECRET.fieldName,
+                AzuKmsAuthConfigField.TENANT_ID.fieldName);
         for (String field : editableFieldsAzu) {
           if (!formData.has(field) && authConfig.has(field)) {
             formData.set(field, authConfig.get(field));
@@ -345,7 +356,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         dataType = "Object",
         paramType = "body")
   })
-  public Result createKMSConfig(UUID customerUUID, String keyProvider) {
+  public Result createKMSConfig(UUID customerUUID, String keyProvider, Http.Request request) {
     LOG.info(
         String.format(
             "Creating KMS configuration for customer %s with %s",
@@ -353,7 +364,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     try {
       TaskType taskType = TaskType.CreateKMSConfig;
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      ObjectNode formData = (ObjectNode) request.body().asJson();
       // checks if a already KMS Config exists with the requested name
       checkIfKMSConfigExists(customerUUID, formData);
       // Validating the KMS Provider config details.
@@ -379,7 +390,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(), Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, formData, taskUUID);
+              request, Audit.TargetType.KMSConfig, null, Audit.ActionType.Create, taskUUID);
       return new YBPTask(taskUUID).asResult();
     } catch (Exception e) {
       throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
@@ -395,7 +406,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
         dataType = "Object",
         paramType = "body")
   })
-  public Result editKMSConfig(UUID customerUUID, UUID configUUID) {
+  public Result editKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Editing KMS configuration %s for customer %s",
@@ -412,18 +423,18 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
     try {
       TaskType taskType = TaskType.EditKMSConfig;
-      ObjectNode formData = (ObjectNode) request().body().asJson();
+      ObjectNode formData = (ObjectNode) request.body().asJson();
       // Check for non-editable fields.
-      checkEditableFields(formData, config.keyProvider, configUUID);
+      checkEditableFields(formData, config.getKeyProvider(), configUUID);
       // add non-editable fields in formData from existing config.
-      formData = addNonEditableFieldsData(formData, configUUID, config.keyProvider);
+      formData = addNonEditableFieldsData(formData, configUUID, config.getKeyProvider());
       // Validating the KMS Provider config details.
-      validateKMSProviderConfigFormData(formData, config.keyProvider.toString(), customerUUID);
+      validateKMSProviderConfigFormData(formData, config.getKeyProvider().toString(), customerUUID);
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
       taskParams.configUUID = configUUID;
-      taskParams.kmsProvider = config.keyProvider;
+      taskParams.kmsProvider = config.getKeyProvider();
       taskParams.providerConfig = formData;
-      taskParams.kmsConfigName = config.name;
+      taskParams.kmsConfigName = config.getName();
       taskParams.customerUUID = customerUUID;
       formData.remove("name");
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -440,7 +451,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
       auditService()
           .createAuditEntryWithReqBody(
-              ctx(),
+              request,
               Audit.TargetType.KMSConfig,
               configUUID.toString(),
               Audit.ActionType.Edit,
@@ -460,7 +471,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
     LOG.info(String.format("Retrieving KMS configuration %s", configUUID.toString()));
     KmsConfig config = KmsConfig.get(configUUID);
     ObjectNode kmsConfig =
-        keyManager.getServiceInstance(config.keyProvider.name()).getAuthConfig(configUUID);
+        keyManager.getServiceInstance(config.getKeyProvider().name()).getAuthConfig(configUUID);
     if (kmsConfig == null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -484,19 +495,20 @@ public class EncryptionAtRestController extends AuthenticatedController {
                   ObjectNode result = null;
                   ObjectNode credentials =
                       keyManager
-                          .getServiceInstance(configModel.keyProvider.name())
-                          .getAuthConfig(configModel.configUUID);
+                          .getServiceInstance(configModel.getKeyProvider().name())
+                          .getAuthConfig(configModel.getConfigUUID());
                   if (credentials != null) {
                     result = Json.newObject();
                     ObjectNode metadata = Json.newObject();
-                    metadata.put("configUUID", configModel.configUUID.toString());
-                    metadata.put("provider", configModel.keyProvider.name());
+                    metadata.put("configUUID", configModel.getConfigUUID().toString());
+                    metadata.put("provider", configModel.getKeyProvider().name());
                     metadata.put(
-                        "in_use", EncryptionAtRestUtil.configInUse(configModel.configUUID));
+                        "in_use", EncryptionAtRestUtil.configInUse(configModel.getConfigUUID()));
                     metadata.put(
                         "universeDetails",
-                        Json.toJson(EncryptionAtRestUtil.getUniverses(configModel.configUUID)));
-                    metadata.put("name", configModel.name);
+                        Json.toJson(
+                            EncryptionAtRestUtil.getUniverses(configModel.getConfigUUID())));
+                    metadata.put("name", configModel.getName());
                     result.put("credentials", CommonUtils.maskConfig(credentials));
                     result.put("metadata", metadata);
                   }
@@ -509,7 +521,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a KMS configuration", response = YBPTask.class)
-  public Result deleteKMSConfig(UUID customerUUID, UUID configUUID) {
+  public Result deleteKMSConfig(UUID customerUUID, UUID configUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Deleting KMS configuration %s for customer %s",
@@ -519,7 +531,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
       KmsConfig config = KmsConfig.get(configUUID);
       TaskType taskType = TaskType.DeleteKMSConfig;
       KMSConfigTaskParams taskParams = new KMSConfigTaskParams();
-      taskParams.kmsProvider = config.keyProvider;
+      taskParams.kmsProvider = config.getKeyProvider();
       taskParams.customerUUID = customerUUID;
       taskParams.configUUID = configUUID;
       UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -536,8 +548,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
       LOG.info(
           "Saved task uuid " + taskUUID + " in customer tasks table for customer: " + customerUUID);
       auditService()
-          .createAuditEntryWithReqBody(
-              ctx(),
+          .createAuditEntry(
+              request,
               Audit.TargetType.KMSConfig,
               configUUID.toString(),
               Audit.ActionType.Delete,
@@ -548,16 +560,38 @@ public class EncryptionAtRestController extends AuthenticatedController {
     }
   }
 
+  @ApiOperation(value = "Refresh KMS Config", response = YBPSuccess.class)
+  @ApiResponses(
+      @ApiResponse(
+          code = 500,
+          message = "If there is an error refreshing the KMS config.",
+          response = YBPError.class))
+  public Result refreshKMSConfig(UUID customerUUID, UUID configUUID, Request request) {
+    LOG.info(
+        "Refreshing KMS configuration '{}' for customer '{}'.",
+        configUUID.toString(),
+        customerUUID.toString());
+    KmsConfig kmsConfig = KmsConfig.getOrBadRequest(configUUID);
+    keyManager.getServiceInstance(kmsConfig.getKeyProvider().name()).refreshKms(configUUID);
+    auditService()
+        .createAuditEntryWithReqBody(
+            request, Audit.TargetType.KMSConfig, configUUID.toString(), Audit.ActionType.Refresh);
+    return YBPSuccess.withMessage(
+        String.format(
+            "Successfully refreshed %s KMS config '%s'.",
+            kmsConfig.getKeyProvider().name(), configUUID));
+  }
+
   @ApiOperation(
       value = "Retrive a universe's KMS key",
       response = Object.class,
       responseContainer = "Map")
-  public Result retrieveKey(UUID customerUUID, UUID universeUUID) {
+  public Result retrieveKey(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Retrieving universe key for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
-    ObjectNode formData = (ObjectNode) request().body().asJson();
+    ObjectNode formData = (ObjectNode) request.body().asJson();
     byte[] keyRef = Base64.getDecoder().decode(formData.get("reference").asText());
     UUID configUUID = UUID.fromString(formData.get("configUUID").asText());
     byte[] recoveredKey = getRecoveredKeyOrBadRequest(universeUUID, configUUID, keyRef);
@@ -567,11 +601,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .put("value", Base64.getEncoder().encodeToString(recoveredKey));
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
-            Audit.ActionType.RetrieveKmsKey,
-            formData);
+            Audit.ActionType.RetrieveKmsKey);
     return PlatformResults.withRawData(result);
   }
 
@@ -600,23 +633,25 @@ public class EncryptionAtRestController extends AuthenticatedController {
             .map(
                 history -> {
                   return Json.newObject()
-                      .put("reference", history.uuid.keyRef)
-                      .put("configUUID", history.configUuid.toString())
-                      .put("timestamp", history.timestamp.toString());
+                      .put("reference", history.getUuid().keyRef)
+                      .put("configUUID", history.getConfigUuid().toString())
+                      .put("re_encryption_count", history.getUuid().reEncryptionCount)
+                      .put("db_key_id", history.dbKeyId)
+                      .put("timestamp", history.getTimestamp().toString());
                 })
             .collect(Collectors.toList()));
   }
 
   @ApiOperation(value = "Remove a universe's key reference history", response = YBPSuccess.class)
-  public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID) {
+  public Result removeKeyRefHistory(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info(
         String.format(
             "Removing key ref for customer %s with universe %s",
             customerUUID.toString(), universeUUID.toString()));
     keyManager.cleanupEncryptionAtRest(customerUUID, universeUUID);
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.RemoveKmsKeyReferenceHistory);
@@ -633,7 +668,7 @@ public class EncryptionAtRestController extends AuthenticatedController {
             "Retrieving key ref for customer %s and universe %s",
             customerUUID.toString(), universeUUID.toString()));
     KmsHistory activeKey = EncryptionAtRestUtil.getActiveKeyOrBadRequest(universeUUID);
-    String keyRef = activeKey.uuid.keyRef;
+    String keyRef = activeKey.getUuid().keyRef;
     if (keyRef == null || keyRef.length() == 0) {
       throw new PlatformServiceException(
           BAD_REQUEST,

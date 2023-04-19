@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_SNAPSHOT_STATE_H
-#define YB_MASTER_SNAPSHOT_STATE_H
+#pragma once
 
 #include "yb/common/hybrid_time.h"
 #include "yb/common/snapshot.h"
@@ -33,8 +32,6 @@ DECLARE_int64(max_concurrent_snapshot_rpcs_per_tserver);
 
 namespace yb {
 namespace master {
-
-YB_STRONGLY_TYPED_BOOL(ForClient);
 
 struct TabletSnapshotOperation {
   TabletId tablet_id;
@@ -109,7 +106,7 @@ class SnapshotState : public StateWithTablets {
   void DeleteAborted(const Status& status);
 
  private:
-  bool IsTerminalFailure(const Status& status) override;
+  std::optional<SysSnapshotEntryPB::State> GetTerminalStateForStatus(const Status& status) override;
   Status CheckDoneStatus(const Status& status) override;
 
   TxnSnapshotId id_;
@@ -130,5 +127,3 @@ Result<docdb::KeyBytes> EncodedSnapshotKey(
 
 } // namespace master
 } // namespace yb
-
-#endif  // YB_MASTER_SNAPSHOT_STATE_H

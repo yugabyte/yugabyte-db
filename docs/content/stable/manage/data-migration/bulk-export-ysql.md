@@ -26,7 +26,7 @@ type: docs
   </li>
 </ul>
 
-This page describes the following steps required to export PostgreSQL data to YugabyteDB.
+This page describes the following steps required to export PostgreSQL data to YugabyteDB:
 
 - [Convert a PostgreSQL schema](#convert-a-postgresql-schema)
 - [Migrate a PostgreSQL application](#migrate-a-postgresql-application)
@@ -44,7 +44,7 @@ The `ysql_dump` tool can simplify some steps of your schema migration, refer to 
 
 ### Specify `PRIMARY KEY` inline
 
-YugabyteDB (as of v2.2) does not support the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. This is because the data in YugabyteDB tables are index-organized according to the primary key specification. There is a significant performance difference in a distributed SQL database between a table that is organized by row ID with an added primary key constraint, versus a table whose data layout is index-organized from the get go.
+YugabyteDB supports the PostgreSQL syntax of first declaring a table, and subsequently running an ALTER TABLE command to add the primary key. Note that the ALTER TABLE operation requires a disk re-write and may be resource intensive, so it is recommended to set the primary key inline as part of the CREATE TABLE operation.
 
 ### Use `HASH` sort order
 
@@ -263,7 +263,7 @@ To export the data, connect to the source PostgreSQL database using the psql too
 ```sql
 COPY <table_name>
     TO '<table_name>.csv'
-    WITH (FORMAT CSV DELIMITER ',' HEADER);
+    WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 {{< note title="Note" >}}
@@ -280,7 +280,7 @@ COPY (
     WHERE <condition>
 )
 TO '<table_name>.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 For all available options provided by the COPY TO command, refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/current/sql-copy.html).
@@ -296,7 +296,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET 0
 )
 TO '<table_name>_1.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 ```sql
@@ -306,7 +306,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET num_rows_per_export
 )
 TO '<table_name>_2.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 ```sql
@@ -316,7 +316,7 @@ COPY (
     LIMIT num_rows_per_export OFFSET num_rows_per_export * 2
 )
 TO '<table_name>_3.csv'
-WITH (FORMAT CSV DELIMITER ',' HEADER);
+WITH (FORMAT CSV, HEADER false, DELIMITER ',');
 ```
 
 You can run the above commands in parallel to speed up the process. This approach will also produce multiple CSV files, allowing for parallel import on the YugabyteDB side.

@@ -19,13 +19,13 @@ Use the `CREATE DATABASE` statement to create a database that functions as a gro
 <ul class="nav nav-tabs nav-tabs-yb">
   <li >
     <a href="#grammar" class="nav-link active" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <i class="fas fa-file-alt" aria-hidden="true"></i>
+      <img src="/icons/file-lines.svg" alt="Grammar Icon">
       Grammar
     </a>
   </li>
   <li>
     <a href="#diagram" class="nav-link" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <i class="fas fa-project-diagram" aria-hidden="true"></i>
+      <img src="/icons/diagram.svg" alt="Diagram Icon">
       Diagram
     </a>
   </li>
@@ -85,7 +85,10 @@ Specify `false` to only superusers or the owner of the database can clone it.
 
 ### COLOCATED
 
+Colocated table support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+
 Specify `true` if all tables for this database should be colocated on a single tablet. See [colocated tables architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/ysql-colocated-tables.md) for details on when colocated tables are useful.
+
 Default value is `false` and every table in the database will have its own set of tablets.
 
 ## Examples

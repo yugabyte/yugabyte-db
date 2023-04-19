@@ -122,8 +122,8 @@ typedef std::unordered_map<std::string,
                            std::pair<std::unordered_map<std::string, int>, int>> DriveStats;
 
 Status GetTabletsDriveStats(DriveStats* stats,
-                                    yb::MiniCluster* mini_cluster,
-                                    const yb::client::YBTableName& table_name) {
+                            yb::MiniCluster* mini_cluster,
+                            const yb::client::YBTableName& table_name) {
   scoped_refptr<master::TableInfo> tbl_info =
     VERIFY_RESULT(mini_cluster->GetLeaderMiniMaster())->catalog_manager().
       GetTableInfoFromNamespaceNameAndTableName(table_name.namespace_type(),

@@ -14,11 +14,13 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_table_name.h"
-
+#include "yb/tserver/tablet_server.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/mini_master.h"
-
+#include "yb/master/master_client.pb.h"
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 
@@ -41,6 +43,10 @@ YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionsGFlag);
 YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
 YB_STRONGLY_TYPED_BOOL(WaitForHashChange);
 YB_STRONGLY_TYPED_BOOL(InsertToLocalFirst);
+// 90 leaders per zone and a total of 3 zones so 270 leader distributions. Worst-case even if the LB
+// is doing 1 leader move per run (it does more than that in practice) then at max it will take 270
+// runs i.e. 270 secs (1 run = 1 sec)
+const auto kWaitLeaderDistributionTimeout = MonoDelta::FromMilliseconds(270000);
 
 } // namespace
 
@@ -211,6 +217,72 @@ class GeoTransactionsTest : public GeoTransactionsTestBase {
       ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1_1", kTablePrefix, to_region));
       ASSERT_OK(conn.CommitTransaction());
     }
+  }
+
+  // Get the leader replica count and total replica count of a group of tablets belongs to a table
+  // on a tserver.
+  Result<std::pair<size_t, size_t>> GetTServerReplicaCount(
+      tserver::MiniTabletServer* tserver,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets) {
+    size_t leader_count = 0;
+    size_t total_count = 0;
+
+    for (const auto& tablet : tablets) {
+      for (const auto& replica : tablet.replicas()) {
+        if (replica.ts_info().permanent_uuid() == tserver->server()->permanent_uuid()) {
+          if (replica.role() == PeerRole::LEADER) {
+            leader_count++;
+          }
+          total_count++;
+        }
+      }
+    }
+    return std::make_pair(leader_count, total_count);
+  }
+
+  Result<bool> VerifyTableReplicaDistributionInZone(
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const std::vector<size_t>& current_zone_tserver_indexes,
+      bool is_table_in_current_zone) {
+    const auto expected_leaders_per_server = tablets.size() / current_zone_tserver_indexes.size();
+    for (auto tserver_idx : current_zone_tserver_indexes) {
+      const auto& [leader_count, total_count] =
+          VERIFY_RESULT(GetTServerReplicaCount(cluster_->mini_tablet_server(tserver_idx), tablets));
+
+      if (is_table_in_current_zone) {
+        // If table is pinned to the same zone as this tserver, check that replicas are evenly
+        // distributed.
+        if (leader_count != expected_leaders_per_server ||
+            static_cast<int>(total_count) != tablets.size()) {
+          return false;
+        }
+      } else if (total_count != 0) {
+        // If table is pinned to a different zone and has replicas on this tserver, then load
+        // balancer is not respecting tablespaces.
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Verify the replicas of each table should be evenly distributed across each zone.
+  Result<bool> VerifyReplicaDistribution(
+      const std::vector<YBTableName> tables,
+      const std::vector<std::pair<std::string, std::vector<size_t>>>& servers_group_by_zone) {
+    for (const auto& table : tables) {
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+      RETURN_NOT_OK(
+          client_->GetTabletsFromTableId(table.table_id(), /* max_tablets = */ 0, &tablets));
+      for (const auto& [current_zone_table_name, current_zone_tserver_indexes] :
+           servers_group_by_zone) {
+        bool is_table_in_current_zone = table.table_name() == current_zone_table_name;
+        if (!VERIFY_RESULT(VerifyTableReplicaDistributionInZone(
+                tablets, current_zone_tserver_indexes, is_table_in_current_zone))) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 };
 
@@ -627,6 +699,75 @@ TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestPreferredZone)) {
   WaitForLoadBalanceCompletion();
   ValidateAllTabletLeaderinZone(table_uuids, 1);
   ValidateAllTabletLeaderinZone(status_tablet_ids, 1);
+}
+
+// Create a geo-partitioned table with 3 partitions, each pinned to a different zone, with 3 tablet
+// servers in each zone. Test that within each zone, leaders are evenly distributed.
+TEST_F(GeoTransactionsTest, YB_DISABLE_TEST_IN_TSAN(TestLeaderDistribution)) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kRegionName = "new_rack";
+  constexpr auto kGeoPartitionedTableName = "test_geo_partitioned_parent";
+  constexpr auto kPartitionPrefix = "test_geo_partitioned_partition_";
+  constexpr size_t kNumZones = 3;
+  constexpr size_t kNumServersEachZone = 3;
+  constexpr size_t kNumTabletsEachPartition = 90;
+
+  // Create parent table.
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0(geo_partition VARCHAR) PARTITION BY LIST (geo_partition)",
+      kGeoPartitionedTableName));
+
+  std::vector<std::pair<std::string, std::vector<size_t>>> servers_group_by_zone(
+      kNumZones, std::pair("", std::vector<size_t>(kNumServersEachZone)));
+
+  // Create a table partition for each zone.
+  for (size_t zone_idx = 0; zone_idx < kNumZones; ++zone_idx) {
+    const auto zone_name = Format("z$0", zone_idx);
+    const auto partition_name = kPartitionPrefix + zone_name;
+    servers_group_by_zone[zone_idx].first = partition_name;
+    // Create t-servers located in this zone.
+    for (size_t tserver_idx = 0; tserver_idx < kNumServersEachZone; tserver_idx++) {
+      auto options = EXPECT_RESULT(tserver::TabletServerOptions::CreateTabletServerOptions());
+      options.SetPlacement("cloud0", kRegionName, zone_name);
+      ASSERT_OK(cluster_->AddTabletServer(options));
+      servers_group_by_zone[zone_idx].second[tserver_idx] = cluster_->num_tablet_servers() - 1;
+    }
+    ASSERT_OK(cluster_->WaitForAllTabletServers());
+
+    // Create tablespace pinned to this zone.
+    const auto placement_block = Format(
+        R"#({
+              "cloud": "cloud0",
+              "region": "$0",
+              "zone": "$1",
+              "min_num_replicas": $2
+            })#",
+        kRegionName, zone_name, kNumServersEachZone);
+    const auto tablespace_name = Format("tablespace_$0", zone_name);
+    const auto tablespace_sql = Format(
+        R"#(
+            CREATE TABLESPACE $0 WITH (replica_placement='{
+              "num_replicas": $1,
+              "placement_blocks": [$2]}')
+            )#",
+        tablespace_name, kNumServersEachZone, placement_block);
+    ASSERT_OK(conn.Execute(tablespace_sql));
+
+    // Create table partition pinned to tablespace.
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0 PARTITION OF $1(geo_partition) FOR VALUES IN ('$2') "
+        "TABLESPACE $3 split into $4 tablets",
+        partition_name, kGeoPartitionedTableName, zone_name, tablespace_name,
+        kNumTabletsEachPartition));
+  }
+
+  // Verify that leaders are distributed evenly on a per table per zone basis.
+  const auto tables = ASSERT_RESULT(client_->ListTables(kPartitionPrefix));
+  ASSERT_EQ(tables.size(), kNumZones);
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> { return VerifyReplicaDistribution(tables, servers_group_by_zone); },
+      kWaitLeaderDistributionTimeout* kTimeMultiplier,
+      "Timeout waiting for leaders to be evenly distributed"));
 }
 
 } // namespace client

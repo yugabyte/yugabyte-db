@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_CLIENT_ERROR_H
-#define YB_CLIENT_CLIENT_ERROR_H
+#pragma once
 
 #include "yb/util/enums.h"
 #include "yb/util/math_util.h"
@@ -31,7 +30,8 @@ YB_DEFINE_ENUM(
     (kTabletNotYetRunning)
     (kTablePartitionListVersionDoesNotMatch)
     (kMetaCacheInvalidated)
-    );
+    (kTablePartitionListRefreshed)
+);
 
 struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {
   // It is part of the wire protocol and should not be changed once released.
@@ -42,7 +42,7 @@ struct ClientErrorTag : IntegralErrorTag<ClientErrorCode> {
   }
 };
 
-typedef StatusErrorCodeImpl<ClientErrorTag> ClientError;
+using ClientError = StatusErrorCodeImpl<ClientErrorTag>;
 
 // Returns whether status is a client error that should be retried at YBSession level internally.
 // If status is OK, also returns false.
@@ -50,5 +50,3 @@ bool IsRetryableClientError(const Status& status);
 
 } // namespace client
 } // namespace yb
-
-#endif // YB_CLIENT_CLIENT_ERROR_H

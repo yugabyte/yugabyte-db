@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_TS_DESCRIPTOR_H
-#define YB_MASTER_TS_DESCRIPTOR_H
+#pragma once
 
 #include <shared_mutex>
 
@@ -70,6 +69,11 @@ class ConsensusServiceProxy;
 namespace tserver {
 class TabletServerAdminServiceProxy;
 class TabletServerServiceProxy;
+class TabletServerBackupServiceProxy;
+}
+
+namespace cdc {
+class CDCServiceProxy;
 }
 
 namespace master {
@@ -79,9 +83,13 @@ class TSInformationPB;
 class ReplicationInfoPB;
 class TServerMetricsPB;
 
-typedef util::SharedPtrTuple<tserver::TabletServerAdminServiceProxy,
-                             tserver::TabletServerServiceProxy,
-                             consensus::ConsensusServiceProxy> ProxyTuple;
+typedef util::SharedPtrTuple<
+    tserver::TabletServerAdminServiceProxy,
+    tserver::TabletServerServiceProxy,
+    tserver::TabletServerBackupServiceProxy,
+    cdc::CDCServiceProxy,
+    consensus::ConsensusServiceProxy>
+    ProxyTuple;
 
 // Master-side view of a single tablet server.
 //
@@ -109,9 +117,9 @@ class TSDescriptor {
 
   // Register this tablet server.
   Status Register(const NodeInstancePB& instance,
-                          const TSRegistrationPB& registration,
-                          CloudInfoPB local_cloud_info,
-                          rpc::ProxyCache* proxy_cache);
+                  const TSRegistrationPB& registration,
+                  CloudInfoPB local_cloud_info,
+                  rpc::ProxyCache* proxy_cache);
 
   const std::string &permanent_uuid() const { return permanent_uuid_; }
   int64_t latest_seqno() const;
@@ -146,7 +154,7 @@ class TSDescriptor {
   bool IsBlacklisted(const BlacklistSet& blacklist) const;
 
   // Should this ts have any leader load on it.
-  virtual bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
+  bool IsAcceptingLeaderLoad(const ReplicationInfoPB& replication_info) const;
 
   // Return an RPC proxy to a service.
   template <class TProxy>
@@ -310,7 +318,7 @@ class TSDescriptor {
  private:
   template <class TProxy>
   Status GetOrCreateProxy(std::shared_ptr<TProxy>* result,
-                                  std::shared_ptr<TProxy>* result_cache);
+                          std::shared_ptr<TProxy>* result_cache);
 
   FRIEND_TEST(TestTSDescriptor, TestReplicaCreationsDecay);
   template<class ClusterLoadBalancerClass> friend class TestLoadBalancerBase;
@@ -319,6 +327,9 @@ class TSDescriptor {
   Result<HostPort> GetHostPortUnlocked() const;
 
   void DecayRecentReplicaCreationsUnlocked();
+
+  // Is the ts in a read-only placement.
+  bool IsReadOnlyTS(const ReplicationInfoPB& replication_info) const;
 
   struct TSMetrics {
 
@@ -393,7 +404,7 @@ class TSDescriptor {
   // The (read replica) cluster uuid to which this tserver belongs.
   std::string placement_uuid_;
 
-  enterprise::ProxyTuple proxies_;
+  ProxyTuple proxies_;
 
   // Set of tablet uuids for which a delete is pending on this tablet server.
   std::set<std::string> tablets_pending_delete_;
@@ -446,5 +457,3 @@ struct cloud_hash {
 };
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_TS_DESCRIPTOR_H

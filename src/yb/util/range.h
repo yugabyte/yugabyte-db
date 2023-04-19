@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_RANGE_H
-#define YB_UTIL_RANGE_H
+#pragma once
 
 namespace yb {
 
@@ -151,5 +150,3 @@ RangeObject<Int> RangeOfSize(Int start, Int size, Int step = 1) {
 }
 
 }  // namespace yb
-
-#endif  // YB_UTIL_RANGE_H

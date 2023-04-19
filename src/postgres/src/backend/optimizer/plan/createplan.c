@@ -268,7 +268,8 @@ static YbBatchedNestLoop *make_YbBatchedNestLoop(List *tlist,
 			  List *joinclauses, List *otherclauses, List *nestParams,
 			  Plan *lefttree, Plan *righttree,
 			  JoinType jointype, bool inner_unique,
-			  List *hashOps);
+			  size_t num_hashClauseInfos,
+			  YbBNLHashClauseInfo *hashClauseInfos);
 static HashJoin *make_hashjoin(List *tlist,
 							   List *joinclauses, List *otherclauses,
 							   List *hashclauses,
@@ -3039,6 +3040,8 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	AttrNumber attr_offset;
 	Bitmapset *update_attrs = NULL;
 	Bitmapset *pushdown_update_attrs = NULL;
+	/* Delay bailout because of not pushable expressions to analyze indexes. */
+	bool has_unpushable_exprs = false;
 
 	/* Verify YB is enabled. */
 	if (!IsYugaByteEnabled())
@@ -3232,16 +3235,18 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 			 * elements not supported by DocDB, or expression pushdown is
 			 * disabled.
 			 *
-			 * However, if not pushable expression does not refer any target
-			 * table column, the Result node can evaluate it, and the statement
-			 * would still be one row.
+			 * If expression is not pushable, we can not do single line update,
+			 * but do not bail out until after we analyse indexes and make a
+			 * list of secondary indexes unaffected by the update. We can skip
+			 * update of those indexes regardless. Still allow to bail out
+			 * if there are triggers. There is no easy way to tell what columns
+			 * are affected by a trigger, so we should update all indexes.
 			 */
 			if (TupleDescAttr(tupDesc, resno - 1)->attnotnull ||
 				YBIsCollationValidNonC(ybc_get_attcollation(tupDesc, resno)) ||
 				!YbCanPushdownExpr(tle->expr, &colrefs))
 			{
-				RelationClose(relation);
-				return false;
+				has_unpushable_exprs = true;
 			}
 
 			pushdown_update_attrs = bms_add_member(pushdown_update_attrs,
@@ -3266,6 +3271,17 @@ yb_single_row_update_or_delete_path(PlannerInfo *root,
 	 * update/delete from the index, requiring the scan.
 	 */
 	if (has_applicable_indices(relation, update_attrs, no_update_index_list))
+	{
+		RelationClose(relation);
+		return false;
+	}
+
+	/*
+	 * Now it is OK to bail out because of unpushable expressions.
+	 * We have made a list, and can skip unaffected indexes even though
+	 * the update is not single row.
+	 */
+	if (has_unpushable_exprs)
 	{
 		RelationClose(relation);
 		return false;
@@ -3910,6 +3926,16 @@ create_indexscan_plan(PlannerInfo *root,
 	/* it should be a base rel... */
 	Assert(baserelid > 0);
 	Assert(best_path->path.parent->rtekind == RTE_RELATION);
+
+#ifdef YB_TODO
+	/* YB_TODO(neil) Move this code to fix_indexqual_references */
+	stripped_indexquals =
+		!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled()
+		? yb_get_actual_batched_clauses(root,
+										indexquals,
+										best_path)
+		: get_actual_clauses(indexquals);
+#endif
 
 	/*
 	 * Extract the index qual expressions (stripped of RestrictInfos) from the
@@ -5247,7 +5273,8 @@ create_customscan_plan(PlannerInfo *root, CustomPath *best_path,
  *	JOIN METHODS
  *
  *****************************************************************************/
-
+#ifdef YB_TODO
+/* Check this code. It is deleted in Yugabyte master */
 static Relids
 get_batched_relids(NestPath *nest)
 {
@@ -5268,6 +5295,7 @@ is_nestloop_batched(NestPath *nest)
 	return bms_overlap(nest->jpath.outerjoinpath->parent->relids,
 					   batched_relids);
 }
+#endif
 
 static NestLoop *
 create_nestloop_plan(PlannerInfo *root,
@@ -5284,6 +5312,10 @@ create_nestloop_plan(PlannerInfo *root,
 	List	   *nestParams;
 	Relids		saveOuterRels = root->curOuterRels;
 
+	bool yb_is_batched;
+	size_t yb_num_hashClauseInfos;
+	YbBNLHashClauseInfo *yb_hashClauseInfos;
+
 	/* NestLoop can project, so no need to be picky about child tlists */
 	outer_plan = create_plan_recurse(root, best_path->jpath.outerjoinpath, 0);
 
@@ -5291,23 +5323,16 @@ create_nestloop_plan(PlannerInfo *root,
 	root->curOuterRels = bms_union(root->curOuterRels,
 								   best_path->jpath.outerjoinpath->parent->relids);
 
-	Relids prev_yb_curbatchedrelids = root->yb_curbatchedrelids;
+	Relids prev_yb_cur_batched_relids = root->yb_cur_batched_relids;
 
-	Relids batched_relids = get_batched_relids(best_path);
+	Relids batched_relids = yb_get_batched_relids(best_path);
 
-	root->yb_curbatchedrelids = bms_union(root->yb_curbatchedrelids,
-										  batched_relids);
+	root->yb_cur_batched_relids = bms_union(root->yb_cur_batched_relids,
+										    batched_relids);
 
-	bool is_batched = is_nestloop_batched(best_path);
+	yb_is_batched = yb_is_nestloop_batched(best_path);
 
-	inner_plan = create_plan_recurse(root, best_path->jpath.innerjoinpath, 0);
-
-	bms_free(root->yb_curbatchedrelids);
-	root->yb_curbatchedrelids = prev_yb_curbatchedrelids;
-
-	/* Restore curOuterRels */
-	bms_free(root->curOuterRels);
-	root->curOuterRels = saveOuterRels;
+	outerrelids = best_path->jpath.outerjoinpath->parent->relids;
 
 	/* Sort join qual clauses into best execution order */
 	joinrestrictclauses = order_qual_clauses(root, joinrestrictclauses);
@@ -5327,6 +5352,79 @@ create_nestloop_plan(PlannerInfo *root,
 		otherclauses = NIL;
 	}
 
+	if (yb_is_batched)
+	{
+		/* Add the available batched outer rels. */
+		root->yb_availBatchedRelids =
+			lcons(outerrelids, root->yb_availBatchedRelids);
+
+		/* Collect all the equality operators of the batched join conditions. */
+		/*
+		 * This needs to happen before the inner plan is created as the inner
+		 * plan creation could "zip" up the batched clauses and convert all
+		 * the equality operators to RECORD_EQ.
+		 */
+		ListCell *l;
+		yb_hashClauseInfos =
+			palloc0(joinrestrictclauses->length * sizeof(YbBNLHashClauseInfo));
+		
+		/* YB: This length is later adjusted in setrefs.c. */
+		yb_num_hashClauseInfos = joinrestrictclauses->length;
+
+		Relids batched_outerrelids =
+			bms_difference(outerrelids,
+						   yb_get_unbatched_relids(best_path));
+
+		Relids inner_relids = best_path->innerjoinpath->parent->relids;
+
+		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
+		foreach(l, joinrestrictclauses)
+		{
+			Oid hashOpno = InvalidOid;
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);	
+			if (!list_member_ptr(joinclauses, rinfo->clause))
+			{
+				yb_num_hashClauseInfos--;
+				continue;
+			}
+
+			if (rinfo->can_join &&
+				OidIsValid(rinfo->hashjoinoperator) &&
+				can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+			{
+				/* if nlhash can process this */
+				Assert(is_opclause(rinfo->clause));
+				RestrictInfo *batched_rinfo =
+					get_batched_restrictinfo(rinfo,batched_outerrelids,
+											 inner_relids);
+
+				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
+			}
+
+			current_hinfo->hashOp = hashOpno;
+			current_hinfo++;
+		}
+	}
+
+
+	inner_plan = create_plan_recurse(root, best_path->innerjoinpath, 0);
+
+	bms_free(root->yb_cur_batched_relids);
+	root->yb_cur_batched_relids = prev_yb_cur_batched_relids;
+
+	/* restore availBatchedRelids */
+	if (yb_is_batched)
+	{
+		Assert(bms_equal((Relids) linitial(root->yb_availBatchedRelids),
+			   outerrelids));
+		root->yb_availBatchedRelids =
+			list_delete_first(root->yb_availBatchedRelids);
+	}
+
+	/* Restore curOuterRels */
+	bms_free(root->curOuterRels);
+	root->curOuterRels = saveOuterRels;
+
 	/* Replace any outer-relation variables with nestloop params */
 	if (best_path->jpath.path.param_info)
 	{
@@ -5336,49 +5434,13 @@ create_nestloop_plan(PlannerInfo *root,
 			replace_nestloop_params(root, (Node *) otherclauses);
 	}
 
+	nestParams = identify_current_nestloop_params(root, outerrelids);
 	/*
 	 * Identify any nestloop parameters that should be supplied by this join
 	 * node, and remove them from root->curOuterParams.
 	 */
-	outerrelids = best_path->jpath.outerjoinpath->parent->relids;
-	nestParams = identify_current_nestloop_params(root, outerrelids);
-
-	Relids batched_outerrellids = bms_intersect(outerrelids,
-												batched_relids);
-
-	Relids inner_relids = best_path->jpath.innerjoinpath->parent->relids;
-
-	/*
-	 * We currently only support batching where the join expression is a simple
-	 * (outer_var = inner_var) expression.
-	 */
-
-	ListCell *l;
-	List *hashOps = NIL;
-
-	if (is_batched)
+	if (yb_is_batched)
 	{
-		foreach(l, joinrestrictclauses)
-		{
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
-			if (rinfo->can_join &&
-				OidIsValid(rinfo->hashjoinoperator) &&
-				can_batch_rinfo(rinfo, batched_outerrellids, inner_relids))
-			{
-				/* if nlhash can process this */
-				Assert(is_opclause(rinfo->clause));
-				RestrictInfo *batched_rinfo =
-					get_batched_restrictinfo(rinfo,batched_outerrellids,
-											 inner_relids);
-				hashOps =
-					lappend_oid(hashOps,
-								((OpExpr *) batched_rinfo->clause)->opno);
-			}
-			else
-			{
-				hashOps = lappend_oid(hashOps, InvalidOid);
-			}
-		}
 		join_plan =
 			(NestLoop *) make_YbBatchedNestLoop(tlist,
 												joinclauses,
@@ -5388,7 +5450,8 @@ create_nestloop_plan(PlannerInfo *root,
 												inner_plan,
 												best_path->jpath.jointype,
 												best_path->jpath.inner_unique,
-												hashOps);
+												yb_num_hashClauseInfos,
+												yb_hashClauseInfos);
 	}
 	else
 	{
@@ -5998,14 +6061,29 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			saop->opno = opexpr->opno;
 			saop->opfuncid = opexpr->opfuncid;
 			saop->useOr = true;
+			saop->inputcollid = opexpr->inputcollid;
 
 			saop->args = NIL;
 
-			Var *inner_var = (Var*) linitial(opexpr->args);
-			saop->args = lappend(saop->args, inner_var);
+			Oid scalar_type = InvalidOid;
+			Oid collid = InvalidOid;
+
+			Expr *inner_expr = (Expr*) linitial(opexpr->args);
+			saop->args = lappend(saop->args, inner_expr);
+
+			if(IsA(inner_expr, RowExpr))
+			{
+				RowExpr *rowexpr = (RowExpr *) inner_expr;
+				scalar_type = rowexpr->row_typeid;
+			}
+			else
+			{
+				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
+				scalar_type = exprType((Node*) inner_expr);
+				collid = exprCollation((Node*)inner_expr);
+			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
-			Oid scalar_type = inner_var->vartype;
 			Oid array_type;
 			if (OidIsValid(scalar_type) && scalar_type != RECORDOID)
 				array_type = get_array_type(scalar_type);
@@ -6015,7 +6093,8 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			arrexpr->array_typeid = array_type;
 			arrexpr->element_typeid = scalar_type;
 			arrexpr->multidims = false;
-			arrexpr->array_collid = inner_var->varcollid;
+			arrexpr->array_collid = collid;
+			arrexpr->location = -1;
 			arrexpr->elements =
 				(List*) replace_nestloop_params(root, lsecond(opexpr->args));
 			saop->args = lappend(saop->args, arrexpr);
@@ -6052,35 +6131,24 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 						 List **stripped_indexquals_p, List **fixed_indexquals_p)
 {
 	IndexOptInfo *index = index_path->indexinfo;
-	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
-	ListCell   *lc;
+	ListCell   *lcc;
+	ListCell   *lci;
+	List *batched_rinfos = NIL;
 
-	stripped_indexquals = fixed_indexquals = NIL;
+	fixed_indexquals = NIL;
 
 	/* YB_TODO(Tanuj@yugabyte)
-	 * - Need to insert YB processing for stripped_indexquals here.
-	 * - Not able to merge the following code.
-	 *
-	 * Build "stripped" indexquals structure (no RestrictInfos) to pass to
-	 * executor as indexqualorig
-	 *
-	stripped_indexquals =
-		!bms_is_empty(root->yb_curbatchedrelids)
-		? get_actual_batched_clauses(root->yb_curbatchedrelids,
-									 indexquals,
-									 best_path)
-		: get_actual_clauses(indexquals);
+	 * - Need to track Tanuj's work on this function and rework. His code needs reimplementation to
+	 *   match Postgres's new code.
+	 * - I removed his work for now.
 	 */
-
 	foreach(lc, index_path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
 		int			indexcol = iclause->indexcol;
 		ListCell   *lc2;
 
-		/* YB_TODO(Tanuj@yugabyte)
-		 * This following code needs reimplementation to match Postgres's new code.
 
 		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
 		RestrictInfo *tmp_batched =
@@ -6570,8 +6638,17 @@ is_index_only_refs(List *expr_refs, IndexOptInfo *indexinfo)
 		{
 			if (colref->attno == indexinfo->indexkeys[i])
 			{
-				found = true;
-				break;
+				/*
+				 * If index key can not return, it does not have actual value
+				 * to evaluate the expression.
+				 */
+				if (indexinfo->canreturn[i])
+				{
+					found = true;
+					break;
+				}
+				else
+					return false;
 			}
 		}
 		if (!found)
@@ -7168,14 +7245,15 @@ make_nestloop(List *tlist,
 
 static YbBatchedNestLoop *
 make_YbBatchedNestLoop(List *tlist,
-					 List *joinclauses,
-					 List *otherclauses,
-					 List *nestParams,
-					 Plan *lefttree,
-					 Plan *righttree,
-					 JoinType jointype,
-					 bool inner_unique,
-					 List *hashOps)
+					   List *joinclauses,
+					   List *otherclauses,
+					   List *nestParams,
+					   Plan *lefttree,
+					   Plan *righttree,
+					   JoinType jointype,
+					   bool inner_unique,
+					   size_t num_hashClauseInfos,
+					   YbBNLHashClauseInfo *hashClauseInfos)
 {
 	YbBatchedNestLoop   *node = makeNode(YbBatchedNestLoop);
 	Plan	   *plan = &node->nl.join.plan;
@@ -7188,9 +7266,8 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.join.inner_unique = inner_unique;
 	node->nl.join.joinqual = joinclauses;
 	node->nl.nestParams = nestParams;
-	node->hashOps = hashOps;
-	node->innerHashAttNos = NULL;
-	node->outerParamExprs = NULL;
+	node->num_hashClauseInfos = num_hashClauseInfos;
+	node->hashClauseInfos = hashClauseInfos;
 
 	return node;
 }

@@ -16,6 +16,11 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/common/constants.h"
+#include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
+#include "yb/common/types.h"
+
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/primitive_value.h"
 #include "yb/docdb/value_type.h"
@@ -200,6 +205,40 @@ TEST(PrimitiveValueTest, TestRoundTrip) {
   }) {
     EncodeAndDecode(primitive_value);
   }
+}
+
+void TestRoundTrip(const PrimitiveValue& primitive_value, DataType data_type) {
+  QLValuePB ql_value;
+  auto ql_type = QLType::Create(data_type);
+  primitive_value.ToQLValuePB(ql_type, &ql_value);
+  ValueBuffer buffer;
+  docdb::AppendEncodedValue(ql_value, &buffer);
+
+  QLValuePB decoded_ql_value;
+  ASSERT_OK(PrimitiveValue::DecodeToQLValuePB(buffer.AsSlice(), ql_type, &decoded_ql_value));
+
+  ASSERT_EQ(QLValue(ql_value), QLValue(decoded_ql_value))
+      << Format("{ expected: $0, actual: $1 }", ql_value, decoded_ql_value);
+}
+
+TEST(PrimitiveValueTest, PrimitiveValueRoundTrip) {
+  TestRoundTrip(PrimitiveValue("foo"), DataType::STRING);
+  TestRoundTrip(PrimitiveValue::Int64(123456789000l), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int64(-123456789000l), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int64(numeric_limits<int64_t>::max()), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int64(numeric_limits<int64_t>::min()), DataType::INT64);
+  TestRoundTrip(PrimitiveValue::Int32(123456789), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::Int32(-123456789), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::Int32(numeric_limits<int32_t>::max()), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::Int32(numeric_limits<int32_t>::min()), DataType::INT32);
+  TestRoundTrip(PrimitiveValue::UInt64(numeric_limits<uint64_t>::min()), DataType::UINT64);
+  TestRoundTrip(PrimitiveValue::UInt64(numeric_limits<uint64_t>::max()), DataType::UINT64);
+  TestRoundTrip(PrimitiveValue::Double(3.1415), DataType::DOUBLE);
+  TestRoundTrip(PrimitiveValue::Double(100.0), DataType::DOUBLE);
+  TestRoundTrip(PrimitiveValue::Double(1e-100), DataType::DOUBLE);
+  TestRoundTrip(PrimitiveValue::Float(3.1415), DataType::FLOAT);
+  TestRoundTrip(PrimitiveValue::Float(100.0), DataType::FLOAT);
+  TestRoundTrip(PrimitiveValue::Float(1e-37), DataType::FLOAT);
 }
 
 TEST(PrimitiveValueTest, TestEncoding) {
@@ -434,6 +473,93 @@ TEST(PrimitiveValueTest, TestAllTypesComparisons) {
   ComparePrimitiveValues(
       KeyEntryValue::Int32(RandomUniformInt<int32_t>()),
       KeyEntryValue::Int32(RandomUniformInt<int32_t>()));
+}
+
+void ValidateEncodedKeyEntryType(const DataType& data_type) {
+  KeyEntryValue key_entry_value;
+  switch (data_type) {
+    case NULL_VALUE_TYPE:
+      key_entry_value = KeyEntryValue::NullValue(SortingType::kAscending);
+      break;
+    case BOOL:
+      key_entry_value = KeyEntryValue(KeyEntryType::kTrue);
+      break;
+    case INT8: FALLTHROUGH_INTENDED;
+    case INT16: FALLTHROUGH_INTENDED;
+    case INT32:
+      key_entry_value = KeyEntryValue::Int32(100);
+      break;
+    case FLOAT:
+      key_entry_value = KeyEntryValue::Float(100.5f);
+      break;
+    case UINT32: FALLTHROUGH_INTENDED;
+    case DATE:
+      key_entry_value = KeyEntryValue::UInt32(100);
+      break;
+    case INT64: FALLTHROUGH_INTENDED;
+    case TIME:
+      key_entry_value = KeyEntryValue::Int64(100);
+      break;
+    case DOUBLE:
+      key_entry_value = KeyEntryValue::Double(100.5);
+      break;
+    case UINT64:
+      key_entry_value = KeyEntryValue::UInt64(100);
+      break;
+    case TIMESTAMP:
+      key_entry_value = KeyEntryValue::MakeTimestamp(Timestamp(1000));
+      break;
+    case UUID: FALLTHROUGH_INTENDED;
+    case TIMEUUID: FALLTHROUGH_INTENDED;
+    case UNKNOWN_DATA: FALLTHROUGH_INTENDED;
+    case STRING: FALLTHROUGH_INTENDED;
+    case BINARY: FALLTHROUGH_INTENDED;
+    case DECIMAL: FALLTHROUGH_INTENDED;
+    case VARINT: FALLTHROUGH_INTENDED;
+    case INET: FALLTHROUGH_INTENDED;
+    case LIST: FALLTHROUGH_INTENDED;
+    case MAP: FALLTHROUGH_INTENDED;
+    case SET: FALLTHROUGH_INTENDED;
+    case TUPLE: FALLTHROUGH_INTENDED;
+    case TYPEARGS: FALLTHROUGH_INTENDED;
+    case USER_DEFINED_TYPE: FALLTHROUGH_INTENDED;
+    case FROZEN: FALLTHROUGH_INTENDED;
+    case JSONB: FALLTHROUGH_INTENDED;
+    case UINT8: FALLTHROUGH_INTENDED;
+    case UINT16: FALLTHROUGH_INTENDED;
+    case GIN_NULL:
+      EXPECT_TRUE(false);
+  }
+
+  KeyBytes key_bytes;
+  key_entry_value.AppendToKey(&key_bytes);
+
+  ASSERT_EQ(key_bytes.size(), KeyEntryValue::GetEncodedKeyEntryValueSize(data_type))
+      << "DataType: " << QLType::ToCQLString(data_type)
+      << ", KeyBytes hex: " << key_bytes.AsSlice().ToDebugHexString()
+      << ", KeyEntry value: " << key_entry_value.ToString();
+}
+
+TEST(PrimitiveValueTest, ValidateEncodedKeyEntryTypeSize) {
+  for (int dt_idx = 0; dt_idx < DataType_ARRAYSIZE; dt_idx++) {
+    auto data_type = DataType(dt_idx);
+    if (DataType_IsValid(data_type)) {
+      if (KeyEntryValue::GetEncodedKeyEntryValueSize(data_type)) {
+        ValidateEncodedKeyEntryType(data_type);
+      } else {
+        // TYPEARGS, GIN_NULL and UNKNOWN_DATA are undefiened types. And Key entry value doesn't
+        // support uint8 and uint16.
+        if (data_type != DataType::TYPEARGS && data_type != DataType::GIN_NULL &&
+            data_type != DataType::UNKNOWN_DATA && data_type != DataType::UINT8 &&
+            data_type != DataType::UINT16) {
+          auto type_info = GetTypeInfo(data_type);
+          ASSERT_TRUE(type_info) << "DataType: " << QLType::ToCQLString(data_type);
+          ASSERT_TRUE(type_info->var_length())
+              << "Fixed datatype expected varlength: " << QLType::ToCQLString(data_type);
+        }
+      }
+    }
+  }
 }
 
 }  // namespace docdb

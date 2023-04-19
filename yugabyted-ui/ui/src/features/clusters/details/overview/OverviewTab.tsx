@@ -8,10 +8,11 @@ import { YBSelect } from '@app/components';
 // import { YBSelect, RegionSelector } from '@app/components';
 import { ClusterInfo } from './ClusterInfo';
 import { ClusterInfoWidget } from './ClusterInfoWidget';
+import { ClusterStatusWidget } from './ClusterStatusWidget';
 import { RelativeInterval } from '@app/helpers';
 import { useChartConfig } from '@app/features/clusters/details/overview/ChartConfig';
 import { ChartController } from '@app/features/clusters/details/overview/ChartControler';
-import { useGetClusterQuery } from '@app/api/src';
+import { useGetClusterHealthCheckQuery, useGetClusterQuery } from '@app/api/src';
 
 
 const useStyles = makeStyles((theme) => ({
@@ -23,12 +24,17 @@ const useStyles = makeStyles((theme) => ({
   },
   intervalPicker: {
     minWidth: 200
+  },
+  widgets: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    rowGap: theme.spacing(2)
   }
 }));
 
 const SEARCH_PARAM_INTERVAL = 'interval';
 
-const chartList = ['operations', 'latency', 'cpuUsage', 'diskUsage'];
+const chartList = ['operations', 'latency'];
 export const MULTI_REGION_FLAG_PATH = 'ybcloud.conf.cluster.geo_partitioning.enabled';
 
 export const OverviewTab: FC = () => {
@@ -55,12 +61,18 @@ export const OverviewTab: FC = () => {
 
   const isMultiRegionEnabled = true;
 
-  const { data: clusterData } = useGetClusterQuery()
-  var cluster = clusterData?.data
+  const { data: clusterData } = useGetClusterQuery();
+  const { data: healthCheckData } = useGetClusterHealthCheckQuery();
+  var cluster = clusterData?.data;
+  var health = healthCheckData?.data;
   return (
     <>
-      {cluster && isMultiRegionEnabled && <ClusterInfoWidget cluster={cluster} />}
-      {cluster && !isMultiRegionEnabled && <ClusterInfo cluster={cluster} />}
+      <div className={classes.widgets}>
+        {cluster && isMultiRegionEnabled && <ClusterInfoWidget cluster={cluster} />}
+        {cluster && !isMultiRegionEnabled && <ClusterInfo cluster={cluster} />}
+        {cluster && health && isMultiRegionEnabled &&
+          <ClusterStatusWidget cluster={cluster} health={health} />}
+      </div>
       <div className={classes.metricsRow}>
         <Box display="flex" justifyContent="space-between" alignItems="center" width="100%">          
           <Box>
@@ -71,11 +83,21 @@ export const OverviewTab: FC = () => {
             value={interval}
             onChange={(event) => changeInterval(event.target.value)}
           >
-            <MenuItem value={RelativeInterval.LastHour}>{t('clusterDetail.lastHour')}</MenuItem>
-            <MenuItem value={RelativeInterval.Last6Hours}>{t('clusterDetail.last6hours')}</MenuItem>
-            <MenuItem value={RelativeInterval.Last12hours}>{t('clusterDetail.last12hours')}</MenuItem>
-            <MenuItem value={RelativeInterval.Last24hours}>{t('clusterDetail.last24hours')}</MenuItem>
-            {/*<MenuItem value={RelativeInterval.Last7days}>{t('clusterDetail.last7days')}</MenuItem>*/}
+            <MenuItem value={RelativeInterval.LastHour}>
+                {t('clusterDetail.lastHour')}
+            </MenuItem>
+            <MenuItem value={RelativeInterval.Last6Hours}>
+                {t('clusterDetail.last6hours')}
+            </MenuItem>
+            <MenuItem value={RelativeInterval.Last12hours}>
+                {t('clusterDetail.last12hours')}
+            </MenuItem>
+            <MenuItem value={RelativeInterval.Last24hours}>
+                {t('clusterDetail.last24hours')}
+            </MenuItem>
+            {/*<MenuItem value={RelativeInterval.Last7days}>
+                {t('clusterDetail.last7days')}
+            </MenuItem>*/}
           </YBSelect>          
         </Box>
       </div>

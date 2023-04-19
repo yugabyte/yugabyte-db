@@ -922,7 +922,7 @@ TEST_F(DBBloomFilterTest, PrefixExtractorBlockFilter) {
   std::vector<std::string> iter_res;
   auto iter = db_->NewIterator(ReadOptions());
   // Seek to a key that was not in Domain
-  for (iter->Seek("zzzzz_AAAA"); iter->Valid(); iter->Next()) {
+  for (iter->Seek("zzzzz_AAAA"); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     iter_res.emplace_back(iter->value().ToString());
   }
 
@@ -931,7 +931,6 @@ TEST_F(DBBloomFilterTest, PrefixExtractorBlockFilter) {
   delete iter;
 }
 
-#ifndef ROCKSDB_LITE
 class BloomStatsTestWithParam
     : public DBBloomFilterTest,
         public testing::WithParamInterface<std::tuple<bool, bool>> {
@@ -1038,22 +1037,19 @@ TEST_P(BloomStatsTestWithParam, BloomStatsTestWithIter) {
 
   // check memtable bloom stats
   iter->Seek(key1);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value1, iter->value().ToString());
   ASSERT_EQ(1, perf_context.bloom_memtable_hit_count);
   ASSERT_EQ(0, perf_context.bloom_memtable_miss_count);
 
   iter->Seek(key3);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value3, iter->value().ToString());
   ASSERT_EQ(2, perf_context.bloom_memtable_hit_count);
   ASSERT_EQ(0, perf_context.bloom_memtable_miss_count);
 
   iter->Seek(key2);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(1, perf_context.bloom_memtable_miss_count);
   ASSERT_EQ(2, perf_context.bloom_memtable_hit_count);
 
@@ -1063,20 +1059,17 @@ TEST_P(BloomStatsTestWithParam, BloomStatsTestWithIter) {
 
   // Check SST bloom stats
   iter->Seek(key1);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value1, iter->value().ToString());
   ASSERT_EQ(1, perf_context.bloom_sst_hit_count);
 
   iter->Seek(key3);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value3, iter->value().ToString());
   ASSERT_EQ(2, perf_context.bloom_sst_hit_count);
 
   iter->Seek(key2);
-  ASSERT_OK(iter->status());
-  ASSERT_TRUE(!iter->Valid());
+  ASSERT_TRUE(!ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(1, perf_context.bloom_sst_miss_count);
   ASSERT_EQ(2, perf_context.bloom_sst_hit_count);
 }
@@ -1138,8 +1131,6 @@ void PrefixScanInit(DBBloomFilterTest* dbtest) {
 }  // namespace
 
 TEST_F(DBBloomFilterTest, PrefixScan) {
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip,
-      kSkipNoPrefix);
   while (ChangeFilterOptions()) {
     int count;
     Slice prefix;
@@ -1175,19 +1166,17 @@ TEST_F(DBBloomFilterTest, PrefixScan) {
     count = 0;
     env_->random_read_counter_.Reset();
     iter = db_->NewIterator(ReadOptions());
-    for (iter->Seek(prefix); iter->Valid(); iter->Next()) {
+    for (iter->Seek(prefix); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       if (!iter->key().starts_with(prefix)) {
         break;
       }
       count++;
     }
-    ASSERT_OK(iter->status());
     delete iter;
     ASSERT_EQ(count, 2);
     ASSERT_EQ(env_->random_read_counter_.Read(), 2);
     Close();
   }  // end of while
-  XFUNC_TEST("", "dbtest_prefix", prefix_skip1, XFuncPoint::SetSkip, 0);
 }
 
 TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
@@ -1330,13 +1319,13 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
 
   int32_t trivial_move = 0;
   int32_t non_trivial_move = 0;
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::BackgroundCompaction:TrivialMove",
       [&](void* arg) { trivial_move++; });
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "DBImpl::BackgroundCompaction:NonTrivial",
       [&](void* arg) { non_trivial_move++; });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   CompactRangeOptions compact_options;
   compact_options.bottommost_level_compaction =
@@ -1375,7 +1364,6 @@ TEST_F(DBBloomFilterTest, OptimizeFiltersForHits) {
             TestGetTickerCount(options, BLOCK_CACHE_MULTI_TOUCH_ADD));
 }
 
-#endif  // ROCKSDB_LITE
 
 }  // namespace rocksdb
 

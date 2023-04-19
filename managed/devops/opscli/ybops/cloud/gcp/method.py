@@ -9,6 +9,7 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 import json
+import logging
 
 from ybops.cloud.common.method import (AbstractInstancesMethod, AbstractAccessMethod,
                                        AbstractMethod, UpdateMountedDisksMethod,
@@ -33,7 +34,7 @@ class GcpReplaceRootVolumeMethod(ReplaceRootVolumeMethod):
 
     def _host_info_with_current_root_volume(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return (vars(args), host_info["root_volume_device_name"])
+        return (vars(args), host_info.get("root_volume_device_name"))
 
 
 class GcpCreateInstancesMethod(CreateInstancesMethod):
@@ -47,10 +48,10 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
 
     def add_extra_args(self):
         super(GcpCreateInstancesMethod, self).add_extra_args()
-        self.parser.add_argument("--use_preemptible", action="store_true",
-                                 help="If to use preemptible instances.")
         self.parser.add_argument("--volume_type", choices=[GCP_SCRATCH, GCP_PERSISTENT],
                                  default="scratch", help="Storage type for GCP instances.")
+        self.parser.add_argument("--instance_template",
+                                 help="Instance type template for GCP instances")
 
     def run_ansible_create(self, args):
         server_type = args.type
@@ -105,7 +106,7 @@ class GcpCreateRootVolumesMethod(CreateRootVolumesMethod):
             "sourceImage": args.machine_image})
         return res["targetLink"]
 
-    # Not invoked. Just keeping if for consistency.
+    # Not invoked. Just keeping it for consistency.
     def delete_instance(self, args):
         name = args.search_pattern[:63] if len(args.search_pattern) > 63 else args.search_pattern
         self.cloud.get_admin().delete_instance(
@@ -297,7 +298,9 @@ class GcpChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
 
     def _host_info(self, args, host_info):
         args.private_ip = host_info["private_ip"]
-        return vars(args)
+        result = vars(args).copy()
+        result['instance_type'] = host_info["instance_type"]
+        return result
 
 
 class GcpResumeInstancesMethod(AbstractInstancesMethod):
@@ -310,7 +313,9 @@ class GcpResumeInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to resume.")
 
     def callback(self, args):
-        self.cloud.start_instance(vars(args), [args.custom_ssh_port])
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(vars(args), server_ports)
 
 
 class GcpPauseInstancesMethod(AbstractInstancesMethod):
@@ -324,6 +329,33 @@ class GcpPauseInstancesMethod(AbstractInstancesMethod):
 
     def callback(self, args):
         self.cloud.stop_instance(vars(args))
+
+
+class GcpHardRebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(GcpHardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
+
+    def add_extra_args(self):
+        super(GcpHardRebootInstancesMethod, self).add_extra_args()
+
+    def callback(self, args):
+        instance = self.cloud.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
+                args.search_pattern))
+        host_info = vars(args)
+        host_info.update(instance)
+        instance_state = host_info['instance_state']
+        if instance_state not in ('RUNNING', 'STOPPING', 'TERMINATED', 'PROVISIONING', 'STAGING'):
+            raise YBOpsRuntimeError("Instance is in invalid state '{}' for attempting a hard reboot"
+                                    .format(instance_state))
+        if instance_state in ('RUNNING', 'STOPPING'):
+            logging.info("Stopping instance {}".format(args.search_pattern))
+            self.cloud.stop_instance(host_info)
+        logging.info("Starting instance {}".format(args.search_pattern))
+        self.update_ansible_vars_with_args(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
 
 
 class GcpUpdateMountedDisksMethod(UpdateMountedDisksMethod):

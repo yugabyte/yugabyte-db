@@ -75,14 +75,22 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
   private Config mockConfig;
 
-  private Set<TaskType> RETRYABLE_TASKS =
+  private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSet.of(
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
           TaskType.ReadOnlyClusterCreate,
+          TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
           TaskType.DeleteNodeFromUniverse,
-          TaskType.ReleaseInstanceFromUniverse);
+          TaskType.ReleaseInstanceFromUniverse,
+          TaskType.RebootNodeInUniverse,
+          TaskType.MultiTableBackup,
+          TaskType.BackupUniverse,
+          TaskType.ResizeNode,
+          TaskType.StartNodeInUniverse,
+          TaskType.StopNodeInUniverse,
+          TaskType.CloudProviderDelete);
 
   @Override
   protected Application provideApplication() {
@@ -160,7 +168,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               ITask task = (ITask) objects[0];
               // Create a new task info object.
               TaskInfo taskInfo = new TaskInfo(TaskType.BackupUniverse);
-              taskInfo.setTaskDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
+              taskInfo.setDetails(RedactingService.filterSecretFields(task.getTaskDetails()));
               taskInfo.setOwner("test-owner");
               return taskInfo;
             })
@@ -169,7 +177,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testTaskSubmission() throws InterruptedException {
+  public void testTaskSubmission() {
     ITask task = mockTaskCommon(false);
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
@@ -180,7 +188,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testTaskFailure() throws InterruptedException {
+  public void testTaskFailure() {
     ITask task = mockTaskCommon(false);
     doThrow(new RuntimeException("Error occurred in task")).when(task).run();
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
@@ -189,12 +197,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     assertEquals(0, subTaskInfos.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in task"));
   }
 
   @Test
-  public void testSubTaskAsyncSuccess() throws InterruptedException {
+  public void testSubTaskAsyncSuccess() {
     ITask task = mockTaskCommon(false);
     ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
@@ -225,7 +233,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testSubTaskAsyncFailure() throws InterruptedException {
+  public void testSubTaskAsyncFailure() {
     ITask task = mockTaskCommon(false);
     ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();
@@ -254,16 +262,16 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     assertEquals(1, subTasksByPosition.size());
     assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
 
-    String errMsg = taskInfo.getTaskDetails().get("errorString").asText();
+    String errMsg = taskInfo.getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Failed to execute task"));
 
     assertEquals(TaskInfo.State.Failure, subTaskInfos.get(0).getTaskState());
-    errMsg = subTaskInfos.get(0).getTaskDetails().get("errorString").asText();
+    errMsg = subTaskInfos.get(0).getDetails().get("errorString").asText();
     assertTrue("Found " + errMsg, errMsg.contains("Error occurred in subtask"));
   }
 
   @Test
-  public void testSubTaskNonAbortable() throws InterruptedException {
+  public void testSubTaskNonAbortable() {
     ITask task = mockTaskCommon(false);
     CountDownLatch latch = new CountDownLatch(1);
     doAnswer(
@@ -335,6 +343,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     verify(subTask1, times(1)).run();
     verify(subTask2, times(0)).run();
 
+    verify(task, times(1)).onCancelled(any());
+    verify(subTask1, times(0)).onCancelled(any());
+    verify(subTask2, times(1)).onCancelled(any());
+
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTaskInfos.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
@@ -346,7 +358,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   }
 
   @Test
-  public void testSubTaskAbortAtPosition() throws InterruptedException {
+  public void testSubTaskAbortAtPosition() {
     ITask task = mockTaskCommon(true);
     ITask subTask1 = mockTaskCommon(true);
     ITask subTask2 = mockTaskCommon(true);
@@ -390,6 +402,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
 
     verify(subTask1, times(1)).run();
     verify(subTask2, times(0)).run();
+
+    verify(task, times(1)).onCancelled(any());
+    verify(subTask1, times(0)).onCancelled(any());
+    verify(subTask2, times(1)).onCancelled(any());
 
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -484,9 +500,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     // This should get rejected as the executor is already shutdown.
     assertThrows(
         IllegalStateException.class,
-        () -> {
-          taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1));
-        });
+        () -> taskExecutor.submit(taskRunner2, Executors.newFixedThreadPool(1)));
   }
 
   @Test
@@ -538,7 +552,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(subTask).setUserTaskUUID(eq(taskUUID));
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    JsonNode errNode = taskInfo.getSubTasks().get(0).getTaskDetails().get("errorString");
+    JsonNode errNode = taskInfo.getSubTasks().get(0).getDetails().get("errorString");
     assertThat(errNode.toString(), containsString("is aborted while waiting"));
   }
 
@@ -548,13 +562,13 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     Set<TaskType> retryableTaskTypes =
         TaskType.filteredValues()
             .stream()
-            .filter(t -> Commissioner.isTaskRetryable(t))
+            .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);
   }
 
   @Test
-  public void testTaskCache() throws InterruptedException {
+  public void testTaskCache() {
     ITask task = mockTaskCommon(false);
     ITask subTask = mockTaskCommon(false);
     AtomicReference<UUID> taskUUIDRef = new AtomicReference<>();

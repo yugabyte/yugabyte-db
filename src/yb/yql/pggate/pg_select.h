@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_SELECT_H_
-#define YB_YQL_PGGATE_PG_SELECT_H_
+#pragma once
 
 #include "yb/yql/pggate/pg_dml_read.h"
 
@@ -44,5 +43,3 @@ class PgSelect : public PgDmlRead {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_SELECT_H_

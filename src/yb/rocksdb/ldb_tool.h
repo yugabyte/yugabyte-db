@@ -20,7 +20,6 @@
 
 #pragma once
 
-#ifndef ROCKSDB_LITE
 #include <string>
 #include <vector>
 #include "yb/rocksdb/db.h"
@@ -54,5 +53,3 @@ class LDBTool {
 };
 
 } // namespace rocksdb
-
-#endif  // ROCKSDB_LITE

@@ -14,48 +14,48 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws" class="nav-link">
-      <i class="fab fa-aws"></i>
+    <a href="../aws" class="nav-link">
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+    <a href="../gcp" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure" class="nav-link">
+    <a href="../azure" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
       &nbsp;&nbsp; Azure
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../kubernetes" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/vmware-tanzu" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../vmware-tanzu" class="nav-link active">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/openshift" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+    <a href="../openshift" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises" class="nav-link">
-      <i class="fas fa-building"></i>
+    <a href="../on-premises" class="nav-link">
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
@@ -89,10 +89,9 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 ### How to Configure Region and Zones
 
-- On the **Create VMware Tanzu Configuration** page, click **Add Region** to open the **Add new region** dialog shown in the following illustration: <br><br>
+- On the **Create VMware Tanzu Configuration** page, click **Add Region** to open the **Add new region** dialog shown in the following illustration:
 
-
-  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
+    ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
 
 - Use the **Region** field to select the region.
 - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
@@ -124,19 +123,19 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
         ysql-port: "5433"
   ```
 
-  <br>To disable LoadBalancer, use the following overrides:
+  To disable LoadBalancer, use the following overrides:
 
   ```configuration
   enableLoadBalancer: False
   ```
 
-  <br>To change the cluster domain name, use the following overrides:
+  To change the cluster domain name, use the following overrides:
 
   ```configuration
   domainName: my.cluster
   ```
 
-  <br>To add annotations at the StatefulSet level, use the following overrides:
+  To add annotations at the StatefulSet level, use the following overrides:
 
   ```configuration
   networkAnnotation:
@@ -146,15 +145,13 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 - Add a new zone by clicking **Add Zone**. Your configuration may have multiple zones, as shown in the following illustration:
 
-
-![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-2.png)
+    ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-2.png)
 
 - Click **Add Region**.
 
-- Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration:<br><br>
+- Click **Save**. If your configuration is successful, you are redirected to **VMware Tanzu configs**, as shown in the following illustration:
 
-
-  ![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
+    ![Finish Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-finish.png)
 
 ## Appendix Using VMware Tanzu Application Service
 
@@ -191,7 +188,7 @@ $ cf marketplace -s yugabyte-db
 
 The ouput should be simiar to the following:
 
-```
+```ouput
 service plan   description                  free or paid
 x-small        Cores: 2, Memory (GB): 4     paid
 small          Cores: 4, Memory (GB): 7     paid
@@ -200,7 +197,7 @@ large          Cores: 16, Memory (GB): 15   paid
 x-large        Cores: 32, Memory (GB): 30   paid
 ```
 
-Once you decide on the service plan, you can launch the YugabyteDB service instance by executing the following command:
+After you decide on the service plan, you can launch the YugabyteDB service instance by executing the following command:
 
 ```sh
 $ cf create-service yugabyte-db x-small yb-demo -c '{"universe_name": "yb-demo"}'

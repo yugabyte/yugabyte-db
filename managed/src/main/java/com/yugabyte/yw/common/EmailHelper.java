@@ -121,6 +121,7 @@ public class EmailHelper {
         props.put("mail.smtp.auth", "false");
       }
       props.put("mail.smtp.starttls.enable", String.valueOf(smtpData.useTLS));
+      props.put("mail.smtp.ssl.protocols", "TLSv1.3 TLSv1.2 TLSv1.1 TLSv1");
       String smtpServer =
           StringUtils.isEmpty(smtpData.smtpServer)
               ? runtimeConfig.getString("yb.health.default_smtp_server")
@@ -193,9 +194,9 @@ public class EmailHelper {
     Customer customer = Customer.get(customerUUID);
     List<String> destinations = new ArrayList<>();
     String ybEmail = getYbEmail(customer);
-    CustomerConfig config = CustomerConfig.getAlertConfig(customer.uuid);
+    CustomerConfig config = CustomerConfig.getAlertConfig(customer.getUuid());
     if (config != null) {
-      AlertingData alertingData = Json.fromJson(config.data, AlertingData.class);
+      AlertingData alertingData = Json.fromJson(config.getData(), AlertingData.class);
       if (alertingData.sendAlertsToYb && !StringUtils.isEmpty(ybEmail)) {
         destinations.add(ybEmail);
       }
@@ -212,22 +213,8 @@ public class EmailHelper {
   /**
    * Returns the {@link SmtpData} instance fulfilled with parameters of the specified customer.
    *
-   * <p>If the the Smtp configuration doesn't exist for the customer, the default Smtp configuration
-   * is created with the next data:
-   *
-   * <p>
-   *
-   * <ul>
-   *   <li>stmpUsername is taken from the configuration file, parameter
-   *       <i><b>yb.health.ses_email_username</b></i>;
-   *   <li>smtpPassword is taken from the configuration file, parameter
-   *       <i><b>yb.health.ses_email_password</b></i>;
-   *   <li>useSSL is taken from the configuration file, parameter
-   *       <i><b>yb.health.default_ssl</b></i>, by default is <b>true</b>.
-   * </ul>
-   *
-   * <p>Also if emailFrom is empty (for both cases) it is filled with the default YB address (see
-   * {@link #getYbEmail})
+   * <p>Also if emailFrom is empty it is filled with the default YB address (see {@link
+   * #getYbEmail})
    *
    * @param customerUUID
    * @return filled SmtpData if all parameters exist or NULL otherwise
@@ -235,18 +222,11 @@ public class EmailHelper {
   public SmtpData getSmtpData(UUID customerUUID) {
     Customer customer = Customer.get(customerUUID);
     CustomerConfig smtpConfig = CustomerConfig.getSmtpConfig(customerUUID);
-    SmtpData smtpData;
-    if (smtpConfig != null) {
-      smtpData = Json.fromJson(smtpConfig.data, SmtpData.class);
-    } else {
-      Config runtimeConfig = configFactory.forCustomer(customer);
-      smtpData = new SmtpData();
-      smtpData.smtpUsername = runtimeConfig.getString("yb.health.ses_email_username");
-      smtpData.smtpPassword = runtimeConfig.getString("yb.health.ses_email_password");
-      smtpData.useSSL = runtimeConfig.getBoolean("yb.health.default_ssl");
-      smtpData.useTLS = runtimeConfig.getBoolean("yb.health.default_tls");
-    }
 
+    if (smtpConfig == null) {
+      return null;
+    }
+    SmtpData smtpData = Json.fromJson(smtpConfig.getData(), SmtpData.class);
     if (StringUtils.isEmpty(smtpData.emailFrom)) {
       smtpData.emailFrom = getYbEmail(customer);
     }

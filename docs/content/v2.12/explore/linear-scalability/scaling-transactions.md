@@ -16,14 +16,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/linear-scalability/scaling-transactions/" class="nav-link active">
+    <a href="../scaling-transactions/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 <!--
   <li >
-    <a href="/preview/explore/linear-scalability/scaling-transactions-ycql/" class="nav-link">
+    <a href="../scaling-transactions-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -79,7 +79,7 @@ Each table now has four tablet-leaders in each YB-TServer and with a replication
 Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+wget 'https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true' -O yb-sample-apps.jar
 ```
 
 Run the `SqlInserts` workload app against the local universe using the following command.

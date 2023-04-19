@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/common/wire_protocol.pb.h"
+#include "yb/common/wire_protocol.messages.h"
 #include "yb/tablet/operations/operation.h"
 
 namespace yb {
@@ -23,15 +23,16 @@ namespace tablet {
 // Keeps track of the Operation states (request, result, ...).
 // Executes the ChangeAutoFlagsConfig operation.
 class ChangeAutoFlagsConfigOperation
-    : public OperationBase<OperationType::kChangeAutoFlagsConfig, AutoFlagsConfigPB> {
+    : public OperationBase<OperationType::kChangeAutoFlagsConfig, LWAutoFlagsConfigPB> {
  public:
-  explicit ChangeAutoFlagsConfigOperation(TabletPtr tablet, const AutoFlagsConfigPB* config)
-      : OperationBase(tablet, config) {}
+  template <class... Args>
+  explicit ChangeAutoFlagsConfigOperation(Args&&... args)
+      : OperationBase(std::forward<Args>(args)...) {}
 
   Status Apply();
 
  private:
-  Status Prepare() override;
+  Status Prepare(IsLeaderSide is_leader_side) override;
   Status DoReplicated(int64_t leader_term, Status* complete_status) override;
   Status DoAborted(const Status& status) override;
 };

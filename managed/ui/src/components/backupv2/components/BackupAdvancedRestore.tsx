@@ -54,6 +54,7 @@ const STEPS = [
     title: 'Restore Backup',
     submitLabel: TEXT_RESTORE,
     component: RenameSingleKeyspace,
+    // eslint-disable-next-line react/display-name
     footer: (onClick: Function) => (
       <YBButton
         btnClass={`btn btn-default pull-right restore-wth-rename-but`}
@@ -213,17 +214,19 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
     const backup: Partial<IBackup & Record<string, any>> = {
       backupType: (values['api_type'].value as unknown) as TableType,
-      storageConfigUUID: values['storage_config'].value,
-      sse: values['storage_config'].name === 'S3',
-      responseList: [
-        {
-          keyspace: values['should_rename_keyspace']
-            ? values['new_keyspace_name']
-            : values['keyspace_name'],
-          tablesList: [],
-          storageLocation: values['backup_location']
-        }
-      ]
+      commonBackupInfo: {
+        storageConfigUUID: values['storage_config'].value,
+        sse: values['storage_config'].name === 'S3',
+        responseList: [
+          {
+            keyspace: values['should_rename_keyspace']
+              ? values['new_keyspace_name']
+              : values['keyspace_name'],
+            tablesList: [],
+            storageLocation: values['backup_location']
+          }
+        ]
+      } as any
     };
     restore.mutateAsync({ backup_details: backup as any, values });
   };
@@ -357,6 +360,7 @@ function RestoreForm({
               label="Backup config"
               options={storageConfigs}
               components={{
+                // eslint-disable-next-line react/display-name
                 SingleValue: ({ data }: { data: any }) => (
                   <>
                     <span className="storage-cfg-name">{data.label}</span>
@@ -386,10 +390,10 @@ function RestoreForm({
                   values['api_type'].value === BACKUP_API_TYPES.YSQL ? 'Database' : 'Keyspace'
                 } name`}
                 validate={(name: string) => {
-                  // Restoring with duplicate keyspace name is supported in redis
+                  // Restoring with duplicate keyspace name is supported in redis and YCQL
                   if (
                     Array.isArray(tablesInUniverse) &&
-                    values['api_type'].value !== BACKUP_API_TYPES.YEDIS &&
+                    values['api_type'].value === BACKUP_API_TYPES.YSQL &&
                     find(tablesInUniverse, { tableType: values['api_type'].value, keySpace: name })
                   ) {
                     setFieldValue('should_rename_keyspace', true, false);
@@ -439,6 +443,11 @@ function RestoreForm({
               options={kmsConfigList}
               isClearable
             />
+            <span className="kms-helper-text">
+              For a successful restore, the KMS configuration used for restore should be the same{' '}
+              <br />
+              KMS configuration used during backup creation.
+            </span>
           </Col>
         </Row>
       </div>

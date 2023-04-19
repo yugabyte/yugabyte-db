@@ -1,11 +1,289 @@
 {
   "translation": {
+    "common": {
+      "beta": "Beta",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "create": "Create",
+      "genericFailure": "Something went wrong. Please try again.",
+      "no": "No",
+      "proceed": "Proceed",
+      "requiredField": "Required field",
+      "save": "Save",
+      "validateAndSave": "Validate and Save",
+      "yes": "Yes",
+      "close": "Close",
+      "saving": "Saving",
+      "select": "Select",
+      "active": "Active",
+      "none": "None",
+      "edit": "Edit",
+      "remove": "Remove",
+      "wrong": "Something went wrong."
+    },
+    "universeActions": {
+      "encryptionAtRest": {
+        "title": "Manage encryption at-Rest",
+        "enableEAR": "Enable encryption at-Rest for this Universe",
+        "kmsConfig": "Key management service config",
+        "selectKMSConfig": "Select key management service config",
+        "rotateKMSConfig": "Rotate key management service config",
+        "universeKey": "Universe Key",
+        "rotateUniverseKey": "Rotate Universe key",
+        "rotateBothWarning": "Rotating Master key and Universe key should be performed at different times.",
+        "earEnabledSuccess": "Encryption-at-rest is enabled successfully.",
+        "earDisabedSuccess": "Encryption-at-rest is disabled.",
+        "universeKeyRotationSuccess": "Successfully rotated universe key.",
+        "masterKeyRotationSuccess": "Successfully rotated master key.",
+        "lastRotatedLabel": "Last rotated: ",
+        "lastActiveKMSLabel": "Last active KMS: "
+      }
+    },
+    "commonErrors": {
+      "pageNotExist": "Seems like this Page does not exist",
+      "pageNotFound": "Page not found"
+    },
+    "config": {
+      "security": {
+        "encryptionAtRest": {
+          "deleteKmsConfig": "Delete Configuration",
+          "deleteConfigConfirmText": "Are you sure you want to delete <0>{{configName}}</0> configuration?",
+          "deleteConfigWarning": "Before deleting this configuration make sure it's not being used by any backups. Note that in order to restore a backup with deleted KMS config <0></0> you'll need to create a new KMS config with the same master key details."
+        }
+      }
+    },
+    "universeForm": {
+      "master": "Master",
+      "tserver": "TServer",
+      "configReadReplica": "Configure read replica",
+      "createUniverse": "Create universe",
+      "current": "Current :",
+      "clearReadReplica": "Clear Read Replica",
+      "editReadReplica": "Edit read replica",
+      "editUniverse": "Edit universe",
+      "new": "New :",
+      "perInstance": "per instance",
+      "perInstanceType": "type",
+      "primaryTab": "1. Primary Cluster",
+      "rrTab": "2. Read Replica",
+      "actions": {
+        "addRR": "Add Read Replica",
+        "backPrimary": "Back to Primary Cluster",
+        "configureRR": "Configure Read Replica",
+        "deleteRR": "Delete this configuration"
+      },
+      "advancedConfig": {
+        "accessKey": "Access Key",
+        "dbVersion": "DB Version",
+        "enableIPV6": "Enable IPV6",
+        "enableIPV6Helper": "Use IPV6 networking for connections between the DB servers.",
+        "enableSystemD": "Enable Systemd Services",
+        "enableNetworkAccess": "Enable Public Network Access",
+        "enableNetworkAccessHelper": "Assign a load balancer or nodeport for connecting to the DB endpoints over the internet.",
+        "instanceProfileARN": "Instance Profile ARN",
+        "masterHttpPort": "Master HTTP Port",
+        "masterRpcPort": "Master RPC Port",
+        "nodeExporterPort": "Node Exporter Port",
+        "overridePorts": "Override Deployment Ports",
+        "redisServerHttpPort": "Yedis HTTP Port",
+        "redisServerRpcPort": "Yedis RPC Port",
+        "title": "Advanced Configuration",
+        "tserverHttpPort": "T-Server HTTP Port",
+        "tserverRpcPort": "T-Server RPC Port",
+        "ybcPackagePath": "YBC Package Path",
+        "yqlServerHttpPort": "YCQL HTTP Port",
+        "yqlServerRpcPort": "YCQL RPC Port",
+        "ysqlServerHttpPort": "YSQL HTTP Port",
+        "ysqlServerRpcPort": "YSQL RPC Port"
+      },
+      "cloudConfig": {
+        "addZoneButton": "Add Zone",
+        "autoPlacementField": "Auto Placement",
+        "azHeader": "Availability Zones",
+        "azNameLabel": "Name",
+        "azNodesLabel": "Nodes",
+        "azTServerNodesLabel": "TServer Nodes",
+        "azPodsLabel": "Pods",
+        "defaultRegion": "Default Region",
+        "masterPlacement": "Master Placement",
+        "mastersInDefaultRegion": "Masters in Default Region Only",
+        "mastersInDefaultRegionHelper": "Forces placement of all masters in Default Region.",
+        "nodePlacementTitle": "Node Placement",
+        "placementStatus": {
+          "azWarning": "Primary data placement is not geo-redundant, universe cannot survive even 1 availability zone failure",
+          "multiRegion": "Primary data placement is fully geo-redundant, universe can survive at least 1 region failure ",
+          "notEnoughNodes": "Not Enough Nodes",
+          "notEnoughNodesConfigured": "Not Enough Nodes Configured",
+          "noFieldsChanged": "At Least One Field Must Be Modified",
+          "regionWarning": "Primary data placement is geo-redundant, universe can survive at least 1 availability zone failure",
+          "singleRF": "Primary data placement is not redundant, universe cannot survive even 1 node failure"
+        },
+        "preferredAZLabel": "Preferred",
+        "providerField": "Provider",
+        "numReadReplicas": "Number of Read Replicas",
+        "regionsField": "Regions",
+        "replicationField": "Replication Factor",
+        "maxRFvalue": "Maximum supported replication factor is {{rfValue}}",
+        "minRFValue": "Minimum supported replication factor is {{rfValue}}",
+        "title": "Cloud Configuration",
+        "totalNodesField": "Total Nodes",
+        "totalPodsField": "Total Pods",
+        "universeName": "Name",
+        "universeNameInUse": "Name already in use",
+        "dedicatedModeHelper": "Place Masters on dedicated nodes",
+        "colocatedModeHelper": "Place Masters on the same nodes as T-Servers",
+        "masterNumNodesHelper": "Number of nodes dedicated to Masters is equal to the Universe’s replication factor and can not be modified.",
+        "whenToUseDedicatedHelper": "When to use this setting?",
+        "masterPlacementHelper": "Select this option if you plan to use this universe for multi-tenancy use cases -or- you expect to create Databases with a very large number of tables",
+        "resetAZLabel": "Reset Config",
+        "placeholder": {
+          "enterUniverseName": "Enter Universe name",
+          "selectProvider": "Select Provider",
+          "selectRegions": "Select Regions"
+        }
+      },
+      "deleteClusterModal": {
+        "deleteRRMessage": "Are you sure you want to delete this read replica cluster ?",
+        "enterUniverseName": "Enter universe name to confirm delete:",
+        "forceDeleteCheckbox": "Ignore Errors and Force Delete",
+        "modalTitle": "Delete Read Replica of {{universeName}}"
+      },
+      "gFlags": {
+        "addFlag": "Add Flag",
+        "addGflags": "Add Flags",
+        "addJson": "Add as JSON",
+        "addToTServer": "Add to T-Server",
+        "addToMaster": "Add to Master",
+        "addValue": "Add value",
+        "editFlag": "Edit Flag",
+        "editFlagValue": "Edit Flag Value",
+        "flagName": "FLAG NAME",
+        "flagNotBelongError": "This Flag does not belong to {{server}}. Remove Flag",
+        "incorrectFlagName": "Incorrect flag name",
+        "incorrectFlagValue": "Incorrect flag value",
+        "incorrectFlagMsg": "Flag name is incorrect. Remove Flag",
+        "masterValue": "MASTER VALUE",
+        "noFlags": "There are no flags assigned to this universe ",
+        "removeFlag": "Remove Flag",
+        "removeValue": "Remove Value",
+        "selectedDBVersion": "Selected DB Version : ",
+        "title": "G-Flags",
+        "tServerValue": "T-SERVER VALUE",
+        "validationError": "Fix all the errors shown below to proceed"
+      },
+      "helmOverrides": {
+        "addK8sOverrides": "Add Kubernetes Overrides",
+        "addAvailabilityZone": "Add Availability Zone",
+        "availabilityZone": "Availability Zone",
+        "azOverrides": "AZ Overrides",
+        "forceApply": "Force Apply",
+        "k8sOverrides": "Kubernetes Overrides",
+        "title": "Helm Overrides",
+        "universeOverrides": "Universe Overrides",
+        "yamlErrorsTitle": "Errors in helm YAML"
+      },
+      "instanceConfig": {
+        "assignPublicIP": "Assign Public IP",
+        "assignPublicIPHelper": "Assign a public IP to the DB servers for connections over the internet.",
+        "dedicatedNodes": "Use dedicated nodes for processes",
+        "dedicatedNodesHelper": "Place tserver and master processes on separate nodes.",
+        "ebs": "EBS Type",
+        "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
+        "instanceType": "Instance Type",
+        "k8NumCores": "Number of Cores",
+        "k8Memory": "Memory (GB)",
+        "useSpotInstance": "Use Spot Instances",
+        "kmsConfig": "Key Management Service Config",
+        "kmsConfigPlaceHolder": "Select Configuration",
+        "provisionedIops": "Provisioned IOPS",
+        "provisionedThroughput": "Provisioned Throughput",
+        "ssd": "Storage Type (SSD)",
+        "title": "Instance Configuration",
+        "useTimeSync": "Use {{provider}} Time Sync",
+        "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
+        "volumeInfo": "Volume Info"
+      },
+      "securityConfig": {
+        "title": "Security Configurations",
+        "authSettings": {
+          "title": "Authentication Settings",
+          "confirmPassword": "Confirm Password",
+          "enableYsqlOrYcql": "Need to enable at least one endpoint among YSQL and YCQL",
+          "enableYCQL": "Enable YCQL",
+          "enableYCQLAuth": "Enable YCQL Auth",
+          "enableYCQLAuthHelper": "Enable the YCQL password authentication.",
+          "enableYCQLHelper": "Enable the YCQL API endpoint to run cassandra compatible workloads.",
+          "enableYEDIS": "Enable YEDIS",
+          "enableYEDISHelper": "Enable the YEDIS API endpoint to run REDIS compatible workloads.",
+          "enableYSQL": "Enable YSQL",
+          "enableYSQLAuth": "Enable YSQL Auth",
+          "enableYSQLAuthHelper": "Enable the YSQL password authentication.",
+          "enableYSQLHelper": "Enable the YSQL API endpoint to run postgres compatible workloads.",
+          "ysqlAuthPassword": "YSQL Auth Password",
+          "ycqlAuthPassword": "YCQL Auth Password"
+        },
+        "IPSettings": {
+          "title": "IP Settings"
+        },
+        "encryptionSettings": {
+          "title": "Encryption Settings",
+          "encryptionInTransit": "Encryption in Transit",
+          "encryptionAtRest": "Encryption at Rest",
+          "enableClientToNodeTLS": "Enable Client-to-Node TLS",
+          "enableClientToNodeTLSHelper": "Enable Client-to-Node encryption to use TLS enabled connection for communication between a client (ex: Database application, ysqlsh, ycqlsh) and the Universe YSQL -or- YCQL endpoint.",
+          "enableEncryptionAtRest": "Enable Encryption at Rest",
+          "enableEncryptionAtRestHelper": "Enable encryption for data stored on the tablet servers.",
+          "enableNodeToNodeTLS": "Enable Node-to-Node TLS",
+          "enableNodeToNodeTLSHelper": "Enable Node-to-Node encryption to use TLS enabled connections for communication between different Universe nodes.",
+          "rootCertificate": "Root Certificate",
+          "rootCertificatePlaceHolder": "Create New Certificate"
+        },
+        "placeholder": {
+          "enterYSQLPassword": "Enter YSQL auth password",
+          "confirmYSQLPassword": "Confirm YSQL auth password",
+          "enterYCQLPassword": "Enter YCQL auth password",
+          "confirmYCQLPassword": "Confirm YCQL auth password"
+        }
+      },
+      "userTags": {
+        "addRow": "Add Tag",
+        "title": "User Tags",
+        "tagName": "Tag Name",
+        "tagValue": "Value"
+      },
+      "resizeNodeModal": {
+        "confirmResizeCheckbox": "Confirm Resize Nodes",
+        "modalTitle": "Resize Nodes",
+        "cancelLabel": "Cancel",
+        "confirmLabel": "Confirm",
+        "modalDescription": "This operation will be performed without restart",
+        "timeDelayLabel": "Rolling Upgrade Delay Between Servers (secs)"
+      },
+      "smartResizeModal": {
+        "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
+        "buttonLabel": "Do Smart Resize"
+      },
+      "fullMoveModal": {
+        "modalTitle": "Confirm Full Move Update",
+        "submitLabel": "Do full move",
+        "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes.",
+        "likeToProceed": "Would you like to proceed?"
+      },
+      "validation": {
+        "confirmPassword": "Passwords should match",
+        "fieldRequired": "This field is required",
+        "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
+        "required": "{{field}} is required"
+      }
+    },
     "clusterDetail": {
       "performance": {
         "advisor": {
           "Recommendation": "Recommendation",
           "Separator": ": ",
           "NoPerformanceIssues": "Performance Advisor didn't find any performance issues",
+          "FailedToLoad": "Failed to load. Try again later",
           "ReviewLoadBalancing": "If you are load balancing in your application or client, review your implementation.",
           "RebalanceAndTroubleshoot": "Rebalance and troubleshoot the cluster. ",
           "LearnPerformanceAdvisor": "Learn more about Performance Advisor",
@@ -20,7 +298,8 @@
           "ScanBtn": "Scan",
           "ReScanBtn": "Re-Scan",
           "Hurray": "Hurray",
-          "ScanTime": "Current Scan"
+          "ScanTime": "Current Scan",
+          "DBScanFailed": "Failed to scan the database. Try again later."
         },
         "typeTag": {
           "IndexSuggestion": "INDEX SUGGESTION",
@@ -28,16 +307,18 @@
           "ConnectionSkew": "CONNECTION SKEW",
           "QueryLoadSkew": "QUERY LOAD SKEW",
           "CpuSkew": "CPU SKEW",
-          "CpuUsage": "CPU USAGE"
+          "CpuUsage": "CPU USAGE",
+          "HotShard": "HOT SHARD"
         },
         "suggestionTypes": {
-          "All": "All recommendation types",
+          "All": "All Recommendation Types",
           "CpuSkew": "CPU Skew",
           "CpuUsage": "CPU Usage",
           "SchemaSuggestion": "Schema Suggestion",
           "ConnectionSkew": "Connection Skew",
           "QueryLoadSkew": "Query Load Skew",
-          "IndexSuggestion": "Index Suggestion"
+          "IndexSuggestion": "Index Suggestion",
+          "HotShard": "Hot Shard"
         },
         "chartTitle": {
           "CpuUsagePercentage": "CPU Usage (Percentage)",
@@ -45,6 +326,109 @@
           "Queries": "Queries"
         }
       }
+    },
+    "admin": {
+      "advanced": {
+        "globalConfig": {
+          "GlobalConfigReqFailed": "Failed to fetch global config values",
+          "GlobalConfigTitle": "Global Configuration",
+          "CustomerConfigTitle": "Customer Configuration",
+          "UniverseConfigTitle": "Universe Configuration",
+          "ProviderConfigTitle": "Provider Configuration",
+          "ModalKeyField": "Config Key",
+          "ModalKeyValue": "Config Value",
+          "ModelEditConfigTitle": "Edit Configuration",
+          "ModelResetConfigTitle": "Reset Configuration",
+          "ShowOverridenConfigs": "Show Overriden Configs",
+          "EditConfigWarningMessage": "Value not changed",
+          "SelectProvider": "Select Provider:",
+          "SelectUniverse": "Select Universe:",
+          "SelectCustomer": "Select Customer:",
+          "UniverseConfigError": "There are no universes configured",
+          "ProviderConfigError": "There are no providers configured",
+          "CustomerConfigError": "There are no customers configured",
+          "GenericConfigError": "Please try again",
+          "BytesTooltipMessage": "<value><unit> where <unit> can be one of ['K', 'M'], Example: 10M",
+          "DurationTooltipMessage": "<value> <unit> where <unit> can be one of ['minutes', 'hours', 'days', 'seconds'], Example: 10 minutes",
+          "IntegerTooltipMessage": "Example: 30",
+          "LongTooltipMessage": "Example: 716800",
+          "StringTooltipMessage": "Example: total_time",
+          "StringListTooltipMessage": "['foo', 'bar']"
+        }
+      }
+    },
+    "alertCustomTemplates": {
+      "customVariables": {
+        "addNewVariableText": "Create your own variables with <bold> customized value </bold> to use in the notification templates.",
+        "createNewVariableButton": "Create Custom Variable",
+        "customVariables": "Custom Variables",
+        "systemVariables": "System Variables",
+        "assignVariablesButton": "Assign Variable Value to Alert Policies",
+        "customVariableContextMenu": {
+          "editVariable": "Edit Variable",
+          "variableDetails": "Variable Details",
+          "deleteVariable": "Delete Variable"
+        },
+        "variableText": "Variable",
+        "deleteSuccess": "Successfully deleted custom variable <u>{{variable_name}}</u>",
+        "createSuccess": "Successfully created custom variable <u>{{variable_name}}</u>",
+        "editSuccess": "Successfully edited custom variable <u>{{variable_name}}</u>",
+        "createNewVariableModal": {
+          "title": "Create Custom Variable",
+          "editTitle": "Edit Custom Variable",
+          "name": "Name",
+          "values": "Values",
+          "default": "Default",
+          "addValuesButton": "Add Values",
+          "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy."
+        },
+        "assignCustomVariableValueModal": {
+          "title": "Assign Variable Value to Alert Policies",
+          "searchHelpText": "For each alert policy, choose the variable value to display in alert notifications.",
+          "searchInputPlaceHolder": "Filter by alert policy name",
+          "menuDefault": "(default)",
+          "tablePolicyHeader": "Alert Policies"
+        }
+      },
+      "composer": {
+        "subject": "Subject",
+        "content": "Content",
+        "helpText": "All Alert Policies that generate email alerts will use this notification template.",
+        "insertVariableButton": "Insert Variable",
+        "previewTemplateButton": "Preview Notification Template",
+        "templateSavedSuccess": "Template saved successfully",
+        "emailTemplate": "Email Template",
+        "webhookTemplate": "Webhook Template",
+        "webhookComposer": {
+          "rollback": "Rollback to Default Template",
+          "clearTemplate": "Clear Template"
+        }
+      },
+      "customVariablesPlugin": {
+        "sysOrCusVariable": "{{variable_type}} VAR",
+        "alertValueNotFound": "No value found"
+      },
+      "alertVariablesPreviewModal": {
+        "modalTitle": "Preview Notification Template",
+        "info": "Choose the Alert Template to preview with the Email Notification Template.",
+        "selectPlaceholder": "Select an alert configuration"
+      },
+      "rollbackModal": {
+        "title": "Rollback to Default Template",
+        "helpText": "Rollback to default template will discard your current edits and revert the template back to the out-of-box version. Do you want to proceed? "
+      }
+    },
+    "alertPolicyDetails": {
+      "variableTitle": "Custom variables used by the notification channels",
+      "emptyVariableList": {
+        "title": "No custom variables",
+        "subText": "Custom variables are key-value pairs created in the <bold>Notification Channels / Customize Notification Templates</bold> page. You can use them to define custom values to show in alert notifications. "
+      },
+      "variablesList": {
+        "helpText": "Choose the values to display in the actual alert notifications."
+      },
+      "variableName": "Variable Name:",
+      "variableValUpdateSuccess": "variable updated sucessfulyy for policy \"{{policy_name}}\""
     }
   }
 }

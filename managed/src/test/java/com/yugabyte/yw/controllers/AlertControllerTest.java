@@ -46,10 +46,17 @@ import static com.yugabyte.yw.common.AlertTemplate.YSQL_OP_P99_LATENCY;
 import static com.yugabyte.yw.common.AlertTemplate.YSQL_THROUGHPUT;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
-import static org.hamcrest.MatcherAssert.*;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.anyOf;
+import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.everyItem;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.in;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.Assert.fail;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
@@ -70,13 +77,23 @@ import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
 import com.yugabyte.yw.common.alerts.AlertChannelParams;
 import com.yugabyte.yw.common.alerts.AlertChannelService;
 import com.yugabyte.yw.common.alerts.AlertChannelSlackParams;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateService;
+import com.yugabyte.yw.common.alerts.AlertChannelTemplateServiceTest;
 import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDestinationService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableService;
+import com.yugabyte.yw.common.alerts.AlertTemplateVariableServiceTest;
 import com.yugabyte.yw.common.alerts.AlertUtils;
 import com.yugabyte.yw.common.alerts.SmtpData;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
 import com.yugabyte.yw.forms.AlertTemplateSettingsFormData;
+import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
+import com.yugabyte.yw.forms.AlertTemplateVariablesFormData;
+import com.yugabyte.yw.forms.AlertTemplateVariablesList;
+import com.yugabyte.yw.forms.NotificationPreview;
+import com.yugabyte.yw.forms.NotificationPreviewFormData;
 import com.yugabyte.yw.forms.filters.AlertApiFilter;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.forms.filters.AlertTemplateApiFilter;
@@ -85,6 +102,7 @@ import com.yugabyte.yw.forms.paging.AlertPagedApiQuery;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
+import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertConfiguration;
 import com.yugabyte.yw.models.AlertConfiguration.SortBy;
 import com.yugabyte.yw.models.AlertConfiguration.TargetType;
@@ -93,6 +111,7 @@ import com.yugabyte.yw.models.AlertConfigurationThreshold;
 import com.yugabyte.yw.models.AlertDefinition;
 import com.yugabyte.yw.models.AlertDestination;
 import com.yugabyte.yw.models.AlertTemplateSettings;
+import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Metric;
 import com.yugabyte.yw.models.MetricKey;
@@ -307,8 +326,10 @@ public class AlertControllerTest extends FakeDBApplication {
   private int alertDestinationIndex;
 
   private AlertChannelService alertChannelService;
+  private AlertChannelTemplateService alertChannelTemplateService;
   private AlertDestinationService alertDestinationService;
   private AlertConfigurationService alertConfigurationService;
+  private AlertTemplateVariableService alertTemplateVariableService;
   private AlertController alertController;
 
   private AlertConfiguration alertConfiguration;
@@ -323,8 +344,10 @@ public class AlertControllerTest extends FakeDBApplication {
     universe = ModelFactory.createUniverse();
 
     alertChannelService = app.injector().instanceOf(AlertChannelService.class);
+    alertChannelTemplateService = app.injector().instanceOf(AlertChannelTemplateService.class);
     alertDestinationService = app.injector().instanceOf(AlertDestinationService.class);
     alertConfigurationService = app.injector().instanceOf(AlertConfigurationService.class);
+    alertTemplateVariableService = app.injector().instanceOf(AlertTemplateVariableService.class);
     alertController = app.injector().instanceOf(AlertController.class);
     alertConfiguration = ModelFactory.createAlertConfiguration(customer, universe);
     alertDefinition = ModelFactory.createAlertDefinition(customer, universe, alertConfiguration);
@@ -501,8 +524,8 @@ public class AlertControllerTest extends FakeDBApplication {
                     data));
     AssertHelper.assertBadRequest(
         result,
-        "{\"params.webhookUrl\":[\"may not be null\"],"
-            + "\"params.username\":[\"may not be null\"]}");
+        "{\"params.webhookUrl\":[\"must not be null\"],"
+            + "\"params.username\":[\"must not be null\"]}");
   }
 
   @Test
@@ -706,12 +729,14 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertDestination firstDestination = createAlertDestination(true);
     assertThat(firstDestination.getUuid(), notNullValue());
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(firstDestination));
 
     AlertDestination secondDestination = createAlertDestination(true);
     assertThat(secondDestination.getUuid(), notNullValue());
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(secondDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(secondDestination));
   }
 
   @Test
@@ -757,13 +782,15 @@ public class AlertControllerTest extends FakeDBApplication {
     AlertDestination firstDestination = createAlertDestination(true);
     assertThat(firstDestination.getUuid(), notNullValue());
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(firstDestination));
 
     AlertDestination secondDestination = createAlertDestination(false);
     assertThat(secondDestination.getUuid(), notNullValue());
     // To be sure the default destination hasn't been changed.
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(firstDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(firstDestination));
 
     secondDestination.setDefaultDestination(true);
 
@@ -781,7 +808,8 @@ public class AlertControllerTest extends FakeDBApplication {
 
     assertThat(receivedDestination.isDefaultDestination(), is(true));
     assertThat(
-        alertDestinationService.getDefaultDestination(customer.uuid), equalTo(secondDestination));
+        alertDestinationService.getDefaultDestination(customer.getUuid()),
+        equalTo(secondDestination));
   }
 
   @Test
@@ -790,7 +818,8 @@ public class AlertControllerTest extends FakeDBApplication {
 
     AlertDestination destination = createAlertDestination(true);
     assertThat(destination.getUuid(), notNullValue());
-    assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.getUuid()), equalTo(destination));
 
     destination.setDefaultDestination(false);
     Result result =
@@ -809,7 +838,8 @@ public class AlertControllerTest extends FakeDBApplication {
         "{\"defaultDestination\":[\"can't set the alert destination as non-default - "
             + "make another destination as default at first.\"]}");
     destination.setDefaultDestination(true);
-    assertThat(alertDestinationService.getDefaultDestination(customer.uuid), equalTo(destination));
+    assertThat(
+        alertDestinationService.getDefaultDestination(customer.getUuid()), equalTo(destination));
   }
 
   @Test
@@ -907,7 +937,9 @@ public class AlertControllerTest extends FakeDBApplication {
 
     Result result =
         doRequestWithAuthToken(
-            "GET", "/api/customers/" + customer.uuid + "/alerts/" + initial.getUuid(), authToken);
+            "GET",
+            "/api/customers/" + customer.getUuid() + "/alerts/" + initial.getUuid(),
+            authToken);
     assertThat(result.status(), equalTo(OK));
     JsonNode alertsJson = Json.parse(contentAsString(result));
     Alert alert = Json.fromJson(alertsJson, Alert.class);
@@ -1008,7 +1040,11 @@ public class AlertControllerTest extends FakeDBApplication {
     Result result =
         doRequestWithAuthToken(
             "POST",
-            "/api/customers/" + customer.uuid + "/alerts/" + initial.getUuid() + "/acknowledge",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/alerts/"
+                + initial.getUuid()
+                + "/acknowledge",
             authToken);
     assertThat(result.status(), equalTo(OK));
 
@@ -1253,7 +1289,7 @@ public class AlertControllerTest extends FakeDBApplication {
                     "/api/customers/" + customer.getUuid() + "/alert_configurations",
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "{\"name\":[\"may not be null\"]}");
+    assertBadRequest(result, "{\"name\":[\"must not be null\"]}");
   }
 
   @Test
@@ -1293,7 +1329,7 @@ public class AlertControllerTest extends FakeDBApplication {
                         + alertConfiguration.getUuid(),
                     authToken,
                     Json.toJson(alertConfiguration)));
-    assertBadRequest(result, "{\"targetType\":[\"may not be null\"]}");
+    assertBadRequest(result, "{\"targetType\":[\"must not be null\"]}");
   }
 
   @Test
@@ -1356,11 +1392,11 @@ public class AlertControllerTest extends FakeDBApplication {
       assertThat(
           request.getBody().readString(Charset.defaultCharset()),
           equalTo(
-              "{\"username\":\"Slack Bot\","
-                  + "\"text\":\"alertConfiguration alert with severity level 'SEVERE' "
+              "{\n  \"username\" : \"Slack Bot\",\n"
+                  + "  \"text\" : \"alertConfiguration alert with severity level 'SEVERE' "
                   + "for universe 'Test Universe' is firing.\\n"
                   + "\\n[TEST ALERT!!!] Average memory usage for universe 'Test Universe' "
-                  + "is above 1%. Current value is 2%\",\"icon_url\":null}"));
+                  + "is above 1%. Current value is 2%\"\n}"));
     }
   }
 
@@ -1481,6 +1517,208 @@ public class AlertControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListTemplateVariables() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    alertTemplateVariableService.save(variable);
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.getUuid() + "/alert_template_variables", authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode variableJson = Json.parse(contentAsString(result));
+    AlertTemplateVariablesList queriedVariables =
+        Json.fromJson(variableJson, AlertTemplateVariablesList.class);
+
+    assertThat(queriedVariables.getCustomVariables(), hasSize(1));
+    AlertTemplateVariable queriedVariable = queriedVariables.getCustomVariables().get(0);
+    assertThat(queriedVariable, equalTo(variable));
+
+    assertThat(
+        queriedVariables.getSystemVariables(),
+        containsInAnyOrder(AlertTemplateSystemVariable.values()));
+  }
+
+  @Test
+  public void testCreateTemplateVariables() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    AlertTemplateVariablesFormData data = new AlertTemplateVariablesFormData();
+    data.variables = ImmutableList.of(variable);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/" + customer.getUuid() + "/alert_template_variables",
+            authToken,
+            Json.toJson(data));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode variableJson = Json.parse(contentAsString(result));
+    List<AlertTemplateVariable> queriedVariables =
+        Arrays.asList(Json.fromJson(variableJson, AlertTemplateVariable[].class));
+
+    assertThat(queriedVariables, hasSize(1));
+    AlertTemplateVariable queriedVariable = queriedVariables.get(0);
+    assertThat(queriedVariable.getUuid(), notNullValue());
+    queriedVariable.setUuid(null);
+    assertThat(queriedVariable, equalTo(variable));
+  }
+
+  @Test
+  public void testCreateTemplateVariableFailure() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    variable.setName(null);
+    AlertTemplateVariablesFormData data = new AlertTemplateVariablesFormData();
+    data.variables = ImmutableList.of(variable);
+
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT",
+                    "/api/customers/" + customer.getUuid() + "/alert_template_variables",
+                    authToken,
+                    Json.toJson(data)));
+    assertBadRequest(result, "{\"name\":[\"must not be null\"]}");
+  }
+
+  @Test
+  public void testUpdateTemplateVariable() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    alertTemplateVariableService.save(variable);
+
+    variable.setPossibleValues(ImmutableSet.of("one", "foo"));
+    AlertTemplateVariablesFormData data = new AlertTemplateVariablesFormData();
+    data.variables = ImmutableList.of(variable);
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "PUT",
+            "/api/customers/" + customer.getUuid() + "/alert_template_variables",
+            authToken,
+            Json.toJson(data));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode variableJson = Json.parse(contentAsString(result));
+    List<AlertTemplateVariable> queriedVariables =
+        Arrays.asList(Json.fromJson(variableJson, AlertTemplateVariable[].class));
+
+    assertThat(queriedVariables, hasSize(1));
+    AlertTemplateVariable queriedVariable = queriedVariables.get(0);
+    assertThat(queriedVariable, equalTo(variable));
+  }
+
+  @Test
+  public void testDeleteTemplateVariable() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "Test");
+    alertTemplateVariableService.save(variable);
+
+    Result result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/customers/"
+                + customer.getUuid()
+                + "/alert_template_variables/"
+                + variable.getUuid(),
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+  }
+
+  @Test
+  public void testGetChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(templates);
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET",
+            "/api/customers/" + customer.getUuid() + "/alert_channel_templates/Email",
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode templateJson = Json.parse(contentAsString(result));
+    AlertChannelTemplatesExt resultTemplates =
+        Json.fromJson(templateJson, AlertChannelTemplatesExt.class);
+    assertThat(resultTemplates.getChannelTemplates(), equalTo(templates));
+    assertThat(
+        resultTemplates.getDefaultTitleTemplate(),
+        equalTo(
+            "YugabyteDB Anywhere {{ yugabyte_alert_severity }} alert"
+                + " {{ yugabyte_alert_policy_name }} {{ yugabyte_alert_status }} for"
+                + " {{ yugabyte_alert_source_name }}\n"));
+    assertThat(
+        resultTemplates.getDefaultTextTemplate(),
+        equalTo(
+            "{{ yugabyte_alert_policy_name }} alert with severity level "
+                + "'{{ yugabyte_alert_severity }}' for {{ yugabyte_alert_source_type }} "
+                + "'{{ yugabyte_alert_source_name }}' is {{ yugabyte_alert_status }}.\n\n"
+                + "{{ yugabyte_alert_message }}\n"));
+  }
+
+  @Test
+  public void testListChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(templates);
+    AlertChannelTemplates templates2 =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Slack);
+    alertChannelTemplateService.save(templates2);
+
+    Result result =
+        doRequestWithAuthToken(
+            "GET", "/api/customers/" + customer.getUuid() + "/alert_channel_templates", authToken);
+    assertThat(result.status(), equalTo(OK));
+    JsonNode templatesJson = Json.parse(contentAsString(result));
+    List<AlertChannelTemplatesExt> listedTemplatesWithDefault =
+        Arrays.asList(Json.fromJson(templatesJson, AlertChannelTemplatesExt[].class));
+    List<AlertChannelTemplates> listedTemplates =
+        listedTemplatesWithDefault
+            .stream()
+            .map(AlertChannelTemplatesExt::getChannelTemplates)
+            .filter(t -> t.getTextTemplate() != null)
+            .collect(Collectors.toList());
+    assertThat(listedTemplates, containsInAnyOrder(templates, templates2));
+    assertThat(listedTemplatesWithDefault, hasSize(4));
+  }
+
+  @Test
+  public void testSetChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    // Should be able to set without these fields
+    templates.setType(null);
+    templates.setCustomerUUID(null);
+
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alert_channel_templates/Email",
+            authToken,
+            Json.toJson(templates));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode templateJson = Json.parse(contentAsString(result));
+    AlertChannelTemplates resultTemplates =
+        Json.fromJson(templateJson, AlertChannelTemplates.class);
+
+    AlertChannelTemplates expected =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    assertThat(resultTemplates, equalTo(expected));
+  }
+
+  @Test
+  public void testDeleteChannelTemplates() {
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    alertChannelTemplateService.save(templates);
+    Result result =
+        doRequestWithAuthToken(
+            "DELETE",
+            "/api/customers/" + customer.getUuid() + "/alert_channel_templates/Email",
+            authToken);
+    assertThat(result.status(), equalTo(OK));
+  }
+
+  @Test
   public void testTestAlertMessage() {
     TEST_ALERT_MESSAGE.forEach(
         (template, message) -> {
@@ -1495,8 +1733,50 @@ public class AlertControllerTest extends FakeDBApplication {
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
           }
           alertConfigurationService.save(configuration);
-          Alert testAlert = alertController.createTestAlert(configuration);
+          Alert testAlert = alertController.createTestAlert(customer, configuration);
           assertThat(testAlert.getMessage(), CoreMatchers.equalTo("[TEST ALERT!!!] " + message));
         });
+  }
+
+  @Test
+  public void testNotificationPreview() {
+    AlertTemplateVariable variable =
+        AlertTemplateVariableServiceTest.createTestVariable(customer.getUuid(), "test");
+    alertTemplateVariableService.save(variable);
+    AlertChannelTemplates templates =
+        AlertChannelTemplateServiceTest.createTemplates(customer.getUuid(), ChannelType.Email);
+    templates.setTitleTemplate(
+        "Alert {{ yugabyte_alert_policy_name }} "
+            + "{{ yugabyte_alert_status }}: severity={{ yugabyte_alert_severity }} "
+            + "with test = '{{ test }}'");
+    templates.setTextTemplate(
+        "Channel '{{ yugabyte_alert_channel_name }}' got alert "
+            + "{{ yugabyte_alert_policy_name }} with test = '{{ test }}'");
+
+    AlertConfiguration configuration =
+        ModelFactory.createAlertConfiguration(
+            customer, universe, config -> config.setLabels(ImmutableMap.of("test", "value")));
+    AlertDefinition definition =
+        ModelFactory.createAlertDefinition(customer, universe, configuration);
+
+    NotificationPreviewFormData formData = new NotificationPreviewFormData();
+    formData.setAlertChannelTemplates(templates);
+    formData.setAlertConfigUuid(configuration.getUuid());
+    Result result =
+        doRequestWithAuthTokenAndBody(
+            "POST",
+            "/api/customers/" + customer.getUuid() + "/alert_notification_preview",
+            authToken,
+            Json.toJson(formData));
+    assertThat(result.status(), equalTo(OK));
+    JsonNode previewJson = Json.parse(contentAsString(result));
+    NotificationPreview resultPreview = Json.fromJson(previewJson, NotificationPreview.class);
+
+    assertThat(
+        resultPreview.getTitle(),
+        equalTo("Alert alertConfiguration firing: severity=SEVERE with test = 'value'"));
+    assertThat(
+        resultPreview.getText(),
+        equalTo("Channel 'Channel name' got alert alertConfiguration with test = 'value'"));
   }
 }

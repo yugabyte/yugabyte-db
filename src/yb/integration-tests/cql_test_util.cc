@@ -207,6 +207,10 @@ CassandraIterator CassandraResult::CreateIterator() const {
   return CassandraIterator(cass_iterator_from_result(cass_result_.get()));
 }
 
+bool CassandraResult::HasMorePages() const {
+  return cass_result_has_more_pages(cass_result_.get());
+}
+
 std::string CassandraResult::RenderToString(
     const std::string& line_separator, const std::string& value_separator) const {
   std::string result;
@@ -494,6 +498,11 @@ void CppCassandraDriver::EnableTLS(const std::vector<std::string>& ca_certs) {
 
   cass_cluster_set_ssl(cass_cluster_, ssl);
   cass_ssl_free(ssl);
+}
+
+void CppCassandraDriver::SetCredentials(const std::string& username, const std::string& password) {
+  LOG(INFO) << "Setting YCQL credentials: " << username << " / " << password;
+  cass_cluster_set_credentials(cass_cluster_, username.c_str(), password.c_str());
 }
 
 Result<CassandraSession> CppCassandraDriver::CreateSession() {

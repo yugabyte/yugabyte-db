@@ -12,8 +12,7 @@
 
 // C wrappers around "pggate" for PostgreSQL to call.
 
-#ifndef YB_YQL_PGGATE_YBC_PGGATE_H
-#define YB_YQL_PGGATE_YBC_PGGATE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -57,26 +56,28 @@ YBCStatus YBCPgIsInitDbDone(bool* initdb_done);
 // Get gflag TEST_ysql_disable_transparent_cache_refresh_retry
 bool YBCGetDisableTransparentCacheRefreshRetry();
 
-// Set global catalog_version to the local tserver's catalog version stored in shared memory.
-// Return error if the shared memory has not been initialized (e.g. in initdb).
+// Set global catalog_version to the local tserver's catalog version
+// stored in shared memory.
 YBCStatus YBCGetSharedCatalogVersion(uint64_t* catalog_version);
 
-// Set per-db catalog_version to the local tserver's per-db catalog version stored in shared
-// memory. Return error if the shared memory has not been initialized (e.g. in initdb).
-YBCStatus YBCGetSharedDBCatalogVersion(int db_oid_shm_index, uint64_t* catalog_version);
+// Set per-db catalog_version to the local tserver's per-db catalog version
+// stored in shared memory.
+YBCStatus YBCGetSharedDBCatalogVersion(
+    YBCPgOid db_oid, uint64_t* catalog_version);
 
-// Get the tserver catalog version info that can be used to translate a database oid to the
-// index of its slot in the shared memory array db_catalog_versions_.
-YBCStatus YBCGetTserverCatalogVersionInfo(YbTserverCatalogInfo* tserver_catalog_info);
+// Return the number of rows in pg_yb_catalog_table. Only used when per-db
+// catalog version mode is enabled.
+YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
-// Set auth_key to the local tserver's postgres authentication key stored in shared memory.  Return
-// error if the shared memory has not been initialized (e.g. in initdb).
-YBCStatus YBCGetSharedAuthKey(uint64_t* auth_key);
+// Return auth_key to the local tserver's postgres authentication key stored in shared memory.
+uint64_t YBCGetSharedAuthKey();
 
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
 
 YBCStatus YBCGetPgggateCurrentAllocatedBytes(int64_t *consumption);
+
+YBCStatus YbGetActualHeapSizeBytes(int64_t *consumption);
 
 // Call root MemTacker to consume the consumption bytes.
 // Return true if MemTracker exists (inited by pggate); otherwise false.
@@ -86,6 +87,8 @@ bool YBCTryMemConsume(int64_t bytes);
 // Return true if MemTracker exists (inited by pggate); otherwise false.
 bool YBCTryMemRelease(int64_t bytes);
 
+YBCStatus YBCGetHeapConsumption(YbTcmallocStats *desc);
+
 //--------------------------------------------------------------------------------------------------
 // DDL Statements
 //--------------------------------------------------------------------------------------------------
@@ -94,18 +97,22 @@ bool YBCTryMemRelease(int64_t bytes);
 // Connect database. Switch the connected database to the given "database_name".
 YBCStatus YBCPgConnectDatabase(const char *database_name);
 
-// Get whether the given database is colocated.
-YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated);
+// Get whether the given database is colocated
+// and whether the database is a legacy colocated database.
+YBCStatus YBCPgIsDatabaseColocated(const YBCPgOid database_oid, bool *colocated,
+                                   bool *legacy_colocated_database);
 
 YBCStatus YBCInsertSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
+                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called);
 
 YBCStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
                                               int64_t seq_oid,
                                               uint64_t ysql_catalog_version,
+                                              bool is_db_catalog_version_mode,
                                               int64_t last_val,
                                               bool is_called,
                                               int64_t expected_last_val,
@@ -115,13 +122,27 @@ YBCStatus YBCUpdateSequenceTupleConditionally(int64_t db_oid,
 YBCStatus YBCUpdateSequenceTuple(int64_t db_oid,
                                  int64_t seq_oid,
                                  uint64_t ysql_catalog_version,
+                                 bool is_db_catalog_version_mode,
                                  int64_t last_val,
                                  bool is_called,
                                  bool* skipped);
 
+YBCStatus YBCFetchSequenceTuple(int64_t db_oid,
+                                int64_t seq_oid,
+                                uint64_t ysql_catalog_version,
+                                bool is_db_catalog_version_mode,
+                                uint32_t fetch_count,
+                                int64_t inc_by,
+                                int64_t min_value,
+                                int64_t max_value,
+                                bool cycle,
+                                int64_t *first_value,
+                                int64_t *last_value);
+
 YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t seq_oid,
                                uint64_t ysql_catalog_version,
+                               bool is_db_catalog_version_mode,
                                int64_t *last_val,
                                bool *is_called);
 
@@ -253,11 +274,11 @@ YBCStatus YBCPgDmlModifiesRow(YBCPgStatement handle, bool *modifies_row);
 
 YBCStatus YBCPgSetIsSysCatalogVersionChange(YBCPgStatement handle);
 
-YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t catalog_cache_version);
+YBCStatus YBCPgSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
-                                        uint32_t db_oid,
-                                        uint64_t db_catalog_cache_version);
+                                        YBCPgOid db_oid,
+                                        uint64_t version);
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
                            const YBCPgOid table_oid,
@@ -288,6 +309,7 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               bool is_unique_index,
                               const bool skip_index_backfill,
                               bool if_not_exist,
+                              bool is_colocated_via_database,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
@@ -307,6 +329,13 @@ YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgExecPostponedDdlStmt(YBCPgStatement handle);
+
+YBCStatus YBCPgExecDropTable(YBCPgStatement handle);
+
+YBCStatus YBCPgWaitForBackendsCatalogVersion(
+    YBCPgOid dboid,
+    uint64_t version,
+    int* num_lagging_backends);
 
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
@@ -368,8 +397,11 @@ YBCStatus YBCPgDmlBindColumnCondBetween(YBCPgStatement handle, int attr_num,
                                         bool start_inclusive,
                                         YBCPgExpr attr_value_end,
                                         bool end_inclusive);
-YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle, int attr_num, int n_attr_values,
-    YBCPgExpr *attr_values);
+YBCStatus YBCPgDmlBindColumnCondIn(YBCPgStatement handle,
+                                   YBCPgExpr lhs,
+                                   int n_attr_values,
+                                   YBCPgExpr *attr_values);
+
 YBCStatus YBCPgDmlGetColumnInfo(YBCPgStatement handle, int attr_num, YBCPgColumnInfo* info);
 
 YBCStatus YBCPgDmlBindHashCodes(YBCPgStatement handle,
@@ -505,6 +537,7 @@ YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
 YBCStatus YBCPgSetTransactionReadOnly(bool read_only);
 YBCStatus YBCPgSetTransactionDeferrable(bool deferrable);
+YBCStatus YBCPgSetEnableTracing(bool tracing);
 YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
@@ -559,6 +592,11 @@ YBCStatus YBCPgNewOperator(
     bool collate_is_valid_non_c, YBCPgExpr *op_handle);
 YBCStatus YBCPgOperatorAppendArg(YBCPgExpr op_handle, YBCPgExpr arg);
 
+YBCStatus YBCPgNewTupleExpr(
+    YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
+    const YBCPgTypeAttrs *type_attrs, int num_elems,
+    YBCPgExpr *elems, YBCPgExpr *expr_handle);
+
 YBCStatus YBCGetDocDBKeySize(uint64_t data, const YBCPgTypeEntity *typeentity,
                             bool is_null, size_t *type_size);
 
@@ -605,20 +643,29 @@ void* YBCPgSetThreadLocalJumpBuffer(void* new_buffer);
 
 void* YBCPgGetThreadLocalJumpBuffer();
 
-void YBCPgSetThreadLocalErrMsg(const void* new_msg);
+void* YBCPgSetThreadLocalErrStatus(void* new_status);
 
-const void* YBCPgGetThreadLocalErrMsg();
+void* YBCPgGetThreadLocalErrStatus();
 
 void YBCPgResetCatalogReadTime();
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
-void YBCStartSysTablePrefetching();
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+                                      uint64_t** backfill_statuses,
+                                      int num_indexes);
+
+void YBCStartSysTablePrefetching(
+    uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode);
 
 void YBCStopSysTablePrefetching();
 
+bool YBCIsSysTablePrefetchingStarted();
+
 void YBCRegisterSysTableForPrefetching(
     YBCPgOid database_oid, YBCPgOid table_oid, YBCPgOid index_oid);
+
+YBCStatus YBCPrefetchRegisteredSysTables();
 
 YBCStatus YBCPgCheckIfPitrActive(bool* is_active);
 
@@ -639,5 +686,3 @@ void YBCInitPgGateEx(
 } // namespace pggate
 } // namespace yb
 #endif
-
-#endif  // YB_YQL_PGGATE_YBC_PGGATE_H

@@ -17,12 +17,15 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.yb.AssertionWrappers.assertEquals;
@@ -41,7 +44,7 @@ import static org.yb.AssertionWrappers.assertGreaterThan;
  * more tests of that kind, and need more test suites, we can (and should) refactor them into a
  * separate package.
  */
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgConcurrency extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgConcurrency.class);
 
@@ -477,6 +480,86 @@ public class TestPgConcurrency extends BasePgSQLTest {
       }
       // Publish the result
       this.result = new Pair(failCount, readCount);
+    }
+  }
+
+  /**
+   *
+   * @throws Exception
+   */
+  @Test
+  public void testSequence() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Number of concurrent workers
+      final int concurrency = 50;
+      // Number of nextvals to get by each worker
+      final int count = 1234;
+      // Prepare target table
+      statement.execute("CREATE SEQUENCE seq2");
+      // Prepare workers
+      Worker<BitSet> workers[] = new SequenceTestWorker[concurrency];
+      for (int i = 0; i < concurrency; i++) {
+        workers[i] = new SequenceTestWorker(getConnectionBuilder(), count);
+      }
+      LOG.info("Starting workers");
+      for (Worker<BitSet> worker: workers) {
+        worker.start();
+      }
+      LOG.info("Waiting for results");
+      BitSet total = new BitSet();
+      for (Worker<BitSet> worker: workers) {
+        BitSet result = worker.result();
+        assertEquals(count, result.cardinality());
+        total.or(result);
+      }
+      assertEquals(concurrency * count, total.cardinality());
+    }
+  }
+
+  private static class SequenceTestWorker extends Worker<BitSet> {
+    final private int count;
+
+    /**
+     * The constructor
+     *
+     * @param connBldr - the connection builder
+     * @param rowCount - expected number of rows affected per statement
+     * @param count - number of statements to run
+     */
+    SequenceTestWorker(ConnectionBuilder connBldr, int count) {
+      super(connBldr);
+      this.count = count;
+    }
+
+    /**
+     * Run the test
+     */
+    @Override
+    public void run() {
+      BitSet result = new BitSet();
+      LOG.info("Begin work");
+      try (Connection conn = connect();
+          Statement statement = conn.createStatement()) {
+        // Run until stopped
+        for (int i = 0; i < count; i++) {
+          try {
+            // Exec the query
+            ResultSet rs = statement.executeQuery("SELECT nextval('seq2')");
+            if (!rs.next()) {
+              LOG.error("No nextval");
+            } else {
+              int nextval = rs.getInt(1);
+              result.set(nextval);
+            }
+          } catch (SQLException e) {
+            LOG.error("Read failed due to {}", e.getMessage());
+          }
+        }
+      } catch (Exception e) {
+        LOG.error("Connection failed: {}", e.getMessage());
+      }
+      LOG.info("End work");
+      this.result = result;
     }
   }
 }

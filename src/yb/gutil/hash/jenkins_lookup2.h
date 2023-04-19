@@ -26,8 +26,7 @@
 // word from memory.  This relatively generic functionality probably
 // shouldn't live in this file.
 
-#ifndef UTIL_HASH_JENKINS_LOOKUP2_H_
-#define UTIL_HASH_JENKINS_LOOKUP2_H_
+#pragma once
 
 #include "yb/gutil/endian.h"
 #include "yb/gutil/integral_types.h"
@@ -143,5 +142,3 @@ static inline uint32 Google1At(const char *ptr) {
 // TODO(user): find occurences of WORD_HASH and adjust the code to
 // use more meaningful concepts.
 # define WORD_HASH
-
-#endif  // UTIL_HASH_JENKINS_LOOKUP2_H_

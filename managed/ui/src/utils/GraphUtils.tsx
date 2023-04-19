@@ -51,12 +51,13 @@ export const getTabContent = (
               uniqueOperations.add(metricItem.name);
             });
           }
-          uniqueOperations = Array.from(uniqueOperations)?.sort();
+          uniqueOperations = Array.from(uniqueOperations);
 
           return isNonEmptyObject(metric) && !metric?.error ? (
             <MetricsPanel
               currentUser={currentUser}
               metricKey={metricKey}
+              // eslint-disable-next-line react/no-array-index-key
               key={`metric-${metricKey}-${idx}`}
               metric={metric}
               metricType={type}
@@ -73,19 +74,21 @@ export const getTabContent = (
 
     if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
       //Hide master related panels for tserver pods.
+      // eslint-disable-next-line eqeqeq
       if (nodeName.match('yb-tserver-') != null) {
         if (title === 'Master Server' || title === 'Master Server Advanced') {
           return null;
         }
       }
       //Hide empty panels for master pods.
+      // eslint-disable-next-line eqeqeq
       if (nodeName.match('yb-master-') != null) {
         const skipList = ['Tablet Server',
           'YSQL Ops',
           'YCQL Ops',
           'YEDIS Ops',
           'YEDIS Advanced',
-          'Resource']
+          'Resource'];
         if (skipList.includes(title)) {
           return null;
         }
@@ -93,4 +96,4 @@ export const getTabContent = (
     }
   }
   return tabData;
-}
+};

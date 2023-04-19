@@ -20,6 +20,8 @@
 #include "executor/tuptable.h"
 #include "nodes/bitmapset.h"
 
+/* Yugabyte includes */
+#include "utils/rel.h"
 
 typedef struct TupleConversionMap
 {
@@ -39,12 +41,16 @@ extern TupleConversionMap *convert_tuples_by_position(TupleDesc indesc,
 
 extern TupleConversionMap *convert_tuples_by_name(TupleDesc indesc,
 												  TupleDesc outdesc);
-
 extern HeapTuple execute_attr_map_tuple(HeapTuple tuple, TupleConversionMap *map);
 extern TupleTableSlot *execute_attr_map_slot(AttrMap *attrMap,
 											 TupleTableSlot *in_slot,
 											 TupleTableSlot *out_slot);
 extern Bitmapset *execute_attr_map_cols(AttrMap *attrMap, Bitmapset *inbitmap);
+#ifdef YB_TODO
+/* YB_TODO(neil) check if we need extra parameters */
+extern Bitmapset *execute_attr_map_cols(AttrMap *attrMap, Bitmapset *inbitmap,
+										TupleConversionMap *map, Relation rel);
+#endif
 
 extern void free_conversion_map(TupleConversionMap *map);
 

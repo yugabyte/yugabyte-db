@@ -16,6 +16,7 @@
 #include "yb/common/ql_resultset.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/doc_read_context.h"
@@ -41,7 +42,8 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                            const ReadHybridTime& read_time,
                                            const QLReadRequestPB& ql_read_request,
                                            const TransactionOperationContext& txn_op_context,
-                                           QLReadRequestResult* result) {
+                                           QLReadRequestResult* result,
+                                           WriteBuffer* rows_data) {
 
   // TODO(Robert): verify that all key column values are provided
   docdb::QLReadOperation doc_op(ql_read_request, txn_op_context);
@@ -61,7 +63,8 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
       column_refs, &projection));
 
   const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
-  QLResultSet resultset(&rsrow_desc, &result->rows_data);
+  QLResultSet resultset(&rsrow_desc, rows_data);
+
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
       QLStorage(), deadline, read_time, *doc_read_context, projection, &resultset,
@@ -91,31 +94,31 @@ Status AbstractTablet::ProcessPgsqlReadRequest(CoarseTimePoint deadline,
                                                const PgsqlReadRequestPB& pgsql_read_request,
                                                const std::shared_ptr<TableInfo>& table_info,
                                                const TransactionOperationContext& txn_op_context,
-                                               PgsqlReadRequestResult* result,
-                                               size_t* num_rows_read) {
+                                               const docdb::DocDBStatistics* statistics,
+                                               PgsqlReadRequestResult* result) {
   docdb::PgsqlReadOperation doc_op(pgsql_read_request, txn_op_context);
 
   // Form a schema of columns that are referenced by this query.
-  const auto doc_read_context = rpc::SharedField(table_info, table_info->doc_read_context.get());
+  const auto doc_read_context = table_info->doc_read_context;
   const auto index_doc_read_context = pgsql_read_request.has_index_request()
-      ? GetDocReadContext(pgsql_read_request.index_request().table_id()) : nullptr;
+    ? VERIFY_RESULT(GetDocReadContext(pgsql_read_request.index_request().table_id())) : nullptr;
 
   TRACE("Start Execute");
   auto fetched_rows = doc_op.Execute(
       QLStorage(), deadline, read_time, is_explicit_request_read_time, *doc_read_context,
-      index_doc_read_context.get(), &result->rows_data, &result->restart_read_ht);
+      index_doc_read_context.get(), result->rows_data, &result->restart_read_ht, statistics);
   TRACE("Done Execute");
   if (!fetched_rows.ok()) {
     result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
     const auto& s = fetched_rows.status();
+    StatusToPB(s, result->response.add_error_status());
+    // For backward compatibility set also deprecated error message
     result->response.set_error_message(s.message().cdata(), s.message().size());
     return Status::OK();
   }
   result->response.Swap(&doc_op.response());
 
-  if (num_rows_read) {
-    *num_rows_read = *fetched_rows;
-  }
+  result->num_rows_read = *fetched_rows;
 
   RETURN_NOT_OK(CreatePagingStateForRead(
       pgsql_read_request, *fetched_rows, &result->response));

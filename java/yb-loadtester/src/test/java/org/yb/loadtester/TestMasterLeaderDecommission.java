@@ -25,11 +25,11 @@ import java.util.*;
 /**
  * This is an integration test that ensures we can do a master decommission.
  */
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestMasterLeaderDecommission extends TestClusterBase {
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 20 minutes.
   public void testMasterLeaderDecommission() throws Exception {
@@ -37,14 +37,16 @@ public class TestMasterLeaderDecommission extends TestClusterBase {
     loadTesterRunnable.waitNumOpsIncrement(NUM_OPS_INCREMENT);
     // Disable heartbeats for all tservers.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      assertTrue(client.setFlag(hp, "TEST_tserver_disable_heartbeat", "true"));
+      assertTrue(client.setFlag(
+            hp, "TEST_tserver_disable_heartbeat", "true", true));
     }
 
     // Disable becoming leader in 2 master followers.
     HostAndPort leaderMasterHp = client.getLeaderMasterHostAndPort();
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       if (!hp.equals(leaderMasterHp)) {
-        assertTrue(client.setFlag(hp, "TEST_do_not_start_election_test_only", "true"));
+        assertTrue(client.setFlag(
+              hp, "TEST_do_not_start_election_test_only", "true", true));
       }
     }
 
@@ -56,7 +58,8 @@ public class TestMasterLeaderDecommission extends TestClusterBase {
 
     // Enable heartbeats for all tservers.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      assertTrue(client.setFlag(hp, "TEST_tserver_disable_heartbeat", "false"));
+      assertTrue(client.setFlag(
+            hp, "TEST_tserver_disable_heartbeat", "false", true));
     }
 
     // Wait for tservers to find and heartbeat to new master.

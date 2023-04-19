@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
-#define YB_MASTER_CATALOG_MANAGER_TEST_BASE_H
+#pragma once
 
 #include <gtest/gtest.h>
 
@@ -40,6 +39,7 @@ const std::string default_region = "us-west-1";
 const int kDefaultNumReplicas = 3;
 const std::string kLivePlacementUuid = "live";
 const std::string kReadReplicaPlacementUuidPrefix = "rr_$0";
+const std::string read_only_placement_uuid = "read_only";
 
 inline scoped_refptr<TabletInfo> CreateTablet(
     const scoped_refptr<TableInfo>& table, const TabletId& tablet_id, const std::string& start_key,
@@ -59,8 +59,9 @@ inline scoped_refptr<TabletInfo> CreateTablet(
   return tablet;
 }
 
-void CreateTable(const std::vector<std::string> split_keys, const int num_replicas, bool setup_placement,
-                 TableInfo* table, std::vector<scoped_refptr<TabletInfo>>* tablets) {
+void CreateTable(
+    const std::vector<std::string> split_keys, const int num_replicas, bool setup_placement,
+    TableInfo* table, std::vector<scoped_refptr<TabletInfo>>* tablets) {
   const size_t kNumSplits = split_keys.size();
   for (size_t i = 0; i <= kNumSplits; i++) {
     const std::string& start_key = (i == 0) ? "" : split_keys[i - 1];
@@ -125,6 +126,47 @@ void SetupClusterConfigWithReadReplicas(std::vector<std::string> live_azs,
   }
 }
 
+void SetupClusterConfig(
+    const std::vector<std::string>& az_list,
+    const std::vector<std::string>& read_only_list,
+    const std::vector<std::vector<std::string>>& affinitized_leader_list,
+    ReplicationInfoPB* replication_info) {
+  PlacementInfoPB* placement_info = replication_info->mutable_live_replicas();
+  placement_info->set_num_replicas(kDefaultNumReplicas);
+
+  for (const std::string& az : az_list) {
+    auto pb = placement_info->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+    pb->mutable_cloud_info()->set_placement_region(default_region);
+    pb->mutable_cloud_info()->set_placement_zone(az);
+    pb->set_min_num_replicas(1);
+  }
+
+  if (!read_only_list.empty()) {
+    placement_info = replication_info->add_read_replicas();
+    placement_info->set_num_replicas(1);
+  }
+
+  for (const std::string& read_only_az : read_only_list) {
+    auto pb = placement_info->add_placement_blocks();
+    pb->mutable_cloud_info()->set_placement_cloud(default_cloud);
+    pb->mutable_cloud_info()->set_placement_region(default_region);
+    pb->mutable_cloud_info()->set_placement_zone(read_only_az);
+    placement_info->set_placement_uuid(read_only_placement_uuid);
+    pb->set_min_num_replicas(1);
+  }
+
+  for (const auto& az_set : affinitized_leader_list) {
+    auto new_zone_Set = replication_info->add_multi_affinitized_leaders();
+    for (const std::string& affinitized_az : az_set) {
+      CloudInfoPB* ci = new_zone_Set->add_zones();
+      ci->set_placement_cloud(default_cloud);
+      ci->set_placement_region(default_region);
+      ci->set_placement_zone(affinitized_az);
+    }
+  }
+}
+
 void NewReplica(
     TSDescriptor* ts_desc, tablet::RaftGroupStatePB state, PeerRole role, TabletReplica* replica) {
   replica->ts_desc = ts_desc;
@@ -146,9 +188,51 @@ std::shared_ptr<TSDescriptor> SetupTS(const std::string& uuid, const std::string
   ci->set_placement_region(default_region);
   ci->set_placement_zone(az);
 
-  std::shared_ptr<TSDescriptor> ts(new enterprise::TSDescriptor(node.permanent_uuid()));
+  std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
   CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
   return ts;
+}
+
+std::shared_ptr<TSDescriptor> SetupTS(
+    const std::string& uuid, const std::string& az, const std::string& placement_uuid) {
+  NodeInstancePB node;
+  node.set_permanent_uuid(uuid);
+
+  TSRegistrationPB reg;
+  // Set the placement uuid field for read_only clusters.
+  reg.mutable_common()->set_placement_uuid(placement_uuid);
+  // Fake host:port combo, with uuid as host, for ease of testing.
+  auto hp = reg.mutable_common()->add_private_rpc_addresses();
+  hp->set_host(uuid);
+  // Same cloud info as cluster config, with modifyable AZ.
+  auto ci = reg.mutable_common()->mutable_cloud_info();
+  ci->set_placement_cloud(default_cloud);
+  ci->set_placement_region(default_region);
+  ci->set_placement_zone(az);
+
+  std::shared_ptr<TSDescriptor> ts(new TSDescriptor(node.permanent_uuid()));
+  CHECK_OK(ts->Register(node, reg, CloudInfoPB(), nullptr));
+
+  return ts;
+}
+
+void SimulateSetLeaderReplicas(
+    const std::vector<scoped_refptr<TabletInfo>>& tablets,
+    const std::vector<unsigned>& leader_counts, const TSDescriptorVector& ts_descs) {
+  CHECK(ts_descs.size() == leader_counts.size());
+  int tablet_idx = 0;
+  for (int i = 0; i < static_cast<int>(ts_descs.size()); ++i) {
+    for (int j = 0; j < static_cast<int>(leader_counts[i]); ++j) {
+      auto replicas = std::make_shared<TabletReplicaMap>();
+      TabletReplica new_leader_replica;
+      NewReplica(
+          ts_descs[i].get(), tablet::RaftGroupStatePB::RUNNING, PeerRole::LEADER,
+          &new_leader_replica);
+      InsertOrDie(replicas.get(), ts_descs[i]->permanent_uuid(), new_leader_replica);
+      tablets[tablet_idx++]->SetReplicaLocations(replicas);
+    }
+    ts_descs[i]->set_leader_count(leader_counts[i]);
+  }
 }
 
 template<class ClusterLoadBalancerMockedClass>
@@ -161,12 +245,12 @@ class TestLoadBalancerBase {
         ts_descs_(cb->ts_descs_),
         affinitized_zones_(cb->affinitized_zones_),
         tablet_map_(cb->tablet_map_),
-        table_map_(cb->table_map_),
+        tables_(cb->tables_),
         replication_info_(cb->replication_info_),
         pending_add_replica_tasks_(cb->pending_add_replica_tasks_),
         pending_remove_replica_tasks_(cb->pending_remove_replica_tasks_),
         pending_stepdown_leader_tasks_(cb->pending_stepdown_leader_tasks_) {
-    scoped_refptr<TableInfo> table(new TableInfo(table_id));
+    scoped_refptr<TableInfo> table(new TableInfo(table_id, /* colocated */ false));
     std::vector<scoped_refptr<TabletInfo>> tablets;
 
     // Generate 12 tablets total: 4 splits and 3 replicas each.
@@ -177,9 +261,8 @@ class TestLoadBalancerBase {
     CreateTable(splits, num_replicas, false, table.get(), &tablets);
 
     tablets_ = std::move(tablets);
-
-    table_map_[table_id] = table;
     cur_table_uuid_ = table_id;
+    tables_.AddOrReplace(table);
   }
 
   void TestAlgorithm() {
@@ -248,9 +331,10 @@ class TestLoadBalancerBase {
     cb_->GetAllReportedDescriptors(&cb_->global_state_->ts_descs_);
     cb_->SetBlacklistAndPendingDeleteTS();
 
+    const auto& table = tables_.FindTableOrNull(cur_table_uuid_);
     const auto& replication_info =
-        VERIFY_RESULT(cb_->GetTableReplicationInfo(table_map_[cur_table_uuid_]));
-    RETURN_NOT_OK(cb_->PopulateReplicationInfo(table_map_[cur_table_uuid_], replication_info));
+        VERIFY_RESULT(cb_->GetTableReplicationInfo(table));
+    RETURN_NOT_OK(cb_->PopulateReplicationInfo(table, replication_info));
 
     cb_->InitializeTSDescriptors();
     return cb_->AnalyzeTabletsUnlocked(cur_table_uuid_);
@@ -1121,7 +1205,7 @@ class TestLoadBalancerBase {
   TSDescriptorVector& ts_descs_;
   std::vector<AffinitizedZonesSet>& affinitized_zones_;
   TabletInfoMap& tablet_map_;
-  TableInfoMap& table_map_;
+  TableIndex& tables_;
   ReplicationInfoPB& replication_info_;
   std::vector<TabletId>& pending_add_replica_tasks_;
   std::vector<TabletId>& pending_remove_replica_tasks_;
@@ -1130,5 +1214,3 @@ class TestLoadBalancerBase {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_CATALOG_MANAGER_TEST_BASE_H

@@ -19,6 +19,8 @@ import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.models.CertificateInfo;
+import com.yugabyte.yw.models.FileData;
+
 import java.io.File;
 import java.security.KeyPair;
 import java.security.PrivateKey;
@@ -48,7 +50,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
   }
 
   public CertificateSelfSigned(CertificateInfo rootCertConfigInfo, Config config) {
-    this(rootCertConfigInfo.uuid, config);
+    this(rootCertConfigInfo.getUuid(), config);
   }
 
   @Override
@@ -71,15 +73,16 @@ public class CertificateSelfSigned extends CertificateProviderBase {
     try {
       // Add the security provider in case createSignedCertificate was never called.
       KeyPair newCertKeyPair = CertificateHelper.getKeyPairObject();
+      boolean syncCertsToDB = CertificateHelper.DEFAULT_CLIENT.equals(username);
 
       CertificateInfo certInfo = CertificateInfo.get(rootCA);
-      if (certInfo.privateKey == null) {
+      if (certInfo.getPrivateKey() == null) {
         throw new PlatformServiceException(BAD_REQUEST, "Keyfile cannot be null!");
       }
       // The first entry will be the certificate that needs to sign the necessary certificate.
       X509Certificate cer =
           CertificateHelper.convertStringToX509CertList(
-                  FileUtils.readFileToString(new File(certInfo.certificate)))
+                  FileUtils.readFileToString(new File(certInfo.getCertificate())))
               .get(0);
       X500Name subject = new JcaX509CertificateHolder(cer).getSubject();
       log.debug("Root CA Certificate is:: {}", CertificateHelper.getCertificateProperties(cer));
@@ -88,7 +91,7 @@ public class CertificateSelfSigned extends CertificateProviderBase {
       try {
         pk =
             CertificateHelper.getPrivateKey(
-                FileUtils.readFileToString(new File(certInfo.privateKey)));
+                FileUtils.readFileToString(new File(certInfo.getPrivateKey())));
       } catch (Exception e) {
         log.error(
             "Unable to create certificate for username {} using root CA {}", username, rootCA, e);
@@ -111,7 +114,12 @@ public class CertificateSelfSigned extends CertificateProviderBase {
           CertificateHelper.getCertificateProperties(newCert));
 
       return CertificateHelper.dumpNewCertsToFile(
-          storagePath, certFileName, certKeyName, newCert, newCertKeyPair.getPrivate());
+          storagePath,
+          certFileName,
+          certKeyName,
+          newCert,
+          newCertKeyPair.getPrivate(),
+          syncCertsToDB);
 
     } catch (Exception e) {
       log.error(
@@ -131,6 +139,8 @@ public class CertificateSelfSigned extends CertificateProviderBase {
     CertificateHelper.writeCertBundleToCertPath(
         Collections.singletonList(curCaCertificate), certPath);
     CertificateHelper.writeKeyFileContentToKeyPath(curKeyPair.getPrivate(), keyPath);
+    FileData.writeFileToDB(certPath);
+    FileData.writeFileToDB(keyPath);
     return new ImmutablePair<>(certPath, keyPath);
   }
 

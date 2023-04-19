@@ -1961,8 +1961,11 @@ static Oid
 findTypeInputFunction(List *procname, Oid typeOid)
 {
 	Oid			argList[3];
+	int			nmatches = 0;
 	Oid			procOid;
 	Oid			procOid2;
+	Oid			procOid3;
+	Oid			procOid4;
 
 	/*
 	 * Input functions can take a single argument of type CSTRING, or three
@@ -1973,6 +1976,9 @@ findTypeInputFunction(List *procname, Oid typeOid)
 	argList[1] = OIDOID;
 	argList[2] = INT4OID;
 
+	/* YB_TODO(neil) Yugabyte has some changes here.
+	 * Check if it's still valid in Pg15.
+	 */
 	procOid = LookupFuncName(procname, 1, argList, true);
 	procOid2 = LookupFuncName(procname, 3, argList, true);
 	if (OidIsValid(procOid))

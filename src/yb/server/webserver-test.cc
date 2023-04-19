@@ -165,7 +165,7 @@ TEST_F(WebserverTest, TestDefaultPaths) {
   // Test memz
   ASSERT_OK(curl_.FetchURL(strings::Substitute("http://$0/memz?raw=1", ToString(addr_)),
                            &buf_));
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
   ASSERT_STR_CONTAINS(buf_.ToString(), "Bytes in use by application");
 #else
   ASSERT_STR_CONTAINS(buf_.ToString(), "not available unless tcmalloc is enabled");
@@ -272,8 +272,7 @@ class WebserverSecureTest : public WebserverTest {
     auto opts = WebserverTest::ServerOptions();
     opts.bind_interface = "127.0.0.2";
 
-    const auto sub_dir = JoinPathSegments("ent", "test_certs");
-    const auto certs_dir = JoinPathSegments(env_util::GetRootDir(sub_dir), sub_dir);
+    const auto certs_dir = GetCertsDir();
     opts.certificate_file = JoinPathSegments(certs_dir, Format("node.$0.crt", opts.bind_interface));
     opts.private_key_file = JoinPathSegments(certs_dir, Format("node.$0.key", opts.bind_interface));
     FLAGS_webserver_ca_certificate_file = JoinPathSegments(certs_dir, "ca.crt");

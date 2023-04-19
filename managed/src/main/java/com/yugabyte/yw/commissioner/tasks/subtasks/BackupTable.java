@@ -54,7 +54,7 @@ public class BackupTable extends AbstractTaskBase {
     }
 
     try {
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+      Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       Map<String, String> config = universe.getConfig();
       if (config.isEmpty() || config.getOrDefault(Universe.TAKE_BACKUPS, "true").equals("true")) {
         BackupTableParams.ActionType actionType = taskParams().actionType;
@@ -85,15 +85,16 @@ public class BackupTable extends AbstractTaskBase {
                 backup.setPerRegionLocations(backupIdx, locations);
               }
               backup.setBackupSizeInBackupList(backupIdx, backupSize);
+              backup.save();
               totalBackupSize += backupSize;
             }
             backupIdx++;
           }
 
           if (actionType == BackupTableParams.ActionType.CREATE) {
-            backup.save();
             backup.setCompletionTime(backup.getUpdateTime());
             backup.setTotalBackupSize(totalBackupSize);
+            backup.save();
           }
           backup.transitionState(Backup.BackupState.Completed);
         } else {
@@ -112,7 +113,6 @@ public class BackupTable extends AbstractTaskBase {
             log.info("[" + getName() + "] STDOUT: " + response.message);
             if (actionType == BackupTableParams.ActionType.CREATE) {
               long backupSize = BackupUtil.extractBackupSize(jsonNode);
-              backup.save();
               backup.setCompletionTime(backup.getUpdateTime());
               backup.setTotalBackupSize(backupSize);
               List<BackupUtil.RegionLocations> locations =
@@ -120,6 +120,7 @@ public class BackupTable extends AbstractTaskBase {
               if (CollectionUtils.isNotEmpty(locations)) {
                 backup.setPerRegionLocations(-1, locations);
               }
+              backup.save();
             }
             backup.transitionState(Backup.BackupState.Completed);
           }

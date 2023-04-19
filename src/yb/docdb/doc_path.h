@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_PATH_H_
-#define YB_DOCDB_DOC_PATH_H_
+#pragma once
 
 #include <stdint.h>
 
@@ -25,7 +24,7 @@
 #include <utility>
 #include <vector>
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
 #include "yb/docdb/key_bytes.h"
 #include "yb/docdb/key_entry_value.h"
 
@@ -84,7 +83,8 @@ class DocPath {
   // Note: the hash is supposed to be uint16_t, but protobuf only supports uint32.
   // So this function takes in uint32_t.
   // TODO (akashnil): Add uint16 data type in docdb.
-  static DocPath DocPathFromRedisKey(uint16_t hash, const std::string& key, const std::string& subkey = "");
+  static DocPath DocPathFromRedisKey(
+      uint16_t hash, const std::string& key, const std::string& subkey = "");
 
   const std::vector<KeyEntryValue>& subkeys() const {
     return subkeys_;
@@ -105,5 +105,3 @@ inline std::ostream& operator << (std::ostream& out, const DocPath& doc_path) {
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_DOC_PATH_H_

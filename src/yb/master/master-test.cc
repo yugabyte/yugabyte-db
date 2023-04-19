@@ -86,10 +86,11 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_simulate_slow_table_create_secs);
 DECLARE_bool(TEST_return_error_if_namespace_not_found);
 DECLARE_bool(TEST_hang_on_namespace_transition);
-DECLARE_bool(TEST_simulate_crash_after_table_marked_deleting);
 DECLARE_int32(TEST_sys_catalog_write_rejection_percentage);
 DECLARE_bool(TEST_tablegroup_master_only);
 DECLARE_bool(TEST_simulate_port_conflict_error);
+DECLARE_bool(master_register_ts_check_desired_host_port);
+DECLARE_string(use_private_ip);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -100,6 +101,10 @@ namespace master {
 using strings::Substitute;
 
 class MasterTest : public MasterTestBase {
+ public:
+  string GetWebserverDir() { return GetTestPath("webserver-docroot"); }
+
+  void TestRegisterDistBroadcastDupPrivate(string use_private_ip, bool only_check_used_host_port);
 };
 
 TEST_F(MasterTest, TestPingServer) {
@@ -125,7 +130,7 @@ TEST_F(MasterTest, TestShutdownWithoutStart) {
 }
 
 TEST_F(MasterTest, TestCallHome) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHome<Master, MasterCallHome>(
       webserver_dir, {"version_info", "masters", "tservers", "tables"}, mini_master_->master());
@@ -134,9 +139,24 @@ TEST_F(MasterTest, TestCallHome) {
 // This tests whether the enabling/disabling of callhome is happening dynamically
 // during runtime.
 TEST_F(MasterTest, TestCallHomeFlag) {
-  auto webserver_dir = GetTestPath("webserver-docroot");
+  const auto webserver_dir = GetWebserverDir();
   CHECK_OK(env_->CreateDir(webserver_dir));
   TestCallHomeFlag<Master, MasterCallHome>(webserver_dir, mini_master_->master());
+}
+
+TEST_F(MasterTest, TestGFlagsCallHome) {
+  CHECK_OK(env_->CreateDir(GetWebserverDir()));
+  TestGFlagsCallHome<Master, MasterCallHome>(mini_master_->master());
+}
+
+TEST_F(MasterTest, TestHeartbeatRequestWithEmptyUUID) {
+  TSHeartbeatRequestPB req;
+  TSHeartbeatResponsePB resp;
+  req.mutable_common()->mutable_ts_instance()->set_permanent_uuid("");
+  req.mutable_common()->mutable_ts_instance()->set_instance_seqno(1);
+  auto status = proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController());
+  ASSERT_FALSE(status.ok());
+  ASSERT_STR_CONTAINS(status.message().ToBuffer(), "Recevied Empty UUID");
 }
 
 TEST_F(MasterTest, TestRegisterAndHeartbeat) {
@@ -257,6 +277,155 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
     ASSERT_EQ("my-ts-uuid", resp.servers(0).instance_id().permanent_uuid());
     ASSERT_EQ(1, resp.servers(0).instance_id().instance_seqno());
   }
+}
+
+void MasterTest::TestRegisterDistBroadcastDupPrivate(
+    string use_private_ip, bool only_check_used_host_port) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_use_private_ip) = use_private_ip;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_register_ts_check_desired_host_port) =
+      only_check_used_host_port;
+  const std::vector<std::string> tsUUIDs = { "ts1-uuid", "ts2-uuid", "ts3-uuid", "ts4-uuid" };
+  std::vector<TSToMasterCommonPB> commons(tsUUIDs.size());
+
+  // ts1 - ts2 => distinct cloud, region and zone.
+  // ts1 - ts3 => same cloud, region with distinct zone.
+  // ts1 - ts4 => same cloud with distinct region.
+  std::vector<CloudInfoPB> cloud_infos(tsUUIDs.size());
+  auto& cloud_info_ts1 = cloud_infos[0];
+  *cloud_info_ts1.mutable_placement_cloud() = "cloud-xyz";
+  *cloud_info_ts1.mutable_placement_region() = "region-xyz";
+  *cloud_info_ts1.mutable_placement_zone() = "zone-xyz";
+  auto& cloud_info_ts2 = cloud_infos[1];
+  *cloud_info_ts2.mutable_placement_cloud() = "cloud-abc";
+  *cloud_info_ts2.mutable_placement_region() = "region-abc";
+  *cloud_info_ts2.mutable_placement_zone() = "zone-abc";
+  auto& cloud_info_ts3 = cloud_infos[2];
+  *cloud_info_ts3.mutable_placement_cloud() = "cloud-xyz";
+  *cloud_info_ts3.mutable_placement_region() = "region-xyz";
+  *cloud_info_ts3.mutable_placement_zone() = "zone-pqr";
+  auto& cloud_info_ts4 = cloud_infos[3];
+  *cloud_info_ts4.mutable_placement_cloud() = "cloud-xyz";
+  *cloud_info_ts4.mutable_placement_region() = "region-pqr";
+  *cloud_info_ts4.mutable_placement_zone() = "zone-anything";
+
+  // Try heartbeat from all the tservers. The master hasn't heard of them, so should ask them to
+  // re-register.
+  for (size_t i = 0; i < tsUUIDs.size(); i++) {
+    commons[i].mutable_ts_instance()->set_permanent_uuid(tsUUIDs[i]);
+    commons[i].mutable_ts_instance()->set_instance_seqno(1);
+
+    TSHeartbeatRequestPB req;
+    TSHeartbeatResponsePB resp;
+    req.mutable_common()->CopyFrom(commons[i]);
+    ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+
+    ASSERT_TRUE(resp.needs_reregister());
+    ASSERT_TRUE(resp.needs_full_tablet_report());
+  }
+
+  vector<shared_ptr<TSDescriptor> > descs;
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  ASSERT_EQ(0, descs.size()) << "Should not have registered anything";
+
+  shared_ptr<TSDescriptor> ts_desc;
+  for (auto& uuid : tsUUIDs) {
+    ASSERT_FALSE(mini_master_->master()->ts_manager()->LookupTSByUUID(uuid, &ts_desc));
+  }
+
+  // Each tserver will have a distinct broadcast address but the same private_rpc_address.
+  std::vector<TSRegistrationPB> fake_regs(tsUUIDs.size());
+  for (size_t i = 0; i < tsUUIDs.size(); i++) {
+    MakeHostPortPB("localhost", 1000, fake_regs[i].mutable_common()->add_private_rpc_addresses());
+    MakeHostPortPB(
+        Format("111.111.111.11$0", i), 2000,
+        fake_regs[i].mutable_common()->add_broadcast_addresses());
+    MakeHostPortPB("localhost", 3000, fake_regs[i].mutable_common()->add_http_addresses());
+    *fake_regs[i].mutable_common()->mutable_cloud_info() = cloud_infos[i];
+  }
+
+  std::set<string> expected_registration_uuids;
+  if (only_check_used_host_port) {
+    if (use_private_ip == "cloud") {
+      // ts-3 and ts-4 will fail since they share cloud with ts-1.
+      expected_registration_uuids = { tsUUIDs[0], tsUUIDs[1] };
+    } else if (use_private_ip == "region") {
+      // ts-3 fails since it shares region with ts-1.
+      expected_registration_uuids = { tsUUIDs[0], tsUUIDs[1], tsUUIDs[3] };
+    } else {
+      expected_registration_uuids.insert(tsUUIDs.begin(), tsUUIDs.end());
+    }
+  } else {
+    expected_registration_uuids = { tsUUIDs[0] };
+  }
+
+  // Register the fake TServers.
+  {
+    for (size_t i = 0; i < tsUUIDs.size(); i++) {
+      TSHeartbeatRequestPB req;
+      TSHeartbeatResponsePB resp;
+      req.mutable_common()->CopyFrom(commons[i]);
+      req.mutable_registration()->CopyFrom(fake_regs[i]);
+
+      ASSERT_OK(proxy_heartbeat_->TSHeartbeat(req, &resp, ResetAndGetController()));
+      if (expected_registration_uuids.find(tsUUIDs[i]) == expected_registration_uuids.end()) {
+        ASSERT_TRUE(resp.needs_reregister());
+      } else {
+        ASSERT_FALSE(resp.needs_reregister());
+      }
+    }
+  }
+
+  mini_master_->master()->ts_manager()->GetAllDescriptors(&descs);
+  ASSERT_EQ(expected_registration_uuids.size(), descs.size())
+      << "Should have registered the expected number of TServers";
+
+  // Ensure that the ListTabletServers shows the faked servers.
+  {
+    ListTabletServersRequestPB req;
+    ListTabletServersResponsePB resp;
+    ASSERT_OK(proxy_cluster_->ListTabletServers(req, &resp, ResetAndGetController()));
+    LOG(INFO) << resp.DebugString();
+    ASSERT_EQ(expected_registration_uuids.size(), resp.servers_size());
+
+    // Assert that expected UUIDs are present in the response.
+    std::unordered_set<std::string> uuids_res;
+    for (auto i = 0; i < resp.servers_size(); i++) {
+      uuids_res.insert(resp.servers(i).instance_id().permanent_uuid());
+    }
+    for (auto& uuid : expected_registration_uuids) {
+      ASSERT_TRUE(uuids_res.contains(uuid));
+    }
+  }
+}
+
+TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpNeverCheckUsed) {
+  TestRegisterDistBroadcastDupPrivate(
+      /*use_private_ip*/ "never", /*only_check_used_host_port*/ true);
+}
+
+TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpNeverCheckAll) {
+  TestRegisterDistBroadcastDupPrivate(
+      /*use_private_ip*/ "never", /*only_check_used_host_port*/ false);
+}
+
+TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpCloudCheckUsed) {
+  TestRegisterDistBroadcastDupPrivate(
+      /*use_private_ip*/ "cloud", /*only_check_used_host_port*/ true);
+}
+
+TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpCloudCheckAll) {
+  TestRegisterDistBroadcastDupPrivate(
+      /*use_private_ip*/ "cloud", /*only_check_used_host_port*/ false);
+}
+
+TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpRegionCheckUsed) {
+  TestRegisterDistBroadcastDupPrivate(
+      /*use_private_ip*/ "region", /*only_check_used_host_port*/ true);
+}
+
+TEST_F(MasterTest, TestRegisterDistBroadcastDupPrivateUsePrivateIpRegionCheckAll) {
+  TestRegisterDistBroadcastDupPrivate(
+      /*use_private_ip*/ "region", /*only_check_used_host_port*/ false);
 }
 
 TEST_F(MasterTest, TestListTablesWithoutMasterCrash) {
@@ -440,6 +609,13 @@ TEST_F(MasterTest, TestCatalog) {
 
   {
     ListTablesRequestPB req;
+    req.add_relation_type_filter(COLOCATED_PARENT_TABLE_RELATION);
+    DoListTables(req, &tables);
+    ASSERT_EQ(0, tables.tables_size());
+  }
+
+  {
+    ListTablesRequestPB req;
     req.add_relation_type_filter(SYSTEM_TABLE_RELATION);
     DoListTables(req, &tables);
     ASSERT_EQ(kNumSystemTables, tables.tables_size());
@@ -452,6 +628,60 @@ TEST_F(MasterTest, TestCatalog) {
     DoListTables(req, &tables);
     ASSERT_EQ(kNumSystemTables + 2, tables.tables_size());
   }
+}
+
+TEST_F(MasterTest, TestParentBasedTableToTabletMappingFlag) {
+  // This test is for the new parent table based mapping from tables to tablets. It verifies we only
+  // use the new schema for user tables when the flag is set. In particular this test verifies:
+  //   1. We never use the new parent table based schema for system tables.
+  //   2. When the flag is set, we use the new parent table based schema for user tables.
+  //   3. When the flag is not set we use the old mapping schema for user tables.
+  const std::string kNewSchemaTableName = "newschema";
+  const std::string kOldSchemaTableName = "oldschema";
+  const Schema kTableSchema(
+      {ColumnSchema("key", INT32), ColumnSchema("v1", UINT64), ColumnSchema("v2", STRING)}, 1);
+  FLAGS_use_parent_table_id_field = true;
+  ASSERT_OK(CreateTable(kNewSchemaTableName, kTableSchema));
+  FLAGS_use_parent_table_id_field = false;
+  ASSERT_OK(CreateTable(kOldSchemaTableName, kTableSchema));
+
+  auto tables = mini_master_->catalog_manager_impl().GetTables(GetTablesMode::kAll);
+  for (const auto& table : tables) {
+    for (const auto& tablet : table->GetTablets(IncludeInactive::kTrue)) {
+      if (table->is_system() &&
+          tablet->LockForRead().data().pb.hosted_tables_mapped_by_parent_id()) {
+        FAIL() << Format(
+            "System table $0 has tablet $1 using the new schema", table->name(), tablet->id());
+      }
+    }
+  }
+
+  auto find_table = [&tables](const std::string& name) -> Result<TableInfoPtr> {
+    auto table_it = std::find_if(
+        tables.begin(), tables.end(),
+        [&name](const TableInfoPtr& table_info) { return table_info->name() == name; });
+    if (table_it != tables.end()) {
+      return *table_it;
+    } else {
+      return STATUS_FORMAT(NotFound, "Couldn't find table $0", name);
+    }
+  };
+
+  auto tablet_uses_new_schema = [](const TabletInfoPtr& tablet_info) {
+    return tablet_info->LockForRead().data().pb.hosted_tables_mapped_by_parent_id();
+  };
+
+  const auto new_schema_tablets =
+      ASSERT_RESULT(find_table(kNewSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  EXPECT_TRUE(
+      std::all_of(new_schema_tablets.begin(), new_schema_tablets.end(), tablet_uses_new_schema));
+  EXPECT_GT(new_schema_tablets.size(), 0);
+
+  auto old_schema_tablets =
+      ASSERT_RESULT(find_table(kOldSchemaTableName))->GetTablets(IncludeInactive::kTrue);
+  EXPECT_TRUE(
+      std::none_of(old_schema_tablets.begin(), old_schema_tablets.end(), tablet_uses_new_schema));
+  EXPECT_GT(old_schema_tablets.size(), 0);
 }
 
 TEST_F(MasterTest, TestCatalogHasBlockCache) {
@@ -576,44 +806,6 @@ TEST_F(MasterTest, TestCreateTableInvalidSchema) {
   ASSERT_TRUE(resp.has_error());
   ASSERT_EQ(AppStatusPB::INVALID_ARGUMENT, resp.error().status().code());
   ASSERT_EQ("Duplicate column name: col", resp.error().status().message());
-}
-
-TEST_F(MasterTest, TestTabletsDeletedWhenTableInDeletingState) {
-  FLAGS_TEST_simulate_crash_after_table_marked_deleting = true;
-  const char *kTableName = "testtb";
-  const Schema kTableSchema({ ColumnSchema("key", INT32)},
-                            1);
-
-  ASSERT_OK(CreateTable(kTableName, kTableSchema));
-  vector<TabletId> tablet_ids;
-  {
-    CatalogManager::SharedLock lock(mini_master_->catalog_manager_impl().mutex_);
-    for (auto elem : *mini_master_->catalog_manager_impl().tablet_map_) {
-      auto tablet = elem.second;
-      if (tablet->table()->name() == kTableName) {
-        tablet_ids.push_back(elem.first);
-      }
-    }
-  }
-
-  // Delete the table
-  TableId id;
-  ASSERT_OK(DeleteTable(default_namespace_name, kTableName, &id));
-
-  // Restart the master to force a reload of the tablets.
-  ASSERT_OK(mini_master_->Restart());
-  ASSERT_OK(mini_master_->master()->WaitUntilCatalogManagerIsLeaderAndReadyForTests());
-
-  // Verify that the test table's tablets are in the DELETED state.
-  {
-    CatalogManager::SharedLock lock(mini_master_->catalog_manager_impl().mutex_);
-    for (const auto& tablet_id : tablet_ids) {
-      auto iter = mini_master_->catalog_manager_impl().tablet_map_->find(tablet_id);
-      ASSERT_NE(iter, mini_master_->catalog_manager_impl().tablet_map_->end());
-      auto l = iter->second->LockForRead();
-      ASSERT_EQ(l->pb.state(), SysTabletsEntryPB::DELETED);
-    }
-  }
 }
 
 // Regression test for KUDU-253/KUDU-592: crash if the GetTableLocations RPC call is

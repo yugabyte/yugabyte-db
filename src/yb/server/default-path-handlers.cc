@@ -57,7 +57,7 @@
 #include <boost/algorithm/string.hpp>
 #include "yb/util/string_case.h"
 
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
 #include <gperftools/malloc_extension.h>
 #endif
 
@@ -72,7 +72,7 @@
 #include "yb/server/server_base.h"
 #include "yb/server/secure.h"
 #include "yb/server/webserver.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/histogram.pb.h"
 #include "yb/util/logging.h"
@@ -85,12 +85,11 @@
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
 
-DEFINE_uint64(web_log_bytes, 1024 * 1024,
+DEFINE_RUNTIME_uint64(web_log_bytes, 1024 * 1024,
     "The maximum number of bytes to display on the debug webserver's log page");
-DECLARE_int32(max_tables_metrics_breakdowns);
 TAG_FLAG(web_log_bytes, advanced);
-TAG_FLAG(web_log_bytes, runtime);
 
+DECLARE_int32(max_tables_metrics_breakdowns);
 DECLARE_bool(TEST_mini_cluster_mode);
 
 namespace yb {
@@ -352,7 +351,7 @@ static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResp
   Tags tags(as_text);
 
   (*output) << tags.pre_tag;
-#ifndef TCMALLOC_ENABLED
+#ifndef YB_TCMALLOC_ENABLED
   (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
 #else
   auto tmp = TcMallocStats();

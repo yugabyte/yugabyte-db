@@ -21,7 +21,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.CloudQueryHelper;
@@ -66,6 +65,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -103,11 +103,11 @@ public class CustomerController extends AuthenticatedController {
       response = Customer.class,
       responseContainer = "List",
       nickname = "ListOfCustomers")
-  public Result list() {
+  public Result list(Http.Request request) {
     // There is no way to hide the query param from swagger if it is passed
     // as a parameter to the method. So, it is manually retrieved.
     boolean includeUniverseUuids =
-        Boolean.parseBoolean(request().getQueryString("includeUniverseUuids"));
+        Boolean.parseBoolean(request.getQueryString("includeUniverseUuids"));
     List<Customer> customers = Customer.getAll();
     if (includeUniverseUuids) {
       Map<Long, Set<UUID>> allUniverseUuids = Universe.getAllCustomerUniverseUUIDs();
@@ -116,7 +116,7 @@ public class CustomerController extends AuthenticatedController {
           .forEach(
               c ->
                   c.setTransientUniverseUUIDs(
-                      allUniverseUuids.getOrDefault(c.getCustomerId(), Collections.emptySet())));
+                      allUniverseUuids.getOrDefault(c.getId(), Collections.emptySet())));
     }
     return PlatformResults.withData(customers);
   }
@@ -145,7 +145,7 @@ public class CustomerController extends AuthenticatedController {
     responseJson.put(
         "callhomeLevel", CustomerConfig.getOrCreateCallhomeLevel(customerUUID).toString());
 
-    UserWithFeatures user = (UserWithFeatures) ctx().args.get("user");
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     if (customer.getFeatures().size() != 0 && user.getFeatures().size() != 0) {
       JsonNode featureSet = user.getFeatures();
       CommonUtils.deepMerge(featureSet, customer.getFeatures());
@@ -168,20 +168,21 @@ public class CustomerController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.AlertingFormData",
         paramType = "body")
   })
-  public Result update(UUID customerUUID) {
+  public Result update(UUID customerUUID, Http.Request request) {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    JsonNode request = request().body().asJson();
-    Form<AlertingFormData> formData = formFactory.getFormDataOrBadRequest(AlertingFormData.class);
+    JsonNode requestBody = request.body().asJson();
+    Form<AlertingFormData> formData =
+        formFactory.getFormDataOrBadRequest(request, AlertingFormData.class);
     AlertingFormData alertingFormData = formData.get();
 
     if (alertingFormData.name != null) {
-      customer.name = alertingFormData.name;
+      customer.setName(alertingFormData.name);
       customer.save();
     }
 
-    if (request.has("alertingData") || request.has("smtpData")) {
+    if (requestBody.has("alertingData") || requestBody.has("smtpData")) {
 
       CustomerConfig config = CustomerConfig.getAlertConfig(customerUUID);
       if (alertingFormData.alertingData != null) {
@@ -249,8 +250,8 @@ public class CustomerController extends AuthenticatedController {
       } else if (smtpConfig != null && alertingFormData.smtpData != null) {
         smtpConfig.unmaskAndSetData((ObjectNode) Json.toJson(alertingFormData.smtpData));
         customerConfigService.edit(smtpConfig);
-      } // In case we want to reset the smtpData and use the default mailing server.
-      else if (request.has("smtpData") && alertingFormData.smtpData == null) {
+      } // In case we want to reset the smtpData
+      else if (requestBody.has("smtpData") && alertingFormData.smtpData == null) {
         if (smtpConfig != null) {
           smtpConfig.delete();
         }
@@ -258,7 +259,6 @@ public class CustomerController extends AuthenticatedController {
     }
 
     // Features would be a nested json, so we should fetch it differently.
-    JsonNode requestBody = request().body().asJson();
     if (requestBody.has("features")) {
       customer.upsertFeatures(requestBody.get("features"));
     }
@@ -266,11 +266,7 @@ public class CustomerController extends AuthenticatedController {
     CustomerConfig.upsertCallhomeConfig(customerUUID, alertingFormData.callhomeLevel);
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Customer,
-            customerUUID.toString(),
-            Audit.ActionType.Update,
-            Json.toJson(formData));
+            request, Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Update);
     return ok(Json.toJson(customer));
   }
 
@@ -278,7 +274,7 @@ public class CustomerController extends AuthenticatedController {
       value = "Delete a customer",
       response = YBPSuccess.class,
       nickname = "deleteCustomer")
-  public Result delete(UUID customerUUID) {
+  public Result delete(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     List<Users> users = Users.getAll(customerUUID);
@@ -294,8 +290,8 @@ public class CustomerController extends AuthenticatedController {
     metricService.markSourceRemoved(customerUUID, null);
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request, Audit.TargetType.Customer, customerUUID.toString(), Audit.ActionType.Delete);
     return YBPSuccess.empty();
   }
 
@@ -312,10 +308,10 @@ public class CustomerController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.FeatureUpdateFormData",
         paramType = "body")
   })
-  public Result upsertFeatures(UUID customerUUID) {
+  public Result upsertFeatures(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    JsonNode requestBody = request().body().asJson();
+    JsonNode requestBody = request.body().asJson();
     ObjectMapper mapper = new ObjectMapper();
     FeatureUpdateFormData formData;
     try {
@@ -328,11 +324,10 @@ public class CustomerController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.Customer,
             customerUUID.toString(),
-            Audit.ActionType.UpsertCustomerFeatures,
-            requestBody);
+            Audit.ActionType.UpsertCustomerFeatures);
     return ok(customer.getFeatures());
   }
 
@@ -353,10 +348,11 @@ public class CustomerController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.MetricQueryParams",
         paramType = "body")
   })
-  public Result metrics(UUID customerUUID) {
+  public Result metrics(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
-    Form<MetricQueryParams> formData = formFactory.getFormDataOrBadRequest(MetricQueryParams.class);
+    Form<MetricQueryParams> formData =
+        formFactory.getFormDataOrBadRequest(request, MetricQueryParams.class);
     MetricQueryParams metricQueryParams = formData.get();
 
     if (CollectionUtils.isEmpty(metricQueryParams.getMetrics())
@@ -370,13 +366,6 @@ public class CustomerController extends AuthenticatedController {
     if (response.has("error")) {
       throw new PlatformServiceException(BAD_REQUEST, response.get("error"));
     }
-    auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
-            Audit.TargetType.Customer,
-            customerUUID.toString(),
-            Audit.ActionType.AddMetrics,
-            request().body().asJson());
     return PlatformResults.withRawData(response);
   }
 
@@ -388,12 +377,9 @@ public class CustomerController extends AuthenticatedController {
     Customer.getOrBadRequest(customerUUID);
     ObjectNode hostInfo = Json.newObject();
     hostInfo.put(
-        Common.CloudType.aws.name(),
-        cloudQueryHelper.currentHostInfo(
-            Common.CloudType.aws,
-            ImmutableList.of("instance-id", "vpc-id", "privateIp", "region")));
+        Common.CloudType.aws.name(), cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws));
     hostInfo.put(
-        Common.CloudType.gcp.name(), cloudQueryHelper.currentHostInfo(Common.CloudType.gcp, null));
+        Common.CloudType.gcp.name(), cloudQueryHelper.getCurrentHostInfo(Common.CloudType.gcp));
 
     return PlatformResults.withRawData(hostInfo);
   }

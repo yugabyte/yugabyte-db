@@ -18,15 +18,16 @@
 #include "yb/server/server_fwd.h"
 
 namespace yb {
-namespace tablet {
+namespace docdb {
 
 // This class is responsible for aggregating all wait-for relationships across WaitQueue instances
 // on a tserver and reporting these relationships to each waiting transaction's respective
 // transaction coordinator.
-class LocalWaitingTxnRegistry : public docdb::WaitingTxnRegistry {
+class LocalWaitingTxnRegistry : public WaitingTxnRegistry {
  public:
   explicit LocalWaitingTxnRegistry(
-      const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock);
+      const std::shared_future<client::YBClient*>& client_future, const server::ClockPtr& clock,
+      const std::string& tserver_uuid, ThreadPool* thread_pool);
 
   ~LocalWaitingTxnRegistry();
 
@@ -37,7 +38,7 @@ class LocalWaitingTxnRegistry : public docdb::WaitingTxnRegistry {
   std::unique_ptr<docdb::ScopedWaitingTxnRegistration> Create() override;
 
   Status RegisterWaitingFor(
-      const TransactionId& waiting, std::vector<BlockingTransactionData>&& blocking,
+      const TransactionId& waiting, std::shared_ptr<ConflictDataManager> blockers,
       const TabletId& status_tablet_id, docdb::ScopedWaitingTxnRegistration* wrapper);
 
   // Triggers a report of all wait-for relationships tracked by this instance to each waiting
@@ -53,5 +54,5 @@ class LocalWaitingTxnRegistry : public docdb::WaitingTxnRegistry {
   std::unique_ptr<Impl> impl_;
 };
 
-} // namespace tablet
+} // namespace docdb
 } // namespace yb

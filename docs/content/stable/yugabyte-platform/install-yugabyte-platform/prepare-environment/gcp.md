@@ -15,14 +15,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link active">
-       <i class="fab fa-google" aria-hidden="true"></i>
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -36,21 +36,21 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building" aria-hidden="true"></i>
+      <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
@@ -101,7 +101,7 @@ In order to access YugabyteDB Anywhere from outside the GCP environment, you hav
 - Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
 - View the YugabyteDB Anywhere UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information, see [Default ports](../../../../reference/configuration/default-ports).
 
 Next, you need to create a firewall entry, as follows:
 
@@ -109,7 +109,7 @@ Next, you need to create a firewall entry, as follows:
 - Create firewall rules by following instructions provided in [Using firewall rules](https://cloud.google.com/vpc/docs/using-firewalls) in the GCP documentation. When creating the rules:
   - Add a tag `yugabyte-server` to the **Target tags** field.
   - Add the appropriate IP addresses to the **Source IP ranges** field.
-  - Enter a comma-delimited list of TCP ports 22, 8800, 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
+  - Enter a comma-delimited list of TCP ports 22, 8800, and 80 to the **Protocol and ports** field. If required, also add TCP ports for a self-managed configuration.
 
 ## Provision instance for YugabyteDB Anywhere
 
@@ -126,16 +126,16 @@ You need to create an instance to run YugabyteDB Anywhere. To do this, from your
 Once the instance has been created, use the **SSH Keys** tab to add a custom public key and a login user to this instance. To do so, you start by creating a key-pair, as follows:
 
 ```sh
-$ ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
+ssh-keygen -t rsa -f ~/.ssh/yugabyte-1-gcp -C centos
 ```
 
-<br>You can set the appropriate credentials for the SSH key as follows:
+You can set the appropriate credentials for the SSH key as follows:
 
 ```sh
-$ chmod 400 ~/.ssh/yugabyte-1-gcp
+chmod 400 ~/.ssh/yugabyte-1-gcp
 ```
 
-<br>Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
+Enter the contents of `yugabyte-1-gcp.pub` as the value for this field.
 
 For more information, see the following GCP documentation:
 
@@ -150,7 +150,7 @@ Use the GCP Cloud Console to find the public IP address of the instance you laun
 To connect to this server, execute the following command:
 
 ```sh
-$ ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
+ssh -i ~/.ssh/yugabyte-1-gcp centos@NN.NN.NN.NN
 ```
 
 Replace `NN.NN.NN.NN` with the IP address and `yugabyte-1-gcp` with the appropriate SSH key.

@@ -48,13 +48,13 @@ import org.yb.master.CatalogEntityInfo;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.minicluster.MiniYBCluster;
 import org.yb.minicluster.MiniYBClusterBuilder;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestTablespaceProperties extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestTablespaceProperties.class);
 
@@ -443,7 +443,8 @@ public class TestTablespaceProperties extends BasePgSQLTest {
         // Increase the interval between subsequent runs of bg thread so that
         // it assigns replicas for tablets of both the tables concurrently.
         assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms", "10000"));
-        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "true"));
+        assertTrue(client.setFlag(
+              hp, "TEST_skip_placement_validation_createtable_api", "true", true));
       }
       LOG.info("Increased the delay between successive runs of bg threads.");
       // Create tablespace with valid placement.
@@ -526,9 +527,10 @@ public class TestTablespaceProperties extends BasePgSQLTest {
 
       // Reset the bg threads delay.
       for (HostAndPort hp : miniCluster.getMasters().keySet()) {
-        assertTrue(client.setFlag(hp, "catalog_manager_bg_task_wait_ms",
-                                Integer.toString(previousBGWait)));
-        assertTrue(client.setFlag(hp, "TEST_skip_placement_validation_createtable_api", "false"));
+        assertTrue(client.setFlag(
+              hp, "catalog_manager_bg_task_wait_ms", Integer.toString(previousBGWait)));
+        assertTrue(client.setFlag(
+              hp, "TEST_skip_placement_validation_createtable_api", "false", true));
       }
       // Verify that the transaction DDL garbage collector removes this table.
       assertTrue(client.waitForTableRemoval(30000, "invalidplacementtable"));

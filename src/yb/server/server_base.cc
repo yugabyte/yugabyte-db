@@ -70,7 +70,6 @@
 #include "yb/util/concurrent_value.h"
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -86,25 +85,26 @@
 #include "yb/util/thread.h"
 #include "yb/util/version_info.h"
 
-DEFINE_int32(num_reactor_threads, -1,
+DEFINE_UNKNOWN_int32(num_reactor_threads, -1,
              "Number of libev reactor threads to start. If -1, the value is automatically set.");
 TAG_FLAG(num_reactor_threads, advanced);
 
 DECLARE_bool(use_hybrid_clock);
 
-DEFINE_int32(generic_svc_num_threads, 10,
+DEFINE_UNKNOWN_int32(generic_svc_num_threads, 10,
              "Number of RPC worker threads to run for the generic service");
 TAG_FLAG(generic_svc_num_threads, advanced);
 
-DEFINE_int32(generic_svc_queue_length, 50,
+DEFINE_UNKNOWN_int32(generic_svc_queue_length, 50,
              "RPC Queue length for the generic service");
 TAG_FLAG(generic_svc_queue_length, advanced);
 
-DEFINE_string(yb_test_name, "",
+DEFINE_UNKNOWN_string(yb_test_name, "",
               "Specifies test name this daemon is running as part of.");
 
-DEFINE_bool(TEST_check_broadcast_address, true, "Break connectivity in test mini cluster to "
-            "check broadcast address.");
+DEFINE_UNKNOWN_bool(TEST_check_broadcast_address, true,
+    "Break connectivity in test mini cluster to "
+    "check broadcast address.");
 
 DEFINE_test_flag(string, public_hostname_suffix, ".ip.yugabyte", "Suffix for public hostnames.");
 
@@ -141,7 +141,7 @@ struct CommonMemTrackers {
   std::vector<MemTrackerPtr> trackers;
 
   ~CommonMemTrackers() {
-#if defined(TCMALLOC_ENABLED)
+#ifdef YB_TCMALLOC_ENABLED
     // Prevent root mem tracker from accessing common mem trackers.
     auto root = MemTracker::GetRootTracker();
     root->SetPollChildrenConsumptionFunctors(nullptr);
@@ -162,7 +162,7 @@ std::shared_ptr<MemTracker> CreateMemTrackerForServer() {
   return MemTracker::CreateTracker(id_str);
 }
 
-#if defined(TCMALLOC_ENABLED)
+#ifdef YB_TCMALLOC_ENABLED
 void RegisterTCMallocTracker(const char* name, const char* prop) {
   common_mem_trackers->trackers.push_back(MemTracker::CreateTracker(
       -1, "TCMalloc "s + name, std::bind(&MemTracker::GetTCMallocProperty, prop)));
@@ -182,15 +182,21 @@ RpcServerBase::RpcServerBase(string name, const ServerBaseOptions& options,
       stop_metrics_logging_latch_(1) {
   mem_tracker_->SetMetricEntity(metric_entity_);
 
-#if defined(TCMALLOC_ENABLED)
+#ifdef YB_TCMALLOC_ENABLED
   // When mem tracker for first server is created we register mem trackers that report tc malloc
   // status.
   if (mem_tracker_->id() == kServerMemTrackerName) {
     common_mem_trackers = std::make_unique<CommonMemTrackers>();
 
+#if defined(YB_GOOGLE_TCMALLOC)
+    RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free");
+    RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free");
+    RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free");
+#else
     RegisterTCMallocTracker("Thread Cache", "tcmalloc.thread_cache_free_bytes");
     RegisterTCMallocTracker("Central Cache", "tcmalloc.central_cache_free_bytes");
     RegisterTCMallocTracker("Transfer Cache", "tcmalloc.transfer_cache_free_bytes");
+#endif
     RegisterTCMallocTracker("PageHeap Free", "tcmalloc.pageheap_free_bytes");
 
     auto root = MemTracker::GetRootTracker();
@@ -255,7 +261,7 @@ Status RpcServerBase::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   if (FLAGS_num_reactor_threads == -1) {
     // Auto set the number of reactors based on the number of cores.
     auto count = std::min(16, static_cast<int>(base::NumCPUs()));
-    RETURN_NOT_OK(SetFlagDefaultAndCurrent("num_reactor_threads", std::to_string(count)));
+    RETURN_NOT_OK(SET_FLAG_DEFAULT_AND_CURRENT(num_reactor_threads, count));
     LOG(INFO) << "Auto setting FLAGS_num_reactor_threads to " << FLAGS_num_reactor_threads;
   }
 

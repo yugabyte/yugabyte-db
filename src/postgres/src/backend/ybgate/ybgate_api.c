@@ -1,16 +1,28 @@
-//--------------------------------------------------------------------------------------------------
-// Copyright (c) YugaByte, Inc.
-//
-// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
-// in compliance with the License.  You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software distributed under the License
-// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
-// or implied.  See the License for the specific language governing permissions and limitations
-// under the License.
-//--------------------------------------------------------------------------------------------------
+/*-------------------------------------------------------------------------
+ *
+ * ybgate_api.c
+ *	  YbGate interface functions.
+ *	  YbGate allows to execute Postgres code from DocDB
+ *
+ * Copyright (c) Yugabyte, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License.  You may obtain a copy
+ * of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ * IDENTIFICATION
+ *	  src/backend/ybgate/ybgate_api.c
+ *
+ *-------------------------------------------------------------------------
+ */
 
 #include "postgres.h"
 
@@ -37,6 +49,7 @@
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
 #include "funcapi.h"
+#include "pg_yb_utils.h"
 
 YbgStatus YbgInit()
 {
@@ -44,7 +57,7 @@ YbgStatus YbgInit()
 
 	SetDatabaseEncoding(PG_UTF8);
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -58,7 +71,7 @@ YbgStatus YbgGetCurrentMemoryContext(YbgMemoryContext *memctx)
 
 	*memctx = GetThreadLocalCurrentMemoryContext();
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
@@ -72,7 +85,7 @@ YbgStatus YbgSetCurrentMemoryContext(YbgMemoryContext memctx,
 		*oldctx = prev;
 	}
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
@@ -81,9 +94,9 @@ YbgStatus YbgCreateMemoryContext(YbgMemoryContext parent,
 {
 	PG_SETUP_ERROR_REPORTING();
 
-	*memctx = CreateThreadLocalCurrentMemoryContext(parent, name);
+	*memctx = CreateThreadLocalMemoryContext(parent, name);
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgPrepareMemoryContext()
@@ -92,7 +105,7 @@ YbgStatus YbgPrepareMemoryContext()
 
 	PrepareThreadLocalCurrentMemoryContext();
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgResetMemoryContext()
@@ -101,7 +114,7 @@ YbgStatus YbgResetMemoryContext()
 
 	ResetThreadLocalCurrentMemoryContext();
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgDeleteMemoryContext()
@@ -110,7 +123,7 @@ YbgStatus YbgDeleteMemoryContext()
 
 	DeleteThreadLocalCurrentMemoryContext();
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -123,7 +136,7 @@ YbgStatus YbgGetTypeTable(const YBCPgTypeEntity **type_table, int *count)
 
 	YbGetTypeTable(type_table, count);
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus
@@ -132,7 +145,7 @@ YbgGetPrimitiveTypeOid(uint32_t type_oid, char typtype, uint32_t typbasetype,
 {
 	PG_SETUP_ERROR_REPORTING();
 	*primitive_type_oid = YbGetPrimitiveTypeOid(type_oid, typtype, typbasetype);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -352,7 +365,7 @@ YbgStatus YbgExprContextCreate(int32_t min_attno, int32_t max_attno, YbgExprCont
 	ctx->attr_nulls = NULL;
 
 	*expr_ctx = ctx;
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
@@ -363,7 +376,7 @@ YbgStatus YbgExprContextReset(YbgExprContext expr_ctx)
 	memset(expr_ctx->attr_vals, 0, sizeof(Datum) * num_attrs);
 	expr_ctx->attr_nulls = NULL;
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
@@ -382,42 +395,42 @@ YbgStatus YbgExprContextAddColValue(YbgExprContext expr_ctx,
 		expr_ctx->attr_vals[attno - expr_ctx->min_attno] = (Datum) datum;
 	}
 
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgPrepareExpr(char* expr_cstring, YbgPreparedExpr *expr)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*expr = (YbgPreparedExpr) stringToNode(expr_cstring);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprType(const YbgPreparedExpr expr, int32_t *typid)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*typid = exprType((Node *) expr);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprTypmod(const YbgPreparedExpr expr, int32_t *typmod)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*typmod = exprTypmod((Node *) expr);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgExprCollation(const YbgPreparedExpr expr, int32_t *collid)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*collid = exprCollation((Node *) expr);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgEvalExpr(YbgPreparedExpr expr, YbgExprContext expr_ctx, uint64_t *datum, bool *is_null)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*datum = (uint64_t) evalExpr(expr_ctx, expr, is_null);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 /* YB_TODO(Deepthi@yugabyte)
@@ -436,7 +449,9 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 	ArrayType  *arr = DatumGetArrayTypeP((Datum)datum);
 
 	if (ARR_NDIM(arr) != 1 || ARR_HASNULL(arr) || ARR_ELEMTYPE(arr) != type)
-		return PG_STATUS(ERROR, "Type of given datum array does not match the given type");
+		return YbgStatusCreateError(
+				"Type of given datum array does not match the given type",
+				__FILE__, __LINE__);
 
 	int32 elmlen;
 	bool elmbyval;
@@ -744,11 +759,13 @@ YbgStatus YbgSplitArrayDatum(uint64_t datum,
 			break;
 		/* TODO: Extend support to other types as well. */
 		default:
-			return PG_STATUS(ERROR, "Only Text type supported for split of datum of array types");
+			return YbgStatusCreateError(
+					"Only Text type supported for split of datum of array types",
+					__FILE__, __LINE__);
 	}
 	deconstruct_array(arr, type, elmlen, elmbyval, elmalign,
 			  (Datum**)result_datum_array, NULL /* nullsp */, nelems);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 //-----------------------------------------------------------------------------
@@ -769,7 +786,7 @@ YbgStatus YbgSamplerCreate(double rstate_w, uint64_t randstate, YbgReservoirStat
 	Uint64ToSamplerRandomState(rstate->rs.randstate, randstate);
 #endif
 	*yb_rs = rstate;
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t *randstate)
@@ -780,7 +797,7 @@ YbgStatus YbgSamplerGetState(YbgReservoirState yb_rs, double *rstate_w, uint64_t
 	/* YB_TODO(neil) Random state is no longer an array */
 	*randstate = SamplerRandomStateToUint64(yb_rs->rs.randstate);
 #endif
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
@@ -791,14 +808,14 @@ YbgStatus YbgSamplerRandomFract(YbgReservoirState yb_rs, double *value)
 	ReservoirState rs = &yb_rs->rs;
 	*value = sampler_random_fract(rs->randstate);
 #endif
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 YbgStatus YbgReservoirGetNextS(YbgReservoirState yb_rs, double t, int n, double *s)
 {
 	PG_SETUP_ERROR_REPORTING();
 	*s = reservoir_get_next_S(&yb_rs->rs, t, n);
-	return PG_STATUS_OK;
+	PG_STATUS_OK();
 }
 
 char* DecodeDatum(char const* fn_name, uintptr_t datum)

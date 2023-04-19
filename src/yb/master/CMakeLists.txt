@@ -54,31 +54,34 @@ set(MASTER_YRPC_LIBS
   rpc_header_proto
   tablet_proto
   tserver_proto
-  cdc_consumer_proto)
+  cdc_consumer_proto
+  xcluster_producer_proto
+  consensus_proto)
 ADD_YB_LIBRARY(master_proto
   SRCS ${MASTER_YRPC_SRCS}
   DEPS ${MASTER_YRPC_LIBS}
   NONLINK_DEPS ${MASTER_YRPC_TGTS})
 
-YB_INCLUDE_EXTENSIONS()
-
 set(MASTER_PROTO_LIBS
-  master_proto
-  ${MASTER_PROTO_LIBS_EXTENSIONS})
+  master_proto)
 
 include_directories(${YB_BUILD_ROOT}/postgres/include/server)
 
 set(MASTER_SRCS
   async_flush_tablets_task.cc
   async_rpc_tasks.cc
+  async_snapshot_tasks.cc
   auto_flags_orchestrator.cc
   master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
+  catalog_manager_ext.cc
   catalog_manager_util.cc
   catalog_entity_info.cc
   catalog_manager_bg_tasks.cc
   catalog_loaders.cc
+  cdc_consumer_registry_service.cc
+  cdc_rpc_tasks.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
   cluster_balance_util.cc
@@ -87,6 +90,7 @@ set(MASTER_SRCS
   flush_manager.cc
   master.cc
   master_admin_service.cc
+  master_backup_service.cc
   master_client_service.cc
   master_cluster_service.cc
   master_dcl_service.cc
@@ -102,6 +106,7 @@ set(MASTER_SRCS
   mini_master.cc
   master_snapshot_coordinator.cc
   restoration_state.cc
+  restore_sys_catalog_state.cc
   snapshot_coordinator_context.cc
   snapshot_schedule_state.cc
   snapshot_state.cc
@@ -110,35 +115,39 @@ set(MASTER_SRCS
   sys_catalog_initialization.cc
   sys_catalog_writer.cc
   system_tablet.cc
-  tasks_tracker.cc
+  table_index.cc
   tablet_split_manager.cc
+  tasks_tracker.cc
   ts_descriptor.cc
   ts_manager.cc
+  universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
+  xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
-  yql_virtual_table.cc
-  yql_vtable_iterator.cc
-  yql_auth_roles_vtable.cc
-  yql_auth_role_permissions_vtable.cc
-  yql_auth_resource_role_permissions_index.cc
+  xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
+  yql_auth_resource_role_permissions_index.cc
+  yql_auth_role_permissions_vtable.cc
+  yql_auth_roles_vtable.cc
   yql_columns_vtable.cc
   yql_empty_vtable.cc
   yql_functions_vtable.cc
   yql_indexes_vtable.cc
   yql_keyspaces_vtable.cc
-  yql_peers_vtable.cc
   yql_local_vtable.cc
+  yql_partitions_vtable.cc
+  yql_peers_vtable.cc
   yql_size_estimates_vtable.cc
   yql_tables_vtable.cc
   yql_triggers_vtable.cc
   yql_types_vtable.cc
   yql_views_vtable.cc
-  yql_partitions_vtable.cc
-  ysql_transaction_ddl.cc
+  yql_virtual_table.cc
+  yql_vtable_iterator.cc
+  ysql_backends_manager.cc
   ysql_tablegroup_manager.cc
   ysql_tablespace_manager.cc
-  ${MASTER_SRCS_EXTENSIONS})
+  ysql_transaction_ddl.cc)
 
 set(MASTER_DEPS
   yb_common
@@ -167,6 +176,7 @@ set(MASTER_RPC_SRCS
   master_rpc.cc)
 set(MASTER_RPC_LIBS
   yb_common
+  yb_ql_common
   yrpc
   gutil
   yb_util
@@ -186,7 +196,7 @@ set(MASTER_UTIL_SRCS
   master_util.cc)
 ADD_YB_LIBRARY(master_util
   SRCS ${MASTER_UTIL_SRCS}
-  DEPS master_error ${MASTER_RPC_LIBS})
+  DEPS yb_ql_common master_error ${MASTER_RPC_LIBS})
 
 # A library with common code shared between master tests.
 set(MASTER_TEST_COMMON_SRCS
@@ -205,22 +215,35 @@ set(YB_TEST_LINK_LIBS master
   yb_client
   yb_tools_util
   ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(flush_manager-test)
 ADD_YB_TEST(master-test)
 ADD_YB_TEST(sys_catalog-test)
+Add_YB_TEST(table_index-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
+ADD_YB_TEST(stateful_service-test)
+ADD_YB_TEST(restore_sys_catalog_state_test)
+ADD_YB_TEST(cluster_balance_preferred_leader-test)
+ADD_YB_TEST(master_xrepl-test)
+ADD_YB_TEST(sys_catalog_xrepl-test)
 
-foreach(ADDITIONAL_TEST ${MASTER_ADDITIONAL_TESTS})
-  ADD_YB_TEST(${ADDITIONAL_TEST})
-endforeach(ADDITIONAL_TEST)
-
-# Actual master executable
+# Actual master executable. In LTO mode, can also act as the tablet server if executed through a
+# symlink named as the tablet server executable.
 add_executable("${YB_MASTER_DYNAMIC_EXE_NAME}" master_main.cc)
+set(YB_MASTER_EXE_DEPS
+    master
+    ${YB_BASE_LIBS})
+if(NOT DEFINED YB_LTO_ENABLED)
+  message(FATAL_ERROR "YB_LTO_ENABLED is not defined")
+endif()
+if(YB_LTO_ENABLED)
+  # In LTO mode, the master executable can also function as the tablet server.
+  list(APPEND YB_MASTER_EXE_DEPS tserver_main_impl)
+endif()
 target_link_libraries(
   "${YB_MASTER_DYNAMIC_EXE_NAME}"
-  master
-  ${YB_BASE_LIBS})
+  ${YB_MASTER_EXE_DEPS})
 
 # Generate master_flags.xml
 set(MASTER_FLAGS_METADATA_FILE ${YB_BUILD_ROOT}/master_flags.xml)
@@ -236,7 +259,8 @@ set(AUTO_FLAGS_FILE ${YB_BUILD_ROOT}/auto_flags.json)
 list(APPEND GEN_AUTO_FLAGS_COMMAND "${BUILD_SUPPORT_DIR}/gen_auto_flags"
   "--program_list" "${YB_MASTER_DYNAMIC_EXE_NAME},${YB_TSERVER_DYNAMIC_EXE_NAME}"
   "--dynamically_linked_exe_suffix=${YB_DYNAMICALLY_LINKED_EXE_SUFFIX}"
-  "--output_file_path" "${AUTO_FLAGS_FILE}")
+  "--output_file_path" "${AUTO_FLAGS_FILE}"
+  "--previous_auto_flags_file" "${YB_SRC_ROOT}/src/yb/previous_auto_flags.json")
 add_custom_target(
   gen_auto_flags_json ALL
   COMMAND ${GEN_AUTO_FLAGS_COMMAND}

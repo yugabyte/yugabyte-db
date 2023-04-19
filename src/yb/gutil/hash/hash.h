@@ -84,14 +84,14 @@
 // property.  We already have several such functions; see
 // hash_unittest.cc for the details and unittests.
 
-#ifndef YB_GUTIL_HASH_HASH_H
-#define YB_GUTIL_HASH_HASH_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>     // for uintptr_t
 #include <string.h>
 #include <algorithm>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "yb/gutil/casts.h"
@@ -153,7 +153,7 @@ inline uint64 CombineFingerprintHalves(uint32 hi, uint32 lo) {
 inline uint64 Fingerprint(const std::string& s) {
   return Fingerprint(s.data(), static_cast<uint32>(s.size()));
 }
-inline uint64 Hash64StringWithSeed(const std::string& s, uint64 c) {
+inline uint64 Hash64StringWithSeed(std::string_view s, uint64 c) {
   return Hash64StringWithSeed(s.data(), static_cast<uint32>(s.size()), c);
 }
 inline uint64 Fingerprint(schar c) {
@@ -263,5 +263,3 @@ struct GoodFastHash<const std::basic_string<_CharT, _Traits, _Alloc> > {
   static const size_t bucket_size = 4;  // These are required by MSVC
   static const size_t min_buckets = 8;  // 4 and 8 are defaults.
 };
-
-#endif  // YB_GUTIL_HASH_HASH_H

@@ -68,11 +68,13 @@ void YBTabletTest::SetUpTestTablet(const std::string& root_dir) {
 }
 
 void YBTabletTest::AlterSchema(const Schema& schema) {
-  ChangeMetadataRequestPB req;
+  ThreadSafeArena arena;
+  LWChangeMetadataRequestPB req(&arena);
   req.set_schema_version(tablet()->metadata()->schema_version() + 1);
 
   ChangeMetadataOperation operation(nullptr, nullptr, &req);
-  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(&operation, &schema));
+  ASSERT_OK(tablet()->CreatePreparedChangeMetadata(
+      &operation, &schema, IsLeaderSide::kTrue));
   ASSERT_OK(tablet()->AlterSchema(&operation));
   operation.Release();
 }
@@ -84,8 +86,7 @@ Status IterateToStringList(
   int fetched = 0;
   std::vector<std::pair<QLValue, std::string>> temp;
   QLTableRow row;
-  while (VERIFY_RESULT(iter->HasNext()) && fetched < limit) {
-    RETURN_NOT_OK(iter->NextRow(&row));
+  while (VERIFY_RESULT(iter->FetchNext(&row)) && fetched < limit) {
     QLValue key;
     RETURN_NOT_OK(row.GetValue(schema.column_id(0), &key));
     temp.emplace_back(key, row.ToString(schema));

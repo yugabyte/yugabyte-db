@@ -15,14 +15,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -36,33 +36,33 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>OpenShift</a>
   </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+<br>This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -75,12 +75,22 @@ Before you install YugabyteDB on a Kubernetes cluster, perform the following:
 
 ### Service account
 
-The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere. *namespace* in the service account creation command can be replaced with the desired namespace in which to install YugabyteDB.
+The secret of a service account can be used to generate a `kubeconfig` file. This account should not be deleted once it is in use by YugabyteDB Anywhere.
+
+Set the `YBA_NAMESPACE` environment variable to the namespace where your YugabyteDB Anywhere is installed, as follows:
+
+```sh
+export YBA_NAMESPACE="yb-platform"
+```
+
+Note that the `YBA_NAMESPACE` variable is used in the commands throughout this document.
 
 Run the following `kubectl` command to apply the YAML file:
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n <namespace>
+export YBA_NAMESPACE="yb-platform"
+
+kubectl apply -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml -n ${YBA_NAMESPACE}
 ```
 
 Expect the following output:
@@ -98,70 +108,50 @@ The tasks you can perform depend on your access level.
 **Global Admin** can grant broad cluster level admin access by executing the following command:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
 **Global Restricted** can grant access to only the specific cluster roles to create and manage YugabyteDB universes across all the namespaces in a cluster using the following command:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-global.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
 This contains ClusterRoles and ClusterRoleBindings for the required set of permissions.
 
-The following command can be used to validate the service account:
-
-```sh
-kubectl auth can-i \
---as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
-{get|create|delete|list} \
-{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
-```
-
 **Namespace Admin** can grant namespace-level admin access by using the following command:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced-admin.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
 If you have multiple target namespaces, then you have to apply the YAML in all of them.
-
-The following command can be used to validate the service account:
-
-```sh
-kubectl auth can-i \
---as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
-{get|create|delete|list|patch} \
-{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
-```
 
 **Namespace Restricted** can grant access to only the specific roles required to create and manage YugabyteDB universes in a particular namespace. Contains Roles and RoleBindings for the required set of permissions.
 
 For example, if your goal is to allow YugabyteDB Anywhere to manage YugabyteDB universes in the namespaces `yb-db-demo` and `yb-db-us-east4-a` (the target namespaces), then you need to apply in both the target namespaces, as follows:
 
 ```sh
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
-  | sed "s/namespace: <SA_NAMESPACE>/namespace: <namespace>"/g \
-  | kubectl apply -n <namespace> -f -
+  | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}"/g \
+  | kubectl apply -n ${YBA_NAMESPACE} -f -
 ```
 
-The following command can be used to validate the service account:
-
-```sh
-kubectl auth can-i \
---as system:serviceaccount:<namespace>:yugabyte-platform-universe-management \
---namespace {namespace} \
-{get|delete|list} \
-{namespaces|poddisruptionbudgets|services|statefulsets|secrets|pods|pvc}
-```
-
-### `kubeconfig` file
+### kubeconfig file
 
 You can create a `kubeconfig` file for the previously created `yugabyte-platform-universe-management` service account as follows:
 
@@ -174,10 +164,12 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
 2. Run the following command to generate the `kubeconfig` file:
 
     ```sh
-    python generate_kubeconfig.py -s yugabyte-platform-universe-management -n <namespace>
+    export YBA_NAMESPACE="yb-platform"
+
+    python generate_kubeconfig.py -s yugabyte-platform-universe-management -n ${YBA_NAMESPACE}
     ```
 
-    <br>Expect the following output:
+    Expect the following output:
 
     ```output
     Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
@@ -200,7 +192,7 @@ Continue configuring your Kubernetes provider as follows:
   - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
   - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments.
 - In the **Service Account** field, provide the name of the service account which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-- In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry.
+- In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prerequisites#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 - Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
 
 ## Configure region and zones
@@ -211,13 +203,13 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 - Use the **Zone** field to select a zone label that should match with your failure domain zone label `failure-domain.beta.kubernetes.io/zone`.
 
-- Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster.
+- Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and the storage class is based on [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#storage-class-considerations).
 
 - Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br><br>
+- Use **Kube Config** to upload the configuration file. If this file is available at provider level, you are not required to supply it.<br>
 
-  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br><br>
+  ![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)<br>
 
 - Complete the **Overrides** field using one of the provided options. If you do not specify anything, YugabyteDB Anywhere would use defaults specified inside the Helm chart. The following overrides are available:
 
@@ -351,8 +343,99 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
       runAsUser: 10001
       runAsGroup: 10001
     ```
+    Note that you cannot change users during the Helm upgrades.
 
-    <br>Note that you cannot change users during the Helm upgrades.
+  - Add `tolerations` in Master and Tserver pods. Tolerations work in combination with taints. `Taints` are applied on nodes and `Tolerations` to pods. Taints and tolerations work together to ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes and use taints + tolerations to prevent other pods from getting scheduled on the dedicated nodes if required.
+  For more information, see [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core).
+
+    ```yml
+    ## Consider node has following taint.
+    ## kubectl taint nodes node1 dedicated=experimental:NoSchedule-
+
+    master:
+      tolerations:
+      - key: dedicated
+        operator: Equal
+        value: experimental
+        effect: NoSchedule
+
+    tserver:
+      tolerations: []
+    ```
+
+  - You can use `nodeSelector` to schedule Master and TServer pods on dedicated nodes. For more information, see [Node Selector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector).
+
+    ```yml
+    ## The pod will get scheduled on a node that has a topology.kubernetes.io/zone=asia-south2-a label.
+    nodeSelector:
+      topology.kubernetes.io/zone: asia-south2-a
+    ```
+
+  - Add `affinity` in Master and TServer pods. The `affinity` allows the Kubernetes scheduler to place a pod on a set of nodes or a pod relative to the placement of other pods. You can use `nodeAffinity` rules to control pod placements on a set of nodes. In contrast, `podAffinity` or `podAntiAffinity` rules provide the ability to control pod placements relative to other pods. For more information, see [Affinity API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#affinity-v1-core).
+
+    ```yml
+    ## Following example can be used to prevent scheduling of multiple master pods on single kubernetes node.
+    master:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-master"
+            topologyKey: kubernetes.io/hostname
+
+    tserver:
+      affinity: {}
+    ```
+
+  - Add `annotations` to Master and Tserver pods. The Kubernetes `annotations` can attach arbitrary metadata to objects. For more information, see [Annotations](https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations/).
+
+    ```yml
+    master:
+      podAnnotations:
+        application: "yugabytedb"
+
+    tserver:
+      podAnnotations: {}
+    ```
+
+  - Add `labels` to Master and Tserver pods. The Kubernetes `labels` are key/value pairs attached to objects. The `labels` are used to specify identifying attributes of objects that are meaningful and relevant to you. For more information, see [Labels](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/).
+
+    ```yml
+    master:
+      podLabels:
+        environment: production
+        app: yugabytedb
+        prometheus.io/scrape: true
+
+    tserver:
+      podLabels: {}
+    ```
+
+  - You can use the following preflight checks to verify YugabyteDB prerequisites:
+    1. DNS address resolution
+    2. Disk IO
+    3. Port available for bind
+    4. Ulimit
+
+    For more information, see [Prerequisites](https://docs.yugabyte.com/preview/deploy/kubernetes/single-zone/oss/helm-chart/#prerequisites).
+
+    ```yml
+    ## Default values
+    preflight:
+      ## Set to true to skip disk IO check, DNS address resolution, and port bind checks
+      skipAll: false
+
+      ## Set to true to skip port bind checks
+      skipBind: false
+
+      ## Set to true to skip ulimit verification
+      ## SkipAll has higher priority
+      skipUlimit: false
+    ```
 
 Continue configuring your Kubernetes provider by clicking **Add Zone**, as per the following illustration:
 

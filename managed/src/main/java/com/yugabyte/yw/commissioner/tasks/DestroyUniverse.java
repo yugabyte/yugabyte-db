@@ -24,18 +24,20 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import lombok.extern.slf4j.Slf4j;
+
+import javax.inject.Inject;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
 
-  private Set<UUID> lockedXClusterUniversesUuidSet = null;
+  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
 
   @Inject
   public DestroyUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -71,7 +73,8 @@ public class DestroyUniverse extends UniverseTaskBase {
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
-            Backup.fetchBackupToDeleteByUniverseUUID(params().customerUUID, universe.universeUUID);
+            Backup.fetchBackupToDeleteByUniverseUUID(
+                params().customerUUID, universe.getUniverseUUID());
         createDeleteBackupYbTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
@@ -90,10 +93,15 @@ public class DestroyUniverse extends UniverseTaskBase {
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
         if (primaryCluster.userIntent.providerType.equals(CloudType.onprem)) {
+          // Remove all nodes from load balancer.
+          createManageLoadBalancerTasks(
+              createLoadBalancerMap(
+                  universe.getUniverseDetails(), null, new HashSet<>(universe.getNodes()), null));
+
           // Stop master and tservers.
-          createStopServerTasks(universe.getNodes(), "master", params().isForceDelete)
+          createStopServerTasks(universe.getNodes(), ServerType.MASTER, params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-          createStopServerTasks(universe.getNodes(), "tserver", params().isForceDelete)
+          createStopServerTasks(universe.getNodes(), ServerType.TSERVER, params().isForceDelete)
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
         }
 
@@ -139,11 +147,10 @@ public class DestroyUniverse extends UniverseTaskBase {
   }
 
   public SubTaskGroup createRemoveUniverseEntryTask() {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("RemoveUniverseEntry", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("RemoveUniverseEntry");
     Params params = new Params();
     // Add the universe uuid.
-    params.universeUUID = taskParams().universeUUID;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
     params.customerUUID = params().customerUUID;
     params.isForceDelete = params().isForceDelete;
 
@@ -158,8 +165,7 @@ public class DestroyUniverse extends UniverseTaskBase {
 
   public SubTaskGroup createDeleteCertificatesTaskGroup(
       UniverseDefinitionTaskParams universeDetails) {
-    SubTaskGroup subTaskGroup =
-        getTaskExecutor().createSubTaskGroup("DeleteCertificates", executor);
+    SubTaskGroup subTaskGroup = createSubTaskGroup("DeleteCertificates");
 
     // Create the task to delete rootCerts.
     DeleteCertificate rootCertDeletiontask =
@@ -172,7 +178,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     if (!universeDetails.rootAndClientRootCASame) {
       // Create the task to delete clientRootCerts.
       DeleteCertificate clientRootCertDeletiontask =
-          createDeleteCertificateTask(params().customerUUID, universeDetails.clientRootCA);
+          createDeleteCertificateTask(params().customerUUID, universeDetails.getClientRootCA());
       // Add it to the task list.
       if (clientRootCertDeletiontask != null) {
         subTaskGroup.addSubTask(clientRootCertDeletiontask);
@@ -201,14 +207,14 @@ public class DestroyUniverse extends UniverseTaskBase {
    * <p>Note: it relies on the fact that the unlock universe operation on a universe that is not
    * locked by this task is a no-op.
    */
-  private void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
+  protected void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
     // XCluster configs whose other universe exists.
     List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getByUniverseUuid(params().universeUUID)
+        XClusterConfig.getByUniverseUuid(params().getUniverseUUID())
             .stream()
             .filter(
                 xClusterConfig ->
-                    xClusterConfig.status
+                    xClusterConfig.getStatus()
                         != XClusterConfig.XClusterConfigStatusType.DeletedUniverse)
             .collect(Collectors.toList());
 
@@ -217,7 +223,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     // even when there is an error.
     xClusterConfigs.forEach(
         xClusterConfig -> {
-          xClusterConfig.setStatus(XClusterConfig.XClusterConfigStatusType.DeletedUniverse);
+          xClusterConfig.updateStatus(XClusterConfig.XClusterConfigStatusType.DeletedUniverse);
         });
 
     Map<UUID, List<XClusterConfig>> otherUniverseUuidToXClusterConfigsMap =
@@ -226,14 +232,16 @@ public class DestroyUniverse extends UniverseTaskBase {
             .collect(
                 Collectors.groupingBy(
                     xClusterConfig -> {
-                      if (xClusterConfig.sourceUniverseUUID.equals(params().universeUUID)) {
+                      if (xClusterConfig
+                          .getSourceUniverseUUID()
+                          .equals(params().getUniverseUUID())) {
                         // Case 1: Delete xCluster configs where this universe is the source
                         // universe.
-                        return xClusterConfig.targetUniverseUUID;
+                        return xClusterConfig.getTargetUniverseUUID();
                       } else {
                         // Case 2: Delete xCluster configs where this universe is the target
                         // universe.
-                        return xClusterConfig.sourceUniverseUUID;
+                        return xClusterConfig.getSourceUniverseUUID();
                       }
                     }));
 

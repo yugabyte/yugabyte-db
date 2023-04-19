@@ -33,9 +33,9 @@ Batch operations let you send multiple operations in a single RPC call to the da
 
 To insert data in a batch, prepared statements with the bind values are added to the write batch. This is done in order to reduce repeated statement parsing overhead.
 
-### Java Example
+### Java example
 
-In order to perform a batch insert operation in Java, first create a `BatchStatement` object. Next add the desired number of prepared and bound insert statements to it. Finally, execute the batch object. This is shown below.
+To perform a batch insert operation in Java, first create a `BatchStatement` object. Next add the desired number of prepared and bound insert statements to it. Finally, execute the batch object. This is shown below.
 
 ```java
 // Create a batch statement object.
@@ -112,9 +112,9 @@ SELECT * FROM table WHERE h = '...' AND r IN ('<value1>', '<value2>', ...);
 SELECT * FROM table WHERE h IN ('<value1>', '<value2>', ...) AND r IN ('<value1>', '<value2>', ...);
 ```
 
-## Sample Java Application
+## Sample Java application
 
-You can find a working example of using transactions with YugabyteDB in our [sample applications](../../../develop/explore-sample-apps/). This application writes batched key-value pairs with a configurable number of keys per batch. There are multiple readers and writers running in parallel performing these batch writes.
+You can find a working example of using transactions with YugabyteDB in the [yb-sample-apps](https://github.com/yugabyte/yb-sample-apps) repository. This application writes batched key-value pairs with a configurable number of keys per batch. There are multiple readers and writers running in parallel performing these batch writes.
 
 Here is how you can try out this sample application.
 

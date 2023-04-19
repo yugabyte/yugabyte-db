@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
+import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
@@ -24,61 +25,112 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.EnumUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.mvc.Http.Status;
 
 @Slf4j
 @Entity
+@Getter
+@Setter
 public class NodeAgent extends Model {
+
+  /** Node agent server OS type. */
+  public enum OSType {
+    DARWIN,
+    LINUX;
+
+    public static OSType parse(String strType) {
+      OSType osType = EnumUtils.getEnumIgnoreCase(OSType.class, strType);
+      if (osType == null) {
+        throw new IllegalArgumentException("Unknown OS type: " + strType);
+      }
+      return osType;
+    }
+  }
+
+  /** Node agent server arch type. */
+  public enum ArchType {
+    ARM64("aarch64"),
+    AMD64("x86_64");
+
+    private final Set<String> aliases;
+
+    private ArchType(String... aliases) {
+      this.aliases =
+          aliases == null
+              ? Collections.emptySet()
+              : Collections.unmodifiableSet(
+                  Arrays.stream(aliases).map(String::toLowerCase).collect(Collectors.toSet()));
+    }
+
+    public static ArchType parse(String strType) {
+      String lower = strType.toLowerCase();
+      for (ArchType archType : EnumSet.allOf(ArchType.class)) {
+        if (archType.name().equalsIgnoreCase(lower) || archType.aliases.contains(lower)) {
+          return archType;
+        }
+      }
+      throw new IllegalArgumentException("Unknown arch type: " + strType);
+    }
+  }
 
   /** State and the transitions. */
   public enum State {
     REGISTERING {
       @Override
       public Set<State> nextStates() {
-        return toSet(REGISTERING, LIVE);
+        return toSet(READY);
       }
     },
     UPGRADE {
       @Override
       public Set<State> nextStates() {
-        return toSet(UPGRADING);
-      }
-    },
-    UPGRADING {
-      @Override
-      public Set<State> nextStates() {
-        return toSet(UPGRADING, UPGRADED);
+        return toSet(UPGRADED);
       }
     },
     UPGRADED {
       @Override
       public Set<State> nextStates() {
-        return toSet(LIVE);
+        return toSet(READY);
       }
     },
-    LIVE {
+    READY {
       @Override
       public Set<State> nextStates() {
-        return toSet(LIVE, UPGRADE);
+        return toSet(READY, UPGRADE);
       }
     };
 
     public abstract Set<State> nextStates();
+
+    public static State parse(String strType) {
+      State state = EnumUtils.getEnumIgnoreCase(State.class, strType);
+      if (state == null) {
+        throw new IllegalArgumentException("Unknown state: " + state);
+      }
+      return state;
+    }
 
     private static Set<State> toSet(State... states) {
       return states == null
@@ -104,39 +156,53 @@ public class NodeAgent extends Model {
   public static final String ROOT_CA_KEY_NAME = "ca.key.pem";
   public static final String SERVER_CERT_NAME = "server.crt";
   public static final String SERVER_KEY_NAME = "server.key";
+  public static final String MERGED_ROOT_CA_CERT_NAME = "merged.ca.key.crt";
+  public static final String ROOT_NODE_AGENT_HOME = "/root/node-agent";
 
   @Id
   @ApiModelProperty(accessMode = READ_ONLY)
-  public UUID uuid;
+  private UUID uuid;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public String name;
+  private String name;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public String ip;
+  private String ip;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public int port;
+  private int port;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public UUID customerUuid;
+  private UUID customerUuid;
 
   @ApiModelProperty(accessMode = READ_ONLY)
-  public String version;
+  private String version;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(accessMode = READ_ONLY)
-  public State state;
+  private State state;
 
   @UpdatedTimestamp
   @Column(nullable = false)
   @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
-  public Date updatedAt;
+  private Date updatedAt;
 
   @ApiModelProperty(accessMode = READ_ONLY)
   @Column(nullable = false)
   @DbJson
-  public Map<String, String> config;
+  private Map<String, String> config;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(accessMode = READ_ONLY)
+  private OSType osType;
+
+  @Enumerated(EnumType.STRING)
+  @ApiModelProperty(accessMode = READ_ONLY)
+  private ArchType archType;
+
+  @ApiModelProperty(accessMode = READ_ONLY)
+  @Column(nullable = false)
+  private String home;
 
   public static Optional<NodeAgent> maybeGet(UUID uuid) {
     NodeAgent nodeAgent = finder.byId(uuid);
@@ -160,8 +226,20 @@ public class NodeAgent extends Model {
     return nodeAgent;
   }
 
+  public static Collection<NodeAgent> list(UUID customerUuid, String nodeAgentIp /* Optional */) {
+    ExpressionList<NodeAgent> expr = finder.query().where().eq("customer_uuid", customerUuid);
+    if (StringUtils.isNotBlank(nodeAgentIp)) {
+      expr = expr.eq("ip", nodeAgentIp);
+    }
+    return expr.findList();
+  }
+
   public static Set<NodeAgent> getNodeAgents(UUID customerUuid) {
     return finder.query().where().eq("customer_uuid", customerUuid).findSet();
+  }
+
+  public static Set<NodeAgent> getAll() {
+    return finder.query().findSet();
   }
 
   public static Set<NodeAgent> getUpdatableNodeAgents(UUID customerUuid, String softwareVersion) {
@@ -169,7 +247,6 @@ public class NodeAgent extends Model {
         .query()
         .where()
         .eq("customer_uuid", customerUuid)
-        .eq("state", State.LIVE)
         .ne("version", softwareVersion)
         .findSet();
   }
@@ -179,24 +256,24 @@ public class NodeAgent extends Model {
   }
 
   public void ensureState(State expectedState) {
-    if (state != expectedState) {
+    if (getState() != expectedState) {
       throw new PlatformServiceException(
           Status.CONFLICT,
           String.format(
-              "Invalid current node agent state %s, expected state %s", state, expectedState));
+              "Invalid current node agent state %s, expected state %s", getState(), expectedState));
     }
   }
 
   public void validateStateTransition(State nextState) {
-    if (state == null) {
+    if (getState() == null) {
       throw new PlatformServiceException(Status.BAD_REQUEST, "Node agent state must be set");
     }
-    state.validateTransition(nextState);
+    getState().validateTransition(nextState);
   }
 
   @JsonIgnore
   public byte[] getServerCert() {
-    Path serverCertPath = getFilePath(SERVER_CERT_NAME);
+    Path serverCertPath = getCertDirPath().resolve(SERVER_CERT_NAME);
     Objects.requireNonNull(serverCertPath, "Server cert must exist");
     try {
       return Files.readAllBytes(serverCertPath);
@@ -207,7 +284,7 @@ public class NodeAgent extends Model {
 
   @JsonIgnore
   public byte[] getServerKey() {
-    Path serverKeyPath = getFilePath(SERVER_KEY_NAME);
+    Path serverKeyPath = getCertDirPath().resolve(SERVER_KEY_NAME);
     Objects.requireNonNull(serverKeyPath, "Server key must exist");
     try {
       return Files.readAllBytes(serverKeyPath);
@@ -216,45 +293,33 @@ public class NodeAgent extends Model {
     }
   }
 
-  @JsonIgnore
-  public Path getFilePath(String fileName) {
-    String dirPath = config.get(CERT_DIR_PATH_PROPERTY);
-    Objects.requireNonNull(dirPath, "Cert directory must exist");
-    return Paths.get(dirPath, fileName);
-  }
-
-  public void saveConfig(Map<String, String> config) {
-    this.config = config;
-    save();
-  }
-
   public void saveState(State state) {
-    this.state = state;
+    validateStateTransition(state);
+    this.setState(state);
     save();
   }
 
-  public boolean updateState(State newState) {
-    return db().update(NodeAgent.class)
-            .set("state", newState)
-            .set("updatedAt", new Date())
+  public void heartbeat() {
+    Date current = new Date();
+    if (db().update(NodeAgent.class)
+            .set("updatedAt", current)
             .where()
-            .eq("uuid", uuid)
-            .eq("state", state)
+            .eq("uuid", getUuid())
             .update()
-        > 0;
+        > 0) {
+      setUpdatedAt(current);
+    }
   }
 
-  public void purge() {
-    String val = config == null ? null : config.get(NodeAgent.CERT_DIR_PATH_PROPERTY);
-    if (StringUtils.isNotBlank(val)) {
-      Path certDirPath = Paths.get(val);
+  public void purge(Path certDir) {
+    if (certDir != null) {
       try {
-        File file = certDirPath.toFile();
+        File file = certDir.toFile();
         if (file.exists()) {
           FileUtils.deleteDirectory(file);
         }
       } catch (Exception e) {
-        log.warn("Error deleting cert directory {}", certDirPath, e);
+        log.warn("Error deleting cert directory {}", certDir, e);
       }
     }
     delete();
@@ -277,5 +342,40 @@ public class NodeAgent extends Model {
     } catch (Exception e) {
       throw new RuntimeException(e.getMessage(), e);
     }
+  }
+
+  @JsonIgnore
+  public Path getCertDirPath() {
+    String certDirPath = getConfig().get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    if (StringUtils.isBlank(certDirPath)) {
+      throw new IllegalArgumentException(
+          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+    }
+    return Paths.get(certDirPath);
+  }
+
+  @JsonIgnore
+  public Path getCaCertFilePath() {
+    return getCertDirPath().resolve(NodeAgent.ROOT_CA_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public Path getMergedCaCertFilePath() {
+    return getCertDirPath().resolve(NodeAgent.MERGED_ROOT_CA_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public Path getServerCertFilePath() {
+    return getCertDirPath().resolve(NodeAgent.SERVER_CERT_NAME);
+  }
+
+  @JsonIgnore
+  public Path getServerKeyFilePath() {
+    return getCertDirPath().resolve(NodeAgent.SERVER_KEY_NAME);
+  }
+
+  public void updateCertDirPath(Path certDirPath) {
+    getConfig().put(NodeAgent.CERT_DIR_PATH_PROPERTY, certDirPath.toString());
+    save();
   }
 }

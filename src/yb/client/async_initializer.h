@@ -10,8 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_CLIENT_ASYNC_INITIALIZER_H_
-#define YB_CLIENT_ASYNC_INITIALIZER_H_
+#pragma once
 
 #include <future>
 
@@ -22,6 +21,8 @@
 #include "yb/util/atomic.h"
 
 namespace yb {
+class Thread;
+
 namespace client {
 
 YB_STRONGLY_TYPED_BOOL(AutoStart);
@@ -64,11 +65,9 @@ class AsyncClientInitialiser {
   AtomicUniquePtr<client::YBClient> client_holder_;
   std::vector<std::function<void(client::YBClient*)>> post_create_hooks_;
 
-  std::thread init_client_thread_;
+  scoped_refptr<Thread> init_client_thread_;
   std::atomic<bool> stopping_ = {false};
 };
 
 }  // namespace client
 }  // namespace yb
-
-#endif // YB_CLIENT_ASYNC_INITIALIZER_H_

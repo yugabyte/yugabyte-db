@@ -43,11 +43,6 @@
 
 #include <gtest/gtest.h>
 
-#if defined(TCMALLOC_ENABLED)
-#include <gperftools/heap-profiler.h>
-#endif
-
-
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/human_readable.h"
 
@@ -74,6 +69,7 @@
 #include "yb/util/thread.h"
 
 #include "yb/util/memory/memory_usage_test_util.h"
+#include "yb/util/flags.h"
 
 METRIC_DECLARE_histogram(handler_latency_yb_rpc_test_CalculatorService_Sleep);
 METRIC_DECLARE_histogram(rpc_incoming_queue_time);
@@ -81,7 +77,7 @@ METRIC_DECLARE_counter(tcp_bytes_sent);
 METRIC_DECLARE_counter(tcp_bytes_received);
 METRIC_DECLARE_counter(rpcs_timed_out_early_in_queue);
 
-DEFINE_int32(rpc_test_connection_keepalive_num_iterations, 1,
+DEFINE_UNKNOWN_int32(rpc_test_connection_keepalive_num_iterations, 1,
   "Number of iterations in TestRpc.TestConnectionKeepalive");
 
 DECLARE_bool(TEST_pause_calculator_echo_request);
@@ -372,7 +368,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   // rpc_connection_timeout less than kGcTimeout.
   FLAGS_rpc_connection_timeout_ms = MonoDelta(kGcTimeout).ToMilliseconds() / 2;
   FLAGS_enable_rpc_keepalive = true;
-  EnableVerboseLoggingForModule("yb_rpc", 5);
+  ASSERT_OK(EnableVerboseLoggingForModule("yb_rpc", 5));
   // Set up server.
   HostPort server_addr;
   StartTestServer(&server_addr, options);
@@ -919,7 +915,7 @@ TEST_F(TestRpc, DumpTimedOutCall) {
   thread.join();
 }
 
-#if defined(TCMALLOC_ENABLED)
+#if defined(YB_TCMALLOC_ENABLED) && defined(YB_GPERFTOOLS_TCMALLOC)
 
 namespace {
 
@@ -977,7 +973,7 @@ TEST_F(TestRpc, SendingQueueMemoryUsage) {
       latest_before_realloc.heap_requested_bytes * kMemoryAllocationAccuracyHighLimit);
 }
 
-#endif
+#endif // defined(YB_TCMALLOC_ENABLED)
 
 namespace {
 
@@ -1056,7 +1052,7 @@ void TestCantAllocateReadBuffer(CalculatorServiceProxy* proxy) {
     constexpr auto target_memory_consumption = kMemoryLimitHardBytes * 0.6;
     wait_status = LoggedWaitFor(
         [] {
-#if defined(TCMALLOC_ENABLED)
+#ifdef YB_TCMALLOC_ENABLED
           // Don't rely on root mem tracker consumption, since it includes memory released by
           // the application, but not yet released by TCMalloc.
           const auto consumption = MemTracker::GetTCMallocCurrentAllocatedBytes();

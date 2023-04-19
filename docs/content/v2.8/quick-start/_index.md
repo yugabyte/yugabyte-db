@@ -3,61 +3,55 @@ title: YugabyteDB Quick Start
 headerTitle: Quick start
 linkTitle: Quick start
 description: Get started using YugabyteDB in less than five minutes on macOS.
-aliases:
-  - /quick-start/
 layout: single
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li class="active">
-      <a href="../" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li class="active">
+    <a href="../" class="nav-link">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
-<div class="custom-tabs tabs-style-1">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start/" class="nav-link">
-        <i class="fab fa-apple" aria-hidden="true"></i>
-        macOS
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/linux/" class="nav-link">
-        <i class="fab fa-linux" aria-hidden="true"></i>
-        Linux
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/docker/" class="nav-link">
-        <i class="fab fa-docker" aria-hidden="true"></i>
-        Docker
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/kubernetes/" class="nav-link">
-        <i class="fas fa-cubes" aria-hidden="true"></i>
-        Kubernetes
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../quick-start/" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      macOS
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/linux/" class="nav-link">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Linux
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
+      Docker
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/kubernetes/" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
+      Kubernetes
+    </a>
+  </li>
+</ul>
 
 ## Install YugabyteDB
 
 ### Prerequisites
 
-1. <i class="fab fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
+1. <i class="fa-brands fa-apple" aria-hidden="true"></i> macOS 10.12 or later.
 
 1. Verify that you have Python 2 or 3 installed.
 

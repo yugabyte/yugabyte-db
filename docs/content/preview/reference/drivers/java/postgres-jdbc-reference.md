@@ -1,7 +1,8 @@
 ---
-title: JDBC Drivers
+title: PostgreSQL JDBC Driver
+headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
-description: JDBC Drivers for YSQL
+description: Java JDBC Driver for YSQL
 headcontent: JDBC Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -17,7 +18,7 @@ type: docs
 
   <li >
     <a href="../yugabyte-jdbc-reference/" class="nav-link">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       YugabyteDB JDBC Smart Driver
     </a>
   </li>
@@ -77,7 +78,7 @@ Use the `DriverManager.getConnection` method to create a connection object to pe
 JDBC Connection String
 
 ```java
-jdbc://postgresql://hostname:port/database
+jdbc:postgresql://hostname:port/database
 ```
 
 Example JDBC URL for connecting to YugabyteDB can be seen below.

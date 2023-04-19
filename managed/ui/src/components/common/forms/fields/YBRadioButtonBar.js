@@ -30,7 +30,7 @@ export default class YBRadioButtonBar extends Component {
     const { input, options, isReadOnly } = this.props;
     const self = this;
     function radioButtonForOption(option) {
-      let value, display;
+      let value; let display;
       if (isNonEmptyArray(option)) {
         [value, display] = option;
       } else if (_.isObject(option)) {
@@ -86,7 +86,7 @@ export class YBRadioButtonBarDefault extends Component {
     const { input, options, isReadOnly, ...otherProps } = this.props;
     const self = this;
     function radioButtonForOption(option) {
-      let value, display;
+      let value; let display;
       if (isNonEmptyArray(option)) {
         [value, display] = option;
       } else if (_.isObject(option)) {

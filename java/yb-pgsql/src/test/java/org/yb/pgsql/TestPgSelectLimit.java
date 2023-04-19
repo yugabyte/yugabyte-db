@@ -19,14 +19,14 @@ import com.google.gson.JsonObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.yb.minicluster.Metrics;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Statement;
 import java.util.Map;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestPgSelectLimit extends BasePgSQLTest {
 
   private static final String kTableName = "single_tablet_table";
@@ -90,7 +90,8 @@ public class TestPgSelectLimit extends BasePgSQLTest {
       // I.e. default prefetch limit + prefetch next portion of data after returning first one.
       executeQueryWithMetricCheck(
           stmt,
-          String.format("SELECT * FROM %s WHERE k != 10 LIMIT %d", kTableName, kLimit),
+          String.format("SELECT * FROM %s WHERE CASE k WHEN 10 THEN false ELSE true END LIMIT %d",
+                        kTableName, kLimit),
           (kDefaultPrefetchLimit + 1) * 2);
     }
   }

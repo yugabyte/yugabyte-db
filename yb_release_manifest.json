@@ -21,6 +21,7 @@
       "$BUILD_ROOT/bin/yb-ts-cli",
       "$BUILD_ROOT/bin/yb-tserver",
       "$BUILD_ROOT/bin/yb-ysck",
+      "$BUILD_ROOT/bin/odyssey",
       "$BUILD_ROOT/gobin/yugabyted-ui",
       "$BUILD_ROOT/postgres/bin/*",
       "$THIRDPARTY_BUILD_SPECIFIC_DIR/bin/pprof",
@@ -30,7 +31,7 @@
       "bin/log_cleanup.sh",
       "bin/yb-check-consistency.py",
       "bin/yugabyted",
-      "bin/gen_certs.sh",
+      "bin/openssl_proxy.sh",
       "build-support/post_install.sh",
       "scripts/installation/bin/yb-ctl",
       "thirdparty/installed/common/bin/redis-cli",
@@ -51,7 +52,8 @@
       "bin/print_stacks.sh",
       "bin/yb-check-failed-tablets.sh",
       "scripts/k8s_preflight.py",
-      "scripts/k8s_parent.py"
+      "scripts/k8s_parent.py",
+      "scripts/k8s_ybc_parent.py"
     ],
     "www": ["www/*"]
   },

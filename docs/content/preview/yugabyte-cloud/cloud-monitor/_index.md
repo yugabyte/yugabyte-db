@@ -1,10 +1,10 @@
 ---
-title: Alerts and monitoring
+title: Alerts and monitoring in YugabyteDB Managed
 headerTitle: Alerts and monitoring
 linkTitle: Alerts and monitoring
 description: Set alerts and monitor your YugabyteDB Managed clusters.
 image: /images/section_icons/explore/monitoring.png
-headcontent: Set alerts and monitor cluster performance and activity.
+headcontent: Set alerts and monitor cluster performance and activity
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
@@ -21,6 +21,7 @@ Use YugabyteDB Managed alerts and monitoring to monitor cluster performance and 
   - [Performance metrics](overview/). The cluster **Overview** and **Performance Metrics** tabs show a variety of performance metrics charted over time. Use cluster performance metrics to ensure the cluster configuration matches its performance requirements, and [scale the cluster vertically or horizontally](../cloud-clusters/configure-clusters/) as your requirements change.
   - [Live queries](cloud-queries-live/). The cluster **Live Queries** tab shows the queries that are currently "in-flight" on your cluster.
   - [Slow queries](cloud-queries-slow/). The cluster **YSQL Slow  Queries** tab shows queries run on the cluster, sorted by running time. Evaluate the slowest running YSQL queries that have been run on the cluster.
+  - [Performance advisor](cloud-advisor/). Scan clusters for performance optimizations, including index and schema changes, and detect potentially hot nodes.
 
   Access performance monitoring from the cluster **Performance** tab.
 

@@ -18,6 +18,8 @@ public class HookScopeFormData {
 
   private UUID universeUUID;
 
+  private UUID clusterUUID;
+
   private UUID providerUUID;
 
   public void verify(UUID customerUUID) {
@@ -25,7 +27,14 @@ public class HookScopeFormData {
       throw new PlatformServiceException(
           BAD_REQUEST, "At most one of universe UUID and provider UUID can be provided");
     }
-    if (HookScope.getByTriggerScopeId(customerUUID, triggerType, universeUUID, providerUUID)
+
+    // You can't do cluster without universe
+    if (clusterUUID != null && universeUUID == null) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Cluster UUID can only be provided if universe UUID is provided");
+    }
+    if (HookScope.getByTriggerScopeId(
+            customerUUID, triggerType, universeUUID, providerUUID, clusterUUID)
         != null) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Hook scope with this scope ID and trigger already exists");

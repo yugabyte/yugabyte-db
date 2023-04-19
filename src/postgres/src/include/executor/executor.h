@@ -20,6 +20,8 @@
 #include "nodes/parsenodes.h"
 #include "utils/memutils.h"
 
+/* Yugabyte includes */
+#include "executor/execPartition.h"
 
 /*
  * The "eflags" argument to ExecutorStart and the various ExecInitNode
@@ -139,6 +141,7 @@ extern TupleHashTable YbBuildTupleHashTableExt(PlanState *parent,
 											   MemoryContext metacxt,
 											   MemoryContext tablecxt,
 											   MemoryContext tempcxt,
+											   ExprContext *expr_cxt,
 											   bool use_variable_hash_iv);
 extern TupleHashTable BuildTupleHashTableExt(PlanState *parent,
 											 TupleDesc inputDesc,

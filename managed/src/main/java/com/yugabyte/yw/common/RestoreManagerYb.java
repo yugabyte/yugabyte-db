@@ -3,6 +3,9 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.ActionType;
@@ -10,6 +13,7 @@ import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -46,26 +50,26 @@ public class RestoreManagerYb extends DevopsBase {
   private static final String BACKUP_SCRIPT = "bin/yb_backup.py";
 
   public ShellResponse runCommand(RestoreBackupParams restoreBackupParams) {
-    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UserIntent userIntent = primaryCluster.userIntent;
-    Provider provider = Provider.get(region.provider.uuid);
+    Provider provider = Provider.get(region.getProvider().getUuid());
 
     String accessKeyCode = userIntent.accessKeyCode;
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
+    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = region.provider.getUnmaskedConfig();
+    Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(region.getProvider());
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         PlacementInfo pi = cluster.placementInfo;
         podAddrToConfig.putAll(
-            PlacementInfoUtil.getKubernetesConfigPerPod(
+            KubernetesUtil.getKubernetesConfigPerPod(
                 pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
       }
     } else {
@@ -76,7 +80,7 @@ public class RestoreManagerYb extends DevopsBase {
         Provider clusterProvider =
             Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
-            AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(clusterProvider.getUuid(), clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
           if (nodeInCluster.cloudInfo.private_ip != null
@@ -116,11 +120,11 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(Json.stringify(Json.toJson(secondaryToPrimaryIP)));
     }
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
     }
 
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.disableXxHashChecksum)) {
       commandArgs.add("--disable_xxhash_checksum");
     }
 
@@ -149,9 +153,9 @@ public class RestoreManagerYb extends DevopsBase {
       }
     }
 
-    Customer customer = Customer.get(universe.customerId);
+    Customer customer = Customer.get(universe.getCustomerId());
     CustomerConfig customerConfig =
-        CustomerConfig.get(customer.uuid, restoreBackupParams.storageConfigUUID);
+        CustomerConfig.get(customer.getUuid(), restoreBackupParams.storageConfigUUID);
     File backupKeysFile =
         EncryptionAtRestUtil.getUniverseBackupKeysFile(backupStorageInfo.storageLocation);
 
@@ -170,7 +174,7 @@ public class RestoreManagerYb extends DevopsBase {
 
     if (actionType.equals(ActionType.RESTORE)) {
       if (restoreBackupParams.restoreTimeStamp != null) {
-        String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
+        String backupLocation = customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText();
         String restoreTimeStampMicroUnix =
             getValidatedRestoreTimeStampMicroUnix(
                 restoreBackupParams.restoreTimeStamp,
@@ -255,12 +259,12 @@ public class RestoreManagerYb extends DevopsBase {
       List<String> commandArgs) {
 
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
-      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
+      commandArgs.add(provider.getDetails().sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
       if (!ipToSshKeyPath.isEmpty()) {
@@ -272,8 +276,8 @@ public class RestoreManagerYb extends DevopsBase {
     commandArgs.add(backupStorageInfo.storageLocation);
     commandArgs.add("--storage_type");
 
-    commandArgs.add(customerConfig.name.toLowerCase());
-    if (customerConfig.name.toLowerCase().equals("nfs")) {
+    commandArgs.add(customerConfig.getName().toLowerCase());
+    if (customerConfig.getName().equalsIgnoreCase("nfs")) {
       commandArgs.add("--nfs_storage_path");
       commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
@@ -282,9 +286,9 @@ public class RestoreManagerYb extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(restoreBackupParams.actionType.name().toLowerCase());
-    Universe universe = Universe.getOrBadRequest(restoreBackupParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(restoreBackupParams.getUniverseUUID());
     boolean verboseLogsEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+        confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (restoreBackupParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
@@ -300,7 +304,7 @@ public class RestoreManagerYb extends DevopsBase {
   }
 
   private String getCertsDir(Region region, Provider provider) {
-    return region.provider.code.equals("kubernetes")
+    return region.getProviderCloudCode().equals(CloudType.kubernetes)
         ? K8S_CERT_PATH
         : provider.getYbHome() + VM_CERT_DIR;
   }

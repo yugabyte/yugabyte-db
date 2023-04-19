@@ -46,6 +46,7 @@ type LiveQueryHttpYcqlResponseInboundConnection struct {
     CallsInFlight     []*LiveQueryHttpYcqlResponseQuery  `json:"calls_in_flight"`
     ConnectionDetails LiveQueryHttpYcqlConnectionDetails `json:"connection_details"`
     RemoteIp          string                             `json:"remote_ip"`
+    State             string                             `json:"state"`
 }
 
 type LiveQueryHttpYsqlResponse struct {
@@ -94,7 +95,7 @@ func GetLiveQueriesYsqlFuture(nodeHost string, future chan LiveQueriesYsqlFuture
     json.Unmarshal([]byte(body), &ysqlResponse)
     for _, connection := range ysqlResponse.Connections {
         if connection.BackendType != "" && connection.SessionStatus != "" &&
-            connection.BackendType == "client backend" && connection.SessionStatus != "idle" {
+            connection.BackendType == "client backend" && connection.SessionStatus == "idle" {
             // uuid is just a random number, it is used in the frontend as a table row key.
             uuid, err := Random128BitString()
             if err != nil {
@@ -187,4 +188,78 @@ func GetLiveQueriesYcqlFuture(nodeHost string, future chan LiveQueriesYcqlFuture
         }
     }
     future <- liveQueries
+}
+
+type ActiveYsqlConnectionsFuture struct {
+    YsqlConnections int64
+    Error           error
+}
+
+type ActiveYcqlConnectionsFuture struct {
+    YcqlConnections int64
+    Error           error
+}
+
+func GetActiveYsqlConnectionsFuture(nodeHost string, future chan ActiveYsqlConnectionsFuture) {
+    activeConnections := ActiveYsqlConnectionsFuture{
+        YsqlConnections: 0,
+        Error: nil,
+    }
+    httpClient := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    url := fmt.Sprintf("http://%s:13000/rpcz", nodeHost)
+    resp, err := httpClient.Get(url)
+    if err != nil {
+        activeConnections.Error = err
+        future <- activeConnections
+        return
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        activeConnections.Error = err
+        future <- activeConnections
+        return
+    }
+    var ysqlResponse LiveQueryHttpYsqlResponse
+    json.Unmarshal([]byte(body), &ysqlResponse)
+    for _, connection := range ysqlResponse.Connections {
+        if connection.SessionStatus != "" && connection.SessionStatus == "active" {
+            activeConnections.YsqlConnections++
+        }
+    }
+    future <- activeConnections
+}
+
+func GetActiveYcqlConnectionsFuture(nodeHost string, future chan ActiveYcqlConnectionsFuture) {
+    activeConnections := ActiveYcqlConnectionsFuture{
+        YcqlConnections: 0,
+        Error: nil,
+    }
+    httpClient := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    url := fmt.Sprintf("http://%s:12000/rpcz", nodeHost)
+    resp, err := httpClient.Get(url)
+    if err != nil {
+        activeConnections.Error = err
+        future <- activeConnections
+        return
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        activeConnections.Error = err
+        future <- activeConnections
+        return
+    }
+    var ycqlResponse LiveQueryHttpYcqlResponse
+    json.Unmarshal([]byte(body), &ycqlResponse)
+    for _, inboundConnection := range ycqlResponse.InboundConnections {
+        if inboundConnection.State == "OPEN" {
+            activeConnections.YcqlConnections++
+        }
+    }
+    future <- activeConnections
 }

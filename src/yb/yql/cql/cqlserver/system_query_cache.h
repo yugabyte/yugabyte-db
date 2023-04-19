@@ -17,8 +17,7 @@
 // have reduced traffic when a connection is established.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_CQLSERVER_SYSTEM_QUERY_CACHE_H_
-#define YB_YQL_CQL_CQLSERVER_SYSTEM_QUERY_CACHE_H_
+#pragma once
 
 #include <condition_variable>
 #include <unordered_map>
@@ -82,4 +81,3 @@ class SystemQueryCache {
 
 } // namespace cqlserver
 } // namespace yb
-#endif  // YB_YQL_CQL_CQLSERVER_SYSTEM_QUERY_CACHE_H_

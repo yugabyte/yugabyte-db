@@ -33,8 +33,7 @@
 // whether to use gutil-based memeq/memcmp substitutes; if it is unset, Slice
 // will fall back to standard memcmp.
 
-#ifndef YB_UTIL_SLICE_H_
-#define YB_UTIL_SLICE_H_
+#pragma once
 
 #include <compare>
 #include <string>
@@ -61,6 +60,8 @@ class Slice {
   // Create a slice that refers to d[0,n-1].
   Slice(const char* d, size_t n) : Slice(to_uchar_ptr(d), n) {}
 
+  Slice(const std::byte* d, size_t n) : Slice(pointer_cast<const uint8_t*>(d), n) {}
+
   // Create a slice that refers to [begin, end).
   Slice(const uint8_t* begin, const uint8_t* end) : begin_(begin), end_(end) {}
 
@@ -77,6 +78,9 @@ class Slice {
   template <class CharTraits, class Allocator>
   Slice(const std::basic_string<char, CharTraits, Allocator>& s) // NOLINT(runtime/explicit)
       : Slice(to_uchar_ptr(s.data()), s.size()) {}
+
+  Slice(const std::string_view& view) // NOLINT(runtime/explicit)
+      : begin_(to_uchar_ptr(view.begin())), end_(to_uchar_ptr(view.end())) {}
 
   // Create a slice that refers to s[0,strlen(s)-1]
   Slice(const char* s) // NOLINT(runtime/explicit)
@@ -150,6 +154,11 @@ class Slice {
     memcpy(buffer, begin_, size());
   }
 
+  void AppendTo(std::string* out) const;
+  void AssignTo(std::string* out) const;
+
+  void AppendTo(faststring* out) const;
+
   // Truncate the slice to "n" bytes
   void truncate(size_t n);
 
@@ -178,7 +187,11 @@ class Slice {
 
   void CopyToBuffer(std::string* buffer) const;
 
-  explicit operator std::string_view() const { return std::string_view(cdata(), size()); }
+  operator std::string_view() const { return AsStringView(); }
+
+  std::string_view AsStringView() const {
+    return std::string_view(cdata(), size());
+  }
 
   // Return a string that contains the copy of the referenced data.
   std::string ToBuffer() const;
@@ -250,6 +263,8 @@ class Slice {
 
   size_t DynamicMemoryUsage() const { return 0; }
 
+  bool Contains(const Slice& rhs) const;
+
   // Return a Slice representing bytes for any type which is laid out contiguously in memory.
   template<class T, class = typename std::enable_if<std::is_pod<T>::value, void>::type>
   static Slice FromPod(const T* data) {
@@ -290,34 +305,6 @@ class Slice {
   const uint8_t* end_;
 
   // Intentionally copyable
-};
-
-struct SliceParts {
-  SliceParts(const Slice* _parts, int _num_parts) :
-      parts(_parts), num_parts(_num_parts) { }
-  SliceParts() : parts(nullptr), num_parts(0) {}
-
-  template<size_t N>
-  SliceParts(const std::array<Slice, N>& input) // NOLINT
-      : parts(input.data()), num_parts(N) {
-  }
-
-  std::string ToDebugHexString() const;
-
-  // Sum of sizes of all slices.
-  size_t SumSizes() const;
-
-  // Copy content of all slice to specified buffer.
-  void* CopyAllTo(void* out) const {
-    return CopyAllTo(static_cast<char*>(out));
-  }
-
-  char* CopyAllTo(char* out) const;
-
-  Slice TheOnlyPart() const;
-
-  const Slice* parts;
-  int num_parts;
 };
 
 inline bool operator==(const Slice& x, const Slice& y) {
@@ -409,5 +396,3 @@ typedef yb::Slice Slice;
 typedef yb::SliceParts SliceParts;
 
 }  // namespace rocksdb
-
-#endif // YB_UTIL_SLICE_H_

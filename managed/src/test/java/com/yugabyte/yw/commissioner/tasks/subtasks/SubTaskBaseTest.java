@@ -8,15 +8,15 @@ import static play.inject.Bindings.bind;
 
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.alerts.AlertConfigurationWriter;
 import com.yugabyte.yw.models.Customer;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
 import play.Application;
 import play.inject.guice.GuiceApplicationBuilder;
-import play.test.WithApplication;
 
-public class SubTaskBaseTest extends WithApplication {
+public class SubTaskBaseTest extends PlatformGuiceApplicationBaseTest {
   Customer defaultCustomer;
   Commissioner mockCommissioner;
   protected AlertConfigurationWriter mockAlertConfigurationWriter;

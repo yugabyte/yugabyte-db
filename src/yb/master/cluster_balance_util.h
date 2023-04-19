@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_UTIL_H
-#define YB_MASTER_CLUSTER_BALANCE_UTIL_H
+#pragma once
 
 #include <memory>
 #include <set>
@@ -297,8 +296,7 @@ class PerTableLoadState {
   virtual void UpdateTabletServer(std::shared_ptr<TSDescriptor> ts_desc);
 
   Result<bool> CanAddTabletToTabletServer(
-    const TabletId& tablet_id, const TabletServerId& to_ts,
-    const PlacementInfoPB* placement_info = nullptr);
+    const TabletId& tablet_id, const TabletServerId& to_ts, const PlacementInfoPB* placement_info);
 
   // For a TS specified by ts_uuid, this function checks if there is a placement
   // block in placement_info where this TS can be placed. If there doesn't exist
@@ -322,9 +320,9 @@ class PerTableLoadState {
   void SortDriveLoad();
 
   Status MoveLeader(const TabletId& tablet_id,
-                            const TabletServerId& from_ts,
-                            const TabletServerId& to_ts = "",
-                            const TabletServerId& to_ts_path = "");
+                    const TabletServerId& from_ts,
+                    const TabletServerId& to_ts = "",
+                    const TabletServerId& to_ts_path = "");
 
   void SortLeaderLoad();
 
@@ -335,16 +333,16 @@ class PerTableLoadState {
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
   Status AddRunningTablet(const TabletId& tablet_id,
-                                  const TabletServerId& ts_uuid,
-                                  const std::string& path);
+                          const TabletServerId& ts_uuid,
+                          const std::string& path);
 
   Status RemoveRunningTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddLeaderTablet(const TabletId& tablet_id,
-                                 const TabletServerId& ts_uuid,
-                                 const TabletServerId& ts_path);
+                         const TabletServerId& ts_uuid,
+                         const TabletServerId& ts_path);
 
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
@@ -449,5 +447,3 @@ class PerTableLoadState {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_CLUSTER_BALANCE_UTIL_H

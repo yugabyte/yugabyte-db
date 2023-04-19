@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`PEXPIREAT key ttl-as-timestamp`</b><br>
+**`PEXPIREAT key ttl-as-timestamp`**
+
 PEXPIREAT has the same effect as EXPIREAT, but the Unix timestamp at which the key will expire is specified in milliseconds instead of seconds.
 
 ## Return value

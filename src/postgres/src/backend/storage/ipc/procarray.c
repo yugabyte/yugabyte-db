@@ -658,7 +658,6 @@ ProcArrayRemove(PGPROC *proc, TransactionId latestXid)
 	LWLockRelease(ProcArrayLock);
 }
 
-
 /*
  * ProcArrayEndTransaction -- mark a transaction as no longer running
  *

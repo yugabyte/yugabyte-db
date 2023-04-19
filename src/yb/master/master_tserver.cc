@@ -36,6 +36,8 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
 
+DECLARE_bool(create_initial_sys_catalog_snapshot);
+
 namespace yb {
 namespace master {
 
@@ -151,8 +153,12 @@ tserver::TServerSharedData& MasterTabletServer::SharedObject() {
 }
 
 Status MasterTabletServer::get_ysql_db_oid_to_cat_version_info_map(
+    const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
-  return STATUS_FORMAT(NotSupported, "Unexpected call of %s", __FUNCTION__);
+  if (FLAGS_create_initial_sys_catalog_snapshot) {
+    return master_->get_ysql_db_oid_to_cat_version_info_map(req, resp);
+  }
+  return STATUS_FORMAT(NotSupported, "Unexpected call of $0", __FUNCTION__);
 }
 
 const std::shared_future<client::YBClient*>& MasterTabletServer::client_future() const {

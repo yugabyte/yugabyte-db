@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_CLIENT_SNAPSHOT_TEST_UTIL_H
-#define YB_CLIENT_SNAPSHOT_TEST_UTIL_H
+#pragma once
 
 #include "yb/client/txn-test-base.h"
 #include "yb/common/snapshot.h"
@@ -49,13 +48,13 @@ class SnapshotTestUtil {
   void SetProxy(rpc::ProxyCache* proxy_cache) {
       proxy_cache_ = proxy_cache;
   }
-  void SetCluster(MiniCluster* cluster) {
+  void SetCluster(MiniClusterBase* cluster) {
       cluster_ = cluster;
   }
 
   Result<master::MasterBackupProxy> MakeBackupServiceProxy() {
     return master::MasterBackupProxy(
-        proxy_cache_, VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+        proxy_cache_, VERIFY_RESULT(cluster_->GetLeaderMasterBoundRpcAddr()));
   }
 
   Result<master::SysSnapshotEntryPB::State> SnapshotState(const TxnSnapshotId& snapshot_id);
@@ -81,7 +80,10 @@ class SnapshotTestUtil {
   Status RestoreSnapshot(
       const TxnSnapshotId& snapshot_id, HybridTime restore_at = HybridTime());
   Result<TxnSnapshotId> StartSnapshot(const TableHandle& table);
+  // Set for_import to true if this snapshots is imported from another DB.
+  Result<TxnSnapshotId> StartSnapshot(const TableId& table_id, bool imported = false);
   Result<TxnSnapshotId> CreateSnapshot(const TableHandle& table);
+  Result<TxnSnapshotId> CreateSnapshot(const TableId& table_id, bool imported = false);
   Status DeleteSnapshot(const TxnSnapshotId& snapshot_id);
   Status WaitAllSnapshotsDeleted();
 
@@ -99,6 +101,9 @@ class SnapshotTestUtil {
       const YBTablePtr table, YQLDatabase db_type, const std::string& db_name,
       WaitSnapshot wait_snapshot, MonoDelta interval = kSnapshotInterval,
       MonoDelta retention = kSnapshotRetention);
+  Result<SnapshotScheduleId> CreateSchedule(
+      const NamespaceName& database, WaitSnapshot wait_snapshot,
+      MonoDelta interval = kSnapshotInterval, MonoDelta retention = kSnapshotRetention);
 
   Result<Schedules> ListSchedules(const SnapshotScheduleId& id = SnapshotScheduleId::Nil());
 
@@ -112,12 +117,14 @@ class SnapshotTestUtil {
       const SnapshotScheduleId& schedule_id, int max_snapshots = 1,
       HybridTime min_hybrid_time = HybridTime::kMin);
 
+  Status WaitScheduleSnapshot(
+      const SnapshotScheduleId& schedule_id, int max_snapshots,
+      HybridTime min_hybrid_time, MonoDelta timeout);
+
  private:
   rpc::ProxyCache* proxy_cache_;
-  MiniCluster* cluster_;
+  MiniClusterBase* cluster_;
 };
 
 } // namespace client
 } // namespace yb
-
-#endif  // YB_CLIENT_SNAPSHOT_TEST_UTIL_H

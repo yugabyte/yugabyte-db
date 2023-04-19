@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_HEARTBEATER_H
-#define YB_TSERVER_HEARTBEATER_H
+#pragma once
 
 #include <memory>
 
@@ -88,6 +87,7 @@ class Heartbeater {
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses);
+  std::string get_leader_master_hostport();
 
   ~Heartbeater();
 
@@ -116,5 +116,3 @@ class PeriodicalHeartbeatDataProvider : public HeartbeatDataProvider {
 
 } // namespace tserver
 } // namespace yb
-
-#endif /* YB_TSERVER_HEARTBEATER_H */

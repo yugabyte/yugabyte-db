@@ -17,11 +17,16 @@ public class GetCheckpointResponse extends YRpcResponse {
 
   private long index;
   private long term;
+  private long snapshot_time;
+  private byte[] snapshot_key;
 
-  public GetCheckpointResponse(long elapsedMillis, String uuid, long index, long term) {
+  public GetCheckpointResponse(long elapsedMillis, String uuid, long index, long term,
+                               long snapshot_time, byte[] snapshot_key) {
     super(elapsedMillis, uuid);
     this.index = index;
     this.term = term;
+    this.snapshot_time = snapshot_time;
+    this.snapshot_key = snapshot_key;
   }
 
   public long getIndex() {
@@ -30,5 +35,13 @@ public class GetCheckpointResponse extends YRpcResponse {
 
   public long getTerm() {
     return term;
+  }
+
+  public long getSnapshotTime() {
+    return snapshot_time;
+  }
+
+  public byte[] getSnapshotKey() {
+    return snapshot_key;
   }
 }

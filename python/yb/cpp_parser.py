@@ -3,7 +3,7 @@ import re
 import typing
 
 IGNORE_RE = re.compile(
-    R'^(?:\s*//.*|using\s.*|\s*#\s*pragma\s+once|\s*#\s*ifndef\s+ROCKSDB_LITE|\s*#\s*error.*)$')
+    R'^(?:\s*//.*|using\s.*|\s*#\s*pragma\s+once|\s*#\s*error.*)$')
 IF_OPEN_RE = re.compile(R'^\s*#\s*if.*$')
 IF_CLOSE_RE = re.compile(R'^\s*#\s*endif.*$')
 ML_COMMENT_OPEN_RE = re.compile(R'^\s*/\*.*$')

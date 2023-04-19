@@ -68,12 +68,12 @@ struct CQLQueryParameters : public CQLMessage::QueryParameters {
   }
 
   void PushBack(const string& name, const QLValue& qv, const shared_ptr<QLType>& type) {
-    faststring buffer;
+    WriteBuffer buffer(1024);
     SerializeValue(type, YQL_CLIENT_CQL, qv.value(), &buffer);
 
     CQLMessage::Value msg_value;
     msg_value.name = name;
-    msg_value.value = buffer.ToString();
+    msg_value.value = buffer.ToBuffer();
     value_map.insert(NameToIndexMap::value_type(name, values.size()));
     values.push_back(msg_value);
   }
@@ -91,9 +91,12 @@ class QLTestSelectedExpr : public QLTestBase {
     shared_ptr<QLRowBlock> row_block = processor->row_block();
     EXPECT_EQ(row_block->row_count(), 1);
     if (row_block->row_count() > 0) {
-      const QLRow& row = row_block->row(0);
-      LOG(INFO) << "Got row: " << row.ToString();
-      EXPECT_EQ(row.ToString(), expected_row);
+      std::string row_str = row_block->row(0).ToString();
+      LOG(INFO) << "Got row: " << row_str;
+      if(row_str != expected_row) {
+        DumpDocDB(cluster_.get());
+        EXPECT_EQ(row_str, expected_row);
+      }
     }
   }
 };

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_COMMON_PARTIAL_ROW_H
-#define YB_COMMON_PARTIAL_ROW_H
+#pragma once
 
 #include <stdint.h>
 #include <string>
@@ -77,7 +76,7 @@ class YBPartialRow {
   Status SetInt32(const Slice& col_name, int32_t val) WARN_UNUSED_RESULT;
   Status SetInt64(const Slice& col_name, int64_t val) WARN_UNUSED_RESULT;
   Status SetTimestamp(const Slice& col_name,
-                              int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
+                      int64_t micros_since_utc_epoch) WARN_UNUSED_RESULT;
   Status SetFloat(const Slice& col_name, float val) WARN_UNUSED_RESULT;
   Status SetDouble(const Slice& col_name, double val) WARN_UNUSED_RESULT;
 
@@ -174,7 +173,7 @@ class YBPartialRow {
   Status GetInt32(size_t col_idx, int32_t* val) const WARN_UNUSED_RESULT;
   Status GetInt64(size_t col_idx, int64_t* val) const WARN_UNUSED_RESULT;
   Status GetTimestamp(size_t col_idx,
-                              int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
+                      int64_t* micros_since_utc_epoch) const WARN_UNUSED_RESULT;
 
   Status GetFloat(size_t col_idx, float* val) const WARN_UNUSED_RESULT;
   Status GetDouble(size_t col_idx, double* val) const WARN_UNUSED_RESULT;
@@ -275,4 +274,3 @@ class YBPartialRow {
 };
 
 } // namespace yb
-#endif /* YB_COMMON_PARTIAL_ROW_H */

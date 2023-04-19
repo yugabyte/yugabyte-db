@@ -5,8 +5,6 @@ linkTitle: Core functions
 description: Learn about the internals of YugabyteDB in the context of the core database functions.
 image: /images/section_icons/architecture/core_functions.png
 headcontent: Learn about the internals of YugabyteDB in the context of the core database functions.
-aliases:
-  - /architecture/core-functions/
 menu:
   preview:
     identifier: core-functions
@@ -22,7 +20,7 @@ type: indexpage
         <div class="title">Universe creation</div>
       </div>
       <div class="body">
-        How a universe gets created in YugabyteDB.
+        Overview of YugabyteDB universe creation.
       </div>
     </a>
   </div>
@@ -34,7 +32,7 @@ type: indexpage
         <div class="title">Table creation</div>
       </div>
       <div class="body">
-        How a table gets created in YugabyteDB.
+        Overview of a table creation within a YugabyteDB universe.
       </div>
     </a>
   </div>
@@ -43,10 +41,10 @@ type: indexpage
     <a class="section-link icon-offset" href="write-path/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/core_functions/write.png" aria-hidden="true" />
-        <div class="title">Write IO path (single shard)</div>
+        <div class="title">Write I/O path (single shard)</div>
       </div>
       <div class="body">
-        How single-shard writes occur in YugabyteDB.
+        Overview of single-shard writes in YugabyteDB.
       </div>
     </a>
   </div>
@@ -55,10 +53,10 @@ type: indexpage
     <a class="section-link icon-offset" href="read-path/">
       <div class="head">
         <img class="icon" src="/images/section_icons/architecture/core_functions/read.png" aria-hidden="true" />
-        <div class="title">Read IO path (single shard)</div>
+        <div class="title">Read I/O path (single shard)</div>
       </div>
       <div class="body">
-        How single-shard reads occur in YugabyteDB.
+        Overview of single-shard reads in YugabyteDB.
       </div>
     </a>
   </div>
@@ -70,7 +68,7 @@ type: indexpage
         <div class="title">High availability</div>
       </div>
       <div class="body">
-        How YugabyteDB achieves high availability.
+        Overview of  high availability in YugabyteDB.
       </div>
     </a>
   </div>

@@ -18,7 +18,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
+import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Map;
@@ -51,7 +51,8 @@ public class PauseUniverse extends UniverseTaskBase {
       // 'updateInProgress' flag to prevent other updates from happening.
       Universe universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       if (universe.getUniverseDetails().universePaused) {
-        String msg = "Unable to pause universe \"" + universe.name + "\" as it is already paused.";
+        String msg =
+            "Unable to pause universe \"" + universe.getName() + "\" as it is already paused.";
         log.error(msg);
         throw new RuntimeException(msg);
       }
@@ -88,11 +89,17 @@ public class PauseUniverse extends UniverseTaskBase {
         }
       }
 
-      for (NodeDetails node : tserverNodes) {
-        createTServerTaskForNode(node, "stop")
+      // Stop yb-controller processes on nodes
+      if (universe.isYbcEnabled()) {
+        createStopYbControllerTasks(tserverNodes)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
 
+      createSetNodeStateTasks(tserverNodes, NodeState.Stopping)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      createStopServerTasks(tserverNodes, ServerType.TSERVER, false)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      createSetNodeStateTasks(masterNodes, NodeState.Stopping);
       createStopMasterTasks(masterNodes)
           .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
@@ -123,7 +130,7 @@ public class PauseUniverse extends UniverseTaskBase {
             u.setUniverseDetails(universeDetails);
           });
 
-      metricService.markSourceInactive(params().customerUUID, params().universeUUID);
+      metricService.markSourceInactive(params().customerUUID, params().getUniverseUUID());
     } catch (Throwable t) {
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
@@ -137,7 +144,7 @@ public class PauseUniverse extends UniverseTaskBase {
     Collection<NodeDetails> activeNodes = new HashSet<>();
     for (NodeDetails node : universeNodes) {
       NodeTaskParams nodeParams = new NodeTaskParams();
-      nodeParams.universeUUID = taskParams().universeUUID;
+      nodeParams.setUniverseUUID(taskParams().getUniverseUUID());
       nodeParams.nodeName = node.nodeName;
       nodeParams.nodeUuid = node.nodeUuid;
       nodeParams.azUuid = node.azUuid;

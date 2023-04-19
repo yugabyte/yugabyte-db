@@ -28,12 +28,12 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes.TableType;
-import org.yb.client.SnapshotInfo;
+import org.yb.master.CatalogEntityInfo.SysSnapshotEntryPB.State;
 
-@ApiModel(description = "")
+@ApiModel(description = "PITR config created on the universe")
 @Entity
-@Slf4j
 @Data
+@Slf4j
 @EqualsAndHashCode(callSuper = false)
 public class PitrConfig extends Model {
 
@@ -42,64 +42,74 @@ public class PitrConfig extends Model {
 
   @Id
   @ApiModelProperty(value = "PITR config UUID")
-  public UUID uuid;
+  private UUID uuid;
 
   @Column
   @ApiModelProperty(value = "PITR config name")
-  public String name;
+  private String name;
 
   @ApiModelProperty(value = "Customer UUID of this config", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public UUID customerUUID;
+  private UUID customerUUID;
 
   @ApiModelProperty(value = "Universe UUID of this config", accessMode = READ_WRITE)
   @ManyToOne
   @JoinColumn(name = "universe_uuid", referencedColumnName = "universe_uuid")
   @JsonBackReference
-  public Universe universe;
+  private Universe universe;
 
-  @Transient List<SnapshotInfo> snapshots;
+  @Transient private State state;
+
+  @Transient private long minRecoverTimeInMillis;
+
+  @Transient private long maxRecoverTimeInMillis;
 
   @ApiModelProperty(value = "Table Type", accessMode = READ_WRITE)
   @Column(nullable = false)
   @Enumerated(EnumType.STRING)
-  public TableType tableType;
+  private TableType tableType;
 
   @ApiModelProperty(value = "DB Name", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public String dbName;
+  private String dbName;
 
-  @ApiModelProperty(value = "Interval between snasphots in milli seconds", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Interval between snasphots in seconds", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public long scheduleInterval = 86400L * 1000L;
+  private long scheduleInterval = 86400L;
 
-  @ApiModelProperty(value = "Retention Period", accessMode = READ_WRITE)
+  @ApiModelProperty(value = "Retention Period in seconds", accessMode = READ_WRITE)
   @Column(nullable = false)
-  public long retentionPeriod = 86400L * 1000L * 7L;
+  private long retentionPeriod = 86400L * 7L;
 
-  @ApiModelProperty(value = "Create time of the PITR config", accessMode = READ_ONLY)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Create time of the PITR config",
+      accessMode = READ_ONLY,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Column
   private Date createTime;
 
-  @ApiModelProperty(value = "Update time of the PITR con", accessMode = READ_WRITE)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
+  @ApiModelProperty(
+      value = "Update time of the PITR con",
+      accessMode = READ_WRITE,
+      example = "2022-12-12T13:07:18Z")
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @Column
   private Date updateTime;
 
   public static PitrConfig create(UUID scheduleUUID, CreatePitrConfigParams params) {
     PitrConfig pitrConfig = new PitrConfig();
-    pitrConfig.uuid = scheduleUUID;
-    pitrConfig.name = params.name;
-    pitrConfig.customerUUID = params.customerUUID;
-    pitrConfig.universe = Universe.getOrBadRequest(params.universeUUID);
-    pitrConfig.tableType = params.tableType;
-    pitrConfig.dbName = params.keyspaceName;
-    pitrConfig.scheduleInterval = params.intervalInSeconds;
-    pitrConfig.retentionPeriod = params.retentionPeriodInSeconds;
+    pitrConfig.setUuid(scheduleUUID);
+    pitrConfig.setName(params.name);
+    pitrConfig.setCustomerUUID(params.customerUUID);
+    pitrConfig.setUniverse(Universe.getOrBadRequest(params.getUniverseUUID()));
+    pitrConfig.setTableType(params.tableType);
+    pitrConfig.setDbName(params.keyspaceName);
+    pitrConfig.setScheduleInterval(params.intervalInSeconds);
+    pitrConfig.setRetentionPeriod(params.retentionPeriodInSeconds);
     Date currentDate = new Date();
-    pitrConfig.createTime = currentDate;
-    pitrConfig.updateTime = currentDate;
+    pitrConfig.setCreateTime(currentDate);
+    pitrConfig.setUpdateTime(currentDate);
     pitrConfig.save();
     return pitrConfig;
   }

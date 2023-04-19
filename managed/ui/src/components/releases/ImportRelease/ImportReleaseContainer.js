@@ -8,7 +8,7 @@ import { toast } from 'react-toastify';
 const createErrorMessage = (payload) => {
   const structuredError = payload?.response?.data?.error;
   if (structuredError) {
-    if (typeof structuredError == 'string') {
+    if (typeof structuredError === 'string') {
       return structuredError;
     }
     const message = Object.keys(structuredError)
@@ -29,6 +29,7 @@ const mapDispatchToProps = (dispatch, props) => {
         if (response.error) {
           toast.error(createErrorMessage(response.payload));
         } else {
+          toast.success('Release imported successfully!.');
           props.onHide();
           props.onModalSubmit();
           dispatch(importYugaByteReleaseResponse(response.payload));

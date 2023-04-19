@@ -1,30 +1,30 @@
 ---
-title: YugabyteDB Managed quick start
+title: Quick start for YugabyteDB Managed
 headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
-description: Get started using YugabyteDB Managed in less than five minutes.
+description: Quick start for YugabyteDB Managed to get started in less than five minutes.
 layout: single
 type: docs
-body_class: yb-page-style
 rightNav:
   hideH4: true
+unversioned: true
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../quick-start-yugabytedb-managed/" class="nav-link">
-        Use a cloud cluster
-      </a>
-    </li>
-    <li>
-      <a href="../quick-start/" class="nav-link">
-        Use a local cluster
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../quick-start-yugabytedb-managed/" class="nav-link">
+      <img src="/icons/cloud.svg" alt="Cloud Icon">
+      Use a cloud cluster
+    </a>
+  </li>
+  <li>
+    <a href="../quick-start/" class="nav-link">
+      <img src="/icons/database.svg" alt="Server Icon">
+      Use a local cluster
+    </a>
+  </li>
+</ul>
 
 The quickest way to get started with YugabyteDB is to create a free Sandbox cluster in YugabyteDB Managed:
 
@@ -38,30 +38,23 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Load sample data and run queries
 - Explore a sample application
 
-<div class="row cloud-laptop">
-  <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <a class="button-style purple" href="../yugabyte-cloud/"><span>Docs</span></a>
-        </div>
-        <div class="body-content">Learn how to deploy and manage clusters in YugabyteDB Managed.</div>
-        <a class="text-link" href="../yugabyte-cloud/" title="Learn more">YugabyteDB Managed documentation</a>
-      </div>
-    </div>
-  </div>
-  <div class="col-12 col-md-12 col-lg-6">
-    <div class="border two-side">
-      <div class="body">
-        <div class="box-top">
-          <a class="button-style orange" href="../faq/yugabytedb-managed-faq/"><span>FAQ</span></a>
-        </div>
-        <div class="body-content">Get answers to questions about YugabyteDB Managed.</div>
-        <a class="text-link" href="../faq/yugabytedb-managed-faq/" title="Learn more">YugabyteDB Managed FAQ</a>
-      </div>
-    </div>
-  </div>
-</div>
+
+{{< sections/2-boxes >}}
+  {{< sections/bottom-image-box
+    title="Docs"
+    description="Learn how to deploy and manage clusters in YugabyteDB Managed."
+    buttonText="YugabyteDB Managed documentation"
+    buttonUrl="../yugabyte-cloud/"
+  >}}
+
+  {{< sections/bottom-image-box
+    title="FAQ"
+    description="Get answers to questions about YugabyteDB Managed."
+    buttonText="YugabyteDB Managed FAQ"
+    buttonUrl="../faq/yugabytedb-managed-faq/"
+  >}}
+{{< /sections/2-boxes >}}
+
 
 <!-- Following sections are duplicated in cloud-quickstart -->
 
@@ -97,7 +90,7 @@ To create your Sandbox cluster:
 
 YugabyteDB Managed bootstraps and provisions the cluster, and configures YugabyteDB. The process takes around 5 minutes. While you wait, you can optionally fill out a survey to customize your getting started experience.
 
-When the cluster is ready, the cluster [Overview](/preview/yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
+When the cluster is ready, the cluster [Overview](../yugabyte-cloud/cloud-monitor/overview/) is displayed. You now have a fully configured YugabyteDB cluster provisioned in YugabyteDB Managed.
 
 ## Connect to the cluster
 
@@ -123,7 +116,7 @@ To connect to your cluster, do the following:
     Enter your DB password:
     ```
 
-1. Enter the password for the admin user credentials that you saved when you created the cluster.\
+1. Enter the password for the admin user credentials that you saved when you created the cluster.
 
     The shell prompt appears and is ready to use.
 
@@ -135,19 +128,19 @@ To connect to your cluster, do the following:
     yugabyte=>
     ```
 
-> The command line interface (CLI) being used is called [ysqlsh](/preview/admin/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](/preview/api/ysql/). Cloud Shell also supports [ycqlsh](/preview/admin/ycqlsh/), a CLI for the [YCQL API](/preview/api/ycql/).
+> The command line interface (CLI) being used is called [ysqlsh](../admin/ysqlsh/). ysqlsh is the CLI for interacting with YugabyteDB using the PostgreSQL-compatible [YSQL API](../api/ysql/). Cloud Shell also supports [ycqlsh](../admin/ycqlsh/), a CLI for the [YCQL API](../api/ycql/).
 >
-> For information on other ways to connect to your cluster, refer to [Connect to clusters](/preview/yugabyte-cloud/cloud-connect).
+> For information on other ways to connect to your cluster, refer to [Connect to clusters](../yugabyte-cloud/cloud-connect).
 
 ## Explore distributed SQL
 
-When you connect to your cluster using Cloud Shell with the [YSQL API](/preview/api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
+When you connect to your cluster using Cloud Shell with the [YSQL API](../api/ysql/) (the default), the shell window incorporates a **Quick Start Guide**, with a series of pre-built queries for you to run. Follow the prompts to explore YugabyteDB in 5 minutes.
 
 ![Run the quick start tutorial](/images/yb-cloud/cloud-shell-tutorial.gif)
 
 ## Build an application
 
-Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). The tutorials in this section show how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
+Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). This section shows how to connect applications to YugabyteDB Managed clusters using your favorite programming language.
 
 Before you begin, you need the following:
 
@@ -155,8 +148,20 @@ Before you begin, you need the following:
 - the cluster CA certificate; YugabyteDB Managed uses TLS to secure connections to the database.
 - your computer added to the cluster IP allow list.
 
-Refer to [Before you begin](/preview/develop/build-apps/cloud-add-ip/).
+Refer to [Before you begin](../develop/build-apps/cloud-add-ip/).
 
 ### Choose your language
 
-{{< readfile "managed-quick-start-include.md" >}}
+{{< readfile "quick-start-buildapps-include.md" >}}
+
+## Learn more
+
+[YugabyteDB Managed Documentation](../yugabyte-cloud/)
+
+[Deploy clusters in YugabyteDB Managed](../yugabyte-cloud/cloud-basics/)
+
+[Connect applications to YugabyteDB Managed](../yugabyte-cloud/cloud-connect/connect-applications/)
+
+[Explore YugabyteDB](../explore/)
+
+[Drivers and ORMS](../drivers-orms/)

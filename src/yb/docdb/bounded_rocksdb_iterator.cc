@@ -49,7 +49,7 @@ void BoundedRocksDbIterator::SeekToLast() {
     iterator_->Seek(key_bounds_->upper);
     if (iterator_->Valid()) {
       iterator_->Prev();
-    } else {
+    } else if (iterator_->status().ok()) {
       iterator_->SeekToLast();
     }
   } else {
@@ -85,6 +85,10 @@ Slice BoundedRocksDbIterator::value() const {
 
 Status BoundedRocksDbIterator::status() const {
   return iterator_->status();
+}
+
+void BoundedRocksDbIterator::UseFastNext(bool value) {
+  iterator_->UseFastNext(value);
 }
 
 }  // namespace docdb

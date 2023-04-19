@@ -44,6 +44,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/tsan_util.h"
+#include "yb/util/flags.h"
 
 using std::string;
 
@@ -52,7 +53,7 @@ using namespace std::literals;
 constexpr int32_t kMasterLogLockWarningMsDefault =
     ::yb::RegularBuildVsSanitizers<int32_t>(1000, 3000);
 
-DEFINE_int32(master_log_lock_warning_ms, kMasterLogLockWarningMsDefault,
+DEFINE_UNKNOWN_int32(master_log_lock_warning_ms, kMasterLogLockWarningMsDefault,
              "Print warnings if the master leader shared lock is held for longer than this amount "
              "of time. Note that this is a shared lock, so these warnings simply indicate "
              "long-running master operations that could delay system catalog loading by a new "
@@ -61,7 +62,7 @@ DEFINE_int32(master_log_lock_warning_ms, kMasterLogLockWarningMsDefault,
 constexpr int32_t kMasterLeaderLockStackTraceMsDefault =
     ::yb::RegularBuildVsSanitizers<int32_t>(3000, 9000);
 
-DEFINE_int32(master_leader_lock_stack_trace_ms, kMasterLeaderLockStackTraceMsDefault,
+DEFINE_UNKNOWN_int32(master_leader_lock_stack_trace_ms, kMasterLeaderLockStackTraceMsDefault,
              "Dump a stack trace if the master leader shared lock is held for longer than this "
              "of time. Also see master_log_lock_warning_ms.");
 
@@ -144,15 +145,6 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
   }
 }
 
-ScopedLeaderSharedLock::ScopedLeaderSharedLock(
-    enterprise::CatalogManager* catalog,
-    const char* file_name,
-    int line_number,
-    const char* function_name)
-    : ScopedLeaderSharedLock(
-          static_cast<CatalogManager*>(catalog), file_name, line_number, function_name) {
-}
-
 ScopedLeaderSharedLock::~ScopedLeaderSharedLock() {
   Unlock();
 }
@@ -173,7 +165,7 @@ void ScopedLeaderSharedLock::Unlock() {
         need_stack_trace || (finish > start_ + 1ms * FLAGS_master_log_lock_warning_ms);
     if (need_warning) {
       LOG(WARNING)
-          << "Long lock of catalog manager (" << file_name_ << ":" << line_number_ << ", "
+          << "RPC took a long time (" << file_name_ << ":" << line_number_ << ", "
           << function_name_ << "): " << AsString(finish - start_)
           << (need_stack_trace ? "\n" + GetStackTrace() : "");
     }

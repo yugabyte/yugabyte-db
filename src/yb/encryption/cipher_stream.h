@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_ENCRYPTION_CIPHER_STREAM_H
-#define YB_ENCRYPTION_CIPHER_STREAM_H
+#pragma once
 
 #include <openssl/ossl_typ.h>
 
@@ -77,5 +76,3 @@ class BlockAccessCipherStream {
 
 } // namespace encryption
 } // namespace yb
-
-#endif // YB_ENCRYPTION_CIPHER_STREAM_H

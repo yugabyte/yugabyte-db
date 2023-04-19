@@ -59,23 +59,24 @@ export class UniverseTaskList extends Component {
         })
         .filter(Boolean);
     }
-    if (isNonEmptyArray(universeTaskHistoryArray)) {
-      const errorPlatformMessage = (
-        <div className="oss-unavailable-warning">Only available on {YUGABYTE_TITLE}.</div>
-      );
-      universeTaskHistory = (
-        <TaskListTable
-          taskList={universeTaskHistoryArray || []}
-          isCommunityEdition={isCommunityEdition}
-          overrideContent={errorPlatformMessage}
-          title={'Task History'}
-          abortCurrentTask={this.props.abortCurrentTask}
-          hideTaskAbortModal={this.props.hideTaskAbortModal}
-          showTaskAbortModal={this.props.showTaskAbortModal}
-          visibleModal={this.props.visibleModal}
-        />
-      );
-    }
+    
+    const errorPlatformMessage = (
+      <div className="oss-unavailable-warning">Only available on {YUGABYTE_TITLE}.</div>
+    );
+    universeTaskHistory = (
+      <TaskListTable
+        taskList={isNonEmptyArray(customerTaskList) && isNonEmptyArray(universeTaskHistoryArray) ? universeTaskHistoryArray : []}
+        isCommunityEdition={isCommunityEdition}
+        overrideContent={errorPlatformMessage}
+        title={'Task History'}
+        abortCurrentTask={this.props.abortCurrentTask}
+        hideTaskAbortModal={this.props.hideTaskAbortModal}
+        showTaskAbortModal={this.props.showTaskAbortModal}
+        visibleModal={this.props.visibleModal}
+      />
+    );
+
+
     if (isNonEmptyArray(customerTaskList) && isNonEmptyArray(universeTaskUUIDs)) {
       currentTaskProgress = (
         <TaskProgressContainer

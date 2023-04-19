@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STRIPED64_H_
-#define YB_UTIL_STRIPED64_H_
+#pragma once
 
 #include "yb/gutil/port.h"
 #include "yb/util/atomic.h"
@@ -180,5 +179,3 @@ class LongAdder : Striped64 {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_STRIPED64_H_

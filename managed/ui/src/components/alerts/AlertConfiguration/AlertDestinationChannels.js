@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { Col, DropdownButton, MenuItem, Row } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useDispatch } from 'react-redux';
@@ -12,11 +12,15 @@ import { YBConfirmModal } from '../../modals';
 import { YBPanelItem } from '../../panels';
 import { AddDestinationChannelForm } from './AddDestinationChannelForm';
 import { isNonAvailable } from '../../../utils/LayoutUtils';
+import clsx from 'clsx';
 
-import './AlertDestinationChannels.scss';
 import { toast } from 'react-toastify';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { useMount } from 'react-use';
+import { YBLoadingCircleIcon } from '../../common/indicators';
+import './AlertDestinationChannels.scss';
+
+const Composer = React.lazy(() => import('../../../redesign/features/alerts/TemplateComposer/Composer'));
 
 const prepareInitialValues = (values) => {
   const initialValues = {
@@ -42,7 +46,7 @@ const prepareInitialValues = (values) => {
         initialValues['emailIds'] = values.params.recipients.join(',');
       }
 
-      initialValues['customSmtp'] = !values.params.defaultSmtpSettings;
+      initialValues['defaultSmtp'] = values.params.defaultSmtpSettings;
 
       if (!values.params.defaultSmtpSettings) {
         initialValues['smtpData'] = values.params.smtpData;
@@ -70,7 +74,7 @@ const getDestination = (params) => {
     if (params.defaultRecipients) {
       return '[Default Recipients]';
     }
-    return params.recipients && params.recipients.join(',');
+    return params.recipients?.join(',');
   }
   return params.webhookUrl;
 };
@@ -81,6 +85,8 @@ export const AlertDestinationChannels = (props) => {
   const [showModal, setShowModal] = useState(false);
   const [type, setType] = useState('');
   const [initialValues, setInitialValues] = useState({});
+  const [showCustomTemplateEditor, setShowCustomTemplateEditor] = useState(false);
+
   const {
     customer, featureFlags
   } = props;
@@ -89,6 +95,9 @@ export const AlertDestinationChannels = (props) => {
 
   const enableNotificationTemplates = featureFlags.test.enableNotificationTemplates
     || featureFlags.released.enableNotificationTemplates;
+
+  const enableCustomEmailTemplates = featureFlags.test.enableCustomEmailTemplates
+    || featureFlags.released.enableCustomEmailTemplates;
 
   const getAlertChannelsList = () => {
     dispatch(getAlertChannels()).then((resp) => setAlertChannels(resp.payload.data));
@@ -142,13 +151,13 @@ export const AlertDestinationChannels = (props) => {
           </MenuItem>
 
           {!isReadOnly && (
-          <MenuItem
-            onClick={() => {
-              deleteChannel(row);
-            }}
-          >
-            <i className="fa fa-trash"></i> Delete Channel
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                deleteChannel(row);
+              }}
+            >
+              <i className="fa fa-trash"></i> Delete Channel
+            </MenuItem>
           )}
 
           {
@@ -166,98 +175,125 @@ export const AlertDestinationChannels = (props) => {
   };
 
   return (
-    <>
-      <div className="alert-destinations">
-        <div>
-          A notification channel defines the means by which an alert is sent (ex: Email) as well as
-          who should receive the notification.
-        </div>
-        {!isReadOnly && (
-        <div>
-          <YBButton
-            btnText="Add Channel"
-            btnClass="btn btn-orange"
-            onClick={() => {
-              setType('create');
-              setShowModal(true);
-            }}
-          />
-        </div>
-        )}
-      </div>
-      <Row>
-        <Col xs={12} lg={12} className="noLeftPadding">
-          <b>{alertChannels.length} Notification Channels</b>
-        </Col>
-      </Row>
-      <Row>
-        <YBPanelItem
-          body={
-            <>
-              <BootstrapTable
-                className="backup-list-table middle-aligned-table"
-                data={alertChannels}
-                options={{
-                  noDataText: 'Loading...'
+    <div className={clsx('alert-destination-channels', { 'minPadding': showCustomTemplateEditor })}>
+      {
+        !showCustomTemplateEditor && (
+          <>
+            <div className="alert-destinations">
+              <div>
+                A notification channel defines the means by which an alert is sent (ex: Email) as well as
+                who should receive the notification.
+              </div>
+              {!isReadOnly && (
+                <div>
+                  {enableCustomEmailTemplates && (
+                    <YBButton
+                      btnText="Customize Notification Templates"
+                      btnClass="btn btn-default cutomize_notification_but"
+                      onClick={() => {
+                        setShowModal(false);
+                        setShowCustomTemplateEditor(true);
+                      }}
+                    />
+                  )}
+
+                  <YBButton
+                    btnText="Add Channel"
+                    btnClass="btn btn-orange"
+                    onClick={() => {
+                      setType('create');
+                      setShowModal(true);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+            <Row>
+              <Col xs={12} lg={12} className="noLeftPadding">
+                <b>{alertChannels.length} Notification Channels</b>
+              </Col>
+            </Row>
+            <Row>
+              <YBPanelItem
+                body={
+                  <>
+                    <BootstrapTable
+                      className="backup-list-table middle-aligned-table"
+                      data={alertChannels}
+                      options={{
+                        noDataText: 'Loading...'
+                      }}
+                      pagination
+                    >
+                      <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
+                      <TableHeaderColumn
+                        dataField="name"
+                        columnClassName="no-border name-column"
+                        className="no-border"
+                      >
+                        Name
+                      </TableHeaderColumn>
+                      <TableHeaderColumn
+                        dataField="params"
+                        dataFormat={(params) => params.channelType}
+                        columnClassName="no-border name-column"
+                        className="no-border"
+                      >
+                        Notification Type
+                      </TableHeaderColumn>
+                      <TableHeaderColumn
+                        dataField="params"
+                        dataFormat={(params) => getDestination(params)}
+                        columnClassName="no-border name-column"
+                        className="no-border"
+                      >
+                        Destination
+                      </TableHeaderColumn>
+                      <TableHeaderColumn
+                        dataField="configActions"
+                        dataFormat={(cell, row) => formatConfigActions(cell, row)}
+                        columnClassName="yb-actions-cell"
+                        className="yb-actions-cell"
+                      >
+                        Actions
+                      </TableHeaderColumn>
+                    </BootstrapTable>
+                  </>
+                }
+                noBackground
+              />
+            </Row>
+            {showModal && !showCustomTemplateEditor && (
+              <AddDestinationChannelForm
+                visible={showModal}
+                onHide={() => {
+                  setShowModal(false);
+                  setInitialValues({});
                 }}
-                pagination
-              >
-                <TableHeaderColumn dataField="uuid" isKey={true} hidden={true} />
-                <TableHeaderColumn
-                  dataField="name"
-                  columnClassName="no-border name-column"
-                  className="no-border"
-                >
-                  Name
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="params"
-                  dataFormat={(params) => params.channelType}
-                  columnClassName="no-border name-column"
-                  className="no-border"
-                >
-                  Channel Type
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="params"
-                  dataFormat={(params) => getDestination(params)}
-                  columnClassName="no-border name-column"
-                  className="no-border"
-                >
-                  Destination
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="configActions"
-                  dataFormat={(cell, row) => formatConfigActions(cell, row)}
-                  columnClassName="yb-actions-cell"
-                  className="yb-actions-cell"
-                >
-                  Actions
-                </TableHeaderColumn>
-              </BootstrapTable>
-            </>
-          }
-          noBackground
-        />
-      </Row>
-      {showModal && (
-        <AddDestinationChannelForm
-          visible={showModal}
-          onHide={() => {
-            setShowModal(false);
-            setInitialValues({});
-          }}
-          defaultChannel={initialValues.CHANNEL_TYPE ?? 'email'}
-          defaultRecipients={initialValues.defaultRecipients}
-          customSmtp={initialValues.customSmtp}
-          type={type}
-          editAlertChannel={editAlertChannel}
-          editValues={type === 'edit' ? initialValues : {}}
-          updateDestinationChannel={getAlertChannelsList}
-          enableNotificationTemplates={enableNotificationTemplates}
-          {...props}
-        />
-      )}
-    </>
+                defaultChannel={initialValues.CHANNEL_TYPE ?? 'email'}
+                defaultRecipients={initialValues.defaultRecipients}
+                defaultSmtp={initialValues.defaultSmtp}
+                type={type}
+                editAlertChannel={editAlertChannel}
+                editValues={type === 'edit' ? initialValues : {}}
+                updateDestinationChannel={getAlertChannelsList}
+                enableNotificationTemplates={enableNotificationTemplates}
+                {...props}
+              />
+            )}
+          </>
+        )
+      }
+
+      {
+        showCustomTemplateEditor && !showModal && (
+          <Suspense fallback={<YBLoadingCircleIcon />}>
+            <Composer onHide={() => {
+              setShowCustomTemplateEditor(false);
+            }} />
+          </Suspense>
+        )
+      }
+    </div>
   );
 };

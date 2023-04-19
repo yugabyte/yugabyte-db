@@ -82,7 +82,8 @@ public class ApiHelperTest {
     headers.put("header", "sample");
     JsonNode result = apiHelper.getRequest("http://foo.com/test", headers);
     Mockito.verify(mockClient, times(1)).url("http://foo.com/test");
-    Mockito.verify(mockRequest).setHeader("header", "sample");
+    Mockito.verify(mockRequest).addHeader("header", "sample");
+    Mockito.verify(mockRequest).setFollowRedirects(true);
     assertEquals(result.get("Foo").asText(), "Bar");
   }
 

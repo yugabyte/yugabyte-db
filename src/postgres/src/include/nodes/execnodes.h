@@ -714,12 +714,21 @@ typedef struct EState
 	YBCPgExecParameters yb_exec_params;
 
 	/*
-	 *  The in txn limit used for this query. This value is initialized
-	 *  to 0, and later updated by the first read operation initiated for this
-	 *  query. All later read operations are then ensured that they will never
-	 *  read any data written past this time.
+	 * The in_txn_limit used by all reads executed by this executor state. This is done to satisfy
+	 * requirement 1 in src/yb/yql/pggate/README i.e., all reads of a SQL statement should use the
+	 * same in_txn_limit. A pointer to this is passed down via PgExecParameters to all PgDocOp
+	 * instances invoked by the SQL statement. The first read operation by the statement finds that
+	 * this is unset i.e., 0 and hence initializes the in txn limit for read operations. All future
+	 * operations see this to be non-zero and hence don't change the picked in txn limit for reads.
+	 *
+	 * So, all read operations in the statement use the txn limit picked on the first read op of the
+	 * statement.
+	 *
+	 * NOTE: This is slightly incorrect and causes a bug as explained in requirement 1 of
+	 * src/yb/yql/pggate/README. But apart from that corner case, this ensures that read operations of
+	 * a SQL statement don't read any value written by the same statement.
 	 */
-	uint64_t yb_es_in_txn_limit_ht;
+	uint64_t yb_es_in_txn_limit_ht_for_reads;
 } EState;
 
 /*
@@ -1355,7 +1364,8 @@ typedef struct ModifyTableState
 	double		mt_merge_deleted;
 
 	/* YB specific attributes. */
-	bool yb_mt_is_single_row_update_or_delete;
+	bool yb_fetch_target_tuple;	/* Perform initial scan to populate
+								 * the ybctid. */
 } ModifyTableState;
 
 /* ----------------
@@ -2057,7 +2067,7 @@ typedef struct JoinState
 } JoinState;
 
 
-/* 
+/*
  * Batch state of batched NL Join. These are explained in the comment for
  * ExecYbBatchedNestLoop in nodeYbBatchedNestLoop.c.
  */
@@ -2122,12 +2132,14 @@ typedef struct YbBatchedNestLoopState
 	JoinState	js;				/* its first field is NodeTag */
 	TupleTableSlot *nl_NullInnerTupleSlot;
 
+	bool bnl_outerdone;
+	NLBatchStatus bnl_currentstatus;
+
 	/* State for tuplestore batch strategy */
 	Tuplestorestate *bnl_tupleStoreState;
-	NLBatchStatus bnl_currentstatus;
 	List *bnl_batchMatchedInfo;
 	int bnl_batchTupNo;
-	
+
 	/* State for hashing batch strategy */
 
 	/*

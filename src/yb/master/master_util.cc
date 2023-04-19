@@ -34,14 +34,21 @@
 #include "yb/util/string_util.h"
 
 namespace yb {
+
+const char* DatabasePrefix(YQLDatabase db) {
+  switch(db) {
+    case YQL_DATABASE_UNKNOWN: break;
+    case YQL_DATABASE_CQL: return kDBTypePrefixCql;
+    case YQL_DATABASE_PGSQL: return kDBTypePrefixYsql;
+    case YQL_DATABASE_REDIS: return kDBTypePrefixRedis;
+  }
+  CHECK(false) << "Unexpected db type " << db;
+  return kDBTypePrefixUnknown;
+}
+
 namespace master {
 
 namespace {
-
-static constexpr const char* kColocatedDbParentTableIdSuffix = ".colocated.parent.uuid";
-static constexpr const char* kColocatedDbParentTableNameSuffix = ".colocated.parent.tablename";
-static constexpr const char* kTablegroupParentTableIdSuffix = ".tablegroup.parent.uuid";
-static constexpr const char* kTablegroupParentTableNameSuffix = ".tablegroup.parent.tablename";
 
 struct GetMasterRegistrationData {
   GetMasterRegistrationRequestPB req;
@@ -221,45 +228,6 @@ Status SetupError(MasterErrorPB* error, const Status& s) {
   StatusToPB(s, error->mutable_status());
   error->set_code(MasterError::ValueFromStatus(s).get_value_or(MasterErrorPB::UNKNOWN_ERROR));
   return s;
-}
-
-bool IsColocationParentTableId(const TableId& table_id) {
-  return IsColocatedDbParentTableId(table_id) || IsTablegroupParentTableId(table_id);
-}
-
-bool IsColocatedDbParentTableId(const TableId& table_id) {
-  return table_id.find(kColocatedDbParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kColocatedDbParentTableIdSuffix);
-}
-
-TableId GetColocatedDbParentTableId(const NamespaceId& database_id) {
-  DCHECK(IsIdLikeUuid(database_id)) << database_id;
-  return database_id + kColocatedDbParentTableIdSuffix;
-}
-
-TableName GetColocatedDbParentTableName(const NamespaceId& database_id) {
-  DCHECK(IsIdLikeUuid(database_id)) << database_id;
-  return database_id + kColocatedDbParentTableNameSuffix;
-}
-
-bool IsTablegroupParentTableId(const TableId& table_id) {
-  return table_id.find(kTablegroupParentTableIdSuffix) == 32 &&
-      boost::algorithm::ends_with(table_id, kTablegroupParentTableIdSuffix);
-}
-
-TableId GetTablegroupParentTableId(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kTablegroupParentTableIdSuffix;
-}
-
-TableName GetTablegroupParentTableName(const TablegroupId& tablegroup_id) {
-  DCHECK(IsIdLikeUuid(tablegroup_id)) << tablegroup_id;
-  return tablegroup_id + kTablegroupParentTableNameSuffix;
-}
-
-TablegroupId GetTablegroupIdFromParentTableId(const TableId& table_id) {
-  DCHECK(IsTablegroupParentTableId(table_id)) << table_id;
-  return table_id.substr(0, 32);
 }
 
 bool IsBlacklisted(const ServerRegistrationPB& registration, const BlacklistSet& blacklist) {

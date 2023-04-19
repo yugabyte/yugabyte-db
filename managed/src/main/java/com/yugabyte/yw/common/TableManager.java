@@ -22,6 +22,9 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIO
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -29,6 +32,7 @@ import com.yugabyte.yw.forms.TableManagerParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -46,7 +50,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.yb.CommonTypes.TableType;
 import play.libs.Json;
 
@@ -74,27 +78,27 @@ public class TableManager extends DevopsBase {
   @Inject BackupUtil backupUtil;
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UserIntent userIntent = primaryCluster.userIntent;
-    Provider provider = Provider.get(region.provider.uuid);
+    Provider provider = Provider.get(region.getProvider().getUuid());
 
     String accessKeyCode = userIntent.accessKeyCode;
-    AccessKey accessKey = AccessKey.get(region.provider.uuid, accessKeyCode);
+    AccessKey accessKey = AccessKey.get(region.getProvider().getUuid(), accessKeyCode);
     List<String> commandArgs = new ArrayList<>();
-    Map<String, String> extraVars = region.provider.getUnmaskedConfig();
+    Map<String, String> extraVars = CloudInfoInterface.fetchEnvVars(provider);
     Map<String, Map<String, String>> podAddrToConfig = new HashMap<>();
     Map<String, String> secondaryToPrimaryIP = new HashMap<>();
     Map<String, String> ipToSshKeyPath = new HashMap<>();
 
     boolean nodeToNodeTlsEnabled = userIntent.enableNodeToNodeEncrypt;
 
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       for (Cluster cluster : universe.getUniverseDetails().clusters) {
         PlacementInfo pi = cluster.placementInfo;
         podAddrToConfig.putAll(
-            PlacementInfoUtil.getKubernetesConfigPerPod(
+            KubernetesUtil.getKubernetesConfigPerPod(
                 pi, universe.getUniverseDetails().getNodesInCluster(cluster.uuid)));
       }
     } else {
@@ -105,7 +109,7 @@ public class TableManager extends DevopsBase {
         Provider clusterProvider =
             Provider.getOrBadRequest(UUID.fromString(clusterUserIntent.provider));
         AccessKey accessKeyForCluster =
-            AccessKey.getOrBadRequest(clusterProvider.uuid, clusterUserIntent.accessKeyCode);
+            AccessKey.getOrBadRequest(clusterProvider.getUuid(), clusterUserIntent.accessKeyCode);
         Collection<NodeDetails> nodesInCluster = universe.getNodesInCluster(cluster.uuid);
         for (NodeDetails nodeInCluster : nodesInCluster) {
           if (nodeInCluster.cloudInfo.private_ip != null
@@ -184,7 +188,7 @@ public class TableManager extends DevopsBase {
             } else {
               commandArgs.add(taskParams.getKeyspace());
             }
-            if (runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.pg_based")) {
+            if (confGetter.getConfForScope(universe, UniverseConfKeys.pgBasedBackup)) {
               commandArgs.add("--pg_based_backup");
             }
           }
@@ -205,8 +209,9 @@ public class TableManager extends DevopsBase {
           }
         }
 
-        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+        customer = Customer.find.query().where().idEq(universe.getCustomerId()).findOne();
+        customerConfig =
+            CustomerConfig.get(customer.getUuid(), backupTableParams.storageConfigUUID);
         File backupKeysFile =
             EncryptionAtRestUtil.getUniverseBackupKeysFile(backupTableParams.storageLocation);
 
@@ -233,7 +238,8 @@ public class TableManager extends DevopsBase {
         }
         if (backupTableParams.actionType == BackupTableParams.ActionType.RESTORE) {
           if (backupTableParams.restoreTimeStamp != null) {
-            String backupLocation = customerConfig.data.get(BACKUP_LOCATION_FIELDNAME).asText();
+            String backupLocation =
+                customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText();
             String restoreTimeStampMicroUnix =
                 getValidatedRestoreTimeStampMicroUnix(
                     backupTableParams.restoreTimeStamp,
@@ -251,7 +257,7 @@ public class TableManager extends DevopsBase {
           }
         }
         if (backupTableParams.actionType.equals(BackupTableParams.ActionType.CREATE)
-            && !customerConfig.name.toLowerCase().equals("nfs")) {
+            && !customerConfig.getName().equalsIgnoreCase("nfs")) {
           // For non-nfs configurations we are adding region configurations.
           JsonNode regions = customerConfig.getData().get(REGION_LOCATIONS);
           if ((regions != null) && regions.isArray()) {
@@ -307,7 +313,7 @@ public class TableManager extends DevopsBase {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }
         // TODO(bogdan): does this work?
-        if (!region.provider.code.equals("kubernetes")) {
+        if (!region.getProviderCloudCode().equals(CloudType.kubernetes)) {
           commandArgs.add("--key_path");
           commandArgs.add(accessKey.getKeyInfo().privateKey);
         }
@@ -320,15 +326,16 @@ public class TableManager extends DevopsBase {
         commandArgs.add("--s3bucket");
         commandArgs.add(bulkImportParams.s3Bucket);
 
-        extraVars.put("AWS_DEFAULT_REGION", region.code);
+        extraVars.put("AWS_DEFAULT_REGION", region.getCode());
 
         break;
       case DELETE:
         backupTableParams = (BackupTableParams) taskParams;
         commandArgs.add("--ts_web_hosts_ports");
         commandArgs.add(universe.getTserverHTTPAddresses());
-        customer = Customer.find.query().where().idEq(universe.customerId).findOne();
-        customerConfig = CustomerConfig.get(customer.uuid, backupTableParams.storageConfigUUID);
+        customer = Customer.find.query().where().idEq(universe.getCustomerId()).findOne();
+        customerConfig =
+            CustomerConfig.get(customer.getUuid(), backupTableParams.storageConfigUUID);
         log.info("Deleting backup at location {}", backupTableParams.storageLocation);
         addCommonCommandArgs(
             backupTableParams,
@@ -349,7 +356,7 @@ public class TableManager extends DevopsBase {
   }
 
   private String getCertsDir(Region region, Provider provider) {
-    return region.provider.code.equals("kubernetes")
+    return region.getProviderCloudCode().equals(CloudType.kubernetes)
         ? K8S_CERT_PATH
         : provider.getYbHome() + VM_CERT_DIR;
   }
@@ -401,12 +408,12 @@ public class TableManager extends DevopsBase {
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
       List<String> commandArgs) {
-    if (region.provider.code.equals("kubernetes")) {
+    if (region.getProviderCloudCode().equals(CloudType.kubernetes)) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
     } else {
       commandArgs.add("--ssh_port");
-      commandArgs.add(accessKey.getKeyInfo().sshPort.toString());
+      commandArgs.add(provider.getDetails().sshPort.toString());
       commandArgs.add("--ssh_key_path");
       commandArgs.add(accessKey.getKeyInfo().privateKey);
       if (!ipToSshKeyPath.isEmpty()) {
@@ -417,8 +424,8 @@ public class TableManager extends DevopsBase {
     commandArgs.add("--backup_location");
     commandArgs.add(backupTableParams.storageLocation);
     commandArgs.add("--storage_type");
-    commandArgs.add(customerConfig.name.toLowerCase());
-    if (customerConfig.name.toLowerCase().equals("nfs")) {
+    commandArgs.add(customerConfig.getName().toLowerCase());
+    if (customerConfig.getName().equalsIgnoreCase("nfs")) {
       commandArgs.add("--nfs_storage_path");
       commandArgs.add(customerConfig.getData().get(BACKUP_LOCATION_FIELDNAME).asText());
     }
@@ -428,9 +435,9 @@ public class TableManager extends DevopsBase {
       commandArgs.add(getCertsDir(region, provider));
     }
     commandArgs.add(backupTableParams.actionType.name().toLowerCase());
-    Universe universe = Universe.getOrBadRequest(backupTableParams.universeUUID);
+    Universe universe = Universe.getOrBadRequest(backupTableParams.getUniverseUUID());
     boolean verboseLogsEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.backup.log.verbose");
+        confGetter.getConfForScope(universe, UniverseConfKeys.backupLogVerbose);
     if (backupTableParams.enableVerboseLogs || verboseLogsEnabled) {
       commandArgs.add("--verbose");
     }
@@ -446,10 +453,10 @@ public class TableManager extends DevopsBase {
     if (backupTableParams.disableParallelism) {
       commandArgs.add("--disable_parallelism");
     }
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.security.ssh2_enabled")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.ssh2Enabled)) {
       commandArgs.add("--ssh2_enabled");
     }
-    if (runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.backup.disable_xxhash_checksum")) {
+    if (confGetter.getGlobalConf(GlobalConfKeys.disableXxHashChecksum)) {
       commandArgs.add("--disable_xxhash_checksum");
     }
   }

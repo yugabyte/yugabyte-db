@@ -11,10 +11,10 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_TABLE_FILTERING_ITERATOR_H
-#define YB_ROCKSDB_TABLE_FILTERING_ITERATOR_H
+#pragma once
 
 #include "yb/rocksdb/table/internal_iterator.h"
+#include "yb/rocksdb/db/dbformat.h"
 
 namespace rocksdb {
 
@@ -97,9 +97,29 @@ class FilteringIterator : public InternalIterator {
     return iterator_->GetProperty(std::move(prop_name), prop);
   }
 
+  ScanForwardResult ScanForward(
+      const Comparator* user_key_comparator, const Slice& upperbound,
+      KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) override {
+    KeyFilterCallback kf_callback = [this, key_filter_callback](
+                                        Slice prefixed_key, size_t shared_bytes,
+                                        Slice delta) -> KeyFilterCallbackResult {
+      // TODO: add support for shared prefix encoded key filter callback.
+      LOG_IF(DFATAL, shared_bytes != 0)
+          << "Key filter callback with shared prefix is not supported.";
+      if (!Satisfied(delta)) {
+        return KeyFilterCallbackResult{.skip_key = true, .cache_key = false};
+      }
+
+      return key_filter_callback ? (*key_filter_callback)(prefixed_key, shared_bytes, delta)
+                                 : KeyFilterCallbackResult{.skip_key = false, .cache_key = false};
+    };
+
+    return iterator_->ScanForward(user_key_comparator, upperbound, &kf_callback, scan_callback);
+  }
+
   void ApplyFilter(bool backward) {
     while (iterator_->Valid()) {
-      if (Satisfied(iterator_->key())) {
+      if (Satisfied(ExtractUserKey(iterator_->key()))) {
         break;
       }
       if (!backward) {
@@ -110,11 +130,9 @@ class FilteringIterator : public InternalIterator {
     }
   }
 
-  virtual bool Satisfied(Slice key) = 0;
+  virtual bool Satisfied(Slice user_key) = 0;
 
   const std::unique_ptr<InternalIterator, PossibleArenaDeleter> iterator_;
 };
 
 } // namespace rocksdb
-
-#endif // YB_ROCKSDB_TABLE_FILTERING_ITERATOR_H

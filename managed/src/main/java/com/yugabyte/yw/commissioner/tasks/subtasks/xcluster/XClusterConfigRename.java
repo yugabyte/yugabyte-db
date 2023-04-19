@@ -50,32 +50,32 @@ public class XClusterConfigRename extends XClusterConfigTaskBase {
               + "to an xCluster config");
     }
 
-    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.targetUniverseUUID);
+    Universe targetUniverse = Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID());
     String targetUniverseMasterAddresses = targetUniverse.getMasterAddresses();
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
       log.info(
           "Renaming XClusterConfig({}): `{}` -> `{}`",
-          xClusterConfig.uuid,
-          xClusterConfig.name,
+          xClusterConfig.getUuid(),
+          xClusterConfig.getName(),
           taskParams().newName);
 
       AlterUniverseReplicationResponse resp =
           client.alterUniverseReplicationName(
               xClusterConfig.getReplicationGroupName(),
-              XClusterConfig.getReplicationGroupName(
-                  xClusterConfig.sourceUniverseUUID, taskParams().newName));
+              xClusterConfig.getNewReplicationGroupName(
+                  xClusterConfig.getSourceUniverseUUID(), taskParams().newName));
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
                 "Failed to rename XClusterConfig(%s): %s",
-                xClusterConfig.uuid, resp.errorMessage()));
+                xClusterConfig.getUuid(), resp.errorMessage()));
       }
 
       // Set the new name of the xCluster config in the DB.
-      xClusterConfig.name = taskParams().newName;
-      xClusterConfig.setReplicationGroupName();
+      xClusterConfig.setName(taskParams().newName);
+      xClusterConfig.setReplicationGroupName(taskParams().newName);
       xClusterConfig.update();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

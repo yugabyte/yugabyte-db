@@ -34,6 +34,7 @@
 #include "executor/instrument.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "tcop/utility.h"
 #include "utils/guc.h"
 #include "utils/relcache.h"
 #include "utils/resowner.h"
@@ -59,17 +60,6 @@
  * TODO: Improve cache versioning and refresh logic to be more fine-grained to
  * reduce frequency and/or duration of cache refreshes.
  */
-extern uint64_t yb_catalog_cache_version;
-
-/* Stores the catalog version info that is fetched from the local tserver. */
-extern YbTserverCatalogInfo yb_tserver_catalog_info;
-
-/*
- * Stores the shared memory array db_catalog_versions_ index of the slot
- * allocated for the MyDatabaseId, or -1 if no slot has been allocated for
- * MyDatabaseId.
- */
-extern int yb_my_database_id_shm_index;
 
 #define YB_CATCACHE_VERSION_UNINITIALIZED (0)
 
@@ -84,14 +74,24 @@ extern int yb_my_database_id_shm_index;
  */
 extern uint64_t YBGetActiveCatalogCacheVersion();
 
-extern void YBResetCatalogVersion();
+extern uint64_t YbGetCatalogCacheVersion();
+
+extern void YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version);
+
+extern void YbResetCatalogCacheVersion();
+
+extern uint64_t YbGetLastKnownCatalogCacheVersion();
+
+extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+
+extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
 typedef enum GeolocationDistance {
-    ZONE_LOCAL,
-    REGION_LOCAL,
-    CLOUD_LOCAL,
-    INTER_CLOUD,
-    UNKNOWN_DISTANCE
+	ZONE_LOCAL,
+	REGION_LOCAL,
+	CLOUD_LOCAL,
+	INTER_CLOUD,
+	UNKNOWN_DISTANCE
 } GeolocationDistance;
 
 extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
@@ -104,6 +104,7 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  */
 extern bool IsYugaByteEnabled();
 
+extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
 extern int32_t yb_follower_read_staleness_ms;
 
@@ -203,7 +204,12 @@ extern Bitmapset *YBGetTablePrimaryKeyBms(Relation rel);
  */
 extern Bitmapset *YBGetTableFullPrimaryKeyBms(Relation rel);
 
-extern bool YbIsDatabaseColocated(Oid dbid);
+/*
+ * Return whether a database with oid dbid is a colocated database.
+ * legacy_colocated_database is one output parameter. Its value indicates
+ * whether database with oid dbid is a legacy colocated database.
+ */
+extern bool YbIsDatabaseColocated(Oid dbid, bool *legacy_colocated_database);
 
 /*
  * Check if a relation has row triggers that may reference the old row.
@@ -230,6 +236,12 @@ extern bool YBTransactionsEnabled();
 extern bool IsYBReadCommitted();
 
 /*
+ * Whether wait-queues are enabled for the cluster or not (via the TServer gflag
+ * enable_wait_queues).
+ */
+extern bool YBIsWaitQueueEnabled();
+
+/*
  * Whether to allow users to use SAVEPOINT commands at the query layer.
  */
 extern bool YBSavepointsEnabled();
@@ -238,18 +250,6 @@ extern bool YBSavepointsEnabled();
  * Whether the per database catalog version mode is enabled.
  */
 extern bool YBIsDBCatalogVersionMode();
-
-/*
- * Given a status returned by YB C++ code, reports that status as a PG/YSQL
- * ERROR using ereport if it is not OK.
- */
-extern void	HandleYBStatus(YBCStatus status);
-
-/*
- * Generic version of HandleYBStatus that reports the YBCStatus at the
- * specified PG/YSQL error level (e.g. ERROR or WARNING or NOTICE).
- */
-void HandleYBStatusAtErrorLevel(YBCStatus status, int error_level);
 
 /*
  * Since DDL metadata in master DocDB and postgres system tables is not modified
@@ -447,6 +447,12 @@ extern bool yb_enable_expression_pushdown;
 extern bool yb_enable_optimizer_statistics;
 
 /*
+ * If true then condition rechecking is bypassed at YSQL if the condition is
+ * bound to DocDB.
+ */
+extern bool yb_bypass_cond_recheck;
+
+/*
  * Enables nonbreaking DDL mode in which a DDL statement is not considered as
  * a "breaking catalog change" and therefore will not cause running transactions
  * to abort.
@@ -463,6 +469,20 @@ extern bool yb_make_next_ddl_statement_nonbreaking;
  * issued in later invocations.
  */
 extern bool yb_plpgsql_disable_prefetch_in_for_query;
+
+/*
+ * Allow nextval() to fetch the value range and advance the sequence value in a
+ * single operation.
+ * If disabled, nextval() reads sequence value first, advances it and apply the
+ * new value, which may fail due to concurrent modification and has to be
+ * retried.
+ */
+extern bool yb_enable_sequence_pushdown;
+
+/*
+ * Disable waiting for backends to have up-to-date catalog version.
+ */
+extern bool yb_disable_wait_for_backends_catalog_version;
 
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
@@ -503,6 +523,15 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * Block the given index creation phase.
+ * - "indisready": index state change to indisready
+ *   (not supported for non-concurrent)
+ * - "backfill": index backfill phase
+ * - "postbackfill": post-backfill operations like validation and event triggers
+ */
+extern char *yb_test_block_index_phase;
+
+/*
  * See also ybc_util.h which contains additional such variable declarations for
  * variables that are (also) used in the pggate layer.
  * Currently: yb_debug_log_docdb_requests.
@@ -516,7 +545,10 @@ extern const char* YBDatumToString(Datum datum, Oid typid);
 /*
  * Get a string representation of a tuple (row) given its tuple description (schema).
  */
-extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+extern const char* YbHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
+
+/* Get a string representation of a bitmapset (for debug purposes only!) */
+extern const char* YbBitmapsetToString(Bitmapset *bms);
 
 /*
  * Checks if the master thinks initdb has already been done.
@@ -524,12 +556,13 @@ extern const char* YBHeapTupleToString(HeapTuple tuple, TupleDesc tupleDesc);
 bool YBIsInitDbAlreadyDone();
 
 int YBGetDdlNestingLevel();
-void YBIncrementDdlNestingLevel();
-void YBDecrementDdlNestingLevel(bool is_catalog_version_increment,
-                                bool is_breaking_catalog_change);
+void YBIncrementDdlNestingLevel(bool is_catalog_version_increment,
+								bool is_breaking_catalog_change);
+void YBDecrementDdlNestingLevel();
 bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
-                                 bool *is_catalog_version_increment,
-                                 bool *is_breaking_catalog_change);
+								 bool *is_catalog_version_increment,
+								 bool *is_breaking_catalog_change,
+								 ProcessUtilityContext context);
 extern void YBBeginOperationsBuffering();
 extern void YBEndOperationsBuffering();
 extern void YBResetOperationsBuffering();
@@ -537,6 +570,7 @@ extern void YBFlushBufferedOperations();
 extern void YBGetAndResetOperationFlushRpcStats(uint64_t *count,
 												uint64_t *wait_time);
 
+bool YBEnableTracing();
 bool YBReadFromFollowersEnabled();
 int32_t YBFollowerReadStalenessMs();
 
@@ -573,7 +607,9 @@ YbTableProperties YbTryGetTableProperties(Relation rel);
  */
 bool YBIsSupportedLibcLocale(const char *localebuf);
 
-void YBTestFailDdlIfRequested();
+/* Spin wait while test guc var actual equals expected. */
+extern void YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
+										const char *msg);
 
 char *YBDetailSorted(char *input);
 
@@ -698,4 +734,133 @@ void YbUpdateReadRpcStats(YBCPgStatement handle,
  * true, then prevent any server file writes/reads/execution.
  */
 extern void YBCheckServerAccessIsAllowed();
+
+void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
+
+uint64_t YbGetSharedCatalogVersion();
+uint32_t YbGetNumberOfDatabases();
+
+/*
+ * This function helps map the user intended row-level lock policy i.e., "userLockWaitPolicy" of
+ * type enum LockWaitPolicy to the "effectiveWaitPolicy" of type enum WaitPolicy as defined in
+ * common.proto.
+ *
+ * The semantics of the WaitPolicy enum differs slightly from the traditional LockWaitPolicy in
+ * Postgres as explained in common.proto. This is due to historical reasons. WaitPolicy in
+ * common.proto was created as a copy of LockWaitPolicy to be passed to the Tserver to help in
+ * appropriate conflict-resolution steps for the different row-level lock policies.
+ *
+ * This function does the following:
+ * 1. Log a warning for a userLockWaitPolicy of LockWaitSkip and LockWaitError because SKIP LOCKED
+ *		and NO WAIT are not supported yet.
+ * 2. Set effectiveWaitPolicy to either WAIT_BLOCK if wait queues are enabled. Else, set it to
+ *		WAIT_ERROR (which actually uses the "Fail on Conflict" conflict management policy instead
+ *		of "no wait" semantics as explained in "enum WaitPolicy" in common.proto).
+ */
+void YBUpdateRowLockPolicyForSerializable(
+		int *effectiveWaitPolicy, LockWaitPolicy userLockWaitPolicy);
+
+const char* yb_fetch_current_transaction_priority(void);
+
+void GetStatusMsgAndArgumentsByCode(
+	const uint32_t pg_err_code, uint16_t txn_err_code, YBCStatus s,
+	const char **msg_buf, size_t *msg_nargs, const char ***msg_args,
+	const char **detail_buf, size_t *detail_nargs, const char ***detail_args);
+
+#define HandleYBStatus(status) \
+	HandleYBStatusAtErrorLevel(status, ERROR)
+
+/*
+ * Macro to convert DocDB Status to Postgres error.
+ * It is generally based on the ereport macro, it makes a sequence of errxxx()
+ * function calls, where errstart() comes the first and errfinish() the last.
+ *
+ * The error location info (file name, line number, function name) comes from
+ * the status, so we need lower level access, that's why we can not use ereport
+ * here. Also we don't need ereport's flexibility, as we support transfer of
+ * limited subset of Postgres error fields.
+ *
+ * Similar to ereport, we have a version for compilers without support for
+ * __builtin_constant_p, though we may drop it eventually.
+ */
+#ifdef HAVE__BUILTIN_CONSTANT_P
+#define HandleYBStatusAtErrorLevel(status, elevel) \
+	do \
+	{ \
+		AssertMacro(!IsMultiThreadedMode()); \
+		YBCStatus _status = (status); \
+		if (_status) \
+		{ \
+			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
+			const char	   *filename = YBCStatusFilename(_status); \
+			int				lineno = YBCStatusLineNumber(_status); \
+			const char	   *funcname = YBCStatusFuncname(_status); \
+			const char	   *msg_buf = NULL; \
+			const char	   *detail_buf = NULL; \
+			size_t		    msg_nargs = 0; \
+			size_t		    detail_nargs = 0; \
+			const char	  **msg_args = NULL; \
+			const char	  **detail_args = NULL; \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, txn_err_code, _status, \
+										   &msg_buf, &msg_nargs, &msg_args, \
+										   &detail_buf, &detail_nargs, \
+										   &detail_args); \
+			YBCFreeStatus(_status); \
+			if (errstart(elevel, filename ? filename : __FILE__, \
+						 lineno > 0 ? lineno : __LINE__, \
+						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			{ \
+				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
+				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
+				errcode(pg_err_code); \
+				yb_txn_errcode(txn_err_code); \
+				errhidecontext(true); \
+				errfinish(0); \
+				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
+					pg_unreachable(); \
+			} \
+		} \
+	} while (0)
+#else							/* !HAVE__BUILTIN_CONSTANT_P */
+#define HandleYBStatusAtErrorLevel(status, elevel) \
+	do \
+	{ \
+		AssertMacro(!IsMultiThreadedMode()); \
+		YBCStatus _status = (status); \
+		if (_status) \
+		{ \
+			const int		elevel_ = (elevel); \
+			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
+			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
+			const char	   *filename = YBCStatusFilename(_status); \
+			int				lineno = YBCStatusLineNumber(_status); \
+			const char	   *funcname = YBCStatusFuncname(_status); \
+			const char	   *msg_buf = NULL; \
+			const char	   *detail_buf = NULL; \
+			size_t		    msg_nargs = 0; \
+			size_t		    detail_nargs = 0; \
+			const char	  **msg_args = NULL; \
+			const char	  **detail_args = NULL; \
+			GetStatusMsgAndArgumentsByCode(pg_err_code, _status, &msg_buf, \
+										   &msg_nargs, &msg_args, &detail_buf, \
+										   &detail_nargs, &detail_args); \
+			YBCFreeStatus(_status); \
+			if (errstart(elevel_, filename ? filename : __FILE__, \
+						 lineno > 0 ? lineno : __LINE__, \
+						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			{ \
+				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
+				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
+				errcode(pg_err_code); \
+				yb_txn_errcode(txn_err_code); \
+				errhidecontext(true); \
+				errfinish(0); \
+				if (elevel_ >= ERROR) \
+					pg_unreachable(); \
+			} \
+		} \
+	} while (0)
+#endif
+
 #endif /* PG_YB_UTILS_H */

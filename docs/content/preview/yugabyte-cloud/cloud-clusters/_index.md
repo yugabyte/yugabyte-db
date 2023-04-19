@@ -4,7 +4,7 @@ headerTitle: Manage clusters
 linkTitle: Manage clusters
 description: Get an overview of how to scale your database clusters, configure backups and maintenance windows, and pause or delete clusters in YugabyteDB Managed.
 image: /images/section_icons/architecture/core_functions/universe.png
-headcontent: Scale clusters, configure backups and maintenance windows, and pause or delete clusters.
+headcontent: Scale clusters, configure read replicas, backups, and maintenance, and pause clusters
 menu:
   preview_yugabyte-cloud:
     parent: yugabytedb-managed
@@ -15,6 +15,7 @@ type: indexpage
 YugabyteDB Managed provides the following tools to manage clusters:
 
 - [Scaling](configure-clusters/) - To ensure the cluster configuration matches its performance requirements, scale the cluster vertically or horizontally as your requirements change.
+- [Read replicas](managed-read-replica/) - Add read replicas to lower read latencies in regions that are distant from your primary cluster.
 - [Backups](backup-clusters/) - Configure a regular backup schedule, run manual backups, and review previous backups.
 - [Maintenance windows](cloud-maintenance/) - Yugabyte only performs cluster maintenance, including database upgrades, during a weekly maintenance window that you configure.
 - [PostgreSQL extensions](add-extensions/) - Extend the functionality of your cluster using PostgreSQL extensions.
@@ -34,11 +35,23 @@ Paused clusters are not billed for instance vCPU capacity. Disk and backup stora
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="configure-clusters/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/linear_scalability.png" aria-hidden="true" />
         <div class="title">Scale clusters</div>
       </div>
       <div class="body">
         Scale clusters horizontally or vertically.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="managed-read-replica/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/planet_scale.png" aria-hidden="true" />
+        <div class="title">Read replicas</div>
+      </div>
+      <div class="body">
+        Serve read requests from remote regions.
       </div>
     </a>
   </div>

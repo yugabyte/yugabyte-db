@@ -28,7 +28,7 @@
 #include "yb/rpc/serialization.h"
 
 #include "yb/util/debug/trace_event.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/result.h"
@@ -44,9 +44,7 @@ using namespace std::literals;
 DECLARE_bool(rpc_dump_all_traces);
 DECLARE_uint64(rpc_max_message_size);
 
-DEFINE_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
-
-DEFINE_uint64(min_sidecar_buffer_size, 16_KB, "Minimal buffer to allocate for sidecar");
+DEFINE_UNKNOWN_bool(enable_rpc_keepalive, true, "Whether to enable RPC keepalive mechanism");
 
 DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
@@ -174,9 +172,6 @@ Status ThrottleRpcStatus(const MemTrackerPtr& throttle_tracker, const YBInboundC
 
 Status YBInboundConnectionContext::HandleCall(
     const ConnectionPtr& connection, CallData* call_data) {
-  auto reactor = connection->reactor();
-  DCHECK(reactor->IsCurrentThread());
-
   auto call = InboundCall::Create<YBInboundCall>(connection, this);
 
   Status s = call->ParseFrom(call_tracker(), call_data);
@@ -195,7 +190,7 @@ Status YBInboundConnectionContext::HandleCall(
     return Status::OK();
   }
 
-  reactor->messenger()->Handle(call, Queue::kTrue);
+  connection->reactor()->messenger().Handle(call, Queue::kTrue);
 
   return Status::OK();
 }
@@ -242,8 +237,14 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
                 << ", deadline: " << AsString(deadline)
                 << ", last_write_time_: " << AsString(last_write_time_)
                 << ", last_heartbeat_sending_time_: " << AsString(last_heartbeat_sending_time_);
-        connection->QueueOutboundData(HeartbeatOutboundData::Instance());
-        last_heartbeat_sending_time_ = now;
+        auto queuing_status = connection->QueueOutboundData(HeartbeatOutboundData::Instance());
+        if (queuing_status.ok()) {
+          last_heartbeat_sending_time_ = now;
+        } else {
+          LOG(DFATAL) << "Could not queue an inbound connection heartbeat message: "
+                      << queuing_status;
+          // We will try again at the next timer event.
+        }
       }
       timer_.Start(HeartbeatPeriod());
     } else {
@@ -253,10 +254,12 @@ void YBInboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) 
 }
 
 YBInboundCall::YBInboundCall(ConnectionPtr conn, CallProcessedListener* call_processed_listener)
-    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener) {}
+    : InboundCall(std::move(conn), nullptr /* rpc_metrics */, call_processed_listener),
+      sidecars_(&consumption_) {}
 
 YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote_method)
-    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */) {
+    : InboundCall(nullptr /* conn */, rpc_metrics, nullptr /* call_processed_listener */),
+      sidecars_(&consumption_) {
   header_.remote_method = remote_method.serialized_body();
 }
 
@@ -289,80 +292,16 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
   return Status::OK();
 }
 
-size_t YBInboundCall::CopyToLastSidecarBuffer(const Slice& car) {
-  if (sidecar_buffers_.empty()) {
-    return 0;
-  }
-  auto& last_buffer =  sidecar_buffers_.back();
-  auto len = std::min(last_buffer.size() - filled_bytes_in_last_sidecar_buffer_, car.size());
-  memcpy(last_buffer.data() + filled_bytes_in_last_sidecar_buffer_, car.data(), len);
-  filled_bytes_in_last_sidecar_buffer_ += len;
-
-  return len;
-}
-
-size_t YBInboundCall::AddRpcSidecar(Slice car) {
-  sidecar_offsets_.Add(narrow_cast<uint32_t>(total_sidecars_size_));
-  total_sidecars_size_ += car.size();
-  // Copy start of sidecar to existing buffer if present.
-  car.remove_prefix(CopyToLastSidecarBuffer(car));
-
-  // If sidecar did not fit into last buffer, then we should allocate a new one.
-  if (!car.empty()) {
-    DCHECK(sidecar_buffers_.empty() ||
-           filled_bytes_in_last_sidecar_buffer_ == sidecar_buffers_.back().size());
-
-    // Allocate new sidecar buffer and copy remaining part of sidecar to it.
-    AllocateSidecarBuffer(std::max<size_t>(car.size(), FLAGS_min_sidecar_buffer_size));
-    memcpy(sidecar_buffers_.back().data(), car.data(), car.size());
-    filled_bytes_in_last_sidecar_buffer_ = car.size();
-  }
-
-  return num_sidecars_++;
-}
-
-void YBInboundCall::ResetRpcSidecars() {
-  if (consumption_) {
-    for (const auto& buffer : sidecar_buffers_) {
-      consumption_.Add(-buffer.size());
-    }
-  }
-  num_sidecars_ = 0;
-  filled_bytes_in_last_sidecar_buffer_ = 0;
-  total_sidecars_size_ = 0;
-  sidecar_buffers_.clear();
-  sidecar_offsets_.Clear();
-}
-
-void YBInboundCall::ReserveSidecarSpace(size_t space) {
-  if (num_sidecars_ != 0) {
-    LOG(DFATAL) << "Attempt to ReserveSidecarSpace when there are already sidecars present";
-    return;
-  }
-
-  AllocateSidecarBuffer(space);
-}
-
-void YBInboundCall::AllocateSidecarBuffer(size_t size) {
-  sidecar_buffers_.push_back(RefCntBuffer(size));
-  if (consumption_) {
-    consumption_.Add(size);
-  }
-}
-
 Status YBInboundCall::SerializeResponseBuffer(AnyMessageConstPtr response, bool is_success) {
   auto body_size = response.SerializedSize();
 
   ResponseHeader resp_hdr;
   resp_hdr.set_call_id(header_.call_id);
   resp_hdr.set_is_error(!is_success);
-  for (auto& offset : sidecar_offsets_) {
-    offset += body_size;
-  }
-  *resp_hdr.mutable_sidecar_offsets() = std::move(sidecar_offsets_);
+  sidecars_.MoveOffsetsTo(body_size, resp_hdr.mutable_sidecar_offsets());
 
   response_buf_ = VERIFY_RESULT(SerializeRequest(
-      body_size, total_sidecars_size_, resp_hdr, response));
+      body_size, sidecars_.size(), resp_hdr, response));
   return Status::OK();
 }
 
@@ -380,8 +319,9 @@ string YBInboundCall::ToString() const {
 bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
                            RpcCallInProgressPB* resp) {
   header_.ToPB(resp->mutable_header());
-  if (req.include_traces() && trace_) {
-    resp->set_trace_buffer(trace_->DumpToString(true));
+  auto my_trace = trace();
+  if (req.include_traces() && my_trace) {
+    resp->set_trace_buffer(my_trace->DumpToString(true));
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
       .ToMilliseconds());
@@ -399,41 +339,37 @@ void YBInboundCall::LogTrace() const {
       // The traces may also be too large to fit in a log message.
       LOG(WARNING) << ToString() << " took " << total_time << "ms (client timeout "
                    << header_.timeout_ms << "ms).";
-      if (trace_) {
-        LOG(WARNING) << "Trace:\n" << trace_->DumpToString(1, true);
+      auto my_trace = trace();
+      if (my_trace) {
+        LOG(WARNING) << "Trace:\n" << my_trace->DumpToString(1, true);
       }
       return;
     }
   }
 
+  auto my_trace = trace();
   if (PREDICT_FALSE(
-          (trace_ && trace_->must_print()) ||
+          (my_trace && my_trace->must_print()) ||
           FLAGS_rpc_dump_all_traces ||
           total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
-    if (trace_) {
-      trace_->Dump(&LOG(INFO), true);
+    if (my_trace) {
+      my_trace->Dump(&LOG(INFO), true);
     }
   }
 }
 
-void YBInboundCall::DoSerialize(boost::container::small_vector_base<RefCntBuffer>* output) {
+void YBInboundCall::DoSerialize(ByteBlocks* output) {
   TRACE_EVENT0("rpc", "YBInboundCall::Serialize");
   CHECK_GT(response_buf_.size(), 0);
-  output->push_back(std::move(response_buf_));
-  if (!sidecar_buffers_.empty()) {
-    sidecar_buffers_.back().Shrink(filled_bytes_in_last_sidecar_buffer_);
-    for (auto& car : sidecar_buffers_) {
-      output->push_back(std::move(car));
-    }
-    sidecar_buffers_.clear();
-  }
+  output->emplace_back(std::move(response_buf_));
+  sidecars_.Flush(output);
 }
 
 Status YBInboundCall::ParseParam(RpcCallParams* params) {
   RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
 
-  auto consumption = params->ParseRequest(serialized_request());
+  auto consumption = params->ParseRequest(serialized_request(), request_data_.buffer());
   if (!consumption.ok()) {
     auto status = consumption.status().CloneAndPrepend(
         Format("Invalid parameter for call $0", header_.RemoteMethodAsString()));
@@ -527,8 +463,8 @@ void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
   }
 }
 
-void YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {
-  connection->QueueOutboundData(ConnectionHeaderInstance());
+Status YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {
+  return connection->QueueOutboundData(ConnectionHeaderInstance());
 }
 
 Result<ProcessCallsResult> YBOutboundConnectionContext::ProcessCalls(
@@ -543,32 +479,34 @@ void YBOutboundConnectionContext::UpdateLastRead(const ConnectionPtr& connection
 
 void YBOutboundConnectionContext::HandleTimeout(ev::timer& watcher, int revents) {  // NOLINT
   const auto connection = connection_.lock();
-  if (connection) {
-    VLOG(5) << Format("$0: YBOutboundConnectionContext::HandleTimeout", connection);
-    if (EV_ERROR & revents) {
-      LOG(WARNING) << connection->ToString() << ": " << "Got an error in handle timeout";
-      return;
-    }
-
-    const auto now = connection->reactor()->cur_time();
-    const MonoDelta timeout = Timeout();
-
-    auto deadline = last_read_time_ + timeout;
-    VLOG(5) << Format(
-        "$0: YBOutboundConnectionContext::HandleTimeout last_read_time_: $1, timeout: $2",
-        connection, last_read_time_, timeout);
-    if (now > deadline) {
-      auto passed = now - last_read_time_;
-      const auto status = STATUS_FORMAT(
-          NetworkError, "Rpc timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
-          passed, timeout, now, last_read_time_);
-      LOG(WARNING) << connection->ToString() << ": " << status;
-      connection->reactor()->DestroyConnection(connection.get(), status);
-      return;
-    }
-
-    timer_.Start(deadline - now);
+  if (!connection) {
+    return;
   }
+  auto& reactor = *connection->reactor();
+  VLOG(5) << Format("$0: YBOutboundConnectionContext::HandleTimeout", connection);
+  if (EV_ERROR & revents) {
+    LOG(WARNING) << connection->ToString() << ": " << "Got an error in handle timeout";
+    return;
+  }
+
+  const auto now = reactor.cur_time();
+  const MonoDelta timeout = Timeout();
+
+  auto deadline = last_read_time_ + timeout;
+  VLOG(5) << Format(
+      "$0: YBOutboundConnectionContext::HandleTimeout last_read_time_: $1, timeout: $2",
+      connection, last_read_time_, timeout);
+  if (now > deadline) {
+    auto passed = now - last_read_time_;
+    const auto status = STATUS_FORMAT(
+        NetworkError, "Rpc timeout, passed: $0, timeout: $1, now: $2, last_read_time_: $3",
+        passed, timeout, now, last_read_time_);
+    LOG(WARNING) << connection->ToString() << ": " << status;
+    reactor.DestroyConnection(connection.get(), status);
+    return;
+  }
+
+  timer_.Start(deadline - now);
 }
 
 } // namespace rpc

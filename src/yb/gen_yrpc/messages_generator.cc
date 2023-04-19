@@ -89,10 +89,10 @@ class Message {
     ScopedIndent public_scope(printer);
 
     printer(
-        "explicit $message_lw_name$(::yb::Arena* arena);\n"
-        "$message_lw_name$(::yb::Arena* arena, const $message_lw_name$& rhs);\n"
+        "explicit $message_lw_name$(::yb::ThreadSafeArena* arena);\n"
+        "$message_lw_name$(::yb::ThreadSafeArena* arena, const $message_lw_name$& rhs);\n"
         "\n"
-        "$message_lw_name$(::yb::Arena* arena, const $message_pb_name$& rhs) \n"
+        "$message_lw_name$(::yb::ThreadSafeArena* arena, const $message_pb_name$& rhs) \n"
         "    : $message_lw_name$(arena) {\n"
         "  CopyFrom(rhs);\n"
         "}\n"
@@ -290,20 +290,51 @@ class Message {
         }
         printer("}\n\n");
       }
-      if (field->is_repeated() && IsMessage(field)) {
-        printer(
-            "$field_type$* add_$field_name$() {\n"
-            "  return &");
-        printer(IsPointerField(field) ? "mutable_$field_name$()->" : "$field_accessor$.");
-        printer("emplace_back();\n"
-            "}\n\n"
+      if (field->is_repeated()) {
+        printer("size_t $field_name$_size() const {\n"
+                "  return "
         );
+        printer(IsPointerField(field) ? "$field_name$()" : "$field_accessor$");
+        printer(".size();\n"
+                "}\n\n"
+        );
+        if (IsMessage(field)) {
+          printer(
+              "$field_type$* add_$field_name$() {\n"
+              "  return &");
+          printer(IsPointerField(field) ? "mutable_$field_name$()->" : "$field_accessor$.");
+          printer("emplace_back();\n"
+                  "}\n\n"
+          );
+        } else if (StoredAsSlice(field)) {
+          printer(
+              "void add_dup_$field_name$(const ::yb::Slice& value) {\n"
+              "  $field_accessor$.push_back(arena_.DupSlice(value));\n"
+              "}\n\n"
+              "void add_ref_$field_name$(const ::yb::Slice& value) {\n"
+              "  $field_accessor$.push_back(value);\n"
+              "}\n\n"
+          );
+        } else {
+          printer(
+              "void add_$field_name$($field_type$ value) {\n"
+              "  $field_accessor$.push_back(value);\n"
+              "}\n\n"
+          );
+        }
+        if (!StoreAsPointer(field)) {
+          printer(
+              "void clear_$field_name$() {\n"
+              "  $field_accessor$.clear();\n"
+              "}\n\n"
+          );
+        }
       }
     }
 
     if (NeedArena(message_)) {
       printer(
-          "::yb::Arena& arena() const {\n"
+          "::yb::ThreadSafeArena& arena() const {\n"
           "  return arena_;\n"
           "}\n\n"
       );
@@ -311,7 +342,7 @@ class Message {
 
     printer(
         "size_t cached_size() const {\n"
-        "  return cached_size_;\n"
+        "  return cached_size_.load(std::memory_order_relaxed);\n"
         "}\n\n"
     );
 
@@ -323,7 +354,7 @@ class Message {
 
     if (NeedArena(message_)) {
       printer(
-          "::yb::Arena& arena_;\n"
+          "::yb::ThreadSafeArena& arena_;\n"
       );
     }
     if (need_has_fields_enum_) {
@@ -332,7 +363,7 @@ class Message {
       );
     }
     printer(
-        "mutable size_t cached_size_ = 0;\n"
+        "mutable std::atomic<size_t> cached_size_{0};\n"
     );
 
     for (int j = 0; j != message_->field_count(); ++j) {
@@ -431,7 +462,7 @@ class Message {
 
  private:
   void Ctor(YBPrinter printer) const {
-    printer("$message_lw_name$::$message_lw_name$(::yb::Arena* arena)");
+    printer("$message_lw_name$::$message_lw_name$(::yb::ThreadSafeArena* arena)");
     bool first = true;
     if (NeedArena(message_)) {
       NextCtorField(printer, &first);
@@ -451,7 +482,8 @@ class Message {
 
   void CopyCtor(YBPrinter printer) const {
     printer(
-        "$message_lw_name$::$message_lw_name$(::yb::Arena* arena, const $message_lw_name$& rhs)"
+        "$message_lw_name$::$message_lw_name$("
+            "::yb::ThreadSafeArena* arena, const $message_lw_name$& rhs)"
     );
     bool first = true;
     if (NeedArena(message_)) {
@@ -789,6 +821,13 @@ class Message {
       case_indent.Reset("}\n");
     }
 
+    printer(
+        "default: { // skip unknown fields\n"
+    );
+    ScopedIndent case_indent(printer);
+    printer("::google::protobuf::internal::WireFormatLite::SkipField(input, p.first);\n");
+    case_indent.Reset("}\n");
+
     switch_indent.Reset("}\n");
     loop_indent.Reset("}\n");
     method_indent.Reset("}\n\n");
@@ -849,7 +888,7 @@ class Message {
 
 
     printer(
-        "cached_size_ = result;\n"
+        "cached_size_.store(result, std::memory_order_relaxed);\n"
         "return result;\n"
     );
     method_indent.Reset("}\n\n");
@@ -1072,6 +1111,12 @@ class MessagesGenerator::Impl {
     printer("\n");
 
     for (int i = 0; i != file->message_type_count(); ++i) {
+      ToLightweightMessage(printer, file->message_type(i));
+    }
+
+    printer("\n");
+
+    for (int i = 0; i != file->message_type_count(); ++i) {
       MessageDeclaration(printer, file->message_type(i));
     }
 
@@ -1106,6 +1151,15 @@ class MessagesGenerator::Impl {
 
     ScopedSubstituter message_substituter(printer, message);
     printer("class $message_lw_name$;\n");
+  }
+
+  void ToLightweightMessage(YBPrinter printer, const google::protobuf::Descriptor* message) {
+    for (auto i = 0; i != message->nested_type_count(); ++i) {
+      ToLightweightMessage(printer, message->nested_type(i));
+    }
+
+    ScopedSubstituter message_substituter(printer, message);
+    printer("$message_lw_name$* LightweightMessageType($message_name$*);\n");
   }
 
   bool MessageDeclaration(YBPrinter printer, const google::protobuf::Descriptor* message) {

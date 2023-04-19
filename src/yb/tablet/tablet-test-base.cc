@@ -108,8 +108,8 @@ void TabletTestPreBase::InsertTestRows(int32_t first_row,
 }
 
 Status TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
-                                                int32_t key_idx,
-                                                int32_t val) {
+                                        int32_t key_idx,
+                                        int32_t val) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_INSERT);
   BuildRow(&req, key_idx, val);
@@ -117,8 +117,8 @@ Status TabletTestPreBase::InsertTestRow(LocalTabletWriter* writer,
 }
 
 Status TabletTestPreBase::UpdateTestRow(LocalTabletWriter* writer,
-                                                int32_t key_idx,
-                                                int32_t new_val) {
+                                        int32_t key_idx,
+                                        int32_t new_val) {
   QLWriteRequestPB req;
   req.set_type(QLWriteRequestPB::QL_STMT_UPDATE);
   BuildRowKey(&req, key_idx);
@@ -160,9 +160,7 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
 
   QLTableRow row;
   QLValue value;
-  while (ASSERT_RESULT((**iter).HasNext())) {
-    ASSERT_OK_FAST((**iter).NextRow(&row));
-
+  while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     if (VLOG_IS_ON(2)) {
       VLOG(2) << "Fetched row: " << row.ToString();
     }

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_WRITE_BATCH_H
-#define YB_DOCDB_DOC_WRITE_BATCH_H
+#pragma once
 
 #include "yb/bfql/tserver_opcodes.h"
 
@@ -261,11 +260,11 @@ class DocWriteBatch {
     return put_batch_;
   }
 
-  void MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb);
+  void MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb);
 
   // This method has worse performance comparing to MoveToWriteBatchPB and intented to be used in
   // testing. Consider using MoveToWriteBatchPB in production code.
-  void TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const;
+  void TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const;
 
   // This is used in tests when measuring the number of seeks that a given update to this batch
   // performs. The internal seek count is reset.
@@ -296,6 +295,14 @@ class DocWriteBatch {
   IntraTxnWriteId ReserveWriteId() {
     put_batch_.emplace_back();
     return narrow_cast<IntraTxnWriteId>(put_batch_.size()) - 1;
+  }
+
+  void RollbackReservedWriteId() {
+    put_batch_.pop_back();
+  }
+
+  void SetDocReadContext(const DocReadContextPtr& doc_read_context) {
+    doc_read_context_ = doc_read_context;
   }
 
  private:
@@ -340,9 +347,10 @@ class DocWriteBatch {
   DocWriteBatchCache cache_;
 
   DocDB doc_db_;
-
   InitMarkerBehavior init_marker_behavior_;
+  DocReadContextPtr doc_read_context_;
   std::atomic<int64_t>* monotonic_counter_;
+
   std::vector<DocWriteBatchEntry> put_batch_;
 
   // Taken from internal_doc_iterator
@@ -350,7 +358,29 @@ class DocWriteBatch {
   bool subdoc_exists_ = true;
   DocWriteBatchCache::Entry current_entry_;
 
+  KeyBuffer packed_row_key_;
+  const SchemaPacking* packed_row_packing_;
+  ValueBuffer packed_row_value_;
+  EncodedDocHybridTime packed_row_write_time_;
+
   MonoDelta ttl_;
+};
+
+// A helper handler for converting a RocksDB write batch to a string.
+class DocWriteBatchFormatter : public WriteBatchFormatter {
+ public:
+  DocWriteBatchFormatter(
+      StorageDbType storage_db_type,
+      BinaryOutputFormat binary_output_format,
+      WriteBatchOutputFormat batch_output_format,
+      std::string line_prefix);
+ protected:
+  std::string FormatKey(const Slice& key) override;
+
+  std::string FormatValue(const Slice& key, const Slice& value) override;
+
+ private:
+  StorageDbType storage_db_type_;
 };
 
 // Converts a RocksDB WriteBatch to a string.
@@ -364,5 +394,3 @@ Result<std::string> WriteBatchToString(
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_DOC_WRITE_BATCH_H

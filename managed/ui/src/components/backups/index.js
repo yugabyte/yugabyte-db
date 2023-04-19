@@ -1,4 +1,4 @@
 // Copyright (c) YugaByte, Inc.
 
-export { default as ListBackup } from './ListBackup/ListBackup';
-export { default as ListBackupContainer } from './ListBackup/ListBackupContainer';
+export { default as ListBackup } from '../tables/ListBackups/ListBackups';
+export { default as ListBackupContainer } from '../tables/ListBackups/ListBackupsContainer';

@@ -14,20 +14,20 @@ import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-tab
 import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 import Select, { OptionTypeBase } from 'react-select';
-import { Backup_States, getBackupsList, IBackup, TIME_RANGE_STATE } from '..';
+import { Backup_States, getBackupsList, IBackup, IStorageConfig, TIME_RANGE_STATE } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton, YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { BackupDetails } from './BackupDetails';
 import {
+  BACKUP_REFETCH_INTERVAL,
   BACKUP_STATUS_OPTIONS,
   CALDENDAR_ICON,
   convertArrayToMap,
+  convertBackupToFormValues,
   DATE_FORMAT,
-  ENTITY_NOT_AVAILABLE,
-  FormatUnixTimeStampTimeToTimezone
+  ENTITY_NOT_AVAILABLE
 } from '../common/BackupUtils';
-import './BackupList.scss';
 import { BackupCancelModal, BackupDeleteModal } from './BackupDeleteModal';
 import { BackupRestoreModal } from './BackupRestoreModal';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
@@ -35,16 +35,18 @@ import { BackupCreateModal } from './BackupCreateModal';
 import { useSearchParam } from 'react-use';
 import { AssignBackupStorageConfig } from './AssignBackupStorageConfig';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
-import { BackupAdvancedRestore } from './BackupAdvancedRestore';
 import clsx from 'clsx';
 import { AccountLevelBackupEmpty, UniverseLevelBackupEmpty } from './BackupEmpty';
 import { YBTable } from '../../common/YBTable';
 import { find } from 'lodash';
 import { fetchTablesInUniverse } from '../../../actions/xClusterReplication';
-import { BackupThrottleParameters } from './BackupThrottleParameters';
-import { TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
+import { TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import './BackupList.scss';
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const reactWidgets = require('react-widgets');
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const momentLocalizer = require('react-widgets-moment');
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -54,7 +56,7 @@ momentLocalizer(moment);
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
 
-const TIME_RANGE_OPTIONS = [
+export const TIME_RANGE_OPTIONS = [
   {
     value: [1, 'days'],
     label: 'Last 24 hrs'
@@ -109,7 +111,7 @@ const MORE_FILTER_OPTIONS = [
   }
 ];
 
-const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
+export const DEFAULT_TIME_STATE: TIME_RANGE_STATE = {
   startTime: null,
   endTime: null,
   label: null
@@ -132,8 +134,8 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [showBackupCreateModal, setShowBackupCreateModal] = useState(false);
   const [showAssignConfigModal, setShowAssignConfigModal] = useState(false);
-  const [showAdvancedRestore, setShowAdvancedRestore] = useState(false);
-  const [showThrottleParametersModal, setShowThrottleParametersModal] = useState(false);
+  const [showEditBackupModal, setShowEditBackupModal] = useState(false);
+  const [isRestoreEntireBackup, setRestoreEntireBackup] = useState(false);
 
   const [selectedBackups, setSelectedBackups] = useState<IBackup[]>([]);
   const [status, setStatus] = useState<any[]>([BACKUP_STATUS_OPTIONS[0]]);
@@ -149,7 +151,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
 
     return {
       label: action.label,
-      startTime: moment().subtract(action.value[0], action.value[1]),
+      startTime: moment().subtract(action.value[0], action.value[1]).toDate(),
       endTime: new Date()
     };
   };
@@ -186,7 +188,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         storage_config_uuid
       ),
     {
-      refetchInterval: 1000 * 20,
+      refetchInterval: BACKUP_REFETCH_INTERVAL,
       onSuccess(resp) {
         if (showDetails) {
           setShowDetails(
@@ -214,10 +216,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
   const storageConfigs = useSelector((reduxState: any) => reduxState.customer.configs);
   const currentUniverse = useSelector((reduxState: any) => reduxState.universe.currentUniverse);
 
-  const featureFlags = useSelector((reduxState: any) => reduxState.featureFlags);
-
-  const YBCEnabled = featureFlags.test.enableYbc || featureFlags.released.enableYbc;
-
   const [restoreDetails, setRestoreDetails] = useState<IBackup | null>(null);
   const [cancelBackupDetails, setCancelBackupDetails] = useState<IBackup | null>(null);
 
@@ -230,7 +228,9 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
     return (
       searchText.length !== 0 ||
       status[0].value !== null ||
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       timeRange.startTime ||
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       timeRange.endTime ||
       moreFilters.length > 0
     );
@@ -273,6 +273,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
             ) {
               return;
             }
+            setRestoreEntireBackup(true);
             setRestoreDetails(row);
             setShowRestoreModal(true);
           }}
@@ -291,11 +292,32 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         >
           Delete Backup
         </MenuItem>
+        <MenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            if (
+              row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+              !row.isStorageConfigPresent
+            ) {
+              return;
+            }
+
+            setSelectedBackups([row]);
+            setShowEditBackupModal(true);
+          }}
+          disabled={
+            row.commonBackupInfo.state !== Backup_States.COMPLETED ||
+            !row.isStorageConfigPresent
+          }>
+          Edit Backup
+        </MenuItem>
       </DropdownButton>
     );
   };
 
-  const backups: IBackup[] = backupsList?.data.entities;
+  const backups: IBackup[] = backupsList?.data.entities.map((b: IBackup) => {
+    return { ...b, backupUUID: b.commonBackupInfo.backupUUID };
+  });
 
   if (!isFilterApplied() && backups?.length === 0) {
     return allowTakingBackup ? (
@@ -303,9 +325,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <UniverseLevelBackupEmpty
           onActionButtonClick={() => {
             setShowBackupCreateModal(true);
-          }}
-          onAdvancedRestoreButtonClick={() => {
-            setShowAdvancedRestore(true);
           }}
           disabled={
             tablesInUniverse?.data.length === 0 ||
@@ -318,13 +337,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           onHide={() => {
             setShowBackupCreateModal(false);
           }}
-          currentUniverseUUID={universeUUID}
-        />
-        <BackupAdvancedRestore
-          onHide={() => {
-            setShowAdvancedRestore(false);
-          }}
-          visible={showAdvancedRestore}
           currentUniverseUUID={universeUUID}
         />
       </>
@@ -453,35 +465,6 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
                   currentUniverse?.data?.universeDetails?.universePaused
                 }
               />
-              <DropdownButton
-                className="actions-btn"
-                title="•••"
-                id="advanced-backup-dropdown"
-                noCaret
-                pullRight
-                onClick={(e) => e.stopPropagation()}
-              >
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (currentUniverse?.data?.universeDetails?.universePaused) return;
-                    setShowAdvancedRestore(true);
-                  }}
-                  disabled={currentUniverse?.data?.universeDetails?.universePaused}
-                >
-                  Advanced Restore
-                </MenuItem>
-                {YBCEnabled && (
-                  <MenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowThrottleParametersModal(true);
-                    }}
-                  >
-                    Configure Throttle Parameters
-                  </MenuItem>
-                )}
-              </DropdownButton>
             </>
           )}
         </div>
@@ -567,16 +550,14 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="backupType"
-            dataFormat={(backupType) => TABLE_TYPE_MAP[backupType]}
+            dataFormat={(backupType) => TableTypeLabel[backupType]}
             width="10%"
           >
             API Type
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="createTime"
-            dataFormat={(_, row: IBackup) => (
-              <FormatUnixTimeStampTimeToTimezone timestamp={row.commonBackupInfo.createTime} />
-            )}
+            dataFormat={(_, row: IBackup) => ybFormatDate(row.commonBackupInfo.createTime)}
             width="20%"
             dataSort
           >
@@ -584,9 +565,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="expiryTime"
-            dataFormat={(time) =>
-              time ? <FormatUnixTimeStampTimeToTimezone timestamp={time} /> : "Won't Expire"
-            }
+            dataFormat={(time) => (time ? ybFormatDate(time) : "Won't Expire")}
             width="20%"
           >
             Expiration
@@ -631,6 +610,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowDeleteModal(true);
         }}
         onRestore={(customDetails?: IBackup) => {
+          setRestoreEntireBackup(customDetails ? false : true);
           setRestoreDetails(customDetails ?? showDetails);
           setShowRestoreModal(true);
         }}
@@ -639,6 +619,11 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowAssignConfigModal(true);
         }}
         currentUniverseUUID={universeUUID}
+        onEdit={() => {
+          setSelectedBackups([showDetails] as IBackup[]);
+          setShowEditBackupModal(true);
+        }}
+        tablesInUniverse={tablesInUniverse?.data}
       />
       <BackupDeleteModal
         backupsList={selectedBackups}
@@ -649,6 +634,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
         <BackupRestoreModal
           backup_details={restoreDetails}
           visible={showRestoreModal}
+          isRestoreEntireBackup={isRestoreEntireBackup}
           onHide={() => {
             setShowRestoreModal(false);
           }}
@@ -673,22 +659,19 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowAssignConfigModal(false);
         }}
       />
-      {allowTakingBackup && (
-        <BackupAdvancedRestore
-          onHide={() => {
-            setShowAdvancedRestore(false);
-          }}
-          visible={showAdvancedRestore}
-          currentUniverseUUID={universeUUID}
-        />
-      )}
-      {allowTakingBackup && YBCEnabled && (
-        <BackupThrottleParameters
-          visible={showThrottleParametersModal}
-          onHide={() => setShowThrottleParametersModal(false)}
-          currentUniverseUUID={universeUUID!}
-        />
-      )}
+      <BackupCreateModal
+        visible={showEditBackupModal}
+        onHide={() => setShowEditBackupModal(false)}
+        currentUniverseUUID={selectedBackups[0]?.universeUUID}
+        isEditBackupMode={true}
+        isEditMode={true}
+        isIncrementalBackup={selectedBackups[0]?.hasIncrementalBackups}
+        isScheduledBackup={selectedBackups.length !== 0 && !selectedBackups[0].onDemand}
+        editValues={selectedBackups[0] && convertBackupToFormValues(selectedBackups[0], 
+          storageConfigs?.data.find((e:IStorageConfig) => {
+            return e.configUUID === selectedBackups[0].commonBackupInfo.storageConfigUUID;
+          }))}
+      />
     </Row>
   );
 };

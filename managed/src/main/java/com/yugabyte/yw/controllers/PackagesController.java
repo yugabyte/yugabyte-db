@@ -13,6 +13,7 @@ import java.io.File;
 import java.util.StringJoiner;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -35,9 +36,9 @@ public class PackagesController extends AbstractPlatformController {
         dataType = "com.yugabyte.yw.forms.PackagesRequestParams",
         paramType = "body")
   })
-  public Result fetchPackage() {
+  public Result fetchPackage(Http.Request request) {
 
-    PackagesRequestParams taskParams = parseJsonAndValidate(PackagesRequestParams.class);
+    PackagesRequestParams taskParams = parseJsonAndValidate(request, PackagesRequestParams.class);
     StringJoiner joiner = new StringJoiner("-");
     joiner
         .add(taskParams.packageName)
@@ -53,7 +54,6 @@ public class PackagesController extends AbstractPlatformController {
             + "/"
             + joiner.toString()
             + fileExt;
-    response().setContentType("application/gzip");
-    return Results.ok(new File(fileLoc));
+    return Results.ok(new File(fileLoc)).withHeader(CONTENT_TYPE, "application/gzip");
   }
 }

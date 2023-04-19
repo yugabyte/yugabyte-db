@@ -15,8 +15,7 @@
 // Structure definitions for column descriptor of a table.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_COLDESC_H_
-#define YB_YQL_PGGATE_PG_COLDESC_H_
+#pragma once
 
 
 namespace yb {
@@ -111,5 +110,3 @@ class ColumnDesc {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif  // YB_YQL_PGGATE_PG_COLDESC_H_

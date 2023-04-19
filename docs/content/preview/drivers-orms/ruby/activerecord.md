@@ -1,7 +1,8 @@
 ---
-title: Use an ORM
+title: Active Record ORM
+headerTitle: Use an ORM
 linkTitle: Use an ORM
-description: Active Record ORM support for YugabyteDB
+description: Ruby Active Record ORM support for YugabyteDB
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -247,5 +248,5 @@ $ curl http://localhost:8080/orders
 
 ## Learn more
 
-- Build Ruby applications using [Pg Gem Driver](../ysql-pg/).
-- Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/).
+- Build Ruby applications using [Pg Gem Driver](../ysql-pg/)
+- Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/)

@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .backup-v2 {
   .backup-actions {
@@ -86,7 +86,7 @@
   }
 
   .backup-list-table {
-    background: $YB_BG_WHITE_3;
+    background: colors.$YB_BG_WHITE_3;
 
     &.account-level-view {
       padding: 30px 22px;
@@ -117,7 +117,7 @@
   }
 
   .action-danger > a {
-    color: $YB_ERROR_ICON_COLOR !important;
+    color: colors.$YB_ERROR_ICON_COLOR !important;
   }
 
   .no-padding {
@@ -130,18 +130,18 @@
   align-items: baseline;
   gap: 4px;
   font-size: 12px;
-  color: $YB_DARKER_GRAY;
+  color: colors.$YB_DARKER_GRAY;
   text-decoration: none !important;
 
   &.warning {
     i {
-      color: $YB_WARNING_COLOR;
+      color: colors.$YB_WARNING_COLOR;
     }
   }
 
   &.danger {
     i {
-      color: $YB_ERROR_ICON_COLOR;
+      color: colors.$YB_ERROR_ICON_COLOR;
     }
   }
 }

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_OPERATION_COUNTER_H
-#define YB_UTIL_OPERATION_COUNTER_H
+#pragma once
 
 #include <atomic>
 #include <mutex>
@@ -96,6 +95,11 @@ class RWOperationCounter {
   std::string resource_name() const {
     return resource_name_;
   }
+
+  uint64_t TEST_GetDisableCount() const;
+
+  bool TEST_IsStopped() const;
+
  private:
   Status WaitForOpsToFinish(
       const CoarseTimePoint& start_time, const CoarseTimePoint& deadline);
@@ -222,5 +226,3 @@ inline Status&& MoveStatus(ScopedRWOperationPause&& p) {
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_OPERATION_COUNTER_H

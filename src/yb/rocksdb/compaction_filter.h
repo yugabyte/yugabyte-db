@@ -21,8 +21,7 @@
 // under the License.
 //
 
-#ifndef YB_ROCKSDB_COMPACTION_FILTER_H
-#define YB_ROCKSDB_COMPACTION_FILTER_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -184,5 +183,3 @@ class CompactionFileFilterFactory {
 };
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_COMPACTION_FILTER_H

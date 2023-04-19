@@ -15,8 +15,7 @@
 // Tree node definitions for DROP statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_DROP_H_
-#define YB_YQL_CQL_QL_PTREE_PT_DROP_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/pt_name.h"
@@ -86,5 +85,3 @@ class PTDropStmt : public TreeNode {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_DROP_H_

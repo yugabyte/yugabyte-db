@@ -777,33 +777,6 @@ export function fetchSlowQueries(universeUUID, cancelFn) {
   return request;
 }
 
-export async function fetchUnusedIndexesSuggestions(universeUUID) {
-  const customerUUID = localStorage.getItem('customerId');
-  try {
-    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/unused_indexes`);
-  } catch (e) {
-    return e.response;
-  }
-}
-
-export async function fetchQueryLoadSkewSuggestions(universeUUID) {
-  const customerUUID = localStorage.getItem('customerId');
-  try {
-    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/query_distribution_suggestions`);
-  } catch (e) {
-    return e.response;
-  }
-}
-
-export async function fetchRangeShardingSuggestions(universeUUID) {
-  const customerUUID = localStorage.getItem('customerId');
-  try {
-    return await axios.get(`${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/range_hash`);
-  } catch (e) {
-    return e.response;
-  }
-}
-
 export function resetSlowQueries(universeUUID) {
   const customerUUID = localStorage.getItem('customerId');
   const endpoint = `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/slow_queries`;
@@ -865,7 +838,7 @@ export async function fetchParticularFlag(dbVersion, params) {
 
 export async function validateGFlags(dbVersion, payload) {
   try {
-    const apiToken = Cookies.get('apiToken') || localStorage.getItem('apiToken');
+    const apiToken = Cookies.get('apiToken') ?? localStorage.getItem('apiToken');
     if (apiToken && apiToken !== '') {
       axios.defaults.headers.common['X-AUTH-YW-API-TOKEN'] = apiToken;
     }
@@ -885,6 +858,24 @@ export async function fetchSupportedReleases(pUUID) {
   const cUUID = localStorage.getItem('customerId');
   try {
     return await axios.get(`${ROOT_URL}/customers/${cUUID}/providers/${pUUID}/releases`);
+  } catch (e) {
+    throw e.response.data;
+  }
+}
+
+export function validateHelmYAML(UniverseConfigureTaskParams) {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(`${ROOT_URL}/customers/${cUUID}/validate_kubernetes_overrides`, {
+    ...UniverseConfigureTaskParams
+  });
+}
+
+export async function fetchNodeDetails(universeUUID, nodeName) {
+  const customerUUID = localStorage.getItem('customerId');
+  try {
+    return await axios.get(
+      `${ROOT_URL}/customers/${customerUUID}/universes/${universeUUID}/nodes/${nodeName}/details`
+    );
   } catch (e) {
     throw e.response.data;
   }

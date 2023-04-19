@@ -27,13 +27,20 @@ namespace master {
 
 SystemTablet::SystemTablet(const Schema& schema, std::unique_ptr<YQLVirtualTable> yql_virtual_table,
                            const TabletId& tablet_id)
-    : doc_read_context_(std::make_shared<docdb::DocReadContext>(schema, kSysCatalogSchemaVersion)),
+    : log_prefix_(Format("T $0: ", tablet_id)), // Don't have UUID here to log in T XX P YY format.
+      doc_read_context_(std::make_shared<docdb::DocReadContext>(
+          log_prefix_, TableType::YQL_TABLE_TYPE, schema, kSysCatalogSchemaVersion)),
       yql_virtual_table_(std::move(yql_virtual_table)),
       tablet_id_(tablet_id) {
 }
 
-docdb::DocReadContextPtr SystemTablet::GetDocReadContext(const std::string& table_id) const {
+Result<docdb::DocReadContextPtr> SystemTablet::GetDocReadContext(
+    const std::string& table_id) const {
   // table_id is ignored. It should match the system table's id.
+  return GetDocReadContext();
+}
+
+docdb::DocReadContextPtr SystemTablet::GetDocReadContext() const {
   return doc_read_context_;
 }
 
@@ -59,10 +66,11 @@ Status SystemTablet::HandleQLReadRequest(CoarseTimePoint deadline,
                                          const ReadHybridTime& read_time,
                                          const QLReadRequestPB& ql_read_request,
                                          const TransactionMetadataPB& transaction_metadata,
-                                         tablet::QLReadRequestResult* result) {
+                                         tablet::QLReadRequestResult* result,
+                                         WriteBuffer* rows_data) {
   DCHECK(!transaction_metadata.has_transaction_id());
   return tablet::AbstractTablet::HandleQLReadRequest(
-      deadline, read_time, ql_read_request, TransactionOperationContext(), result);
+      deadline, read_time, ql_read_request, TransactionOperationContext(), result, rows_data);
 }
 
 Status SystemTablet::CreatePagingStateForRead(const QLReadRequestPB& ql_read_request,

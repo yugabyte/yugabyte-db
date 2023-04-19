@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_RESTART_SAFE_CLOCK_H
-#define YB_UTIL_RESTART_SAFE_CLOCK_H
+#pragma once
 
 #include "yb/util/monotime.h"
 
@@ -122,5 +121,3 @@ class RestartSafeCoarseMonoClock {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_RESTART_SAFE_CLOCK_H

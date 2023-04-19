@@ -41,10 +41,10 @@ class PgFKeyTest : public PgMiniTestBase {
   void SetUp() override {
     PgMiniTestBase::SetUp();
     const auto& tserver = *cluster_->mini_tablet_server(0)->server();
-    read_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+    read_rpc_watcher_ = std::make_unique<MetricWatcher>(
         tserver,
         METRIC_handler_latency_yb_tserver_TabletServerService_Read);
-    perform_rpc_watcher_ = std::make_unique<HistogramMetricWatcher>(
+    perform_rpc_watcher_ = std::make_unique<MetricWatcher>(
         tserver,
         METRIC_handler_latency_yb_tserver_PgClientService_Perform);
   }
@@ -53,8 +53,8 @@ class PgFKeyTest : public PgMiniTestBase {
     return 1;
   }
 
-  std::unique_ptr<HistogramMetricWatcher> read_rpc_watcher_;
-  std::unique_ptr<HistogramMetricWatcher> perform_rpc_watcher_;
+  std::unique_ptr<MetricWatcher> read_rpc_watcher_;
+  std::unique_ptr<MetricWatcher> perform_rpc_watcher_;
 };
 
 Status InsertItems(
@@ -207,6 +207,7 @@ TEST_F(PgFKeyTest, YB_DISABLE_TEST_IN_TSAN(MultipleFKConstraintRPCCount)) {
   // Warmup catalog cache to load info related for triggers before estimating RPC count.
   ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(1, 11, 21, 31)", kFKTable));
   ASSERT_OK(conn.ExecuteFormat("TRUNCATE $0", kFKTable));
+  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0", kFKTable));
   const auto insert_fk_rpc_count = ASSERT_RESULT(perform_rpc_watcher_->Delta([&conn]() {
     return conn.ExecuteFormat(
       "INSERT INTO $0 VALUES(1, 11, 21, 31), (2, 12, 22, 32), (3, 13, 23, 33)", kFKTable);

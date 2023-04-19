@@ -3,10 +3,10 @@
 import React, { Component } from 'react';
 
 import { Row, Col } from 'react-bootstrap';
-import { UniverseInfoPanelContainer, ResourceStringPanelContainer } from '../../panels';
+import { UniverseInfoPanelContainer, ResourceStringPanelContainer , YBPanelItem, YBWidget } from '../../panels';
 import { OverviewMetricsContainer } from '../../metrics';
 import { UniverseResources } from '../UniverseResources';
-import { YBPanelItem, YBWidget } from '../../panels';
+
 import { RegionMap, YBMapLegend } from '../../maps';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
@@ -68,10 +68,12 @@ export default class UniverseOverview extends Component {
     const hasReadReplica = this.hasReadReplica(universeInfo);
     const infoWidgets = [
       <YBWidget
+        key={'Resource Info'}
         headerLeft={'Resource Info'}
         body={<UniverseInfoPanelContainer universeInfo={universeInfo} />}
       />,
       <YBWidget
+        key={'Primary Cluster'}
         headerLeft={'Primary Cluster'}
         body={<ResourceStringPanelContainer universeInfo={universeInfo} type="primary" />}
       />
@@ -89,6 +91,7 @@ export default class UniverseOverview extends Component {
         <div key={'universe_info_widgets'}>
           {infoWidgets.map((widget, idx) => {
             return (
+              // eslint-disable-next-line react/no-array-index-key
               <Col key={`info_widget_${idx}`} lg={4} md={6} sm={6} xs={12}>
                 {widget}
               </Col>
@@ -102,6 +105,7 @@ export default class UniverseOverview extends Component {
           <Row>
             {infoWidgets.map((widget, idx) => {
               return (
+                // eslint-disable-next-line react/no-array-index-key
                 <Col lg={12} md={6} sm={6} xs={12} key={`info_widget_${idx}`}>
                   {widget}
                 </Col>

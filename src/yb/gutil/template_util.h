@@ -61,8 +61,7 @@
 // Both of these outcomes means that we may be able to directly replace
 // some of these with boost equivalents.
 //
-#ifndef BASE_TEMPLATE_UTIL_H_
-#define BASE_TEMPLATE_UTIL_H_
+#pragma once
 
 namespace base {
 
@@ -175,5 +174,3 @@ struct is_class
 };
 
 }
-
-#endif  // BASE_TEMPLATE_UTIL_H_

@@ -8,7 +8,128 @@ layout: single
 type: docs
 ---
 
+On this page:
+
+- [Releases](#releases)
+- [Cloud provider regions](#cloud-provider-regions)
+- [Known issues](#known-issues)
+
 ## Releases
+
+### March 31, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.17.2](../../releases/release-notes/v2.17/#v2.17.2.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+### March 27, 2023
+
+**New Features**
+
+- [YugabyteDB Managed CLI](../../yugabyte-cloud/managed-automation/managed-cli/). Use the YugabyteDB Managed command line interface (ybm CLI) to deploy and manage your YugabyteDB Managed database clusters from your terminal or IDE.
+- Support for AWS PrivateLink (preview release). Connect YugabyteDB Managed clusters on AWS with other AWS resources via private endpoints. Currently only configurable via ybm CLI.
+
+**Enhancements**
+
+- Faster cluster scaling. Up to 2x performance in vertical scaling (adding and removing vCPUs) operations on dedicated clusters.
+- Support for more than 125 additional performance metrics.
+- Ability to reorder performance metrics to create customized dashboards.
+
+### March 16, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.7](../../releases/release-notes/v2.14/#v2.14.7.0) for dedicated clusters. New clusters use this version by default.
+
+### March 1, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.12.9](../../releases/release-notes/v2.12/#v2.12.9.0) for dedicated clusters. New clusters use this version by default.
+
+### February 13, 2023
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version [2.17.1](../../releases/release-notes/v2.17/#v2.17.1.0). New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) reset to [version 2.14.6](../../releases/release-notes/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use this version by default.
+
+### February 8, 2023
+
+**New Features**
+
+- Users can now request a [time-limited free trial](../managed-freetrial/) to explore all the YugabyteDB Managed features.
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.1](../../releases/release-notes/v2.16/#v2.16.1.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### January 27, 2023
+
+**New Features**
+
+- [YugabyteDB Managed Terraform Provider](https://registry.terraform.io/providers/yugabyte/ybm/latest) generally available. Use the provider to deploy and manage your database clusters in YugabyteDB Managed.
+
+### January 18, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.16.0](../../releases/release-notes/v2.16/#v2.16.0.1) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+**Infrastructure**
+
+- Instance type for new Dedicated clusters on AWS updated to [m6i](https://aws.amazon.com/ec2/instance-types/m6i/).
+
+### January 13, 2023
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.6](../../releases/release-notes/v2.14/#v2.14.6.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### December 21, 2022
+
+**New Features**
+
+- Ability to add IP addresses to the cluster IP allow list during cluster creation. The **Create Cluster** wizard includes the new **Network Access** page to configure connectivity for your cluster. Automatically detect and add your current IP address or the addresses of any peered VPC to the cluster.
+- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
+
+**Database**
+
+- [Stable release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to [version 2.14.5](../../releases/release-notes/v2.14/#v2.14.5.0) for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### December 12, 2022
+
+**New Features**
+
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) generally available. Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+
+### November 28, 2022
+
+**New Features**
+
+- Support for multi-region clusters with [geo-partitioning](../../explore/multi-region-deployments/row-level-geo-partitioning/) using the new [Partition by region](../cloud-basics/create-clusters-topology/#partition-by-region) deployment. Geo-partitioning allows you to move data closer to users to achieve lower latency and higher performance, and meet data residency requirements to comply with regulations such as GDPR.
+- Support for [read replicas](../cloud-basics/create-clusters-topology/#read-replicas). Use read replicas to lower latencies for read requests from remote regions.
+
+**Database**
+
+- [Preview release](../../faq/yugabytedb-managed-faq/#what-version-of-yugabytedb-does-my-cluster-run-on) updated to version 2.15.3. New Sandbox clusters automatically use the new version. Existing clusters will be upgraded in the coming weeks.
+- Stable release updated to version 2.14.4 for dedicated clusters. New clusters use the new version by default. Existing clusters will be upgraded in the coming weeks.
+
+### November 15, 2022
+
+**New Features**
+
+- Ability to view cluster health. YugabyteDB Managed monitors the health of your clusters based on cluster alert conditions and displays the health as either Healthy, Needs Attention, or Unhealthy.
+- Ability to set alerts for failed nodes. Get notified when the number of failed nodes exceeds the threshold.
+
+### November 4, 2022
+
+**New Features**
+
+- Ability to reset slow queries for faster debugging of slow-running queries.
+- Ability to set a preferred region to tune the read and write latency for specific regions. Designating one region as preferred can reduce the number of network hops needed to process requests. The preferred region can be assigned during cluster creation, and set or changed after cluster creation.
+- Ability to view details of task progress for cluster edit operations for better monitoring.
 
 ### October 24, 2022
 
@@ -51,7 +172,7 @@ type: docs
 **New Features**
 
 - Performance Optimizer for scanning clusters for optimizations (preview release). Provides recommendations on index and schema improvements, and detects connection, query, and CPU skew to identify potentially hot nodes.
-- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
+- [YugabyteDB Managed REST API](https://yugabyte.stoplight.io/docs/managed-apis/) (preview release). Use the REST API to deploy and manage your database clusters in YugabyteDB Managed programmatically.
 - API key management for creating and managing bearer tokens for use with the YugabyteDB Managed REST API.
 
 ### June 22, 2022
@@ -262,20 +383,25 @@ The following **AWS regions** are available:
 - Sao Paulo (sa-east-1)
 - N. Virginia (us-east-1)
 - Ohio (us-east-2)
-- N. California (us-west-1)
+- N. California (us-west-1)*
 - Oregon (us-west-2)
+
+\* Region has 2 availability zones only
 
 ## Known issues
 
 - **Missing Slow Queries** - On clusters with multiple nodes, in some circumstances some nodes may not return all query statements when requested. If this happens, the query statements will be missing from the Slow Queries page.
+- **Slow Queries Reset** - When resetting Slow Queries, the query used for the reset remains in the table.
 - **Tables** - In some instances in Sandbox clusters, the **Tables** tab will show all tables with a size of 0B.
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
+- **Read replicas**
+  - Read replicas currently need to use the same instance type as the Primary cluster.
+  - For clusters in AWS, removed read replicas can't be added back to the same region if the cluster has other read replicas. To add a read replica back to the same region, first remove all the read replicas and then add them all back.
 
 ### Known issues in Cloud Shell
 
 - If [Cloud Shell](../cloud-connect/connect-cloud-shell/) stops responding, close the browser tab and restart Cloud Shell.
-- Cloud Shell is unavailable during any edit and backup/restore operations. Wait until the operations are complete before you launch the shell.
-- If a Cloud Shell session is inactive for more than five minutes, it may be disconnected by your browser.
 - Occasionally, Cloud Shell will take longer than normal to load; subsequent loads will be faster.

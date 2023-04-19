@@ -13,10 +13,11 @@
 
 // Utilities for docdb operations.
 
-#ifndef YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
-#define YB_DOCDB_PRIMITIVE_VALUE_UTIL_H
+#pragma once
 
-#include "yb/docdb/docdb.h"
+#include <google/protobuf/repeated_field.h>
+
+#include "yb/docdb/docdb_encoding_fwd.h"
 
 #include "yb/util/memory/arena_list.h"
 
@@ -39,5 +40,3 @@ Result<std::vector<KeyEntryValue>> InitKeyColumnPrimitiveValues(
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_PRIMITIVE_VALUE_UTIL_H

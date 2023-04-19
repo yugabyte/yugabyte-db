@@ -4,8 +4,6 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthToken;
-import static com.yugabyte.yw.common.FakeApiHelper.doRequestWithAuthTokenAndBody;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -195,7 +193,7 @@ public class MaintenanceControllerTest extends FakeDBApplication {
                     "/api/customers/" + customer.getUuid() + "/maintenance_windows",
                     authToken,
                     Json.toJson(maintenanceWindow)));
-    assertBadRequest(result, "{\"name\":[\"may not be null\"]}");
+    assertBadRequest(result, "{\"name\":[\"must not be null\"]}");
   }
 
   @Test
@@ -233,7 +231,7 @@ public class MaintenanceControllerTest extends FakeDBApplication {
                         + maintenanceWindow.getUuid(),
                     authToken,
                     Json.toJson(maintenanceWindow)));
-    assertBadRequest(result, "{\"alertConfigurationFilter\":[\"may not be null\"]}");
+    assertBadRequest(result, "{\"alertConfigurationFilter\":[\"must not be null\"]}");
   }
 
   @Test

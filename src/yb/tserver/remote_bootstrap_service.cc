@@ -37,7 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/common/wire_protocol.h"
@@ -57,7 +56,7 @@
 
 #include "yb/util/crc.h"
 #include "yb/util/fault_injection.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -82,12 +81,12 @@ using namespace std::literals;
     } \
   } while (false)
 
-DEFINE_uint64(remote_bootstrap_idle_timeout_ms, 180000,
+DEFINE_RUNTIME_uint64(remote_bootstrap_idle_timeout_ms, 2 * yb::MonoTime::kMillisecondsPerHour,
               "Amount of time without activity before a remote bootstrap "
               "session will expire, in millis");
 TAG_FLAG(remote_bootstrap_idle_timeout_ms, hidden);
 
-DEFINE_uint64(remote_bootstrap_timeout_poll_period_ms, 10000,
+DEFINE_UNKNOWN_uint64(remote_bootstrap_timeout_poll_period_ms, 10000,
               "How often the remote_bootstrap service polls for expired "
               "remote bootstrap sessions, in millis");
 TAG_FLAG(remote_bootstrap_timeout_poll_period_ms, hidden);
@@ -118,7 +117,7 @@ DEFINE_test_flag(
     "Fraction of the time when the peer will crash while "
     "servicing a RemoteBootstrapAnchorService RegisterLogAnchor() RPC call.");
 
-DEFINE_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
+DEFINE_UNKNOWN_uint64(remote_bootstrap_change_role_timeout_ms, 15000,
               "Timeout for change role operation during remote bootstrap.");
 
 namespace yb {

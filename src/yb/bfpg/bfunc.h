@@ -17,8 +17,7 @@
 // See the header of file "/util/bfpg/bfpg.h" for more general overall information.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFPG_BFUNC_H_
-#define YB_BFPG_BFUNC_H_
+#pragma once
 
 #include <iosfwd>
 #include <type_traits>
@@ -27,5 +26,3 @@
 #include "yb/gutil/integral_types.h"
 
 // Include all builtin function templates.
-
-#endif  // YB_BFPG_BFUNC_H_

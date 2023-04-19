@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_TABLET_SERVER_INTERFACE_H
-#define YB_TSERVER_TABLET_SERVER_INTERFACE_H
+#pragma once
 
 #include <future>
 
@@ -54,6 +53,7 @@ class TabletServerIf : public LocalTabletServer {
                                            uint64_t* last_breaking_version) const = 0;
 
   virtual Status get_ysql_db_oid_to_cat_version_info_map(
+      const tserver::GetTserverCatalogVersionInfoRequestPB& req,
       tserver::GetTserverCatalogVersionInfoResponsePB *resp) const = 0;
 
   virtual const scoped_refptr<MetricEntity>& MetricEnt() const = 0;
@@ -80,5 +80,3 @@ class TabletServerIf : public LocalTabletServer {
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_TABLET_SERVER_INTERFACE_H

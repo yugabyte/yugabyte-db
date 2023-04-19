@@ -6,7 +6,6 @@ import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -18,11 +17,11 @@ import com.yugabyte.yw.models.Universe;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
-import java.util.Date;
-import java.util.List;
-import java.util.Arrays;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -52,7 +51,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
   public void setUp() {
     // Setup fake temp log files, universe, customer
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
     List<String> fakeLogsList =
         Arrays.asList(
             "application-log-2022-03-05.gz",
@@ -69,9 +68,6 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
 
     // Mock all the config invocations with fake data
     when(mockBaseTaskDependencies.getConfig()).thenReturn(mockConfig);
-    when(mockConfig.hasPath("application.home")).thenReturn(false);
-    lenient().when(mockConfig.getString("application.home")).thenReturn(fakeSupportBundleBasePath);
-    when(mockConfig.hasPath("log.override.path")).thenReturn(true);
     when(mockConfig.getString("log.override.path")).thenReturn(fakeSourceLogsPath);
     when(mockConfig.getString("yb.support_bundle.application_logs_regex_pattern"))
         .thenReturn(testRegexPattern);
@@ -94,7 +90,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList =
@@ -122,7 +118,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList =
@@ -146,7 +142,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList = Arrays.asList("application-log-2022-03-05.gz");
@@ -169,7 +165,7 @@ public class ApplicationLogsComponentTest extends FakeDBApplication {
     ApplicationLogsComponent applicationLogsComponent =
         new ApplicationLogsComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     applicationLogsComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate);
+        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, null);
 
     // Files expected to be present in the bundle after filtering
     List<String> expectedFilesList = Arrays.asList();

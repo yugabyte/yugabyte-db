@@ -13,8 +13,10 @@
 
 #include "yb/master/yql_virtual_table.h"
 
-#include "yb/common/ql_scanspec.h"
 #include "yb/common/schema.h"
+
+#include "yb/docdb/key_entry_value.h"
+#include "yb/docdb/doc_ql_scanspec.h"
 
 #include "yb/master/master.h"
 #include "yb/master/scoped_leader_shared_lock.h"
@@ -86,9 +88,11 @@ Status YQLVirtualTable::BuildYQLScanSpec(
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");
   }
-  spec->reset(new QLScanSpec(
+  const std::vector<KeyEntryValue> empty_vec;
+  spec->reset(new docdb::DocQLScanSpec(
+      schema, /* hash_code = */ boost::none, /* max_hash_code = */ boost::none, empty_vec,
       request.has_where_expr() ? &request.where_expr().condition() : nullptr,
-      request.has_if_expr() ? &request.if_expr().condition() : nullptr,
+      request.has_if_expr() ? &request.if_expr().condition() : nullptr, rocksdb::kDefaultQueryId,
       request.is_forward_scan()));
   return Status::OK();
 }

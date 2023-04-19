@@ -38,7 +38,9 @@ export default class TaskListTable extends Component {
 
     function typeFormatter(cell, row) {
       return row.correlationId ? (
-        <Link to={`/logs/?queryRegex=${row.correlationId}`}>{row.typeName} {row.target}</Link>
+        <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
+          {row.typeName} {row.target}
+        </Link>
       ) : (
         `${row.typeName} ${row.target}`
       );
@@ -47,6 +49,7 @@ export default class TaskListTable extends Component {
     const abortTaskClicked = (taskUUID) => {
       this.props.abortCurrentTask(taskUUID).then((response) => {
         const taskResponse = response?.payload?.response;
+        // eslint-disable-next-line no-empty
         if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
         } else {
           const toastMessage = taskResponse?.data?.error
@@ -60,6 +63,7 @@ export default class TaskListTable extends Component {
     const taskDetailLinkFormatter = function (cell, row) {
       if (row.status === 'Failure' || row.status === 'Aborted') {
         return <Link to={`/tasks/${row.id}`}>See Details</Link>;
+        // eslint-disable-next-line eqeqeq
       } else if (row.type === 'UpgradeSoftware' && row.details != null) {
         return (
           <span>
@@ -84,7 +88,6 @@ export default class TaskListTable extends Component {
               Are you sure you want to abort the task?
             </YBConfirmModal>
             <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
-              <i className="fa fa-chevron-right"></i>
               Abort Task
             </div>
           </>
@@ -135,6 +138,14 @@ export default class TaskListTable extends Component {
                 dataFormat={successStringFormatter}
               >
                 Status
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="userEmail"
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                User
               </TableHeaderColumn>
               <TableHeaderColumn
                 dataField="createTime"

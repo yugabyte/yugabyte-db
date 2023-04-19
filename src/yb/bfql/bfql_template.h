@@ -16,8 +16,7 @@
 // implementation for compilation and execution of a builtin call.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_BFQL_BFQL_TEMPLATE_H_
-#define YB_BFQL_BFQL_TEMPLATE_H_
+#pragma once
 
 #include <fcntl.h>
 
@@ -84,5 +83,3 @@ Status FindOpcode(const std::string& ql_name,
 }
 } // namespace bfql
 } // namespace yb
-
-#endif  // YB_BFQL_BFQL_TEMPLATE_H_

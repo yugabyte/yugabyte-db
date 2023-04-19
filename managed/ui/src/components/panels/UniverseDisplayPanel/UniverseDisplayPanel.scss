@@ -1,7 +1,8 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../_style/colors.scss';
-@import '../../../_style/mixins.scss';
+@use "sass:color";
+@use '../../../_style/colors.scss';
+@use '../../../_style/mixins.scss';
 
 .universe-table-header-action {
   margin-bottom: 0;
@@ -28,7 +29,7 @@
   max-height: 220px;
   margin-bottom: 24px;
   padding: 12px 14px;
-  color: $YB_TEXT_COLOR;
+  color: colors.$YB_TEXT_COLOR;
   position: relative;
 
   &:before {
@@ -39,10 +40,10 @@
     right: 0;
     bottom: 0;
     z-index: 0;
-    @include transition(0.125s);
+    @include mixins.transition(0.125s);
     background-color: white;
     border-radius: 7px;
-    box-shadow: 0 0.12em 2px rgba($YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba($YB_DARK_GRAY_2, 0.07);
+    box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   }
 
   & > *:not(.dropdown-menu) {
@@ -66,7 +67,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     padding-right: 22px;
-    color: $YB_VIOLET_TEXT;
+    color: colors.$YB_VIOLET_TEXT;
     position: relative;
     height: 24px;
   }
@@ -74,7 +75,7 @@
   .provider-name {
     font-size: 13px;
     font-weight: 400;
-    color: $YB_TEXT_COLOR;
+    color: colors.$YB_TEXT_COLOR;
     opacity: 0.4;
   }
 
@@ -117,7 +118,7 @@ a:hover > .universe-display-item-container,
 a:hover > .schedule-display-item-container,
 .create-universe-button:hover {
   &:before {
-    @include transition(0.3s);
+    @include mixins.transition(0.3s);
     transform: scale(1.03, 1.03);
     background-color: #fff;
     transform-origin: 50% 50%;
@@ -126,7 +127,7 @@ a:hover > .schedule-display-item-container,
   }
 
   .display-name {
-    color: $YB_ORANGE;
+    color: colors.$YB_ORANGE;
   }
 }
 
@@ -169,15 +170,15 @@ a:hover > .schedule-display-item-container,
     right: 0;
     bottom: 0;
     z-index: 0;
-    @include transition(0.125s);
-    border: 1px dotted desaturate(rgba($YB_VIOLET, 0.35), 20%);
+    @include mixins.transition(0.125s);
+    border: 1px dotted color.adjust(rgba(colors.$YB_VIOLET, 0.35), $saturation: -20%);
   }
 
   & > .btn-icon {
-    @include transition(0.125s);
+    @include mixins.transition(0.125s);
   }
   & > .display-name {
-    @include transition(0.125s);
+    @include mixins.transition(0.125s);
   }
 
   & > .button-group {
@@ -194,7 +195,7 @@ a:hover > .schedule-display-item-container,
     &:hover:before {
       opacity: 1;
       transform: scale(1.03, 1);
-      @include transition-property(0.25s, all, 0.2s);
+      @include mixins.transition-property(0.25s, all, 0.2s);
     }
 
     &:before {
@@ -204,7 +205,7 @@ a:hover > .schedule-display-item-container,
       width: 100%;
       left: 0;
       height: 1px;
-      background-color: $YB_GRAY_HOVER;
+      background-color: colors.$YB_GRAY_HOVER;
       opacity: 0;
     }
 
@@ -212,7 +213,7 @@ a:hover > .schedule-display-item-container,
       width: 100%;
       height: 50%;
       display: block;
-      color: $YB_DARK_GRAY_2;
+      color: colors.$YB_DARK_GRAY_2;
       line-height: 66px;
       font-size: 15px;
       border-radius: 0;
@@ -228,21 +229,21 @@ a:hover > .schedule-display-item-container,
         opacity: 0;
         transform: translate(-50px, 0);
         visibility: hidden;
-        @include transition(0.125s);
+        @include mixins.transition(0.125s);
 
         span {
           display: inline-block;
-          color: $YB_ORANGE;
+          color: colors.$YB_ORANGE;
           text-indent: -5px;
-          @include transition(0.325s);
+          @include mixins.transition(0.325s);
         }
       }
 
       &:hover {
-        background-color: $YB_GRAY_HOVER;
+        background-color: colors.$YB_GRAY_HOVER;
 
         span {
-          color: $YB_VIOLET_TEXT;
+          color: colors.$YB_VIOLET_TEXT;
           transform: translateX(-5px);
         }
 
@@ -260,7 +261,7 @@ a:hover > .schedule-display-item-container,
   .display-name {
     font-weight: 500;
     font-size: 1.2em;
-    color: $YB_VIOLET_TEXT;
+    color: colors.$YB_VIOLET_TEXT;
     padding-top: 6px;
     text-decoration: none;
     position: relative;
@@ -269,7 +270,7 @@ a:hover > .schedule-display-item-container,
   .btn-icon {
     position: relative;
     display: inline-block;
-    background-color: $YB_ORANGE;
+    background-color: colors.$YB_ORANGE;
     height: 49px;
     width: 49px;
     font-size: 37px;
@@ -291,28 +292,28 @@ a:hover > .schedule-display-item-container,
 
   &:hover {
     & > .btn-icon {
-      @include transition(0.35s);
+      @include mixins.transition(0.35s);
       transform: translate(0, -10px);
     }
     & > .display-name {
-      @include transition(0.35s);
+      @include mixins.transition(0.35s);
       transform: translate(0, 10px);
     }
 
     & > .button-group {
       a.btn {
         opacity: 1;
-        @include transition-property(0.35s, opacity, 0s);
+        @include mixins.transition-property(0.35s, opacity, 0s);
 
         div {
           opacity: 1;
           visibility: visible;
           transform: translate(0, 0);
-          @include transition-property(0.25s, all, 0.07s);
+          @include mixins.transition-property(0.25s, all, 0.07s);
         }
 
         &:last-child div {
-          @include transition-property(0.25s, all, 0.2s);
+          @include mixins.transition-property(0.25s, all, 0.2s);
         }
       }
     }
@@ -338,7 +339,7 @@ a:hover > .schedule-display-item-container,
     div {
       margin: 0 auto 20px;
       line-height: 1.2em;
-      color: $YB_VIOLET_TEXT;
+      color: colors.$YB_VIOLET_TEXT;
     }
   }
   a {

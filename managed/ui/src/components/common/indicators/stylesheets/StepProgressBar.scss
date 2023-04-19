@@ -1,6 +1,6 @@
 /* Copyright (c) YugaByte, Inc. */
 
-@import '../../../../_style/colors.scss';
+@use '../../../../_style/colors.scss';
 
 .progressbar {
   display: flex;
@@ -50,7 +50,7 @@
 
     &.running,
     &.pending {
-      background-color: $YB_ORANGE;
+      background-color: colors.$YB_ORANGE;
       animation-duration: 3s;
       animation-name: bouncing;
       animation-iteration-count: infinite;
@@ -58,7 +58,7 @@
       animation-timing-function: ease-in-out;
 
       &:after {
-        border-left-color: $YB_ORANGE;
+        border-left-color: colors.$YB_ORANGE;
       }
     }
     @keyframes bouncing {
@@ -72,16 +72,16 @@
     }
 
     &.finished {
-      background-color: $YB_SUCCESS_COLOR;
+      background-color: colors.$YB_SUCCESS_COLOR;
       &:after {
-        border-left-color: $YB_SUCCESS_COLOR;
+        border-left-color: colors.$YB_SUCCESS_COLOR;
       }
     }
 
     &.failed {
-      background-color: $YB_FAIL_COLOR;
+      background-color: colors.$YB_FAIL_COLOR;
       &:after {
-        border-left-color: $YB_FAIL_COLOR;
+        border-left-color: colors.$YB_FAIL_COLOR;
       }
     }
   }
@@ -111,7 +111,7 @@
       background-color: white;
       font-size: 20px;
       font-weight: 300;
-      color: $YB_TEXT_COLOR;
+      color: colors.$YB_TEXT_COLOR;
     }
 
     span {
@@ -145,11 +145,11 @@
 }
 
 .progressbar li.running {
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 }
 
 .progressbar li.running:before {
-  background-color: $YB_ORANGE;
+  background-color: colors.$YB_ORANGE;
   color: white;
 }
 
@@ -162,17 +162,17 @@
 }
 
 .progressbar li.finished {
-  color: $YB_SUCCESS_COLOR;
+  color: colors.$YB_SUCCESS_COLOR;
 
   &:before {
-    background-color: $YB_SUCCESS_COLOR;
+    background-color: colors.$YB_SUCCESS_COLOR;
     color: white;
     font-weight: 400;
   }
 }
 
 .progressbar li.failed {
-  color: $YB_FAIL_COLOR;
+  color: colors.$YB_FAIL_COLOR;
 
   &:before {
     font-weight: 400;
@@ -181,14 +181,14 @@
 
 .progressbar li.to-be-failed {
   &:before {
-    border: 6px solid $YB_FAIL_COLOR;
+    border: 6px solid colors.$YB_FAIL_COLOR;
     line-height: 36px;
   }
 }
 
 .progressbar li.to-be-succeed {
   &:before {
-    border: 6px solid $YB_ORANGE;
+    border: 6px solid colors.$YB_ORANGE;
     line-height: 36px;
   }
 }

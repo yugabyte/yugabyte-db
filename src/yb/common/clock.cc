@@ -17,10 +17,11 @@
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_uint64(wait_hybrid_time_sleep_interval_us, 10000,
+DEFINE_UNKNOWN_uint64(wait_hybrid_time_sleep_interval_us, 10000,
               "Sleep interval in microseconds that will be used while waiting for specific "
                   "hybrid time.");
 

@@ -4,7 +4,7 @@ headerTitle: Explicit Locking
 linkTitle: Explicit Locking
 description: Explicit Locking in YugabyteDB.
 headcontent: Explicit Locking in YugabyteDB.
-image: <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
   v2.12:
     name: Explicit Locking
@@ -17,7 +17,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/multi-region-deployments/synchronous-replication-ysql/" class="nav-link active">
+    <a href="../synchronous-replication-ysql/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>

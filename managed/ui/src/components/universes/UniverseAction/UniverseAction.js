@@ -71,7 +71,7 @@ class UniverseAction extends Component {
     let btnIcon = null;
     let modalForm = null;
     switch (actionType) {
-      case 'alert-config':
+      case 'alert-config': {
         let disablePeriodSecs = null;
         let alertsSnoozed = false;
         if (universeConfig) {
@@ -108,6 +108,7 @@ class UniverseAction extends Component {
           />
         );
         break;
+      }
       default:
         break;
     }

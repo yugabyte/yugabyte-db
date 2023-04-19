@@ -15,12 +15,14 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.DatabaseSecurityFormData;
+import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Customer;
@@ -28,12 +30,14 @@ import com.yugabyte.yw.models.Universe;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Optional;
+import javax.inject.Singleton;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.mvc.Controller;
 import play.mvc.Http;
+import play.mvc.Http.Request;
 
+@Singleton
 public class UniverseYbDbAdminHandler {
   @VisibleForTesting
   public static final String RUN_QUERY_ISNT_ALLOWED =
@@ -43,7 +47,7 @@ public class UniverseYbDbAdminHandler {
 
   @VisibleForTesting public static final String LEARN_DOMAIN_NAME = "learn.yugabyte.com";
 
-  @Inject play.Configuration appConfig;
+  @Inject Config appConfig;
   @Inject ConfigHelper configHelper;
   @Inject RuntimeConfigFactory runtimeConfigFactory;
   @Inject YsqlQueryExecutor ysqlQueryExecutor;
@@ -51,9 +55,9 @@ public class UniverseYbDbAdminHandler {
 
   public UniverseYbDbAdminHandler() {}
 
-  private static boolean isCorrectOrigin() {
+  private static boolean isCorrectOrigin(Request request) {
     boolean correctOrigin = false;
-    Optional<String> origin = Controller.request().header(Http.HeaderNames.ORIGIN);
+    Optional<String> origin = request.header(Http.HeaderNames.ORIGIN);
     if (origin.isPresent()) {
       try {
         URI uri = new URI(origin.get());
@@ -82,6 +86,24 @@ public class UniverseYbDbAdminHandler {
     }
   }
 
+  public void dropUser(Customer customer, Universe universe, DatabaseUserDropFormData data) {
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Feature not allowed.");
+    }
+
+    ysqlQueryExecutor.dropUser(universe, data);
+  }
+
+  public void createRestrictedUser(
+      Customer customer, Universe universe, DatabaseUserFormData data) {
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
+      throw new PlatformServiceException(BAD_REQUEST, "Feature not allowed.");
+    }
+    data.validation();
+
+    ysqlQueryExecutor.createRestrictedUser(universe, data);
+  }
+
   public void createUserInDB(Customer customer, Universe universe, DatabaseUserFormData data) {
     if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")) {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Customer type.");
@@ -97,18 +119,23 @@ public class UniverseYbDbAdminHandler {
   }
 
   public JsonNode validateRequestAndExecuteQuery(
-      Universe universe, RunQueryFormData runQueryFormData) {
-    String mode = appConfig.getString("yb.mode", "PLATFORM");
+      Universe universe, RunQueryFormData runQueryFormData, Request request) {
+    String mode = appConfig.getString("yb.mode");
     if (!mode.equals("OSS")) {
       throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
 
     String securityLevel =
         (String) configHelper.getConfig(ConfigHelper.ConfigType.Security).get("level");
-    if (!isCorrectOrigin() || securityLevel == null || !securityLevel.equals("insecure")) {
+    if (!isCorrectOrigin(request) || securityLevel == null || !securityLevel.equals("insecure")) {
       throw new PlatformServiceException(BAD_REQUEST, RUN_QUERY_ISNT_ALLOWED);
     }
 
     return ysqlQueryExecutor.executeQuery(universe, runQueryFormData);
+  }
+
+  @VisibleForTesting
+  public void setAppConfig(Config config) {
+    appConfig = config;
   }
 }

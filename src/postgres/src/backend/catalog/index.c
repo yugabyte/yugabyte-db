@@ -87,8 +87,10 @@
 
 /*  YB includes. */
 #include "commands/defrem.h"
+#include "commands/progress.h"
 #include "commands/ybccmds.h"
 #include "parser/parse_utilcmd.h"
+#include "pgstat.h"
 #include "pg_yb_utils.h"
 
 /* Potentially set by pg_upgrade_support functions */
@@ -727,6 +729,7 @@ index_create(Relation heapRelation,
 			 Oid *constraintId,
 			 OptSplit *split_options,
 			 const bool skip_index_backfill,
+			 bool is_colocated,
 			 Oid tablegroupId,
 			 Oid colocationId)
 {
@@ -1011,6 +1014,7 @@ index_create(Relation heapRelation,
 					   heapRelation,
 					   split_options,
 					   skip_index_backfill,
+					   is_colocated,
 					   tablegroupId,
 					   colocationId,
 					   tableSpaceId);
@@ -1136,7 +1140,7 @@ index_create(Relation heapRelation,
 		ObjectAddressSet(myself, RelationRelationId, indexRelationId);
 		if (IsYBRelation(heapRelation) && IsCatalogRelation(heapRelation))
 		{
-			YBRecordPinDependency(&myself, shared_relation);
+			YbRecordPinDependency(&myself, shared_relation);
 		}
 		else
 		{
@@ -1332,7 +1336,13 @@ index_create(Relation heapRelation,
 	}
 	else
 	{
-		index_build(heapRelation, indexRelation, indexInfo, false, true);
+		if (IsYugaByteEnabled() && !concurrent && !invalid &&
+			yb_test_block_index_phase[0] != '\0')
+			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+										"backfill",
+										"non-concurrent index backfill");
+		index_build(heapRelation, indexRelation, indexInfo, isprimary, false, true);
+
 	}
 
 	/*
@@ -1340,6 +1350,13 @@ index_create(Relation heapRelation,
 	 * of transaction.  Closing the heap is caller's responsibility.
 	 */
 	index_close(indexRelation, NoLock);
+
+	if (IsYugaByteEnabled() && !concurrent && !invalid &&
+		yb_test_block_index_phase[0] != '\0')
+		YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
+									"postbackfill",
+									"operations after a non-concurrent "
+									"index backfill");
 
 	return indexRelationId;
 }
@@ -3088,6 +3105,10 @@ index_build(Relation heapRelation,
 						   save_sec_context | SECURITY_RESTRICTED_OPERATION);
 	save_nestlevel = NewGUCNestLevel();
 
+	if (IsYugaByteEnabled())
+		pgstat_progress_update_param(PROGRESS_CREATEIDX_PHASE,
+									 YB_PROGRESS_CREATEIDX_BACKFILLING);
+
 	/* Set up initial progress report status */
 	{
 		const int	progress_index[] = {
@@ -3185,11 +3206,24 @@ index_build(Relation heapRelation,
 	}
 
 	/*
-	 * Update heap and index pg_class rows
+	 * Sanity check to ensure concurrent index builds don't reach this
+	 * code-path. In YB, we don't compute stats during a concurrent index build
+	 * so we shouldn't update them here.
 	 */
+	if (IsYugaByteEnabled())
+		Assert(!indexInfo->ii_Concurrent);
+
+	/*
+	 * Update heap and index pg_class rows
+	 *
+	 * YB TODO(fizaa): Properly update reltuples for the indexed table
+	 * (see GH #16506). Currently, we don't compute this statistic during a
+	 * non-concurrent index build so we should not update it here.
+	 */
+
 	index_update_stats(heapRelation,
 					   true,
-					   stats->heap_tuples);
+					   IsYBRelation(heapRelation) ? -1 : stats->heap_tuples);
 
 	index_update_stats(indexRelation,
 					   false,

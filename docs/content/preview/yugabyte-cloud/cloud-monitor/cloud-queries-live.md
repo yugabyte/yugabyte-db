@@ -20,7 +20,7 @@ Evaluate the performance of running queries on your cluster using the **Live Que
 
 Live queries only shows queries "in-flight" (that is, currently in progress); queries that execute quickly might not show up by the time the display loads. There is no significant performance overhead on databases because the queries are fetched on-demand and are not tracked in the background.
 
-![Cluster Live Queries](/images/yb-cloud/cloud-clusters-live.png)
+![Cluster Live Queries](/images/yb-cloud/managed-monitor-live-queries.png)
 
 You can choose between displaying YSQL and YCQL queries.
 

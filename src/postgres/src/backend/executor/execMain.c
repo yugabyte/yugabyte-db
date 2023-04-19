@@ -104,7 +104,6 @@ static char *ExecBuildSlotValueDescription(Relation rel,
 										   Bitmapset *modifiedCols,
 										   int maxfieldlen);
 static void EvalPlanQualStart(EPQState *epqstate, Plan *planTree);
-
 /* end of local decls */
 
 
@@ -1890,7 +1889,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 								 ExecGetUpdatedCols(resultRelInfo, estate));
 	}
 
-	val_desc = ExecBuildSlotValueDescription(rel,
+	val_desc = ExecBuildSlotValueDescription(root_rel,
 											 slot,
 											 tupdesc,
 											 modifiedCols,
@@ -1939,14 +1938,35 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 		{
 			Form_pg_attribute att = TupleDescAttr(tupdesc, attrChk - 1);
 
-			if (mtstate && mtstate->yb_mt_is_single_row_update_or_delete &&
-			    !bms_is_member(att->attnum - YBGetFirstLowInvalidAttributeNumber(rel), modifiedCols))
+			/*
+			 * Below we check if attribute belongs to the modified columns for
+			 * the NOT NULL constraint and if so, performs single-row updates.
+			 * Thus modified columns must be calculated beforehand.
+			 */
+			if (resultRelInfo->ri_RootResultRelInfo)
+			{
+				ResultRelInfo *rootrel = resultRelInfo->ri_RootResultRelInfo;
+				modifiedCols = bms_union(ExecGetInsertedCols(rootrel, estate),
+										 ExecGetUpdatedCols(rootrel, estate));
+			}
+			else
+			{
+				modifiedCols = bms_union(ExecGetInsertedCols(resultRelInfo, estate),
+										 ExecGetUpdatedCols(resultRelInfo, estate));
+			}
+
+			bool att_in_modified_cols = bms_is_member(
+				att->attnum - YBGetFirstLowInvalidAttributeNumber(rel),
+				modifiedCols);
+
+			if (mtstate && !mtstate->yb_fetch_target_tuple && !att_in_modified_cols)
 			{
 				/*
-				 * For single-row-updates, we only know the values of the
+				 * Without a target tuple, we only know the values of the
 				 * modified columns. But in this case it is safe to skip the
 				 * unmodified columns anyway.
 				 */
+				bms_free(modifiedCols);
 				continue;
 			}
 
@@ -2001,6 +2021,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 						 val_desc ? errdetail("Failing row contains %s.", val_desc) : 0,
 						 errtablecol(orig_rel, attrChk)));
 			}
+			bms_free(modifiedCols);
 		}
 	}
 
@@ -2246,7 +2267,7 @@ ExecBuildSlotValueDescription(Relation rel,
 	AclResult	aclresult;
 	bool		table_perm = false;
 	bool		any_perm = false;
-	Oid 		reloid = RelationGetRelid(rel);
+	Oid     reloid = RelationGetRelid(rel);
 
 	/*
 	 * Check if RLS is enabled and should be active for the relation; if so,

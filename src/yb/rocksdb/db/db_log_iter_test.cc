@@ -24,7 +24,6 @@
 // Introduction of SyncPoint effectively disabled building and running this test
 // in Release build.
 // which is a pity, it is a good test
-#if !defined(ROCKSDB_LITE)
 
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
@@ -116,14 +115,14 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorRace) {
   for (int test = 0; test < LOG_ITERATOR_RACE_TEST_COUNT; ++test) {
     // Setup sync point dependency to reproduce the race condition of
     // a log file moved to archived dir, in the middle of GetSortedWalFiles
-    rocksdb::SyncPoint::GetInstance()->LoadDependency(
+    yb::SyncPoint::GetInstance()->LoadDependency(
       { { sync_points[test][0], sync_points[test][1] },
         { sync_points[test][2], sync_points[test][3] },
       });
 
     do {
-      rocksdb::SyncPoint::GetInstance()->ClearTrace();
-      rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+      yb::SyncPoint::GetInstance()->ClearTrace();
+      yb::SyncPoint::GetInstance()->DisableProcessing();
       Options options = OptionsForLogIterTest();
       DestroyAndReopen(options);
       ASSERT_OK(Put("key1", DummyString(1024)));
@@ -140,7 +139,7 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorRace) {
         ExpectRecords(4, iter);
       }
 
-      rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+      yb::SyncPoint::GetInstance()->EnableProcessing();
       // trigger async flush, and log move. Well, log move will
       // wait until the GetSortedWalFiles:1 to reproduce the race
       // condition
@@ -295,14 +294,9 @@ TEST_F(DBTestXactLogIterator, TransactionLogIteratorBlobs) {
 }
 }  // namespace rocksdb
 
-#endif  // !defined(ROCKSDB_LITE)
 
 int main(int argc, char** argv) {
-#if !defined(ROCKSDB_LITE)
   rocksdb::port::InstallStackTraceHandler();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
-#else
-  return 0;
-#endif
 }

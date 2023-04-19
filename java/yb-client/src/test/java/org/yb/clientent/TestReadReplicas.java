@@ -80,7 +80,8 @@ public class TestReadReplicas extends TestYBClient {
           // Enable YSQL to generate the txn status table
           // (in order to test txn status leader spread).
           cb.enablePgTransactions(true);
-        });
+        },
+        Collections.emptyMap());
 
     // Create the cluster config pb to be sent to the masters
     org.yb.CommonNet.CloudInfoPB cloudInfo0 = org.yb.CommonNet.CloudInfoPB.newBuilder()

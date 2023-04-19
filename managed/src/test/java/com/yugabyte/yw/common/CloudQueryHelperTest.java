@@ -11,7 +11,6 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
-import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
@@ -81,7 +80,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
       case machine_image:
         return cloudQueryHelper.queryImage(regionUUID, "yb-image");
       default:
-        return cloudQueryHelper.currentHostInfo(Common.CloudType.aws, ImmutableList.of("vpc-id"));
+        return cloudQueryHelper.getCurrentHostInfo(Common.CloudType.aws);
     }
   }
 
@@ -89,7 +88,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   public void testGetZonesSuccess() {
     Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-    JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.zones);
+    JsonNode json = runCommand(gcpRegion.getUuid(), false, CommandType.zones);
     assertValue(json, "foo", "bar");
   }
 
@@ -97,7 +96,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   public void testGetZonesFailure() {
     Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-    JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.zones);
+    JsonNode json = runCommand(gcpRegion.getUuid(), true, CommandType.zones);
     assertErrorNodeValue(
         json, "YBCloud command query (zones) failed to execute. Unknown error occurred");
   }
@@ -108,7 +107,7 @@ public class CloudQueryHelperTest extends FakeDBApplication {
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
     ArrayList<Region> regionList = new ArrayList<>();
     regionList.add(gcpRegion);
-    JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.instance_types);
+    JsonNode json = runCommand(gcpRegion.getUuid(), false, CommandType.instance_types);
     assertValue(json, "foo", "bar");
   }
 
@@ -116,20 +115,20 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   public void testGetInstanceTypesFailure() {
     Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-    JsonNode json = runCommand(gcpRegion.uuid, true, CommandType.instance_types);
+    JsonNode json = runCommand(gcpRegion.getUuid(), true, CommandType.instance_types);
     assertErrorNodeValue(
         json, "YBCloud command query (instance_types) failed to execute. Unknown error occurred");
   }
 
   @Test
   public void testGetHostInfoSuccess() {
-    JsonNode json = runCommand(defaultRegion.uuid, false, CommandType.host_info);
+    JsonNode json = runCommand(defaultRegion.getUuid(), false, CommandType.host_info);
     assertValue(json, "foo", "bar");
   }
 
   @Test
   public void testGetHostInfoFailure() {
-    JsonNode json = runCommand(defaultRegion.uuid, true, CommandType.host_info);
+    JsonNode json = runCommand(defaultRegion.getUuid(), true, CommandType.host_info);
     assertErrorNodeValue(
         json, "YBCloud command query (current-host) failed to execute. Unknown error occurred");
   }
@@ -138,13 +137,13 @@ public class CloudQueryHelperTest extends FakeDBApplication {
   public void testQueryImageSuccess() {
     Provider gcpProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region gcpRegion = Region.create(gcpProvider, "us-west1", "Gcp US West 1", "yb-image");
-    JsonNode json = runCommand(gcpRegion.uuid, false, CommandType.machine_image);
+    JsonNode json = runCommand(gcpRegion.getUuid(), false, CommandType.machine_image);
     assertValue(json, "foo", "bar");
   }
 
   @Test
   public void testQueryImageFailure() {
-    JsonNode json = runCommand(defaultRegion.uuid, true, CommandType.machine_image);
+    JsonNode json = runCommand(defaultRegion.getUuid(), true, CommandType.machine_image);
     assertErrorNodeValue(
         json, "YBCloud command query (image) failed to execute. Unknown error occurred");
   }

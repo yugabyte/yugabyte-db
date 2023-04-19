@@ -40,7 +40,7 @@ export class YBTextInput extends Component {
 
     function onBlur(event) {
       if (isDefinedNotNull(self.props.input) && isFunction(self.props.input.onBlur)) {
-        const trimmedValue = trimString(event.target.value)
+        const trimmedValue = trimString(event.target.value);
         event.target.value = trimmedValue;
         if (isFunction(normalizeOnBlur)) {
           self.props.input.onBlur(normalizeOnBlur(trimmedValue));

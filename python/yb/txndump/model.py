@@ -145,6 +145,11 @@ def read_txn_id(inp) -> Optional[UUID]:
     return UUID(bytes=bin_data)
 
 
+def read_slice(inp) -> bytes:
+    len = inp.read_uint64()
+    return inp.read(len)
+
+
 class ValueType(Enum):
     kGroupEnd = 33
     kHybridTime = 35

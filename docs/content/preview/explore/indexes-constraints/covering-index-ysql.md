@@ -1,7 +1,9 @@
 ---
-title: Covering indexes
+title: Covering indexes in YugabyteDB YSQL
+headerTitle: Covering indexes
 linkTitle: Covering indexes
 description: Using covering indexes in YSQL
+headContent: Explore covering indexes in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -32,9 +34,9 @@ CREATE INDEX columnA_columnB_index_name ON table_name(columnA, columnB) INCLUDE 
 
 ## Example
 
-The following exercise demonstrates how to perform an index-only scan on an [expression (functional) index](../expression-index-ysql/), and further optimize the query performance using a covering index.
+{{% explore-setup-single %}}
 
-Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../../../yugabyte-cloud/cloud-basics/create-clusters-free/) and connect to the cluster using [ysqlsh](../../../admin/ysqlsh/) for local clusters, or [using cloud shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) for YugabyteDB Managed.
+The following exercise demonstrates how to perform an index-only scan on an [expression (functional) index](../expression-index-ysql/), and further optimize the query performance using a covering index.
 
 1. Create and insert some rows into a table `demo` with two columns `id` and `username`.
 
@@ -128,4 +130,4 @@ Create a cluster [locally](../../../quick-start/) or in [YugabyteDB Managed](../
 
 ## Learn more
 
-Explore the [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/) in depth with a real world example.
+Explore the [Benefits of an Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/) in depth with a real world example.

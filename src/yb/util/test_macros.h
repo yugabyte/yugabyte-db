@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_TEST_MACROS_H
-#define YB_UTIL_TEST_MACROS_H
+#pragma once
 
 #include <set>
 #include <sstream>
@@ -40,8 +39,10 @@
 
 #include <gtest/gtest.h> // For SUCCEED/FAIL
 
-#include "yb/util/tostring.h"
 #include "yb/gutil/stl_util.h"  // For VectorToSet
+
+#include "yb/util/string_trim.h"
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace util {
@@ -321,6 +322,24 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
   }) \
   /**/
 
+// Similar to ASSERT_NOTNULL but does not return anything.
+#define ASSERT_ONLY_NOTNULL(expr) \
+  do { \
+    auto&& result = (expr); \
+    if (result == nullptr) { \
+      FAIL() << "Unexpected nullptr"; \
+    } \
+  } while (false)
+  /**/
+
+#define ASSERT_QUERY_FAIL(query_exec, expected_failure_substr) \
+  do { \
+    auto&& status = (query_exec); \
+    ASSERT_NOK(status); \
+    ASSERT_STR_CONTAINS(status.ToString(), expected_failure_substr); \
+  } while (false) \
+  /**/
+
 #define CURRENT_TEST_NAME() \
   ::testing::UnitTest::GetInstance()->current_test_info()->name()
 
@@ -360,12 +379,17 @@ inline std::string FindFirstDiff(const std::string& lhs, const std::string& rhs)
 #define YB_DISABLE_TEST_IN_SANITIZERS_OR_MAC(test_name) test_name
 #endif
 
+#if !defined(NDEBUG) || defined(THREAD_SANITIZER) || defined(ADDRESS_SANITIZER)
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) YB_DISABLE_TEST(test_name)
+#else
+#define YB_DISABLE_TEST_EXCEPT_RELEASE(test_name) test_name
+#endif
+
 // Can be used in individual test cases or in the SetUp() method to skip all tests for a fixture.
 #define YB_SKIP_TEST_IN_TSAN() \
   do { \
     if (::yb::IsTsan()) { \
       GTEST_SKIP() << "Skipping test in TSAN"; \
+      return; \
     } \
   } while (false)
-
-#endif  // YB_UTIL_TEST_MACROS_H

@@ -4,7 +4,7 @@ headerTitle: Rate limiting connections
 linkTitle: Rate limiting connections
 description: Rate limiting connections in YugabyteDB.
 headcontent: Rate limiting connections in YugabyteDB.
-image: <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+image: <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
 menu:
   stable:
     name: Rate limiting connections

@@ -35,7 +35,7 @@ from yb.common_util import (
     is_ninja_build_root,
 )
 
-from yb.cmake_cache import CMakeCache
+from yb.cmake_cache import CMakeCache, load_cmake_cache
 
 
 def make_extensions(exts_without_dot: List[str]) -> List[str]:
@@ -178,11 +178,9 @@ class DepGraphConf:
     build_type: str
     yb_src_root: str
     src_dir_path: str
-    ent_src_dir_path: str
     rel_path_base_dirs: Set[str]
     incomplete_build: bool
     file_regex: Optional[str]
-    src_dir_paths: List[str]
     never_run_build: bool
 
     # Extra arguments to pass to yb_build.sh.
@@ -204,7 +202,6 @@ class DepGraphConf:
         self.build_type = get_build_type_from_build_root(self.build_root)
         self.yb_src_root = ensure_yb_src_root_from_build_root(self.build_root)
         self.src_dir_path = os.path.join(self.yb_src_root, 'src')
-        self.ent_src_dir_path = os.path.join(self.yb_src_root, 'ent', 'src')
         self.rel_path_base_dirs = {self.build_root, os.path.join(self.src_dir_path, 'yb')}
         self.incomplete_build = incomplete_build
 
@@ -214,11 +211,9 @@ class DepGraphConf:
         elif file_name_glob:
             self.file_regex = fnmatch.translate('*/' + file_name_glob)
 
-        self.src_dir_paths = [self.src_dir_path, self.ent_src_dir_path]
-
-        for dir_path in self.src_dir_paths:
-            if not os.path.isdir(dir_path):
-                raise RuntimeError("Directory does not exist, or is not a directory: %s" % dir_path)
+        if not os.path.isdir(self.src_dir_path):
+            raise IOError(
+                "Directory does not exist, or is not a directory: %s" % self.src_dir_path)
         self.build_args = build_args
         self.never_run_build = never_run_build
 
@@ -505,7 +500,7 @@ class CMakeDepGraph:
     def __init__(self, build_root: str) -> None:
         self.build_root = build_root
         self.cmake_deps_path = os.path.join(self.build_root, 'yb_cmake_deps.txt')
-        self.cmake_cache = CMakeCache(os.path.join(build_root, 'CMakeCache.txt'))
+        self.cmake_cache = load_cmake_cache(self.build_root)
         self._load()
 
     def _load(self) -> None:
@@ -626,9 +621,8 @@ class DependencyGraph:
         We are reading this information from CMakeCache.txt.
         """
         if self.cxx_tests_are_being_built_cached_value is None:
-            # If BUILD_TESTS is not present in the cache, we assume we are building the tests.
             self.cxx_tests_are_being_built_cached_value = \
-                bool(self.get_cmake_dep_graph().cmake_cache.get('BUILD_TESTS', True))
+                bool(self.get_cmake_dep_graph().cmake_cache.get_or_raise('YB_BUILD_TESTS'))
         return self.cxx_tests_are_being_built_cached_value
 
     def find_node(self,
@@ -822,10 +816,6 @@ class DependencyGraph:
                 proto_rel_path = node.path_rel_to_src_root()
                 if proto_rel_path:
                     proto_rel_path = proto_rel_path[:-6]
-                    if proto_rel_path.startswith('ent/'):
-                        # Remove the 'ent/' prefix because there is no separate 'ent/' prefix
-                        # in the build directory.
-                        proto_rel_path = proto_rel_path[4:]
                     if proto_rel_path in proto_node_by_rel_path:
                         raise RuntimeError(
                             "Multiple .proto nodes found that share the same "

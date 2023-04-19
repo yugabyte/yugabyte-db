@@ -68,11 +68,12 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/partition.h"
+#include "yb/common/pg_types.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/roles_permissions.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
-#include "yb/common/wire_protocol.h"
+#include "yb/common/ql_wire_protocol.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/map-util.h"
@@ -93,7 +94,7 @@
 #include "yb/rpc/rpc.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
@@ -124,6 +125,8 @@ using yb::master::ListTablegroupsRequestPB;
 using yb::master::ListTablegroupsResponsePB;
 using yb::master::GetNamespaceInfoRequestPB;
 using yb::master::GetNamespaceInfoResponsePB;
+using yb::master::GetIndexBackfillProgressRequestPB;
+using yb::master::GetIndexBackfillProgressResponsePB;
 using yb::master::GetTableLocationsRequestPB;
 using yb::master::GetTableLocationsResponsePB;
 using yb::master::GetTabletLocationsRequestPB;
@@ -204,11 +207,14 @@ using yb::master::UpdateConsumerOnProducerSplitRequestPB;
 using yb::master::UpdateConsumerOnProducerSplitResponsePB;
 using yb::master::GetTableSchemaFromSysCatalogRequestPB;
 using yb::master::GetTableSchemaFromSysCatalogRequestPB;
+using yb::master::WaitForYsqlBackendsCatalogVersionRequestPB;
+using yb::master::WaitForYsqlBackendsCatalogVersionResponsePB;
 using yb::master::PlacementInfoPB;
 using yb::rpc::Messenger;
 using std::string;
 using std::vector;
 using std::make_pair;
+using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
 
 using namespace yb::size_literals;  // NOLINT.
@@ -223,33 +229,38 @@ constexpr int kDefaultBackfillIndexClientRpcTimeoutMs = 24 * 60 * 60 * 1000;  //
 
 }
 
-DEFINE_bool(client_suppress_created_logs, false,
+DEFINE_UNKNOWN_bool(client_suppress_created_logs, false,
             "Suppress 'Created table ...' messages");
 TAG_FLAG(client_suppress_created_logs, advanced);
 TAG_FLAG(client_suppress_created_logs, hidden);
 
-DEFINE_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRpcTimeoutMs,
+DEFINE_UNKNOWN_int32(backfill_index_client_rpc_timeout_ms, kDefaultBackfillIndexClientRpcTimeoutMs,
              "Timeout for BackfillIndex RPCs from client to master.");
 TAG_FLAG(backfill_index_client_rpc_timeout_ms, advanced);
 
-DEFINE_int32(ycql_num_tablets, -1,
-             "The number of tablets per YCQL table. Default value is -1. "
-             "Colocated tables are not affected. "
-             "If it's value is not set then the value of yb_num_shards_per_tserver is used "
-             "in conjunction with the number of tservers to determine the tablet count. "
-             "If the user explicitly specifies a value of the tablet count in the Create Table "
-             "DDL statement (with tablets = x syntax) then it takes precedence over the value "
-             "of this flag. Needs to be set at tserver.");
-TAG_FLAG(ycql_num_tablets, runtime);
+DEFINE_RUNTIME_int32(ycql_num_tablets, -1,
+    "The number of tablets per YCQL table. Default value is -1. "
+    "Colocated tables are not affected. "
+    "If it's value is not set then the value of yb_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count. "
+    "If the user explicitly specifies a value of the tablet count in the Create Table "
+    "DDL statement (with tablets = x syntax) then it takes precedence over the value "
+    "of this flag. Needs to be set at tserver.");
 
-DEFINE_int32(ysql_num_tablets, -1,
-             "The number of tablets per YSQL table. Default value is -1. "
-             "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
-             "in conjunction with the number of tservers to determine the tablet count. "
-             "If the user explicitly specifies a value of the tablet count in the Create Table "
-             "DDL statement (split into x tablets syntax) then it takes precedence over the "
-             "value of this flag. Needs to be set at tserver.");
-TAG_FLAG(ysql_num_tablets, runtime);
+DEFINE_RUNTIME_int32(ysql_num_tablets, -1,
+    "The number of tablets per YSQL table. Default value is -1. "
+    "If it's value is not set then the value of ysql_num_shards_per_tserver is used "
+    "in conjunction with the number of tservers to determine the tablet count. "
+    "If the user explicitly specifies a value of the tablet count in the Create Table "
+    "DDL statement (split into x tablets syntax) then it takes precedence over the "
+    "value of this flag. Needs to be set at tserver.");
+
+// Non-runtime because pggate uses it.
+DEFINE_NON_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms,
+    20000,
+    "WaitForYsqlBackendsCatalogVersion client-to-master RPC timeout. Specifically, both the "
+    "postgres-to-tserver and tserver-to-master RPC timeout.");
+TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms, advanced);
 
 namespace yb {
 namespace client {
@@ -624,6 +635,22 @@ Status YBClient::BackfillIndex(const TableId& table_id, bool wait, CoarseTimePoi
   return data_->BackfillIndex(this, YBTableName(), table_id, deadline, wait);
 }
 
+Status YBClient::GetIndexBackfillProgress(
+    const std::vector<TableId>& index_ids,
+    RepeatedField<google::protobuf::uint64>* rows_processed_entries) {
+  GetIndexBackfillProgressRequestPB req;
+  GetIndexBackfillProgressResponsePB resp;
+  for (auto &index_id : index_ids) {
+    req.add_index_ids(index_id);
+  }
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetIndexBackfillProgress);
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  *rows_processed_entries = std::move(resp.rows_processed_entries());
+  return Status::OK();
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
@@ -635,14 +662,18 @@ Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
                             wait);
 }
 
-Status YBClient::DeleteTable(const string& table_id, bool wait, CoarseTimePoint deadline) {
+Status YBClient::DeleteTable(const string& table_id,
+                             bool wait,
+                             const TransactionMetadata *txn,
+                             CoarseTimePoint deadline) {
   return data_->DeleteTable(this,
                             YBTableName(),
                             table_id,
                             false /* is_index_table */,
                             PatchAdminDeadline(deadline),
                             nullptr /* indexed_table_name */,
-                            wait);
+                            wait,
+                            txn);
 }
 
 Status YBClient::DeleteIndexTable(const YBTableName& table_name,
@@ -693,6 +724,13 @@ Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
                             add_indexes,
                             deadline,
                             is_compaction);
+}
+
+Result<MonoTime> YBClient::GetCompactionStatus(const YBTableName& table_name) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  MonoTime last_request_time;
+  RETURN_NOT_OK(data_->GetCompactionStatus(table_name, deadline, &last_request_time));
+  return last_request_time;
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
@@ -959,12 +997,13 @@ Status YBClient::IsDeleteNamespaceInProgress(const std::string& namespace_name,
                                             deadline, delete_in_progress);
 }
 
-YBNamespaceAlterer* YBClient::NewNamespaceAlterer(
+std::unique_ptr<YBNamespaceAlterer> YBClient::NewNamespaceAlterer(
     const string& namespace_name, const std::string& namespace_id) {
-  return new YBNamespaceAlterer(this, namespace_name, namespace_id);
+  return std::unique_ptr<YBNamespaceAlterer>(new YBNamespaceAlterer(
+      this, namespace_name, namespace_id));
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
     const boost::optional<YQLDatabase>& database_type) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
@@ -972,10 +1011,16 @@ Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces(
     req.set_database_type(*database_type);
   }
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, ListNamespaces);
-  auto* namespaces = resp.mutable_namespaces();
-  vector<master::NamespaceIdentifierPB> result;
-  result.reserve(namespaces->size());
-  for (auto& ns : *namespaces) {
+  auto namespaces = resp.namespaces();
+  auto states = resp.states();
+  auto colocated = resp.colocated();
+  vector<NamespaceInfo> result;
+  result.reserve(namespaces.size());
+  for (int i = 0; i < namespaces.size(); ++i) {
+    NamespaceInfo ns;
+    ns.id = namespaces.Get(i);
+    ns.state = master::SysNamespaceEntryPB_State(states.Get(i));
+    ns.colocated = colocated.Get(i);
     result.push_back(std::move(ns));
   }
   return result;
@@ -1055,7 +1100,7 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
 Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
                                        const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.name() == namespace_name) {
+    if (ns.id.name() == namespace_name) {
       return true;
     }
   }
@@ -1065,7 +1110,7 @@ Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
 Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
                                          const boost::optional<YQLDatabase>& database_type) {
   for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id() == namespace_id) {
+    if (ns.id.id() == namespace_id) {
       return true;
     }
   }
@@ -1075,14 +1120,16 @@ Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
 Status YBClient::CreateTablegroup(const std::string& namespace_name,
                                   const std::string& namespace_id,
                                   const std::string& tablegroup_id,
-                                  const std::string& tablespace_id) {
+                                  const std::string& tablespace_id,
+                                  const TransactionMetadata* txn) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->CreateTablegroup(this,
                                  deadline,
                                  namespace_name,
                                  namespace_id,
                                  tablegroup_id,
-                                 tablespace_id);
+                                 tablespace_id,
+                                 txn);
 }
 
 Status YBClient::DeleteTablegroup(const std::string& tablegroup_id) {
@@ -1124,9 +1171,8 @@ Result<bool> YBClient::TablegroupExists(const std::string& namespace_name,
   return false;
 }
 
-Status YBClient::GetUDType(const std::string& namespace_name,
-                           const std::string& type_name,
-                           std::shared_ptr<QLType>* ql_type) {
+Result<std::shared_ptr<QLType>> YBClient::GetUDType(
+    const std::string& namespace_name, const std::string& type_name) {
   // Setting up request.
   GetUDTypeInfoRequestPB req;
   req.mutable_type()->mutable_namespace_()->set_name(namespace_name);
@@ -1137,19 +1183,22 @@ Status YBClient::GetUDType(const std::string& namespace_name,
   CALL_SYNC_LEADER_MASTER_RPC(req, resp, GetUDTypeInfo);
 
   // Filling in return values.
+  auto& udt = *resp.mutable_udtype();
   std::vector<string> field_names;
-  for (const auto& field_name : resp.udtype().field_names()) {
-    field_names.push_back(field_name);
+  field_names.reserve(udt.field_names().size());
+  for (auto& field_name : *udt.mutable_field_names()) {
+    field_names.push_back(std::move(field_name));
   }
 
   std::vector<shared_ptr<QLType>> field_types;
-  for (const auto& field_type : resp.udtype().field_types()) {
+  field_types.reserve(udt.field_types().size());
+  for (const auto& field_type : udt.field_types()) {
     field_types.push_back(QLType::FromQLTypePB(field_type));
   }
 
-  (*ql_type)->SetUDTypeFields(resp.udtype().id(), field_names, field_types);
-
-  return Status::OK();
+  return QLType::CreateUDType(
+      namespace_name, type_name,
+      std::move(*udt.mutable_id()), std::move(field_names), std::move(field_types));
 }
 
 Status YBClient::CreateRole(const RoleName& role_name,
@@ -1563,25 +1612,34 @@ Status YBClient::UpdateConsumerOnProducerSplit(
   return Status::OK();
 }
 
-Result<bool> YBClient::UpdateConsumerOnProducerMetadata(
+Status YBClient::UpdateConsumerOnProducerMetadata(
     const string& producer_id,
     const CDCStreamId& stream_id,
-    const tablet::ChangeMetadataRequestPB& meta_info) {
+    const tablet::ChangeMetadataRequestPB& meta_info,
+    uint32_t colocation_id,
+    uint32_t producer_schema_version,
+    uint32_t consumer_schema_version,
+    master::UpdateConsumerOnProducerMetadataResponsePB *resp) {
   if (producer_id.empty()) {
     return STATUS(InvalidArgument, "Producer id is required.");
   }
   if (stream_id.empty()) {
     return STATUS(InvalidArgument, "Stream id is required.");
   }
+  if (resp == nullptr) {
+    return STATUS(InvalidArgument, "Response pointer is required.");
+  }
 
   master::UpdateConsumerOnProducerMetadataRequestPB req;
   req.set_producer_id(producer_id);
   req.set_stream_id(stream_id);
+  req.set_colocation_id(colocation_id);
+  req.set_producer_schema_version(producer_schema_version);
+  req.set_consumer_schema_version(consumer_schema_version);
   req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
 
-  master::UpdateConsumerOnProducerMetadataResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, UpdateConsumerOnProducerMetadata);
-  return resp.should_wait();
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*resp), UpdateConsumerOnProducerMetadata);
+  return Status::OK();
 }
 
 void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallback callback) {
@@ -1591,10 +1649,11 @@ void YBClient::DeleteNotServingTablet(const TabletId& tablet_id, StdStatusCallba
 
 void YBClient::GetTableLocations(
     const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,
-    GetTableLocationsCallback callback) {
+    PartitionsOnly partitions_only, GetTableLocationsCallback callback) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   data_->GetTableLocations(
-      this, table_id, max_tablets, require_tablets_running, deadline, std::move(callback));
+      this, table_id, max_tablets, require_tablets_running, partitions_only, deadline,
+      std::move(callback));
 }
 
 Status YBClient::TabletServerCount(int *tserver_count, bool primary_only, bool use_cache) {
@@ -1841,6 +1900,69 @@ Result<TransactionStatusTablets> YBClient::GetTransactionStatusTablets(
   return tablets;
 }
 
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    const std::string& database_name, uint64_t version, const MonoDelta& timeout) {
+  // In order for timeout to approximately determine how much time is spent before responding,
+  // incorporate the margin into the deadline because master will subtract the margin for
+  // responding.
+  CoarseTimePoint deadline = (
+      CoarseMonoClock::Now()
+      + MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
+  if (!timeout.Initialized()) {
+    deadline += MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+  } else {
+    deadline += timeout;
+  }
+  return WaitForYsqlBackendsCatalogVersion(database_name, version, deadline);
+}
+
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    const std::string& database_name, uint64_t version, const CoarseTimePoint& deadline) {
+  GetNamespaceInfoResponsePB resp;
+  RETURN_NOT_OK(GetNamespaceInfo("", database_name, YQL_DATABASE_PGSQL, &resp));
+  PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(resp.namespace_().id()));
+  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline);
+}
+
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    PgOid database_oid, uint64_t version, const MonoDelta& timeout) {
+  // In order for timeout to approximately determine how much time is spent before responding,
+  // incorporate the margin into the deadline because master will subtract the margin for
+  // responding.
+  CoarseTimePoint deadline = (
+      CoarseMonoClock::Now()
+      + MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms));
+  if (!timeout.Initialized()) {
+    deadline += MonoDelta::FromMilliseconds(
+        FLAGS_wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms);
+  } else {
+    deadline += timeout;
+  }
+  return WaitForYsqlBackendsCatalogVersion(database_oid, version, deadline);
+}
+
+Result<int> YBClient::WaitForYsqlBackendsCatalogVersion(
+    PgOid database_oid, uint64_t version, const CoarseTimePoint& deadline) {
+  WaitForYsqlBackendsCatalogVersionRequestPB req;
+  WaitForYsqlBackendsCatalogVersionResponsePB resp;
+
+  req.set_database_oid(database_oid);
+  req.set_catalog_version(version);
+
+  DCHECK(deadline != CoarseTimePoint()) << ToString(deadline);
+
+  CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(Admin, req, resp, deadline,
+                                            WaitForYsqlBackendsCatalogVersion);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return resp.num_lagging_backends();
+}
+
 Status YBClient::GetTablets(const YBTableName& table_name,
                             const int32_t max_tablets,
                             vector<TabletId>* tablet_uuids,
@@ -1902,41 +2024,35 @@ const CloudInfoPB& YBClient::cloud_info() const {
   return data_->cloud_info_pb_;
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId(
-    const TabletId& tablet_id) {
+std::pair<RetryableRequestId, RetryableRequestId> YBClient::NextRequestIdAndMinRunningRequestId() {
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
-  auto& tablet = data_->tablet_requests_[tablet_id];
-  if (tablet.request_id_seq == kInitializeFromMinRunning) {
-    return std::make_pair(kInitializeFromMinRunning, kInitializeFromMinRunning);
-  }
-  auto id = tablet.request_id_seq++;
-  tablet.running_requests.insert(id);
-  return std::make_pair(id, *tablet.running_requests.begin());
+  auto& requests = data_->requests_;
+  auto id = requests.request_id_seq++;
+  requests.running_requests.insert(id);
+  return std::make_pair(id, *requests.running_requests.begin());
 }
 
-void YBClient::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
-  if (request_id == kInitializeFromMinRunning) {
+Result<std::shared_ptr<internal::RemoteTabletServer>> YBClient::GetRemoteTabletServer(
+    const std::string& permanent_uuid) {
+  auto tserver = data_->meta_cache_->GetRemoteTabletServer(permanent_uuid);
+  RETURN_NOT_OK(tserver->InitProxy(this));
+  return tserver;
+}
+
+void YBClient::RequestsFinished(const std::set<RetryableRequestId>& request_ids) {
+  if (request_ids.empty()) {
     return;
   }
   std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
-  auto& tablet = data_->tablet_requests_[tablet_id];
-  auto it = tablet.running_requests.find(request_id);
-  if (it != tablet.running_requests.end()) {
-    tablet.running_requests.erase(it);
-  } else {
-    LOG_WITH_PREFIX(DFATAL) << "RequestFinished called for an unknown request: "
-                << tablet_id << ", " << request_id;
-  }
-}
-
-void YBClient::MaybeUpdateMinRunningRequestId(
-    const TabletId& tablet_id, RetryableRequestId min_running_request_id) {
-  std::lock_guard<simple_spinlock> lock(data_->tablet_requests_mutex_);
-  auto& tablet = data_->tablet_requests_[tablet_id];
-  if (tablet.request_id_seq == kInitializeFromMinRunning) {
-    tablet.request_id_seq = min_running_request_id + (1 << 24);
-    VLOG_WITH_PREFIX(1) << "Set request_id_seq for tablet " << tablet_id << " to "
-                        << tablet.request_id_seq;
+  for (RetryableRequestId id : request_ids) {
+    auto& requests = data_->requests_.running_requests;
+    auto it = requests.find(id);
+    if (it != requests.end()) {
+      requests.erase(it);
+    } else {
+      LOG_WITH_PREFIX(DFATAL) << "RequestsFinished called for an unknown request: "
+                              << id;
+    }
   }
 }
 
@@ -2057,6 +2173,11 @@ Status YBClient::ValidateReplicationInfo(const ReplicationInfoPB& replication_in
 Result<TableSizeInfo> YBClient::GetTableDiskSize(const TableId& table_id) {
   auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
   return data_->GetTableDiskSize(table_id, deadline);
+}
+
+Status YBClient::ReportYsqlDdlTxnStatus(const TransactionMetadata& txn, bool is_committed) {
+  auto deadline = CoarseMonoClock::Now() + default_rpc_timeout();
+  return data_->ReportYsqlDdlTxnStatus(txn, is_committed, deadline);
 }
 
 Result<bool> YBClient::CheckIfPitrActive() {
@@ -2286,7 +2407,7 @@ CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
   return CoarseMonoClock::Now() + default_admin_operation_timeout();
 }
 
-Result<vector<master::NamespaceIdentifierPB>> YBClient::ListNamespaces() {
+Result<vector<NamespaceInfo>> YBClient::ListNamespaces() {
   return ListNamespaces(boost::none);
 }
 
@@ -2330,6 +2451,21 @@ Result<std::optional<AutoFlagsConfigPB>> YBClient::GetAutoFlagConfig() {
   }
 
   return status;
+}
+
+Result<master::StatefulServiceInfoPB> YBClient::GetStatefulServiceLocation(
+    StatefulServiceKind service_kind) {
+  master::GetStatefulServiceLocationRequestPB req;
+  master::GetStatefulServiceLocationResponsePB resp;
+  req.set_service_kind(service_kind);
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Client, req, resp, GetStatefulServiceLocation);
+
+  RSTATUS_DCHECK(resp.has_service_info(), IllegalState, "No service info in response");
+  RSTATUS_DCHECK(
+      resp.service_info().has_permanent_uuid(), IllegalState, "No permanent uuid in response");
+
+  return std::move(resp.service_info());
 }
 
 }  // namespace client

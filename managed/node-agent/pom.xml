@@ -106,6 +106,7 @@
 				<artifactId>protobuf-maven-plugin</artifactId>
 				<configuration>
 					<pluginId>grpc-java</pluginId>
+					<checkStaleness>true</checkStaleness>
 					<pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${os.detected.classifier}</pluginArtifact>
 					<protocExecutable>${project.basedir}/third-party/bin/protoc</protocExecutable>
 					<protoSourceRoot>${project.basedir}/proto</protoSourceRoot>

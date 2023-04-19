@@ -3,8 +3,11 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { Panel } from 'react-bootstrap';
+
+import {
+  MetricConsts,
+} from '../../metrics/constants';
 import { MetricsPanelOld } from '../../metrics';
-import './GraphPanel.scss';
 import { YBLoading } from '../../common/indicators';
 import {
   isNonEmptyObject,
@@ -15,6 +18,8 @@ import {
 } from '../../../utils/ObjectUtils';
 import { isKubernetesUniverse } from '../../../utils/UniverseUtils';
 import { YUGABYTE_TITLE } from '../../../config';
+
+import './GraphPanel.scss';
 
 export const graphPanelTypes = {
   universe: {
@@ -59,7 +64,12 @@ export const graphPanelTypes = {
 export const panelTypes = {
   container: {
     title: 'Container',
-    metrics: ['container_cpu_usage', 'container_memory_usage', 'container_volume_stats']
+    metrics: [
+      'container_cpu_usage',
+      'container_memory_usage',
+      'container_volume_stats',
+      'container_volume_usage_percent'
+    ]
   },
   server: {
     title: 'Node',
@@ -67,6 +77,8 @@ export const panelTypes = {
       'cpu_usage',
       'memory_usage',
       'disk_iops',
+      'disk_usage_percent',
+      'disk_used_size_total',
       'disk_bytes_per_second_per_node',
       'network_packets',
       'network_bytes',
@@ -94,6 +106,7 @@ export const panelTypes = {
       'tserver_log_bytes_written',
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
+      'tserver_write_lock_latency',
       'tserver_tc_malloc_stats',
       'tserver_log_stats',
       'tserver_cache_reader_num_ops',
@@ -168,7 +181,9 @@ export const panelTypes = {
       'lsm_rocksdb_compaction_time',
       'lsm_rocksdb_compaction_numfiles',
       'docdb_transaction',
-      'docdb_transaction_pool_cache'
+      'docdb_transaction_pool_cache',
+      'tablet_splitting_stats',
+      'automatic_split_manager_time'
     ]
   },
   ysql_ops: {
@@ -176,7 +191,8 @@ export const panelTypes = {
     metrics: [
       'ysql_server_rpc_per_second',
       'ysql_sql_latency',
-      'ysql_connections'
+      'ysql_connections',
+      'ysql_connections_per_sec'
       // TODO(bogdan): Add these in once we have histogram support, see #3630.
       // "ysql_server_rpc_p99"
     ]
@@ -239,6 +255,7 @@ export const panelTypes = {
       'tserver_log_bytes_read',
       'tserver_log_ops_second',
       'tserver_log_stats',
+      'tserver_write_lock_latency',
       'tserver_cache_reader_num_ops'
     ]
   },
@@ -288,13 +305,13 @@ class GraphPanel extends Component {
   queryMetricsType = (graphFilter) => {
     const { startMoment, endMoment, nodeName, nodePrefix } = graphFilter;
     const { type } = this.props;
-    const splitTopNodes = (isNonEmptyString(nodeName) && nodeName === 'top') ? 1 : 0;
+    const splitTopNodes = isNonEmptyString(nodeName) && nodeName === 'top' ? 1 : 0;
     const metricsWithSettings = panelTypes[type].metrics.map((metric) => {
       return {
         metric: metric,
         splitTopNodes: splitTopNodes
-      }
-    })
+      };
+    });
     const params = {
       metricsWithSettings: metricsWithSettings,
       start: startMoment.format('X'),
@@ -347,13 +364,12 @@ class GraphPanel extends Component {
       type,
       selectedUniverse,
       insecureLoginToken,
-      graph: { metrics, prometheusQueryEnabled },
+      graph: { metrics, prometheusQueryEnabled, loading },
       customer: { currentUser }
     } = this.props;
     const { nodeName } = this.props.graph.graphFilter;
-
     let panelData = <YBLoading />;
-
+    if (loading) panelData = <YBLoading />;
     if (
       insecureLoginToken &&
       !(type === 'ycql_ops' || type === 'ysql_ops' || type === 'yedis_ops')
@@ -369,7 +385,6 @@ class GraphPanel extends Component {
         and group metrics by panel type and filter out anything that is empty.
         */
         const width = this.props.width;
-
         panelData = panelTypes[type].metrics
           .map(function (metricKey, idx) {
             return isNonEmptyObject(metrics[type][metricKey]) && !metrics[type][metricKey].error ? (
@@ -386,37 +401,41 @@ class GraphPanel extends Component {
           })
           .filter(Boolean);
       }
-      const invalidPanelType =
-        selectedUniverse && isKubernetesUniverse(selectedUniverse)
-          ? panelTypes[type]?.title === 'Node'
-          : panelTypes[type]?.title === 'Container';
-      if (invalidPanelType) {
+      const isInvalidPanelType = selectedUniverse && isKubernetesUniverse(selectedUniverse)
+        ? panelTypes[type]?.title === 'Node'
+        : panelTypes[type]?.title === 'Container';
+
+      if (selectedUniverse !== MetricConsts.ALL && isInvalidPanelType) {
         return null;
       }
 
       if (selectedUniverse && isKubernetesUniverse(selectedUniverse)) {
         //Hide master related panels for tserver pods.
-        if (nodeName.match('yb-tserver-') != null) {
-          if (panelTypes[type].title === 'Master Server' || panelTypes[type].title === 'Master Server Advanced') {
+        if (nodeName.match('yb-tserver-') !== null) {
+          if (
+            panelTypes[type].title === 'Master Server' ||
+            panelTypes[type].title === 'Master Server Advanced'
+          ) {
             return null;
           }
         }
         //Hide empty panels for master pods.
-        if (nodeName.match('yb-master-') != null) {
-          const skipList = ['Tablet Server',
+        if (nodeName.match('yb-master-') !== null) {
+          const skipList = [
+            'Tablet Server',
             'YSQL Ops and Latency',
             'YCQL Ops and Latency',
             'YEDIS Ops and Latency',
             'YEDIS Advanced',
             'YSQL Advanced',
-            'YCQL Advanced']
+            'YCQL Advanced'
+          ];
           if (skipList.includes(panelTypes[type].title)) {
             return null;
           }
         }
       }
-
-      if (isEmptyArray(panelData)) {
+      if (isEmptyArray(panelData) || metrics[type]?.error) {
         panelData = 'Error receiving response from Graph Server';
       }
     }

@@ -3,36 +3,51 @@
 package com.yugabyte.yw.common;
 
 import static com.yugabyte.yw.models.CustomerTask.TargetType;
+import static io.ebean.Ebean.beginTransaction;
+import static io.ebean.Ebean.commitTransaction;
+import static io.ebean.Ebean.endTransaction;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.commissioner.tasks.subtasks.LoadBalancerStateChange;
+import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.common.services.YBClientService;
-import org.yb.client.ChangeLoadBalancerStateResponse;
-import org.yb.client.YBClient;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.Restore;
+import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.Ebean;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.inject.Singleton;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import play.api.Play;
+import org.yb.client.ChangeLoadBalancerStateResponse;
+import org.yb.client.YBClient;
+import play.libs.Json;
 
 @Singleton
 public class CustomerTaskManager {
+
+  private BackupUtil backupUtil;
+  private Commissioner commissioner;
+  private YBClientService ybService;
 
   public static final Logger LOG = LoggerFactory.getLogger(CustomerTaskManager.class);
   private static final List<TaskType> LOAD_BALANCER_TASK_TYPES =
@@ -42,11 +57,18 @@ public class CustomerTaskManager {
           TaskType.MultiTableBackup,
           TaskType.CreateBackup);
   private static final String ALTER_LOAD_BALANCER = "alterLoadBalancer";
-  @Inject YBClientService ybService;
+
+  @Inject
+  public CustomerTaskManager(
+      BackupUtil backupUtil, YBClientService ybService, Commissioner commissioner) {
+    this.backupUtil = backupUtil;
+    this.ybService = ybService;
+    this.commissioner = commissioner;
+  }
 
   private void setTaskError(TaskInfo taskInfo) {
     taskInfo.setTaskState(TaskInfo.State.Failure);
-    JsonNode jsonNode = taskInfo.getTaskDetails();
+    JsonNode jsonNode = taskInfo.getDetails();
     if (jsonNode instanceof ObjectNode) {
       ObjectNode details = (ObjectNode) jsonNode;
       JsonNode errNode = details.get("errorString");
@@ -56,7 +78,7 @@ public class CustomerTaskManager {
     }
   }
 
-  public void failPendingTask(CustomerTask customerTask, TaskInfo taskInfo) {
+  public void handlePendingTask(CustomerTask customerTask, TaskInfo taskInfo) {
     try {
       // Mark each subtask as a failure if it is not completed.
       taskInfo
@@ -67,13 +89,13 @@ public class CustomerTaskManager {
                 subtask.save();
               });
 
+      Optional<Universe> optUniv = Universe.maybeGet(customerTask.getTargetUUID());
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
         Boolean isLoadBalanceAltered = false;
-        JsonNode node = taskInfo.getTaskDetails();
+        JsonNode node = taskInfo.getDetails();
         if (node.has(ALTER_LOAD_BALANCER)) {
           isLoadBalanceAltered = node.path(ALTER_LOAD_BALANCER).asBoolean(false);
         }
-        Optional<Universe> optUniv = Universe.maybeGet(customerTask.getTargetUUID());
         if (optUniv.isPresent() && isLoadBalanceAltered) {
           enableLoadBalancer(optUniv.get());
         }
@@ -82,29 +104,79 @@ public class CustomerTaskManager {
       UUID taskUUID = taskInfo.getTaskUUID();
       ScheduleTask scheduleTask = ScheduleTask.fetchByTaskUUID(taskUUID);
       if (scheduleTask != null) {
-        scheduleTask.setCompletedTime();
+        scheduleTask.markCompleted();
       }
 
       // Use isUniverseTarget() instead of directly comparing with Universe type because some
       // targets like Cluster, Node are Universe targets.
-      boolean unlockUniverse = customerTask.getTarget().isUniverseTarget();
-      if (customerTask.getTarget().equals(TargetType.Backup)) {
+      boolean unlockUniverse = customerTask.getTargetType().isUniverseTarget();
+      boolean resumeTask = false;
+      boolean isRestoreYbc = false;
+      CustomerTask.TaskType type = customerTask.getType();
+      Map<BackupCategory, List<Backup>> backupCategoryMap = new HashMap<>();
+      if (customerTask.getTargetType().equals(TargetType.Backup)) {
         // Backup is not universe target.
-
-        CustomerTask.TaskType type = customerTask.getType();
         if (CustomerTask.TaskType.Create.equals(type)) {
           // Make transition state false for inProgress backups
           List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
-          backupList
+          backupCategoryMap =
+              backupList
+                  .stream()
+                  .filter(
+                      backup ->
+                          backup.getState().equals(Backup.BackupState.InProgress)
+                              || backup.getState().equals(Backup.BackupState.Stopped))
+                  .collect(Collectors.groupingBy(Backup::getCategory));
+
+          backupCategoryMap
+              .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
               .stream()
-              .filter(backup -> backup.state.equals(Backup.BackupState.InProgress))
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
+          List<Backup> ybcBackups =
+              backupCategoryMap.getOrDefault(BackupCategory.YB_CONTROLLER, new ArrayList<>());
+          if (!optUniv.isPresent()) {
+            ybcBackups
+                .stream()
+                .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
+          } else {
+            if (!ybcBackups.isEmpty()) {
+              resumeTask = true;
+            }
+          }
           unlockUniverse = true;
         } else if (CustomerTask.TaskType.Delete.equals(type)) {
           // NOOP because Delete does not lock Universe.
         } else if (CustomerTask.TaskType.Restore.equals(type)) {
-          // Restore only locks the Universe but does not set backupInProgress flag.
+          // Restore locks the Universe.
           unlockUniverse = true;
+          RestoreBackupParams params =
+              Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
+          if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
+            isRestoreYbc = true;
+          }
+        }
+      } else if (CustomerTask.TaskType.Restore.equals(type)) {
+        unlockUniverse = true;
+        RestoreBackupParams params =
+            Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
+        if (backupUtil.isYbcBackup(params.backupStorageInfoList.get(0).storageLocation)) {
+          resumeTask = true;
+          isRestoreYbc = true;
+        }
+      }
+
+      if (!isRestoreYbc) {
+        List<Restore> restoreList =
+            Restore.fetchByTaskUUID(taskUUID)
+                .stream()
+                .filter(
+                    restore ->
+                        restore.getState().equals(Restore.State.Created)
+                            || restore.getState().equals(Restore.State.InProgress))
+                .collect(Collectors.toList());
+        for (Restore restore : restoreList) {
+          restore.update(taskUUID, Restore.State.Failed);
+          RestoreKeyspace.update(restore, TaskInfo.State.Failure);
         }
       }
 
@@ -114,13 +186,12 @@ public class CustomerTaskManager {
             .ifPresent(
                 u -> {
                   UniverseDefinitionTaskParams details = u.getUniverseDetails();
-                  if (details.backupInProgress || details.updateInProgress) {
+                  if (details.updateInProgress) {
                     // Create the update lambda.
                     Universe.UniverseUpdater updater =
                         universe -> {
                           UniverseDefinitionTaskParams universeDetails =
                               universe.getUniverseDetails();
-                          universeDetails.backupInProgress = false;
                           universeDetails.updateInProgress = false;
                           universe.setUniverseDetails(universeDetails);
                         };
@@ -136,17 +207,75 @@ public class CustomerTaskManager {
         setTaskError(taskInfo);
         taskInfo.save();
       }
-      // Mark customer task as completed.
-      // Customer task is marked completed after the task state is updated in TaskExecutor.
-      // Moreover, this method has an internal guard to set the completion time only if it is null.
-      customerTask.markAsCompleted();
+
+      // Resume tasks if any
+      TaskType taskType = taskInfo.getTaskType();
+      UniverseTaskParams taskParams = null;
+      LOG.info("Resume Task: " + String.valueOf(resumeTask));
+
+      try {
+        if (resumeTask && optUniv.isPresent()) {
+          Universe universe = optUniv.get();
+          if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)) {
+            String errMsg =
+                String.format("Invalid task state: Task %s cannot be resumed", taskUUID);
+            LOG.debug(errMsg);
+            customerTask.markAsCompleted();
+            return;
+          }
+
+          switch (taskType) {
+            case CreateBackup:
+              BackupRequestParams backupParams =
+                  Json.fromJson(taskInfo.getDetails(), BackupRequestParams.class);
+              taskParams = backupParams;
+              break;
+            case RestoreBackup:
+              RestoreBackupParams restoreParams =
+                  Json.fromJson(taskInfo.getDetails(), RestoreBackupParams.class);
+              taskParams = restoreParams;
+              break;
+            default:
+              LOG.error(String.format("Invalid task type: %s during platform restart", taskType));
+              return;
+          }
+          taskParams.setPreviousTaskUUID(taskUUID);
+          UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+          beginTransaction();
+          try {
+            customerTask.updateTaskUUID(newTaskUUID);
+            customerTask.resetCompletionTime();
+            TaskInfo task = TaskInfo.get(taskUUID);
+            if (task != null) {
+              task.getSubTasks().forEach(st -> st.delete());
+              task.delete();
+            }
+            commitTransaction();
+          } catch (Exception e) {
+            throw new RuntimeException(
+                "Unable to delete the previous task info: " + taskUUID.toString());
+          } finally {
+            endTransaction();
+          }
+
+        } else {
+          // Mark customer task as completed.
+          // Customer task is marked completed after the task state is updated in TaskExecutor.
+          // Moreover, this method has an internal guard to set the completion time only if it is
+          // null.
+          customerTask.markAsCompleted();
+        }
+      } catch (Exception ex) {
+        customerTask.markAsCompleted();
+        throw ex;
+      }
     } catch (Exception e) {
       LOG.error(String.format("Error encountered failing task %s", customerTask.getTaskUUID()), e);
     }
   }
 
-  public void failAllPendingTasks() {
-    LOG.info("Failing incomplete tasks...");
+  public void handleAllPendingTasks() {
+    LOG.info("Handle the pending tasks...");
     try {
       String incompleteStates =
           TaskInfo.INCOMPLETE_STATES
@@ -162,7 +291,9 @@ public class CustomerTaskManager {
               + "AND (ct.completion_time IS NULL "
               + "OR ti.task_state IN ('"
               + incompleteStates
-              + "'))";
+              + "') OR "
+              + "(ti.task_state='Aborted' AND ti.details->>'errorString' = 'Platform shutdown'"
+              + " AND ct.completion_time IS NULL))";
       // TODO use Finder.
       Ebean.createSqlQuery(query)
           .findList()
@@ -170,7 +301,7 @@ public class CustomerTaskManager {
               row -> {
                 TaskInfo taskInfo = TaskInfo.get(row.getUUID("task_uuid"));
                 CustomerTask customerTask = CustomerTask.get(row.getLong("customer_task_id"));
-                failPendingTask(customerTask, taskInfo);
+                handlePendingTask(customerTask, taskInfo);
               });
     } catch (Exception e) {
       LOG.error("Encountered error failing pending tasks", e);

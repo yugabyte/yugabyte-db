@@ -1,15 +1,15 @@
 ---
-title: GIN indexes
+title: GIN indexes in YugabyteDB YSQL
+headerTitle: GIN indexes
 linkTitle: GIN indexes
 description: Generalized inverted indexes in YSQL
+headContent: Explore GIN indexes using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: indexes-constraints-gin
     parent: explore-indexes-constraints
     weight: 260
-aliases:
-  - /preview/explore/ysql-language-features/gin/
 type: docs
 ---
 
@@ -22,21 +22,18 @@ type: docs
   </li>
 </ul>
 
-In YugabyteDB, tables and secondary indexes are both [key-value stores internally][arch-persistence].
-Loosely speaking:
+In YugabyteDB, tables and secondary indexes are both [key-value stores internally](../../../architecture/docdb/persistence/). Loosely speaking:
 
 - A _table's_ internal key-value store maps primary keys to the remaining columns.
 - A _secondary index's_ internal key-value store maps index keys to primary keys.
 
-**Regular indexes index columns.** This makes queries with conditions on the columns more efficient.
-For example, if you had a regular index on a single int array column (currently not possible in YSQL), queries like `WHERE myintarray = '{1,3,6}'` would be more efficient when using the index.
-However, queries like `WHERE myintarray @> '{3}'` (meaning "is `3` an element of `myintarray`?") would not benefit from the regular index.
+**Regular indexes index columns.**
+
+This makes queries with conditions on the columns more efficient. For example, if you had a regular index on a single int array column (currently not possible in YSQL), queries such as `WHERE myintarray = '{1,3,6}'` would be more efficient when using the index. However, queries like `WHERE myintarray @> '{3}'` (meaning "is `3` an element of `myintarray`?") would not benefit from the regular index.
 
 **Generalized inverted indexes (GIN indexes) index elements inside container columns.**
-This makes queries with conditions on elements inside the columns more efficient.
-The above example would benefit from a GIN index since we can look up the key `3` in the gin index.
 
-[arch-persistence]: ../../../architecture/docdb/persistence/
+This makes queries with conditions on elements inside the columns more efficient. The preceding example would benefit from a GIN index because you can look up the key `3` in the gin index.
 
 ## Compatible types
 
@@ -46,8 +43,7 @@ GIN indexes can only be created over a few types:
 - A GIN index on an _array_ column indexes _array elements_
 - A GIN index on a _jsonb_ column indexes _keys/values_
 
-You can use extensions to support more types.
-However, extension support is still in progress:
+You can use extensions to support more types. However, extension support is still in progress:
 
 - `btree_gin`: unsupported
 - `hstore`: supported
@@ -64,8 +60,7 @@ Create the index using `USING ybgin` to specify the index access method:
 CREATE INDEX ON mytable USING ybgin (mycol);
 ```
 
-The `gin` access method is reserved for temporary relations while `ybgin` is for Yugabyte-backed relations.
-You can still specify `USING gin`, and, if `mytable` is not a temporary table, it will be automatically substituted for `ybgin`.
+The `gin` access method is reserved for temporary relations while `ybgin` is for Yugabyte-backed relations. You can still specify `USING gin`, and, if `mytable` is not a temporary table, it will be automatically substituted for `ybgin`.
 
 GIN indexes can't be unique, so `CREATE UNIQUE INDEX` is not allowed.
 
@@ -75,9 +70,7 @@ Writes are fully supported.
 
 ### SELECT
 
-Only [certain SELECTs][operators] use the GIN index.
-
-[operators]: https://www.postgresql.org/docs/13/gin-builtin-opclasses.html
+Only [certain SELECTs](https://www.postgresql.org/docs/13/gin-builtin-opclasses.html) use the GIN index.
 
 ## Changes from PostgreSQL
 
@@ -90,16 +83,7 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 ## Examples
 
-1. To begin, set up a YugabyteDB cluster. For instance, using `yugabyted`,
-
-    ```sh
-    ./bin/yugabyted start --base_dir /tmp/gindemo/1 --listen 127.0.0.201
-    ./bin/yugabyted start --base_dir /tmp/gindemo/2 --listen 127.0.0.202 \
-      --join 127.0.0.201
-    ./bin/yugabyted start --base_dir /tmp/gindemo/3 --listen 127.0.0.203 \
-      --join 127.0.0.201
-    ./bin/ysqlsh --host 127.0.0.201
-    ```
+{{% explore-setup-single-local %}}
 
 1. Set up the tables, indexes, and data.
 
@@ -142,21 +126,21 @@ YugabyteDB GIN indexes are somewhat different from PostgreSQL GIN indexes:
 
 ### Timing
 
-Here are some examples to show the speed improvement of queries using GIN index.
-GIN indexes currently support IndexScan only, not IndexOnlyScan.
-The difference is that IndexScan uses the results of a scan to the index for filtering on the indexed table whereas an IndexOnlyScan need not go to the indexed table since the results from the index are sufficient.
-Therefore, a GIN index scan can be more costly than a sequential scan straight to the main table if the index scan does not filter out many rows.
-Since cost estimates currently aren't very accurate, the more costly index scan may be chosen in some cases.
+The following examples show the speed improvement of queries using GIN indexes.
 
-The assumption in the following examples is that the user is using the GIN index in ways that take advantage of it.
+GIN indexes currently support IndexScan only, not IndexOnlyScan. The difference is that IndexScan uses the results of a scan to the index for filtering on the indexed table, whereas an IndexOnlyScan need not go to the indexed table because the results from the index are sufficient. Therefore, a GIN index scan can be more costly than a sequential scan straight to the main table if the index scan does not filter out many rows.
 
-1. First, enable timing for future queries.
+Because cost estimates currently aren't very accurate, the more costly index scan may be chosen in some cases.
+
+The assumption in the following examples is that you are using the GIN index in ways that take advantage of it.
+
+1. Enable timing for future queries.
 
     ```sql
     \timing on
     ```
 
-1. Test GIN index on tsvector:
+1. Test GIN index on tsvector as follows:
 
     ```sql
     SET enable_indexscan = off;
@@ -186,12 +170,9 @@ The assumption in the following examples is that the user is using the GIN index
     Time: 2.838 ms
     ```
 
-    \
-    Notice the over 3x timing improvement when using GIN index.
-    This is on a relatively small table: a little over 1000 rows.
-    With more and/or bigger rows, the timing improvement should get better.
+    Notice the over 3x timing improvement when using GIN index. This is on a relatively small table: a little over 1000 rows. With more and/or bigger rows, the timing improvement should get better.
 
-1. Next, try on an int array:
+1. Use a GIN index on an int array as follows:
 
     ```sql
     SET enable_indexscan = off;
@@ -221,7 +202,7 @@ The assumption in the following examples is that the user is using the GIN index
     Time: 2.989 ms
     ```
 
-1. Finally, try with jsonb:
+1. Use a GIN index on with JSONB as follows:
 
     ```sql
     SET enable_indexscan = off;
@@ -230,13 +211,13 @@ The assumption in the following examples is that the user is using the GIN index
     ```
 
     ```output
-                                            j                                          | k
+                                             j                                          | k
     ------------------------------------------------------------------------------------+---
-    {"some": ["where", "how"]}                                                         | 5
-    {"and": ["another", "element", "not", "a", "number"], "some": {"nested": "jsonb"}} | 6
-    {"some": "thing"}                                                                  | 4
-    {"some": "body"}                                                                   | 2
-    {"some": "one"}                                                                    | 3
+     {"some": ["where", "how"]}                                                         | 5
+     {"and": ["another", "element", "not", "a", "number"], "some": {"nested": "jsonb"}} | 6
+     {"some": "thing"}                                                                  | 4
+     {"some": "body"}                                                                   | 2
+     {"some": "one"}                                                                    | 3
     (5 rows)
 
     Time: 13.451 ms
@@ -255,29 +236,17 @@ The assumption in the following examples is that the user is using the GIN index
 
 ### Using opclass `jsonb_path_ops`
 
-By default, jsonb GIN indexes use the opclass `jsonb_ops`.
-There is another opclass `jsonb_path_ops` that can be used instead.
+By default, JSONB GIN indexes use the opclass `jsonb_ops`. Another opclass, `jsonb_path_ops`, can be used instead.
 
-The difference is the way they extract elements out of a jsonb.
-`jsonb_ops` extracts keys and values and encodes them as `<flag_byte><value>`.
-For example, `'{"abc":[123,true]}'` maps to three GIN keys: `\001abc`, `\004123`, `\003t`.
-The flag bytes here indicate the types key, numeric, and boolean, respectively.
+The difference is the way they extract elements out of a JSONB. `jsonb_ops` extracts keys and values and encodes them as `<flag_byte><value>`. For example, `'{"abc":[123,true]}'` maps to three GIN keys: `\001abc`, `\004123`, `\003t`. The flag bytes here indicate the types key, numeric, and boolean, respectively.
 
-On the other hand, `jsonb_path_ops` extracts hashed paths.
-Using the above example, there are two paths: `"abc" -> 123` and `"abc" -> true`.
-Then, there are two GIN keys based on those paths using an internal hashing mechanism: `-1570777299`, `-1227915239`.
+On the other hand, `jsonb_path_ops` extracts hashed paths. Using the above example, there are two paths: `"abc" -> 123` and `"abc" -> true`. Then, there are two GIN keys based on those paths using an internal hashing mechanism: `-1570777299`, `-1227915239`.
 
-`jsonb_path_ops` is better suited for queries involving paths, such as the `jsonb @> jsonb` operator.
-However, it doesn't support as many operators as `jsonb_ops`.
-If write performance and storage aren't an issue, it may be worth creating a GIN index of each jsonb opclass so that reads can choose the faster one.
+`jsonb_path_ops` is better suited for queries involving paths, such as the `jsonb @> jsonb` operator. However, it doesn't support as many operators as `jsonb_ops`. If write performance and storage aren't an issue, it may be worth creating a GIN index of each jsonb opclass so that reads can choose the faster one.
 
 ### Presplitting
 
-By default, `ybgin` indexes use a single range-partitioned tablet.
-Like regular tables and indexes, it is possible to presplit a `ybgin` index to multiple tablets at specified split points.
-These split points are for the index, so they need to be represented in the index key format.
-This is simple for tsvector and array types, but it gets complicated for jsonb and text (`pg_trgm`).
-`jsonb_path_ops` especially should use hash partitioning since the index key is itself a hash, but hash partitioning `ybgin` indexes is currently unsupported.
+By default, `ybgin` indexes use a single range-partitioned tablet. Like regular tables and indexes, it is possible to presplit a `ybgin` index to multiple tablets at specified split points. These split points are for the index, so they need to be represented in the index key format. This is simple for tsvector and array types, but it gets complicated for JSONB and text (`pg_trgm`). `jsonb_path_ops` especially should use hash partitioning as the index key is itself a hash, but hash partitioning `ybgin` indexes is currently unsupported.
 
 ```sql
 CREATE INDEX NONCONCURRENTLY vectors_split_idx ON vectors USING ybgin (v) SPLIT AT VALUES (('j'), ('o'));
@@ -286,38 +255,36 @@ CREATE INDEX NONCONCURRENTLY jsonbs_split_idx1 ON jsonbs USING ybgin (j) SPLIT A
 CREATE INDEX NONCONCURRENTLY jsonbs_split_idx2 ON jsonbs USING ybgin (j jsonb_path_ops) SPLIT AT VALUES ((-1000000000), (0), (1000000000));
 ```
 
-Let's focus on just one index for the remainder of this example: `jsonbs_split_idx1`.
+The remainder of the example focuses on just one index, `jsonbs_split_idx1`.
 
 First, check how the index is partitioned.
 
 ```sh
-bin/yb-admin \
-  --master_addresses 127.0.0.201,127.0.0.202,127.0.0.203 \
+./bin/yb-admin \
+  --master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 \
   list_tablets ysql.yugabyte jsonbs_split_idx1
 ```
 
 ```output
 Tablet-UUID                       Range                                                                               Leader-IP         Leader-UUID
-43b2a0f0dac44018b60eebeee489e391  partition_key_start: "" partition_key_end: "S\001some\000\000!"                     127.0.0.201:9100  2702ace451fe46bd81dd2a19ea539163
-c32e1066cefb449cb191ff23d626125f  partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!"  127.0.0.203:9100  3a80acb8df5d45e38b388ffdc17a59e0
-ba23b657eb5b4bc891ca794bcad06db7  partition_key_start: "S\005jsonb\000\000!" partition_key_end: ""                    127.0.0.202:9100  e24423119e734860bb0c3516df948b5c
+43b2a0f0dac44018b60eebeee489e391  partition_key_start: "" partition_key_end: "S\001some\000\000!"                     127.0.0.1:9100  2702ace451fe46bd81dd2a19ea539163
+c32e1066cefb449cb191ff23d626125f  partition_key_start: "S\001some\000\000!" partition_key_end: "S\005jsonb\000\000!"  127.0.0.3:9100  3a80acb8df5d45e38b388ffdc17a59e0
+ba23b657eb5b4bc891ca794bcad06db7  partition_key_start: "S\005jsonb\000\000!" partition_key_end: ""                    127.0.0.2:9100  e24423119e734860bb0c3516df948b5c
 ```
 
-Then, check the data in each partition.
-Flush it to SST files so that we can read them with `sst_dump`.
-Ignore lines with "filler" because there are too many of them.
-`!!` refers to the previous `list_tablets` command.
-Adjust it if it doesn't work in your shell.
+Then, check the data in each partition. Flush it to SST files so that you can read them with `sst_dump`.
+
+Ignore lines with "filler" because there are too many of them. `!!` refers to the previous `list_tablets` command. Adjust it if it doesn't work in your shell.
 
 ```sh
-bin/yb-admin \
-  --master_addresses 127.0.0.201,127.0.0.202,127.0.0.203 \
+./bin/yb-admin \
+  --master_addresses 127.0.0.1,127.0.0.2,127.0.0.3 \
   flush_table ysql.yugabyte jsonbs_split_idx1
 while read -r tablet_id; do
   bin/sst_dump \
     --command=scan \
     --output_format=decoded_regulardb \
-    --file=$(find /tmp/gindemo/1/data/yb-data/tserver/data \
+    --file=$(find /tmp/ybd1/data/yb-data/tserver/data \
                -name tablet-"$tablet_id") \
   | grep -v filler
 done <<(!! \
@@ -327,7 +294,7 @@ done <<(!! \
 
 ```output
 from [] to []
-Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
+Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-43b2a0f0dac44018b60eebeee489e391/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 73 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 73 }
 SubDocKey(DocKey([], ["\x01a", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 315 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 142 }
@@ -340,7 +307,7 @@ SubDocKey(DocKey([], ["\x01not", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])])
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 74 }]) -> null; intent doc ht: HT{ physical: 1636678107937571 w: 74 }
 SubDocKey(DocKey([], ["\x01number", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 321 }]) -> null; intent doc ht: HT{ physical: 1636678107947022 w: 148 }
 from [] to []
-Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
+Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-c32e1066cefb449cb191ff23d626125f/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 }
 SubDocKey(DocKey([], ["\x01some", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 3 }]) -> null; intent doc ht: HT{ physical: 1636678107944604 }
@@ -351,7 +318,7 @@ SubDocKey(DocKey([], ["\x01where", EncodedSubDocKey(DocKey(0x0a73, [5], []), [])
 SubDocKey(DocKey([], ["\x045", EncodedSubDocKey(DocKey(0x1210, [1], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107935594 w: 2 }
 SubDocKey(DocKey([], ["\x05body", EncodedSubDocKey(DocKey(0xc0c4, [2], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 6 }]) -> null; intent doc ht: HT{ physical: 1636678107973196 w: 1 }
 from [] to []
-Process /tmp/gindemo/1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
+Process /tmp/ybd1/data/yb-data/tserver/data/rocksdb/table-000033c000003000800000000000401d/tablet-ba23b657eb5b4bc891ca794bcad06db7/000010.sst
 Sst file format: block-based
 SubDocKey(DocKey([], ["\x05jsonb", EncodedSubDocKey(DocKey(0x4e58, [6], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 }]) -> null; intent doc ht: HT{ physical: 1636678107944677 }
 SubDocKey(DocKey([], ["\x05one", EncodedSubDocKey(DocKey(0xfca0, [3], []), [])]), [SystemColumnId(0); HT{ physical: 1636678107997627 w: 2 }]) -> null; intent doc ht: HT{ physical: 1636678107974363 }
@@ -370,29 +337,25 @@ GIN indexes are in active development, and currently have the following limitati
 
 - Multi-column GIN indexes are not currently supported. ([#10652](https://github.com/yugabyte/yugabyte-db/issues/10652))
 - You can't yet specify `ASC`, `DESC`, or `HASH` sort methods. The default is `ASC` for prefix match purposes, so this can be relaxed in the future. ([#10653](https://github.com/yugabyte/yugabyte-db/issues/10653))
-- UPDATEs may be expensive, since they're currently implemented as DELETE + INSERT.
+- UPDATEs may be expensive, as they're currently implemented as DELETE + INSERT.
 - SELECT operations have the following limitations:
   - Scans with non-default search mode aren't currently supported.
   - Scans can't ask for more than one index key.
-    \
+
     For example, a request for all rows whose array contains elements 1 or 3 will fail, but one that asks for elements 1 _and_ 3 can succeed by choosing one of the elements for index scan and rechecking the entire condition later.
-    \
+
     However, the choice between 1 and 3 is currently unoptimized, so 3 may be chosen even though 1 corresponds to less rows.
   - Recheck is always done rather than on a case-by-case basis, meaning there can be an unnecessary performance penalty.
 
-If a query is unsupported, you can disable index scan to avoid an error message (`SET enable_indexscan TO off;`) before the query, and re-enable it (`SET enable_indexscan TO on;`) afterwards.
-In the near future, cost estimates should route such queries to sequential scan.
+If a query is unsupported, you can disable index scan to avoid an error message (`SET enable_indexscan TO off;`) before the query, and re-enable it (`SET enable_indexscan TO on;`) afterwards. In the near future, cost estimates should route such queries to sequential scan.
 
 ### Unsupported queries
 
-Sometimes, an unsupported query may be encountered by getting an ERROR.
-Here are some workarounds for some of these cases.
+Sometimes, an unsupported query may be encountered by getting an ERROR. The following sections describe some workarounds for some of these cases.
 
 #### More than one required scan entry
 
-Perhaps the most common issue would be "cannot use more than one required scan entry".
-It means that the GIN index scan internally tries to fetch more than one index key.
-Since this is currently not supported, it throws an ERROR.
+Perhaps the most common issue would be "cannot use more than one required scan entry". This means that the GIN index scan internally tries to fetch more than one index key. Because this is currently not supported, it throws an ERROR.
 
 ```sql
 RESET enable_indexscan;
@@ -480,8 +443,7 @@ SELECT * FROM vectors WHERE v @@ to_tsquery('simple', 'lazy');
 Time: 5.559 ms
 ```
 
-If performance doesn't matter, the universal fix is to disable index scan so that sequential scan is used.
-For sequential scan to be chosen, make sure that sequential scan is not also disabled.
+If performance doesn't matter, the universal fix is to disable index scan so that sequential scan is used. For sequential scan to be chosen, make sure that sequential scan is not also disabled.
 
 ```sql
 SET enable_indexscan = off;
@@ -503,9 +465,8 @@ Notice that the modified query using the index is still 2x faster than the origi
 #### Non-default search mode
 
 All search modes/strategies besides the default one are currently unsupported.
-Many of these are best off using a sequential scan.
-In fact, the query planner avoids many of these types of index scans by increasing the cost, leading to sequential scan being chosen as the better alternative.
-Nevertheless, here are some cases that hit the ERROR.
+
+Many of these are best off using a sequential scan. In fact, the query planner avoids many of these types of index scans by increasing the cost, leading to sequential scan being chosen as the better alternative. Nevertheless, the following examples show some cases that hit the ERROR.
 
 ```sql
 RESET enable_indexscan;

@@ -40,6 +40,8 @@
 
 #include "yb/docdb/transaction_dump.h"
 
+#include "yb/gutil/stl_util.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/poller.h"
 #include "yb/rpc/rpc.h"
@@ -51,13 +53,15 @@
 #include "yb/tserver/tserver_service.pb.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/debug-util.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
@@ -67,20 +71,21 @@
 #include "yb/util/yb_pg_errcodes.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
-DEFINE_double(transaction_max_missed_heartbeat_periods, 10.0,
+DEFINE_UNKNOWN_double(transaction_max_missed_heartbeat_periods, 10.0,
               "Maximum heartbeat periods that a pending transaction can miss before the "
               "transaction coordinator expires the transaction. The total expiration time in "
               "microseconds is transaction_heartbeat_usec times "
               "transaction_max_missed_heartbeat_periods. The value passed to this flag may be "
               "fractional.");
-DEFINE_uint64(transaction_check_interval_usec, 500000, "Transaction check interval in usec.");
-DEFINE_uint64(transaction_resend_applying_interval_usec, 5000000,
+DEFINE_UNKNOWN_uint64(transaction_check_interval_usec, 500000,
+    "Transaction check interval in usec.");
+DEFINE_UNKNOWN_uint64(transaction_resend_applying_interval_usec, 5000000,
               "Transaction resend applying interval in usec.");
-DEFINE_uint64(transaction_deadlock_detection_interval_usec, 60000000,
+DEFINE_UNKNOWN_uint64(transaction_deadlock_detection_interval_usec, 60000000,
               "Deadlock detection interval in usec.");
 TAG_FLAG(transaction_deadlock_detection_interval_usec, advanced);
 
-DEFINE_int64(avoid_abort_after_sealing_ms, 20,
+DEFINE_UNKNOWN_int64(avoid_abort_after_sealing_ms, 20,
              "If transaction was only sealed, we will try to abort it not earlier than this "
                  "period in milliseconds.");
 
@@ -98,7 +103,15 @@ DEFINE_test_flag(bool, disable_cleanup_applied_transactions, false,
 DEFINE_test_flag(bool, disable_apply_committed_transactions, false,
                  "Should we disable the apply of committed transactions.");
 
+DEFINE_RUNTIME_uint32(external_transaction_apply_rpc_limit, 0,
+                      "Limit on the number of outstanding APPLY external transaction rpcs sent to "
+                      "involved tablets at a given time. If set to 0, the default is half "
+                      "--rpc_workers_limit.");
+
 DECLARE_bool(enable_deadlock_detection);
+DECLARE_int32(rpc_workers_limit);
+
+DECLARE_uint32(external_transaction_retention_window_secs);
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -106,7 +119,15 @@ using namespace std::placeholders;
 namespace yb {
 namespace tablet {
 
-std::chrono::microseconds GetTransactionTimeout() {
+std::chrono::microseconds GetTransactionTimeout(bool is_external) {
+  if (is_external) {
+    // For externally sourced transactions, use the retention window defined by
+    // --_external_transaction_retention_window_secs as the timeout.
+    auto retention_window_micros = static_cast<int64_t>(
+        GetAtomicFlag(&FLAGS_external_transaction_retention_window_secs) *
+        MonoTime::kMicrosecondsPerSecond);
+    return std::chrono::microseconds(retention_window_micros);
+  }
   const double timeout = GetAtomicFlag(&FLAGS_transaction_max_missed_heartbeat_periods) *
                          GetAtomicFlag(&FLAGS_transaction_heartbeat_usec);
   // Cast to avoid -Wimplicit-int-float-conversion.
@@ -115,16 +136,25 @@ std::chrono::microseconds GetTransactionTimeout() {
       : std::chrono::microseconds(static_cast<int64_t>(timeout));
 }
 
+uint32_t GetExternalTransactionApplyRpcLimit() {
+  auto limit = GetAtomicFlag(&FLAGS_external_transaction_apply_rpc_limit);
+  if (limit > 0) {
+    return limit;
+  }
+  return GetAtomicFlag(&FLAGS_rpc_workers_limit) / 2;
+}
+
 namespace {
 
 struct NotifyApplyingData {
   TabletId tablet;
   TransactionId transaction;
-  const AbortedSubTransactionSetPB& aborted;
+  SubtxnSetPB aborted;
   HybridTime commit_time;
   bool sealed;
   bool is_external;
-
+  // Only for external/xcluster transactions. How long to wait before retrying a failed apply
+  // transaction.
   std::string ToString() const {
     return Format("{ tablet: $0 transaction: $1 commit_time: $2 sealed: $3 is_external $4}",
                   tablet, transaction, commit_time, sealed, is_external);
@@ -180,7 +210,7 @@ class TransactionState {
         id_(id),
         log_prefix_(BuildLogPrefix(parent_log_prefix, id)),
         last_touch_(last_touch),
-        is_external_(false) {
+        aborted_subtxn_info_(std::make_shared<const SubtxnSetAndPB>()) {
   }
 
   ~TransactionState() {
@@ -210,11 +240,16 @@ class TransactionState {
     return first_entry_raft_index_;
   }
 
+  bool is_external() const {
+    return is_external_;
+  }
+
+
   std::string ToString() const {
     return Format("{ id: $0 last_touch: $1 status: $2 involved_tablets: $3 replicating: $4 "
-                      " request_queue: $5 first_entry_raft_index: $6 }",
-                  id_, last_touch_, TransactionStatus_Name(status_),
-                  involved_tablets_, replicating_, request_queue_, first_entry_raft_index_);
+                      " request_queue: $5 first_entry_raft_index: $6, is_external: $7 }",
+                  id_, last_touch_, TransactionStatus_Name(status_), involved_tablets_,
+                  replicating_, request_queue_, first_entry_raft_index_, is_external_);
   }
 
   // Whether this transaction expired at specified time.
@@ -223,7 +258,7 @@ class TransactionState {
       return false;
     }
     const int64_t passed = now.GetPhysicalValueMicros() - last_touch_.GetPhysicalValueMicros();
-    if (std::chrono::microseconds(passed) > GetTransactionTimeout()) {
+    if (std::chrono::microseconds(passed) > GetTransactionTimeout(is_external())) {
       return true;
     }
     return false;
@@ -339,7 +374,9 @@ class TransactionState {
 
     // If transaction was sealed, then its commit time is max of seal record time and intent
     // replication times from all participating tablets.
-    commit_time_ = std::max(commit_time_, last_time);
+    if (!is_external()) {
+      commit_time_ = std::max(commit_time_, last_time);
+    }
     --tablets_with_not_replicated_batches_;
     it->second.all_batches_replicated = true;
 
@@ -348,7 +385,14 @@ class TransactionState {
     }
   }
 
-  const AbortedSubTransactionSetPB& GetAbortedSubTransactionSetPB() const { return aborted_; }
+  Status UpdateAbortedSubtxnSetAndPB(const ::yb::LWSubtxnSetPB& aborted_subtxn_set_pb) {
+    aborted_subtxn_info_ = VERIFY_RESULT(SubtxnSetAndPB::Create(aborted_subtxn_set_pb));
+    return Status::OK();
+  }
+
+  const std::shared_ptr<const SubtxnSetAndPB>& GetAbortedSubtxnInfo() const {
+    return aborted_subtxn_info_;
+  }
 
   Result<TransactionStatusResult> GetStatus(
       std::vector<ExpectedTabletBatches>* expected_tablet_batches) const {
@@ -474,10 +518,10 @@ class TransactionState {
             context_.NotifyApplying({
                 .tablet = tablet.first,
                 .transaction = id_,
-                .aborted = aborted_,
+                .aborted = GetAbortedSubtxnInfo()->pb(),
                 .commit_time = commit_time_,
                 .sealed = status_ == TransactionStatus::SEALED ,
-                .is_external = is_external_ });
+                .is_external = is_external() });
           }
         }
       }
@@ -505,21 +549,25 @@ class TransactionState {
     }
   }
 
-  Status AppliedInOneOfInvolvedTablets(const TransactionStatePB& state) {
-    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
-      // We could ignore this request, because it will be re-send if required.
-      LOG_WITH_PREFIX(DFATAL)
-          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
-          << ", request: " << state.ShortDebugString();
-      return Status::OK();
-    }
-
-    if (state.tablets_size() != 1) {
+  Status AppliedInOneOfInvolvedTablets(const LWTransactionStatePB& state) {
+    if (state.tablets().size() != 1) {
       return STATUS_FORMAT(
           InvalidArgument, "Expected exactly one tablet in $0: $1", __func__, state);
     }
 
-    auto it = involved_tablets_.find(state.tablets(0));
+    return AppliedInOneOfInvolvedTablets(state.tablets().front());
+  }
+
+  Status AppliedInOneOfInvolvedTablets(const Slice& tablet_id) {
+    if (status_ != TransactionStatus::COMMITTED && status_ != TransactionStatus::SEALED) {
+      // We could ignore this request, because it will be re-sent if required.
+      LOG_WITH_PREFIX(DFATAL)
+          << "AppliedInOneOfInvolvedTablets in wrong state: " << TransactionStatus_Name(status_)
+          << ", tablet: " << tablet_id.ToBuffer();
+      return Status::OK();
+    }
+
+    auto it = involved_tablets_.find(std::string_view(tablet_id));
     if (it == involved_tablets_.end()) {
       // This can happen when transaction coordinator retried apply to post-split tablets,
       // transaction coordinator moved to new status tablet leader and here new transaction
@@ -528,13 +576,13 @@ class TransactionState {
       // It is safe to just log warning and ignore, because new transaction coordinator is sending
       // again apply requests to all involved tablet it knows and will be retrying for ones that
       // will reply have been already split.
-      LOG_WITH_PREFIX(WARNING) << "Applied in unknown tablet: " << state.tablets(0);
+      LOG_WITH_PREFIX(WARNING) << "Applied in unknown tablet: " << tablet_id;
       return Status::OK();
     }
     if (!it->second.all_intents_applied) {
       --tablets_with_not_applied_intents_;
       it->second.all_intents_applied = true;
-      VLOG_WITH_PREFIX(4) << "Applied to " << state.tablets(0) << ", left not applied: "
+      VLOG_WITH_PREFIX(4) << "Applied to " << tablet_id << ", left not applied: "
                           << tablets_with_not_applied_intents_;
       if (tablets_with_not_applied_intents_ == 0) {
         SubmitUpdateStatus(TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS);
@@ -657,11 +705,11 @@ class TransactionState {
   void SubmitUpdateStatus(TransactionStatus status) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
 
-    TransactionStatePB state;
-    state.set_transaction_id(id_.data(), id_.size());
-    state.set_status(status);
+    auto state = rpc::MakeSharedMessage<LWTransactionStatePB>();
+    state->dup_transaction_id(id_.AsSlice());
+    state->set_status(status);
 
-    auto request = context_.coordinator_context().CreateUpdateTransaction(&state);
+    auto request = context_.coordinator_context().CreateUpdateTransaction(std::move(state));
     if (replicating_) {
       request_queue_.push_back(std::move(request));
     } else {
@@ -715,19 +763,22 @@ class TransactionState {
       return status;
     }
 
+
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     // TODO(dtxn) Not yet implemented
     next_abort_after_sealing_ = CoarseMonoClock::now() + FLAGS_avoid_abort_after_sealing_ms * 1ms;
-    is_external_ = data.state.has_external_commit_ht();
+    is_external_ = data.state.has_external_hybrid_time();
+
     // TODO(savepoints) Savepoints with sealed transactions is not yet tested
-    aborted_ = data.state.aborted();
+    RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
     VLOG_WITH_PREFIX(4) << "Seal time: " << commit_time_;
     status_ = TransactionStatus::SEALED;
 
     involved_tablets_.reserve(data.state.tablets().size());
-    for (int idx = 0; idx != data.state.tablets().size(); ++idx) {
-      auto tablet_batches = data.state.tablet_batches(idx);
+    auto batches_it = data.state.tablet_batches().begin();
+    for (const auto& tablet : data.state.tablets()) {
+      auto tablet_batches = *batches_it++;
       LOG_IF_WITH_PREFIX(DFATAL, tablet_batches == 0)
           << "Tablet without batches: " << data.state.ShortDebugString();
       ++tablets_with_not_replicated_batches_;
@@ -736,7 +787,7 @@ class TransactionState {
         .all_batches_replicated = false,
         .all_intents_applied = false
       };
-      involved_tablets_.emplace(data.state.tablets(idx), state);
+      involved_tablets_.emplace(tablet.ToBuffer(), state);
     }
 
     first_entry_raft_index_ = data.op_id.index;
@@ -758,8 +809,8 @@ class TransactionState {
     last_touch_ = data.hybrid_time;
     commit_time_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
-    aborted_ = data.state.aborted();
-    is_external_ = data.state.has_external_commit_ht();
+    RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
+    is_external_ = data.state.has_external_hybrid_time();
 
     involved_tablets_.reserve(data.state.tablets().size());
     for (const auto& tablet : data.state.tablets()) {
@@ -768,7 +819,7 @@ class TransactionState {
         .all_batches_replicated = true,
         .all_intents_applied = false
       };
-      involved_tablets_.emplace(tablet, state);
+      involved_tablets_.emplace(tablet.ToBuffer(), state);
     }
 
     status_ = TransactionStatus::COMMITTED;
@@ -789,6 +840,7 @@ class TransactionState {
     VLOG_WITH_PREFIX(4) << __func__ << ", status: " << TransactionStatus_Name(status_)
                         << ", leader: " << context_.leader();
     last_touch_ = data.hybrid_time;
+    is_external_ = data.state.has_external_hybrid_time();
     status_ = TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS;
 
     YB_TRANSACTION_DUMP(Applied, id_, data.hybrid_time);
@@ -811,12 +863,14 @@ class TransactionState {
     }
     last_touch_ = data.hybrid_time;
     first_entry_raft_index_ = data.op_id.index;
+    is_external_ = data.state.has_external_hybrid_time();
 
     // TODO(savepoints) -- consider swapping instead of copying here.
     // Asynchronous heartbeats don't include aborted sub-txn set (and hence the set is empty), so
     // avoid updating in those cases.
-    if (!data.state.aborted().set().empty())
-      aborted_ = data.state.aborted();
+    if (!data.state.aborted().set().empty()) {
+      RETURN_NOT_OK(UpdateAbortedSubtxnSetAndPB(data.state.aborted()));
+    }
 
     return Status::OK();
   }
@@ -839,10 +893,10 @@ class TransactionState {
         context_.NotifyApplying({
             .tablet = tablet.first,
             .transaction = id_,
-            .aborted = aborted_,
+            .aborted = GetAbortedSubtxnInfo()->pb(),
             .commit_time = commit_time_,
             .sealed = status_ == TransactionStatus::SEALED,
-            .is_external = is_external_});
+            .is_external = is_external()});
       }
     }
     NotifyAbortWaiters(TransactionStatusResult(TransactionStatus::COMMITTED, commit_time_));
@@ -872,12 +926,10 @@ class TransactionState {
   // It should match last_touch_, but it is possible that because of some code errors it
   // would not be so. To add stability we introduce a separate field for it.
   HybridTime commit_time_;
-
   // If transaction was only sealed, we will try to abort it not earlier than this time.
   CoarseTimePoint next_abort_after_sealing_;
-
-  bool is_external_;
-
+  // Is the transaction from xcluster.
+  bool is_external_ = false;
   struct InvolvedTabletState {
     // How many batches should be replicated at this tablet.
     size_t required_replicated_batches = 0;
@@ -896,7 +948,8 @@ class TransactionState {
   };
 
   // Tablets participating in this transaction.
-  std::unordered_map<TabletId, InvolvedTabletState> involved_tablets_;
+  std::unordered_map<
+      TabletId, InvolvedTabletState, StringHash, std::equal_to<void>> involved_tablets_;
   // Number of tablets that have not yet replicated all batches.
   size_t tablets_with_not_replicated_batches_ = 0;
   // Number of tablets that have not yet applied intents.
@@ -906,7 +959,7 @@ class TransactionState {
   int64_t first_entry_raft_index_ = std::numeric_limits<int64_t>::max();
 
   // Metadata tracking aborted subtransaction IDs in this transaction.
-  AbortedSubTransactionSetPB aborted_;
+  std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info_;
 
   // The operation that we a currently replicating in RAFT.
   // It is owned by TransactionDriver (that will be renamed to OperationDriver).
@@ -980,13 +1033,35 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
   void RemoveInactiveTransactions(Waiters* waiters) override {
     std::lock_guard<std::mutex> lock(managed_mutex_);
-    for (auto it = waiters->begin(); it != waiters->end();) {
-      if (managed_transactions_.contains(it->first)) {
-        ++it;
-      } else {
-        it = waiters->erase(it);
+    auto& sorted_txn_map = waiters->get<TransactionIdTag>();
+    for (auto it = sorted_txn_map.begin(); it != sorted_txn_map.end();) {
+      auto next_it = sorted_txn_map.upper_bound(it->txn_id());
+      if (managed_transactions_.contains(it->txn_id())) {
+        it = next_it;
+        continue;
+      }
+      for (; it != next_it;) {
+        it = sorted_txn_map.erase(it);
       }
     }
+  }
+
+  // Note: IsAnySubtxnActive returns the result from a consistent state of the transaction, and does
+  // not reflect real time status. It could happen that the function returns true and the txn gets
+  // aborted/removed just after that. The subsequent call to IsAnySubtxnActive would return false.
+  bool IsAnySubtxnActive(const TransactionId& transaction_id,
+                         const SubtxnSet& subtxn_set) override {
+    std::shared_ptr<const SubtxnSetAndPB> aborted_subtxn_info;
+    {
+      std::lock_guard lock(managed_mutex_);
+      auto it = managed_transactions_.find(transaction_id);
+      if (it == managed_transactions_.end()) {
+        return false;
+      }
+      aborted_subtxn_info = it->GetAbortedSubtxnInfo();
+    }
+
+    return !aborted_subtxn_info->set().Contains(subtxn_set);
   }
 
   void Shutdown() {
@@ -1011,8 +1086,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
-                           CoarseTimePoint deadline,
-                           tserver::GetTransactionStatusResponsePB* response) {
+                   CoarseTimePoint deadline,
+                   tserver::GetTransactionStatusResponsePB* response) {
     AtomicFlagSleepMs(&FLAGS_TEST_inject_txn_get_status_delay_ms);
     auto leader_term = context_.LeaderTerm();
     PostponedLeaderActions postponed_leader_actions;
@@ -1056,7 +1131,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         if (it != managed_transactions_.end() &&
             (txn_status_with_ht.status == TransactionStatus::COMMITTED ||
              txn_status_with_ht.status == TransactionStatus::PENDING)) {
-          *mutable_aborted_set_pb = it->GetAbortedSubTransactionSetPB();
+          *mutable_aborted_set_pb = it->GetAbortedSubtxnInfo()->pb();
         }
       }
       postponed_leader_actions.Swap(&postponed_leader_actions_);
@@ -1215,6 +1290,17 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     ExecutePostponedLeaderActions(&actions);
   }
 
+  size_t TEST_CountExternalTransactions() {
+    std::lock_guard<std::mutex> lock(managed_mutex_);
+    auto count = 0;
+    for (const auto& transaction : managed_transactions_) {
+      if (transaction.is_external()) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   size_t test_count_transactions() {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     return managed_transactions_.size();
@@ -1296,7 +1382,33 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         1us * FLAGS_transaction_check_interval_usec * kTimeMultiplier);
   }
 
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term, bool is_external) {
+  Result<bool> MaybeIgnoreIfTransactionInWrongState(
+      TransactionStatus request_txn_status, TransactionId transaction_id) {
+    auto it = managed_transactions_.find(transaction_id);
+    switch (request_txn_status) {
+      case TransactionStatus::CREATED:
+        // If the transaction is already present, then this CREATE record was already replicated at
+        // some point in the past, so we can ignore this record.
+        return it != managed_transactions_.end();
+      case TransactionStatus::COMMITTED:
+        // We ignore this COMMIT record if one of the following 2 conditions are met:
+        // 1. The transaction doesn't exist and we're seeing a COMMIT record without a previous
+        // CREATE. This means that at some time in the past, this transaction was already committed
+        // and cleaned up, so ignore this this record.
+        // 2. The transaction is present but not in CREATED or PENDING state. Because we only
+        // replicate CREATED and COMMITTED records, if a transaction is present but not in CREATED
+        // state, it must necessarily have already been committed.
+        return it == managed_transactions_.end() ||
+               (it->status() != TransactionStatus::CREATED &&
+                it->status() != TransactionStatus::PENDING);
+      default:
+        return STATUS(IllegalState, Format("Request for unsupported external transaction state $0",
+                                           request_txn_status));
+    }
+    return false;
+  }
+
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
     auto& state = *request->request();
     auto id = FullyDecodeTransactionId(state.transaction_id());
     if (!id.ok()) {
@@ -1305,17 +1417,25 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       return;
     }
 
+    if (state.has_external_hybrid_time()) {
+      auto ignore_transaction_result =  MaybeIgnoreIfTransactionInWrongState(state.status(), *id);
+      if (!ignore_transaction_result.ok()) {
+        request->CompleteWithStatus(ignore_transaction_result.status());
+        return;
+      }
+      if (*ignore_transaction_result) {
+        request->CompleteWithStatus(Status::OK());
+        return;
+      }
+    }
+
     PostponedLeaderActions actions;
     {
       std::unique_lock<std::mutex> lock(managed_mutex_);
       postponed_leader_actions_.leader_term = term;
-      if (is_external) {
-        managed_transactions_.emplace(
-              this, *id, context_.clock().Now(), log_prefix_);
-      }
       auto it = managed_transactions_.find(*id);
       if (it == managed_transactions_.end()) {
-        auto status = HandleTransactionNotFound(*id, state, is_external);
+        auto status = HandleTransactionNotFound(*id, state);
         if (status.ok()) {
           it = managed_transactions_.emplace(
               this, *id, context_.clock().Now(), log_prefix_).first;
@@ -1427,6 +1547,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     }
     VLOG_WITH_PREFIX(3) << "Notify applying: " << action.ToString();
 
+    if (action.is_external && ++num_outstanding_apply_external_transaction_rpcs_ >
+                              GetExternalTransactionApplyRpcLimit()) {
+      // We are at the limit for the number of outstanding apply RPCs, return here and let the Poll
+      // loop take care of retrying.
+      num_outstanding_apply_external_transaction_rpcs_--;
+      YB_LOG_EVERY_N_SECS(INFO, 5) << "Throttling external transaction apply rpcs, reached the "
+                                   << "threshold of " <<  GetExternalTransactionApplyRpcLimit();
+      return;
+    }
+
     tserver::UpdateTransactionRequestPB req;
     req.set_tablet_id(action.tablet);
     req.set_propagated_hybrid_time(now.ToUint64());
@@ -1438,8 +1568,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     state.set_sealed(action.sealed);
     if (action.is_external) {
       req.set_is_external(true);
-      state.set_external_commit_ht(action.commit_time.ToUint64());
-    } else {
+      state.set_external_hybrid_time(action.commit_time.ToUint64());
     }
     *state.mutable_aborted() = action.aborted;
 
@@ -1456,14 +1585,16 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                const tserver::UpdateTransactionResponsePB& resp) {
             client::UpdateClock(resp, &context_);
             rpcs_.Unregister(handle);
-            if (status.ok()) {
-              return;
+            if (action.is_external) {
+              num_outstanding_apply_external_transaction_rpcs_--;
+              if (status.ok() || status.IsTryAgain()) {
+               // Either the apply was successful, or we are trying to apply an external transaction
+               // on a tablet that is not caught up to commit_ht. Return and let the Poll loop take
+               // care of the retry.
+                return;
+              }
             }
-            if (action.is_external && status.IsTryAgain()) {
-              // We are trying to apply an external transaction on a tablet that is not caught up
-              // to commit_ht, keep retrying until it succeeds.
-              SendUpdateTransactionRequest(
-                  action, context_.clock().Now(), TransactionRpcDeadline());
+            if (status.ok()) {
               return;
             }
             LOG_WITH_PREFIX(WARNING)
@@ -1489,10 +1620,8 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
                     } else {
                       // Tablet has been deleted (not split), so we should mark it as applied to
                       // be able to cleanup the transaction.
-                      TransactionStatePB transaction_state;
-                      transaction_state.add_tablets(action.tablet);
                       WARN_NOT_OK(
-                          state.AppliedInOneOfInvolvedTablets(transaction_state),
+                          state.AppliedInOneOfInvolvedTablets(action.tablet),
                           "AppliedInOneOfInvolvedTablets for removed tabled failed: ");
                     }
                   });
@@ -1521,14 +1650,21 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
 
     if (!actions->notify_applying.empty()) {
       auto now = context_.clock().Now();
-      auto deadline = TransactionRpcDeadline();
       for (const auto& action : actions->notify_applying) {
+        auto deadline = action.is_external ?
+            ExternalTransactionRpcDeadline() : TransactionRpcDeadline();
         SendUpdateTransactionRequest(action, now, deadline);
       }
     }
 
     for (auto& update : actions->updates) {
-      context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+      auto submit_status =
+          context_.SubmitUpdateTransaction(std::move(update), actions->leader_term);
+      if (!submit_status.ok()) {
+        LOG_WITH_PREFIX(DFATAL)
+            << "Could not submit transaction status update operation: "
+            << update->ToString() << ", status: " << submit_status;
+      }
     }
   }
 
@@ -1546,17 +1682,15 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   Status HandleTransactionNotFound(const TransactionId& id,
-                                   const TransactionStatePB& state,
-                                   bool is_external) {
-    if (!is_external &&
-        state.status() != TransactionStatus::CREATED &&
+                                   const LWTransactionStatePB& state) {
+    if (state.status() != TransactionStatus::CREATED &&
         state.status() != TransactionStatus::PROMOTED) {
       YB_LOG_WITH_PREFIX_HIGHER_SEVERITY_WHEN_TOO_MANY(INFO, WARNING, 1s, 50)
           << "Request to unknown transaction " << id << ": "
           << state.ShortDebugString();
       return STATUS_EC_FORMAT(
           Expired, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
-          "Transaction $0 expired or aborted by a conflict", *id);
+          "Transaction $0 expired or aborted by a conflict", id);
     }
 
     if (deleting_.load(std::memory_order_acquire)) {
@@ -1633,7 +1767,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         LOG_WITH_PREFIX(INFO)
             << __func__ << ", now: " << now << ", first: " << txn.ToString()
             << ", expired: " << txn.ExpiredAt(now) << ", timeout: "
-            << MonoDelta(GetTransactionTimeout()) << ", passed: "
+            << MonoDelta(GetTransactionTimeout(txn.is_external())) << ", passed: "
             << MonoDelta::FromMicroseconds(
                    now.GetPhysicalValueMicros() - txn.last_touch().GetPhysicalValueMicros());
       }
@@ -1684,6 +1818,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   ManagedTransactions managed_transactions_;
 
   std::atomic<bool> deleting_{false};
+  std::atomic<uint32_t> num_outstanding_apply_external_transaction_rpcs_;
   std::condition_variable last_transaction_finished_;
 
   // Actions that should be executed after mutex is unlocked.
@@ -1718,13 +1853,17 @@ int64_t TransactionCoordinator::PrepareGC(std::string* details) {
   return impl_->PrepareGC(details);
 }
 
+size_t TransactionCoordinator::TEST_CountExternalTransactions() const {
+  return impl_->TEST_CountExternalTransactions();
+}
+
 size_t TransactionCoordinator::test_count_transactions() const {
   return impl_->test_count_transactions();
 }
 
 void TransactionCoordinator::Handle(
-    std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term, bool is_external) {
-  impl_->Handle(std::move(request), term, is_external);
+    std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term) {
+  impl_->Handle(std::move(request), term);
 }
 
 void TransactionCoordinator::Start() {
@@ -1757,8 +1896,9 @@ std::string TransactionCoordinator::DumpTransactions() {
 }
 
 std::string TransactionCoordinator::ReplicatedData::ToString() const {
-  return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 }",
-                leader_term, state, op_id, hybrid_time);
+  return Format("{ leader_term: $0 state: $1 op_id: $2 hybrid_time: $3 txn_id: $4 }",
+                leader_term, state, op_id, hybrid_time,
+                FullyDecodeTransactionId(state.transaction_id()));
 }
 
 void TransactionCoordinator::ProcessWaitForReport(

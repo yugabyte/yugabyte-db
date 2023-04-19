@@ -41,7 +41,6 @@ static FormData_pg_attribute Desc_pg_yb_catalog_version[Natts_pg_yb_catalog_vers
 };
 
 static bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version);
-static bool YbIsSystemCatalogChange(Relation rel);
 static Datum YbGetMasterCatalogVersionTableEntryYbctid(
 	Relation catalog_version_rel, Oid db_oid);
 
@@ -73,7 +72,7 @@ uint64_t YbGetMasterCatalogVersion()
 	}
 	ereport(FATAL,
 			(errcode(ERRCODE_INTERNAL_ERROR),
-			 errmsg("Catalog version type was not set, cannot load system catalog.")));
+			 errmsg("catalog version type was not set, cannot load system catalog.")));
 	return version;
 }
 
@@ -331,7 +330,7 @@ YbCatalogVersionType YbGetCatalogVersionType()
  */
 bool YbIsSystemCatalogChange(Relation rel)
 {
-	return IsSystemRelation(rel) && !IsBootstrapProcessingMode();
+	return IsCatalogRelation(rel) && !IsBootstrapProcessingMode();
 }
 
 
@@ -392,21 +391,57 @@ bool YbGetMasterCatalogVersionFromTable(Oid db_oid, uint64_t *version)
 	Datum           *values = (Datum *) palloc0(natts * sizeof(Datum));
 	bool            *nulls  = (bool *) palloc(natts * sizeof(bool));
 	YBCPgSysColumns syscols;
-
-	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
-	                             natts,
-	                             (uint64_t *) values,
-	                             nulls,
-	                             &syscols,
-	                             &has_data));
-
 	bool result = false;
-	if (has_data)
+
+	if (!YBIsDBCatalogVersionMode())
 	{
-		*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
-		result = true;
+		/* Fetch one row. */
+		HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+									 natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (has_data)
+		{
+			*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+			result = true;
+		}
 	}
+	else
+	{
+		/*
+		 * When prefetching is enabled we always load all the rows even though
+		 * we bind to the row matching given db_oid. This is a work around to
+		 * pick the row that matches db_oid. This work around should be removed
+		 * when prefetching is enhanced to support filtering.
+		 */
+		while (true) {
+			/* Fetch one row. */
+			HandleYBStatus(YBCPgDmlFetch(ybc_stmt,
+										 natts,
+										 (uint64_t *) values,
+										 nulls,
+										 &syscols,
+										 &has_data));
+
+			if (!has_data)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATABASE_DROPPED),
+					 errmsg("catalog version for database %u was not found.", db_oid),
+					 errhint("Database might have been dropped by another user")));
+
+			uint32_t oid = (uint32_t) DatumGetInt32(values[oid_attnum - 1]);
+			if (oid == db_oid)
+			{
+				*version = (uint64_t) DatumGetInt64(values[current_version_attnum - 1]);
+				result = true;
+				break;
+			}
+ 		}
+	}
+
 	pfree(values);
 	pfree(nulls);
 	return result;
@@ -449,28 +484,4 @@ Oid YbMasterCatalogVersionTableDBOid()
 
 	return YBIsDBCatalogVersionMode() && OidIsValid(MyDatabaseId)
 		? MyDatabaseId : Template1DbOid;
-}
-
-YbTserverCatalogInfo YbGetTserverCatalogVersionInfo()
-{
-	YbTserverCatalogInfo tserver_catalog_info = NULL;
-	HandleYBStatus(YBCGetTserverCatalogVersionInfo(&tserver_catalog_info));
-	return tserver_catalog_info;
-}
-
-static int yb_compare_db_oid(const void *a, const void *b) {
-	return ((YbTserverCatalogVersion*)a)->db_oid -
-		   ((YbTserverCatalogVersion*)b)->db_oid;
-}
-
-YbTserverCatalogVersion *YbGetTserverCatalogVersion()
-{
-	if (yb_tserver_catalog_info == NULL)
-		return NULL;
-	return (YbTserverCatalogVersion*) bsearch(
-				&MyDatabaseId,
-				yb_tserver_catalog_info->versions,
-				yb_tserver_catalog_info->num_databases,
-				sizeof(YbTserverCatalogVersion),
-				yb_compare_db_oid);
 }

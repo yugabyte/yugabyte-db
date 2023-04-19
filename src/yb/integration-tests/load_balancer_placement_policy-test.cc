@@ -33,11 +33,14 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using std::string;
 using std::vector;
 
 using namespace std::literals;
+
+DECLARE_int32(catalog_manager_bg_task_wait_ms);
 
 namespace yb {
 namespace integration_tests {
@@ -49,7 +52,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   void SetUp() override {
     YBTableTestBase::SetUp();
 
-    yb_admin_client_ = std::make_unique<tools::enterprise::ClusterAdminClient>(
+    yb_admin_client_ = std::make_unique<tools::ClusterAdminClient>(
         external_mini_cluster()->GetMasterAddresses(), kDefaultTimeout);
 
     ASSERT_OK(yb_admin_client_->Init());
@@ -149,8 +152,8 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
   }
 
   void AddNewTserverToLocation(const string& cloud, const string& region,
-                              const string& zone, const int expected_num_tservers,
-                              const string& placement_uuid = "") {
+                               const string& zone, const size_t expected_num_tservers,
+                               const string& placement_uuid = "") {
 
     std::vector<std::string> extra_opts;
     extra_opts.push_back("--placement_cloud=" + cloud);
@@ -166,7 +169,7 @@ class LoadBalancerPlacementPolicyTest : public YBTableTestBase {
       kDefaultTimeout));
   }
 
-  std::unique_ptr<tools::enterprise::ClusterAdminClient> yb_admin_client_;
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
 };
 
 TEST_F(LoadBalancerPlacementPolicyTest, CreateTableWithPlacementPolicyTest) {
@@ -372,6 +375,92 @@ TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacementDataConsistencyTest) {
     placement_table, ClusterVerifier::EXACTLY, rows_inserted));
 }
 
+// HandleAddIfMissingPlacement should not add replicas to zones outside the placement policy.
+TEST_F(LoadBalancerPlacementPolicyTest, UnderreplicatedAdd) {
+  const int consider_failed_sec = 3;
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+
+  // Add a tserver in a new zone that is not part of the placement info.
+  const int new_num_tservers = 4;
+  AddNewTserverToZone("z3", new_num_tservers);
+
+  ASSERT_OK(external_mini_cluster()->SetFlagOnTServers(
+      "follower_unavailable_considered_failed_sec", std::to_string(consider_failed_sec)));
+  external_mini_cluster()->tablet_server(0)->Shutdown(SafeShutdown::kTrue);
+  ASSERT_OK(external_mini_cluster()->WaitForTabletServerCount(
+      3 /* num_tservers */, 10s /* timeout */));
+
+  // Wait for ts0 removed from quorum.
+  vector<int> counts_per_ts;
+  const vector<int> expected_counts_per_ts = {0, 4, 4, 0};
+  ASSERT_OK(WaitFor([&] {
+    GetLoadOnTservers(table_name().table_name(), new_num_tservers, &counts_per_ts);
+    return counts_per_ts == expected_counts_per_ts;
+  }, 10s * kTimeMultiplier, "Wait for ts0 removed from quorum."));
+
+  // Should not add a replica in ts3 since that does not fix the under-replication in z0.
+  SleepFor(FLAGS_catalog_manager_bg_task_wait_ms * 2ms);
+  WaitForLoadBalancerToBeIdle();
+  GetLoadOnTservers(table_name().table_name(), new_num_tservers, &counts_per_ts);
+  ASSERT_EQ(counts_per_ts, expected_counts_per_ts);
+
+  ASSERT_OK(external_mini_cluster()->tablet_server(0)->Start());
+}
+
+// HandleAddIfWrongPlacement should not add replicas to zones outside the placement policy when
+// moving off of a blacklisted node.
+TEST_F(LoadBalancerPlacementPolicyTest, BlacklistedAdd) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+
+  // Add a tserver in a new zone that is not part of the placement info.
+  int num_tservers = 4;
+  AddNewTserverToZone("z3", num_tservers);
+
+  // Blacklist a tserver to give it "wrong" placement.
+  ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+    external_mini_cluster()->GetLeaderMaster(),
+    external_mini_cluster()->tablet_server(0)
+  ));
+
+  SleepFor(3s * kTimeMultiplier);
+  WaitForLoadBalancerToBeIdle();
+
+  // Should not move from ts0 as we do not have an alternative in the same zone.
+  vector<int> counts_per_ts;
+  vector<int> expected_counts_per_ts = {4, 4, 4, 0};
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+  ASSERT_VECTORS_EQ(counts_per_ts, expected_counts_per_ts);
+
+  // Should move from the ts0 replica to other tserver in zone 0 (ts4).
+  ++num_tservers;
+  AddNewTserverToZone("z0", num_tservers);
+  WaitForLoadBalanceCompletion();
+
+  expected_counts_per_ts = {0, 4, 4, 0, 4};
+  GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+  ASSERT_VECTORS_EQ(counts_per_ts, expected_counts_per_ts);
+}
+
+// HandleAddIfWrongPlacement should move replicas to the appropriate zones after placement is
+// altered.
+TEST_F(LoadBalancerPlacementPolicyTest, AlterPlacement) {
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
+
+  // Add a tserver in a new zone that is not part of the placement info.
+  const int new_num_tservers = 4;
+  AddNewTserverToZone("z3", new_num_tservers);
+
+  ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z1,c.r.z2,c.r.z3", 3, ""));
+  WaitForLoadBalanceCompletion();
+
+  // HandleAddIfMissingPlacement should add a ts3 replica to fix minimum placement in z0, then
+  // HandleRemoveIfWrongPlacement should remove the ts0 replica to fix the over-replication.
+  vector<int> counts_per_ts;
+  vector<int> expected_counts_per_ts = {0, 4, 4, 4};
+  GetLoadOnTservers(table_name().table_name(), new_num_tservers, &counts_per_ts);
+  ASSERT_VECTORS_EQ(counts_per_ts, expected_counts_per_ts);
+}
+
 TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
   // Set cluster placement policy.
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo("c.r.z0,c.r.z1,c.r.z2", 3, ""));
@@ -418,7 +507,6 @@ TEST_F(LoadBalancerPlacementPolicyTest, ModifyPlacementUUIDTest) {
   // tablets allotted to it.
   ASSERT_EQ(counts_per_ts[3], 0);
   ASSERT_EQ(counts_per_ts[4], 4);
-
 }
 
 TEST_F(LoadBalancerPlacementPolicyTest, PrefixPlacementTest) {
@@ -658,6 +746,64 @@ TEST_F(LoadBalancerPlacementPolicyTest, PrefixPlacementTest) {
   ASSERT_OK(yb_admin_client_->ModifyPlacementInfo(",,", 3, ""));
 
   // FIN: Thank you all for watching, have a great day ahead!
+}
+
+class LoadBalancerReadReplicaPlacementPolicyTest : public LoadBalancerPlacementPolicyTest {
+ protected:
+  void TestBlacklist(bool use_empty_table_placement) {
+    const string kReadReplicaPlacementUuid = "read_replica";
+    // Add 2 read replicas to cluster placement policy.
+    size_t num_tservers = num_tablet_servers();
+    AddNewTserverToLocation("c", "r", "z0", ++num_tservers, kReadReplicaPlacementUuid);
+    AddNewTserverToLocation("c", "r", "z0", ++num_tservers, kReadReplicaPlacementUuid);
+    ASSERT_EQ(num_tservers, 5);
+
+    ASSERT_OK(yb_admin_client_->AddReadReplicaPlacementInfo(
+        "c.r.z0:0", 1 /* replication_factor */, kReadReplicaPlacementUuid));
+
+    DeleteTable();
+    if (use_empty_table_placement) {
+      master::ReplicationInfoPB ri;
+      ASSERT_OK(NewTableCreator()->table_name(table_name())
+          .schema(&schema_).replication_info(ri).Create());
+    } else {
+      ASSERT_OK(NewTableCreator()->table_name(table_name()).schema(&schema_).Create());
+    }
+
+    // There should be 2 tablets on each of the read replicas since we start with 4 tablets and
+    // the replication factor for read replicas is 1.
+    // Note that we shouldn't have to wait for the load balancer here, since the table creation
+    // should evenly spread the tablets across both read replicas.
+    vector<int> counts_per_ts;
+    GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+    vector<int> expected_counts_per_ts = {4, 4, 4, 2, 2};
+    ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+    // Blacklist one of the read replicas. The tablets should all move to the other read replica.
+    ASSERT_OK(external_mini_cluster()->AddTServerToBlacklist(
+        external_mini_cluster()->master(),
+        external_mini_cluster()->tablet_server(4)));
+    WaitForLoadBalancer();
+    GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+    expected_counts_per_ts = {4, 4, 4, 4, 0};
+    ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+
+    // Clear the blacklist. The tablets should spread evenly across both read replicas.
+    ASSERT_OK(external_mini_cluster()->ClearBlacklist(external_mini_cluster()->master()));
+    WaitForLoadBalancer();
+    GetLoadOnTservers(table_name().table_name(), num_tservers, &counts_per_ts);
+    expected_counts_per_ts = {4, 4, 4, 2, 2};
+    ASSERT_VECTORS_EQ(expected_counts_per_ts, counts_per_ts);
+  }
+};
+
+TEST_F(LoadBalancerReadReplicaPlacementPolicyTest, Blacklist) {
+  TestBlacklist(false /* use_empty_table_placement */);
+}
+
+// Regression test for GitHub issue #15698.
+TEST_F(LoadBalancerReadReplicaPlacementPolicyTest, BlacklistWithEmptyPlacement) {
+  TestBlacklist(true /* use_empty_table_placement */);
 }
 
 } // namespace integration_tests

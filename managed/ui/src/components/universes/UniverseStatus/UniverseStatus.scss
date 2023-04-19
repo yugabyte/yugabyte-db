@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .universe-status {
   display: inline-block;
@@ -8,29 +8,44 @@
   line-height: 42px;
 
   &.good {
-    color: $YB_SUCCESS_COLOR;
+    color: colors.$YB_SUCCESS_COLOR;
   }
+
   &.paused {
-    color: $YB_WARNING_COLOR;
+    color: colors.$YB_WARNING_COLOR;
   }
+
   &.pending {
     margin-top: 0 !important;
     margin-bottom: 0;
-    color: $YB_PENDING_COLOR;
+    color: colors.$YB_PENDING_COLOR;
   }
+
   &.bad {
-    color: $YB_FAIL_COLOR;
+    color: colors.$YB_FAIL_COLOR;
   }
+
   &.warning {
-    color: $YB_WARNING_COLOR;
+    color: colors.$YB_WARNING_COLOR;
   }
+
   &.unknown {
-    color: $YB_PENDING_COLOR;
+    color: colors.$YB_PENDING_COLOR;
   }
 
   span {
     display: inline-block;
     padding-left: 4px;
+  }
+
+  .view-task-details-btn {
+    margin-left: 17px !important;
+    font-weight: 500;
+    font-size: 12px;
+    border: 1px solid colors.$YB_BG_WHITE_4;
+    border-radius: 6px;
+    line-height: 12px;
+    padding: 5px 10px;
   }
 }
 
@@ -40,7 +55,7 @@
   height: 26px;
   padding: 0;
   color: white;
-  background-color: $YB_SUCCESS_COLOR;
+  background-color: colors.$YB_SUCCESS_COLOR;
   display: inline-block;
   margin-right: 6px;
 }
@@ -56,7 +71,7 @@
   height: 0;
   border-left: 15px solid transparent;
   border-right: 15px solid transparent;
-  border-bottom: 24px solid $YB_FAIL_COLOR;
+  border-bottom: 24px solid colors.$YB_FAIL_COLOR;
   color: white;
   padding: 0;
   margin: 0;
@@ -84,14 +99,15 @@
 
 .status-failure-name {
   display: inline-block;
-  color: $YB_FAIL_COLOR;
+  color: colors.$YB_FAIL_COLOR;
   font-size: 15px;
   font-weight: 500;
   padding-left: 6px;
 }
+
 .status-pending-display-container {
   display: inline-block;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
   float: right;
 
   .yb-loader-circle {
@@ -105,6 +121,7 @@
   font-weight: 500;
   font-size: 16px;
 }
+
 .status-pending-name {
   display: inline-block;
   font-size: 15px;
@@ -124,12 +141,24 @@
   width: 120px;
 
   .progress-bar {
-    background-color: $YB_ORANGE;
+    background-color: colors.$YB_ORANGE;
   }
 }
 
 .status-pending {
   float: right;
+}
+
+.status-error {
+  display: flex;
+  align-items: center;
+
+  &__reason {
+    max-width: 215px;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+  }
 }
 
 .universe-pending-spinner {

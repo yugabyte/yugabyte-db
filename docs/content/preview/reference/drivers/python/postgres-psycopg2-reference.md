@@ -1,7 +1,8 @@
 ---
-title: Python Drivers
+title: PostgreSQL Psycopg2 Driver
+headerTitle: Python Drivers
 linkTitle: Python Drivers
-description: Python Drivers for YSQL
+description: PostgreSQL Psycopg2 Python Driver for YSQL
 headcontent: Python Drivers for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
@@ -16,7 +17,7 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
     <li >
     <a href="../yugabyte-psycopg2-reference/" class="nav-link ">
-      <i class="icon-java-bold" aria-hidden="true"></i>
+      <i class="fa-brands fa-java" aria-hidden="true"></i>
       YugabyteDB Psycopg2 Smart Driver
     </a>
   </li>
@@ -199,3 +200,7 @@ conn = psycopg2.connect("host=<hostname> port=5433 dbname=yugabyte user=<usernam
 ```
 
 The difference between `verify-ca` and `verify-full` depends on the policy of the root CA. If you're using a public CA, verify-ca allows connections to a server that somebody else may have registered with the CA. Because of this behavior, you should always use verify-full with a public CA. If you're using a local CA, or even a self-signed certificate, using verify-ca may provide enough protection, but the best security practice is to always use verify-full.
+
+## Limitations
+
+Currently, [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2) and [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) _cannot_ be used in the same environment.

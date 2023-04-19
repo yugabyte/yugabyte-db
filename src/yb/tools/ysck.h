@@ -31,8 +31,7 @@
 //
 // Ysck, a tool to run a YB System Check.
 
-#ifndef YB_TOOLS_YSCK_H
-#define YB_TOOLS_YSCK_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -336,5 +335,3 @@ class Ysck {
 };
 } // namespace tools
 } // namespace yb
-
-#endif // YB_TOOLS_YSCK_H

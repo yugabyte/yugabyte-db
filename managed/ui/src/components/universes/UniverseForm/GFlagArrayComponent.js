@@ -1,11 +1,11 @@
 // Copyright (c) YugaByte, Inc.
 
 import React, { Component, Fragment } from 'react';
-import { YBTextInput } from '../../common/forms/fields';
+import { YBTextInput , YBAddRowButton, YBRemoveRowButton } from '../../common/forms/fields';
 import { Field } from 'redux-form';
 import { Row, Col } from 'react-bootstrap';
 import PropTypes from 'prop-types';
-import { YBAddRowButton, YBRemoveRowButton } from '../../common/forms/fields';
+
 import { FlexContainer, FlexShrink, FlexGrow } from '../../common/flexbox/YBFlexBox';
 import { GFlagEditor } from './GFlagEditor';
 
@@ -110,7 +110,7 @@ export default class GFlagArrayComponent extends Component {
               );
             })}
             {!isReadOnly && errorMessage && (
-              <div class="array-block standard-error">
+              <div className="array-block standard-error">
                 <span>{errorMessage}</span>
               </div>
             )}

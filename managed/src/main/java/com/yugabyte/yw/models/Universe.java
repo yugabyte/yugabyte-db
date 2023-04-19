@@ -12,9 +12,11 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.PortType;
-import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase.ServerType;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -53,16 +55,19 @@ import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
+import lombok.Getter;
+import lombok.Setter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.yb.client.YBClient;
-import play.api.Play;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
 @Table(uniqueConstraints = @UniqueConstraint(columnNames = {"name", "customer_id"}))
 @Entity
+@Getter
+@Setter
 public class Universe extends Model {
   public static final Logger LOG = LoggerFactory.getLogger(Universe.class);
   public static final String DISABLE_ALERTS_UNTIL = "disableAlertsUntilSecs";
@@ -70,31 +75,27 @@ public class Universe extends Model {
   public static final String HELM2_LEGACY = "helm2Legacy";
   public static final String DUAL_NET_LEGACY = "dualNetLegacy";
   public static final String USE_CUSTOM_IMAGE = "useCustomImage";
+  // Flag for whether we have https on for master/tserver UI
+  public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
+
+  // Key to indicate if a universe cert is hot reloadable
+  public static final String KEY_CERT_HOT_RELOADABLE = "cert_hot_reloadable";
 
   public static Universe getValidUniverseOrBadRequest(UUID universeUUID, Customer customer) {
     Universe universe = getOrBadRequest(universeUUID);
     MDC.put("universe-id", universeUUID.toString());
     MDC.put("cluster-id", universeUUID.toString());
-    if (!universe.customerId.equals(customer.getCustomerId())) {
+    if (!universe.getCustomerId().equals(customer.getId())) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Universe UUID: %s doesn't belong " + "to Customer UUID: %s",
-              universeUUID, customer.uuid));
+              universeUUID, customer.getUuid()));
     }
     return universe;
-  }
-
-  public Boolean getSwamperConfigWritten() {
-    return swamperConfigWritten;
-  }
-
-  public void updateSwamperConfigWritten(Boolean swamperConfigWritten) {
-    this.swamperConfigWritten = swamperConfigWritten;
-    this.save();
   }
 
   public enum HelmLegacy {
@@ -103,24 +104,24 @@ public class Universe extends Model {
   }
 
   // The universe UUID.
-  @Id public UUID universeUUID;
+  @Id private UUID universeUUID;
 
   // The version number of the object. This is used to synchronize updates from multiple clients.
   @Constraints.Required
   @Column(nullable = false)
-  public int version;
+  private int version;
 
   // Tracks when the universe was created.
   @Constraints.Required
   @Column(nullable = false)
-  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ssZ")
-  public Date creationDate;
+  @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
+  private Date creationDate;
 
   // The universe name.
-  public String name;
+  private String name;
 
   // The customer id, needed only to enforce unique universe names for a customer.
-  @Constraints.Required public Long customerId;
+  @Constraints.Required private Long customerId;
 
   @DbJson
   @Column(columnDefinition = "TEXT")
@@ -130,9 +131,12 @@ public class Universe extends Model {
 
   @JsonIgnore
   public void setConfig(Map<String, String> newConfig) {
-    LOG.info("Setting config {} on universe {} [ {} ]", Json.toJson(config), name, universeUUID);
+    LOG.info(
+        "Setting config {} on universe {} [ {} ]",
+        Json.toJson(newConfig),
+        getName(),
+        getUniverseUUID());
     this.config = newConfig;
-    this.save();
   }
 
   public void updateConfig(Map<String, String> newConfig) {
@@ -159,16 +163,8 @@ public class Universe extends Model {
     universeDetails = details;
   }
 
-  public UniverseDefinitionTaskParams getUniverseDetails() {
-    return universeDetails;
-  }
-
-  public UUID getUniverseUUID() {
-    return universeUUID;
-  }
-
   public void resetVersion() {
-    this.version = -1;
+    this.setVersion(-1);
     this.update();
   }
 
@@ -193,15 +189,15 @@ public class Universe extends Model {
   @Override
   public boolean delete() {
     // Delete xCluster configs without universes.
-    XClusterConfig.getByUniverseUuid(universeUUID)
+    XClusterConfig.getByUniverseUuid(getUniverseUUID())
         .stream()
         .filter(
             xClusterConfig -> {
-              if (xClusterConfig.sourceUniverseUUID == null) {
+              if (xClusterConfig.getSourceUniverseUUID() == null) {
                 return true;
               } else {
-                if (universeUUID.equals(xClusterConfig.sourceUniverseUUID)) {
-                  return xClusterConfig.targetUniverseUUID == null;
+                if (getUniverseUUID().equals(xClusterConfig.getSourceUniverseUUID())) {
+                  return xClusterConfig.getTargetUniverseUUID() == null;
                 }
                 return false;
               }
@@ -232,25 +228,26 @@ public class Universe extends Model {
     // Create the universe object.
     Universe universe = new Universe();
     // Generate a new UUID.
-    universe.universeUUID = taskParams.universeUUID;
+    universe.setUniverseUUID(taskParams.getUniverseUUID());
     // Set the version of the object to 1.
-    universe.version = 1;
+    universe.setVersion(1);
     // Set the creation date.
-    universe.creationDate = new Date();
+    universe.setCreationDate(new Date());
     // Set the universe name.
-    universe.name = taskParams.getPrimaryCluster().userIntent.universeName;
+    universe.setName(taskParams.getPrimaryCluster().userIntent.universeName);
     // Set the customer id.
-    universe.customerId = customerId;
+    universe.setCustomerId(customerId);
     // Create the default universe details. This should be updated after creation.
     universe.universeDetails = taskParams;
     universe.universeDetailsJson =
         Json.stringify(RedactingService.filterSecretFields(Json.toJson(universe.universeDetails)));
     universe.swamperConfigWritten = true;
-    LOG.info("Created db entry for universe {} [{}]", universe.name, universe.universeUUID);
+    LOG.info(
+        "Created db entry for universe {} [{}]", universe.getName(), universe.getUniverseUUID());
     LOG.debug(
         "Details for universe {} [{}] : [{}].",
-        universe.name,
-        universe.universeUUID,
+        universe.getName(),
+        universe.getUniverseUUID(),
         universe.universeDetailsJson);
     // Save the object.
     universe.save();
@@ -275,8 +272,7 @@ public class Universe extends Model {
    * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
-    return ImmutableSet.copyOf(
-        find.query().where().eq("customer_id", customer.getCustomerId()).findIds());
+    return ImmutableSet.copyOf(find.query().where().eq("customer_id", customer.getId()).findIds());
   }
 
   public static Set<UUID> getAllUUIDs() {
@@ -295,7 +291,7 @@ public class Universe extends Model {
         .stream()
         .collect(
             Collectors.groupingBy(
-                u -> u.customerId,
+                u -> u.getCustomerId(),
                 Collectors.mapping(Universe::getUniverseUUID, Collectors.toSet())));
   }
 
@@ -305,12 +301,11 @@ public class Universe extends Model {
   }
 
   public static Set<Universe> getAllWithoutResources(Customer customer) {
-    List<Universe> rawList =
-        find.query().where().eq("customer_id", customer.getCustomerId()).findList();
+    List<Universe> rawList = find.query().where().eq("customer_id", customer.getId()).findList();
     return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
   }
 
-  public static Set<Universe> getAllWithoutResources(Set<UUID> uuids) {
+  public static Set<Universe> getAllWithoutResources(Collection<UUID> uuids) {
     ExpressionList<Universe> query = find.query().where();
     CommonUtils.appendInClause(query, "universeUUID", uuids);
     List<Universe> rawList = query.findList();
@@ -439,11 +434,8 @@ public class Universe extends Model {
   public static void delete(UUID universeUUID) {
     // First get the universe.
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    // Make sure this universe has been locked.
-    // TODO: fixme. Useless check. java asserts are turned off by default in production code!!!
-    assert !universe.universeDetails.updateInProgress;
     // Delete the universe.
-    LOG.info("Deleting universe " + universe.name + ":" + universeUUID);
+    LOG.info("Deleting universe " + universe.getName() + ":" + universeUUID);
     universe.delete();
   }
 
@@ -473,7 +465,11 @@ public class Universe extends Model {
    * @return true if there is any such node.
    */
   public boolean nodesInTransit() {
-    return getUniverseDetails().nodeDetailsSet.stream().anyMatch(NodeDetails::isInTransit);
+    return nodesInTransit(null);
+  }
+
+  public boolean nodesInTransit(NodeDetails.NodeState omittedState) {
+    return getNodes().stream().anyMatch(n -> n.isInTransit(omittedState));
   }
 
   public NodeDetails getNodeOrBadRequest(String nodeName) {
@@ -568,7 +564,8 @@ public class Universe extends Model {
             .collect(Collectors.toList());
 
     if (filteredServers.isEmpty()) {
-      LOG.trace("No live nodes for getLiveTServersInPrimaryCluster in universe {}", universeUUID);
+      LOG.trace(
+          "No live nodes for getLiveTServersInPrimaryCluster in universe {}", getUniverseUUID());
     }
     return filteredServers;
   }
@@ -717,7 +714,7 @@ public class Universe extends Model {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt) {
       // This means there must be a root CA associated with it.
-      return CertificateInfo.get(details.rootCA).certificate;
+      return CertificateInfo.get(details.rootCA).getCertificate();
     }
     return null;
   }
@@ -731,10 +728,10 @@ public class Universe extends Model {
     UniverseDefinitionTaskParams details = this.getUniverseDetails();
     if (details.getPrimaryCluster().userIntent.enableClientToNodeEncrypt) {
       // This means there must be a root CA associated with it.
-      if (details.rootAndClientRootCASame) {
-        return CertificateInfo.get(details.rootCA).certificate;
+      if (details.rootAndClientRootCASame && details.rootCA != null) {
+        return CertificateInfo.get(details.rootCA).getCertificate();
       }
-      return CertificateInfo.get(details.clientRootCA).certificate;
+      return CertificateInfo.get(details.getClientRootCA()).getCertificate();
     }
     return null;
   }
@@ -855,7 +852,7 @@ public class Universe extends Model {
     // Update the universe details json.
     this.universeDetailsJson =
         Json.stringify(RedactingService.filterSecretFields(Json.toJson(universeDetails)));
-    this.version = incrementVersion ? this.version + 1 : this.version;
+    this.setVersion(incrementVersion ? this.getVersion() + 1 : this.getVersion());
     super.save();
   }
 
@@ -921,10 +918,12 @@ public class Universe extends Model {
    * @return the host (private_ip) and port of the current master leader in the universe or null if
    *     not found
    */
+  @JsonIgnore
   public HostAndPort getMasterLeader() {
     final String masterAddresses = getMasterAddresses();
     final String cert = getCertificateNodetoNode();
-    final YBClientService ybService = Play.current().injector().instanceOf(YBClientService.class);
+    final YBClientService ybService =
+        StaticInjectorHolder.injector().instanceOf(YBClientService.class);
     final YBClient client = ybService.getClient(masterAddresses, cert);
     try {
       return client.getLeaderMasterHostAndPort();
@@ -934,10 +933,13 @@ public class Universe extends Model {
   }
 
   /**
-   * Fine the current master leader node
+   * Find the current master leader node. Can return null if master leader is missing. Note that the
+   * master leader node may be a standalone master without tserver, such as is the case for K8s
+   * universes.
    *
    * @return NodeDetails of the master leader
    */
+  @JsonIgnore
   public NodeDetails getMasterLeaderNode() {
     return getNodeByPrivateIP(getMasterLeaderHostText());
   }
@@ -948,6 +950,7 @@ public class Universe extends Model {
    * @return a String of the private_ip of the current master leader in the universe or an empty
    *     string if not found
    */
+  @JsonIgnore
   public String getMasterLeaderHostText() {
     final HostAndPort masterLeader = getMasterLeader();
     if (masterLeader == null) return "";
@@ -959,7 +962,7 @@ public class Universe extends Model {
   }
 
   public boolean isYbcEnabled() {
-    return getUniverseDetails().ybcInstalled;
+    return getUniverseDetails().isYbcInstalled();
   }
 
   public boolean nodeExists(String host, int port) {
@@ -968,7 +971,8 @@ public class Universe extends Model {
         .parallelStream()
         .anyMatch(
             n ->
-                n.cloudInfo.private_ip.equals(host)
+                n.cloudInfo.private_ip != null
+                    && n.cloudInfo.private_ip.equals(host)
                     && (port == n.masterHttpPort
                         || port == n.tserverHttpPort
                         || port == n.ysqlServerHttpPort
@@ -978,7 +982,7 @@ public class Universe extends Model {
   }
 
   public void incrementVersion() {
-    Universe.saveDetails(universeUUID, ignoreUniverse -> {});
+    Universe.saveDetails(getUniverseUUID(), ignoreUniverse -> {});
   }
 
   public static Set<Universe> universeDetailsIfCertsExists(UUID certUUID, UUID customerUUID) {
@@ -989,8 +993,8 @@ public class Universe extends Model {
             s ->
                 (s.getUniverseDetails().rootCA != null
                         && s.getUniverseDetails().rootCA.equals(certUUID))
-                    || (s.getUniverseDetails().clientRootCA != null
-                        && s.getUniverseDetails().clientRootCA.equals(certUUID)))
+                    || (s.getUniverseDetails().getClientRootCA() != null
+                        && s.getUniverseDetails().getClientRootCA().equals(certUUID)))
         .collect(Collectors.toSet());
   }
 
@@ -1065,5 +1069,16 @@ public class Universe extends Model {
       universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
     }
     return universe;
+  }
+
+  // Allow https when software version given is >= 2.17.1.0-b14 and isNodeUIHttpsEnabled is true.
+  // Invalid software versions will not allow https.
+  // compareYbVersions() returns 0 if incorrect software version is passed, hence the strictly
+  // greater.
+  public static boolean shouldEnableHttpsUI(
+      boolean enableNodeToNodeEncrypt, String ybSoftwareVersion, boolean isNodeUIHttpsEnabled) {
+    return isNodeUIHttpsEnabled
+        && enableNodeToNodeEncrypt
+        && (Util.compareYbVersions(ybSoftwareVersion, "2.17.1.0-b13", true) > 0);
   }
 }

@@ -67,8 +67,8 @@ CCLD = $(CXX)
 # Shared library configuration (see Makefile_ybpostgres.shlib -- included below)
 PGFILEDESC = "Postgres shared library"
 NAME = yb_pgbackend
-SO_MAJOR_VERSION= 1
-SO_MINOR_VERSION= $(MAJORVERSION)
+YB_SO_MAJOR_VERSION= 1
+YB_SO_MINOR_VERSION= $(MAJORVERSION)
 
 # Use := for immediate variable expansion. Further changes to $(LIBS) must not affect
 # $(SHLIB_LINK).
@@ -83,12 +83,18 @@ SHLIB_EXPORTS = exports.txt
 
 ##########################################################################
 
+exports.txt:
+	cat exports-common.txt > $@
+ifneq ($(YB_DO_NOT_BUILD_TESTS), 1)
+	cat exports-test.txt >> $@
+endif
+
 all: submake-libpgport submake-catalog-headers submake-utils-headers postgres $(POSTGRES_IMP) all-lib
 
 # Shared-library target all-lib.
 # Depends on postgres build, and Makefile_ybpostgres.shlib will add the other
 # deps (e.g. all-shared-lib and/or all-static-lib).
-all-lib: postgres all-lib
+all-lib: postgres all-lib exports.txt
 include $(top_srcdir)/src/Makefile_ybpostgres.shlib
 
 

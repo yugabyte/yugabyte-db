@@ -3,7 +3,7 @@
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(\\.js$)",
-      "script-and-regex.script": "ui/node_modules/eslint/bin/eslint.js -c ui/.eslintrc.yml --",
+      "script-and-regex.script": "ui/node_modules/eslint/bin/eslint.js -c ui/.eslintrc.js --",
       "script-and-regex.regex": "/^ +(?<line>[0-9]+):(?<number>[0-9]+) +(?<message>.*) +(?<name>[a-zA-Z_-]+)$/m"
     },
     "pycodestyle": {

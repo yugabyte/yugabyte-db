@@ -23,7 +23,6 @@
 #include <string>
 #include <unordered_map>
 
-#ifndef ROCKSDB_LITE
 namespace rocksdb {
 // This enum defines the RocksDB options sanity level.
 enum OptionsSanityCheckLevel : unsigned char {
@@ -60,5 +59,3 @@ OptionsSanityCheckLevel BBTOptionSanityCheckLevel(
     const std::string& options_name);
 
 }  // namespace rocksdb
-
-#endif  // !ROCKSDB_LITE

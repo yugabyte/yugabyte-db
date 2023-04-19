@@ -12,8 +12,7 @@
 // under the License.
 //
 //
-#ifndef YB_RPC_GROWABLE_BUFFER_H
-#define YB_RPC_GROWABLE_BUFFER_H
+#pragma once
 
 #include <iosfwd>
 #include <memory>
@@ -148,5 +147,3 @@ std::ostream& operator<<(std::ostream& out, const GrowableBuffer& receiver);
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_GROWABLE_BUFFER_H

@@ -40,7 +40,7 @@
 #include <cstdlib>
 
 #include "yb/util/alignment.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/size_literals.h"
 
@@ -121,7 +121,7 @@ void BufferAllocator::LogAllocation(size_t requested,
 // TODO(onufry) - test whether the code still tests OK if we set this to true,
 // or remove this code and add a test that Google allocator does not change it's
 // contract - 16-aligned in -c opt and %16 == 8 in debug.
-DEFINE_bool(allocator_aligned_mode, false,
+DEFINE_UNKNOWN_bool(allocator_aligned_mode, false,
             "Use 16-byte alignment instead of 8-byte, "
             "unless explicitly specified otherwise - to boost SIMD");
 TAG_FLAG(allocator_aligned_mode, hidden);
@@ -382,10 +382,14 @@ void MemoryTrackingBufferAllocator::FreeInternal(Buffer* buffer) {
 }
 
 std::string TcMallocStats() {
-#if defined(TCMALLOC_ENABLED)
+#ifdef YB_TCMALLOC_ENABLED
+#if defined(YB_GOOGLE_TCMALLOC)
+  return ::tcmalloc::MallocExtension::GetStats();
+#else
   char buf[20_KB];
   MallocExtension::instance()->GetStats(buf, sizeof(buf));
   return buf;
+#endif
 #else
   return "";
 #endif

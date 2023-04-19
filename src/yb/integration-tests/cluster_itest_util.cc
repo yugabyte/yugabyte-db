@@ -404,8 +404,10 @@ Status WaitForServerToBeQuite(const MonoDelta& timeout,
           const auto op_ids = VERIFY_RESULT(
               itest::GetLastOpIdForEachReplica(tablet_id, tablet_servers, op_id_type, timeout));
           for (auto op_id : op_ids) {
-            if (op_id > agreed_opid) {
-              agreed_opid = op_id;
+            if (op_id.empty() || (op_id != agreed_opid)) {
+              if (op_id > agreed_opid) {
+                agreed_opid = op_id;
+              }
               return false;
             }
           }
@@ -832,6 +834,27 @@ Status WaitUntilCommittedOpIdIndexIsAtLeast(int64_t* index,
   return s;
 }
 
+Status WaitForAllPeersToCatchup(const TabletId& tablet_id,
+                                const std::vector<TServerDetails*>& replicas,
+                                const MonoDelta& timeout) {
+  return WaitFor(
+      [&]() -> Result<bool> {
+        auto op_ids = VERIFY_RESULT(itest::GetLastOpIdForEachReplica(
+            tablet_id, replicas, consensus::OpIdType::COMMITTED_OPID,
+            timeout));
+        SCHECK_EQ(op_ids.size(), replicas.size(), IllegalState,
+                  Format("Expected $0 replicas", replicas.size()));
+        // All replicas should have the same op_id
+        yb::OpId first_op_id = *(op_ids.begin());
+        for (auto op_id : op_ids) {
+            if( op_id != first_op_id)
+              return false;
+        }
+        return true;
+      },
+      timeout, "Waiting for all replicas to have the same committed op id");
+}
+
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const string& tablet_id,
                                         const MonoDelta& timeout,
@@ -1165,6 +1188,16 @@ Status ListRunningTabletIds(const TServerDetails* ts,
   return Status::OK();
 }
 
+std::set<TabletId> GetClusterTabletIds(MiniCluster* cluster) {
+  std::set<TabletId> tablet_ids;
+  for (size_t i = 0; i < cluster->num_tablet_servers(); ++i) {
+    for (const auto& peer : cluster->GetTabletPeers(i)) {
+      tablet_ids.insert(peer->tablet_id());
+    }
+  }
+  return tablet_ids;
+}
+
 Status GetTabletLocations(ExternalMiniCluster* cluster,
                           const string& tablet_id,
                           const MonoDelta& timeout,
@@ -1466,6 +1499,17 @@ Result<OpId> GetLastOpIdForReplica(
     consensus::OpIdType opid_type,
     const MonoDelta& timeout) {
   return VERIFY_RESULT(GetLastOpIdForEachReplica(tablet_id, {replica}, opid_type, timeout))[0];
+}
+
+Status WaitForTabletIsDeletedOrHidden(
+    master::CatalogManagerIf* catalog_manager, const TabletId& tablet_id, MonoDelta timeout) {
+  auto tablet_info = VERIFY_RESULT(catalog_manager->GetTabletInfo(tablet_id));
+  return LoggedWaitFor([&tablet_info] {
+      const auto tablet_lock = tablet_info->LockForRead();
+      return tablet_lock->is_deleted() || tablet_lock->is_hidden();
+    },
+    timeout,
+    Format("Wait for tablet is deleted or hidden: $0", tablet_id));
 }
 
 } // namespace itest

@@ -50,6 +50,52 @@ disk_usage:
         "node_filesystem_size_bytes": "size"
       ticksuffix: "&nbsp;GB"
 
+disk_usage_percent:
+  metric: "disk_used_size_total/disk_capacity_size_total"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "disk_used_size_total/disk_capacity_size_total": "Disk Usage"
+      ticksuffix: "&nbsp;%"
+
+
+disk_used_size_total:
+  metric: "node_filesystem_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  layout:
+    title: "Disk Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_used_bytes": "Disk Usage"
+      ticksuffix: "&nbsp;GB"
+
+
+disk_capacity_size_total:
+  metric: "node_filesystem_size_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/mnt/d[0-9]+"
+  layout:
+    title: "Disk Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_size_bytes": "Disk Capacity"
+      ticksuffix: "&nbsp;GB"
+
 cpu_usage:
   metric: "node_cpu_usage_avg"
   function: "avg_over_time|avg"
@@ -83,8 +129,8 @@ disk_iops:
       type: "date"
     yaxis:
       alias:
-          "node_disk_writes_irate": "Writes"
-          "node_disk_reads_irate": "Reads"
+        "node_disk_reads_irate": "Read"
+        "node_disk_writes_irate": "Write"
 
 tserver_rpcs_per_sec_by_universe:
   metric: "rpc_irate_rps"
@@ -126,6 +172,7 @@ container_cpu_usage:
   metric: "container_cpu_usage"
   function: "avg_over_time|avg"
   range : true
+  operator: "* 100"
   filters:
     pod_name: "yb-tserver-(.*)"
     container_name: "yb-tserver"
@@ -188,6 +235,20 @@ container_volume_max_usage:
       ticksuffix: "&nbsp;GB"
       alias:
         "kubelet_volume_stats_capacity_bytes": "used"
+
+container_volume_usage_percent:
+  metric: "container_volume_stats/container_volume_max_usage"
+  filters:
+    persistentvolumeclaim: "(.*)-yb-tserver-(.*)"
+  panel_group: "Container"
+  layout:
+    title: "Persistent Volume Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "container_volume_stats/container_volume_max_usage": "Container Usage"
+      ticksuffix: "&nbsp;%"
 
 network_bytes:
   metric: ""
@@ -352,7 +413,8 @@ redis_rpcs_per_sec_all:
 
 redis_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -412,7 +474,8 @@ redis_server_rpc_p95:
 
 redis_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   operator: "> 0"
   filters:
     server_type: "yb_redisserver"
@@ -1008,8 +1071,8 @@ tserver_consensus_rpcs_per_sec:
       type: "date"
     yaxis:
       alias:
-        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
         "UpdateConsensus": "UpdateConsensus"
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
         "RequestConsensusVote": "RequestConsensusVote"
 
 tserver_change_config:
@@ -1061,6 +1124,10 @@ tserver_consensus_rpcs_latency:
     xaxis:
       type: "date"
     yaxis:
+      alias:
+        "UpdateConsensus": "UpdateConsensus"
+        "MultiRaftUpdateConsensus": "MultiRaftUpdateConsensus"
+        "RequestConsensusVote": "RequestConsensusVote"
       ticksuffix: "&nbsp;\u00B5s"
 
 tserver_change_config_latency:
@@ -1147,6 +1214,22 @@ tserver_spinlock_server:
       alias:
         "spinlock_contention_time_irate": "SpinLock"
       ticksuffix: "&nbsp;sec"
+
+tserver_write_lock_latency:
+  metric: "write_lock_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Write Lock Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "write_lock_latency.avg": "Write Lock"
+      ticksuffix: "&nbsp;\u00B5s"
 
 tserver_log_latency:
   metric: "log_sync_latency.avg|log_group_commit_latency.avg|log_append_latency.avg"
@@ -1286,6 +1369,24 @@ tserver_glog_info_messages:
         "glog_info_messages_irate": "Info"
         "glog_warning_messages_irate": "Warning"
         "glog_error_messages_irate": "Error"
+
+tserver_uptime_min:
+  metric: "server_uptime_ms"
+  function: "max_over_time|bottomk.9|min"
+  range : true
+  operator: "/ 60000"
+  filters:
+    metric_id: "yb.tabletserver"
+  group_by: "exported_instance"
+  panel_group: "Tablet Server"
+  layout:
+    title: "Uptime"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "server_uptime_ms": "Uptime"
+      ticksuffix: "&nbsp;min"
 
 node_up:
   metric: "up"
@@ -1665,8 +1766,8 @@ ysql_server_rpc_per_second:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
 
@@ -1687,8 +1788,8 @@ ysql_sql_latency:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
       ticksuffix: "&nbsp;\u00B5s"
@@ -1701,15 +1802,33 @@ ysql_connections:
     export_type: "ysql_export"
     saved_name: "yb_ysqlserver_connection_total|yb_ysqlserver_active_connection_total"
   group_by: "saved_name"
-  panel_group: "YSQL Connections"
+  panel_group: "YSQL Ops & Latency"
   layout:
     title: "Total YSQL Connections"
     xaxis:
       type: "date"
     yaxis:
       alias:
-        "yb_ysqlserver_connection_total": "Total"
         "yb_ysqlserver_active_connection_total": "Active"
+        "yb_ysqlserver_connection_total": "Total"
+
+ysql_connections_per_sec:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    export_type: "ysql_export"
+    saved_name: "yb_ysqlserver_new_connection_total|yb_ysqlserver_connection_over_limit_total"
+  group_by: "saved_name"
+  panel_group: "YSQL Ops & Latency"
+  layout:
+    title: "Total YSQL Connections / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "yb_ysqlserver_new_connection_total": "New"
+        "yb_ysqlserver_connection_over_limit_total": "Rejected"
 
 ysql_server_advanced_rpc_per_second:
   metric: "rpc_irate_rps"
@@ -1761,7 +1880,8 @@ ysql_sql_advanced_latency:
 
 ysql_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1776,15 +1896,16 @@ ysql_server_rpc_p95:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
       ticksuffix: "&nbsp;\u00B5s"
 
 ysql_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   filters:
     export_type: "ysql_export"
     server_type: "yb_ysqlserver"
@@ -1799,8 +1920,8 @@ ysql_server_rpc_p99:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
       ticksuffix: "&nbsp;\u00B5s"
@@ -1823,8 +1944,8 @@ cql_server_rpc_per_second:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
@@ -1847,8 +1968,8 @@ cql_sql_latency:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Others"
@@ -1857,7 +1978,8 @@ cql_sql_latency:
 
 cql_server_rpc_p95:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.95|max"
+  range: true
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1871,8 +1993,8 @@ cql_server_rpc_p95:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
@@ -1881,7 +2003,8 @@ cql_server_rpc_p95:
 
 cql_server_rpc_p99:
   metric: "rpc_latency"
-  function: "max"
+  function: "quantile_over_time.99|max"
+  range: true
   filters:
     server_type: "yb_cqlserver"
     service_type: "SQLProcessor"
@@ -1895,8 +2018,8 @@ cql_server_rpc_p99:
       type: "date"
     yaxis:
       alias:
-        "SelectStmt": "Select"
         "InsertStmt": "Insert"
+        "SelectStmt": "Select"
         "UpdateStmt": "Update"
         "DeleteStmt": "Delete"
         "OtherStmts": "Other"
@@ -2032,18 +2155,22 @@ response_sizes:
   group_by: "service_method"
   panel_group: "YCQL Ops & Latency"
   layout:
-    title: "Response Size (bytes)"
+    title: "Response Size"
     xaxis:
       type: "date"
     yaxis:
       alias:
         "ResponseSize": "Response Size"
-      ticksuffix: "&nbsp;\u00B5s"
+      ticksuffix: "&nbsp;B"
 
 tserver_rpc_queue_size_master:
-  metric: "rpcs_in_queue_yb_master_MasterService"
+  metric: ""
   function: "avg_over_time|avg"
   range: true
+  filters:
+    saved_name: "rpcs_in_queue_.*"
+    export_type: "master_export"
+  group_by: "saved_name"
   panel_group: "Master"
   layout:
     title: "RPC Queue Size"
@@ -2052,6 +2179,12 @@ tserver_rpc_queue_size_master:
     yaxis:
       alias:
         "rpcs_in_queue_yb_master_MasterService": "Master RPC"
+        "rpcs_in_queue_yb_master_MasterBackup": "MasterBackup"
+        "rpcs_in_queue_yb_consensus_ConsensusService": "Consensus"
+        "rpcs_in_queue_yb_server_GenericService": "Generic"
+        "rpcs_in_queue_yb_tserver_RemoteBootstrapService": "RemoteBootstrap"
+        "rpcs_in_queue_yb_tserver_TabletServerService": "TS RPC"
+        "rpcs_in_queue_yb_tserver_PgClientService": "PG Client"
 
 # Note that the aliases here encode all the possible services, because we're using a simple regex
 # for the saved_name filter.
@@ -2365,8 +2498,8 @@ master_table_ops:
       type: "date"
     yaxis:
       alias:
-        "DeleteTable": "Delete Table"
         "CreateTable": "Create Table"
+        "DeleteTable": "Delete Table"
 
 master_cpu_util_secs:
   metric: ""
@@ -2478,9 +2611,9 @@ master_log_latency:
       type: "date"
     yaxis:
       alias:
+        "log_append_latency.avg": "Append"
         "log_sync_latency.avg": "Sync"
         "log_group_commit_latency.avg": "Commit"
-        "log_append_latency.avg": "Append"
       ticksuffix: "&nbsp;\u00B5s"
 
 master_log_bytes_written:
@@ -2750,6 +2883,53 @@ master_lsm_rocksdb_compaction_time:
         "rocksdb_compaction_times_micros.avg": "Avg"
       ticksuffix: "&nbsp;\u00B5s"
 
+master_uptime_min:
+  metric: "server_uptime_ms"
+  function: "max_over_time|min"
+  range : true
+  operator: "/ 60000"
+  filters:
+    metric_id: "yb.master"
+  group_by: "exported_instance"
+  panel_group: "Master"
+  layout:
+    title: "Uptime"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "server_uptime_ms": "Uptime"
+      ticksuffix: "&nbsp;min"
+
+table_write_latency:
+  metric: "ql_write_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Op Latency (Avg)"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency.avg": "Write"
+      ticksuffix: "&nbsp;\u00B5s"
+
+table_write_rps:
+  metric: "ql_write_latency_count"
+  function: "rate|sum by (namespace_name, table_id, table_name)|sum"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Ops / Sec"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ql_write_latency_count": "Write"
+
 table_read_latency:
   metric: "ql_read_latency.avg"
   function: "rate|avg"
@@ -2778,6 +2958,20 @@ table_read_rps:
     yaxis:
       alias:
         "ql_read_latency_count": "Read"
+
+table_write_lock_latency:
+  metric: "write_lock_latency.avg"
+  function: "rate|avg"
+  range : true
+  filters:
+    export_type: "tserver_export"
+  layout:
+    title: "Write Lock Latency"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "write_lock_latency.avg": "Write Lock"
       ticksuffix: "&nbsp;\u00B5s"
 
 table_log_latency:
@@ -2792,9 +2986,9 @@ table_log_latency:
       type: "date"
     yaxis:
       alias:
+        "log_append_latency.avg": "Append"
         "log_sync_latency.avg": "Sync"
         "log_group_commit_latency.avg": "Commit"
-        "log_append_latency.avg": "Append"
       ticksuffix: "&nbsp;\u00B5s"
 
 table_log_ops_second:
@@ -2811,9 +3005,9 @@ table_log_ops_second:
       type: "date"
     yaxis:
       alias:
-        "log_group_commit_latency_count": "Commit"
         "log_append_latency_count": "Append"
         "log_sync_latency_count": "Sync"
+        "log_group_commit_latency_count": "Commit"
 
 table_log_bytes_written:
   metric: "log_bytes_logged"
@@ -2931,3 +3125,36 @@ table_block_cache_hit_miss:
       alias:
         "rocksdb_block_cache_hit": "Hit"
         "rocksdb_block_cache_miss": "Miss"
+
+tablet_splitting_stats:
+  metric: ""
+  function: "rate|sum"
+  range: true
+  filters:
+    saved_name: "ts_split_op_added|ts_split_op_apply|ts_split_compaction_added|ts_post_split_compaction_added"
+  group_by: saved_name
+  panel_group: "RocksDB"
+  layout:
+    title: "Tablet Splitting Operations"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "ts_split_op_added": "Add"
+        "ts_split_op_apply": "Apply"
+        "ts_split_compaction_added": "Compaction"
+        "ts_post_split_compaction_added": "Compaction"
+
+automatic_split_manager_time:
+  metric: "automatic_split_manager_time"
+  function: "rate|avg"
+  range: true
+  panel_group: "RocksDB"
+  layout:
+    "title": "Tablet Split Manager"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "automatic_split_manager_time": "Runtime"
+      ticksuffix: "&nbsp;ms"

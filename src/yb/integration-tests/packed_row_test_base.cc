@@ -20,8 +20,12 @@
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
+
 DECLARE_bool(ycql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row);
+DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
 
 DECLARE_int32(history_cutoff_propagation_interval_ms);
 DECLARE_int32(timestamp_history_retention_interval_sec);
@@ -33,6 +37,7 @@ namespace yb {
 
 void SetUpPackedRowTestFlags() {
   FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
   FLAGS_ysql_packed_row_size_limit = 1_KB;
   FLAGS_ycql_enable_packed_row = true;
   FLAGS_ycql_packed_row_size_limit = 1_KB;
@@ -47,7 +52,7 @@ void CheckNumRecords(MiniCluster* cluster, size_t expected_num_records) {
     if (!peer->tablet()->doc_db().regular) {
       continue;
     }
-    auto count = peer->tablet()->TEST_CountRegularDBRecords();
+    auto count = ASSERT_RESULT(peer->tablet()->TEST_CountRegularDBRecords());
     LOG(INFO) << peer->LogPrefix() << "records: " << count;
     ASSERT_EQ(count, expected_num_records);
   }

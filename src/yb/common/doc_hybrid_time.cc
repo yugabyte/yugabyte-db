@@ -48,6 +48,10 @@ const DocHybridTime DocHybridTime::kInvalid = DocHybridTime(HybridTime::kInvalid
 const DocHybridTime DocHybridTime::kMin = DocHybridTime(HybridTime::kMin, 0);
 const DocHybridTime DocHybridTime::kMax = DocHybridTime(HybridTime::kMax, kMaxWriteId);
 
+const EncodedDocHybridTime kEncodedDocHybridTimeMin{DocHybridTime::kMin};
+
+const Slice EncodedDocHybridTime::kMin = kEncodedDocHybridTimeMin.AsSlice();
+
 constexpr int kNumBitsForHybridTimeSize = 5;
 constexpr int kHybridTimeSizeMask = (1 << kNumBitsForHybridTimeSize) - 1;
 
@@ -87,6 +91,25 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
   DCHECK_LE(encoded_size, kMaxBytesPerEncodedHybridTime);
   out[-1] = static_cast<char>((last_byte & ~kHybridTimeSizeMask) | encoded_size);
   return out;
+}
+
+Result<Slice> DocHybridTime::EncodedFromStart(Slice* slice) {
+  const auto* start = slice->data();
+  // There are following components:
+  // 1) Generation number - not used always 0.
+  // 2) Physical part of hybrid time.
+  // 3) Logical part of hybrid time.
+  // 4) Write id.
+  for (size_t i = 0; i != 4; ++i) {
+    auto size = util::FastDecodeDescendingSignedVarIntSize(*slice);
+    if (size == 0 || size > slice->size()) {
+      return STATUS_FORMAT(
+          Corruption, "Bad doc hybrid time: $0, step: $1",
+          Slice(start, slice->end()).ToDebugHexString(), i);
+    }
+    slice->remove_prefix(size);
+  }
+  return Slice(start, slice->data());
 }
 
 Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {
@@ -241,9 +264,22 @@ EncodedDocHybridTime::EncodedDocHybridTime(const DocHybridTime& input)
 EncodedDocHybridTime::EncodedDocHybridTime(HybridTime ht, IntraTxnWriteId write_id)
     : EncodedDocHybridTime(DocHybridTime(ht, write_id)) {}
 
+EncodedDocHybridTime::EncodedDocHybridTime(const Slice& src)
+    : size_(src.size()) {
+  memcpy(buffer_.data(), src.data(), src.size());
+}
+
 void EncodedDocHybridTime::Assign(const Slice& input) {
   size_ = input.size();
   memcpy(buffer_.data(), input.data(), size_);
+}
+
+void EncodedDocHybridTime::Assign(const DocHybridTime& doc_ht) {
+  size_ = doc_ht.EncodedInDocDbFormat(buffer_.data()) - buffer_.data();
+}
+
+void EncodedDocHybridTime::Reset() {
+  size_ = 0;
 }
 
 std::string EncodedDocHybridTime::ToString() const {
@@ -252,6 +288,13 @@ std::string EncodedDocHybridTime::ToString() const {
 
 Result<DocHybridTime> EncodedDocHybridTime::Decode() const {
   return DocHybridTime::FullyDecodeFrom(AsSlice());
+}
+
+void EncodedDocHybridTime::MakeAtLeast(const EncodedDocHybridTime& rhs) {
+  if (*this >= rhs) {
+    return;
+  }
+  Assign(rhs.AsSlice());
 }
 
 }  // namespace yb

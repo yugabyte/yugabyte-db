@@ -31,6 +31,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+DECLARE_bool(TEST_duplicate_create_table_request);
+
 namespace yb {
 namespace tserver {
 
@@ -171,7 +173,11 @@ Status PgCreateTable::Exec(
   const Status s = table_creator->Create();
   if (PREDICT_FALSE(!s.ok())) {
     if (s.IsAlreadyPresent()) {
-      if (req_.if_not_exist()) {
+      // When FLAGS_TEST_duplicate_create_table_request is set to true, a table creator sends out
+      // duplicate create table requests. The first one should succeed, and the subsequent one
+      // should failed with AlreadyPresent error status. This is expected in tests, so return
+      // an OK status when FLAGS_TEST_duplicate_create_table_request is true.
+      if (req_.if_not_exist() || FLAGS_TEST_duplicate_create_table_request) {
         return Status::OK();
       }
       return STATUS(InvalidArgument, "Duplicate table");

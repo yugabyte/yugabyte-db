@@ -14,14 +14,12 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.Universe.UniverseUpdater;
-
+import java.time.Duration;
 import java.util.Random;
-import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
@@ -33,7 +31,9 @@ public class WaitForYbcServer extends UniverseTaskBase {
 
   @Inject YbcClientService ybcService;
 
-  private int MAX_NUM_RETRIES = 5;
+  private int MAX_NUM_RETRIES = 20;
+  private static final long INITIAL_SLEEP_TIME_IN_MS = 1000L;
+  private static final long INCREMENTAL_SLEEP_TIME_IN_MS = 2000L;
 
   @Inject
   protected WaitForYbcServer(BaseTaskDependencies baseTaskDependencies) {
@@ -43,7 +43,7 @@ public class WaitForYbcServer extends UniverseTaskBase {
   public static class Params extends UniverseDefinitionTaskParams {
     // The universe UUID must be stored in universeUUID field.
     // The xCluster info object to persist.
-    public Set<NodeDetails> nodeDetailsSet = null;
+    public Set<String> nodeNameList = null;
   }
 
   protected Params taskParams() {
@@ -53,7 +53,7 @@ public class WaitForYbcServer extends UniverseTaskBase {
   @Override
   public void run() {
     boolean isYbcConfigured = true;
-    Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     String certFile = universe.getCertificateNodetoNode();
     YbcClient client = null;
     Random rand = new Random();
@@ -61,31 +61,48 @@ public class WaitForYbcServer extends UniverseTaskBase {
     Set<NodeDetails> nodeDetailsSet =
         taskParams().nodeDetailsSet == null
             ? universe.getUniverseDetails().nodeDetailsSet
-            : taskParams().nodeDetailsSet;
+            : taskParams()
+                .nodeNameList
+                .stream()
+                .map(nodeName -> universe.getNode(nodeName))
+                .collect(Collectors.toSet());
     String errMsg = "";
 
+    log.info("Universe uuid: {}, ybcPort: {} to be used", universe.getUniverseUUID(), ybcPort);
     for (NodeDetails node : nodeDetailsSet) {
       String nodeIp = node.cloudInfo.private_ip;
+      log.info("Node IP: {} to connect to YBC", nodeIp);
+
       try {
         client = ybcService.getNewClient(nodeIp, ybcPort, certFile);
         if (client == null) {
           throw new Exception("Could not create Ybc client.");
         }
-
+        log.info("Node IP: {} Client created", nodeIp);
         long seqNum = rand.nextInt();
         PingRequest pingReq = PingRequest.newBuilder().setSequence(seqNum).build();
         int numTries = 0;
         do {
+          log.info("Node IP: {} Making a ping request", nodeIp);
           PingResponse pingResp = client.ping(pingReq);
           if (pingResp != null && pingResp.getSequence() == seqNum) {
+            log.info("Node IP: {} Ping successful", nodeIp);
             break;
           } else if (pingResp == null) {
             numTries++;
+            long waitTimeInMillis =
+                INITIAL_SLEEP_TIME_IN_MS + INCREMENTAL_SLEEP_TIME_IN_MS * (numTries - 1);
+            log.info(
+                "Node IP: {} Ping not complete. Sleeping for {} millis", nodeIp, waitTimeInMillis);
+            Duration duration = Duration.ofMillis(waitTimeInMillis);
+            waitFor(duration);
             if (numTries <= MAX_NUM_RETRIES) {
+              log.info("Node IP: {} Ping not complete. Continuing", nodeIp);
               continue;
             }
           }
           if (numTries > MAX_NUM_RETRIES) {
+            log.info("Node IP: {} Ping failed. Exceeded max retries", nodeIp);
             errMsg = String.format("Exceeded max retries: %s", MAX_NUM_RETRIES);
             isYbcConfigured = false;
             break;
@@ -98,7 +115,6 @@ public class WaitForYbcServer extends UniverseTaskBase {
             break;
           }
         } while (true);
-
       } catch (Exception e) {
         log.error("{} hit error : {}", getName(), e.getMessage());
         throw new RuntimeException(e);

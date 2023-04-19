@@ -18,12 +18,12 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.minicluster.RocksDBMetrics;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 import static org.yb.AssertionWrappers.*;
 
 import java.sql.Statement;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestPgDdl extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgDdl.class);
 

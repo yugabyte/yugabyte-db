@@ -8,13 +8,12 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
-from ybops.cloud.common.base import AbstractPerCloudCommand
 from ybops.cloud.common.command import InstanceCommand, AccessCommand
 from ybops.cloud.common.method import ConfigureInstancesMethod, ListInstancesMethod, \
     InitYSQLMethod, CronCheckMethod, TransferXClusterCerts, \
     VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, \
     AccessEditVaultMethod, AccessCreateVaultMethod, AccessDeleteKeyMethod, RebootInstancesMethod, \
-    RunHooks, WaitForSSHConnection, HardRebootInstancesMethod
+    RunHooks, WaitForConnection
 from ybops.cloud.onprem.method import OnPremCreateInstancesMethod, OnPremDestroyInstancesMethod, \
     OnPremProvisionInstancesMethod, OnPremValidateMethod, \
     OnPremFillInstanceProvisionTemplateMethod, OnPremListInstancesMethod, \
@@ -45,8 +44,7 @@ class OnPremInstanceCommand(InstanceCommand):
         self.add_method(RemoveAuthorizedKey(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
-        self.add_method(WaitForSSHConnection(self))
-        self.add_method(HardRebootInstancesMethod(self))
+        self.add_method(WaitForConnection(self))
 
 
 class OnPremAccessCommand(AccessCommand):

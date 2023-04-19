@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_COORDINATOR_H
-#define YB_TABLET_TRANSACTION_COORDINATOR_H
+#pragma once
 
 #include <future>
 #include <memory>
@@ -50,7 +49,7 @@ namespace yb {
 namespace tablet {
 
 // Get current transaction timeout.
-std::chrono::microseconds GetTransactionTimeout();
+std::chrono::microseconds GetTransactionTimeout(bool is_external);
 
 // Context for transaction coordinator. I.e. access to external facilities required by
 // transaction coordinator to do its job.
@@ -68,8 +67,8 @@ class TransactionCoordinatorContext {
 
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
-      TransactionStatePB* request) = 0;
-  virtual void SubmitUpdateTransaction(
+      std::shared_ptr<LWTransactionStatePB> request) = 0;
+  virtual Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) = 0;
 
   server::Clock& clock() const {
@@ -97,7 +96,7 @@ class TransactionCoordinator {
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
     int64_t leader_term;
-    const TransactionStatePB& state;
+    const LWTransactionStatePB& state;
     const OpId& op_id;
     HybridTime hybrid_time;
 
@@ -108,7 +107,7 @@ class TransactionCoordinator {
   Status ProcessReplicated(const ReplicatedData& data);
 
   struct AbortedData {
-    const TransactionStatePB& state;
+    const LWTransactionStatePB& state;
     const OpId& op_id;
 
     std::string ToString() const;
@@ -117,7 +116,7 @@ class TransactionCoordinator {
   // Process transaction state replication aborted.
   void ProcessAborted(const AbortedData& data);
   // Handles new request for transaction update.
-  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term, bool is_external);
+  void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
   // Prepares log garbage collection. Return min index that should be preserved.
   int64_t PrepareGC(std::string* details = nullptr);
@@ -136,12 +135,15 @@ class TransactionCoordinator {
   Status PrepareForDeletion(const CoarseTimePoint& deadline);
 
   Status GetStatus(const google::protobuf::RepeatedPtrField<std::string>& transaction_ids,
-                           CoarseTimePoint deadline,
-                           tserver::GetTransactionStatusResponsePB* response);
+                   CoarseTimePoint deadline,
+                   tserver::GetTransactionStatusResponsePB* response);
 
   void Abort(const std::string& transaction_id, int64_t term, TransactionAbortCallback callback);
 
   std::string DumpTransactions();
+
+  // Returns count of external transactions. Used in tests.
+  size_t TEST_CountExternalTransactions() const;
 
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;
@@ -163,5 +165,3 @@ class TransactionCoordinator {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TRANSACTION_COORDINATOR_H

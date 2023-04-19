@@ -36,6 +36,7 @@ export default class YBResourceCount extends PureComponent {
       kind,
       unit,
       inline,
+      label,
       pluralizeKind,
       className,
       pluralizeUnit,
@@ -59,9 +60,11 @@ export default class YBResourceCount extends PureComponent {
 
     return (
       <div className={'yb-resource-count ' + classNames}>
+        {label && <div className="yb-resource-count-label">{label}</div>}
         <div className="yb-resource-count-size">
           {sizePrefix && <span className="yb-resource-count-size-prefix">{sizePrefix}</span>}
-          {size} {kind && inline && <div className="yb-resource-count-kind">{displayKind}</div>}
+          {size}
+          {kind && inline && <div className="yb-resource-count-kind">{displayKind}</div>}
           {displayUnit && <span className="yb-resource-count-unit">{displayUnit}</span>}
         </div>
         {separatorLine && <div className="yb-resource-separator-line" />}

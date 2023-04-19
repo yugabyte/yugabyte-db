@@ -138,6 +138,26 @@ def copy_cores(dst):
     return total_files_copied
 
 
+def invoke_hook(hook_stage=None):
+    """
+    Invokes the kubernetes configmap hook with associated hook_stage.
+    """
+    if hook_stage not in ("pre", "post"):
+        raise Exception("NotImplemented")
+    hostname = os.getenv("HOSTNAME")
+
+    hostname_parsed = "-".join(hostname.split("-")[-3:])
+    hook_filename = "{}-{}_debug_hook.sh".format(hostname_parsed, hook_stage)
+    op_name = "{}_{}_{}".format(hostname, hook_stage, "debug_hook")
+    hook_filepath = os.path.join("/opt/debug_hooks_config/", hook_filename)
+    if os.path.exists(hook_filepath):
+        logging.info("Executing operation: {} filepath: {}".format(op_name, hook_filepath))
+        # TODO: Do we care about capturing ret code,
+        # exception since exceptions will be logged by default
+        output = subprocess.check_output(hook_filepath, shell=True)
+        logging.info("Output from hook {}".format(output))
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         format="%(asctime)s [%(levelname)s] %(filename)s: %(message)s",
@@ -158,6 +178,8 @@ if __name__ == "__main__":
     # Make sure the directory from core_pattern is present, otherwise
     # core dumps are not collected.
     create_core_dump_dir()
+    # invoking the prehook.
+    invoke_hook(hook_stage="pre")
 
     child_process = subprocess.Popen(command)
 
@@ -169,6 +191,9 @@ if __name__ == "__main__":
         signal.signal(sig, signal_handler)
 
     child_process.wait()
+
+    # invoking the Post hook
+    invoke_hook(hook_stage="post")
 
     # Do the core copy, and exit with child return code.
     files_copied = copy_cores(cores_dir)

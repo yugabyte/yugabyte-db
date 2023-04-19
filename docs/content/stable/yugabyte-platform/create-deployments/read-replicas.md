@@ -14,9 +14,7 @@ type: docs
 You can create a universe that includes both a primary cluster and a [read replica](../../../architecture/docdb-replication/read-replicas/) cluster in a hybrid cloud deployment, as well as dynamically add, edit, and remove a read replica cluster. The example presented in this document shows how to deploy a universe with primary cluster in Oregon (US-West) and read replica cluster in Northern Virginia (US-East).
 
 {{< note title="Note" >}}
-
-- YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
-
+YugabyteDB Anywhere does not support read replica configuration for Kubernetes and OpenShift cloud providers.
 {{< /note >}}
 
 ## Create the universe
@@ -27,7 +25,7 @@ You start by navigating to **Dashboard** and clicking **Create Universe**. Use t
 - Enter the set of regions as Oregon.
 - Set the replication factor to 3.
 - Set instance type to n1-standard-8
-- Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. Since the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.<br><br>
+- Add the configuration flag for YB-Master and YB-TServer as `leader_failure_max_missed_heartbeat_periods` 10. Since the data is globally replicated, remote procedure call (RPC) latencies are higher. You can use this flag to increase the failure detection interval in such a high-RPC latency deployment.<br>
 
   ![Create Primary Cluster on GCP](/images/ee/primary-cluster-creation.png)
 

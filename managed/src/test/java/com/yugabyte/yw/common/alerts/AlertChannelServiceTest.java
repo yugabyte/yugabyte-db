@@ -136,7 +136,7 @@ public class AlertChannelServiceTest extends FakeDBApplication {
         ModelFactory.createSlackChannel(defaultCustomerUuid, CHANNEL_NAME + " 2");
 
     // Second customer with one channel.
-    UUID newCustomerUUID = ModelFactory.testCustomer().uuid;
+    UUID newCustomerUUID = ModelFactory.testCustomer().getUuid();
     ModelFactory.createSlackChannel(newCustomerUUID, CHANNEL_NAME);
 
     List<AlertChannel> channels = alertChannelService.list(defaultCustomerUuid);
@@ -158,7 +158,7 @@ public class AlertChannelServiceTest extends FakeDBApplication {
       alertChannelService.validate(channel);
       fail("YWValidateException is expected.");
     } catch (PlatformServiceException e) {
-      assertThat(e.getMessage(), is("errorJson: {\"params\":[\"may not be null\"]}"));
+      assertThat(e.getMessage(), is("errorJson: {\"params\":[\"must not be null\"]}"));
     }
   }
 
@@ -237,8 +237,8 @@ public class AlertChannelServiceTest extends FakeDBApplication {
   // @formatter:off
   @Parameters({
     "null, http://www.google.com, null, errorJson: "
-        + "{\"params.username\":[\"may not be null\"]}",
-    "channel, null, null, errorJson: " + "{\"params.webhookUrl\":[\"may not be null\"]}",
+        + "{\"params.username\":[\"must not be null\"]}",
+    "channel, null, null, errorJson: " + "{\"params.webhookUrl\":[\"must not be null\"]}",
     "channel, incorrect url, null, errorJson: "
         + "{\"params.webhookUrl\":[\"must be a valid URL\"]}",
     "channel, http://www.google.com, null, null",
@@ -278,8 +278,8 @@ public class AlertChannelServiceTest extends FakeDBApplication {
 
   @Test
   @Parameters({
-    "null, key, errorJson: {\"params.apiKey\":[\"may not be null\"]}",
-    "key, null, errorJson: {\"params.routingKey\":[\"may not be null\"]}",
+    "null, key, errorJson: {\"params.apiKey\":[\"must not be null\"]}",
+    "key, null, errorJson: {\"params.routingKey\":[\"must not be null\"]}",
     "key1, key2, null",
   })
   // @formatter:on
@@ -310,7 +310,7 @@ public class AlertChannelServiceTest extends FakeDBApplication {
 
   @Test
   @Parameters({
-    "null, errorJson: {\"params.webhookUrl\":[\"may not be null\"]}",
+    "null, errorJson: {\"params.webhookUrl\":[\"must not be null\"]}",
     "string, errorJson: {\"params.webhookUrl\":[\"must be a valid URL\"]}",
     "http://www.google.com, null",
   })

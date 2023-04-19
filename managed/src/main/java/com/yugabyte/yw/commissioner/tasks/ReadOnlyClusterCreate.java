@@ -37,7 +37,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
 
     try {
 
@@ -47,6 +47,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
               taskParams().expectedUniverseVersion,
               u -> {
                 if (isFirstTry()) {
+                  // Fetch the task params from the DB to start from fresh on retry.
+                  // Otherwise, some operations like name assignment can fail.
+                  fetchTaskDetailsFromDB();
                   preTaskActions(u);
                   // Set all the in-memory node names.
                   setNodeNames(u);
@@ -99,13 +102,14 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
       Set<NodeDetails> newTservers = PlacementInfoUtil.getTserversToProvision(readOnlyNodes);
 
       // Start the tservers in the clusters.
-      createStartTserverProcessTasks(newTservers);
+      createStartTserverProcessTasks(
+          newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQL);
 
       // Start ybc process on all the nodes
-      if (taskParams().enableYbc) {
+      if (taskParams().isEnableYbc()) {
         createStartYbcProcessTasks(
             newTservers, universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
-        createUpdateYbcTask(taskParams().ybcSoftwareVersion)
+        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
 
@@ -143,6 +147,7 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
                         .nodeDetailsSet
                         .stream()
                         .allMatch(n -> n.ybPrebuiltAmi))));
+        universe.save();
       }
     }
     log.info("Finished {} task.", getName());

@@ -22,8 +22,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 // Simple hash function used for internal data structures
-#ifndef YB_ROCKSDB_UTIL_HASH_H
-#define YB_ROCKSDB_UTIL_HASH_H
 
 #pragma once
 #include <stddef.h>
@@ -48,5 +46,3 @@ inline uint32_t GetSliceHash(const Slice& s) {
 }
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_UTIL_HASH_H

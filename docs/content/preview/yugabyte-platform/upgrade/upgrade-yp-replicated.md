@@ -42,3 +42,5 @@ If the required release version is in a different channel (for example, you want
 If you are performing an upgrade to YugabyteDB Anywhere version 2.14 or later, the process can take some time depending on the amount of data present in YugabyteDB Anywhere.
 
 If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via `yb-admin` instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
+
+If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).

@@ -50,7 +50,7 @@ public class SetNodeState extends NodeTaskBase {
           "Updating node {} state to {} in universe {}.",
           taskParams().nodeName,
           taskParams().state,
-          taskParams().universeUUID);
+          taskParams().getUniverseUUID());
       setNodeState(taskParams().state);
     } catch (Exception e) {
       throw new RuntimeException(e);

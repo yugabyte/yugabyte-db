@@ -26,10 +26,11 @@ import com.google.cloud.kms.v1.KeyRing;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.kms.util.GcpEARServiceUtil;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.KmsConfig;
 import com.yugabyte.yw.models.Universe;
-
 import java.util.UUID;
 import org.apache.commons.lang3.RandomUtils;
 import org.junit.Before;
@@ -69,14 +70,14 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public Customer customer;
 
   @Spy public GcpEARServiceUtil mockGcpEARServiceUtil;
-  @Spy public GcpEARService mockGcpEARService;
+  @Spy public GcpEARService mockGcpEARService = new GcpEARService(null);
   @Mock public KeyRing mockKeyRing;
   @Mock public CryptoKey mockCryptoKey;
 
   @Before
   public void setUp() throws Exception {
     this.customer = ModelFactory.testCustomer();
-    this.universe = ModelFactory.createUniverse(customer.getCustomerId());
+    this.universe = ModelFactory.createUniverse(customer.getId());
 
     // Populate the fake auth config
     fakeAuthConfig.put("name", authConfigName);
@@ -112,6 +113,17 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public void testCreateAuthConfigWithService() throws Exception {
     // Check if create key ring and crypto key functions are called
     ObjectNode fakeAuthConfigCopy = fakeAuthConfig.deepCopy();
+
+    // Make a fake auth config object in db to update proper protection level
+    KmsConfig kmsConfig = new KmsConfig();
+    kmsConfig.setConfigUUID(this.configUUID);
+    kmsConfig.setCustomerUUID(this.customer.getUuid());
+    kmsConfig.setKeyProvider(KeyProvider.GCP);
+    kmsConfig.setAuthConfig(fakeAuthConfigCopy);
+    kmsConfig.setVersion(KmsConfig.SCHEMA_VERSION);
+    kmsConfig.setName(authConfigName);
+    kmsConfig.save();
+
     ObjectNode createdAuthConfig =
         mockGcpEARService.createAuthConfigWithService(configUUID, fakeAuthConfigCopy);
     assertEquals(createdAuthConfig, fakeAuthConfig);
@@ -126,7 +138,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
         mockGcpEARService.createKeyWithService(
-            universe.universeUUID, configUUID, encryptionAtRestConfig);
+            universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).generateRandomBytes(fakeAuthConfig, numBytes);
     verify(mockGcpEARServiceUtil, times(1)).encryptBytes(fakeAuthConfig, randomBytes);
@@ -138,7 +150,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
         mockGcpEARService.rotateKeyWithService(
-            universe.universeUUID, configUUID, encryptionAtRestConfig);
+            universe.getUniverseUUID(), configUUID, encryptionAtRestConfig);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).generateRandomBytes(fakeAuthConfig, numBytes);
     verify(mockGcpEARServiceUtil, times(1)).encryptBytes(fakeAuthConfig, randomBytes);
@@ -148,9 +160,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
   public void testRetrieveKeyWithService() {
     // Decrypting the stored encrypted universe key known as keyRef
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
-    byte[] keyRef =
-        mockGcpEARService.retrieveKeyWithService(
-            universe.universeUUID, configUUID, randomBytes, encryptionAtRestConfig);
+    byte[] keyRef = mockGcpEARService.retrieveKeyWithService(configUUID, randomBytes);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).decryptBytes(fakeAuthConfig, randomBytes);
   }
@@ -161,8 +171,7 @@ public class GcpEARServiceTest extends FakeDBApplication {
     // Used for KMS  edit operation
     EncryptionAtRestConfig encryptionAtRestConfig = new EncryptionAtRestConfig();
     byte[] keyRef =
-        mockGcpEARService.validateRetrieveKeyWithService(
-            universe.universeUUID, configUUID, randomBytes, encryptionAtRestConfig, fakeAuthConfig);
+        mockGcpEARService.validateRetrieveKeyWithService(configUUID, randomBytes, fakeAuthConfig);
     assertEquals(keyRef, randomBytes);
     verify(mockGcpEARServiceUtil, times(1)).decryptBytes(fakeAuthConfig, randomBytes);
   }

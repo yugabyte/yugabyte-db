@@ -17,8 +17,10 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.UniverseResourceDetails;
 import com.yugabyte.yw.cloud.UniverseResourceDetails.Context;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -26,7 +28,10 @@ import com.yugabyte.yw.forms.TriggerHealthCheckResult;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HealthCheck.Details;
+import com.yugabyte.yw.models.HealthCheck.Details.NodeData;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.extended.DetailsExt;
+import com.yugabyte.yw.models.extended.NodeDataExt;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -39,13 +44,14 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
+import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
 
@@ -56,6 +62,7 @@ import play.mvc.Results;
 public class UniverseInfoController extends AuthenticatedController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
   @Inject private UniverseInfoHandler universeInfoHandler;
   @Inject private HttpExecutionContext ec;
 
@@ -148,7 +155,14 @@ public class UniverseInfoController extends AuthenticatedController {
   public Result getLiveQueries(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    log.info("Live queries for customer {}, universe {}", customer.uuid, universe.universeUUID);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't get live queries for a paused universe");
+    }
+    log.info(
+        "Live queries for customer {}, universe {}",
+        customer.getUuid(),
+        universe.getUniverseUUID());
     JsonNode resultNode = universeInfoHandler.getLiveQuery(universe);
     return PlatformResults.withRawData(resultNode);
   }
@@ -161,6 +175,10 @@ public class UniverseInfoController extends AuthenticatedController {
     log.info("Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't get slow queries for a paused universe");
+    }
     JsonNode resultNode = universeInfoHandler.getSlowQueries(universe);
     return Results.ok(resultNode);
   }
@@ -169,13 +187,17 @@ public class UniverseInfoController extends AuthenticatedController {
       value = "Reset slow queries for a universe",
       nickname = "resetSlowQueries",
       response = Object.class)
-  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID) {
+  public Result resetSlowQueries(UUID customerUUID, UUID universeUUID, Http.Request request) {
     log.info("Resetting Slow queries for customer {}, universe {}", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    if (universe.getUniverseDetails().universePaused) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Can't reset slow queries for a paused universe");
+    }
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(),
+        .createAuditEntry(
+            request,
             Audit.TargetType.Universe,
             universeUUID.toString(),
             Audit.ActionType.ResetSlowQueries);
@@ -194,13 +216,13 @@ public class UniverseInfoController extends AuthenticatedController {
       notes =
           "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
       nickname = "healthCheckUniverse",
-      response = Object.class)
+      response = Details.class)
   public Result healthCheck(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
     List<Details> detailsList = universeInfoHandler.healthCheck(universeUUID);
-    return PlatformResults.withData(detailsList);
+    return PlatformResults.withData(convertDetails(detailsList));
   }
 
   @ApiOperation(
@@ -211,7 +233,7 @@ public class UniverseInfoController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
 
-    if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.health.trigger_api.enabled")) {
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.enableTriggerAPI)) {
       throw new PlatformServiceException(
           METHOD_NOT_ALLOWED, "Manual health check trigger is disabled.");
     }
@@ -257,12 +279,41 @@ public class UniverseInfoController extends AuthenticatedController {
           Path targetFile = Paths.get(storagePath + "/" + tarFileName);
           File file =
               universeInfoHandler.downloadNodeLogs(customer, universe, node, targetFile).toFile();
-          InputStream is = FileUtils.getInputStreamOrFail(file);
-          file.delete(); // TODO: should this be done in finally?
-          // return the file to client
-          response().setHeader("Content-Disposition", "attachment; filename=" + file.getName());
-          return ok(is).as("application/x-compressed");
+          InputStream is = FileUtils.getInputStreamOrFail(file, true /* deleteOnClose */);
+          return ok(is)
+              .as("application/x-compressed")
+              .withHeader("Content-Disposition", "attachment; filename=" + file.getName());
         },
         ec.current());
+  }
+
+  private List<DetailsExt> convertDetails(List<Details> details) {
+    boolean backwardCompatibleDate =
+        confGetter.getGlobalConf(GlobalConfKeys.backwardCompatibleDate);
+    return convertDetails(details, backwardCompatibleDate);
+  }
+
+  private List<DetailsExt> convertDetails(List<Details> details, boolean backwardCompatibleDate) {
+    return details
+        .stream()
+        .map(
+            d ->
+                new DetailsExt()
+                    .setDetails(d)
+                    .setTimestamp(backwardCompatibleDate ? d.getTimestampIso() : null)
+                    .setData(convertNodeData(d.getData(), backwardCompatibleDate)))
+        .collect(Collectors.toList());
+  }
+
+  private List<NodeDataExt> convertNodeData(
+      List<NodeData> nodeDataList, boolean backwardCompatibleDate) {
+    return nodeDataList
+        .stream()
+        .map(
+            data ->
+                new NodeDataExt()
+                    .setNodeData(data)
+                    .setTimestamp(backwardCompatibleDate ? data.getTimestampIso() : null))
+        .collect(Collectors.toList());
   }
 }

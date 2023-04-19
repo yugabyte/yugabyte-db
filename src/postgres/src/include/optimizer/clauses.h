@@ -54,6 +54,8 @@ extern Query *inline_set_returning_function(PlannerInfo *root,
 											RangeTblEntry *rte);
 extern Bitmapset *pull_paramids(Expr *expr);
 
+extern Node *yb_get_saop_left_op(const Expr *clause);
+
 extern Expr *yb_copy_replace_varnos(Expr *expr, Index oldvarno, Index newvarno);
 
 #endif							/* CLAUSES_H */

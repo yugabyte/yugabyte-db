@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TABLET_RETENTION_POLICY_H_
-#define YB_TABLET_TABLET_RETENTION_POLICY_H_
+#pragma once
 
 #include "yb/docdb/docdb_compaction_context.h"
 
@@ -34,6 +33,9 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
       RaftGroupMetadata* metadata);
 
   docdb::HistoryRetentionDirective GetRetentionDirective() override;
+
+  // Returns history cutoff without updating committed_history_cutoff_.
+  HybridTime ProposedHistoryCutoff() override;
 
   // Tries to update history cutoff to proposed value, not allowing it to decrease.
   // Returns new committed history cutoff value.
@@ -60,6 +62,9 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   // Check proposed history cutoff against other restrictions (for instance min reading timestamp),
   // and returns most close value that satisfies them.
   HybridTime SanitizeHistoryCutoff(HybridTime proposed_history_cutoff) REQUIRES(mutex_);
+
+  // Helper function to get the history directive with or without committed history update.
+  docdb::HistoryRetentionDirective DoGetRetentionDirective(bool update_committed_history);
 
   const std::string& LogPrefix() const {
     return log_prefix_;
@@ -94,5 +99,3 @@ class HistoryCutoffPropagationDisabler {
 
 }  // namespace tablet
 }  // namespace yb
-
-#endif  // YB_TABLET_TABLET_RETENTION_POLICY_H_

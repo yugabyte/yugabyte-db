@@ -303,6 +303,110 @@ paths:
       summary: Get list of DB tables per YB API (YCQL/YSQL)
       tags:
       - cluster-info
+  /health-check:
+    get:
+      description: Get health information about the cluster
+      operationId: getClusterHealthCheck
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health_Check_Response'
+          description: Successful health check response
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get health information about the cluster
+      tags:
+      - cluster-info
+  /tablets:
+    get:
+      description: Get list of tablets
+      operationId: getClusterTablets
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cluster_tablet_list_response'
+          description: List of cluster tablets
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get list of tablets
+      tags:
+      - cluster-info
+  /version:
+    get:
+      description: Get YugabyteDB version
+      operationId: getVersion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionInfo'
+          description: Version info for YugabyteDB
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Get YugabyteDB version
+      tags:
+      - cluster-info
+  /is_load_balancer_idle:
+    get:
+      description: Check if cluster load balancer is idle
+      operationId: getIsLoadBalancerIdle
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Is_load_balancer_idle'
+          description: Is load balancer idle
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+          description: API Error
+      summary: Check if cluster load balancer is idle
+      tags:
+      - cluster-info
 components:
   requestBodies:
     ClusterSpec:
@@ -354,6 +458,24 @@ components:
           schema:
             $ref: '#/components/schemas/Cluster_table_list_response'
       description: List of cluster tables
+    HealthCheckResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Health_Check_Response'
+      description: Successful health check response
+    ClusterTabletListResponse:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Cluster_tablet_list_response'
+      description: List of cluster tablets
+    VersionInfo:
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/VersionInfo'
+      description: Version info for YugabyteDB
   schemas:
     CloudEnum:
       default: MANUAL
@@ -393,9 +515,11 @@ components:
     ClusterNodeInfo:
       description: Node level information
       example:
+        disk_size_used_gb: 5.962133916683182
+        num_cores: 2
         memory_mb: 6.027456183070403
-        cpu_usage: 5.962133916683182
-        disk_size_gb: 608
+        cpu_usage: 5.637376656633329
+        disk_size_gb: 1.4658129805029452
       properties:
         memory_mb:
           default: 0
@@ -403,16 +527,24 @@ components:
           format: double
           type: number
         disk_size_gb:
-          default: 256
+          default: 0
           description: The total size of disk (GB)
-          maximum: 4096
-          minimum: 10
-          type: integer
+          format: double
+          type: number
+        disk_size_used_gb:
+          default: 0
+          description: The total size of used disk space (GB)
+          format: double
+          type: number
         cpu_usage:
           default: 0
           description: The average CPU usage over all nodes
           format: double
           type: number
+        num_cores:
+          default: 0
+          description: The number of CPU cores per node
+          type: integer
       required:
       - disk_size_gb
       - memory_mb
@@ -423,11 +555,13 @@ components:
       description: Cluster level information
       example:
         node_info:
+          disk_size_used_gb: 5.962133916683182
+          num_cores: 2
           memory_mb: 6.027456183070403
-          cpu_usage: 5.962133916683182
-          disk_size_gb: 608
+          cpu_usage: 5.637376656633329
+          disk_size_gb: 1.4658129805029452
         is_production: false
-        version: 5
+        version: 7
         num_nodes: 2
       properties:
         num_nodes:
@@ -438,6 +572,10 @@ components:
           type: integer
         fault_tolerance:
           $ref: '#/components/schemas/ClusterFaultTolerance'
+        replication_factor:
+          description: The replication factor applied on the cluster
+          title: Cluster Replication Factor
+          type: integer
         node_info:
           $ref: '#/components/schemas/ClusterNodeInfo'
         is_production:
@@ -451,6 +589,7 @@ components:
       required:
       - cluster_tier
       - fault_tolerance
+      - replication_factor
       - is_production
       - node_info
       - num_nodes
@@ -460,7 +599,7 @@ components:
       example:
         cloud_info:
           region: us-west2
-        num_nodes: 6
+        num_nodes: 22
       properties:
         cloud_info:
           $ref: '#/components/schemas/CloudInfo'
@@ -480,7 +619,7 @@ components:
         placement_info:
           cloud_info:
             region: us-west2
-          num_nodes: 6
+          num_nodes: 22
       properties:
         placement_info:
           $ref: '#/components/schemas/PlacementInfo'
@@ -509,11 +648,11 @@ components:
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 6
+            num_nodes: 22
         - placement_info:
             cloud_info:
               region: us-west2
-            num_nodes: 6
+            num_nodes: 22
         name: name
         cloud_info:
           region: us-west2
@@ -522,11 +661,13 @@ components:
           encryption_at_rest: false
         cluster_info:
           node_info:
+            disk_size_used_gb: 5.962133916683182
+            num_cores: 2
             memory_mb: 6.027456183070403
-            cpu_usage: 5.962133916683182
-            disk_size_gb: 608
+            cpu_usage: 5.637376656633329
+            disk_size_gb: 1.4658129805029452
           is_production: false
-          version: 5
+          version: 7
           num_nodes: 2
       properties:
         name:
@@ -607,11 +748,11 @@ components:
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 6
+              num_nodes: 22
           - placement_info:
               cloud_info:
                 region: us-west2
-              num_nodes: 6
+              num_nodes: 22
           name: name
           cloud_info:
             region: us-west2
@@ -620,11 +761,13 @@ components:
             encryption_at_rest: false
           cluster_info:
             node_info:
+              disk_size_used_gb: 5.962133916683182
+              num_cores: 2
               memory_mb: 6.027456183070403
-              cpu_usage: 5.962133916683182
-              disk_size_gb: 608
+              cpu_usage: 5.637376656633329
+              disk_size_gb: 1.4658129805029452
             is_production: false
-            version: 5
+            version: 7
             num_nodes: 2
         info:
           metadata:
@@ -921,16 +1064,21 @@ components:
         local_blks_written:
           type: integer
         max_time:
+          format: double
           type: number
         mean_time:
+          format: double
           type: number
         min_time:
+          format: double
           type: number
         rows:
           type: integer
         stddev_time:
+          format: double
           type: number
         total_time:
+          format: double
           type: number
       title: Slow Query Response YSQL Query Item
       type: object
@@ -1053,23 +1201,42 @@ components:
     NodeData:
       description: Node data
       example:
+        is_master_up: true
         is_master: true
         is_tserver: true
         is_node_up: true
         name: name
+        host: host
+        is_bootstrapping: true
         cloud_info:
           cloud: cloud
           zone: zone
           region: region
         metrics:
+          system_tablets_total: 0
+          system_tablets_leaders: 0
+          write_ops_per_sec: 5.637376656633329
+          ram_provisioned_bytes: 0
+          time_since_hb_sec: 2.3021358869347655
+          active_connections:
+            ysql: 0
+            ycql: 0
+          total_sst_file_size_bytes: 6
           uncompressed_sst_file_size_bytes: 1
           read_ops_per_sec: 5.962133916683182
+          user_tablets_leaders: 0
+          ram_used_bytes: 0
           memory_used_bytes: 0
-          write_ops_per_sec: 5.637376656633329
-          total_sst_file_size_bytes: 6
+          uptime_seconds: 0
+          user_tablets_total: 0
+          disk_provisioned_bytes: 0
+          master_uptime_us: 0
         software_version: software_version
       properties:
         name:
+          nullable: false
+          type: string
+        host:
           nullable: false
           type: string
         is_node_up:
@@ -1077,6 +1244,10 @@ components:
         is_master:
           type: boolean
         is_tserver:
+          type: boolean
+        is_master_up:
+          type: boolean
+        is_bootstrapping:
           type: boolean
         metrics:
           $ref: '#/components/schemas/NodeData_metrics'
@@ -1086,7 +1257,10 @@ components:
           type: string
       required:
       - cloud_info
+      - host
+      - is_bootstrapping
       - is_master
+      - is_master_up
       - is_node_up
       - is_tserver
       - metrics
@@ -1164,6 +1338,92 @@ components:
       title: Cluster Table Data
       type: array
       uniqueItems: true
+    HealthCheckInfo:
+      example:
+        most_recent_uptime: 0
+        dead_nodes:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        leaderless_tablets:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        under_replicated_tablets:
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        dead_nodes:
+          description: UUIDs of dead nodes
+          items:
+            format: uuid
+            type: string
+          type: array
+        most_recent_uptime:
+          format: int64
+          minimum: 0
+          type: integer
+        under_replicated_tablets:
+          description: UUIDs of under-replicated tablets
+          items:
+            format: uuid
+            type: string
+          type: array
+        leaderless_tablets:
+          description: UUIDs of leaderless tablets
+          items:
+            format: uuid
+            type: string
+          type: array
+      required:
+      - dead_nodes
+      - leaderless_tablets
+      - most_recent_uptime
+      - under_replicated_tablets
+      title: Health Check Info
+      type: object
+    ClusterTablet:
+      description: Model representing a tablet
+      example:
+        tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        namespace: namespace
+        table_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+        table_name: table_name
+        has_leader: true
+      properties:
+        namespace:
+          type: string
+        table_name:
+          type: string
+        table_uuid:
+          format: uuid
+          type: string
+        tablet_id:
+          format: uuid
+          type: string
+        has_leader:
+          type: boolean
+      required:
+      - has_leader
+      - namespace
+      - table_id
+      - table_name
+      - table_uuid
+      title: Cluster Tablet Object
+      type: object
+    ClusterTabletData:
+      additionalProperties:
+        $ref: '#/components/schemas/ClusterTablet'
+      description: List of cluster tablets
+      title: Cluster Tablet Data
+      type: object
+    VersionInfo:
+      description: YugabyteDB version info
+      example:
+        version: version
+      properties:
+        version:
+          type: string
+      title: YugabyteDB Version Info
+      type: object
     Cluster_Response:
       example:
         data:
@@ -1172,11 +1432,11 @@ components:
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 6
+                num_nodes: 22
             - placement_info:
                 cloud_info:
                   region: us-west2
-                num_nodes: 6
+                num_nodes: 22
             name: name
             cloud_info:
               region: us-west2
@@ -1185,11 +1445,13 @@ components:
               encryption_at_rest: false
             cluster_info:
               node_info:
+                disk_size_used_gb: 5.962133916683182
+                num_cores: 2
                 memory_mb: 6.027456183070403
-                cpu_usage: 5.962133916683182
-                disk_size_gb: 608
+                cpu_usage: 5.637376656633329
+                disk_size_gb: 1.4658129805029452
               is_production: false
-              version: 5
+              version: 7
               num_nodes: 2
           info:
             metadata:
@@ -1206,35 +1468,67 @@ components:
     Cluster_Nodes_Response:
       example:
         data:
-        - is_master: true
+        - is_master_up: true
+          is_master: true
           is_tserver: true
           is_node_up: true
           name: name
+          host: host
+          is_bootstrapping: true
           cloud_info:
             cloud: cloud
             zone: zone
             region: region
           metrics:
+            system_tablets_total: 0
+            system_tablets_leaders: 0
+            write_ops_per_sec: 5.637376656633329
+            ram_provisioned_bytes: 0
+            time_since_hb_sec: 2.3021358869347655
+            active_connections:
+              ysql: 0
+              ycql: 0
+            total_sst_file_size_bytes: 6
             uncompressed_sst_file_size_bytes: 1
             read_ops_per_sec: 5.962133916683182
+            user_tablets_leaders: 0
+            ram_used_bytes: 0
             memory_used_bytes: 0
-            write_ops_per_sec: 5.637376656633329
-            total_sst_file_size_bytes: 6
+            uptime_seconds: 0
+            user_tablets_total: 0
+            disk_provisioned_bytes: 0
+            master_uptime_us: 0
           software_version: software_version
-        - is_master: true
+        - is_master_up: true
+          is_master: true
           is_tserver: true
           is_node_up: true
           name: name
+          host: host
+          is_bootstrapping: true
           cloud_info:
             cloud: cloud
             zone: zone
             region: region
           metrics:
+            system_tablets_total: 0
+            system_tablets_leaders: 0
+            write_ops_per_sec: 5.637376656633329
+            ram_provisioned_bytes: 0
+            time_since_hb_sec: 2.3021358869347655
+            active_connections:
+              ysql: 0
+              ycql: 0
+            total_sst_file_size_bytes: 6
             uncompressed_sst_file_size_bytes: 1
             read_ops_per_sec: 5.962133916683182
+            user_tablets_leaders: 0
+            ram_used_bytes: 0
             memory_used_bytes: 0
-            write_ops_per_sec: 5.637376656633329
-            total_sst_file_size_bytes: 6
+            uptime_seconds: 0
+            user_tablets_total: 0
+            disk_provisioned_bytes: 0
+            master_uptime_us: 0
           software_version: software_version
       properties:
         data:
@@ -1304,6 +1598,55 @@ components:
       - data
       title: Cluster table list response
       type: object
+    Health_Check_Response:
+      example:
+        data:
+          most_recent_uptime: 0
+          dead_nodes:
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          leaderless_tablets:
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          under_replicated_tablets:
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+          - 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+      properties:
+        data:
+          $ref: '#/components/schemas/HealthCheckInfo'
+      title: Health Check Response
+      type: object
+    Cluster_tablet_list_response:
+      example:
+        data:
+          key:
+            tablet_id: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            namespace: namespace
+            table_uuid: 046b6c7f-0b8a-43b9-b35d-6489e6daee91
+            table_name: table_name
+            has_leader: true
+      properties:
+        data:
+          additionalProperties:
+            $ref: '#/components/schemas/ClusterTablet'
+          description: List of cluster tablets
+          title: Cluster Tablet Data
+          type: object
+      required:
+      - data
+      title: Cluster tablet list response
+      type: object
+    Is_load_balancer_idle:
+      description: Is load balancer idle
+      example:
+        is_idle: true
+      properties:
+        is_idle:
+          type: boolean
+      required:
+      - is_idle
+      title: Is load balancer idle
+      type: object
     ApiError_error:
       properties:
         detail:
@@ -1313,13 +1656,45 @@ components:
           description: Error code
           type: integer
       type: object
+    NodeData_metrics_active_connections:
+      example:
+        ysql: 0
+        ycql: 0
+      properties:
+        ysql:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ycql:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+      required:
+      - ycql
+      - ysql
+      type: object
     NodeData_metrics:
       example:
+        system_tablets_total: 0
+        system_tablets_leaders: 0
+        write_ops_per_sec: 5.637376656633329
+        ram_provisioned_bytes: 0
+        time_since_hb_sec: 2.3021358869347655
+        active_connections:
+          ysql: 0
+          ycql: 0
+        total_sst_file_size_bytes: 6
         uncompressed_sst_file_size_bytes: 1
         read_ops_per_sec: 5.962133916683182
+        user_tablets_leaders: 0
+        ram_used_bytes: 0
         memory_used_bytes: 0
-        write_ops_per_sec: 5.637376656633329
-        total_sst_file_size_bytes: 6
+        uptime_seconds: 0
+        user_tablets_total: 0
+        disk_provisioned_bytes: 0
+        master_uptime_us: 0
       properties:
         memory_used_bytes:
           default: 0
@@ -1343,11 +1718,73 @@ components:
           default: 0
           format: double
           type: number
+        time_since_hb_sec:
+          default: 0
+          format: double
+          type: number
+        uptime_seconds:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        user_tablets_total:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        user_tablets_leaders:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        system_tablets_total:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        system_tablets_leaders:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        active_connections:
+          $ref: '#/components/schemas/NodeData_metrics_active_connections'
+        master_uptime_us:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ram_used_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        ram_provisioned_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
+        disk_provisioned_bytes:
+          default: 0
+          format: int64
+          minimum: 0
+          type: integer
       required:
+      - active_connections
+      - disk_provisioned_bytes
+      - master_uptime_us
       - memory_used_bytes
+      - ram_provisioned_bytes
+      - ram_used_bytes
       - read_ops_per_sec
+      - system_tablets_leaders
+      - system_tablets_total
+      - time_since_hb_sec
       - total_sst_file_size_bytes
       - uncompressed_sst_file_size_bytes
+      - uptime_seconds
+      - user_tablets_leaders
+      - user_tablets_total
       - write_ops_per_sec
       type: object
     NodeData_cloud_info:

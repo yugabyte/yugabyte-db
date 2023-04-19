@@ -11,23 +11,20 @@
 
 package com.yugabyte.yw.common.kms.util;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
-
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
-
 import com.bettercloud.vault.VaultException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil.KeyType;
-
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase.KMSEngineType;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultTransit;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +35,7 @@ public class HashicorpEARServiceUtil {
   public static final String HC_VAULT_EKE_NAME = "key_yugabyte";
 
   /** Creates Secret Engine object with VaultAccessor. */
-  private static class VaultSecretEngineBuilder {
+  public static class VaultSecretEngineBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(VaultSecretEngineBuilder.class);
 
     private static VaultSecretEngineBase buildSecretEngine(
@@ -52,10 +49,9 @@ public class HashicorpEARServiceUtil {
           returnVault = new VaultTransit(accesor, mountPath, keyType);
           break;
         default:
-          returnVault = null;
           break;
       }
-      LOG.info("Returning Object {}", returnVault.toString());
+      LOG.info("Returning Object {}", returnVault);
       return returnVault;
     }
 
@@ -95,16 +91,30 @@ public class HashicorpEARServiceUtil {
   }
 
   /**
-   * Generates unique KEK key name for given combination of KMSconfigUUID and UniverseUUID
+   * Earlier we used a hardcoded key name of "key_yugabyte" when creating a hashicorp KMS config.
+   * But there was a migration V235__HashicorpVaultAddKeyName which adds this key name to the
+   * authConfig object in the kms_config table. Now we let the user create a key with a custom key
+   * name at the time of creating a KMS config if specified, else we create with the default name
+   * "key_yugabyte".
    *
-   * @param universeUUID
-   * @param configUUID
-   * @return keyName as String
+   * @param authConfig the auth config object.
+   * @return keyName as String.
    */
-  public static String getVaultKeyForUniverse(UUID universeUUID, UUID configUUID) {
-    String keyName = "key";
-    // generate keyname using => 'key_yugabyte'
-    keyName = HC_VAULT_EKE_NAME;
+  public static String getVaultKeyForUniverse(ObjectNode authConfig) {
+    String keyName = "";
+    if (authConfig.has(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME)) {
+      // Ran the migration V235__HashicorpVaultAddKeyName to add this param to the authConfig object
+      // in every existing HC vault KMS config.
+      // Now every HC vault KMS config should have the key name in the authConfig.
+      keyName = authConfig.path(HashicorpVaultConfigParams.HC_VAULT_KEY_NAME).asText();
+    } else {
+      // Was hardcoded to this before running the migration mentioned above.
+      // This case is triggered when creating a KMS config without passing key name.
+      keyName = HC_VAULT_EKE_NAME;
+      ObjectNode updatedAuthConfig = authConfig;
+      updatedAuthConfig.put(
+          HashicorpVaultConfigParams.HC_VAULT_KEY_NAME, HashicorpEARServiceUtil.HC_VAULT_EKE_NAME);
+    }
     LOG.debug("getVaultKeyForUniverse returning {}", keyName);
     return keyName;
   }
@@ -113,22 +123,18 @@ public class HashicorpEARServiceUtil {
    * When configuration is accessed first time, the vault key(EKE) does not exists, this creates the
    * key (KEK) KEK - Key Encryption Key
    *
-   * @param universeUUID
-   * @param configUUID
    * @param authConfig
    * @return
    * @throws Exception
    */
-  public static String createVaultKEK(UUID universeUUID, UUID configUUID, ObjectNode authConfig)
-      throws Exception {
-
-    String keyName = getVaultKeyForUniverse(universeUUID, configUUID);
+  public static String createVaultKEK(UUID configUUID, ObjectNode authConfig) throws Exception {
+    String keyName = getVaultKeyForUniverse(authConfig);
     VaultSecretEngineBase vaultSecretEngine =
         VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
     vaultSecretEngine.createNewKeyWithEngine(keyName);
-
     return keyName;
   }
+
   /**
    * Deletes Vault key, this operation cannot be reverted. Used only for TESTING, do not call in
    * production code.
@@ -136,7 +142,7 @@ public class HashicorpEARServiceUtil {
   public static boolean deleteVaultKey(UUID universeUUID, UUID configUUID, ObjectNode authConfig)
       throws Exception {
 
-    String keyName = getVaultKeyForUniverse(universeUUID, configUUID);
+    String keyName = getVaultKeyForUniverse(authConfig);
     VaultSecretEngineBase vaultSecretEngine =
         VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
     vaultSecretEngine.deleteKey(keyName);
@@ -146,9 +152,8 @@ public class HashicorpEARServiceUtil {
 
   /** extracts ttl and updates in authConfig, made public for testing purpose */
   public static void updateAuthConfigObj(
-      UUID universeUUID, UUID configUUID, VaultSecretEngineBase engine, ObjectNode authConfig) {
-    LOG.debug(
-        "updateAuthConfigObj called for {} - {}", universeUUID.toString(), configUUID.toString());
+      UUID configUUID, VaultSecretEngineBase engine, ObjectNode authConfig) {
+    LOG.debug("updateAuthConfigObj called on KMS config '{}'", configUUID.toString());
 
     try {
       long existingTTL = -1, existingTTLExpiry = -1;
@@ -193,19 +198,33 @@ public class HashicorpEARServiceUtil {
    * @throws Exception
    */
   public static byte[] decryptUniverseKey(
-      UUID universeUUID, UUID configUUID, byte[] encryptedUniverseKey, ObjectNode authConfig)
-      throws Exception {
+      UUID configUUID, byte[] encryptedUniverseKey, ObjectNode authConfig) throws Exception {
 
-    LOG.debug("decryptUniverseKey called  : {} - {}", universeUUID, configUUID);
+    LOG.debug("decryptUniverseKey called on config UUID : '{}'", configUUID);
     if (encryptedUniverseKey == null) return null;
 
     try {
-      final String engineKey = getVaultKeyForUniverse(universeUUID, configUUID);
+      final String engineKey = getVaultKeyForUniverse(authConfig);
       VaultSecretEngineBase vaultSecretEngine =
           VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
-      updateAuthConfigObj(universeUUID, configUUID, vaultSecretEngine, authConfig);
+      updateAuthConfigObj(configUUID, vaultSecretEngine, authConfig);
 
       return vaultSecretEngine.decryptString(engineKey, encryptedUniverseKey);
+    } catch (VaultException e) {
+      LOG.error("Vault Exception with httpStatusCode: {}", e.getHttpStatusCode());
+      throw new Exception(e);
+    }
+  }
+
+  public static byte[] encryptUniverseKey(
+      UUID configUUID, ObjectNode authConfig, byte[] universeKey) throws Exception {
+    try {
+      final String engineKey = getVaultKeyForUniverse(authConfig);
+      VaultSecretEngineBase vaultSecretEngine =
+          VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
+      updateAuthConfigObj(configUUID, vaultSecretEngine, authConfig);
+
+      return vaultSecretEngine.encryptString(engineKey, universeKey);
     } catch (VaultException e) {
       LOG.error("Vault Exception with httpStatusCode: {}", e.getHttpStatusCode());
       throw new Exception(e);
@@ -239,15 +258,25 @@ public class HashicorpEARServiceUtil {
 
     LOG.debug("Generated key: of size {}", keyBytes.length);
     try {
-      final String engineKey = getVaultKeyForUniverse(universeUUID, configUUID);
-      VaultSecretEngineBase hcVaultSecretEngine =
-          VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
-
-      byte[] encryptedKeyBytes = hcVaultSecretEngine.encryptString(engineKey, keyBytes);
+      byte[] encryptedKeyBytes = encryptUniverseKey(configUUID, authConfig, keyBytes);
       return encryptedKeyBytes;
     } catch (VaultException e) {
       LOG.error("Vault Exception with httpStatusCode: {}", e.getHttpStatusCode());
       throw new Exception(e);
     }
+  }
+
+  public static void refreshServiceUtil(UUID configUUID, ObjectNode authConfig) throws Exception {
+    VaultSecretEngineBase vaultSecretEngine =
+        VaultSecretEngineBuilder.getVaultSecretEngine(authConfig);
+    updateAuthConfigObj(configUUID, vaultSecretEngine, authConfig);
+  }
+
+  public static List<String> getMetadataFields() {
+    return Arrays.asList(
+        HashicorpVaultConfigParams.HC_VAULT_ADDRESS,
+        HashicorpVaultConfigParams.HC_VAULT_ENGINE,
+        HashicorpVaultConfigParams.HC_VAULT_MOUNT_PATH,
+        HashicorpVaultConfigParams.HC_VAULT_KEY_NAME);
   }
 }

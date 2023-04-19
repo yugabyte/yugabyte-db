@@ -22,8 +22,6 @@
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 //
 
-#ifndef YB_ROCKSDB_DB_VERSION_BUILDER_H
-#define YB_ROCKSDB_DB_VERSION_BUILDER_H
 
 #pragma once
 #include "yb/rocksdb/env.h"
@@ -60,5 +58,3 @@ class VersionBuilder {
 extern bool NewestFirstBySeqNo(FileMetaData* a, FileMetaData* b);
 
 }  // namespace rocksdb
-
-#endif // YB_ROCKSDB_DB_VERSION_BUILDER_H

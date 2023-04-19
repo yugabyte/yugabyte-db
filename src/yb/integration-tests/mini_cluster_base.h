@@ -11,10 +11,10 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
-#define YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_
+#pragma once
 
 #include "yb/rpc/rpc_fwd.h"
+#include "yb/rpc/secure_stream.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/net/net_fwd.h"
@@ -24,6 +24,7 @@ namespace yb {
 namespace client {
 class YBClientBuilder;
 class YBClient;
+class StatefulServiceClientBase;
 } // namespace client
 
 // Base class for ExternalMiniCluster and MiniCluster with common interface required by
@@ -46,18 +47,26 @@ class MiniClusterBase {
   Result<std::unique_ptr<client::YBClient>> CreateClient(
       client::YBClientBuilder* builder = nullptr);
 
-  // Created client gets messenger ownership and will shutdown messenger on client shutdown.
-  Result<std::unique_ptr<client::YBClient>> CreateClient(
-      std::unique_ptr<rpc::Messenger>&& messenger);
+  Result<std::unique_ptr<client::YBClient>> CreateSecureClient(
+      const std::string& name, const std::string& host,
+      std::unique_ptr<rpc::SecureContext>* secure_context);
 
   Result<HostPort> GetLeaderMasterBoundRpcAddr();
 
   bool running() const { return running_.load(std::memory_order_acquire); }
 
+  template <class T>
+  Result<std::unique_ptr<T>> CreateStatefulServiceClient() {
+    auto client = std::make_unique<T>();
+    RETURN_NOT_OK(InitStatefulServiceClient(client.get()));
+    return client;
+  }
+
  protected:
   virtual ~MiniClusterBase() = default;
 
   std::atomic<bool> running_ { false };
+  std::unique_ptr<rpc::SecureContext> secure_context_;
 
   template<class Options>
   int32_t NumTabletsPerTransactionTable(Options options) {
@@ -70,8 +79,7 @@ class MiniClusterBase {
   virtual void ConfigureClientBuilder(client::YBClientBuilder* builder) = 0;
 
   virtual Result<HostPort> DoGetLeaderMasterBoundRpcAddr() = 0;
+  Status InitStatefulServiceClient(client::StatefulServiceClientBase* client);
 };
 
 }  // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_MINI_CLUSTER_BASE_H_

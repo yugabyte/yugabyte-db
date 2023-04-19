@@ -11,25 +11,36 @@ import { formatLagMetric } from '../../utils/Formatters';
 import {
   MetricName,
   MetricTraceName,
-  ReplicationAction,
-  ReplicationStatus,
+  XClusterConfigAction,
+  XClusterConfigStatus,
   REPLICATION_LAG_ALERT_NAME,
-  SortOrder
+  BROKEN_XCLUSTER_CONFIG_STATUSES
 } from './constants';
 import { api } from '../../redesign/helpers/api';
+import { getUniverseStatus } from '../universes/helpers/universeHelpers';
+import {UnavailableUniverseStates, YBTableRelationType} from '../../redesign/helpers/constants';
+import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
+import { SortOrder } from '../../redesign/helpers/constants';
 
-import { XClusterConfig } from './XClusterTypes';
-import { Universe } from '../../redesign/helpers/dtos';
+import {
+  Metrics,
+  MetricTrace,
+  XClusterConfig,
+  XClusterTable,
+  XClusterTableDetails
+} from './XClusterTypes';
+import {TableType, Universe, YBTable} from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
 export const YSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE';
 
-const COMMITTED_LAG_METRIC_TRACE_NAME =
-  MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG;
-
 // TODO: Rename, refactor and pull into separate file
-export const MaxAcceptableLag = ({ currentUniverseUUID }: { currentUniverseUUID: string }) => {
+export const MaxAcceptableLag = ({
+  currentUniverseUUID
+}: {
+  currentUniverseUUID: string | undefined;
+}) => {
   const alertConfigFilter = {
     name: REPLICATION_LAG_ALERT_NAME,
     targetUuid: currentUniverseUUID
@@ -55,11 +66,13 @@ export const MaxAcceptableLag = ({ currentUniverseUUID }: { currentUniverseUUID:
 
 // TODO: Rename, refactor and pull into separate file
 export const CurrentReplicationLag = ({
-  replicationUUID,
+  xClusterConfigUUID,
+  xClusterConfigStatus,
   sourceUniverseUUID
 }: {
-  replicationUUID: string;
-  sourceUniverseUUID: string;
+  xClusterConfigUUID: string;
+  xClusterConfigStatus: XClusterConfigStatus;
+  sourceUniverseUUID: string | undefined;
 }) => {
   const currentUniverseQuery = useQuery(['universe', sourceUniverseUUID], () =>
     api.fetchUniverse(sourceUniverseUUID)
@@ -67,14 +80,14 @@ export const CurrentReplicationLag = ({
   const universeLagQuery = useQuery(
     [
       'xcluster-metric',
-      replicationUUID,
+      xClusterConfigUUID,
       currentUniverseQuery.data?.universeDetails.nodePrefix,
       'metric'
     ],
     () =>
       queryLagMetricsForUniverse(
         currentUniverseQuery.data?.universeDetails.nodePrefix,
-        replicationUUID
+        xClusterConfigUUID
       ),
     {
       enabled: !!currentUniverseQuery.data
@@ -100,7 +113,12 @@ export const CurrentReplicationLag = ({
     return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
 
-  if (currentUniverseQuery.error || universeLagQuery.isError || maxAcceptableLagQuery.isError) {
+  if (
+    BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfigStatus) ||
+    currentUniverseQuery.isError ||
+    universeLagQuery.isError ||
+    maxAcceptableLagQuery.isError
+  ) {
     return <span>-</span>;
   }
 
@@ -110,12 +128,9 @@ export const CurrentReplicationLag = ({
     )
   );
 
-  const metric = universeLagQuery.data.tserver_async_replication_lag_micros;
-  const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-  const trace = metric.data.find((trace) => (trace.name = traceAlias));
-  const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
-  const formattedLag = formatLagMetric(latestLag);
-  const isReplicationUnhealthy = latestLag === undefined || latestLag > maxAcceptableLag;
+  const maxNodeLag = getLatestMaxNodeLag(universeLagQuery.data);
+  const formattedLag = formatLagMetric(maxNodeLag);
+  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
 
   return (
     <span
@@ -134,12 +149,14 @@ export const CurrentTableReplicationLag = ({
   tableUUID,
   queryEnabled,
   nodePrefix,
-  sourceUniverseUUID
+  sourceUniverseUUID,
+  xClusterConfigStatus
 }: {
   tableUUID: string;
   queryEnabled: boolean;
   nodePrefix: string | undefined;
-  sourceUniverseUUID: string;
+  sourceUniverseUUID: string | undefined;
+  xClusterConfigStatus: XClusterConfigStatus;
 }) => {
   const tableLagQuery = useQuery(
     ['xcluster-metric', nodePrefix, tableUUID, 'metric'],
@@ -170,7 +187,11 @@ export const CurrentTableReplicationLag = ({
     return <i className="fa fa-spinner fa-spin yb-spinner" />;
   }
 
-  if (tableLagQuery.isError || maxAcceptableLagQuery.isError) {
+  if (
+    BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfigStatus) ||
+    tableLagQuery.isError ||
+    maxAcceptableLagQuery.isError
+  ) {
     return <span>-</span>;
   }
 
@@ -180,12 +201,9 @@ export const CurrentTableReplicationLag = ({
     )
   );
 
-  const metric = tableLagQuery.data.tserver_async_replication_lag_micros;
-  const traceAlias = metric.layout.yaxis.alias[COMMITTED_LAG_METRIC_TRACE_NAME];
-  const trace = metric.data.find((trace) => trace.name === traceAlias);
-  const latestLag = parseFloatIfDefined(trace?.y[trace.y.length - 1]);
-  const formattedLag = formatLagMetric(latestLag);
-  const isReplicationUnhealthy = latestLag === undefined || latestLag > maxAcceptableLag;
+  const maxNodeLag = getLatestMaxNodeLag(tableLagQuery.data);
+  const formattedLag = formatLagMetric(maxNodeLag);
+  const isReplicationUnhealthy = maxNodeLag === undefined || maxNodeLag > maxAcceptableLag;
 
   return (
     <span
@@ -197,6 +215,51 @@ export const CurrentTableReplicationLag = ({
       {formattedLag}
     </span>
   );
+};
+
+export const getLatestMaxNodeLag = (metric: Metrics<'tserver_async_replication_lag_micros'>) => {
+  const lagMetric = metric.tserver_async_replication_lag_micros;
+  const traceAlias =
+    lagMetric.layout.yaxis.alias[
+      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG
+    ];
+  const traces = lagMetric.data.filter((trace) => trace.name === traceAlias);
+  const latestLags = traces.reduce((latestLags: number[], trace) => {
+    const latestLag = parseFloatIfDefined(trace.y[trace.y.length - 1]);
+    if (latestLag !== undefined) {
+      latestLags.push(latestLag);
+    }
+    return latestLags;
+  }, []);
+  return latestLags.length ? Math.max(...latestLags) : undefined;
+};
+
+export const getMaxNodeLagMetric = (
+  metric: Metrics<'tserver_async_replication_lag_micros'>
+): MetricTrace | undefined => {
+  const lagMetric = metric.tserver_async_replication_lag_micros;
+  const traceAlias =
+    lagMetric.layout.yaxis.alias[
+      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG
+    ];
+  const traces = lagMetric.data.filter((trace) => trace.name === traceAlias);
+  if (!traces.length) {
+    return undefined;
+  }
+
+  // Take the maximum y at every x across all nodes.
+  const maxY = new Array<number>(traces[0].y.length).fill(0);
+  traces.forEach((trace) => {
+    trace.y.forEach((y: string | number, idx: number) => {
+      maxY[idx] = Math.max(maxY[idx], parseFloatIfDefined(y) ?? 0);
+    });
+  });
+
+  return {
+    ...traces[0],
+    name: `Max ${traceAlias}`,
+    y: maxY
+  };
 };
 
 export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
@@ -247,24 +310,40 @@ export const getUniverseByUUID = (universeList: Universe[], uuid: string) => {
   return universeList.find((universes) => universes.universeUUID === uuid);
 };
 
-export const getEnabledConfigActions = (replication: XClusterConfig): ReplicationAction[] => {
+export const getEnabledConfigActions = (
+  replication: XClusterConfig,
+  sourceUniverse: Universe | undefined,
+  targetUniverse: Universe | undefined
+): XClusterConfigAction[] => {
+  if (
+    UnavailableUniverseStates.includes(getUniverseStatus(sourceUniverse).state) ||
+    UnavailableUniverseStates.includes(getUniverseStatus(targetUniverse).state)
+  ) {
+    // xCluster 'Delete' action will fail on the backend. But if the user selects the
+    // 'force delete' option, then they will be able to remove the config even if a
+    // participating universe is unavailable.
+    return [XClusterConfigAction.DELETE];
+  }
+
   switch (replication.status) {
-    case ReplicationStatus.INITIALIZED:
-    case ReplicationStatus.UPDATING:
-      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
-    case ReplicationStatus.RUNNING:
+    case XClusterConfigStatus.INITIALIZED:
+    case XClusterConfigStatus.UPDATING:
+      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
+    case XClusterConfigStatus.RUNNING:
       return [
-        replication.paused ? ReplicationAction.RESUME : ReplicationAction.PAUSE,
-        ReplicationAction.DELETE,
-        ReplicationAction.EDIT,
-        ReplicationAction.ADD_TABLE,
-        ReplicationAction.RESTART
+        replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
+        XClusterConfigAction.DELETE,
+        XClusterConfigAction.EDIT,
+        XClusterConfigAction.ADD_TABLE,
+        XClusterConfigAction.RESTART
       ];
-    case ReplicationStatus.FAILED:
-      return [ReplicationAction.DELETE, ReplicationAction.RESTART];
-    case ReplicationStatus.DELETED_UNIVERSE:
-    case ReplicationStatus.DELETION_FAILED:
-      return [ReplicationAction.DELETE];
+    case XClusterConfigStatus.FAILED:
+      return [XClusterConfigAction.DELETE, XClusterConfigAction.RESTART];
+    case XClusterConfigStatus.DELETED_UNIVERSE:
+    case XClusterConfigStatus.DELETION_FAILED:
+      return [XClusterConfigAction.DELETE];
+    default:
+      return assertUnreachableCase(replication.status);
   }
 };
 
@@ -305,4 +384,64 @@ export const tableSort = <RowType,>(
   }
 
   return sortOrder === SortOrder.ASCENDING ? ord : ord * -1;
+};
+
+// TODO:
+// Investigate whether we can store table type as a property of xCluster config.
+// This will help reduce complexity and avoid filtering through all source universe tables.
+// JIRA: https://yugabyte.atlassian.net/browse/PLAT-6095
+/**
+ * - Return the `tableType` of any table in an xCluster config.
+ *   - The underlying assumption is that tables within an xCluster config should all have the same `tableType`.
+ * - Returns undefined if no source universe tables exist in the xCluster config (Error/Unexpected case)
+ */
+export const getXClusterConfigTableType = (
+  xClusterConfig: XClusterConfig,
+  sourceUniverseTables: YBTable[]
+) =>
+  sourceUniverseTables.find((table) =>
+    xClusterConfig.tables.includes(adaptTableUUID(table.tableUUID))
+  )?.tableType;
+
+/**
+ * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
+ */
+export const augmentTablesWithXClusterDetails = (
+  ybTable: YBTable[],
+  xClusterConfigTables: XClusterTableDetails[],
+  txnTableDetails: XClusterTableDetails | undefined
+): XClusterTable[] => {
+  const ybTableMap = new Map<string, YBTable>();
+  ybTable.forEach((table) => {
+    const { tableUUID, ...tableDetails } = table;
+    const adaptedTableUUID = adaptTableUUID(tableUUID);
+    ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
+  });
+  const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
+    const ybTableDetails = ybTableMap.get(table.tableId);
+    if (ybTableDetails) {
+      const { tableId, ...xClusterTableDetails } = table;
+      tables.push({ ...ybTableDetails, ...xClusterTableDetails });
+    } else {
+      console.error(
+        `Missing table details for table ${table.tableId}. This table was found in an xCluster configuration but not in the corresponding source universe.`
+      );
+    }
+    return tables;
+  }, []);
+  if (txnTableDetails) {
+    const { tableId: txnTableId, ...txnTable } = txnTableDetails;
+    tables.push({
+      isIndexTable:false,
+      keySpace: "system",
+      pgSchemaName: "",
+      relationType: YBTableRelationType.SYSTEM_TABLE_RELATION,
+      sizeBytes: -1,
+      tableName: "transactions",
+      tableType: TableType.TRANSACTION_STATUS_TABLE_TYPE,
+      tableUUID: txnTableId,
+      ...txnTable
+    });
+  }
+  return tables;
 };

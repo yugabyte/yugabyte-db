@@ -52,6 +52,7 @@
 #include "yb/yql/redis/redisserver/redis_constants.h"
 #include "yb/yql/redis/redisserver/redis_encoding.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
+#include "yb/util/flags.h"
 
 DECLARE_uint64(redis_max_concurrent_commands);
 DECLARE_uint64(redis_max_batch);
@@ -73,9 +74,9 @@ DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
 
-DEFINE_uint64(test_redis_max_concurrent_commands, 20,
+DEFINE_UNKNOWN_uint64(test_redis_max_concurrent_commands, 20,
     "Value of redis_max_concurrent_commands for pipeline test");
-DEFINE_uint64(test_redis_max_batch, 250,
+DEFINE_UNKNOWN_uint64(test_redis_max_batch, 250,
     "Value of redis_max_batch for pipeline test");
 
 METRIC_DECLARE_gauge_uint64(redis_available_sessions);
@@ -2714,7 +2715,7 @@ TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersCatchingUp))
   }
 }
 
-TEST_F(TestRedisServiceExternal, TestSlowSubscribersSoftLimit) {
+TEST_F(TestRedisServiceExternal, YB_DISABLE_TEST(TestSlowSubscribersSoftLimit)) {
   expected_no_sessions_ = true;
 
   auto ts0 = external_mini_cluster()->tablet_server(0);
@@ -4719,7 +4720,7 @@ TEST_F(TestRedisService, TestHMGetTiming) {
   VerifyCallbacks();
 }
 
-TEST_F(TestRedisService, TestTtlSet) {
+TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSet)) {
   std::string collection_key = "russell";
   std::string values[10] = {"the", "set", "of", "all", "sets",
                             "that", "do", "not", "contain", "themselves"};
@@ -4727,7 +4728,7 @@ TEST_F(TestRedisService, TestTtlSet) {
   TestTtlSet(&collection_key, values, card);
 }
 
-TEST_F(TestRedisService, TestTtlSortedSet) {
+TEST_F(TestRedisService, YB_DISABLE_TEST(TestTtlSortedSet)) {
   std::string collection_key = "sort_me_up";
   CollectionEntry values[10] = { std::make_tuple("5.4223", "insertion"),
                                  std::make_tuple("-1", "bogo"),

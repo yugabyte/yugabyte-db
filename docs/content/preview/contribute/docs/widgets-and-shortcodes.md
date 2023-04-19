@@ -14,13 +14,35 @@ type: docs
 
 There are a number of display widgets and shortcodes available. All the shortcodes mentioned on this page are defined in [/docs/layouts/shortcodes](https://github.com/yugabyte/yugabyte-db/tree/master/docs/layouts/shortcodes/).
 
+## Heading (Skipping ToC)
+
+To remove unnecessary headings from ToC.
+
+```md
+# For Heading 2
+{{</* header Level="2" */>}}Consistency{{</* /header */>}}
+
+# For Heading 3
+{{</* header Level="3" */>}}Consistency{{</* /header */>}}
+
+# For Heading 4
+{{</* header Level="4" */>}}Consistency{{</* /header */>}}
+
+# For Heading 5
+{{</* header Level="5" */>}}Consistency{{</* /header */>}}
+
+# For Heading 6
+{{</* header Level="6" */>}}Consistency{{</* /header */>}}
+```
+
 ## Admonition boxes
 
 Use the note, tip, and warning shortcodes to create admonition boxes.
+
 ### tip
 
 {{< tip title="Tip" >}}
-A tip box gives a hint or other useful but optional piece of information.
+A tip box gives a hint or other helpful but optional piece of information.
 {{< /tip >}}
 
 #### tip source
@@ -63,35 +85,35 @@ An inline section switcher lets you switch between content sections **without a 
 
 ![Inline section switcher](https://raw.githubusercontent.com/yugabyte/docs/master/contributing/inline-section-switcher.png)
 
-The corresponding code for this widget is shown below. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory whose name is easy to associate with the switcher title.
+The corresponding code for this widget is as follows. Note that the actual content must be placed in a file with the `.md` extension inside a subdirectory; name the subdirectory such that it can be associated with the switcher title.
 
 ```html
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
     <a href="#macos" class="nav-link active" id="macos-tab" data-toggle="tab"
        role="tab" aria-controls="macos" aria-selected="true">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
   <li>
     <a href="#linux" class="nav-link" id="linux-tab" data-toggle="tab"
        role="tab" aria-controls="linux" aria-selected="false">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
   <li>
     <a href="#docker" class="nav-link" id="docker-tab" data-toggle="tab"
        role="tab" aria-controls="docker" aria-selected="false">
-      <i class="fab fa-docker" aria-hidden="true"></i>
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
   <li >
     <a href="#kubernetes" class="nav-link" id="kubernetes-tab" data-toggle="tab"
        role="tab" aria-controls="kubernetes" aria-selected="false">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -115,7 +137,7 @@ The corresponding code for this widget is shown below. Note that the actual cont
 
 ## Include content from other files
 
-The [includeCode](#includecode) and [includeFile](#includefile) shortcodes insert the contents of a file as plain text, while [includeMarkdown](#includemarkdown) inserts the contents of a file _and renders it as markdown_.
+The [includeCode](#includecode) shortcode inserts the contents of a file as plain text, while `readfile` and [includeMarkdown](#includemarkdown) insert the contents of a file _and renders it as markdown_.
 
 ### includeCode
 
@@ -155,7 +177,7 @@ This shortcode strips trailing whitespace from the input file.
 For more information on highlight options, see the Hugo docs on [highlighting in code fences](https://gohugo.io/content-management/syntax-highlighting/#highlighting-in-code-fences) and [supported syntax highlighting languages](https://gohugo.io/content-management/syntax-highlighting/#list-of-chroma-highlighting-languages).
 {{< /tip >}}
 
-### includeFile
+<!--### includeFile
 
 The `includeFile` shortcode infers the code language from the filename extension (or `output` if there's no extension) and creates its own code block.
 
@@ -193,11 +215,31 @@ CAREFUL! `hl_lines` takes a different form here than when you're specifying it o
 
 For more information on highlight options: <https://gohugo.io/content-management/syntax-highlighting/#highlight-shortcode>
 
-{{< /warning >}}
+{{< /warning >}}-->
 
 ### includeMarkdown
 
 Inserts the contents of a markdown file, rendered as part of the calling page. We use this primarily for [syntax diagrams](../syntax-diagrams/).
+
+## Landing Page sections
+
+### Learn through section
+
+This widget looks as follows:
+
+![Learn through section](/images/contribute/learn-through-section.png)
+
+The corresponding code for this widget is as follows.
+
+```go
+{{</* sections/text-with-right-image
+  title="Learn through examples"
+  description="Microservices need a cloud native relational database that is resilient, scalable, and geo-distributed. YugabyteDB powers your modern applications"
+  buttonText="Get started"
+  buttonUrl="/preview/quick-start-yugabytedb-managed/"
+  imageAlt="Yugabyte cloud" imageUrl="/images/homepage/learn-through-examples.svg"
+*/>}}
+```
 
 ## Other shortcodes
 

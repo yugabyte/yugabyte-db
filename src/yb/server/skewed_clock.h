@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_SERVER_SKEWED_CLOCK_H
-#define YB_SERVER_SKEWED_CLOCK_H
+#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -70,5 +69,3 @@ class SkewedClockDeltaChanger {
 
 } // namespace server
 } // namespace yb
-
-#endif // YB_SERVER_SKEWED_CLOCK_H

@@ -15,9 +15,7 @@
 
 #include <string>
 
-#include <gflags/gflags.h>
-
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 
 using namespace std::literals;

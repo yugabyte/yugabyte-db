@@ -203,6 +203,20 @@ bool ConsensusFrontier::IsUpdateValid(
          IsUpdateValidForField(hybrid_time_, rhs.hybrid_time_, update_type);
 }
 
+void ConsensusFrontier::UpdateSchemaVersion(
+    const Uuid& table_id, SchemaVersion version, rocksdb::UpdateUserValueType type) {
+  if (table_id.IsNil()) {
+    UpdateField(&primary_schema_version_, std::optional(version), type);
+  } else {
+    auto it = cotable_schema_versions_.find(table_id);
+    if (it == cotable_schema_versions_.end()) {
+      cotable_schema_versions_[table_id] = version;
+    } else {
+      UpdateField(&it->second, version, type);
+    }
+  }
+}
+
 void ConsensusFrontier::AddSchemaVersion(const Uuid& table_id, SchemaVersion version) {
   if (table_id.IsNil()) {
     primary_schema_version_ = version;
@@ -224,6 +238,15 @@ void ConsensusFrontier::MakeExternalSchemaVersionsAtMost(
   for (const auto& p : cotable_schema_versions_) {
     yb::MakeAtMost(p.first, p.second, min_schema_versions);
   }
+}
+
+void AddTableSchemaVersion(
+    const Uuid& table_id, SchemaVersion schema_version, ConsensusFrontierPB* pb) {
+  auto* out = pb->add_table_schema_version();
+  if (!table_id.IsNil()) {
+    out->set_table_id(table_id.cdata(), table_id.size());
+  }
+  out->set_schema_version(schema_version);
 }
 
 } // namespace docdb

@@ -38,7 +38,7 @@ Each node in a YugabyteDB cluster first computes its HLC. HLC is represented as 
 
 * **Physical time component:** YugabyteDB uses the physical clock (`CLOCK_REALTIME` in Linux) of a node to initialize the physical time component of its HLC. Once initialized, the physical time component can only get updated to a higher value.
 
-* **Logical component:** For a given physical time component, the logical component of the HLC is a monotonically increasing number that provides ordering of events happening within that same physical time. This is initially set to 0. If the physical time component gets updated at any point, the logical component is reset to 0.
+* **Logical component:** For a given physical time component, the logical component of the HLC is a monotonically increasing number that provides ordering of events happening in that same physical time. This is initially set to 0. If the physical time component gets updated at any point, the logical component is reset to 0.
 
 On any RPC communication between two nodes, HLC values are exchanged. The node with the lower HLC updates its HLC to the higher value. If the physical time on a node exceeds the physical time component of its HLC, the latter is updated to the physical time and the logical component is set to 0. Thus, HLC’s on a node are monotonically increasing.
 
@@ -54,9 +54,9 @@ YugabyteDB maintains data consistency internally using *multi-version concurrenc
 
 ### MVCC using hybrid time
 
-YugabyteDB implements [multiversion concurrency control (MVCC)](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) and internally keeps track of multiple versions of values corresponding to the same key, for example, of a particular column in a particular row. The details of how multiple versions of the same key are stored in each replica's DocDB are described in [Persistence on top of RocksDB](../../docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
+YugabyteDB implements [multi-version concurrency control (MVCC)](https://en.wikipedia.org/wiki/Multiversion_concurrency_control) and internally keeps track of multiple versions of values corresponding to the same key, for example, of a particular column in a particular row. The details of how multiple versions of the same key are stored in each replica's DocDB are described in [Persistence on top of RocksDB](../../docdb/persistence). The last part of each key is a timestamp, which enables quick navigation to a particular version of a key in the RocksDB key-value store.
 
-The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugabyteDB's transaction model rely on these properties of Hybrid Time, e.g.:
+The timestamp that we are using for MVCC comes from the [Hybrid Time](http://users.ece.utexas.edu/~garg/pdslab/david/hybrid-time-tech-report-01.pdf) algorithm, a distributed timestamp assignment algorithm that combines the advantages of local real-time (physical) clocks and Lamport clocks.  The Hybrid Time algorithm ensures that events connected by a causal chain of the form "A happens before B on the same server" or "A happens on one server, which then sends an RPC to another server, where B happens", always get assigned hybrid timestamps in an increasing order. This is achieved by propagating a hybrid timestamp with most RPC requests, and always updating the hybrid time on the receiving server to the highest value seen, including the current physical time on the server.  Multiple aspects of YugabyteDB's transaction model rely on these properties of Hybrid Time, for example:
 
 * Hybrid timestamps assigned to committed Raft log entries in the same tablet always keep
   increasing, even if there are leader changes. This is because the new leader always has all
@@ -75,10 +75,9 @@ The timestamp that we are using for MVCC comes from the [Hybrid Time](http://use
   timestamp to get replicated and applied to RocksDB, and it can proceed with processing the read
   request after that.
 
-
 ### Supported isolation levels
 
-YugabyteDB supports three transaction isolation levels - Read Committed, Serializable (both map to the SQL isolation level of the same name) and Snapshot (which maps to the SQL isolation level `REPEATABLE READ`). Read more about [isolation levels in YugabyteDB](../isolation-levels).
+YugabyteDB supports three transaction isolation levels - Read Committed, Serializable (both map to the SQL isolation level of the same name), and Snapshot (which maps to the SQL isolation level `REPEATABLE READ`). Read more about [isolation levels in YugabyteDB](../isolation-levels).
 
 ### Explicit locking
 
@@ -90,12 +89,9 @@ The architecture section covers the set of explicit locking modes currently supp
 
 {{</note >}}
 
-
-
 ## Transactions execution path
 
 End user statements map to one of the following types of transactions inside YugabyteDB. The mapping of the user statements to transaction types is done seamlessly, the user does not need to be aware of the different types of transactions.
-
 
 ### Single-row transactions
 
@@ -107,13 +103,13 @@ Because single row transactions do not have to update the transaction status tab
 
 {{</note >}}
 
-
 Below is list of single-row SQL statements that map to single row transactions.
 
 #### `INSERT` statements
 
 All single-row `INSERT` statements.
-```
+
+```sql
 INSERT INTO table (columns) VALUES (values);
 ```
 
@@ -121,24 +117,23 @@ INSERT INTO table (columns) VALUES (values);
 
 Single-row `UPDATE` statements that specify all the primary keys**
 
-```
+```sql
 UPDATE table SET column = <new value> WHERE <all primary key values are specified>;
 ```
 
 Single-row upsert statements using `UPDATE` .. `ON CONFLICT`. Note that the updates performed in case the row exists should match the set of values that were specified in the insert clause.
 
-```
+```sql
 INSERT INTO table (columns) VALUES (values)
     ON CONFLICT DO UPDATE
     SET <values>;
 ```
 
-
 #### `DELETE` statements
 
 Single-row `DELETE` statements that specify all the primary keys
 
-```
+```sql
 DELETE FROM table WHERE <all primary key values are specified>;
 ```
 

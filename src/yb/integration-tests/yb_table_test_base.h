@@ -11,15 +11,14 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
-#define YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_
+#pragma once
 
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <future>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 #include <glog/logging.h>
 
 #include "yb/client/schema.h"
@@ -95,7 +94,7 @@ class YBTableTestBase : public YBTest {
 
   client::TableHandle table_;
   std::unique_ptr<client::YBClient> client_;
-  std::unique_ptr<tools::enterprise::ClusterAdminClient> yb_admin_client_;
+  std::unique_ptr<tools::ClusterAdminClient> yb_admin_client_;
   bool table_exists_ = false;
 
   yb::MiniCluster* mini_cluster() {
@@ -168,4 +167,3 @@ class YBTableTestBase : public YBTest {
 
 }  // namespace integration_tests
 }  // namespace yb
-#endif  // YB_INTEGRATION_TESTS_YB_TABLE_TEST_BASE_H_

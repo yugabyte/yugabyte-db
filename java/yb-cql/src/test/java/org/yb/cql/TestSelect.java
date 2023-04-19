@@ -35,16 +35,13 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.exceptions.InvalidQueryException;
 
-import static org.yb.AssertionWrappers.assertTrue;
-import static org.yb.AssertionWrappers.assertEquals;
-import static org.yb.AssertionWrappers.assertFalse;
-import static org.yb.AssertionWrappers.assertNull;
-
 import org.yb.YBTestRunner;
 
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import static org.yb.AssertionWrappers.*;
 
 @RunWith(value=YBTestRunner.class)
 public class TestSelect extends BaseCQLTest {
@@ -62,6 +59,7 @@ public class TestSelect extends BaseCQLTest {
     Map<String, String> flagMap = super.getTServerFlags();
 
     flagMap.put("ycql_allow_in_op_with_order_by", "true");
+    flagMap.put("ycql_enable_packed_row", "false");
     return flagMap;
   }
 
@@ -903,37 +901,65 @@ public class TestSelect extends BaseCQLTest {
     assertEquals(0, rows.size());
   }
 
-  private void runPartitionHashTest(String func_name) throws Exception {
-    LOG.info(String.format("TEST %s - Start", func_name));
-    setupTable(String.format("%s_test", func_name), 10);
+  protected static enum UseIndex { ON, OFF }
+
+  private void runPartitionHashTest(String func_name, UseIndex use_index) throws Exception {
+    LOG.info(String.format("TEST %s - Start with using-index=%s", func_name, use_index));
+    final String tbl_name = func_name + "_test_tbl";
+
+    if (use_index == UseIndex.ON) {
+      session.execute(
+          "CREATE TABLE " + tbl_name + " (h1 int, h2 text, r1 int, r2 text," +
+          "    v1 int, v2 text, PRIMARY KEY ((h1, h2), r1, r2))" +
+          "    WITH CLUSTERING ORDER BY (r1 ASC, r2 DESC)" +
+          "    AND transactions = {'enabled':'true'}");
+      session.execute("CREATE INDEX idx ON " + tbl_name + " ((h1, r2), h2, r1)" +
+                      "    WITH CLUSTERING ORDER BY (h2 DESC, r1 ASC)");
+      waitForReadPermsOnAllIndexes(tbl_name);
+
+      session.execute("INSERT INTO " + tbl_name + " (h1, h2, r1, r2, v1, v2)" +
+                      "    VALUES (2, 'h2', 102, 'r102', 1002, 'v1002')");
+    } else {
+      setupTable(tbl_name, 10);
+    }
 
     // Testing only basic token call as sanity check here.
     // Main token tests are in YbSqlQuery (C++) and TestBindVariable (Java) tests.
-    Iterator<Row> rows = session.execute(String.format("SELECT * FROM %s_test WHERE " +
-        "%s(h1, h2) = %s(2, 'h2')", func_name, func_name, func_name)).iterator();
+    assertQuery("SELECT * FROM " + tbl_name + " WHERE " +
+                func_name + "(h1,h2) = " + func_name + "(2, 'h2')",
+                "Row[2, h2, 102, r102, 1002, v1002]");
+    // Use index-based scan-path.
+    assertQuery("SELECT count(*) FROM " + tbl_name + " WHERE " +
+                func_name + "(h1, h2) >= 0 AND " + func_name + "(h1, h2) <= 65535 " +
+                "AND h1 = 0 AND r2 = 'text'", "Row[0]");
 
-    assertTrue(rows.hasNext());
-    // Checking result.
-    Row row = rows.next();
-    assertEquals(2, row.getInt(0));
-    assertEquals("h2", row.getString(1));
-    assertEquals(102, row.getInt(2));
-    assertEquals("r102", row.getString(3));
-    assertEquals(1002, row.getInt(4));
-    assertEquals("v1002", row.getString(5));
-    assertFalse(rows.hasNext());
+    // Try to run the function with the Primary Key from the index: (h1, r2).
+    assertQueryError("SELECT count(*) FROM " + tbl_name + " WHERE " +
+                     func_name + "(h1, r2)>=0 AND " + func_name + "(h1, r2)<=65535 " +
+                     "AND h1=0 AND r2='text'",
+                     "Invalid " + func_name + " call, found reference to unexpected column");
 
-    LOG.info(String.format("TEST %s - End", func_name));
+    LOG.info(String.format("TEST %s - End with using-index=%s", func_name, use_index));
   }
 
   @Test
   public void testToken() throws Exception {
-    runPartitionHashTest("token");
+    runPartitionHashTest("token", UseIndex.OFF);
   }
 
   @Test
   public void testPartitionHash() throws Exception {
-    runPartitionHashTest("partition_hash");
+    runPartitionHashTest("partition_hash", UseIndex.OFF);
+  }
+
+  @Test
+  public void testTokenWithIndex() throws Exception {
+    runPartitionHashTest("token", UseIndex.ON);
+  }
+
+  @Test
+  public void testPartitionHashWithIndex() throws Exception {
+    runPartitionHashTest("partition_hash", UseIndex.ON);
   }
 
   @Test
@@ -1274,8 +1300,9 @@ public class TestSelect extends BaseCQLTest {
               "Row[1, 20, 40, 124]"};
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
-      // 9 options, but the first seek should jump over 3 options (with r1 = -10).
-      assertEquals(7, metrics.seekCount);
+      // 9 options, but some seeks should jump over options due to SeekPossiblyUsingNext
+      // optimisation.
+      assertEquals(5, metrics.seekCount);
     }
 
     // Test combining IN and equality conditions.
@@ -1383,7 +1410,9 @@ public class TestSelect extends BaseCQLTest {
       //   10      [60, "31"]    [60, "40"]      Y (Result row 4)
       //   11      [60, "42"]    [60, "50"]      N
       //   12      [59, "18"]    [50, "0"]       N (Bigger than largest target key so we are done)
-      assertEquals(12, metrics.seekCount);
+      // Actual number of seeks could be lower because there is Next instead of Seek optimisation in
+      // DocDB (see SeekPossiblyUsingNext).
+      assertLessThanOrEqualTo(metrics.seekCount, 12);
     }
   }
 
@@ -2225,6 +2254,64 @@ public class TestSelect extends BaseCQLTest {
   }
 
   @Test
+  public void testDistinctPushdown() throws Exception {
+    session.execute("create table t(h int, c int, primary key(h, c))");
+    session.execute("insert into t(h, c) values (0, 0)");
+    session.execute("insert into t(h, c) values (0, 1)");
+    session.execute("insert into t(h, c) values (0, 2)");
+    session.execute("insert into t(h, c) values (1, 0)");
+    session.execute("insert into t(h, c) values (1, 1)");
+    session.execute("insert into t(h, c) values (1, 2)");
+
+    // For both queries, the scan should jump directly to the relevant primary key,
+    // so the number of seeks is equal to the items to be retrived.
+    {
+      String query = "select distinct h from t where h = 0";
+      String[] rows = {"Row[0]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(1, metrics.seekCount);
+    }
+
+    {
+      String query = "select distinct h from t where h in (0, 1)";
+      String[] rows = {"Row[0]", "Row[1]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(2, metrics.seekCount);
+    }
+  }
+
+  @Test
+  public void testDistinctPushdownSecondColumn() throws Exception {
+    session.execute("create table t(r1 int, r2 int, r3 int, primary key(r2, r3))");
+    session.execute("insert into t(r1, r2, r3) values (0, 0, 0)");
+    session.execute("insert into t(r1, r2, r3) values (0, 0, 1)");
+    session.execute("insert into t(r1, r2, r3) values (0, 0, 2)");
+    session.execute("insert into t(r1, r2, r3) values (1, 1, 0)");
+    session.execute("insert into t(r1, r2, r3) values (1, 1, 1)");
+    session.execute("insert into t(r1, r2, r3) values (1, 1, 2)");
+
+    // For both queries, the scan should jump directly to the relevant primary key,
+    // so the number of seeks is equal to the items to be retrived.
+    {
+      String query = "select distinct r2 from t where r2 = 0";
+      String[] rows = {"Row[0]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(1, metrics.seekCount);
+    }
+
+    {
+      String query = "select distinct r2 from t where r2 in (0, 1)";
+      String[] rows = {"Row[0]", "Row[1]"};
+
+      RocksDBMetrics metrics = assertPartialRangeSpec("t", query, rows);
+      assertEquals(2, metrics.seekCount);
+    }
+  }
+
+  @Test
   public void testToJson() throws Exception {
     // Create test table.
     session.execute("CREATE TABLE test_tojson (c1 int PRIMARY KEY, c2 float, c3 double, c4 " +
@@ -2492,7 +2579,7 @@ public class TestSelect extends BaseCQLTest {
 
       RocksDBMetrics metrics = assertPartialRangeSpec("in_range_test", query, rows);
       // 9 options, but the first seek should jump over 3 options (with r1 = -10).
-      assertEquals(7, metrics.seekCount);
+      assertEquals(5, metrics.seekCount);
     }
 
     // Test ORDER BY clause with IN (reverse scan).
@@ -2566,7 +2653,9 @@ public class TestSelect extends BaseCQLTest {
       // 10 [60, "31"] [60, "40"] Y (Result row 4)
       // 11 [60, "42"] [60, "50"] N
       // 12 [59, "18"] [50, "0"] N (Bigger than largest target key so we are done)
-      assertEquals(12, metrics.seekCount);
+      // Actual number of seeks could be lower because there is Next instead of Seek optimisation in
+      // DocDB (see SeekPossiblyUsingNext).
+      assertLessThanOrEqualTo(metrics.seekCount, 12);
     }
   }
 

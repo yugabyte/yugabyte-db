@@ -13,17 +13,20 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
-import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -83,14 +86,14 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
       String masterAddresses =
-          PlacementInfoUtil.computeMasterAddresses(
+          KubernetesUtil.computeMasterAddresses(
               primaryPI,
               primaryPlacement.masters,
               taskParams().nodePrefix,
+              universe.getName(),
               provider,
               universeDetails.communicationPorts.masterRpcPort,
-              newNamingStyle,
-              provider.getK8sPodAddrTemplate());
+              newNamingStyle);
 
       for (UniverseDefinitionTaskParams.Cluster cluster : taskParams().clusters) {
         PlacementInfo pi = cluster.placementInfo;
@@ -99,14 +102,16 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
             log.info(
                 "Upgrading software version to {} in universe {}",
                 taskParams().ybSoftwareVersion,
-                universe.name);
+                universe.getName());
 
             createUpgradeTask(
                 cluster.userIntent,
                 universe,
                 pi,
                 cluster.clusterType == ClusterType.ASYNC,
-                masterAddresses);
+                masterAddresses,
+                taskParams().isEnableYbc(),
+                taskParams().getYbcSoftwareVersion());
 
             if (taskParams().upgradeSystemCatalog) {
               createRunYsqlUpgradeTask(taskParams().ybSoftwareVersion)
@@ -117,7 +122,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
                 .setSubTaskGroupType(getTaskSubGroupType());
             break;
           case GFlags:
-            log.info("Upgrading GFlags in universe {}", universe.name);
+            log.info("Upgrading GFlags in universe {}", universe.getName());
             updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
                 .setSubTaskGroupType(getTaskSubGroupType());
 
@@ -126,7 +131,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
                 universe,
                 pi,
                 cluster.clusterType == ClusterType.ASYNC,
-                masterAddresses);
+                masterAddresses,
+                taskParams().isEnableYbc(),
+                taskParams().getYbcSoftwareVersion());
             break;
         }
       }
@@ -171,7 +178,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       Universe universe,
       PlacementInfo pi,
       boolean isReadOnlyCluster,
-      String masterAddresses) {
+      String masterAddresses,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
     String ybSoftwareVersion = null;
     boolean masterChanged = false;
     boolean tserverChanged = false;
@@ -193,7 +202,8 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
       }
     }
 
-    createSingleKubernetesExecutorTask(CommandType.POD_INFO, pi, isReadOnlyCluster);
+    createSingleKubernetesExecutorTask(
+        universe.getName(), CommandType.POD_INFO, pi, isReadOnlyCluster);
 
     KubernetesPlacement placement = new KubernetesPlacement(pi, isReadOnlyCluster);
 
@@ -210,6 +220,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
     if (masterChanged) {
       userIntent.masterGFlags = taskParams().masterGFlags;
       upgradePodsTask(
+          universe.getName(),
           placement,
           masterAddresses,
           null,
@@ -229,6 +240,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
 
       userIntent.tserverGFlags = taskParams().tserverGFlags;
       upgradePodsTask(
+          universe.getName(),
           placement,
           masterAddresses,
           null,
@@ -240,7 +252,28 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           false /* master change is false since it has already been upgraded.*/,
           tserverChanged,
           newNamingStyle,
-          isReadOnlyCluster);
+          isReadOnlyCluster,
+          CommandType.HELM_UPGRADE,
+          enableYbc,
+          ybcSoftwareVersion);
+
+      if (enableYbc) {
+        if (isReadOnlyCluster) {
+          Set<NodeDetails> replicaTservers =
+              new HashSet<NodeDetails>(
+                  universe.getNodesInCluster(taskParams().getReadOnlyClusters().get(0).uuid));
+          installYbcOnThePods(universe.getName(), replicaTservers, true, ybcSoftwareVersion);
+          performYbcAction(replicaTservers, true, "stop");
+          createWaitForYbcServerTask(replicaTservers);
+        } else {
+          Set<NodeDetails> primaryTservers =
+              new HashSet<NodeDetails>(
+                  universe.getNodesInCluster(taskParams().getPrimaryCluster().uuid));
+          installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
+          performYbcAction(primaryTservers, true, "stop");
+          createWaitForYbcServerTask(primaryTservers);
+        }
+      }
 
       createLoadBalancerStateChangeTask(true /*enable*/).setSubTaskGroupType(getTaskSubGroupType());
     }

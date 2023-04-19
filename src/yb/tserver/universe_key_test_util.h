@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TSERVER_UNIVERSE_KEY_TEST_UTIL_H
-#define YB_TSERVER_UNIVERSE_KEY_TEST_UTIL_H
+#pragma once
 
 #include "yb/encryption/universe_key_manager.h"
 
@@ -23,5 +22,3 @@ std::unique_ptr<encryption::UniverseKeyManager> GenerateTestUniverseKeyManager()
 
 }  // tserver
 }  // yb
-
-#endif // YB_TSERVER_UNIVERSE_KEY_TEST_UTIL_H

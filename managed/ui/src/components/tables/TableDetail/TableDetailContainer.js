@@ -48,7 +48,8 @@ function mapStateToProps(state) {
     universe: state.universe,
     tables: state.tables,
     modal: state.modal,
-    featureFlags: state.featureFlags
+    featureFlags: state.featureFlags,
+    runtimeConfigs: state.customer.runtimeConfigs
   };
 }
 

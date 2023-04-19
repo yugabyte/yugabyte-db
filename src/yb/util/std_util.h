@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STD_UTIL_H
-#define YB_UTIL_STD_UTIL_H
+#pragma once
 
 // Implementation of std functions we want to use, but cannot until we switch to newer C++.
 
@@ -25,66 +24,64 @@ namespace std_util {
 
 template <class T, class U>
 constexpr std::enable_if_t<std::is_signed<T>::value == std::is_signed<U>::value, bool> cmp_equal(
-    T t, U u) noexcept {
+    const T& t, const U& u) noexcept {
   return t == u;
 }
 
 template <class T, class U>
 constexpr std::enable_if_t<std::is_signed<T>::value && !std::is_signed<U>::value, bool> cmp_equal(
-    T t, U u) noexcept {
+    const T& t, const U& u) noexcept {
   using UT = std::make_unsigned_t<T>;
   return t < 0 ? false : UT(t) == u;
 }
 
 template <class T, class U>
 constexpr std::enable_if_t<!std::is_signed<T>::value && std::is_signed<U>::value, bool> cmp_equal(
-    T t, U u) noexcept {
+    const T& t, const U& u) noexcept {
   using UU = std::make_unsigned_t<U>;
   return u < 0 ? false : t == UU(u);
 }
 
 template <class T, class U>
 constexpr std::enable_if_t<std::is_signed<T>::value == std::is_signed<U>::value, bool> cmp_less(
-    T t, U u) noexcept {
+    const T& t, const U& u) noexcept {
   return t < u;
 }
 
 template <class T, class U>
 constexpr std::enable_if_t<std::is_signed<T>::value && !std::is_signed<U>::value, bool> cmp_less(
-    T t, U u) noexcept {
+    const T& t, const U& u) noexcept {
   using UT = std::make_unsigned_t<T>;
   return t < 0 ? true : UT(t) < u;
 }
 
 template <class T, class U>
 constexpr std::enable_if_t<!std::is_signed<T>::value && std::is_signed<U>::value, bool> cmp_less(
-    T t, U u) noexcept {
+    const T& t, const U& u) noexcept {
   using UU = std::make_unsigned_t<U>;
   return u < 0 ? false : t < UU(u);
 }
 
 template <class T, class U>
-constexpr bool cmp_not_equal(T t, U u) noexcept {
+constexpr bool cmp_not_equal(const T& t, const U& u) noexcept {
   return !cmp_equal(t, u);
 }
 
 template <class T, class U>
-constexpr bool cmp_greater(T t, U u) noexcept {
+constexpr bool cmp_greater(const T& t, const U& u) noexcept {
   return cmp_less(u, t);
 }
 
 template <class T, class U>
-constexpr bool cmp_less_equal(T t, U u) noexcept {
+constexpr bool cmp_less_equal(const T& t, const U& u) noexcept {
   return !cmp_greater(t, u);
 }
 
 template <class T, class U>
-constexpr bool cmp_greater_equal(T t, U u) noexcept {
+constexpr bool cmp_greater_equal(const T& t, const U& u) noexcept {
   return !cmp_less(t, u);
 }
 
 }  // namespace std_util
 
 } // namespace yb
-
-#endif  // YB_UTIL_STD_UTIL_H

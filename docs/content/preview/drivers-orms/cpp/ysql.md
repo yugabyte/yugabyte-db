@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: C++ libpqxx driver for YSQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: C++ drivers for YSQL
+description: Connect a C++ application using libpqxx
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/cpp/
@@ -15,20 +16,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../ysql/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li>
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../ysql/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >

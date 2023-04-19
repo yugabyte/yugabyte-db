@@ -17,51 +17,59 @@
 
 #include "yb/util/atomic.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/tsan_util.h"
 #include "yb/gutil/sysinfo.h"
 
 // Note that this is used by the client or master only, not by tserver.
-DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
+DEFINE_UNKNOWN_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
     "value is -1, the system sets the number of shards per tserver to 1 if "
     "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
     "appropriate value based on number of CPU cores.");
 
-DEFINE_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
+DEFINE_UNKNOWN_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per YSQL table per tablet server when a table is created. If the "
     "value is -1, the system sets the number of shards per tserver to 1 if "
     "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
     "appropriate value based on number of CPU cores.");
 
-DEFINE_bool(ysql_disable_index_backfill, false,
+DEFINE_UNKNOWN_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
 TAG_FLAG(ysql_disable_index_backfill, hidden);
 TAG_FLAG(ysql_disable_index_backfill, advanced);
 
-DEFINE_bool(enable_pg_savepoints, true,
-            "DEPRECATED -- Set to false to disable savepoints in YugaByte PostgreSQL API.");
-TAG_FLAG(enable_pg_savepoints, hidden);
+DEFINE_NON_RUNTIME_bool(
+    enable_pg_savepoints, true,
+    "Set to false to disable savepoints in YugaByte PostgreSQL API. "
+    "This needs to be set to false when using xcluster replication for now.");
+TAG_FLAG(enable_pg_savepoints, evolving);
+TAG_FLAG(enable_pg_savepoints, advanced);
 
-DEFINE_bool(enable_automatic_tablet_splitting, true,
+DEFINE_UNKNOWN_bool(enable_automatic_tablet_splitting, true,
             "If false, disables automatic tablet splitting driven from the yb-master side.");
 
-DEFINE_bool(log_ysql_catalog_versions, false,
+DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
 TAG_FLAG(log_ysql_catalog_versions, hidden);
 
-DEFINE_bool(disable_hybrid_scan, false,
-            "If true, hybrid scan will be disabled");
-TAG_FLAG(disable_hybrid_scan, runtime);
-
-DEFINE_bool(enable_deadlock_detection, false, "If true, enables distributed deadlock detection.");
+DEPRECATE_FLAG(bool, disable_hybrid_scan, "11_2022");
+DEFINE_UNKNOWN_bool(enable_deadlock_detection, false,
+    "If true, enables distributed deadlock detection.");
 TAG_FLAG(enable_deadlock_detection, advanced);
 TAG_FLAG(enable_deadlock_detection, evolving);
 
-DEFINE_bool(enable_wait_queue_based_pessimistic_locking, false,
-            "If true, use pessimistic locking behavior in conflict resolution.");
-TAG_FLAG(enable_wait_queue_based_pessimistic_locking, evolving);
-TAG_FLAG(enable_wait_queue_based_pessimistic_locking, hidden);
+DEFINE_NON_RUNTIME_bool(enable_wait_queues, false,
+    "If true, enable wait queues that help provide Wait-on-Conflict behavior during conflict "
+    "resolution whenever required.");
+TAG_FLAG(enable_wait_queues, evolving);
+
+DEFINE_RUNTIME_bool(ysql_ddl_rollback_enabled, false,
+            "If true, failed YSQL DDL transactions that affect both pg catalog and DocDB schema "
+            "will be rolled back by YB-Master. Note that this is applicable only for few DDL "
+            "operations such as dropping a table, adding a column, renaming a column/table. This "
+            "flag should not be changed in the middle of a DDL operation.");
+TAG_FLAG(ysql_ddl_rollback_enabled, hidden);
+TAG_FLAG(ysql_ddl_rollback_enabled, advanced);
 
 DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "Enable the per database catalog version mode, a DDL statement is assumed to "
@@ -69,6 +77,18 @@ DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "the current database. For an old cluster that is upgraded, this gflag should "
                  "only be turned on after pg_yb_catalog_version is upgraded to one row per "
                  "database.");
+
+DEFINE_RUNTIME_uint32(external_transaction_retention_window_secs, 60 * 60 * 24,
+                      "Retention window on both the coordinator and participant for uncommitted "
+                      "transactions from a producer.");
+
+DEFINE_RUNTIME_uint32(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, 5000,
+    "For a WaitForYsqlBackendsCatalogVersion client-to-master RPC, the amount of time to reserve"
+    " out of the RPC timeout to respond back to client. If margin is zero, client will determine"
+    " timeout without receiving response from master. Margin should be set high enough to cover"
+    " processing and RPC time for the response. It should be lower than"
+    " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms.");
+TAG_FLAG(wait_for_ysql_backends_catalog_version_client_master_rpc_margin_ms, advanced);
 
 namespace yb {
 
@@ -104,12 +124,12 @@ void InitCommonFlags() {
   if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYCQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("yb_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(yb_num_shards_per_tserver, value));
   }
   if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
     int value = GetYSQLNumShardsPerTServer();
     VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
-    CHECK_OK(SetFlagDefaultAndCurrent("ysql_num_shards_per_tserver", std::to_string(value)));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(ysql_num_shards_per_tserver, value));
   }
 }
 

@@ -41,6 +41,7 @@ export default class InstanceTypeForRegion extends Component {
           </Col>
         </Row>
         {fields.map((instanceTypeItem, instanceTypeIdx) => (
+          // eslint-disable-next-line react/no-array-index-key
           <Row key={instanceTypeIdx}>
             <Col lg={1}>
               {fields.length > 1 ? (

@@ -30,7 +30,7 @@ int main() {
 #include <atomic>
 #include <memory>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db/write_batch_internal.h"
 #include "yb/rocksdb/db.h"
@@ -106,10 +106,10 @@ static void ReplicationThreadBody(void* arg) {
   }
 }
 
-DEFINE_uint64(num_inserts, 1000, "the num of inserts the first thread should"
+DEFINE_UNKNOWN_uint64(num_inserts, 1000, "the num of inserts the first thread should"
     " perform.");
-DEFINE_uint64(wal_ttl_seconds, 1000, "the wal ttl for the run(in seconds)");
-DEFINE_uint64(wal_size_limit_MB, 10, "the wal size limit for the run"
+DEFINE_UNKNOWN_uint64(wal_ttl_seconds, 1000, "the wal ttl for the run(in seconds)");
+DEFINE_UNKNOWN_uint64(wal_size_limit_MB, 10, "the wal size limit for the run"
     "(in MB)");
 
 int db_repl_stress(int argc, const char** argv) {

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_MASTER_MASTER_OPTIONS_H
-#define YB_MASTER_MASTER_OPTIONS_H
+#pragma once
 
 #include <vector>
 
@@ -75,4 +74,3 @@ class MasterOptions : public server::ServerBaseOptions {
 
 } // namespace master
 } // namespace yb
-#endif /* YB_MASTER_MASTER_OPTIONS_H */

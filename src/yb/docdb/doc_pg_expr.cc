@@ -45,7 +45,7 @@ class DocPgExprExecutor::Private {
 
   // Process a column reference
   Status AddColumnRef(const PgsqlColRefPB& column_ref,
-                              const Schema *schema) {
+                      const Schema *schema) {
     DCHECK(expr_ctx_ == nullptr);
     // Get DocDB column identifier
     ColumnId col_id = ColumnId(column_ref.column_id());
@@ -73,7 +73,7 @@ class DocPgExprExecutor::Private {
 
   // Process a where clause expression
   Status PreparePgWhereExpr(const PgsqlExpressionPB& ql_expr,
-                                    const Schema *schema) {
+                            const Schema *schema) {
     YbgPreparedExpr expr;
     // Deserialize Postgres expression. Expression type is known to be boolean
     RETURN_NOT_OK(prepare_pg_expr_call(ql_expr, schema, &expr, nullptr));
@@ -85,7 +85,7 @@ class DocPgExprExecutor::Private {
 
   // Process a target expression
   Status PreparePgTargetExpr(const PgsqlExpressionPB& ql_expr,
-                                     const Schema *schema) {
+                             const Schema *schema) {
     YbgPreparedExpr expr;
     DocPgVarRef expr_type;
     // Deserialize Postgres expression. Get type information to convert evaluation results to
@@ -99,9 +99,9 @@ class DocPgExprExecutor::Private {
 
   // Deserialize a Postgres expression and optionally determine its result data type info
   Status prepare_pg_expr_call(const PgsqlExpressionPB& ql_expr,
-                                      const Schema *schema,
-                                      YbgPreparedExpr *expr,
-                                      DocPgVarRef *expr_type) {
+                              const Schema *schema,
+                              YbgPreparedExpr *expr,
+                              DocPgVarRef *expr_type) {
     YbgMemoryContext old;
     // Presence of row_ctx_ indicates that execution was started we do not allow to modify
     // the executor dynamically.
@@ -113,13 +113,38 @@ class DocPgExprExecutor::Private {
     SCHECK(
         static_cast<bfpg::TSOpcode>(tscall.opcode()) == bfpg::TSOpcode::kPgEvalExprCall,
         InternalError, "Serialized Postgres expression is expected");
-    SCHECK_EQ(tscall.operands_size(), 1, InternalError, "Invalid serialized Postgres expression");
     // Retrieve string representing the expression
     const std::string& expr_str = tscall.operands(0).value().string_value();
     // Make sure expression is in the right memory context
     YbgSetCurrentMemoryContext(mem_ctx_, &old);
     // Perform deserialization and get result data type info
     const Status s = DocPgPrepareExpr(expr_str, expr, expr_type);
+    if (tscall.operands_size() > 1) {
+      // Pre-pushdown nodes e.g. v2.12 may create and send serialized PG expression when executing
+      // statements like UPDATE table SET col = col + 1 WHERE pk = 1; during upgrade.
+      // Those expressions have their column references bundled as operands (attno, typid, typmod)
+      // triplets, one per reference.
+      // That is sufficient information to execute such request. We need to discover the column id,
+      // it is not super efficient, but good enough for a rare compatibility case.
+      int num_params = (tscall.operands_size() - 1) / 3;
+      LOG(INFO) << "Found old style expression with " << num_params << " bundled parameter(s)";
+      for (int i = 0; i < num_params; ++i) {
+        int32_t attno = tscall.operands(3*i + 1).value().int32_value();
+        int32_t typid = tscall.operands(3*i + 2).value().int32_value();
+        int32_t typmod = tscall.operands(3*i + 3).value().int32_value();
+        bool found = false;
+        for (const ColumnId& col_id : schema->column_ids()) {
+          auto column = schema->column_by_id(col_id);
+          SCHECK(column.ok(), InternalError, "Invalid Schema");
+          if (column->order() == attno) {
+            RETURN_NOT_OK(DocPgAddVarRef(col_id, attno, typid, typmod, 0 /*collid*/, &var_map_));
+            found = true;
+            break;
+          }
+        }
+        SCHECK(found, InternalError, Format("Column not found: $0", attno));
+      }
+    }
     // Restore previous memory context
     YbgSetCurrentMemoryContext(old, nullptr);
     return s;

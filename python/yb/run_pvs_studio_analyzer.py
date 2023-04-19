@@ -24,7 +24,7 @@ import logging
 import multiprocessing
 from overrides import overrides
 
-from yugabyte_pycommon import init_logging, mkdir_p  # type: ignore
+from yugabyte_pycommon import mkdir_p  # type: ignore
 from yb.common_util import YB_SRC_ROOT, find_executable, rm_rf, check_call_and_log
 from yb.tool_base import YbBuildToolBase
 from yb.compile_commands import (
@@ -49,10 +49,6 @@ class PvsStudioAnalyzerTool(YbBuildToolBase):
     @overrides
     def run_impl(self) -> None:
         self.run_pvs_analyzer()
-
-    @overrides
-    def get_description(self) -> str:
-        return __doc__
 
     @overrides
     def add_command_line_args(self) -> None:
@@ -169,7 +165,6 @@ class PvsStudioAnalyzerTool(YbBuildToolBase):
 
 
 def main() -> None:
-    init_logging()
     PvsStudioAnalyzerTool().run()
 
 

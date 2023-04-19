@@ -30,8 +30,7 @@
 // under the License.
 //
 
-#ifndef YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
-#define YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_
+#pragma once
 
 #include <string>
 #include <unordered_map>
@@ -134,5 +133,3 @@ void ExternalMiniClusterITestBase::StartCluster(const std::vector<std::string>& 
 }
 
 }  // namespace yb
-
-#endif // YB_INTEGRATION_TESTS_EXTERNAL_MINI_CLUSTER_ITEST_BASE_H_

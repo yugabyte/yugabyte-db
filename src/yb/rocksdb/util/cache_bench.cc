@@ -32,7 +32,7 @@ int main() {
 #include <inttypes.h>
 #include <sys/types.h>
 #include <stdio.h>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/cache.h"
@@ -45,20 +45,20 @@ using GFLAGS::ParseCommandLineFlags;
 
 static const uint32_t KB = 1024;
 
-DEFINE_int32(threads, 16, "Number of concurrent threads to run.");
-DEFINE_int64(cache_size, 8 * KB * KB,
+DEFINE_UNKNOWN_int32(threads, 16, "Number of concurrent threads to run.");
+DEFINE_UNKNOWN_int64(cache_size, 8 * KB * KB,
              "Number of bytes to use as a cache of uncompressed data.");
-DEFINE_int32(num_shard_bits, 4, "shard_bits.");
+DEFINE_UNKNOWN_int32(num_shard_bits, 4, "shard_bits.");
 
-DEFINE_int64(max_key, 1 * KB * KB * KB, "Max number of key to place in cache");
-DEFINE_uint64(ops_per_thread, 1200000, "Number of operations per thread.");
+DEFINE_UNKNOWN_int64(max_key, 1 * KB * KB * KB, "Max number of key to place in cache");
+DEFINE_UNKNOWN_uint64(ops_per_thread, 1200000, "Number of operations per thread.");
 
-DEFINE_bool(populate_cache, false, "Populate cache before operations");
-DEFINE_int32(insert_percent, 40,
+DEFINE_UNKNOWN_bool(populate_cache, false, "Populate cache before operations");
+DEFINE_UNKNOWN_int32(insert_percent, 40,
              "Ratio of insert to total workload (expressed as a percentage)");
-DEFINE_int32(lookup_percent, 50,
+DEFINE_UNKNOWN_int32(lookup_percent, 50,
              "Ratio of lookup to total workload (expressed as a percentage)");
-DEFINE_int32(erase_percent, 10,
+DEFINE_UNKNOWN_int32(erase_percent, 10,
              "Ratio of erase to total workload (expressed as a percentage)");
 
 namespace rocksdb {

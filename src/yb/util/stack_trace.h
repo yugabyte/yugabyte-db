@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STACK_TRACE_H
-#define YB_UTIL_STACK_TRACE_H
+#pragma once
 
 #include <pthread.h>
 
@@ -152,5 +151,3 @@ std::vector<Result<StackTrace>> ThreadStacks(const std::vector<ThreadIdForStack>
 Status SetStackTraceSignal(int signum);
 
 }  // namespace yb
-
-#endif  // YB_UTIL_STACK_TRACE_H

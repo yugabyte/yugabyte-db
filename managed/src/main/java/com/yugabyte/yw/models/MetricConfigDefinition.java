@@ -5,7 +5,6 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.yugabyte.yw.metrics.MetricLabelFilters;
 import com.yugabyte.yw.metrics.MetricQueryContext;
 import com.yugabyte.yw.metrics.MetricSettings;
 import com.yugabyte.yw.metrics.NodeAggregation;
@@ -15,7 +14,6 @@ import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -176,47 +174,6 @@ public class MetricConfigDefinition {
    */
   public String getQuery(MetricSettings settings, MetricQueryContext context) {
     String metric = settings.getMetric();
-    List<MetricLabelFilters> orFiltersList =
-        context.getMetricOrFilters().getOrDefault(metric, Collections.emptyList());
-    if (CollectionUtils.isEmpty(orFiltersList)) {
-      return getOrQuery(settings, context);
-    }
-    List<String> orQueries = new ArrayList<>();
-    for (MetricLabelFilters orFilters : orFiltersList) {
-      Map<String, String> newAdditionalFilters = new HashMap<>(context.getAdditionalFilters());
-      orFilters
-          .getFilters()
-          .forEach(orFilter -> newAdditionalFilters.put(orFilter.getLabel(), orFilter.getFilter()));
-      orQueries.add(
-          getOrQuery(
-              settings, context.toBuilder().additionalFilters(newAdditionalFilters).build()));
-    }
-    if (settings.getSplitMode() != SplitMode.NONE && settings.isReturnAggregatedValue()) {
-      // In case of mean query we need to remove exported_instance grouping to get average from
-      // the metrics, which initially has this grouping
-      orQueries.add(
-          getOrQuery(
-              settings,
-              context
-                  .toBuilder()
-                  .removeGroupBy(context.getAdditionalGroupBy())
-                  .additionalGroupBy(Collections.emptySet())
-                  .build()));
-    }
-    return "(" + String.join(") or (", orQueries) + ")";
-  }
-
-  /**
-   * This method construct the prometheus queryString based on the metric config if additional
-   * filters are provided, it applies those filters as well. example query string: -
-   * avg(collectd_cpu_percent{cpu="system"}) - rate(collectd_cpu_percent{cpu="system"}[30m]) -
-   * avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) -
-   * avg(collectd_memory{memory=~"used|buffered|cached|free"}) by (memory) /10
-   *
-   * @return a valid prometheus query string
-   */
-  private String getOrQuery(MetricSettings settings, MetricQueryContext context) {
-    String metric = settings.getMetric();
     // Special case searches for .avg to convert into the respective ratio of
     // avg(irate(metric_sum)) / avg(irate(metric_count))
     if (metric.endsWith(".avg")) {
@@ -266,6 +223,9 @@ public class MetricConfigDefinition {
     if (range != null && function != null) {
       query.append(String.format("[%ds]", context.getQueryRangeSecs())); // for ex: [60s]
     }
+    if (context.getQueryTimestampSec() != null) {
+      query.append(String.format("@%d", context.getQueryTimestampSec())); // for ex: @1609746000
+    }
 
     queryStr = query.toString();
 
@@ -289,13 +249,21 @@ public class MetricConfigDefinition {
           functions[functions.length - 1] = settings.getNodeAggregation().getAggregationFunction();
         }
       }
-      if (functions.length > 1) {
-        // We need to split the multiple functions and form the query string
-        for (String functionName : functions) {
+      for (String functionName : functions) {
+        if (functionName.startsWith("quantile_over_time")) {
+          String percentile = functionName.split("[.]")[1];
+          queryStr = String.format("quantile_over_time(0.%s, %s)", percentile, queryStr);
+        } else if (functionName.startsWith("topk") || functionName.startsWith("bottomk")) {
+          if (settings.getSplitMode() != SplitMode.NONE) {
+            // TopK/BottomK is requested explicitly. Just ignore default split.
+            continue;
+          }
+          String fun = functionName.split("[.]")[0];
+          String count = functionName.split("[.]")[1];
+          queryStr = String.format(fun + "(%s, %s)", count, queryStr);
+        } else {
           queryStr = String.format("%s(%s)", functionName, queryStr);
         }
-      } else {
-        queryStr = String.format("%s(%s)", function, queryStr);
       }
     }
 

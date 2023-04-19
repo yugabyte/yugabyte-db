@@ -77,6 +77,7 @@
 
 #include "pg_yb_utils.h"
 #include "commands/ybccmds.h"
+#include "commands/yb_profile.h"
 
 /* Hook for plugins to get control in ProcessUtility() */
 
@@ -237,6 +238,11 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 		case T_SecLabelStmt:
 		case T_TruncateStmt:
 		case T_ViewStmt:
+#ifdef YB_TODO
+			/* YB_TODO(jasonk) Need to reimplement these statements for Pg15 */
+		case T_YbCreateProfileStmt:
+		case T_YbDropProfileStmt:
+#endif
 			{
 				/* DDL is not read-only, and neither is TRUNCATE. */
 				return COMMAND_IS_NOT_READ_ONLY;
@@ -412,7 +418,6 @@ ClassifyUtilityCommandAsReadOnly(Node *parsetree)
 					 (int) stmt->kind);
 				return 0;		/* silence stupider compilers */
 			}
-
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
@@ -1113,6 +1118,17 @@ standard_ProcessUtility(PlannedStmt *pstmt,
 					ExecSecLabelStmt(stmt);
 				break;
 			}
+
+		case T_YbCreateProfileStmt:
+			PreventInTransactionBlock(isTopLevel, "CREATE PROFILE");
+			YbCreateProfile((YbCreateProfileStmt *) parsetree);
+			break;
+
+		case T_YbDropProfileStmt:
+			/* no event triggers for global objects */
+			PreventInTransactionBlock(isTopLevel, "DROP PROFILE");
+			YbDropProfile((YbDropProfileStmt *) parsetree);
+			break;
 
 		default:
 			/* All other statement types have event trigger support */
@@ -2751,6 +2767,9 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_YBTABLEGROUP:
 					tag = CMDTAG_DROP_YBTABLEGROUP;
 					break;
+				case OBJECT_YBPROFILE:
+					tag = CMDTAG_DROP_PROFILE;
+					break;
 				default:
 					tag = CMDTAG_UNKNOWN;
 			}
@@ -3329,6 +3348,14 @@ CreateCommandTag(Node *parsetree)
 						break;
 				}
 			}
+			break;
+
+		case T_YbCreateProfileStmt:
+			tag = "CREATE PROFILE";
+			break;
+
+		case T_YbDropProfileStmt:
+			tag = "DROP PROFILE";
 			break;
 
 		default:

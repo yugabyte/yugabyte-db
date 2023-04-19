@@ -7,21 +7,29 @@ menu:
   preview:
     identifier: yb-ctl
     parent: admin
-    weight: 2410
+    weight: 90
 aliases:
   - /admin/yb-ctl
 type: docs
 ---
 
-The `yb-ctl` utility, located in the bin directory of YugabyteDB home, provides a simple command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
+The yb-ctl utility, located in the bin directory of YugabyteDB home, provides a command line interface for administering local clusters used for development and learning. It invokes the [`yb-tserver`](../../reference/configuration/yb-tserver/) and [`yb-master`](../../reference/configuration/yb-master/) servers to perform the necessary orchestration.
 
-{{< note title="Note" >}}
+yb-ctl is meant for managing local clusters only. This means that a single host machine like a local laptop is used to simulate YugabyteDB clusters even though the YugabyteDB cluster can have 3 nodes or more. For creating multi-host clusters, follow the instructions in the [Deploy](../../deploy/) section.
 
-- yb-ctl is meant for managing local clusters only. This means that a single host machine like a local laptop is used to simulate YugabyteDB clusters even though the YugabyteDB cluster can have 3 nodes or more. For creating multi-host clusters, follow the instructions in the [Deploy](../../deploy/) section.
+yb-ctl can manage a cluster if and only if it was initially created via yb-ctl. This means that clusters created through any other means including those in the [Deploy](../../deploy/) section cannot be administered using yb-ctl.
 
-- yb-ctl can manage a cluster if and only if it was initially created via yb-ctl. This means that clusters created through any other means including those in the [Deploy](../../deploy/) section cannot be administered using yb-ctl.
+{{% note title="macOS Monterey" %}}
 
-{{< /note >}}
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yb-ctl start` to fail. Use the [--master_flags flag](#master-flags) when you start the cluster to change the default port number, as follows:
+
+```sh
+./bin/yb-ctl start --master_flags "webserver_port=7001"
+```
+
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+{{% /note %}}
 
 ## Syntax
 
@@ -164,7 +172,7 @@ and [Wipe and restart with placement info flags](#wipe-and-restart-with-placemen
 
 ##### --replication_factor, -rf
 
-Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A miniumum value of `3` is needed to create a fault-tolerant cluster since `1` signifies that there is no only 1 replica with no fault tolerance.
+Specifies the number of replicas for each tablet. This parameter is also known as Replication Factor (RF). Should be an odd number so that a majority consensus can be established. A minimum value of `3` is needed to create a fault-tolerant cluster as `1` signifies that there is no only 1 replica with no fault tolerance.
 
 This value also sets the default number of YB-Master servers.
 
@@ -204,9 +212,22 @@ Flag to log internal debug messages to `stderr`.
 
 To create a local YugabyteDB cluster for development and learning, use the `yb-ctl create` command.
 
-In order to ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
+To ensure that all of the replicas for a given tablet can be placed on different nodes, the number of nodes created with the initial create command is always equal to the replication factor.  To expand or shrink the cluster, use the [`add_node`](#add-nodes) and [`remove_node`](#stop-remove-nodes) commands.
 
 Each of these initial nodes run a `yb-tserver` server and a `yb-master` server. Note that the number of YB-Master servers in a cluster must equal the replication factor for the cluster to be considered operating normally.
+
+{{< note title="Loopback addresses" >}}
+
+On macOS, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node cluster, you add two additional addresses as follows:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
+
+{{< /note >}}
 
 ### Create a local 1-node cluster with replication factor of 1
 

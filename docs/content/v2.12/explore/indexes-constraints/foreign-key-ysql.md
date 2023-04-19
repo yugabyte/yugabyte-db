@@ -129,5 +129,5 @@ ALTER TABLE child_table
 
 - [Table with Foreign Key](../../../api/ysql/the-sql-language/statements/ddl_create_table/#table-with-foreign-key-constraint)
 - [Foreign Keys in PostgreSQL documentation](https://www.postgresql.org/docs/12/ddl-constraints.html#DDL-CONSTRAINTS-FK)
-- [Relational Data Modeling with Foreign Keys in a Distributed SQL Database](https://blog.yugabyte.com/relational-data-modeling-with-foreign-keys-in-a-distributed-sql-database/)
+- [Relational Data Modeling with Foreign Keys in a Distributed SQL Database](https://www.yugabyte.com/blog/relational-data-modeling-with-foreign-keys-in-a-distributed-sql-database/)
 - [Other Constraints](../other-constraints/)

@@ -13,6 +13,7 @@ package com.yugabyte.yw.models.helpers;
 public enum KnownAlertLabels {
   CONFIGURATION_UUID,
   CONFIGURATION_TYPE,
+  ALERT_TYPE,
   DEFINITION_UUID,
   DEFINITION_NAME,
   UNIVERSE_UUID,
@@ -23,6 +24,10 @@ public enum KnownAlertLabels {
   SOURCE_UUID,
   SOURCE_NAME,
   SOURCE_TYPE,
+  SNAPSHOT_UUID,
+  TABLE_TYPE,
+  NAMESPACE_NAME,
+  PITR_CONFIG_UUID,
   ALERT_STATE,
   SEVERITY,
   THRESHOLD,

@@ -2,12 +2,11 @@
 title: YugabyteDB query layer (YQL)
 headerTitle: Query layer
 linkTitle: Query layer
-description: Learn how YugabyteDB's extensible query layer implements YSQL and YCQL.
+description: Learn how YugabyteDB's query layer implements YSQL and YCQL.
 image: /images/section_icons/index/api.png
 headcontent:
 aliases:
   - /architecture/query-layer/
-  - /preview/architecture/concepts/yql/
 menu:
   preview:
     identifier: architecture-query-layer
@@ -15,14 +14,11 @@ menu:
     weight: 1110
 type: indexpage
 ---
-{{< note title="Note" >}}
 
-YugabyteDB has an extensible query layer. It currently implements the following APIs:
+YugabyteDB has an extensible query layer that implements the following APIs:
 
-* **YSQL**, a distributed SQL API wire compatible with PostgreSQL
-* **YCQL**, a semi-relational API built for high performance and massive scale, with its roots in Cassandra Query Language
-
-{{</note >}}
+* YSQL, a distributed SQL API wire-compatible with PostgreSQL.
+* YCQL, a semi-relational API built for high performance and massive scale, with its roots in Cassandra Query Language.
 
 <div class="row">
 

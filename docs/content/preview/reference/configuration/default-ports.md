@@ -8,8 +8,6 @@ menu:
     identifier: default-ports
     parent: configuration
     weight: 2740
-aliases:
-  - /preview/reference/default-ports
 type: docs
 ---
 
@@ -25,7 +23,7 @@ Application clients connect to the following addresses:
 
 ## Internode RPC communication
 
-Internode (server-to-server or node-to-node) communication is managed using RPC calls on the following addresses:
+Internode (server-to-server or node-to-node) communication, including xCluster, is managed using RPC calls on the following addresses:
 
 | Server    | Port | Flag (default)                              |
 | ---------- | ---- | ------------------------------------------------------------ |
@@ -33,6 +31,14 @@ Internode (server-to-server or node-to-node) communication is managed using RPC 
 | YB-TServer | 9100 |  [`--rpc_bind_addresses 0.0.0.0:9100`](../yb-tserver/#rpc-bind-addresses)<br/>[`--tserver_master_addrs 0.0.0.0:7100`](../yb-tserver/#tserver-master-addrs)<br/>[`--server_broadcast_addresses 0.0.0.0:9100`](../yb-tserver/#server-broadcast-addresses) |
 
 To enable login to the machines running these servers, the SSH port 22 should be opened.
+
+xCluster uses the YB-Master port 7100 for the initial communication, and then uses the YB-TServer port 9100 to get data changes. Note that YugabyteDB Anywhere obtains the replication lag information using Prometheus metrics from YB-TServer at port 9000. If this port is closed, the xCluster replication is not affected, but YugabyteDB Anywhere would not be able to display the replication lag.
+
+Before installing YugabyteDB or YugabyteDB Anywhere, or upgrading the YugabyteDB software on YugabyteDB Anywhere, the YB Controller port 18018 must be open on all YugabyteDB nodes and be reachable from YugabyteDB Anywhere nodes:
+
+| Service       | Port  |
+| ------------- | ----- |
+| YB Controller | 18018 |
 
 ## Admin web server
 
@@ -43,7 +49,7 @@ Admin web server UI can be viewed at the following addresses:
 | YB-Master  | 7000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 7000`](../yb-master/#webserver-port) |
 | YB-TServer | 9000  |  [`--webserver_interface 0.0.0.0`](../yb-master/#webserver-interface)<br>[`--webserver_port 9000`](../yb-master/#webserver-port) |
 
-## Firewall Rules
+## Firewall rules
 
 The following common ports are required for firewall rules:
 
@@ -74,7 +80,7 @@ You can access the Prometheus server on port `9090` of the YugabyteDB Anywhere n
 
 ### Servers
 
-Use the following targets to monitor `yb-tserver` and `yb-master` server metrics:
+Use the following targets to monitor YB-TServer and YB-Master server metrics:
 
 | Server     | Target                      |
 | ---------- | --------------------------- |
@@ -83,7 +89,7 @@ Use the following targets to monitor `yb-tserver` and `yb-master` server metrics
 
 ### APIs
 
-Use the following `yb-tserver` targets for the various API metrics:
+Use the following YB-TServer targets for the various API metrics:
 
 | API     | Target
 | ------- | ------------------------- |

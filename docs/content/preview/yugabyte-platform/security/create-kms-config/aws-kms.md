@@ -3,8 +3,6 @@ title: Create a KMS configuration using AWS KMS
 headerTitle: Create a KMS configuration using AWS KMS
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for Amazon Web Services (AWS) KMS.
-aliases:
-  - /preview/yugabyte-platform/security/create-kms-config
 menu:
   preview_yugabyte-platform:
     parent: security
@@ -14,11 +12,23 @@ type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
-
   <li >
     <a href="{{< relref "./aws-kms.md" >}}" class="nav-link active">
-      <i class="icon-postgres" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
+    </a>
+  </li>
+  <li >
+    <a href="{{< relref "./google-kms.md" >}}" class="nav-link">
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
+      Google KMS
+    </a>
+  </li>
+
+  <li >
+    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link">
+      <i class="icon-azure" aria-hidden="true"></i>
+      Azure Key Vault
     </a>
   </li>
 
@@ -47,9 +57,9 @@ You can create a KMS configuration that uses AWS KMS as follows:
 
 1. Use the YugabyteDB Anywhere UI to navigate to **Configs > Security > Encryption At Rest** to access the list of existing configurations.
 
-2. Click **Create New Config**.
+1. Click **Create New Config**.
 
-3. Enter the following configuration details in the form:
+1. Enter the following configuration details in the form:
 
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **AWS KMS**.
@@ -60,37 +70,37 @@ You can create a KMS configuration that uses AWS KMS as follows:
     - **Customer Master Key ID** — Enter the identifier for the CMK. If an identifier is not entered, a CMK ID will be auto-generated.
     - **AWS KMS Endpoint** — Specify the KMS endpoint to ensure that the encryption traffic is routed across your internal links without crossing into an external network.
 
-4. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
+1. Optionally, click **Upload CMK Policy** to select a custom policy file. The following is the default policy:
 
     ```json
-        {
-            "Version": "2012-10-17",
-            "Id": "key-default-1",
-            "Statement": [
-                {
-                    "Sid": "Enable IAM User Permissions",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:root"
-                    },
-                    "Action": "kms:*",
-                    "Resource": "*"
-                },
-                {
-                    "Sid": "Allow access for Key Administrators",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:[user|role]{1}/[<USER_NAME>|<ROLE_NAME>]{1}"
-                    },
-                    "Action": "kms:*",
-                    "Resource": "*"
-                }
-            ]
-        }
+      {
+          "Version": "2012-10-17",
+          "Id": "key-default-1",
+          "Statement": [
+              {
+                  "Sid": "Enable IAM User Permissions",
+                  "Effect": "Allow",
+                  "Principal": {
+                      "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:root"
+                  },
+                  "Action": "kms:*",
+                  "Resource": "*"
+              },
+              {
+                  "Sid": "Allow access for Key Administrators",
+                  "Effect": "Allow",
+                  "Principal": {
+                      "AWS": "arn:aws:iam::<AWS_ACCOUNT_ID>:[user|role]{1}/[<USER_NAME>|<ROLE_NAME>]{1}"
+                  },
+                  "Action": "kms:*",
+                  "Resource": "*"
+              }
+          ]
+      }
     ```
 
-5. Click **Save**.<br>
+1. Click **Save**.
 
     Your new configuration should appear in the list of configurations. A saved KMS configuration can only be deleted if it is not in use by any existing universes.
 
-6. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.
+1. Optionally, to confirm that the information is correct, click **Show details**. Note that sensitive configuration values are displayed partially masked.

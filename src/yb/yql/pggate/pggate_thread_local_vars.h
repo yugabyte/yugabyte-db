@@ -19,8 +19,7 @@
 // Currently this is used within DocDB where PG/YSQL is used as a library for
 // evaluating YSQL expression.
 
-#ifndef YB_YQL_PGGATE_PGGATE_THREAD_LOCAL_VARS_H
-#define YB_YQL_PGGATE_PGGATE_THREAD_LOCAL_VARS_H
+#pragma once
 
 
 
@@ -55,12 +54,8 @@ void PgResetCurrentMemCtxThreadLocalVars();
 void* PgSetThreadLocalJumpBuffer(void* new_buffer);
 void* PgGetThreadLocalJumpBuffer();
 
-/*
- * Save/get the error message. Needs a separate function because it will be
- * generated separately in errmsg when using ereport (instead of elog).
- */
-void PgSetThreadLocalErrMsg(const void* new_msg);
-const void* PgGetThreadLocalErrMsg();
+void *PgSetThreadLocalErrStatus(void* new_status);
+void *PgGetThreadLocalErrStatus();
 
 //-----------------------------------------------------------------------------
 // Expression processing.
@@ -76,5 +71,3 @@ void PgSetThreadLocalStrTokPtr(char *new_pg_strtok_ptr);
 
 } // namespace pggate
 } // namespace yb
-
-#endif // YB_YQL_PGGATE_PGGATE_THREAD_LOCAL_VARS_H

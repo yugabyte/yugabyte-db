@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_PG_DDL_H_
-#define YB_YQL_PGGATE_PG_DDL_H_
+#pragma once
 
 #include "yb/common/constants.h"
 #include "yb/common/transaction.h"
@@ -97,6 +96,7 @@ class PgAlterDatabase : public PgDdl {
 
 class PgCreateTablegroup : public PgDdl {
  public:
+  // Assumes we are within a DDL transaction.
   PgCreateTablegroup(PgSession::ScopedRefPtr pg_session,
                      const char *database_name,
                      const PgOid database_oid,
@@ -156,21 +156,21 @@ class PgCreateTable : public PgDdl {
   StmtOp stmt_op() const override;
 
   Status AddColumn(const char *attr_name,
-                           int attr_num,
-                           int attr_ybtype,
-                           bool is_hash,
-                           bool is_range,
-                           SortingType sorting_type = SortingType::kNotSpecified) {
+                   int attr_num,
+                   int attr_ybtype,
+                   bool is_hash,
+                   bool is_range,
+                   SortingType sorting_type = SortingType::kNotSpecified) {
     return AddColumnImpl(attr_name, attr_num, attr_ybtype, 20 /*INT8OID*/,
                          is_hash, is_range, sorting_type);
   }
 
   Status AddColumn(const char *attr_name,
-                           int attr_num,
-                           const YBCPgTypeEntity *attr_type,
-                           bool is_hash,
-                           bool is_range,
-                           SortingType sorting_type = SortingType::kNotSpecified) {
+                   int attr_num,
+                   const YBCPgTypeEntity *attr_type,
+                   bool is_hash,
+                   bool is_range,
+                   SortingType sorting_type = SortingType::kNotSpecified) {
     return AddColumnImpl(attr_name, attr_num, attr_type->yb_type, attr_type->type_oid,
                          is_hash, is_range, sorting_type);
   }
@@ -246,8 +246,8 @@ class PgAlterTable : public PgDdl {
                const PgObjectId& table_id);
 
   Status AddColumn(const char *name,
-                           const YBCPgTypeEntity *attr_type,
-                           int order);
+                   const YBCPgTypeEntity *attr_type,
+                   int order);
 
   Status RenameColumn(const char *oldname, const char *newname);
 
@@ -273,5 +273,3 @@ class PgAlterTable : public PgDdl {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_PG_DDL_H_

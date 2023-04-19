@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_PACKED_ROW_H
-#define YB_DOCDB_PACKED_ROW_H
+#pragma once
 
 #include <optional>
 #include <unordered_map>
@@ -20,7 +19,7 @@
 #include <boost/functional/hash.hpp>
 
 #include <google/protobuf/repeated_field.h>
-
+#include "yb/cdc/cdc_util.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/column_id.h"
 
@@ -67,6 +66,12 @@ namespace docdb {
 // The rationale for this format is to have ability to extract column value with O(1) complexity.
 // Also it helps us to avoid storing common data for all rows, and put it to a single schema info.
 
+// Replaces the schema version in packed value with the provided schema version.
+// Note: Value starts with the schema version (does not contain control fields, value type).
+Status ReplaceSchemaVersionInPackedValue(const Slice& value,
+                                         const ValueControlFields& control_fields,
+                                         const cdc::XClusterSchemaVersionMap schema_versions_map,
+                                         ValueBuffer *out);
 class RowPacker {
  public:
   RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
@@ -94,6 +99,8 @@ class RowPacker {
   Result<bool> AddValue(
       ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size);
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
+  Result<bool> AddValue(
+      ColumnId column_id, const Slice& control_fields, const QLValuePB& value);
 
   Result<Slice> Complete();
 
@@ -113,5 +120,3 @@ class RowPacker {
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_PACKED_ROW_H

@@ -15,22 +15,22 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link active">
-      <i class="fas fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Default</a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
     <a href="../airgapped/" class="nav-link">
-      <i class="fas fa-unlink"></i>Airgapped</a>
+      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
   </li>
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes"></i>OpenShift</a>
+      <i class="fa-solid fa-cubes"></i>OpenShift</a>
   </li>
 
 </ul>

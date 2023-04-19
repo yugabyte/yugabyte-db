@@ -2,8 +2,8 @@
 
 from unittest import TestCase
 
-from ybops.utils import ReleasePackage
-from ybops.common.exceptions import YBOpsRuntimeError, get_exception_message
+from ybops.common.release import ReleasePackage
+from ybops.common.exceptions import get_exception_message
 
 
 class TestReleasePackage(TestCase):

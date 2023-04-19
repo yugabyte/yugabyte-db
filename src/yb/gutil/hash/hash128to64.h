@@ -16,8 +16,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef UTIL_HASH_HASH128TO64_H_
-#define UTIL_HASH_HASH128TO64_H_
+#pragma once
 
 #include "yb/gutil/int128.h"
 #include "yb/gutil/integral_types.h"
@@ -35,5 +34,3 @@ inline uint64 Hash128to64(const uint128& x) {
   b *= kMul;
   return b;
 }
-
-#endif  // UTIL_HASH_HASH128TO64_H_

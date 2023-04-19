@@ -1,9 +1,9 @@
 import React from 'react';
 import { Col, Row } from 'react-bootstrap';
-import { useSelector } from 'react-redux';
 import { Link } from 'react-router';
 import { XClusterConfig } from '../XClusterTypes';
-import { convertToLocalTime, getMasterNodeAddress } from '../ReplicationUtils';
+import { getMasterNodeAddress } from '../ReplicationUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 export function ReplicationOverview({
   replication,
@@ -15,7 +15,6 @@ export function ReplicationOverview({
   const {
     universeDetails: { nodeDetailsSet }
   } = destinationUniverse;
-  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
 
   return (
     <>
@@ -25,21 +24,21 @@ export function ReplicationOverview({
             <Col lg={2} className="noLeftPadding replication-label">
               Replication started
             </Col>
-            <Col lg={2}>{convertToLocalTime(replication.createTime, currentUserTimezone)}</Col>
+            <Col lg={2}>{ybFormatDate(replication.createTime)}</Col>
           </Row>
           <div className="replication-divider" />
           <Row>
             <Col lg={2} className="noLeftPadding replication-label">
               Replication last modified
             </Col>
-            <Col lg={2}>{convertToLocalTime(replication.modifyTime, currentUserTimezone)}</Col>
+            <Col lg={2}>{ybFormatDate(replication.modifyTime)}</Col>
           </Row>
         </Col>
       </Row>
       <div className="replication-divider" />
       <Row style={{ paddingLeft: '20px' }}>
         <Col lg={12}>
-          <b>Replication's Target Universe</b>
+          <b>{"Replication's Target Universe"}</b>
         </Col>
       </Row>
       <div className="replication-divider" />

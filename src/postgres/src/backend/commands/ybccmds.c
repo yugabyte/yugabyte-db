@@ -29,13 +29,13 @@
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/index.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_namespace.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_type_d.h"
@@ -68,6 +68,9 @@
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 
+/* Yugabyte includes */
+#include "catalog/pg_yb_tablegroup.h"
+
 /* Utility function to calculate column sorting options */
 static void
 ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_nulls_first)
@@ -96,6 +99,21 @@ ColumnSortingOptions(SortByDir dir, SortByNulls nulls, bool* is_desc, bool* is_n
 void
 YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bool colocated)
 {
+	if (YBIsDBCatalogVersionMode())
+	{
+		/*
+		 * In per database catalog version mode, disallow create database
+		 * if we come too close to the limit.
+		 */
+		int64_t num_databases = YbGetNumberOfDatabases();
+		int64_t num_reserved =
+			*YBCGetGFlags()->ysql_num_databases_reserved_in_db_catalog_version_mode;
+		if (kYBCMaxNumDbCatalogVersions - num_databases <= num_reserved)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("too many databases")));
+	}
+
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewCreateDatabase(dbname,
@@ -578,12 +596,17 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 	{
 		DefElem *def = (DefElem *) lfirst(opt_cell);
 
-		if (strcmp(def->defname, "colocated") == 0)
+		/*
+		 * A check in parse_utilcmd.c makes sure only one of these two options
+		 * can be specified.
+		 */
+		if (strcmp(def->defname, "colocated") == 0 ||
+			strcmp(def->defname, "colocation") == 0)
 		{
 			if (OidIsValid(tablegroupId))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot use \'colocated=true/false\' with tablegroup")));
+						 errmsg("cannot use \'colocation=true/false\' with tablegroup")));
 
 			bool colocated_relopt = defGetBoolean(def);
 			if (MyDatabaseColocated)
@@ -591,7 +614,7 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 			else if (colocated_relopt)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot set colocated true on a non-colocated"
+						 errmsg("cannot set colocation true on a non-colocated"
 								" database")));
 			/* The following break is fine because there should only be one
 			 * colocated reloption at this point due to checks in
@@ -609,6 +632,43 @@ YBCCreateTable(CreateStmt *stmt, char relkind, TupleDesc desc,
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot set colocation_id for non-colocated table")));
+
+	/*
+	 * Lazily create an underlying tablegroup in a colocated database if needed.
+	 */
+	if (is_colocated_via_database && !MyColocatedDatabaseLegacy)
+	{
+		tablegroupId = get_tablegroup_oid(DEFAULT_TABLEGROUP_NAME, true);
+		/* Default tablegroup doesn't exist, so create it. */
+		if (!OidIsValid(tablegroupId))
+		{
+			/*
+			 * Regardless of the current user, let postgres be the owner of the
+			 * default tablegroup in a colocated database.
+			 */
+			RoleSpec *spec = makeNode(RoleSpec);
+			spec->roletype = ROLESPEC_CSTRING;
+			spec->rolename = pstrdup("postgres");
+
+			CreateTableGroupStmt *tablegroup_stmt = makeNode(CreateTableGroupStmt);
+			tablegroup_stmt->tablegroupname = DEFAULT_TABLEGROUP_NAME;
+			tablegroup_stmt->implicit = true;
+			tablegroup_stmt->owner = spec;
+			tablegroupId = CreateTableGroup(tablegroup_stmt);
+			stmt->tablegroupname = pstrdup(DEFAULT_TABLEGROUP_NAME);
+		}
+		/* Record dependency between the table and default tablegroup. */
+		ObjectAddress myself, default_tablegroup;
+		myself.classId = RelationRelationId;
+		myself.objectId = relationId;
+		myself.objectSubId = 0;
+
+		default_tablegroup.classId = YbTablegroupRelationId;
+		default_tablegroup.objectId = tablegroupId;
+		default_tablegroup.objectSubId = 0;
+
+		recordDependencyOn(&myself, &default_tablegroup, DEPENDENCY_NORMAL);
+	}
 
 	HandleYBStatus(YBCPgNewCreateTable(db_name,
 									   schema_name,
@@ -697,16 +757,67 @@ YBCDropTable(Relation relation)
 													   false, /* if_exists */
 													   &handle),
 													   &not_found);
-		const bool valid_handle = !not_found;
-		if (valid_handle)
+		if (not_found)
+		{
+			return;
+		}
+		/*
+		 * YSQL DDL Rollback is not yet supported for colocated tables.
+		 */
+		if (*YBCGetGFlags()->ysql_ddl_rollback_enabled &&
+			!yb_props->is_colocated)
 		{
 			/*
-			 * We cannot abort drop in DocDB so postpone the execution until
-			 * the rest of the statement/txn is finished executing.
+			 * The following issues a request to the YB-Master to drop the
+			 * table once this transaction commits.
 			 */
-			YBSaveDdlHandle(handle);
+			HandleYBStatusIgnoreNotFound(YBCPgExecDropTable(handle),
+											&not_found);
+			return;
 		}
+		/*
+		 * YSQL DDL Rollback is disabled/unsupported. This means DocDB will not
+		 * rollback the drop if the transaction ends up failing. We cannot
+		 * abort drop in DocDB so postpone the execution until the rest of the
+		 * statement/txn finishes executing.
+		 */
+		YBSaveDdlHandle(handle);
 	}
+}
+
+/*
+ * This function is inspired by RelationSetNewRelfilenode() in
+ * backend/utils/cache/relcache.c It updates the tuple corresponding to the
+ * truncated relation in pg_class in the sys cache.
+ */
+static void
+YbOnTruncateUpdateCatalog(Relation rel)
+{
+	Relation	  pg_class;
+	HeapTuple	  tuple;
+	Form_pg_class classform;
+
+	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(RelationGetRelid(rel)));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "could not find tuple for relation %u", RelationGetRelid(rel));
+	classform = (Form_pg_class) GETSTRUCT(tuple);
+
+	if (rel->rd_rel->relkind != RELKIND_SEQUENCE)
+	{
+		classform->relpages = 0;
+		classform->reltuples = 0;
+		classform->relallvisible = 0;
+	}
+
+	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
+
+	heap_freetuple(tuple);
+	heap_close(pg_class, RowExclusiveLock);
+
+	/* This makes the pg_class row change visible. */
+	CommandCounterIncrement();
 }
 
 void
@@ -741,6 +852,9 @@ YbTruncate(Relation rel)
 		HandleYBStatus(YBCPgExecTruncateTable(handle));
 	}
 
+	/* Update catalog metadata of the truncated table */
+	YbOnTruncateUpdateCatalog(rel);
+
 	if (!rel->rd_rel->relhasindex)
 		return;
 
@@ -750,16 +864,19 @@ YbTruncate(Relation rel)
 	foreach(lc, indexlist)
 	{
 		Oid indexId = lfirst_oid(lc);
-
-		/* PK index is not secondary index, skip */
-		if (indexId == rel->rd_pkindex)
-			continue;
-
 		/*
 		 * Lock level doesn't fully work in YB.  Since YB TRUNCATE is already
 		 * considered to not be transaction-safe, it doesn't really matter.
 		 */
 		Relation indexRel = index_open(indexId, AccessExclusiveLock);
+
+		/* PK index is not secondary index, perform only catalog update */
+		if (indexId == rel->rd_pkindex) {
+			YbOnTruncateUpdateCatalog(indexRel);
+			index_close(indexRel, AccessExclusiveLock);
+			continue;
+		}
+
 		YbTruncate(indexRel);
 		index_close(indexRel, AccessExclusiveLock);
 	}
@@ -818,6 +935,7 @@ YBCCreateIndex(const char *indexName,
 			   Relation rel,
 			   OptSplit *split_options,
 			   const bool skip_index_backfill,
+			   bool is_colocated,
 			   Oid tablegroupId,
 			   Oid colocationId,
 			   Oid tablespaceId)
@@ -842,7 +960,9 @@ YBCCreateIndex(const char *indexName,
 									   rel->rd_rel->relisshared,
 									   indexInfo->ii_Unique,
 									   skip_index_backfill,
-									   false, /* if_not_exists */
+									   false /* if_not_exists */,
+									   MyDatabaseColocated && is_colocated
+									   /* is_colocated_via_database */,
 									   tablegroupId,
 									   colocationId,
 									   tablespaceId,
@@ -1157,8 +1277,23 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			if (cmd->subtype == AT_AttachPartition ||
 				cmd->subtype == AT_DetachPartition)
 			{
+				RangeVar *partition_rv = ((PartitionCmd *)cmd->def)->name;
+				Relation r = relation_openrv(partition_rv, AccessExclusiveLock);
+				char relkind = r->rd_rel->relkind;
+				relation_close(r, AccessShareLock);
+				/*
+				 * If alter is performed on an index as opposed to a table
+				 * skip schema version increment.
+				 */
+				if (relkind == RELKIND_INDEX ||
+					relkind == RELKIND_PARTITIONED_INDEX)
+				{
+					return handles;
+				}
+
 				dependent_rel = table_openrv(((PartitionCmd *)cmd->def)->name,
 											AccessExclusiveLock);
+
 				/*
 				 * If the partition table is not YB supported table including
 				 * foreign table, skip schema version increment.
@@ -1190,7 +1325,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					SearchSysCache1(RELOID, ObjectIdGetDatum(relationId));
 				if (!HeapTupleIsValid(reltup))
 					elog(ERROR,
-						 "Cache lookup failed for relation %u",
+						 "cache lookup failed for relation %u",
 						  relationId);
 				Form_pg_class relform = (Form_pg_class) GETSTRUCT(reltup);
 				ReleaseSysCache(reltup);

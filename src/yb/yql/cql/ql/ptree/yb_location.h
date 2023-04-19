@@ -17,8 +17,7 @@
 // or warning, SQL engine will use this value to indicate where the error occurs.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_YB_LOCATION_H_
-#define YB_YQL_CQL_QL_PTREE_YB_LOCATION_H_
+#pragma once
 
 #include <stdio.h>
 
@@ -98,5 +97,3 @@ operator<< (std::basic_ostream<YYChar>& ostr, const YBLocation& loc) {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_YB_LOCATION_H_

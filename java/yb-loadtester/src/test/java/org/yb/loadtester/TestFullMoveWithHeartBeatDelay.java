@@ -19,7 +19,7 @@ import static org.yb.AssertionWrappers.assertTrue;
 import com.google.common.net.HostAndPort;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,7 +30,7 @@ import java.util.Set;
  * (with injected heartbeat delays) without any significant impact to a running load test.
  */
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
   @Test(timeout = TEST_TIMEOUT_SEC * 1000) // 20 minutes.
@@ -52,12 +52,14 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
     addMaster(newMaster);
 
     // Prevent this master from becoming leader.
-    boolean status = client.setFlag(newMaster, "TEST_do_not_start_election_test_only", "true");
+    boolean status = client.setFlag(
+        newMaster, "TEST_do_not_start_election_test_only", "true", true);
     assertTrue(status);
 
     // Disable heartbeats for all tservers.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      status = client.setFlag(hp, "TEST_tserver_disable_heartbeat", "true");
+      status = client.setFlag(
+          hp, "TEST_tserver_disable_heartbeat", "true", true);
       assertTrue(status);
     }
     removeMaster(oldMaster);
@@ -66,7 +68,8 @@ public class TestFullMoveWithHeartBeatDelay extends TestClusterBase {
 
     // Enable heartbeats for old masters again.
     for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
-      status = client.setFlag(hp, "TEST_tserver_disable_heartbeat", "false");
+      status = client.setFlag(
+          hp, "TEST_tserver_disable_heartbeat", "false", true);
       assertTrue(status);
     }
 

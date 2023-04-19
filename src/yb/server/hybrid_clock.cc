@@ -41,13 +41,13 @@
 #include "yb/gutil/walltime.h"
 
 #include "yb/util/errno.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
 
-DEFINE_bool(use_hybrid_clock, true,
+DEFINE_UNKNOWN_bool(use_hybrid_clock, true,
             "Whether HybridClock should be used as the default clock"
             " implementation. This should be disabled for testing purposes only.");
 TAG_FLAG(use_hybrid_clock, hidden);
@@ -65,17 +65,17 @@ METRIC_DEFINE_gauge_int64(server, hybrid_clock_skew,
                            yb::MetricUnit::kMicroseconds,
                            "Server clock skew.");
 
-DEFINE_string(time_source, "",
+DEFINE_UNKNOWN_string(time_source, "",
               "The clock source that HybridClock should use (for tests only). "
               "Leave empty for WallClock, other values depend on added clock providers and "
               "specific for appropriate tests, that adds them.");
 TAG_FLAG(time_source, hidden);
 
-DEFINE_bool(fail_on_out_of_range_clock_skew, true,
+DEFINE_UNKNOWN_bool(fail_on_out_of_range_clock_skew, true,
             "In case transactional tables are present, crash the process if clock skew greater "
             "than the configured maximum.");
 
-DEFINE_uint64(clock_skew_force_crash_bound_usec, 60000000,
+DEFINE_UNKNOWN_uint64(clock_skew_force_crash_bound_usec, 60000000,
               "If the clock skew larger than this amount (microseconds) is observed, we will force "
               "a crash regardless of the value of fail_on_out_of_range_clock_skew. This is useful "
               "for avoiding really large hybrid clock jumps. Set to 0 to disable the check. Note "

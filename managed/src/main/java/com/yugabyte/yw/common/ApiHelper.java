@@ -120,6 +120,7 @@ public class ApiHelper {
 
   public JsonNode getRequest(String url, Map<String, String> headers, Map<String, String> params) {
     WSRequest request = requestWithHeaders(url, headers);
+    request.setFollowRedirects(true);
     if (!params.isEmpty()) {
       for (Map.Entry<String, String> entry : params.entrySet()) {
         request.setQueryParameter(entry.getKey(), entry.getValue());
@@ -146,7 +147,7 @@ public class ApiHelper {
     WSRequest request = wsClient.url(url);
     if (!headers.isEmpty()) {
       for (Map.Entry<String, String> entry : headers.entrySet()) {
-        request.setHeader(entry.getKey(), entry.getValue());
+        request.addHeader(entry.getKey(), entry.getValue());
       }
     }
     return request;
@@ -190,5 +191,10 @@ public class ApiHelper {
     CompletionStage<String> post =
         request.post(Source.from(partsList)).thenApply(WSResponse::getBody);
     return handleJSONPromise(post);
+  }
+
+  public CompletionStage<WSResponse> getSimpleRequest(String url, Map<String, String> headers) {
+    WSRequest request = requestWithHeaders(url, headers).setFollowRedirects(true);
+    return request.get();
   }
 }

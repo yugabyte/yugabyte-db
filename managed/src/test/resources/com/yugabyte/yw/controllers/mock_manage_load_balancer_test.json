@@ -1,0 +1,42 @@
+{
+  "LoadBalancers": [
+    {
+      "LoadBalancerArn":
+      "arn:aws:elasticloadbalancing:us-west-2:454529406029:loadbalancer/net/yb-spu-nlb/77d043677679338a",
+      "DNSName": "yb-spu-nlb-77d043677679338a.elb.us-west-2.amazonaws.com",
+      "CanonicalHostedZoneId": "Z18D5FSROUN65G",
+      "CreatedTime": "Thu Oct 06 14:53:39 PDT 2022",
+      "LoadBalancerName": "yb-spu-nlb",
+      "Scheme": "internet-facing",
+      "VpcId": "vpc-7376f615",
+      "State": {
+        "Code": "active"
+      },
+      "Type": "network",
+      "AvailabilityZones": [
+        {
+          "ZoneName": "us-west-2b",
+          "SubnetId": "subnet-eb77a48d",
+          "LoadBalancerAddresses": [
+
+          ]
+        },
+        {
+          "ZoneName": "us-west-2a",
+          "SubnetId": "subnet-11798e59",
+          "LoadBalancerAddresses": [
+
+          ]
+        },
+        {
+          "ZoneName": "us-west-2c",
+          "SubnetId": "subnet-1598fa4e",
+          "LoadBalancerAddresses": [
+
+          ]
+        }
+      ],
+      "IpAddressType": "ipv4"
+    }
+  ]
+}

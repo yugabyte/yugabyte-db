@@ -13,6 +13,8 @@ type: docs
 
 This document describes how to use triggers when performing data manipulation and definition.
 
+{{% explore-setup-single %}}
+
 ## Overview
 
 In YSQL, a function invoked automatically when an event associated with a table occurs is called a trigger. The event is typically caused by modification of data during `INSERT`, `UPDATE`, and `DELETE`. The even can also be caused by schema changes.
@@ -51,6 +53,8 @@ ON tbl_name [FOR [EACH] { ROW | STATEMENT }]
 ```
 
 The trigger *tr_name* fires before or after *event* which can be set to `INSERT` , `DELETE`, `UPDATE`, or `TRUNCATE`. *tbl_name* represents the table associated with the trigger. If you use the `FOR EACH ROW` clause, the scope of the trigger would be one row. If you use the `FOR EACH STATEMENT` clause, the trigger would be fired for each statement. *trigger_function* represents the procedure to be performed when the trigger is fired.
+
+### Example
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -159,6 +163,8 @@ DROP TRIGGER [IF EXISTS] tr_name
 
 *tr_name* represents the trigger to be deleted if it exists. If you try to delete a non-existing trigger without using the `IF EXISTS` statement, the `DROP TRIGGER` statement results in an error, whereas using `IF EXISTS` to delete a non-existing trigger results in a notice. *tbl_name* represents the table associated with the trigger. The `CASCADE` option allows you to automatically delete objects that depend on the trigger and the `RESTRICT` option (default) allows you to refuse to delete the trigger if it has dependent objects.
 
+### Example
+
 The following example demonstrates how to delete the `dept_changes` trigger used in the examples from [Create triggers](#create-triggers):
 
 ```sql
@@ -175,6 +181,8 @@ ALTER TABLE tbl_name
 ```
 
 *tbl_name* represents the table whose trigger represented by *tr_name* you are disabling. Using the `ALL` option allows you to disable all triggers associated with the table. A disabled trigger, even though it exists in the database, cannot fire on an event associated with this trigger.
+
+### Examples
 
 The following example shows how to disable a trigger on the `employees` table:
 
@@ -217,7 +225,7 @@ ALTER TABLE employees
 
 The main difference between regular triggers and event triggers is that the former capture data manipulation events on a single table, whereas the latter can capture data definition events on a database.
 
-The `CREATE EVENT TRIGGER` statement has he following syntax:
+The `CREATE EVENT TRIGGER` statement has the following syntax:
 
 ```sql
 CREATE EVENT TRIGGER tr_name ON event
@@ -226,6 +234,8 @@ CREATE EVENT TRIGGER tr_name ON event
 ```
 
 *tr_name*, which is unique in the database, represents the new trigger. *event* represents the event that triggers a call to the function  *function_name* whose return type is `event_trigger` (optional). You can define more than one trigger for the same event, in which case the triggers fire in alphabetical order based on the name of the trigger. If a `WHEN` condition is included in the `CREATE EVENT TRIGGER` statement, then the trigger is fired for specific commands. *filter_variable* needs to be set to`TAG`, as this is the only supported variable, and *filter_value* represents a list of values for *filter_variable*.
+
+### Example
 
 The following example is based on examples from [Create triggers](#create-triggers), except that the `record_dept_changes` function returns an event trigger instead of a regular trigger. The example shows how to create an  `sql_drop` trigger for one of the events currently supported by YSQL:
 

@@ -154,12 +154,15 @@ class ProcessTreeSupervisor():
             if pid != self.ancestor_pid:
                 process = get_process_by_pid(pid)
                 if process is None:
-                    logging.info("Child pid %d seems to have terminated on its own", pid)
+                    self.process_terminated(pid)
                 else:
                     self.report_stray_process(process, will_kill=self.args.terminate_subtree)
                     if self.args.terminate_subtree:
-                        os.kill(process.pid, signal.SIGKILL)
-                        killed_pids.append(process.pid)
+                        try:
+                            os.kill(process.pid, signal.SIGKILL)
+                            killed_pids.append(process.pid)
+                        except ProcessLookupError:
+                            self.process_terminated(pid)
 
         num_still_running = 0
         for killed_pid in killed_pids:

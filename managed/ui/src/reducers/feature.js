@@ -16,16 +16,19 @@ const initialStateFeatureInTest = {
   enableOIDC: true,
   supportBundle: false,
   enableThirdpartyUpgrade: false,
-  topNodeMetrics: false,
-  enableYbc: false,
+  enableYbc: true,
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  allowOptionalAuth: false,
-  enableTopKMetrics: false,
-  enablePITR: false,
-  enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableRunTimeConfig: true,
+  enablePITR: true,
+  enableNotificationTemplates: false,
+  enableRestore: true,
+  enablePrefillKubeConfig: true,
+  enableNewUI: true, // feature flag to enable new revamped UI,
+  enableCustomEmailTemplates: false,
+  enableAWSProviderValidation: false,
+  enableMKR: false
 };
 
 const initialStateFeatureReleased = {
@@ -44,16 +47,16 @@ const initialStateFeatureReleased = {
   enableOIDC: true,
   supportBundle: true,
   enableThirdpartyUpgrade: false,
-  topNodeMetrics: false,
-  enableYbc: false,
+  enableYbc: true,
   enableMultiRegionConfig: false,
   enableGcpKMS: true,
   enableAzuKMS: true,
-  enableTopKMetrics: false,
-  allowOptionalAuth: false,
-  enablePITR: false,
-  enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableRunTimeConfig: true,
+  enablePITR: true,
+  enableNotificationTemplates: false,
+  enableRestore: true,
+  enablePrefillKubeConfig: true,
+  enableCustomEmailTemplates: false
 };
 
 export const FeatureFlag = (

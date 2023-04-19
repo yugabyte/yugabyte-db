@@ -14,25 +14,31 @@ type: docs
 
   <li>
     <a href="../default/" class="nav-link">
-      <i class="fas fa-cloud"></i>Default</a>
+      <i class="fa-solid fa-cloud"></i>Default</a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>Kubernetes</a>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
   </li>
 
   <li>
     <a href="../airgapped/" class="nav-link active">
-      <i class="fas fa-unlink"></i>Airgapped</a>
+      <i class="fa-solid fa-link-slash"></i>Airgapped</a>
   </li>
 
   <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
 </ul>
+
+## Prerequisites
+
+If Docker is not installed on the host computer, you need to install a recent version that matches the minimum requirements outlined in [Installing Docker in Airgapped Environments](https://community.replicated.com/t/installing-docker-in-airgapped-environments/81).
+
+If access to the Docker repositories for your Linux distribution is not available on the host computer, you may have to manually transfer the necessary RPM or DEB packages whose locations are specified in [Installing Docker in Airgapped Environments](https://community.replicated.com/t/installing-docker-in-airgapped-environments/81).
 
 ## Install Replicated
 
@@ -95,7 +101,6 @@ sudo docker ps
 ```
 
 You should see an output similar to the following:
-
 
 ![Replicated successfully installed](/images/replicated/replicated-success.png)
 

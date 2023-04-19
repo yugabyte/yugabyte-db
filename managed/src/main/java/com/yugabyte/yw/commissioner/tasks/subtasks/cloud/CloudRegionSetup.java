@@ -22,21 +22,28 @@ import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import play.api.Play;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 
 @Slf4j
 public class CloudRegionSetup extends CloudTaskBase {
 
+  private final CloudQueryHelper queryHelper;
+
   @Inject
-  protected CloudRegionSetup(BaseTaskDependencies baseTaskDependencies) {
+  protected CloudRegionSetup(
+      BaseTaskDependencies baseTaskDependencies, CloudQueryHelper queryHelper) {
     super(baseTaskDependencies);
+    this.queryHelper = queryHelper;
   }
 
   public static class Params extends CloudTaskParams {
@@ -52,33 +59,51 @@ public class CloudRegionSetup extends CloudTaskBase {
 
   @Override
   public void run() {
-    CloudQueryHelper queryHelper = Play.current().injector().instanceOf(CloudQueryHelper.class);
     String regionCode = taskParams().regionCode;
+    Provider provider = getProvider();
     if (Region.getByCode(getProvider(), regionCode) != null) {
       throw new RuntimeException("Region " + regionCode + " already setup");
     }
-    if (!regionMetadata.containsKey(regionCode)) {
+    if (!regionMetadata.containsKey(regionCode)
+        && !provider.getCloudCode().equals(Common.CloudType.onprem)) {
       throw new RuntimeException("Region " + regionCode + " metadata not found");
     }
-    JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
-    Provider provider = getProvider();
-    final Region region = Region.createWithMetadata(provider, regionCode, metaData);
+    Region createdRegion = null;
+    if (provider.getCloudCode().equals(Common.CloudType.onprem)) {
+      // Create the onprem region using the config provided.
+      createdRegion =
+          Region.create(
+              provider,
+              regionCode,
+              taskParams().metadata.regionName,
+              taskParams().metadata.customImageId,
+              taskParams().metadata.latitude,
+              taskParams().metadata.longitude);
+    } else {
+      JsonNode metaData = Json.toJson(regionMetadata.get(regionCode));
+      createdRegion = Region.createWithMetadata(provider, regionCode, metaData);
+    }
+    final Region region = createdRegion;
     String customImageId = taskParams().metadata.customImageId;
+    String architecture =
+        taskParams().metadata.architecture != null
+            ? taskParams().metadata.architecture.name()
+            : null;
     if (customImageId != null && !customImageId.isEmpty()) {
-      region.ybImage = customImageId;
+      region.setYbImage(customImageId);
       region.update();
     } else {
-      switch (Common.CloudType.valueOf(provider.code)) {
-          // Intentional fallthrough as both AWS and GCP should be covered the same way.
+      switch (Common.CloudType.valueOf(provider.getCode())) {
+          // Intentional fallthrough for AWS, Azure & GCP should be covered the same way.
         case aws:
         case gcp:
         case azu:
           // Setup default image, if no custom one was specified.
-          String defaultImage = queryHelper.getDefaultImage(region);
+          String defaultImage = queryHelper.getDefaultImage(region, architecture);
           if (defaultImage == null || defaultImage.isEmpty()) {
             throw new RuntimeException("Could not get default image for region: " + regionCode);
           }
-          region.ybImage = defaultImage;
+          region.setYbImage(defaultImage);
           region.update();
           break;
       }
@@ -88,32 +113,49 @@ public class CloudRegionSetup extends CloudTaskBase {
       region.setSecurityGroupId(customSecurityGroupId);
       region.update();
     }
+    String instanceTemplate = taskParams().metadata.instanceTemplate;
+    if (instanceTemplate != null && !instanceTemplate.isEmpty()) {
+      if (region.getProvider().getCloudCode().equals(Common.CloudType.gcp)) {
+        GCPRegionCloudInfo g = CloudInfoInterface.get(region);
+        g.setInstanceTemplate(instanceTemplate);
+      }
+      region.update();
+    }
 
     // Attempt to find architecture for AWS providers.
-    if (provider.code.equals(Common.CloudType.aws.toString())) {
+    if (provider.getCode().equals(Common.CloudType.aws.toString())
+        && (region.getArchitecture() == null
+            || (customImageId != null && !customImageId.isEmpty()))) {
       String arch = queryHelper.getImageArchitecture(region);
       if (arch == null || arch.isEmpty()) {
         log.warn(
-            "Could not get architecture for image {} in region {}.", region.ybImage, region.code);
+            "Could not get architecture for image {} in region {}.",
+            region.getYbImage(),
+            region.getCode());
 
       } else {
         try {
+          // explicitly overriding arch name to maintain equivalent type of architecture.
+          if (arch.equals("arm64")) {
+            arch = Architecture.aarch64.name();
+          }
           region.setArchitecture(Architecture.valueOf(arch));
+          region.update();
         } catch (IllegalArgumentException e) {
-          log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.code);
+          log.warn("{} not a valid architecture. Skipping for region {}.", arch, region.getCode());
         }
       }
     }
 
     JsonNode zoneInfo;
-    switch (Common.CloudType.valueOf(provider.code)) {
+    switch (Common.CloudType.valueOf(provider.getCode())) {
       case aws:
         // Setup subnets.
         Map<String, String> zoneSubnets = taskParams().metadata.azToSubnetIds;
         // If no custom mapping, then query from devops.
         if (zoneSubnets == null || zoneSubnets.size() == 0) {
           // Since it is AWS, we will only have a VPC per region, and not a global destVpcId.
-          zoneInfo = queryHelper.getZones(region.uuid, taskParams().metadata.vpcId);
+          zoneInfo = queryHelper.getZones(region.getUuid(), taskParams().metadata.vpcId);
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
             region.delete();
             String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
@@ -121,28 +163,45 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneSubnets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
-        region.zones = new ArrayList<>();
+
+        // In case vpcID & securityGroup is missing, we will end up creating new VPC.
+        if (StringUtils.isBlank(taskParams().metadata.vpcId)
+            && StringUtils.isBlank(taskParams().metadata.customSecurityGroupId)) {
+          AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
+          awsCloudInfo.setVpcType(CloudInfoInterface.VPCType.NEW);
+          provider.getDetails().cloudInfo.setAws(awsCloudInfo);
+          provider.save();
+        }
+
+        region.setVnetName(taskParams().metadata.vpcId);
+        region.update();
+        region.setZones(new ArrayList<>());
         Map<String, String> zoneSecondarySubnets = taskParams().metadata.azToSecondarySubnetIds;
         // Secondary subnets were passed, which mean they should have a one to one mapping.
         // If not, throw an error.
         if (zoneSecondarySubnets != null && !zoneSecondarySubnets.isEmpty()) {
           zoneSubnets.forEach(
-              (zone, subnet) ->
-                  region.zones.add(
-                      AvailabilityZone.createOrThrow(
-                          region,
-                          zone,
-                          zone,
-                          subnet,
-                          Optional.ofNullable(zoneSecondarySubnets.get(zone))
-                              .orElseThrow(
-                                  () ->
-                                      new RuntimeException(
-                                          "Secondary subnets for all zones must be provided")))));
+              (zone, subnet) -> {
+                region
+                    .getZones()
+                    .add(
+                        AvailabilityZone.createOrThrow(
+                            region,
+                            zone,
+                            zone,
+                            subnet,
+                            Optional.ofNullable(zoneSecondarySubnets.get(zone))
+                                .orElseThrow(
+                                    () ->
+                                        new RuntimeException(
+                                            "Secondary subnets for all zones must be provided"))));
+              });
         } else {
           zoneSubnets.forEach(
               (zone, subnet) ->
-                  region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+                  region
+                      .getZones()
+                      .add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
         }
         break;
       case azu:
@@ -154,7 +213,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         region.setVnetName(vnet);
         region.update();
         if (zoneNets == null || zoneNets.size() == 0) {
-          zoneInfo = queryHelper.getZones(region.uuid, vnet);
+          zoneInfo = queryHelper.getZones(region.getUuid(), vnet);
           if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
             region.delete();
             String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
@@ -162,10 +221,10 @@ public class CloudRegionSetup extends CloudTaskBase {
           }
           zoneNets = Json.fromJson(zoneInfo.get(regionCode), Map.class);
         }
-        region.zones = new ArrayList<>();
+        region.setZones(new ArrayList<>());
         zoneNets.forEach(
             (zone, subnet) ->
-                region.zones.add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
+                region.getZones().add(AvailabilityZone.createOrThrow(region, zone, zone, subnet)));
         break;
       case gcp:
         ObjectNode customPayload = Json.newObject();
@@ -174,7 +233,7 @@ public class CloudRegionSetup extends CloudTaskBase {
         customPayload.set("perRegionMetadata", perRegionMetadata);
         zoneInfo =
             queryHelper.getZones(
-                region.uuid, taskParams().destVpcId, Json.stringify(customPayload));
+                region.getUuid(), taskParams().destVpcId, Json.stringify(customPayload));
         if (zoneInfo.has("error") || !zoneInfo.has(regionCode)) {
           region.delete();
           String errMsg = "Region Bootstrap failed. Unable to fetch zones for " + regionCode;
@@ -195,15 +254,31 @@ public class CloudRegionSetup extends CloudTaskBase {
         final String subnet = subnetId;
         // Will be null in case not provided.
         final String secondarySubnet = taskParams().metadata.secondarySubnetId;
-        region.zones = new ArrayList<>();
+        region.setZones(new ArrayList<>());
         zones.forEach(
             zone ->
-                region.zones.add(
-                    AvailabilityZone.createOrThrow(region, zone, zone, subnet, secondarySubnet)));
+                region
+                    .getZones()
+                    .add(
+                        AvailabilityZone.createOrThrow(
+                            region, zone, zone, subnet, secondarySubnet)));
+        break;
+      case onprem:
+        region.setZones(new ArrayList<>());
+        taskParams()
+            .metadata
+            .azList
+            .forEach(
+                zone ->
+                    region
+                        .getZones()
+                        .add(
+                            AvailabilityZone.createOrThrow(
+                                region, zone.getCode(), zone.getName(), null, null)));
         break;
       default:
         throw new RuntimeException(
-            "Cannot bootstrap region " + regionCode + " for provider " + provider.code + ".");
+            "Cannot bootstrap region " + regionCode + " for provider " + provider.getCode() + ".");
     }
   }
 }

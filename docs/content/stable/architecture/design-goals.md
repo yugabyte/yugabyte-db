@@ -37,11 +37,11 @@ YugabyteDB supports multi-row transactions with three isolation levels: `Seriali
 - The [YSQL](../../api/ysql/) API supports `Serializable`, `Snapshot` (default<sup>$</sup>) and `Read Committed` Isolation using the PostgreSQL isolation level syntax of `SERIALIZABLE`, `REPEATABLE READ` and `READ COMMITTED` respectively.
 - The [YCQL](../../api/ycql/dml_transaction/) API supports only `Snapshot Isolation` (default) using the `BEGIN TRANSACTION` syntax.
 
-<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (i.e., a statement will see all rows that are committed before it begins). But, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL. Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+<sup>$</sup> - `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (that is, a statement will see all rows that are committed before it begins). But, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot Isolation. Essentially this boils down to the fact that Snapshot Isolation is the default in YSQL. Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
 
 {{< tip title="YSQL vs PostgreSQL isolation levels" >}}
 
-Refer to the [table of isolation levels](/preview/explore/transactions/isolation-levels/) to learn how YSQL's isolation levels map to the levels defined by PostgreSQL.
+Refer to the [table of isolation levels](/preview/explore/transactions/isolation-levels/) to learn how YSQL isolation levels map to the levels defined by PostgreSQL.
 
 {{< /tip >}}
 
@@ -60,7 +60,7 @@ YugabyteDB does not reinvent data client APIs. It is wire-compatible with existi
 
 ### YSQL
 
-[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Note that YSQL [reuses the native query layer](https://blog.yugabyte.com/why-we-built-yugabytedb-by-reusing-the-postgresql-query-layer/) of the PostgreSQL open source project.
+[YSQL](../../api/ysql/) is a fully-relational SQL API that is wire compatible with the SQL language in PostgreSQL. It is best fit for RDBMS workloads that need horizontal write scalability and global data distribution while also using relational modeling features such as JOINs, distributed transactions and referential integrity (such as foreign keys). Note that YSQL [reuses the native query layer](https://www.yugabyte.com/blog/why-we-built-yugabytedb-by-reusing-the-postgresql-query-layer/) of the PostgreSQL open source project.
 
 - New changes do not break existing PostgreSQL functionality
 
@@ -122,7 +122,7 @@ YugabyteDB is a cloud-native database. It has been designed with the following c
 
 ### Run on commodity hardware
 
-- Run on any public cloud or on-premises data center. This means YugabyteDB should be able to run on commodity hardware on bare metal machines, VMs or containers.
+- Run on any public cloud or on-premises data center. This means YugabyteDB should be able to run on commodity hardware on bare metal machines, virtual machines, or containers.
 - No hard external dependencies. For example, YugabyteDB should not rely on atomic clocks, but should be able to utilize one if available.
 
 ### Kubernetes ready
@@ -137,12 +137,8 @@ YugabyteDB is open source under the very permissive Apache 2.0 license.
 
 You can now read about the following:
 
-{{< note title="" >}}
-
 - [Overview of the architectural layers in YugabyteDB](../layered-architecture/)
 - [Architecture of DocDB](../docdb/)
 - [Transactions in DocDB](../transactions/)
 - [Design of the query layer](../query-layer/)
 - [How various functions work, like the read and write IO paths](../core-functions/)
-
-{{< /note >}}

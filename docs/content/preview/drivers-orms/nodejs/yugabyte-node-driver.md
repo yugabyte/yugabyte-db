@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: YugabyteDB node-postgres Smart Driver
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Node.js drivers for YSQL
+description: Connect an application using YugabyteDB Node.js smart driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,20 +12,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../yugabyte-node-driver/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li>
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../yugabyte-node-driver/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -42,13 +41,19 @@ type: docs
 
 </ul>
 
-The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a distributed Node.js driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../smart-drivers/) features.
+The [YugabyteDB node-postgres smart driver](https://github.com/yugabyte/node-postgres) is a Node.js driver for [YSQL](../../../api/ysql/), built on the [PostgreSQL node-postgres driver](https://github.com/brianc/node-postgres), with additional [connection load balancing](../../smart-drivers/) features.
+
+{{< note title="YugabyteDB Managed" >}}
+
+To use smart driver load balancing features when connecting to clusters in YugabyteDB Managed, applications must be deployed in a VPC that has been peered with the cluster VPC. For applications that access the cluster from a non-peered network, use the upstream PostgreSQL driver instead; in this case, the cluster performs the load balancing. Applications that use smart drivers from non-peered networks fall back to the upstream driver behaviour automatically. For more information, refer to [Using smart drivers with YugabyteDB Managed](../../smart-drivers/#using-smart-drivers-with-yugabytedb-managed).
+
+{{< /note >}}
 
 ## CRUD operations
 
-Learn how to establish a connection to YugabyteDB database and begin basic CRUD operations using the steps in [Build an Application](../../../develop/build-apps/nodejs/ysql-pg/).
+The following sections demonstrate how to perform common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
 
-The following sections break down the example to demonstrate how to perform common tasks required for Node.js application development using the YugabyteDB node-postgres smart driver.
+To start building your application, make sure you have met the [prerequisites](../#prerequisites).
 
 ### Step 1: Download the driver dependency
 
@@ -66,20 +71,24 @@ The following table describes the connection parameters required to connect, inc
 
 | Parameter | Description | Default |
 | :-------- | :---------- | :------ |
-| host  | Hostname of the YugabyteDB instance | localhost |
+| host  | Host name of the YugabyteDB instance. | localhost |
 | port |  Listen port for YSQL | 5433 |
 | database | Database name | yugabyte |
 | user | Database user | yugabyte |
 | password | User password | yugabyte |
 | `loadBalance` | [Uniform load balancing](../../smart-drivers/#cluster-aware-connection-load-balancing) | Defaults to upstream driver behavior unless set to 'true' |
-| `topology_keys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
+| `ybServersRefreshInterval` | If `load_balance` is true, the interval in seconds to refresh the node list | 300
+| `topologyKeys` | [Topology-aware load balancing](../../smart-drivers/#topology-aware-connection-load-balancing) | If `loadBalance` is true, uses uniform load balancing unless set to comma-separated geo-locations in the form `cloud.region.zone`. |
 
 Create a client to connect to the cluster using a connection string. The following is an example connection string for connecting to a YugabyteDB cluster with uniform and topology load balancing:
 
 ```sh
-postgresql://user:password@host:port/database?loadBalance=true?
-    topology_keys=cloud.region.zone1,cloud.region.zone2
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true? \
+    ybServersRefreshInterval=240& \
+    topologyKeys=cloud.region.zone1,cloud.region.zone2
 ```
+
+After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
 #### Use SSL
 
@@ -93,17 +102,43 @@ The following table describes the connection parameters required to connect usin
 The following is an example connection string for connecting to a YugabyteDB cluster with SSL enabled.
 
 ```sh
-postgresql://user:password@host:port/database?loadBalance=true&ssl=true& \
+postgresql://yugabyte:yugabyte@128.0.0.1:5433/yugabyte?loadBalance=true&ssl=true& \
     sslmode=verify-full&sslrootcert=~/.postgresql/root.crt
 ```
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on default and supported SSL modes, and examples for setting up your connection strings when using SSL.
 
-Refer to [Configure SSL/TLS](../../../reference/drivers/nodejs/postgres-pg-reference/#configure-ssl-tls) for more information on node-postgresql default and supported SSL modes, and examples for setting up your connection strings when using SSL.
+#### Use SSL with YugabyeDB Managed
 
-### Step 3: Query the YugabyteDB cluster from your application
+If you created a cluster on YugabyteDB Managed, use the cluster credentials and [download the SSL Root certificate](../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/).
 
-Create a new JavaScript file called `QuickStartApp.js` in your project directory. Copy the following sample code, which sets up tables and queries the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate if required.
+With clusters in YugabyteDB Managed, you can't use SSL mode verify-full; other SSL modes are supported. To use the equivalent of verify-full, don't set the `sslmode` or `sslrootcert` parameters in your connection string; instead, use the `ssl` object with the following parameters:
+
+| Parameter | Description | Setting |
+| :-------- | :---------- | :------ |
+| rejectUnauthorized | If true, the server certificate is verified against the CA specified by the `servername` parameter | true |
+| ca | The cluster root certificate on your computer | fs.readFileSync('path/to/root.crt') |
+| servername | Host name of the YugabyteDB instance | |
+
+For example:
+
+```javascript
+async function createConnection(i){
+    const config = {
+        connectionString: "postgresql://admin:yugabyte@us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io:5433/yugabyte?loadBalance=true",
+    ssl: {
+        rejectUnauthorized: true,
+            ca: fs.readFileSync('./root.crt').toString(),
+            servername: 'us-west1.5afd2054-c213-4e53-9ec6-d15de0f2dcc5.aws.ybdb.io',
+        },
+    }
+```
+
+### Step 3: Write your application
+
+Create a new JavaScript file called `QuickStartApp.js` in your project directory.
+
+Copy the following sample code to set up tables and query the table contents. Replace the connection string `yburl` parameters with the cluster credentials and SSL certificate, if required.
 
 ```javascript
 const pg = require('@yugabytedb/pg');
@@ -162,7 +197,15 @@ async function fetchData(client){
 })();
 ```
 
-When you run the application using the command `node QuickStartApp.js`, you should see output similar to the following:
+## Run the application
+
+Run the application `QuickStartApp.js` using the following command:
+
+```js
+node QuickStartApp.js
+```
+
+You should see output similar to the following:
 
 ```output
 Connected to the YugabyteDB Cluster successfully.
@@ -176,10 +219,9 @@ Employees Information:
 
 If there is no output or you get an error, verify the parameters included in the connection string.
 
-After completing these steps, you should have a working Node.js application that uses the YugabyteDB node-postgres smart driver to connect to your cluster, set up tables, run queries, and print out results.
-
 ## Learn more
 
-- Build Node.js applications using [Sequelize ORM](../sequelize).
-- [Node.js driver reference](../../../reference/drivers/nodejs/yugabyte-pg-reference/#fundamentals)
+- Refer to [YugabyteDB node-postgres smart driver reference](../../../reference/drivers/nodejs/yugabyte-pg-reference/) and [Try it out](../../../reference/drivers/nodejs/yugabyte-pg-reference/#try-it-out) for detailed smart driver examples.
 - [YugabyteDB smart drivers for YSQL](../../smart-drivers/)
+- Build Node.js applications using [Sequelize ORM](../sequelize/)
+- Build Node.js applications using [Prisma ORM](../prisma/)

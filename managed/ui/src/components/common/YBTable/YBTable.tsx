@@ -12,6 +12,7 @@ import { BootstrapTable, BootstrapTableProps } from 'react-bootstrap-table';
 import { isFunction } from 'lodash';
 import './YBTable.scss';
 
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface YBTableProps extends BootstrapTableProps {}
 
 const getComputedClassName = (fn: Function | string | undefined, ...params: any[]) => {

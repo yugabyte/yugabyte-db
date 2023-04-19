@@ -1,4 +1,33 @@
+import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
+
+export interface HostInfo {
+  aws:
+    | {
+        'instance-id': string;
+        privateIp: string;
+        region: string;
+        'vpc-id': string;
+      }
+    | string;
+  gcp:
+    | {
+        network: string;
+        project: string;
+      }
+    | string;
+}
+
+export interface SuggestedKubernetesConfig {
+  config: {
+    KUBECONFIG_PULL_SECRET_NAME: string;
+    KUBECONFIG_PULL_SECRET_CONTENT: any;
+    KUBECONFIG_IMAGE_REGISTRY: string;
+    KUBECONFIG_PROVIDER: string;
+  };
+  regionList: { code: string; zoneList: { config: { STORAGE_CLASS: string }; name: string }[] }[];
+  name: string;
+}
 
 export interface PlacementAZ {
   uuid: string;
@@ -32,6 +61,28 @@ export enum CloudType {
   kubernetes = 'kubernetes',
   cloud = 'cloud-1',
   other = 'other'
+}
+
+// PublicCloudConstants.java
+export enum StorageType {
+  IO1 = 'IO1',
+  GP2 = 'GP2',
+  GP3 = 'GP3',
+  Scratch = 'Scratch',
+  Persistent = 'Persistent',
+  StandardSSD_LRS = 'StandardSSD_LRS',
+  Premium_LRS = 'Premium_LRS',
+  UltraSSD_LRS = 'UltraSSD_LRS'
+}
+
+export interface DeviceInfo {
+  volumeSize: number;
+  numVolumes: number;
+  diskIops: number | null;
+  throughput: number | null;
+  storageClass: 'standard'; // hardcoded in DeviceInfo.java
+  mountPoints: string | null;
+  storageType: StorageType | null;
 }
 
 // UniverseTaskParams.java
@@ -82,10 +133,11 @@ export interface UserIntent {
   instanceTags: FlagsObject | FlagsArray;
 }
 
-export enum ClusterType {
-  PRIMARY = 'PRIMARY',
-  ASYNC = 'ASYNC'
-}
+export const ClusterType = {
+  PRIMARY: 'PRIMARY',
+  ASYNC: 'ASYNC'
+} as const;
+export type ClusterType = typeof ClusterType[keyof typeof ClusterType];
 
 export interface Cluster {
   placementInfo: {
@@ -120,28 +172,6 @@ export interface EncryptionAtRestConfig {
   configUUID?: string; // KMS config Id field for configure/create calls
   key_op?: 'ENABLE' | 'DISABLE' | 'UNDEFINED'; // operation field for configure/create calls
   type?: 'DATA_KEY' | 'CMK';
-}
-
-// PublicCloudConstants.java
-export enum StorageType {
-  IO1 = 'IO1',
-  GP2 = 'GP2',
-  GP3 = 'GP3',
-  Scratch = 'Scratch',
-  Persistent = 'Persistent',
-  StandardSSD_LRS = 'StandardSSD_LRS',
-  Premium_LRS = 'Premium_LRS',
-  UltraSSD_LRS = 'UltraSSD_LRS'
-}
-
-export interface DeviceInfo {
-  volumeSize: number;
-  numVolumes: number;
-  diskIops: number | null;
-  throughput: number | null;
-  storageClass: 'standard'; // hardcoded in DeviceInfo.java
-  mountPoints: string | null;
-  storageType: StorageType | null;
 }
 
 // NodeDetails.java
@@ -219,6 +249,24 @@ export interface Universe {
   version: number;
 }
 
+export enum TableType {
+  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
+  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
+  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE',
+  TRANSACTION_STATUS_TABLE_TYPE = 'TRANSACTION_STATUS_TABLE_TYPE'
+}
+
+export interface YBTable {
+  isIndexTable: boolean;
+  keySpace: string;
+  pgSchemaName: string;
+  relationType: YBTableRelationType;
+  sizeBytes: number;
+  tableName: string;
+  tableType: TableType;
+  tableUUID: string;
+}
+
 // Provider.java
 export interface Provider {
   uuid: string;
@@ -251,13 +299,13 @@ export interface Region {
 }
 
 // InstanceType.java
-interface VolumeDetails {
+export interface VolumeDetails {
   volumeSizeGB: number;
   volumeType: 'EBS' | 'SSD' | 'HDD' | 'NVME';
   mountPath: string;
 }
 
-interface InstanceTypeDetails {
+export interface InstanceTypeDetails {
   tenancy: 'Shared' | 'Dedicated' | 'Host' | null;
   volumeDetailsList: VolumeDetails[];
 }
@@ -342,18 +390,12 @@ export interface HAReplicationSchedule {
   is_running: boolean;
 }
 
-export enum TableType {
-  YQL_TABLE_TYPE = 'YQL_TABLE_TYPE',
-  REDIS_TABLE_TYPE = 'REDIS_TABLE_TYPE',
-  PGSQL_TABLE_TYPE = 'PGSQL_TABLE_TYPE'
-}
-
-export const TABLE_TYPE_MAP: Record<TableType, string> = {
+export const TableTypeLabel: Record<TableType, string> = {
   YQL_TABLE_TYPE: 'YCQL',
   PGSQL_TABLE_TYPE: 'YSQL',
-  REDIS_TABLE_TYPE: 'REDIS'
-};
-
+  REDIS_TABLE_TYPE: 'REDIS',
+  TRANSACTION_STATUS_TABLE_TYPE: 'SYSTEM'
+} as const;
 
 export interface MetricsData {
   type: string;
@@ -361,7 +403,7 @@ export interface MetricsData {
   nodePrefixes: string;
   selectedUniverse: any;
   title: string;
-  tableName?: string
+  tableName?: string;
 }
 
 export interface GraphFilter {
@@ -378,6 +420,7 @@ export interface GraphFilter {
   selectedRegionClusterUUID?: string | null;
   selectedRegionCode?: string | null;
   selectedZoneName?: string | null;
+  currentSelectedNodeType: string | null;
 }
 
 export interface MetricSettings {
@@ -392,56 +435,47 @@ export interface MetricQueryParams {
   nodePrefix: string;
   nodeNames: string[];
 }
-export interface CpuMeasureQueryData {
-  maxNodeName: string;
-  maxNodeValue: number;
-  otherNodesAvgValue: number;
-}
-export interface CpuMeasureRecommendation {
-  data: CpuMeasureQueryData;
-  summary: React.ReactNode | string;
+
+// TODO: Need to move the above enums to global dtos file under src/redesign/utils as part of PLAT-7010
+
+// ---------------------------------------------------------------------------
+// Platform Result Types
+// Sources:
+// src/main/java/com/yugabyte/yw/forms/PlatformResults.java
+// src/main/java/com/yugabyte/yw/models/helpers/BaseBeanValidator.java
+// ---------------------------------------------------------------------------
+export interface YBPTask {
+  taskUUID: string;
+
+  resourceUUID?: string;
 }
 
-export interface CpuUsageRecommendation {
-  summary: React.ReactNode | string;
+export interface YBPSuccess {
+  message: string;
+  success: true;
 }
 
-export interface IndexSchemaQueryData {
-  table_name: string;
-  index_name: string;
-  index_command: string;
+export type YBPError = {
+  error: string;
+  httpMethod: string;
+  requestUri: string;
+  success: false;
+
+  errorJson?: {};
+};
+
+// TODO: Remove when YBPStructuredError is replaced by YBPError(json)
+export interface YBPStructuredError {
+  error: {};
+  success: false;
 }
 
-export interface IndexSchemaRecommendation {
-  data: IndexSchemaQueryData[];
-  summary: React.ReactNode | string;
+export interface YBPBeanValidationError extends YBPStructuredError {
+  error: {
+    errorSource: string[];
+    [x: string]: string[];
+  };
+  success: false;
 }
 
-export interface NodeDistributionData {
-  numSelect: number;
-  numInsert: number;
-  numUpdate: number;
-  numDelete: number;
-}
-
-export interface QueryLoadData {
-  maxNodeName: string;
-  percentDiff: number;
-  maxNodeDistribution: NodeDistributionData;
-  otherNodesDistribution: NodeDistributionData;
-}
-
-export interface QueryLoadRecommendation {
-  data: QueryLoadData;
-  summary: React.ReactNode | string;
-}
-
-export enum RecommendationTypeEnum {
-  All = 'All',
-  SchemaSuggestion = 'SchemaSuggestion',
-  QueryLoadSkew = 'QueryLoadSkew',
-  IndexSuggestion = 'IndexSuggestion',
-  ConnectionSkew = 'ConnectionSkew',
-  CpuSkew = 'CpuSkew',
-  CpuUsage = 'CpuUsage'
-}
+// ---------------------------------------------------------------------------

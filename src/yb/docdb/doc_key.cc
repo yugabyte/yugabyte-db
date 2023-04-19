@@ -16,6 +16,7 @@
 #include <memory>
 #include <sstream>
 
+#include "yb/common/ql_type.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/doc_kv_util.h"
@@ -412,6 +413,53 @@ Result<DocKeySizes> DocKey::EncodedHashPartAndDocKeySizes(
     .hash_part_size = static_cast<size_t>(callback.range_group_start() - initial_begin),
     .doc_key_size = static_cast<size_t>(decoder.left_input().data() - initial_begin),
   };
+}
+
+yb::DocKeyOffsets DocKey::ComputeKeyColumnOffsets(const Schema& schema) {
+  constexpr size_t key_entry_type_size = 1;
+  size_t offset = 0;
+
+  // Handle ColocationID or CotableID.
+  if (schema.has_colocation_id()) {
+    offset += key_entry_type_size + sizeof(ColocationId);
+  } else if (schema.has_cotable_id()) {
+    // Note: cotable id in key are not stored as string, where as key columns
+    // are stored as encoded string with additional padding.
+    offset += key_entry_type_size + kUuidSize;
+  }
+
+  DocKeyOffsets result;
+  result.key_offsets.reserve(schema.num_key_columns());
+
+  if (schema.num_hash_key_columns() != 0) {
+    offset += key_entry_type_size;  // kUInt16Hash.
+    offset += sizeof(DocKeyHash);
+
+    for (size_t i = 0; i < schema.num_hash_key_columns(); i++) {
+      result.key_offsets.push_back(offset);
+      const auto encoded_size =
+          KeyEntryValue::GetEncodedKeyEntryValueSize(schema.column(i).type()->main());
+      LOG_IF(DFATAL, encoded_size == 0)
+          << "Encountered a varlength column when computing Key offsets. Column "
+          << schema.column(i).name();
+      offset += encoded_size;
+    }
+
+    offset += key_entry_type_size;  // Hash group end.
+  }
+
+  result.hash_part_size = offset;
+
+  if (schema.num_range_key_columns() > 0) {
+    for (size_t i = schema.num_hash_key_columns(); i < schema.num_key_columns(); i++) {
+      result.key_offsets.push_back(offset);
+      offset += KeyEntryValue::GetEncodedKeyEntryValueSize(schema.column(i).type()->main());
+    }
+  }
+  offset += key_entry_type_size;  // Range group end.
+  result.doc_key_size = offset;
+
+  return result;
 }
 
 class DocKey::DecodeFromCallback {
@@ -1099,104 +1147,6 @@ void SubDocKey::KeepPrefix(size_t num_sub_keys_to_keep) {
   }
 }
 
-// ------------------------------------------------------------------------------------------------
-// DocDbAwareFilterPolicy
-// ------------------------------------------------------------------------------------------------
-
-namespace {
-
-template<DocKeyPart doc_key_part>
-class DocKeyComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
- public:
-  DocKeyComponentsExtractor(const DocKeyComponentsExtractor&) = delete;
-  DocKeyComponentsExtractor& operator=(const DocKeyComponentsExtractor&) = delete;
-
-  static DocKeyComponentsExtractor& GetInstance() {
-    static DocKeyComponentsExtractor<doc_key_part> instance;
-    return instance;
-  }
-
-  // For encoded DocKey extracts specified part, for non-DocKey returns empty key, so they will
-  // always match the filter (this is correct, but might be optimized for performance if/when
-  // needed).
-  // As of 2020-05-12 intents DB could contain keys in non-DocKey format.
-  Slice Transform(Slice key) const override {
-    auto size_result = DocKey::EncodedSize(key, doc_key_part);
-    return size_result.ok() ? Slice(key.data(), *size_result) : Slice();
-  }
-
- private:
-  DocKeyComponentsExtractor() = default;
-};
-
-class HashedDocKeyUpToHashComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
- public:
-  HashedDocKeyUpToHashComponentsExtractor(const HashedDocKeyUpToHashComponentsExtractor&) = delete;
-  HashedDocKeyUpToHashComponentsExtractor& operator=(
-      const HashedDocKeyUpToHashComponentsExtractor&) = delete;
-
-  static HashedDocKeyUpToHashComponentsExtractor& GetInstance() {
-    static HashedDocKeyUpToHashComponentsExtractor instance;
-    return instance;
-  }
-
-  // For encoded DocKey with hash code present extracts prefix up to hashed components,
-  // for non-DocKey or DocKey without hash code (for range-partitioned tables) returns empty key,
-  // so they will always match the filter.
-  Slice Transform(Slice key) const override {
-    auto size_result = DocKey::EncodedSizeAndHashPresent(key, DocKeyPart::kUpToHash);
-    return (size_result.ok() && size_result->second) ? Slice(key.data(), size_result->first)
-                                                     : Slice();
-  }
-
- private:
-  HashedDocKeyUpToHashComponentsExtractor() = default;
-};
-
-} // namespace
-
-void DocDbAwareFilterPolicyBase::CreateFilter(
-    const rocksdb::Slice* keys, int n, std::string* dst) const {
-  CHECK_GT(n, 0);
-  return builtin_policy_->CreateFilter(keys, n, dst);
-}
-
-bool DocDbAwareFilterPolicyBase::KeyMayMatch(
-    const rocksdb::Slice& key, const rocksdb::Slice& filter) const {
-  return builtin_policy_->KeyMayMatch(key, filter);
-}
-
-rocksdb::FilterBitsBuilder* DocDbAwareFilterPolicyBase::GetFilterBitsBuilder() const {
-  return builtin_policy_->GetFilterBitsBuilder();
-}
-
-rocksdb::FilterBitsReader* DocDbAwareFilterPolicyBase::GetFilterBitsReader(
-    const rocksdb::Slice& contents) const {
-  return builtin_policy_->GetFilterBitsReader(contents);
-}
-
-rocksdb::FilterPolicy::FilterType DocDbAwareFilterPolicyBase::GetFilterType() const {
-  return builtin_policy_->GetFilterType();
-}
-
-const rocksdb::FilterPolicy::KeyTransformer*
-DocDbAwareHashedComponentsFilterPolicy::GetKeyTransformer() const {
-  return &DocKeyComponentsExtractor<DocKeyPart::kUpToHash>::GetInstance();
-}
-
-const rocksdb::FilterPolicy::KeyTransformer*
-DocDbAwareV2FilterPolicy::GetKeyTransformer() const {
-  // We want for DocDbAwareV2FilterPolicy to disable bloom filtering during read path for
-  // range-partitioned tablets (see https://github.com/yugabyte/yugabyte-db/issues/6435,
-  // https://github.com/yugabyte/yugabyte-db/issues/8731).
-  return &HashedDocKeyUpToHashComponentsExtractor::GetInstance();
-}
-
-const rocksdb::FilterPolicy::KeyTransformer*
-DocDbAwareV3FilterPolicy::GetKeyTransformer() const {
-  return &DocKeyComponentsExtractor<DocKeyPart::kUpToHashOrFirstRange>::GetInstance();
-}
-
 DocKeyEncoderAfterTableIdStep DocKeyEncoder::CotableId(const Uuid& cotable_id) {
   if (!cotable_id.IsNil()) {
     std::string bytes;
@@ -1333,15 +1283,9 @@ Result<bool> DocKeyDecoder::HasPrimitiveValue(AllowSpecial allow_special) {
   return docdb::HasPrimitiveValue(&input_, allow_special);
 }
 
-Status DocKeyDecoder::DecodeToRangeGroup() {
+Status DocKeyDecoder::DecodeToKeys() {
   RETURN_NOT_OK(DecodeCotableId());
   RETURN_NOT_OK(DecodeColocationId());
-  if (VERIFY_RESULT(DecodeHashCode())) {
-    while (VERIFY_RESULT(HasPrimitiveValue())) {
-      RETURN_NOT_OK(DecodeKeyEntryValue());
-    }
-  }
-
   return Status::OK();
 }
 
@@ -1438,6 +1382,19 @@ bool DocKeyBelongsTo(Slice doc_key, const Schema& schema) {
     BigEndian::Store32(buf, schema.colocation_id());
     return doc_key.starts_with(Slice(buf, sizeof(ColocationId)));
   }
+}
+
+Result<bool> IsColocatedTableTombstoneKey(Slice doc_key) {
+  DocKeyDecoder decoder(doc_key);
+  if (VERIFY_RESULT(decoder.DecodeColocationId())) {
+    RETURN_NOT_OK(decoder.ConsumeGroupEnd());
+
+    if (decoder.left_input().size() == 0) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 Result<boost::optional<DocKeyHash>> DecodeDocKeyHash(const Slice& encoded_key) {

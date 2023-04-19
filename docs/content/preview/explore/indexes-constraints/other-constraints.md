@@ -1,7 +1,9 @@
 ---
-title: Other constraints
+title: Other constraints in YugabyteDB YSQL
+headerTitle: Other constraints
 linkTitle: Other constraints
 description: Other constraints in YSQL
+headContent: Explore other constraints in YugabyteDB using YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
@@ -22,6 +24,8 @@ type: docs
     </a>
   </li>
 </ul>
+
+{{% explore-setup-single %}}
 
 ## CHECK Constraint
 
@@ -125,5 +129,5 @@ YSQL provides a `NOT NULL` constraint as a means to control whether or not a col
 
 For additional information and examples, see the following:
 
-- [Defining NOT NULL Constraint](../../ysql-language-features/data-manipulation/#defining-not-null-constraint)
+- [Define NOT NULL constraint](../../ysql-language-features/data-manipulation/#define-not-null-constraint)
 - [Not-Null Constraints in PostgreSQL documentation](https://www.postgresql.org/docs/11/ddl-constraints.html#id-1.5.4.5.6)

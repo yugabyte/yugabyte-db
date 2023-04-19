@@ -1,3 +1,8 @@
+<!--
++++
+private = true
++++
+-->
 
 * Initialize the YEDIS API.
 
@@ -13,8 +18,8 @@ $ ./bin/yb-ctl setup_redis
 $ ./bin/redis-cli
 ```
 
-```
-127.0.0.1:6379> 
+```output
+127.0.0.1:6379>
 ```
 
 * Run a Redis command to verify it is working.
@@ -23,6 +28,6 @@ $ ./bin/redis-cli
 127.0.0.1:6379> PING
 ```
 
-```
+```output
 "PONG"
 ```

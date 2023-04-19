@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 alter_user ::= ALTER USER role_specification 
                [ [ WITH ] alter_role_option [ , ... ] ]
 

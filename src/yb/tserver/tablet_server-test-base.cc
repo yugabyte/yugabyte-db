@@ -40,7 +40,7 @@
 #include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_service.proxy.h"
 
-#include "yb/util/auto_flags.h"
+#include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
@@ -51,8 +51,8 @@ using std::vector;
 
 using namespace std::literals;
 
-DEFINE_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");
-DEFINE_int32(num_updater_threads, 1, "Number of updating threads to launch");
+DEFINE_UNKNOWN_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");
+DEFINE_UNKNOWN_int32(num_updater_threads, 1, "Number of updating threads to launch");
 DECLARE_bool(durable_wal_write);
 DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(enable_data_block_fsync);
@@ -128,7 +128,7 @@ void TabletServerTestBase::StartTabletServer() {
   auto addr = std::make_shared<server::MasterAddresses>();
   addr->push_back({HostPort("255.255.255.255", 1)});
   mini_server_->options()->SetMasterAddresses(addr);
-  CHECK_OK(mini_server_->Start());
+  CHECK_OK(mini_server_->Start(tserver::WaitTabletsBootstrapped::kFalse));
 
   // Set up a tablet inside the server.
   CHECK_OK(mini_server_->AddTestTablet(
@@ -334,7 +334,6 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
   mini_server_->options()->SetMasterAddresses(addr);
   // this should open the tablet created on StartTabletServer()
   RETURN_NOT_OK(mini_server_->Start());
-  RETURN_NOT_OK(mini_server_->WaitStarted());
 
   tablet_peer_ = VERIFY_RESULT(mini_server_->server()->tablet_manager()->GetTablet(kTabletId));
   // Connect to it.
@@ -352,8 +351,7 @@ void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValu
 
   int count = 0;
   QLTableRow row;
-  while (ASSERT_RESULT((**iter).HasNext())) {
-    ASSERT_OK_FAST((**iter).NextRow(&row));
+  while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     ++count;
   }
   ASSERT_EQ(count, expected.size());

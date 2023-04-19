@@ -1,7 +1,7 @@
 ---
-title: Queries and Joins
-linkTitle: Queries and Joins
-description: Queries and Joins in YSQL
+title: Queries and joins
+linkTitle: Queries and joins
+description: Queries and joins in YSQL
 image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
@@ -13,7 +13,7 @@ type: docs
 
 This section describes how to query YugabyteDB using the YSQL `SELECT` statement and its clauses.
 
-## Querying Data
+## Query data
 
 The main purpose of `SELECT` statements is to retrieve data from specified tables. Typically, the first part of every `SELECT` statement defines columns that contain the required data, the second part points to the tables hosting these columns, and the third, optional part, lists restrictions.
 
@@ -27,7 +27,7 @@ SELECT list FROM table_name;
 
 Note that the `FROM` clause is evaluated before `SELECT`.
 
-The following `SELECT` statement clauses provide flexiblity and allow you to fine-tune queries:
+The following `SELECT` statement clauses provide flexibility and allow you to fine-tune queries:
 
 - The `DISTINCT` operator allows you to select distinct rows.
 - The `ORDER BY` clause lets you sort rows.
@@ -37,7 +37,9 @@ The following `SELECT` statement clauses provide flexiblity and allow you to fin
 - The `HAVING` clause lets you filter groups.
 - The `INNER JOIN`, `LEFT JOIN`, `FULL OUTER JOIN`, and `CROSS JOIN` clauses let you create joins with other tables.
 
-### SELECT Examples
+### SELECT examples
+
+{{% explore-setup-single %}}
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -83,7 +85,7 @@ SELECT employee_no, name || ' ' || department FROM employees;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | ?column
 ------------+---------------------------
 1221        | John Smith Marketing
@@ -104,7 +106,7 @@ You can always view your table definitions by executing the following command:
 yugabyte=# \d employees
 ```
 
-### Column Aliases
+### Column aliases
 
 You can use YSQL column aliases to provide meaningful column headers to a query output by assigning a temporary name to a column or an expression in the select list of your `SELECT` statement. An alias lifecycle ends as soon as the query finished executing.
 
@@ -126,7 +128,7 @@ The following syntax is used for setting an alias for an expression:
 SELECT expression AS alias_name FROM table_name;
 ```
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how to retrieve data that includes the employee name and department:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how to retrieve data that includes the employee name and department:
 
 ```sql
 SELECT name, department FROM employees;
@@ -140,7 +142,7 @@ SELECT name, department AS section FROM employees;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 name                | section
 --------------------+---------------------------
 John Smith          | Marketing
@@ -155,7 +157,7 @@ Column aliases may contain spaces. In this case, you enclose them in double quot
 SELECT name, department AS "section of the company" FROM employees;
 ```
 
-### Sorting and Ordering Data
+### Sort and order data
 
 The `SELECT` statement returns data in an unspecified order. You can use the `SELECT` statement's `ORDER BY` clause to sort the rows of the query result set in ascending or descending order based on a sort expression.
 
@@ -173,7 +175,7 @@ SELECT list
 
 The `ORDER BY` clause is evaluated after `FROM` and `SELECT`. This gives you an opportunity to specify a column alias in the `SELECT` statement and use this alias in the `ORDER BY` clause.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how sort employees based on their name in ascending order:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how sort employees based on their name in ascending order:
 
 ```sql
 SELECT name, department FROM employees ORDER BY name DESC;
@@ -181,7 +183,7 @@ SELECT name, department FROM employees ORDER BY name DESC;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 name                | department
 --------------------+---------------------------
 Lucille Ball        | Operations
@@ -201,7 +203,7 @@ SELECT name, department FROM employees
 
 The following is the output produced by the preceding example:
 
-```
+```output
 name                | department
 --------------------+---------------------------
 Bette Davis         | Sales
@@ -221,7 +223,7 @@ SELECT department FROM employees
   ORDER BY department ASC NULLS FIRST;
 ```
 
-### Duplicate Rows
+### Duplicate rows
 
 You can use the `DISTINCT` clause in the `SELECT` statement to remove duplicate rows from a query result. The `DISTINCT` clause keeps one row for each set of duplicates. You can apply this clause to columns included in the `SELECT` statement's select list.
 
@@ -233,7 +235,7 @@ SELECT DISTINCT column_name FROM table_name;
 
 In cases when multiple columns are used, the `DISTINCT` clause combines values of these columns to evaluate the duplicate.
 
-Since the order of rows returned by the `SELECT` statement is unspecified, the first row of each set of duplicates is unknown. `DISTINCT ON (expression)` allows you to keep the first row of each set of duplicates. using the following syntax:
+Because the order of rows returned by the `SELECT` statement is unspecified, the first row of each set of duplicates is unknown. `DISTINCT ON (expression)` allows you to keep the first row of each set of duplicates. using the following syntax:
 
 The `DISTINCT ON (expression)` clause has the following syntax:
 
@@ -243,7 +245,7 @@ SELECT DISTINCT ON (column_name_1) column_alias, column_name_2
   ORDER BY column_name_1, column_name_2;
 ```
 
-The following series of examples inserts new rows into the table from [SELECT Examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
+The following series of examples inserts new rows into the table from [SELECT examples](#select-examples), then queries the `employees` table using `SELECT` with its `DISTINCT` option enabled, thus removing duplicate values, and then sorts the result set in descending order based on the employee name:
 
 ```sql
 INSERT INTO employees (employee_no, name, department)
@@ -258,7 +260,7 @@ SELECT DISTINCT name FROM employees ORDER BY name DESC;
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 name
 --------------------
 Lucille Ball
@@ -268,7 +270,7 @@ Jean Harlow
 Bette Davis
 ```
 
-### Case Sensitivity
+### Case sensitivity
 
 YSQL converts identifiers to lowercase unless they are enclosed in quotation marks. That is, YSQL is case-insensitive for all practical purposes by default. For example, a table called `Employees` would be recognized as the `employees` table and the following query would be executed on the `employees` table without any problems:
 
@@ -282,7 +284,7 @@ The following example shows how to run a query specifically on a table called `E
 SELECT name FROM "Employees";
 ```
 
-## Filtering Data
+## Filter data
 
 The `WHERE` clause allows you to filter data returned by the `SELECT` statement. Only the rows that satisfy a specified condition are included in the result set.
 
@@ -296,7 +298,7 @@ SELECT list FROM table_name
 
 *condition* is a boolean expression or a combination of boolean expressions created with `AND` and `OR` logical operators. *condition* evaluates to `TRUE`, `FALSE`, or unknown. The result set only returns rows that cause *condition* to evaluate to `TRUE`.
 
-The following example uses the table from [SELECT Examples](#select-examples) to demonstrate how to use the `AND` operator to combine two Boolean expressions in order to find an employee number of a specific employee working for a specified department:
+The following example uses the table from [SELECT examples](#select-examples) to demonstrate how to use the `AND` operator to combine two Boolean expressions in order to find an employee number of a specific employee working for a specified department:
 
 ```sql
 SELECT employee_no FROM employees
@@ -305,7 +307,7 @@ SELECT employee_no FROM employees
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no
 --------------------
 1221
@@ -320,7 +322,7 @@ SELECT employee_no FROM employees
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no
 --------------------
 1221
@@ -343,14 +345,14 @@ SELECT name, department FROM employees WHERE name LIKE 'John%';
 
 The following is the output produced by the preceding example:
 
-```
+```output
 name            | department
 ----------------+--------------------
 John Smith      | Sales
 John Zimmerman  | Marketing
 ```
 
-YSQL also allows you to use numeric expressions and dates in the `WHERE` clause, as shown in the following examples that use the table from [SELECT Examples](#select-examples):
+YSQL also allows you to use numeric expressions and dates in the `WHERE` clause, as shown in the following examples that use the table from [SELECT examples](#select-examples):
 
 ```sql
 SELECT name FROM employees WHERE employee_no = 1000 + 222;
@@ -358,7 +360,7 @@ SELECT name FROM employees WHERE employee_no = 1000 + 222;
 
 The following is the output produced by the preceding example:
 
-```
+```output
 name
 --------------------
 Bette Davis
@@ -373,13 +375,13 @@ SELECT name FROM employees
 
 If one of the employee records was last modified on specific date and time, then the following could be the output produced by the preceding example:
 
-```
+```output
 name
 --------------------
 John Smith
 ```
 
-### The LIMIT Clause
+### LIMIT clause
 
 The `LIMIT` clause of the `SELECT` statement allows you to impose constrains on the number of rows that your query can return.
 
@@ -402,9 +404,9 @@ SELECT list FROM table_name
 
 *row_skip* represents the number of rows that the query skips before returning *rows_number* rows. If *row_skip* is set to zero, the query result is the same as if the `SELECT` statement did not contain the `OFFSET` clause.
 
-Since rows are often stored in tables in an unspecified order, it is recommended that you include the `ORDER BY` clause in `SELECT` statements that contain the `LIMIT` clause.
+Because rows are often stored in tables in an unspecified order, it is recommended that you include the `ORDER BY` clause in `SELECT` statements that contain the `LIMIT` clause.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve the first two employees sorted by their number:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how retrieve the first two employees sorted by their number:
 
 ```sql
 SELECT employee_no, name FROM employees
@@ -414,7 +416,7 @@ SELECT employee_no, name FROM employees
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | name
 ------------+--------------------
 1221        | John Smith
@@ -432,7 +434,7 @@ SELECT name, department FROM employees
 
 The following is the output produced by the preceding example:
 
-```
+```output
 name                | department
 --------------------+----------------------
 John Smith          | Marketing
@@ -440,7 +442,7 @@ John Zimmerman      | Sales
 Lucille Ball        | Operations
 ```
 
-### The LIKE Operator
+### LIKE operator
 
 There are cases when you do not know the exact query parameter but have an idea of a partial parameter. Using the `LIKE` operator allows you to match this partial information with existing data based on a pattern recognition.
 
@@ -452,7 +454,7 @@ value LIKE pattern
 
 The expression evaluates to `true` if *value* matches *pattern*.
 
-For example, if your goal is to find an employee and their department, yet you only know that the employee name starts with Luci, you can execute the following query on a table created in [SELECT Examples](#select-examples):
+For example, if your goal is to find an employee and their department, yet you only know that the employee name starts with "Luci", you can execute the following query on a table created in [SELECT examples](#select-examples):
 
 ```sql
 SELECT name, department FROM employees WHERE name LIKE 'Luci%';
@@ -460,7 +462,7 @@ SELECT name, department FROM employees WHERE name LIKE 'Luci%';
 
 The following is the output produced by the preceding example:
 
-```
+```output
 name          | department
 --------------+----------------
 Lucille Ball  | Operations
@@ -482,7 +484,7 @@ value NOT LIKE pattern
 
 The `NOT LIKE` operator behaves as an opposite of the `LIKE` operator and returns `true` when *value* does not match the *pattern*.
 
-## Grouping Data
+## Group data
 
 YSQL allows you to divide rows of the result set into groups using the `GROUP BY` clause of the `SELECT` statement. You can apply an aggregate function to each group to calculate the sum of items. You can also count items in a group using the `COUNT()` function.
 
@@ -500,7 +502,7 @@ The purpose of the statement clause is to divide the rows by the values of the c
 
 The `GROUP BY` clause is evaluated after the `FROM` and `WHERE` clauses but before the `HAVING`, `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how retrieve data from a table and group the result by `employee_no`:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how retrieve data from a table and group the result by `employee_no`:
 
 ```sql
 SELECT employee_no FROM employees GROUP BY employee_no;
@@ -514,7 +516,7 @@ If the `employees` table had an `amount` column with the employee pay data, the 
 SELECT employee_no, SUM (amount) FROM employees GROUP BY employee_no;
 ```
 
-### The HAVING Clause
+### HAVING clause
 
 To define search condition for a group or an aggregate, you can use the `HAVING` clause. If you use this clause in combination with the `GROUP BY` clause, you can filter groups and aggregates based on the condition.
 
@@ -529,9 +531,9 @@ SELECT column_1, aggregate_function(column_2)
 
 The `GROUP BY` clause returns rows grouped by *column_1*.  The `HAVING` clause specifies *condition* to filter the groups.
 
-The `HAVING` clause is evaluated after the `FROM`, `WHERE`, `GROUP BY`, but before the `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses. Since the `HAVING` clause is evaluated before the `SELECT` clause, you cannot use column aliases in the `HAVING` clause.
+The `HAVING` clause is evaluated after the `FROM`, `WHERE`, `GROUP BY`, but before the `SELECT`, `DISTINCT`, `ORDER BY`, and `LIMIT` clauses. Because the `HAVING` clause is evaluated before the `SELECT` clause, you cannot use column aliases in the `HAVING` clause.
 
-Using the table from [SELECT Examples](#select-examples), the following example demonstrates how to select the department that has more than one employee:
+Using the table from [SELECT examples](#select-examples), the following example demonstrates how to select the department that has more than one employee:
 
 ```sql
 SELECT department, COUNT (employee_no)
@@ -542,13 +544,13 @@ SELECT department, COUNT (employee_no)
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 department  | count
 ------------+----------
 Sales       | 2
 ```
 
-## Joining Columns
+## Join columns
 
 You can combine (join) columns from the same or different tables based on the values of the common columns between related tables. Typically, common columns contain primary keys in the first table and foreign key in the second table.
 
@@ -589,7 +591,7 @@ INSERT INTO permanent_employees VALUES
 
 The following is the `fulltime_employees` table:
 
-```
+```output
 ft_employee_no  | ft_name           | ft_department
 ----------------+-------------------+-------------------
 1221            | John Smith        | Marketing
@@ -600,7 +602,7 @@ ft_employee_no  | ft_name           | ft_department
 
 The following is the `permanent_employees` table:
 
-```
+```output
 perm_employee_no  | perm_name           | perm_department
 ------------------+---------------------+----------------------
 1221              | Lucille Ball        | Operations
@@ -615,7 +617,7 @@ yugabyte=# \d fulltime_employees
 yugabyte=# \d permanent_employees
 ```
 
-### Inner Join
+### Inner join
 
 The following example demonstrates how to join the `fulltime_employees` table with the `permanent_employees` table by matching the values in the `ft_name` and `perm_name` columns:
 
@@ -628,7 +630,7 @@ SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 ft_employee_no  | ft_name       | perm_employee_no | perm_name
 ----------------+---------------+------------------+----------------
 1221            | John Smith    | 1223             | John Smith
@@ -637,7 +639,7 @@ ft_employee_no  | ft_name       | perm_employee_no | perm_name
 
 Each row of the `fulltime_employees` table has been examined and the value in its `ft_name` column compared with the value in the `perm_name` column for each row in the `permanent_employees` table. In case of equal values, a new row was created and its columns populated by values from both tables, then this new row was added to the result set.
 
-### Left Outer Join
+### Left outer join
 
 The following example demonstrates how to use the left join to join the `fulltime_employees` table (left table) with the `permanent_employees` table (right table):
 
@@ -650,7 +652,7 @@ SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 ----------------+-----------------+-------------------+-----------------
 1221            | John Smith      | 1223              | John Smith
@@ -661,7 +663,7 @@ ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 
 The statement execution starts by selecting data from the  `fulltime_employees`  table, values in its `ft_name` column are compared with the values in the `perm_name` column for each row in the `permanent_employees` table. In case of equal values, a new row is created and its columns populated by values from both tables, then this new row is added to the result set. When non-equal values are encountered, a new row is created containing columns from both tables, and then this new row is added to the result set. The columns of the right table `permanent_employees`  are populated with `null` values.
 
-The following example shows how to select the `fulltime_employees` table rows that do not have matching rown in the `permanent_employees` table:
+The following example shows how to select the `fulltime_employees` table rows that do not have matching rows in the `permanent_employees` table:
 
 ```sql
 SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
@@ -673,14 +675,14 @@ SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 ----------------+-----------------+-------------------+----------------
 1222            | Bette Davis     | [null]            | [null]
 1224            | John Zimmerman  | [null]            | [null]
 ```
 
-### Right Outer Join
+### Right outer join
 
 Unlike the left join that starts data selection from the left table, the right join starts selecting data from the right table. It compares every value in the `perm_name` column of every row in the `permanent_employees` table (right table) with every value in the `ft_name` column of every row in the `fulltime_employees` table (left table). In case of equal values, a new row that contains columns from both tables is created. When non-equal values are encountered, an additional new row containing columns from both tables is created and columns of the left table `fulltime_employees` is populated with `null` values.
 
@@ -695,7 +697,7 @@ SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 ----------------+-----------------+-------------------+------------------
 1223            | John Smith      | 1221              | John Smith
@@ -705,7 +707,7 @@ ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 
 By adding a `WHERE` clause to the end of the `SELECT` statement, you can obtain rows from the right table that do not have matching rows in the left table.
 
-### Full Outer Join
+### Full outer join
 
 The full outer join allows you to obtain a result set that contains all rows from left and right table, with the matching rows from both sides (if any). If no match exists, as in the following example, the left table's columns are populated with `null` values:
 
@@ -718,7 +720,7 @@ SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 ----------------+-----------------+-------------------+-----------------
 1221            | John Smith      | 1223              | John Smith
@@ -740,7 +742,7 @@ SELECT ft_employee_no, ft_name, perm_employee_no, perm_name
 
 The following is the output produced by the preceding examples:
 
-```
+```output
 ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 ----------------+-----------------+-------------------+----------------
 1222            | Bette Davis     | [null]            | [null]
@@ -748,7 +750,7 @@ ft_employee_no  | ft_name         | perm_employee_no  | perm_name
 [null]          | [null]          | 1222              | Cary Grant
 ```
 
-### Cross Join
+### Cross join
 
 You can use a cross join to generate a Cartesian product of rows in at least two tables.
 
@@ -783,7 +785,7 @@ SELECT * FROM fulltime_employees
 
 ## Subqueries
 
-Subqueries allow you to construct complex queries by executing `SELECT`, `INSERT`, `DELETE` or `UPDATE` statements from within other such statements.
+Subqueries allow you to construct complex queries by executing `SELECT`, `INSERT`, `DELETE`, or `UPDATE` statements from within other such statements.
 
 Suppose you work with a database that includes the following table populated with data:
 
@@ -805,7 +807,7 @@ VALUES
   (1224, 'John Zimmerman', 'Sales', 5);
 ```
 
-If you need to find the employees who have been working for the company longer than average, you start by calculating the average years of service using a `SELECT` statement and average function  `AVG`. Then you use the result of the first query in the second `SELECT` statement to find the long-serving employees, as shown in the following examples:
+If you need to find the employees who have been working for the company longer than average, you start by calculating the average years of service using a `SELECT` statement and average function `AVG`. Then you use the result of the first query in the second `SELECT` statement to find the long-serving employees, as shown in the following examples:
 
 ```sql
 SELECT AVG (years_service) FROM employees;
@@ -820,7 +822,7 @@ SELECT employee_no, name, years_service FROM employees
 
 The following is the output produced by the preceding example:
 
-```
+```output
 employee_no | name             | years_service
 ------------+------------------+-------------------
 1221        | John Smith       | 5
@@ -854,11 +856,11 @@ SELECT name FROM employees
 
 If the `salary` table existed, the preceding query would have returned no more than one row for each row in the `employees` table, even though there would have been corresponding rows in the `salary` table.
 
-## Recursive Queries and CTEs
+## Recursive queries and CTEs
 
 Common Table Expressions (CTEs) allow you to execute recursive, hierarchical, and other types of complex queries in a simplified manner by breaking down these queries into smaller units. A CTE exists only during the query execution and represents a temporary result set that you can reference from another SQL statement.
 
-You can use the following syntax to create a simple CTE:
+You can use the following syntax to create a basic CTE:
 
 ```sql
 WITH cte_name (columns) AS (cte_query) statement;
@@ -866,7 +868,7 @@ WITH cte_name (columns) AS (cte_query) statement;
 
 *cte_name* represents the name of the CTE. *columns* is an optional list of table columns. *cte_query* represents a query returning a result set. If *columns* is not specified, the select list of the *cte_query* becomes *columns* of the CTE. *statement* can be a `SELECT`, `INSERT`, `UPDATE`, or `DELETE` YSQL statement, and the CTE acts the way a table does in that statement.
 
-Using the `fulltime_employees` table from [Joining Columns](#joining-columns), the following example demonstrates how to define a CTE and use it to create a complex query:
+Using the `fulltime_employees` table from [Join columns](#join-columns), the following example demonstrates how to define a CTE and use it to create a complex query:
 
 ```sql
 WITH cte_fulltime_employees AS (
@@ -888,7 +890,7 @@ ORDER BY ft_name;
 
 The following is the output produced by the preceding example:
 
-```
+```output
  ft_name             | ft_department
 ---------------------+-------------------
  Bette Davis         | Operations
@@ -950,7 +952,7 @@ In the preceding example, the recursive CTE `reports` defines a non-recursive an
 
 When the final result set is returned, it represents the combination of all result sets in iterations generated by the non-recursive  and recursive terms, as demonstrated by the following output:
 
-```
+```output
 employee_no | name            | manager_id  | department
 ------------+-----------------+-------------+--------------
 1222        | Bette Davis     | 1221        | Sales
@@ -958,4 +960,4 @@ employee_no | name            | manager_id  | department
 1225        | Walter Marx     | 1222        | Sales
 ```
 
-Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](/preview/explore/ysql-language-features/pg-extensions/#tablefunc-example).
+Another way to execute complex hierarchical queries is to use a `tablefunc` extension. This extension provides several table functions, such as, for example, `normal_rand()` that creates values picked using a pseudorandom generator from an ideal normal distribution. For more information and examples, see [tablefunc](../../../explore/ysql-language-features/pg-extensions/#tablefunc-example).

@@ -30,24 +30,24 @@ The following table lists the most important YSQL features which you would find 
 
 | YSQL Feature | Description |
 | :----------- | :---------- |
-| <span style="font-size:16px">[Basics](databases-schemas-tables/)</span> | SQL shell with `ysqlsh`, users, databases, tables and schemas |
-| <span style="font-size:16px">[Data Types](data-types/)</span> | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
-| <span style="font-size:16px">[DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl/)</span> | Data definition language |
-| <span style="font-size:16px">[Document Data Types](../json-support/jsonb-ysql/)</span> | JSON and JSONB |
-| <span style="font-size:16px">[Data Manipulation](data-manipulation/)</span> | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
-| <span style="font-size:16px">[Queries and Joins](queries/)</span> | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
-| <span style="font-size:16px">[Transactions](../transactions/)</span> | Transactions and distributed transactions in YugabyteDB |
-| <span style="font-size:16px">[Expressions and Operators](expressions-operators/)</span> | Basic operators and boolean, numeric, date expressions |
-| <span style="font-size:16px">[Cursors](cursor/)</span> | Declaration of cursors in YSQL |
-| <span style="font-size:16px">[Stored Procedures](stored-procedures/)</span> | Support for stored procedures |
-| <span style="font-size:16px">[Triggers](triggers/)</span> | Triggers (on data modification) and event triggers (on schema changes) |
-| <span style="font-size:16px">[Table Partitions](partitions)</span> | List, range, and hash partitioning of tables |
-| <span style="font-size:16px">[Tablespaces](tablespaces)</span> | Definition of tablespaces in YSQL |
-| <span style="font-size:16px">[Views](views/)</span> | Views and updatable views |
-| <span style="font-size:16px">[Savepoints](savepoints/)</span> | Savepoints in YSQL |
-| <span style="font-size:16px">[Extensions](extensions/)</span> | Pre-bundled extensions for YugabyteDB |
-| <span style="font-size:16px">[Indexes](indexes-1/)</span> | Indexes to enhance database performance |
-| <span style="font-size:16px">[Constraints](constraints/)</span> | Define constraints in YSQL |
+| [Basics](databases-schemas-tables/) | SQL shell with `ysqlsh`, users, databases, tables and schemas |
+| [Data Types](data-types/) | String, numeric, temporal types, `SERIAL` pseudo type, `ENUM`, arrays, composite types |
+| [DDL Statements](../../api/ysql/the-sql-language/statements/#data-definition-language-ddl/) | Data definition language |
+| [Document Data Types](../json-support/jsonb-ysql/) | JSON and JSONB |
+| [Data Manipulation](data-manipulation/) | `INSERT`, `UPDATE`, `DELETE`, `INSERT ... ON CONFLICT`, and `RETURNING` clauses |
+| [Queries and Joins](queries/) | Queries, joins, `FROM`, `GROUP BY`, `HAVING` clauses, common table expressions, recursive queries |
+| [Transactions](../transactions/) | Transactions and distributed transactions in YugabyteDB |
+| [Expressions and Operators](expressions-operators/) | Basic operators and boolean, numeric, date expressions |
+| [Cursors](cursor/) | Declaration of cursors in YSQL |
+| [Stored Procedures](stored-procedures/) | Support for stored procedures |
+| [Triggers](triggers/) | Triggers (on data modification) and event triggers (on schema changes) |
+| [Table Partitions](partitions) | List, range, and hash partitioning of tables |
+| [Tablespaces](tablespaces) | Definition of tablespaces in YSQL |
+| [Views](views/) | Views and updatable views |
+| [Savepoints](savepoints/) | Savepoints in YSQL |
+| [Extensions](extensions/) | Pre-bundled extensions for YugabyteDB |
+| [Indexes](indexes-1/) | Indexes to enhance database performance |
+| [Constraints](constraints/) | Define constraints in YSQL |
 
 <!--
 | <span style="font-size:16px">[Functions and operators](functions-operators/)</span> | Conditional expressions, math / string / date / time / window functions and operators  |

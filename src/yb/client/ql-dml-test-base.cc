@@ -48,6 +48,8 @@ using std::string;
 
 DECLARE_bool(enable_ysql);
 
+using yb::test::Partitioning;
+
 using namespace std::literals;
 
 namespace yb {
@@ -403,6 +405,7 @@ Result<int32_t> SelectRow(
       LOG(WARNING) << "Error: " << error->status() << ", op: " << error->failed_op().ToString();
     }
   }
+  RETURN_NOT_OK(flush_status.status);
   RETURN_NOT_OK(CheckOp(op.get()));
   auto rowblock = yb::ql::RowsResult(op.get()).GetRowBlock();
   if (rowblock->row_count() == 0) {
@@ -510,6 +513,39 @@ Status CheckOp(YBqlOp* op) {
   }
 
   return Status::OK();
+}
+
+Result<size_t> CountRows(const YBSessionPtr& session, const TableHandle& table) {
+  LOG(INFO) << "Running full scan on table " << table.name().ToString() << "...";
+  session->SetTimeout(5s * kTimeMultiplier);
+  QLPagingStatePB paging_state;
+  bool has_paging_state = false;
+  size_t row_count = 0;
+  for (;;) {
+    const auto op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    req->set_return_paging_state(true);
+    if (has_paging_state) {
+      if (paging_state.has_read_time()) {
+        ReadHybridTime read_time = ReadHybridTime::FromPB(paging_state.read_time());
+        if (read_time) {
+          session->SetReadPoint(read_time);
+        }
+      }
+      session->SetForceConsistentRead(client::ForceConsistentRead::kTrue);
+      *req->mutable_paging_state() = std::move(paging_state);
+    }
+    RETURN_NOT_OK(session->TEST_ApplyAndFlush(op));
+    RETURN_NOT_OK(CheckOp(op.get()));
+    auto rowblock = VERIFY_RESULT(op->MakeRowBlock());
+    row_count += rowblock.row_count();
+    if (!op->response().has_paging_state()) {
+      break;
+    }
+    paging_state = std::move(op->response().paging_state());
+    has_paging_state = true;
+  }
+  return row_count;
 }
 
 } // namespace client

@@ -8,13 +8,14 @@ menu:
   preview:
     identifier: scala-drivers
     parent: drivers-orms
-    weight: 620
+    weight: 600
 type: indexpage
+showRightNav: true
 ---
 
-The following projects are recommended for implementing Scala applications using the YugabyteDB YCQL API.
-
 ## Supported projects
+
+The following project is recommended for implementing Scala applications using the YugabyteDB YCQL API.
 
 | Project | Example apps |
 | :------ | :----------- |

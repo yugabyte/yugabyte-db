@@ -1,0 +1,4 @@
+# src/backend/exports-test.txt
+# Additional test functions to be exported by postgres DLLs
+YbgTest
+YbgTestNoReporting

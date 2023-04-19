@@ -28,10 +28,10 @@
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/auto_roll_logger.h"
 #include "yb/rocksdb/port/port.h"
-#include "yb/rocksdb/util/sync_point.h"
 #include "yb/rocksdb/util/testharness.h"
 #include "yb/rocksdb/util/testutil.h"
 
+#include "yb/util/sync_point.h"
 #include "yb/util/test_macros.h"
 
 using std::string;
@@ -306,7 +306,7 @@ TEST_F(AutoRollLoggerTest, LogFlushWhileRolling) {
   ASSERT_TRUE(auto_roll_logger);
   std::thread flush_thread;
 
-  rocksdb::SyncPoint::GetInstance()->LoadDependency({
+  yb::SyncPoint::GetInstance()->LoadDependency({
       // Need to pin the old logger before beginning the roll, as rolling grabs
       // the mutex, which would prevent us from accessing the old logger.
       {"AutoRollLogger::Flush:PinnedLogger",
@@ -324,7 +324,7 @@ TEST_F(AutoRollLoggerTest, LogFlushWhileRolling) {
       {"AutoRollLogger::ResetLogger:AfterNewLogger",
        "AutoRollLoggerTest::LogFlushWhileRolling:FlushCallback2"},
   });
-  rocksdb::SyncPoint::GetInstance()->SetCallBack(
+  yb::SyncPoint::GetInstance()->SetCallBack(
       "PosixLogger::Flush:BeginCallback", [&](void* arg) {
         TEST_SYNC_POINT(
             "AutoRollLoggerTest::LogFlushWhileRolling:FlushCallbackBegin");
@@ -335,7 +335,7 @@ TEST_F(AutoRollLoggerTest, LogFlushWhileRolling) {
               "AutoRollLoggerTest::LogFlushWhileRolling:FlushCallback2");
         }
       });
-  rocksdb::SyncPoint::GetInstance()->EnableProcessing();
+  yb::SyncPoint::GetInstance()->EnableProcessing();
 
   flush_thread = std::thread([&]() { auto_roll_logger->Flush(); });
   TEST_SYNC_POINT(
@@ -343,7 +343,7 @@ TEST_F(AutoRollLoggerTest, LogFlushWhileRolling) {
   RollLogFileBySizeTest(auto_roll_logger, options.max_log_file_size,
                         kSampleMessage + ":LogFlushWhileRolling");
   flush_thread.join();
-  rocksdb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->DisableProcessing();
 }
 
 #endif  // OS_WIN

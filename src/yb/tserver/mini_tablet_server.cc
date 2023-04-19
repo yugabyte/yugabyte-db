@@ -44,6 +44,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus_util.h"
 
 #include "yb/encryption/encrypted_file_factory.h"
 #include "yb/encryption/header_manager_impl.h"
@@ -63,11 +64,12 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/net/tunnel.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
+#include "yb/util/thread.h"
 
 using std::pair;
 using std::string;
@@ -141,10 +143,11 @@ Result<std::unique_ptr<MiniTabletServer>> MiniTabletServer::CreateMiniTabletServ
   return std::make_unique<MiniTabletServer>(fs_root, rpc_port, *options_result, index);
 }
 
-Status MiniTabletServer::Start() {
+Status MiniTabletServer::Start(WaitTabletsBootstrapped wait_tablets_bootstrapped) {
   CHECK(!started_);
+  TEST_SetThreadPrefixScoped prefix_se(Format("ts-$0", index_));
 
-  std::unique_ptr<TabletServer> server(new enterprise::TabletServer(opts_));
+  std::unique_ptr<TabletServer> server(new TabletServer(opts_));
   RETURN_NOT_OK(server->Init());
 
   RETURN_NOT_OK(server->Start());
@@ -154,7 +157,7 @@ Status MiniTabletServer::Start() {
   RETURN_NOT_OK(Reconnect());
 
   started_ = true;
-  return Status::OK();
+  return wait_tablets_bootstrapped ? WaitStarted() : Status::OK();
 }
 
 void MiniTabletServer::Isolate() {
@@ -193,6 +196,7 @@ Status MiniTabletServer::WaitStarted() {
 }
 
 void MiniTabletServer::Shutdown() {
+  TEST_SetThreadPrefixScoped prefix_se(Format("ts-$0", index_));
   if (tunnel_) {
     tunnel_->Shutdown();
   }
@@ -274,12 +278,12 @@ Status MiniTabletServer::CleanTabletLogs() {
 Status MiniTabletServer::Restart() {
   CHECK(started_);
   Shutdown();
-  return Start();
+  return Start(WaitTabletsBootstrapped::kFalse);
 }
 
 Status MiniTabletServer::RestartStoppedServer() {
   Shutdown();
-  return Start();
+  return Start(WaitTabletsBootstrapped::kFalse);
 }
 
 RaftConfigPB MiniTabletServer::CreateLocalConfig() const {
@@ -313,7 +317,8 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   pair<PartitionSchema, Partition> partition = tablet::CreateDefaultPartition(schema_with_ids);
 
   auto table_info = std::make_shared<tablet::TableInfo>(
-      tablet::Primary::kTrue, table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
+      consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
+      table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
       boost::none /* index_info */, 0 /* schema_version */, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(

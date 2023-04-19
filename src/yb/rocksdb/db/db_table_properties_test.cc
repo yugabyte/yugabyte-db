@@ -27,7 +27,6 @@
 #include "yb/rocksdb/db/db_test_util.h"
 #include "yb/rocksdb/port/stack_trace.h"
 
-#ifndef ROCKSDB_LITE
 
 namespace rocksdb {
 
@@ -117,7 +116,7 @@ DBTablePropertiesTest::TestGetPropertiesOfTablesInRange(
   std::vector<LiveFileMetaData> vmd;
   db_->GetLiveFilesMetaData(&vmd);
   for (auto& md : vmd) {
-    std::string fn = md.FullName();
+    std::string fn = md.BaseFilePath();
     bool in_range = false;
     for (auto& r : ranges) {
       // smallestkey < limit && largestkey >= start
@@ -228,7 +227,6 @@ TEST_F(DBTablePropertiesTest, GetPropertiesOfTablesInRange) {
 }
 }  // namespace rocksdb
 
-#endif  // ROCKSDB_LITE
 
 int main(int argc, char** argv) {
   rocksdb::port::InstallStackTraceHandler();

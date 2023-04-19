@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CLUSTER_BALANCE_H
-#define YB_MASTER_CLUSTER_BALANCE_H
+#pragma once
 
 #include <atomic>
 #include <map>
@@ -107,6 +106,9 @@ class ClusterLoadBalancer {
   // Returns the TableInfo of all the tables for whom load balancing is being skipped.
   // As of today, this constitutes all the system tables, colocated user tables
   // and tables which have been marked as DELETING OR DELETED.
+  // N.B. Currently this function is only used in test code. If using in production be mindful
+  // that this function will not return colocated user tables as those are pre-filtered by the
+  // table API the load balancer uses.
   std::vector<scoped_refptr<TableInfo>> GetAllTablesLoadBalancerSkipped();
 
   // Return the replication info for 'table'.
@@ -132,8 +134,9 @@ class ClusterLoadBalancer {
     // Get access to the tablet map across the cluster.
   virtual const TabletInfoMap& GetTabletMap() const REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Get access to the table map.
-  virtual const TableInfoMap& GetTableMap() const REQUIRES_SHARED(catalog_manager_->mutex_);
+  // Get an iterator for the tables.
+  virtual TableIndex::TablesRange GetTables() const
+      REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Get the table info object for given table uuid.
   virtual const scoped_refptr<TableInfo> GetTableInfo(const TableId& table_uuid) const
@@ -303,9 +306,9 @@ class ClusterLoadBalancer {
   // Issue the change config and modify the in-memory state for moving a tablet leader on the
   // specified tablet server to the other specified tablet server.
   Status MoveLeader(const TabletId& tablet_id,
-                            const TabletServerId& from_ts,
-                            const TabletServerId& to_ts,
-                            const std::string& to_ts_path)
+                    const TabletServerId& from_ts,
+                    const TabletServerId& to_ts,
+                    const std::string& to_ts_path)
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
   // Methods called for returning tablet id sets, for figuring out tablets to move around.
@@ -441,4 +444,3 @@ class ClusterLoadBalancer {
 
 }  // namespace master
 }  // namespace yb
-#endif /* YB_MASTER_CLUSTER_BALANCE_H */

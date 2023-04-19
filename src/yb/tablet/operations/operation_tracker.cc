@@ -42,7 +42,7 @@
 #include "yb/tablet/operations/operation_driver.h"
 #include "yb/tablet/tablet.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
@@ -50,7 +50,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/tsan_util.h"
 
-DEFINE_int64(tablet_operation_memory_limit_mb, 1024,
+DEFINE_UNKNOWN_int64(tablet_operation_memory_limit_mb, 1024,
              "Maximum amount of memory that may be consumed by all in-flight "
              "operations belonging to a particular tablet. When this limit "
              "is reached, new operations will be rejected and clients will "
@@ -210,7 +210,7 @@ void OperationTracker::DecrementCounters(const OperationDriver& driver) const {
 void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
   DecrementCounters(*driver);
 
-  State st;
+  State state;
   yb::OpId op_id = driver->GetOpId();
   OperationType operation_type = driver->operation_type();
   bool notify;
@@ -218,7 +218,7 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
     // Remove the operation from the map, retaining the state for use
     // below.
     std::lock_guard<std::mutex> lock(mutex_);
-    st = FindOrDie(pending_operations_, driver);
+    state = FindOrDie(pending_operations_, driver);
     if (PREDICT_FALSE(pending_operations_.erase(driver) != 1)) {
       LOG_WITH_PREFIX(FATAL) << "Could not remove pending operation from map: "
           << driver->ToStringUnlocked();
@@ -229,8 +229,8 @@ void OperationTracker::Release(OperationDriver* driver, OpIds* applied_op_ids) {
     cond_.notify_all();
   }
 
-  if (mem_tracker_ && st.memory_footprint) {
-    mem_tracker_->Release(st.memory_footprint);
+  if (mem_tracker_ && state.memory_footprint) {
+    mem_tracker_->Release(state.memory_footprint);
   }
 
   if (operation_type != OperationType::kEmpty) {

@@ -22,7 +22,7 @@ Use the `DROP TABLE` statement to remove a table and all of its data from the da
 
 ### Grammar
 
-```
+```ebnf
 drop_table ::= DROP TABLE [ IF EXISTS ] table_name;
 ```
 

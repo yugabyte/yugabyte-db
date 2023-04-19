@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.models.Universe;
+
 import java.util.UUID;
 import play.mvc.Http;
 import play.mvc.Http.Status;
@@ -23,9 +24,10 @@ public class TlsToggleParams extends UpgradeTaskParams {
   public boolean enableNodeToNodeEncrypt = false;
   public boolean enableClientToNodeEncrypt = false;
   public boolean allowInsecure = true;
-  public UUID rootCA = null;
-  public UUID clientRootCA = null;
-  public Boolean rootAndClientRootCASame = null;
+  // below fields are already inherited from UniverseDefinitionTaskParams
+  //  public UUID rootCA = null;
+  //  public UUID clientRootCA = null;
+  //  public Boolean rootAndClientRootCASame = null;
 
   public TlsToggleParams() {}
 
@@ -48,8 +50,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
     boolean existingEnableClientToNodeEncrypt = userIntent.enableClientToNodeEncrypt;
     boolean existingEnableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
     UUID existingRootCA = universeDetails.rootCA;
-    UUID existingClientRootCA = universeDetails.clientRootCA;
-
+    UUID existingClientRootCA = universeDetails.getClientRootCA();
     if (upgradeOption != UpgradeOption.ROLLING_UPGRADE
         && upgradeOption != UpgradeOption.NON_ROLLING_UPGRADE) {
       throw new PlatformServiceException(
@@ -84,14 +85,15 @@ public class TlsToggleParams extends UpgradeTaskParams {
           Status.BAD_REQUEST, "No valid client root certificate found for UUID: " + clientRootCA);
     }
 
-    if (rootCA != null && CertificateInfo.get(rootCA).certType == CertConfigType.CustomServerCert) {
+    if (rootCA != null
+        && CertificateInfo.get(rootCA).getCertType() == CertConfigType.CustomServerCert) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "CustomServerCert are only supported for Client to Server Communication.");
     }
 
     if (rootCA != null
-        && CertificateInfo.get(rootCA).certType == CertConfigType.CustomCertHostPath
+        && CertificateInfo.get(rootCA).getCertType() == CertConfigType.CustomCertHostPath
         && !userIntent.providerType.equals(CloudType.onprem)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
@@ -99,7 +101,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
     }
 
     if (clientRootCA != null
-        && CertificateInfo.get(clientRootCA).certType == CertConfigType.CustomCertHostPath
+        && CertificateInfo.get(clientRootCA).getCertType() == CertConfigType.CustomCertHostPath
         && !userIntent.providerType.equals(Common.CloudType.onprem)) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
@@ -108,7 +110,7 @@ public class TlsToggleParams extends UpgradeTaskParams {
 
     // TODO: Add check that the userIntent is to use cert-manager
     if (rootCA != null
-        && CertificateInfo.get(rootCA).certType == CertConfigType.K8SCertManager
+        && CertificateInfo.get(rootCA).getCertType() == CertConfigType.K8SCertManager
         && !userIntent.providerType.equals(CloudType.kubernetes)) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST,
@@ -117,15 +119,14 @@ public class TlsToggleParams extends UpgradeTaskParams {
 
     // TODO: Add check that the userIntent is to use cert-manager
     if (clientRootCA != null
-        && CertificateInfo.get(clientRootCA).certType == CertConfigType.K8SCertManager
+        && CertificateInfo.get(clientRootCA).getCertType() == CertConfigType.K8SCertManager
         && !userIntent.providerType.equals(Common.CloudType.kubernetes)) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST,
           "K8SCertManager certificates are only supported for k8s providers with cert-manager configured.");
     }
 
-    if (rootAndClientRootCASame != null
-        && rootAndClientRootCASame
+    if (rootAndClientRootCASame
         && enableNodeToNodeEncrypt
         && enableClientToNodeEncrypt
         && rootCA != null

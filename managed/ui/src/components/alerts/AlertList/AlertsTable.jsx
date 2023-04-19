@@ -214,6 +214,7 @@ export default function AlertsTable({ filters, customer }) {
       <AlertDetails
         customer={customer.currentCustomer}
         alertDetails={alertDetails}
+        // eslint-disable-next-line eqeqeq
         visible={alertDetails != null}
         onHide={() => {
           setAlertDetails(null);

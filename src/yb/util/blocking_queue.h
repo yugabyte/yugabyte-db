@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_BLOCKING_QUEUE_H
-#define YB_UTIL_BLOCKING_QUEUE_H
+#pragma once
 
 #include <unistd.h>
 
@@ -173,7 +172,7 @@ class BlockingQueue {
 
   // Gets an element for the queue; if the queue is full, blocks until
   // space becomes available. Returns false if we were shutdown prior
-  // to enqueueing the element.
+  // to enqueuing the element.
   bool BlockingPut(const T& val) {
     MutexLock l(lock_);
     while (true) {
@@ -255,5 +254,3 @@ class BlockingQueue {
 };
 
 } // namespace yb
-
-#endif  // YB_UTIL_BLOCKING_QUEUE_H

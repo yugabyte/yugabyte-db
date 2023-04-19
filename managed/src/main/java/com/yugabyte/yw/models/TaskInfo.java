@@ -20,7 +20,6 @@ import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.Query;
 import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
@@ -41,11 +40,15 @@ import javax.persistence.Entity;
 import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
 import play.data.validation.Constraints;
 
 @Entity
 @ApiModel(description = "Task information")
+@Getter
+@Setter
 public class TaskInfo extends Model {
 
   private static final FetchGroup<TaskInfo> GET_SUBTASKS_FG =
@@ -166,35 +169,6 @@ public class TaskInfo extends Model {
     this.taskType = taskType;
   }
 
-  public Date getCreationTime() {
-    return createTime;
-  }
-
-  public Date getLastUpdateTime() {
-    return updateTime;
-  }
-
-  public UUID getParentUUID() {
-    return parentUuid;
-  }
-
-  public int getPercentDone() {
-    return percentDone;
-  }
-
-  public int getPosition() {
-    return position;
-  }
-
-  public UserTaskDetails.SubTaskGroupType getSubTaskGroupType() {
-    return subTaskGroupType;
-  }
-
-  @JsonIgnore
-  public JsonNode getTaskDetails() {
-    return details;
-  }
-
   @JsonIgnore
   public String getErrorMessage() {
     if (details == null || taskState == State.Success) {
@@ -205,6 +179,19 @@ public class TaskInfo extends Model {
       return null;
     }
     return node.asText();
+  }
+
+  @JsonIgnore
+  public UUID getUniverseUuid() {
+    UUID universeUUID = null;
+    JsonNode jsonNode = getDetails();
+    if (jsonNode != null && !jsonNode.isNull()) {
+      JsonNode universeUUIDNode = jsonNode.get("universeUUID");
+      if (universeUUIDNode != null) {
+        universeUUID = UUID.fromString(universeUUIDNode.asText());
+      }
+    }
+    return universeUUID;
   }
 
   public State getTaskState() {
@@ -225,34 +212,6 @@ public class TaskInfo extends Model {
 
   public void setTaskUUID(UUID taskUUID) {
     uuid = taskUUID;
-  }
-
-  public void setOwner(String owner) {
-    this.owner = owner;
-  }
-
-  public void setParentUuid(UUID parentUuid) {
-    this.parentUuid = parentUuid;
-  }
-
-  public void setPercentDone(int percentDone) {
-    this.percentDone = percentDone;
-  }
-
-  public void setPosition(int position) {
-    this.position = position;
-  }
-
-  public void setSubTaskGroupType(UserTaskDetails.SubTaskGroupType subTaskGroupType) {
-    this.subTaskGroupType = subTaskGroupType;
-  }
-
-  public void setTaskState(State taskState) {
-    this.taskState = taskState;
-  }
-
-  public void setTaskDetails(JsonNode details) {
-    this.details = details;
   }
 
   public static final Finder<UUID, TaskInfo> find = new Finder<UUID, TaskInfo>(TaskInfo.class) {};
@@ -284,7 +243,7 @@ public class TaskInfo extends Model {
 
   // Returns  partial object
   public List<TaskInfo> getSubTasks() {
-    Query<TaskInfo> subTaskQuery =
+    ExpressionList<TaskInfo> subTaskQuery =
         TaskInfo.find
             .query()
             .select(GET_SUBTASKS_FG)

@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_METRICS_FWD_H
-#define YB_UTIL_METRICS_FWD_H
+#pragma once
 
 #include "yb/gutil/ref_counted.h"
 
@@ -51,5 +50,3 @@ template<typename T>
 class GaugePrototype;
 
 } // namespace yb
-
-#endif // YB_UTIL_METRICS_FWD_H

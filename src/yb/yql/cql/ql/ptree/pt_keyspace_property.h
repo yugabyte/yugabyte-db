@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_KEYSPACE_PROPERTY_H_
-#define YB_YQL_CQL_QL_PTREE_PT_KEYSPACE_PROPERTY_H_
+#pragma once
 
 #include "yb/gutil/strings/substitute.h"
 #include "yb/yql/cql/ql/ptree/list_node.h"
@@ -143,5 +142,3 @@ class PTKeyspacePropertyMap : public PTKeyspaceProperty {
 
 } // namespace ql
 } // namespace yb
-
-#endif // YB_YQL_CQL_QL_PTREE_PT_KEYSPACE_PROPERTY_H_

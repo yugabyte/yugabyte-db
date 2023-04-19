@@ -22,15 +22,12 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/stringpiece.h"
 
-
-
-
-#ifndef YB_GUTIL_STRINGS_SUBSTITUTE_H
-#define YB_GUTIL_STRINGS_SUBSTITUTE_H
+#pragma once
 
 namespace strings {
 
-// ----------------------------------------------------------------------
+//    *** DEPRECATED: Use Format() (see yb/util/format.h) in new code ***
+//
 // strings::Substitute()
 // strings::SubstituteAndAppend()
 //   Kind of like StringPrintf, but different.
@@ -220,5 +217,3 @@ inline std::string Substitute(
 }
 
 }  // namespace strings
-
-#endif // YB_GUTIL_STRINGS_SUBSTITUTE_H

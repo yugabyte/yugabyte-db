@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_EV_UTIL_H
-#define YB_UTIL_EV_UTIL_H
+#pragma once
 
 #include <ev++.h>
 
@@ -79,5 +78,3 @@ class EvTimerHolder {
 };
 
 } // namespace yb
-
-#endif // YB_UTIL_EV_UTIL_H

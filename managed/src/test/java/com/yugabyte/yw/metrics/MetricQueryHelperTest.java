@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.AssertHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -57,7 +58,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   MetricQueryHelper metricQueryHelper;
 
-  @Mock play.Configuration mockAppConfig;
+  @Mock Config mockAppConfig;
 
   @Mock PlatformExecutorFactory mockPlatformExecutorFactory;
 
@@ -70,7 +71,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     metricConfig.save();
     validMetric = metricConfig.getConfig();
     ExecutorService executor = Executors.newFixedThreadPool(1);
-    when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar");
+    when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar/api/v1");
+    when(mockAppConfig.getString("yb.metrics.scrape_interval")).thenReturn("1s");
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
         .thenReturn(executor);
 
@@ -85,7 +87,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(Collections.emptyList(), Collections.emptyMap());
     } catch (PlatformServiceException re) {
-      AssertHelper.assertBadRequest(re.buildResult(), "Empty metricsWithSettings data provided.");
+      AssertHelper.assertBadRequest(
+          re.buildResult(fakeRequest), "Empty metricsWithSettings data provided.");
     }
   }
 
@@ -99,7 +102,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
-          re.buildResult(), "Invalid filter params provided, it should be a hash.");
+          re.buildResult(fakeRequest), "Invalid filter params provided, it should be a hash.");
     }
   }
 
@@ -114,7 +117,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       AssertHelper.assertBadRequest(
-          re.buildResult(),
+          re.buildResult(fakeRequest),
           "Should be at least " + STEP_SIZE + " seconds between start and end time");
     }
   }
@@ -130,7 +133,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     try {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
-      final Result result = re.buildResult();
+      final Result result = re.buildResult(fakeRequest);
       AssertHelper.assertBadRequest(result, "Step should be a valid integer");
     }
   }
@@ -147,7 +150,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
       metricQueryHelper.query(ImmutableList.of("valid_metric"), params);
     } catch (PlatformServiceException re) {
       String expectedErr = "Step should not be less than 1 second";
-      AssertHelper.assertBadRequest(re.buildResult(), expectedErr);
+      AssertHelper.assertBadRequest(re.buildResult(fakeRequest), expectedErr);
     }
   }
 
@@ -171,7 +174,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -210,7 +213,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query_range")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -252,7 +255,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     verify(mockApiHelper)
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query_range")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -335,7 +338,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     JsonNode result = metricQueryHelper.query(metricKeys, params);
     verify(mockApiHelper, times(2))
         .getRequest(queryUrl.capture(), anyMap(), (Map<String, String>) queryParam.capture());
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/query_range")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/query_range")));
     assertThat(
         queryParam.getValue(), allOf(notNullValue(), IsInstanceOf.instanceOf(HashMap.class)));
 
@@ -351,7 +354,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
           allOf(notNullValue(), equalTo(1481147528)));
       assertThat(
           Integer.parseInt(capturedQueryParam.get("step").toString()),
-          allOf(notNullValue(), equalTo(1)));
+          allOf(notNullValue(), equalTo(2)));
       assertThat(
           Integer.parseInt(capturedQueryParam.get("end").toString()),
           allOf(notNullValue(), equalTo(1481147648)));
@@ -368,7 +371,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     List<AlertData> alerts = metricQueryHelper.queryAlerts();
     verify(mockApiHelper).getRequest(queryUrl.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/alerts")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
 
     AlertData alertData =
         AlertData.builder()
@@ -401,6 +404,6 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     }
     verify(mockApiHelper).getRequest(queryUrl.capture());
 
-    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/alerts")));
+    assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
   }
 }

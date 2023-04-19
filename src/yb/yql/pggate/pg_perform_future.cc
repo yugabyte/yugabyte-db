@@ -18,7 +18,7 @@
 
 #include "yb/common/pgsql_error.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/yql/pggate/pg_session.h"
 
 DEFINE_test_flag(bool, use_monotime_for_rpc_wait_time, false,
@@ -32,8 +32,10 @@ namespace pggate {
 namespace {
 
 Status PatchStatus(const Status& status, const PgObjectIds& relations) {
-  auto op_index = PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR
-      ? OpIndex::ValueFromStatus(status) : boost::none;
+  if (PgsqlRequestStatus(status) != PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR) {
+    return status;
+  }
+  auto op_index = OpIndex::ValueFromStatus(status);
   if (op_index && *op_index < relations.size()) {
     return STATUS(AlreadyPresent, PgsqlError(YBPgErrorCode::YB_PG_UNIQUE_VIOLATION))
         .CloneAndAddErrorCode(RelationOid(relations[*op_index].object_oid));
@@ -65,17 +67,19 @@ bool PerformFuture::Ready() const {
   return Valid() && future_.wait_for(0ms) == std::future_status::ready;
 }
 
-Result<rpc::CallResponsePtr> PerformFuture::Get() {
+Result<PerformFuture::Data> PerformFuture::Get() {
   // Make sure Valid method will return false before thread will be blocked on call future.get()
   // This requirement is not necessary after fixing of #12884.
   auto future = std::move(future_);
   auto result = future.get();
   RETURN_NOT_OK(PatchStatus(result.status, relations_));
   session_->TrySetCatalogReadPoint(result.catalog_read_time);
-  return result.response;
+  return Data{
+      .response = std::move(result.response),
+      .used_in_txn_limit = result.used_in_txn_limit};
 }
 
-Result<rpc::CallResponsePtr> PerformFuture::Get(MonoDelta* wait_time) {
+Result<PerformFuture::Data> PerformFuture::Get(MonoDelta* wait_time) {
   if (PREDICT_FALSE(FLAGS_TEST_use_monotime_for_rpc_wait_time)) {
     auto start_time = MonoTime::Now();
     auto response = Get();

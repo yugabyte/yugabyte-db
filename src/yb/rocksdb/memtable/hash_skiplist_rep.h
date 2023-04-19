@@ -22,7 +22,6 @@
 //
 
 #pragma once
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/slice_transform.h"
 #include "yb/rocksdb/memtablerep.h"
 
@@ -55,4 +54,3 @@ class HashSkipListRepFactory : public MemTableRepFactory {
 };
 
 }
-#endif  // ROCKSDB_LITE

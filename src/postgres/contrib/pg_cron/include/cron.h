@@ -156,7 +156,7 @@ typedef int time_min;
 
 typedef  struct _entry {
   struct _entry  *next;
-  uid_t    uid;  
+  uid_t    uid;
   gid_t    gid;
   char    **envp;
   char    *cmd;

@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,7 +22,6 @@ public class CreateRootVolumes extends NodeTaskBase {
 
   public static class Params extends AnsibleCreateServer.Params {
     public int numVolumes;
-    public String machineImage;
     public Map<UUID, List<String>> bootDisksPerZone;
   }
 

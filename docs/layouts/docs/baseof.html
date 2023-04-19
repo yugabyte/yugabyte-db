@@ -1,0 +1,43 @@
+<!doctype html>
+<html itemscope itemtype="http://schema.org/WebPage" lang="{{ .Site.Language.Lang }}" class="no-js">
+  <head>
+    {{- partial "head.html" . -}}
+  </head>
+  <body class="td-{{ .Type }}{{ with .Page.Params.body_class }} {{ . }}{{ end }}">
+    <header>
+      {{- partial "navbar.html" . -}}
+    </header>
+    <div class="container-fluid td-outer">
+      <div class="td-main">
+        <aside class="td-sidebar d-print-none">
+          {{- partial "sidebar.html" . -}}
+          <div id="dragbar"></div>
+        </aside>
+
+        <div class="flex-xl-nowrap content-parent">
+          <div class="content-child">
+            <div>
+              <main class="content-area">
+                {{- partial "version-banner.html" . -}}
+                {{- if and (not .Site.Params.ui.breadcrumb_disable) (not .Params.breadcrumbDisable) -}}
+                  {{- partial "breadcrumb.html" . -}}
+                {{- end -}}
+                {{- block "main" . -}}{{- end -}}
+              </main>
+             {{- if ne .Params.showRightNav false -}}
+                <aside class="d-none d-xl-block td-sidebar-toc d-print-none">
+                  {{- partial "toc.html" . -}}
+                </aside>
+              {{- end -}}
+            </div>
+            {{- partial "footer.html" . -}}
+          </div>
+        </div>
+        <div class="scroll-to-top">
+          <button class="scrolltop-btn" aria-label="Click here to scroll to top"></button>
+        </div>
+      </div>
+    </div>
+    {{- partial "scripts.html" . -}}
+  </body>
+</html>

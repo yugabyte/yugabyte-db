@@ -38,7 +38,6 @@
 #include <utility>
 #include <vector>
 
-#include <gflags/gflags.h>
 #include <glog/logging.h>
 
 #include "yb/consensus/consensus.h"
@@ -87,7 +86,7 @@
 #include "yb/tablet/write_query.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
@@ -106,15 +105,15 @@ using std::vector;
 DEFINE_test_flag(int32, delay_init_tablet_peer_ms, 0,
                  "Wait before executing init tablet peer for specified amount of milliseconds.");
 
-DEFINE_int32(cdc_min_replicated_index_considered_stale_secs, 900,
+DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
     "If cdc_min_replicated_index hasn't been replicated in this amount of time, we reset its"
     "value to max int64 to avoid retaining any logs");
 
-DEFINE_bool(propagate_safe_time, true, "Propagate safe time to read from leader to followers");
+DEFINE_UNKNOWN_bool(propagate_safe_time, true,
+    "Propagate safe time to read from leader to followers");
 
-DEFINE_int32(wait_queue_poll_interval_ms, 1000,
-             "The interval duration between wait queue polls to fetch transaction statuses of "
-             "active blockers.");
+DEFINE_RUNTIME_bool(abort_active_txns_during_xcluster_bootstrap, true,
+    "Abort active transactions during bootstrapping.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -224,25 +223,12 @@ Status TabletPeer::InitTabletPeer(
     }
     tablet_ = tablet;
     tablet_weak_ = tablet;
-    proxy_cache_ = proxy_cache;
     log_ = log;
     // "Publish" the log pointer so it can be retrieved using the log() accessor.
     log_atomic_ = log.get();
     service_thread_pool_ = &messenger->ThreadPool();
     strand_.reset(new rpc::Strand(&messenger->ThreadPool()));
     messenger_ = messenger;
-    if (tablet_->wait_queue()) {
-      std::weak_ptr<TabletPeer> weak_self = shared_from(this);
-      wait_queue_heartbeater_ = rpc::PeriodicTimer::Create(
-        messenger_,
-        [weak_self]() {
-          if (auto shared_self = weak_self.lock()) {
-            shared_self->PollWaitQueue();
-          }
-        },
-        FLAGS_wait_queue_poll_interval_ms * 1ms);
-      wait_queue_heartbeater_->Start();
-    }
 
     tablet->SetMemTableFlushFilterFactory([log] {
       auto largest_log_op_index = log->GetLatestEntryOpId().index;
@@ -303,7 +289,7 @@ Status TabletPeer::InitTabletPeer(
         clock_,
         this,
         messenger,
-        proxy_cache_,
+        proxy_cache,
         log_.get(),
         server_mem_tracker,
         tablet_->mem_tracker(),
@@ -320,12 +306,12 @@ Status TabletPeer::InitTabletPeer(
 
     prepare_thread_ = std::make_unique<Preparer>(consensus_.get(), tablet_prepare_pool);
 
-    ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
-
     // "Publish" the tablet object right before releasing the lock.
     tablet_obj_state_.store(TabletObjectState::kAvailable, std::memory_order_release);
   }
   // End of lock scope for lock_.
+
+  ChangeConfigReplicated(RaftConfig()); // Set initial flag value.
 
   RETURN_NOT_OK(prepare_thread_->Start());
 
@@ -461,10 +447,6 @@ consensus::RaftConfigPB TabletPeer::RaftConfig() const {
 
 bool TabletPeer::StartShutdown() {
   LOG_WITH_PREFIX(INFO) << "Initiating TabletPeer shutdown";
-
-  if (wait_queue_heartbeater_) {
-    wait_queue_heartbeater_->Stop();
-  }
 
   {
     std::lock_guard<decltype(lock_)> lock(lock_);
@@ -710,14 +692,14 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   }
 }
 
-void TabletPeer::SubmitUpdateTransaction(
+Status TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
-  // TODO: safely handle the case when tablet is not set.
-  // https://github.com/yugabyte/yugabyte-db/issues/14597
-  if (!operation->tablet()) {
-    operation->SetTablet(CHECK_RESULT(shared_tablet_safe()));
+  if (!operation->tablet_is_set()) {
+    auto tablet = VERIFY_RESULT(shared_tablet_safe());
+    operation->SetTablet(tablet);
   }
   Submit(std::move(operation), term);
+  return Status::OK();
 }
 
 HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
@@ -753,10 +735,10 @@ void TabletPeer::UpdateClock(HybridTime hybrid_time) {
 }
 
 std::unique_ptr<UpdateTxnOperation> TabletPeer::CreateUpdateTransaction(
-    TransactionStatePB* request) {
+    std::shared_ptr<LWTransactionStatePB> request) {
   // TODO: safe handling for the case when tablet is not set.
   auto result = std::make_unique<UpdateTxnOperation>(CHECK_RESULT(shared_tablet_safe()));
-  result->TakeRequest(request);
+  result->TakeRequest(std::move(request));
   return result;
 }
 
@@ -821,7 +803,7 @@ Result<TabletPtr> TabletPeer::shared_tablet_safe() const {
     return tablet_ptr;
   return STATUS_FORMAT(
       IllegalState,
-      "Tablet object $0 has already been destroyed",
+      "Tablet object $0 has already been deallocated",
       tablet_id_);
 }
 
@@ -1022,11 +1004,47 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
     }
   }
 
+  if (meta_->IsLazySuperblockFlushEnabled()) {
+    // Unapplied change metadata operations, if any, are taken into account above. The below
+    // takes into accounts any applied but unflushed change metadata operations.
+
+    // TODO(lazy_sb_flush): MinUnflushedChangeMetadataOpId() requires flush_lock_ which can be
+    // expensive to get during a superblock flush. Get rid of the below logic, if possible, post
+    // https://github.com/yugabyte/yugabyte-db/issues/16684.
+    auto min_unflushed_change_metadata_index = meta_->MinUnflushedChangeMetadataOpId().index;
+    min_index = std::min(min_index, min_unflushed_change_metadata_index);
+    if (details) {
+      *details += Format(
+          "Min unflushed CHANGE_METADATA_OP index: $0\n", min_unflushed_change_metadata_index);
+    }
+  }
+
   if (details) {
     *details += Format("Earliest needed log index: $0\n", min_index);
   }
 
   return min_index;
+}
+
+Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() {
+  if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
+      TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
+    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
+    // active transaction.
+    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
+    if (index > 0) {
+      index--;
+    }
+    // Term does not matter, so can be set to 0.
+    return OpId(0, index);
+  }
+
+  auto index = GetLatestLogEntryOpId();
+  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xcluster_bootstrap)) {
+    RETURN_NOT_OK(AbortSQLTransactions());
+  }
+  return index;
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
@@ -1051,7 +1069,7 @@ yb::OpId TabletPeer::GetLatestLogEntryOpId() const {
 }
 
 Status TabletPeer::set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index) {
-  LOG_WITH_PREFIX(INFO) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
+  VLOG(1) << "Setting cdc min replicated index to " << cdc_min_replicated_index;
   RETURN_NOT_OK(meta_->set_cdc_min_replicated_index(cdc_min_replicated_index));
   Log* log = log_atomic_.load(std::memory_order_acquire);
   if (log) {
@@ -1084,10 +1102,19 @@ int64_t TabletPeer::get_cdc_min_replicated_index() {
 }
 
 Status TabletPeer::set_cdc_sdk_min_checkpoint_op_id(const OpId& cdc_sdk_min_checkpoint_op_id) {
-  LOG_WITH_PREFIX(INFO) << "Setting CDCSDK min checkpoint opId to "
-                        << cdc_sdk_min_checkpoint_op_id.ToString();
+  VLOG(1) << "Setting CDCSDK min checkpoint opId to " << cdc_sdk_min_checkpoint_op_id.ToString();
   RETURN_NOT_OK(meta_->set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_min_checkpoint_op_id));
   return Status::OK();
+}
+
+Status TabletPeer::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_time) {
+  VLOG(1) << "Setting CDCSDK safe time to " << cdc_sdk_safe_time;
+  RETURN_NOT_OK(meta_->set_cdc_sdk_safe_time(cdc_sdk_safe_time));
+  return Status::OK();
+}
+
+HybridTime TabletPeer::get_cdc_sdk_safe_time() {
+  return meta_->cdc_sdk_safe_time();
 }
 
 OpId TabletPeer::cdc_sdk_min_checkpoint_op_id() {
@@ -1104,6 +1131,10 @@ CoarseTimePoint TabletPeer::cdc_sdk_min_checkpoint_op_id_expiration() {
   }
 
   return CoarseTimePoint();
+}
+
+bool TabletPeer::is_under_cdc_sdk_replication() {
+  return meta_->is_under_cdc_sdk_replication();
 }
 
 OpId TabletPeer::GetLatestCheckPoint() {
@@ -1129,9 +1160,19 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
   auto* metadata = tablet->metadata();
   auto namespace_name = metadata->namespace_name();
-  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */,
-                                         namespace_name,
-                                         boost::none /* database_type */, &resp));
+  auto db_type = YQL_DATABASE_CQL;
+  switch (metadata->table_type()) {
+    case PGSQL_TABLE_TYPE:
+      db_type = YQL_DATABASE_PGSQL;
+      break;
+    case REDIS_TABLE_TYPE:
+      db_type = YQL_DATABASE_REDIS;
+      break;
+    default:
+      db_type = YQL_DATABASE_CQL;
+  }
+
+  RETURN_NOT_OK(client->GetNamespaceInfo({} /* namesapce_id */, namespace_name, db_type, &resp));
   namespace_id = resp.namespace_().id();
   if (namespace_id.empty()) {
     return STATUS(IllegalState, Format("Could not get namespace id for $0",
@@ -1142,11 +1183,10 @@ Result<NamespaceId> TabletPeer::GetNamespaceId() {
 }
 
 Status TabletPeer::SetCDCSDKRetainOpIdAndTime(
-    const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration) {
-  if (cdc_sdk_op_id == OpId::Invalid()) {
-    return Status::OK();
-  }
+    const OpId& cdc_sdk_op_id, const MonoDelta& cdc_sdk_op_id_expiration,
+    const HybridTime& cdc_sdk_safe_time) {
   RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
+  RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_safe_time));
 
   {
     std::lock_guard<simple_spinlock> lock(lock_);
@@ -1185,7 +1225,7 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
   return cdc_sdk_intent_retention;
 }
 
-std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::ReplicateMsg* replicate_msg) {
+std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
   // TODO: handle cases where tablet is unset safely.
   auto tablet = CHECK_RESULT(shared_tablet_safe());
   switch (replicate_msg->op_type()) {
@@ -1247,7 +1287,7 @@ Status TabletPeer::StartReplicaOperation(
     return STATUS(IllegalState, RaftGroupStatePB_Name(value));
   }
 
-  consensus::ReplicateMsg* replicate_msg = round->replicate_msg().get();
+  auto* replicate_msg = round->replicate_msg().get();
   DCHECK(replicate_msg->has_hybrid_time());
   auto operation = CreateOperation(replicate_msg);
 
@@ -1548,8 +1588,9 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
       continue;
     }
 
-    switch(peer_pb.member_type()) {
-      case PeerMemberType::OBSERVER: FALLTHROUGH_INTENDED;
+    switch (peer_pb.member_type()) {
+      case PeerMemberType::OBSERVER:
+        FALLTHROUGH_INTENDED;
       case PeerMemberType::VOTER:
         LOG(ERROR) << "Peer " << peer_pb.permanent_uuid() << " is a "
                    << PeerMemberType_Name(peer_pb.member_type())
@@ -1559,7 +1600,8 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
         // tombstone its tablet.
         return Status::OK();
 
-      case PeerMemberType::PRE_OBSERVER: FALLTHROUGH_INTENDED;
+      case PeerMemberType::PRE_OBSERVER:
+        FALLTHROUGH_INTENDED;
       case PeerMemberType::PRE_VOTER: {
         consensus::ChangeConfigRequestPB req;
         consensus::ChangeConfigResponsePB resp;
@@ -1587,14 +1629,6 @@ Status TabletPeer::ChangeRole(const std::string& requestor_uuid) {
   return STATUS(
       IllegalState,
       Substitute("Unable to find peer $0 in config for tablet $1", requestor_uuid, tablet_id()));
-}
-
-void TabletPeer::PollWaitQueue() const {
-  auto tablet = shared_tablet();
-  if (tablet) {
-    DCHECK_NOTNULL(tablet->wait_queue());
-    tablet->wait_queue()->Poll(clock_->Now());
-  }
 }
 
 }  // namespace tablet

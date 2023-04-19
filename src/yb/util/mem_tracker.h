@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_MEM_TRACKER_H
-#define YB_UTIL_MEM_TRACKER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -40,8 +39,12 @@
 #include <vector>
 #include <unordered_map>
 
-#ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
+#if defined(YB_GOOGLE_TCMALLOC)
+#include <tcmalloc/malloc_extension.h>
+#else
 #include <gperftools/malloc_extension.h>
+#endif
 #endif
 
 #include <boost/optional.hpp>
@@ -158,14 +161,31 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
 
   ~MemTracker();
 
-  #ifdef TCMALLOC_ENABLED
+#ifdef YB_TCMALLOC_ENABLED
   static int64_t GetTCMallocProperty(const char* prop) {
+#if defined(YB_GOOGLE_TCMALLOC)
+    absl::optional<size_t> value = ::tcmalloc::MallocExtension::GetNumericProperty(prop);
+    if (!value.has_value()) {
+      LOG(DFATAL) << "Failed to get tcmalloc property " << prop;
+      value = 0;
+    }
+    return *value;
+#else
     size_t value;
     if (!MallocExtension::instance()->GetNumericProperty(prop, &value)) {
       LOG(DFATAL) << "Failed to get tcmalloc property " << prop;
       value = 0;
     }
     return value;
+#endif // YB_GOOGLE_TCMALLOC
+  }
+
+  static int64_t GetTCMallocPhysicalBytesUsed() {
+#if defined(YB_GOOGLE_TCMALLOC)
+    return GetTCMallocProperty("generic.physical_memory_used");
+#else
+    return GetTCMallocProperty("generic.total_physical_bytes");
+#endif
   }
 
   static int64_t GetTCMallocCurrentAllocatedBytes() {
@@ -180,9 +200,11 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
     return GetTCMallocCurrentHeapSizeBytes() -
            GetTCMallocProperty("tcmalloc.pageheap_unmapped_bytes");
   }
-  #endif
+#endif // YB_TCMALLOC_ENABLED
 
   static void SetTCMallocCacheMemory();
+
+  static void PrintTCMallocConfigs();
 
   // Removes this tracker from its parent's children. This tracker retains its
   // link to its parent. Must be called on a tracker with a parent.
@@ -641,5 +663,3 @@ bool CheckMemoryPressureWithLogging(
     const MemTrackerPtr& mem_tracker, double score, const char* error_prefix);
 
 } // namespace yb
-
-#endif // YB_UTIL_MEM_TRACKER_H

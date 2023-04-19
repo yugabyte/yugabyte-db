@@ -68,13 +68,13 @@ Here is a table that lists some of the important features that YugabyteDB suppor
 
 ## Linear scalability
 
-In order to test the linear scalability of YugabyteDB, we have run some large cluster benchmarks (up to 50 nodes). We were able to scale YugabyteDB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://blog.yugabyte.com/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
+In order to test the linear scalability of YugabyteDB, we have run some large cluster benchmarks (up to 50 nodes). We were able to scale YugabyteDB to million of reads and writes per second while retaining low latencies. You can read more about our [large cluster tests and how we scaled YugabyteDB to millions of IOPS](https://www.yugabyte.com/blog/scaling-yugabyte-db-to-millions-of-reads-and-writes-fb86cea5ff15).
 
 ![Linear scalability at large cluster sizes](/images/develop/learn/yb-scale-out.png)
 
 ## High performance
 
-YugabyteDB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. YugabyteDB has been written in C++ for this very reason. Here is a chart showing how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://blog.yugabyte.com/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
+YugabyteDB was built with a performance as a design goal. Performance in a public cloud environment without sacrificing consistency is a serious ask. YugabyteDB has been written in C++ for this very reason. Here is a chart showing how YugabyteDB compares with Apache Cassandra when running a YCSB benchmark. Read more about the [YCSB benchmark results and what makes YugabyteDB performant](https://www.yugabyte.com/blog/building-a-strongly-consistent-cassandra-with-better-performance-aa96b1ab51d6).
 
 The first chart below shows the total ops/second when running YBSB benchmark.
 

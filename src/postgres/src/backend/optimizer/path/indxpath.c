@@ -604,10 +604,11 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	Relids batchedrelids = NULL;
 	Relids unbatchablerelids = NULL;
 
-	Relids batched_inner_attnos = NULL;
+	Bitmapset *batched_inner_attnos = NULL;
 
 	List *batched_rinfos = NIL;
 
+	Relids inner_relids = bms_make_singleton(index->rel->relid);
 
 	for (size_t i = 0; i < INDEX_MAX_KEYS && clauses->nonempty; i++)
 	{
@@ -621,16 +622,11 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			 * We are prohibiting batching outer rels that have already
 			 * been batched in the interest of simplicity for now.
 			 */
-			Relids inner_relids = bms_make_singleton(index->rel->relid);
 			Relids outer_relids =
 				bms_difference(rinfo->required_relids, inner_relids);
-			RestrictInfo *tmp_batched = get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+			RestrictInfo *tmp_batched =
+				get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
 
-			/* Disabling batching the same rel twice for now. */
-			if (tmp_batched &&
-				bms_overlap(tmp_batched->right_relids, batchedrelids))
-				tmp_batched = NULL;
-			
 			/* Disabling batching the same inner attno twice for now. */
 			if (tmp_batched)
 			{
@@ -644,7 +640,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 				bms_free(attnos);
 			}
 
-			if (tmp_batched != NULL)
+			if (tmp_batched)
 			{
 				batchedrelids =
 					bms_union(batchedrelids,
@@ -658,7 +654,7 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			}
 			else
 			{
-				/* 
+				/*
 				 * Couldn't batch this clause so its outer rels are not
 				 * batchable.
 				 */
@@ -670,8 +666,69 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 
 	batchedrelids = bms_del_member(batchedrelids,
 								   index->rel->relid);
+	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
+
+	/* See if we have any unbatchable filters. */
+	List *pclauses = NIL;
+	if (!bms_is_empty(batchedrelids)) {
+		pclauses = generate_join_implied_equalities(
+			root,
+			bms_union(batchedrelids, index->rel->relids),
+			batchedrelids,
+			rel);
+		pclauses = list_concat(pclauses, rel->joininfo);
+	}
+
+	Relids batched_and_inner_relids =
+		bms_union(batchedrelids, index->rel->relids);
+
+	foreach(lc, pclauses)
+	{
+		RestrictInfo *rinfo = lfirst(lc);
+		RestrictInfo *batched =
+			get_batched_restrictinfo(rinfo,
+									 batchedrelids,
+									 index->rel->relids);
+		if (!bms_is_subset(batched_and_inner_relids, rinfo->clause_relids))
+			continue;
+
+		Assert(bms_overlap(rinfo->clause_relids, batchedrelids));
+		/*
+		 * If an unbatchable clause involves a batched relid, stop that relid
+		 * from being batched.
+		 */
+		if (!batched)
+		{
+			unbatchablerelids = bms_union(unbatchablerelids,
+										  rinfo->clause_relids);
+			continue;
+		}
+
+		/*
+		 * Make sure we don't allow any clauses that involve a batched relid
+		 * and an attno not in batched_inner_attnos.
+		 */
+		Assert(batched);
+		Node *innervar = get_leftop(batched->clause);
+		Bitmapset *attnos = NULL;
+		pull_varattnos(innervar,
+						index->rel->relid,
+						&attnos);
+		if (!bms_is_subset(attnos, batched_inner_attnos))
+			unbatchablerelids = bms_union(unbatchablerelids,
+											rinfo->clause_relids);
+	}
+
+	bms_free(batched_and_inner_relids);
+
 	unbatchablerelids = bms_del_member(unbatchablerelids,
 									   index->rel->relid);
+	batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
+
+	Assert(!root->yb_cur_batched_relids);
+	Assert(!root->yb_cur_unbatched_relids);
+	root->yb_cur_batched_relids = batchedrelids;
+	root->yb_cur_unbatched_relids = unbatchablerelids;
 
 	/*
 	 * Build simple index paths using the clauses.  Allow ScalarArrayOpExpr
@@ -717,52 +774,6 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	foreach(lc, indexpaths)
 	{
 		IndexPath  *ipath = (IndexPath *) lfirst(lc);
-		ParamPathInfo *param_info = ipath->path.param_info;
-
-		if (param_info)
-		{
-			ListCell *lc2;
-			/* See if we have any unbatchable filters. */
-			foreach(lc2, param_info->ppi_clauses)
-			{
-				RestrictInfo *rinfo = lfirst(lc2);
-				RestrictInfo *batched =
-					get_batched_restrictinfo(rinfo,
-											 rinfo->required_relids,  index->rel->relids);
-				
-				/* See if we have already batched this filter. */
-				Relids left_var_attnos = NULL;
-				if (!batched ||
-					!bms_equal(batched->left_relids, index->rel->relids) ||
-					!bms_is_subset(batched->right_relids, batchedrelids))
-				{
-					unbatchablerelids = bms_union(unbatchablerelids,
-												  rinfo->clause_relids);
-				}
-
-				if (batched &&
-					bms_equal(batched->left_relids, index->rel->relids) &&
-					bms_is_subset(batched->right_relids, batchedrelids))
-				{
-					pull_varattnos(get_leftop(batched->clause),
-								   index->rel->relid,
-								   &left_var_attnos);
-					if (!bms_is_subset(left_var_attnos, batched_inner_attnos))
-						unbatchablerelids = bms_union(unbatchablerelids,
-												  	  rinfo->clause_relids);
-				}
-				bms_free(left_var_attnos);
-			}
-
-			unbatchablerelids = bms_del_member(unbatchablerelids,
-											   index->rel->relid);
-
-			batchedrelids = bms_difference(batchedrelids, unbatchablerelids);
-			/* Add batching info. */
-			param_info->yb_ppi_req_outer_batched = batchedrelids;
-			param_info->yb_ppi_req_outer_unbatched = unbatchablerelids;
-
-		}
 
 		if (index->amhasgettuple)
 			add_path(rel, (Path *) ipath);
@@ -772,6 +783,9 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			 ipath->indexselectivity < 1.0))
 			*bitindexpaths = lappend(*bitindexpaths, ipath);
 	}
+
+	root->yb_cur_batched_relids = NULL;
+	root->yb_cur_unbatched_relids = NULL;
 }
 
 /*

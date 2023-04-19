@@ -1,0 +1,18 @@
+dn: uid=user3,dc=example,dc=org
+objectClass: top
+objectClass: account
+objectClass: posixAccount
+objectClass: shadowAccount
+cn: user3
+uid: user3
+uidNumber: 16859
+gidNumber: 100
+homeDirectory: /home/user3
+loginShell: /bin/bash
+gecos: user3
+userPassword: default
+shadowLastChange: 0
+shadowMax: 0
+shadowWarning: 0
+
+

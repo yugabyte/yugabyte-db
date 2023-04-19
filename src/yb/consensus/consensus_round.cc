@@ -12,7 +12,7 @@
 //
 #include "yb/consensus/consensus_round.h"
 
-#include "yb/consensus/consensus.pb.h"
+#include "yb/consensus/consensus.messages.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
@@ -33,8 +33,8 @@ ConsensusRound::~ConsensusRound() {
       << replicate_msg_->ShortDebugString();
 }
 
-void ConsensusRound::NotifyAddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
-  callback_->AddedToLeader(op_id, committed_op_id);
+Status ConsensusRound::NotifyAddedToLeader(const OpId& op_id, const OpId& committed_op_id) {
+  return callback_->AddedToLeader(op_id, committed_op_id);
 }
 
 void ConsensusRound::NotifyReplicationFinished(

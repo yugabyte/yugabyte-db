@@ -66,7 +66,7 @@
 #include "yb/gutil/strings/join.h"
 
 #include "yb/util/debug-util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
@@ -144,6 +144,8 @@ Batcher::~Batcher() {
       state_ == BatcherState::kComplete || state_ == BatcherState::kAborted ||
       state_ == BatcherState::kGatheringOps)
       << "Bad state: " << state_;
+
+  RequestsFinished();
 }
 
 void Batcher::Abort(const Status& status) {
@@ -235,6 +237,8 @@ void Batcher::FlushAsync(
   // expected by transaction.
   if (transaction && !is_within_transaction_retry) {
     transaction->batcher_if().ExpectOperations(operations_count);
+    // Set subtxn metadata for the current batch of ops.
+    ops_info_.metadata.subtransaction_pb = transaction->GetSubTransactionMetadataPB();
   }
 
   ops_queue_.reserve(ops_.size());
@@ -260,7 +264,6 @@ void Batcher::FlushAsync(
     }
   }
 
-  auto shared_this = shared_from_this();
   for (auto& op : ops_queue_) {
     VLOG_WITH_PREFIX(4) << "Looking up tablet for " << op.ToString()
                         << " partition key: " << Slice(op.partition_key).ToDebugHexString();
@@ -268,9 +271,7 @@ void Batcher::FlushAsync(
     if (op.yb_op->tablet()) {
       TabletLookupFinished(&op, op.yb_op->tablet());
     } else {
-      client_->data_->meta_cache_->LookupTabletByKey(
-          op.yb_op->mutable_table(), op.partition_key, deadline_,
-          std::bind(&Batcher::TabletLookupFinished, shared_this, &op, _1));
+      LookupTabletFor(&op);
     }
   }
 }
@@ -314,6 +315,16 @@ void Batcher::CombineError(const InFlightOp& in_flight_op) {
   }
 }
 
+void Batcher::LookupTabletFor(InFlightOp* op) {
+  auto shared_this = shared_from_this();
+  client_->data_->meta_cache_->LookupTabletByKey(
+      op->yb_op->mutable_table(), op->partition_key, deadline_,
+      [shared_this, op](const auto& lookup_result) {
+        shared_this->TabletLookupFinished(op, lookup_result);
+      },
+      FailOnPartitionListRefreshed::kTrue);
+}
+
 void Batcher::TabletLookupFinished(
     InFlightOp* op, Result<internal::RemoteTabletPtr> lookup_result) {
   VLOG_WITH_PREFIX_AND_FUNC(lookup_result.ok() ? 4 : 3)
@@ -322,7 +333,17 @@ void Batcher::TabletLookupFinished(
   if (lookup_result.ok()) {
     op->tablet = *lookup_result;
   } else {
-    op->error = lookup_result.status();
+    auto status = lookup_result.status();
+    if (ClientError(status) == ClientErrorCode::kTablePartitionListRefreshed) {
+      status = client::IsTolerantToPartitionsChange(*op->yb_op) ?
+          Status::OK() :
+          op->yb_op->GetPartitionKey(&op->partition_key);
+      if (status.ok()) {
+        LookupTabletFor(op);
+        return;
+      }
+    }
+    op->error = std::move(status);
   }
   if (--outstanding_lookups_ == 0) {
     AllLookupsDone();
@@ -337,8 +358,10 @@ void Batcher::TransactionReady(const Status& status) {
   }
 }
 
-std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
-  std::map<PartitionKey, Status> result;
+std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
+    Batcher::CollectOpsErrors() {
+  std::map<PartitionKey, Status> errors_by_partition_key;
+  std::map<RetryableRequestId, Status> errors_by_request_id;
   for (auto& op : ops_queue_) {
     if (op.tablet) {
       const Partition& partition = op.tablet->partition();
@@ -376,11 +399,17 @@ std::map<PartitionKey, Status> Batcher::CollectOpsErrors() {
     }
 
     if (!op.error.ok()) {
-      result.emplace(op.partition_key, op.error);
+      errors_by_partition_key.emplace(op.partition_key, op.error);
+      // Write operations under retrying with the retry batcher should have a valid request_id
+      // for de-duplication at server side. All operations in this batcher having same request
+      // id should be executed by a single WriteRpc.
+      if (op.yb_op->request_id().has_value()) {
+        errors_by_request_id.emplace(*op.yb_op->request_id(), op.error);
+      }
     }
   }
 
-  return result;
+  return std::make_pair(errors_by_partition_key, errors_by_request_id);
 }
 
 void Batcher::AllLookupsDone() {
@@ -394,22 +423,33 @@ void Batcher::AllLookupsDone() {
     return;
   }
 
-  auto errors = CollectOpsErrors();
+  auto errors_pair = CollectOpsErrors();
+  const auto& errors_by_partition_key = errors_pair.first;
+  const auto& errors_by_request_id = errors_pair.second;
 
   state_ = BatcherState::kTransactionPrepare;
 
   VLOG_WITH_PREFIX_AND_FUNC(4)
-      << "Errors: " << errors.size() << ", ops queue: " << ops_queue_.size();
+      << "Errors: " << errors_by_partition_key.size() << ", ops queue: " << ops_queue_.size();
 
-  if (!errors.empty()) {
+  if (!errors_by_partition_key.empty()) {
     // If some operation tablet lookup failed - set this error for all operations designated for
     // the same partition key. We are doing this to keep guarantee on the order of ops for the
     // same partition key (see InFlightOp::sequence_number_).
-    EraseIf([this, &errors](auto& op) {
+    // Also set this error for all operations with same request id. This happens when retrying
+    // a batcher, we do this to avoid the request id is marked as replicated at server side
+    // before all operations with this request id are all done.
+    EraseIf([this, &errors_by_partition_key, &errors_by_request_id](auto& op) {
       if (op.error.ok()) {
-        auto lookup_error_it = errors.find(op.partition_key);
-        if (lookup_error_it != errors.end()) {
+        const auto lookup_error_it = errors_by_partition_key.find(op.partition_key);
+        if (lookup_error_it != errors_by_partition_key.end()) {
           op.error = lookup_error_it->second;
+        } else if (op.yb_op->request_id().has_value()) {
+          const auto lookup_error_by_request_id_it =
+              errors_by_request_id.find(*op.yb_op->request_id());
+          if (lookup_error_by_request_id_it != errors_by_request_id.end()) {
+            op.error = lookup_error_by_request_id_it->second;
+          }
         }
       }
       if (!op.error.ok()) {
@@ -555,18 +595,20 @@ const ClientId& Batcher::client_id() const {
   return client_->id();
 }
 
-std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId(
-    const TabletId& tablet_id) {
-  return client_->NextRequestIdAndMinRunningRequestId(tablet_id);
+std::pair<RetryableRequestId, RetryableRequestId> Batcher::NextRequestIdAndMinRunningRequestId() {
+  const auto& pair = client_->NextRequestIdAndMinRunningRequestId();
+  RegisterRequest(pair.first);
+  return pair;
 }
 
-void Batcher::RequestFinished(const TabletId& tablet_id, RetryableRequestId request_id) {
-  client_->RequestFinished(tablet_id, request_id);
+void Batcher::RequestsFinished() {
+  client_->RequestsFinished(retryable_request_ids_);
 }
 
 std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
     const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
+  ADOPT_TRACE(transaction_ ? transaction_->trace() : Trace::CurrentTrace());
   VLOG_WITH_PREFIX_AND_FUNC(3) << "tablet: " << tablet->tablet_id();
 
   CHECK(group.begin != group.end);

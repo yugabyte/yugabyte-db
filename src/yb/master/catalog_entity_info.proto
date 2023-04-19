@@ -17,6 +17,7 @@ package yb.master;
 option java_package = "org.yb.master";
 
 import "yb/cdc/cdc_consumer.proto";
+import "yb/cdc/xcluster_producer.proto";
 import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/common_types.proto";
@@ -154,6 +155,9 @@ message SysTablesEntryPB {
 
   // True if the table is colocated (including tablegroups, excluding YSQL system tables).
   optional bool colocated = 25 [ default = false ];
+  // If the table is colocated and is not the parent table of the colocated tablet,
+  // contains the table id of the parent table.
+  optional bytes parent_table_id = 40;
 
   // For materialized views:
   optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
@@ -162,9 +166,6 @@ message SysTablesEntryPB {
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;
   optional IndexInfoPB fully_applied_index_info = 27;
-
-  // Optional: Table dependent upon transaction success (abort removes table). Used by YSQL.
-  optional TransactionMetadataPB transaction = 29;
 
   // During an alter table, which involves no schema change but only updating
   // a permission, is it sometimes acceptable for a client's request (which is
@@ -185,6 +186,29 @@ message SysTablesEntryPB {
   optional bytes transaction_table_tablespace_id = 34;
   // Time when the table was hidden.
   optional fixed64 hide_hybrid_time = 35;
+
+  message YsqlDdlTxnVerifierState {
+    optional bool contains_create_table_op = 1;
+    optional bool contains_alter_table_op = 2;
+    optional bool contains_drop_table_op = 3;
+
+    optional SchemaPB previous_schema = 4;
+    optional string previous_table_name = 5;
+  }
+
+  // State that indicates that this table is being changed by a YSQL transaction.
+  // This repeated field contains only a single element as of now. When we support DDL + Savepoints,
+  // we will have one element for every savepoint modifying this table in this field.
+  repeated YsqlDdlTxnVerifierState ysql_ddl_txn_verifier_state = 38;
+
+  // YSQL transaction that is currently modifying this table state. The changes being performed by
+  // it are detailed in 'ysql_ddl_txn_state' above.
+  optional TransactionMetadataPB transaction = 29;
+
+  repeated StatefulServiceKind hosted_stateful_services = 39;
+
+  // Time when a full compaction was last requested by the user.
+  optional fixed64 last_full_compaction_time = 41;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for
@@ -247,6 +271,13 @@ message SysTabletsEntryPB {
   // If tablet was hidden instead of deleting, here we keep list of schedule ids that prevented
   // actual deletion.
   repeated bytes retained_by_snapshot_schedules = 17;
+
+  // Describes the persisted mapping scheme for colocated tablets. If set, the table_ids field of
+  // this tablet is empty and child tables on this tablet have their parent_table_id field
+  // filled. The table_id field of all tablets is filled with the parent table id. So the list of
+  // tables hosted on this tablet is computed at load time by finding all child tables of the
+  // parent table of this tablet.
+  optional bool hosted_tables_mapped_by_parent_id = 18;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for a namespace.
@@ -320,6 +351,11 @@ message SysClusterConfigEntryPB {
   optional BlacklistPB leader_blacklist = 7;
   optional EncryptionInfoPB encryption_info = 5;
   optional cdc.ConsumerRegistryPB consumer_registry = 6;
+}
+
+message SysXClusterConfigEntryPB {
+  optional uint32 version = 1;
+  optional xcluster.ProducerRegistryPB xcluster_producer_registry = 2;
 }
 
 // The data part of a SysRowEntry in the sys.catalog table for Redis Config.
@@ -487,6 +523,21 @@ message SysSnapshotEntryPB {
   optional fixed64 previous_snapshot_hybrid_time = 7;
 }
 
+message SchemaVersionMappingPB {
+  required uint32 producer_schema_version = 1;
+  required uint32 consumer_schema_version = 2;
+}
+
+message ColocatedSchemaVersionMappingPB {
+  required uint32 colocation_id = 1;
+  required SchemaVersionMappingPB schema_version_mapping = 2;
+}
+
+message SchemaVersionMappingEntryPB {
+  optional SchemaVersionMappingPB schema_version_mapping = 1;
+  repeated ColocatedSchemaVersionMappingPB colocated_schema_versions = 2;
+}
+
 // The data part of a SysRowEntry in the sys.catalog table for a universe replication record.
 message SysUniverseReplicationEntryPB {
   enum State {
@@ -531,6 +582,9 @@ message SysUniverseReplicationEntryPB {
   optional bool is_ns_replication = 7 [default = false];
   optional NamespaceIdentifierPB producer_namespace = 8;
   optional NamespaceIdentifierPB consumer_namespace = 9;
+
+  // Mapping from Producer Table ID to Producer->Consumer schema version mappings
+  map<string, SchemaVersionMappingEntryPB> schema_version_mappings = 10;
 }
 
 message XClusterSafeTimePB {

@@ -30,12 +30,13 @@
 #include "yb/util/redis_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/stol_utils.h"
+#include "yb/util/flags.h"
 
 using std::string;
 using std::numeric_limits;
 using std::vector;
 
-DEFINE_bool(emulate_redis_responses,
+DEFINE_UNKNOWN_bool(emulate_redis_responses,
     true,
     "If emulate_redis_responses is false, we hope to get slightly better performance by just "
     "returning OK for commands that might require us to read additional records viz. SADD, HSET, "
@@ -118,8 +119,8 @@ Status KeyEntryValueFromSubKey(
 
 // Stricter version of the above when we know the exact datatype to expect.
 Status QLValueFromSubKeyStrict(const RedisKeyValueSubKeyPB& subkey_pb,
-                                       RedisDataType data_type,
-                                       QLValuePB* out) {
+                               RedisDataType data_type,
+                               QLValuePB* out) {
   switch (data_type) {
     case REDIS_TYPE_LIST: FALLTHROUGH_INTENDED;
     case REDIS_TYPE_SET: FALLTHROUGH_INTENDED;
@@ -325,7 +326,7 @@ bool VerifyTypeAndSetCode(
 }
 
 Status AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
-                                                RedisArrayPB* redis_array) {
+                                        RedisArrayPB* redis_array) {
   switch (value.value_type()) {
     case ValueEntryType::kCollString:
     case ValueEntryType::kString:
@@ -344,7 +345,7 @@ Status AddPrimitiveValueToResponseArray(const PrimitiveValue& value,
 }
 
 Status AddPrimitiveValueToResponseArray(const KeyEntryValue& value,
-                                                RedisArrayPB* redis_array) {
+                                        RedisArrayPB* redis_array) {
   switch (value.type()) {
     case KeyEntryType::kString: FALLTHROUGH_INTENDED;
     case KeyEntryType::kStringDescending:
@@ -385,11 +386,11 @@ struct AddResponseValuesGeneric {
 // first refers to the score for the given values.
 // second refers to a subdocument where each key is a value with the given score.
 Status AddResponseValuesSortedSets(const KeyEntryValue& first,
-                                           const SubDocument& second,
-                                           RedisResponsePB* response,
-                                           bool add_keys,
-                                           bool add_values,
-                                           bool reverse = false) {
+                                   const SubDocument& second,
+                                   RedisResponsePB* response,
+                                   bool add_keys,
+                                   bool add_values,
+                                   bool reverse = false) {
   AddResponseValuesGeneric add_response_values_generic;
   if (reverse) {
     for (auto it = second.object_container().rbegin();
@@ -409,12 +410,12 @@ Status AddResponseValuesSortedSets(const KeyEntryValue& first,
 
 template <typename T, typename AddResponseRow>
 Status PopulateRedisResponseFromInternal(T iter,
-                                                 AddResponseRow add_response_row,
-                                                 const T& iter_end,
-                                                 RedisResponsePB *response,
-                                                 bool add_keys,
-                                                 bool add_values,
-                                                 bool reverse = false) {
+                                         AddResponseRow add_response_row,
+                                         const T& iter_end,
+                                         RedisResponsePB *response,
+                                         bool add_keys,
+                                         bool add_values,
+                                         bool reverse = false) {
   response->set_allocated_array_response(new RedisArrayPB());
   for (; iter != iter_end; iter++) {
     RETURN_NOT_OK(add_response_row(
@@ -425,11 +426,11 @@ Status PopulateRedisResponseFromInternal(T iter,
 
 template <typename AddResponseRow>
 Status PopulateResponseFrom(const SubDocument::ObjectContainer &key_values,
-                                    AddResponseRow add_response_row,
-                                    RedisResponsePB *response,
-                                    bool add_keys,
-                                    bool add_values,
-                                    bool reverse = false) {
+                            AddResponseRow add_response_row,
+                            RedisResponsePB *response,
+                            bool add_keys,
+                            bool add_values,
+                            bool reverse = false) {
   if (reverse) {
     return PopulateRedisResponseFromInternal(key_values.rbegin(), add_response_row,
                                              key_values.rend(), response, add_keys,
@@ -1709,14 +1710,14 @@ Result<boost::optional<Expiration>> GetTtl(
     VERIFY_RESULT(DocKey::EncodedSize(encoded_subdoc_key, DocKeyPart::kWholeDocKey));
   Slice key_slice(encoded_subdoc_key.data(), dockey_size);
   iter->Seek(key_slice);
-  if (!iter->valid())
+  if (iter->IsOutOfRecords())
     return boost::none;
   auto key_data = VERIFY_RESULT(iter->FetchKey());
   if (!key_data.key.compare(key_slice)) {
     Value doc_value = Value(PrimitiveValue(ValueEntryType::kInvalid));
     RETURN_NOT_OK(doc_value.Decode(iter->value()));
     if (doc_value.value_type() != ValueEntryType::kTombstone) {
-      return Expiration(key_data.write_time.hybrid_time(), doc_value.ttl());
+      return Expiration(VERIFY_RESULT(key_data.write_time.Decode()).hybrid_time(), doc_value.ttl());
     }
   }
   return boost::none;
@@ -2030,7 +2031,7 @@ Status RedisReadOperation::ExecuteKeys() {
   bool doc_found;
   SubDocument result;
 
-  while (iterator_->valid()) {
+  while (!iterator_->IsOutOfRecords()) {
     if (deadline_info_.get_ptr() && deadline_info_->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_FASTSTRING_H_
-#define YB_UTIL_FASTSTRING_H_
+#pragma once
 
 #include <string>
 
@@ -274,5 +273,3 @@ class faststring {
 };
 
 }  // namespace yb
-
-#endif  // YB_UTIL_FASTSTRING_H_

@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/utilities/write_batch_with_index.h"
 
@@ -761,4 +760,3 @@ Status WriteBatchWithIndex::RollbackToSavePoint() {
 }
 
 }  // namespace rocksdb
-#endif  // !ROCKSDB_LITE

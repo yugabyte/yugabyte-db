@@ -16,7 +16,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -26,7 +26,7 @@ import java.sql.SQLException;
 import com.yugabyte.util.PSQLException;
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(value=YBTestRunnerNonTsanOnly.class)
+@RunWith(value=YBTestRunner.class)
 public class TestOneOrTwoAdmins extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestOneOrTwoAdmins.class);
 
@@ -56,8 +56,7 @@ public class TestOneOrTwoAdmins extends BasePgSQLTest {
 
   private static boolean isYBTxnException(PSQLException ex) {
     String msg = ex.getMessage();
-    return msg.contains("Missing metadata for transaction:") ||
-           msg.contains("Conflicts with higher priority transaction:") ||
+    return msg.contains("could not serialize access due to concurrent update") ||
            msg.contains("Transaction aborted:") ||
            msg.contains("Unknown transaction, could be recently aborted:");
   }

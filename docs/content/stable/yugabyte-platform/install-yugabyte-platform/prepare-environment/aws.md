@@ -15,14 +15,14 @@ type: docs
 
   <li>
     <a href="../aws/" class="nav-link active">
-      <i class="fab fa-aws" aria-hidden="true"></i>
+      <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-       <i class="fab fa-google" aria-hidden="true"></i>
+       <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -36,21 +36,21 @@ type: docs
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
       OpenShift
     </a>
  </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building" aria-hidden="true"></i>
+      <i class="fa-solid fa-building" aria-hidden="true"></i>
       On-premises
     </a>
   </li>
@@ -65,7 +65,7 @@ In order to access YugabyteDB Anywhere from outside the AWS environment, you wou
 - Check, manage, and upgrade YugabyteDB Anywhere (port `tcp:8800`).
 - View the YugabyteDB Anywhere UI (port `tcp:80`).
 
-If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+If you are using your own Virtual Private Cloud (VPC) as a self-managed configuration, the following additional TCP ports must be accessible: 7000, 7100, 9000, 9100, 18018, 11000, 12000, 13000, 9300, 9042, 5433, 6379, 54422. For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
 
 To create a security group that enables these, use the Amazon console to navigate to **EC2 > Security Groups**, click **Create Security Group**, and then add the following values:
 
@@ -89,7 +89,7 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
 
 ```sh
 {
-    "Version": "2020-10-17",
+    "Version": "2012-10-17",
     "Statement": [
         {
             "Sid": "VisualEditor0",
@@ -142,9 +142,12 @@ In order for YugabyteDB Anywhere to manage YugabyteDB nodes, limited access to y
                 "ec2:CreateSubnet",
                 "ec2:CreateVpc",
                 "ec2:CreateVpcPeeringConnection",
+                "ec2:AcceptVpcPeeringConnection",
                 "ec2:DisassociateRouteTable",
                 "ec2:ModifyVpcAttribute",
                 "ec2:GetConsoleOutput",
+                "ec2:CreateSnapshot",
+                "ec2:DeleteSnapshot",
                 "ec2:DescribeInstanceTypes"
             ],
             "Resource": "*"

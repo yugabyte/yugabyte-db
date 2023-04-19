@@ -47,6 +47,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
+#include "yb/util/flags.h"
 
 namespace yb {
 namespace tools {
@@ -58,10 +59,10 @@ using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
-DEFINE_int32(checksum_timeout_sec, 120,
+DEFINE_UNKNOWN_int32(checksum_timeout_sec, 120,
              "Maximum total seconds to wait for a checksum scan to complete "
              "before timing out.");
-DEFINE_int32(checksum_scan_concurrency, 4,
+DEFINE_UNKNOWN_int32(checksum_scan_concurrency, 4,
              "Number of concurrent checksum scans to execute per tablet server.");
 
 ChecksumOptions::ChecksumOptions()

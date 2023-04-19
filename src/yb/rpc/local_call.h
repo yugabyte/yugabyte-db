@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_LOCAL_CALL_H
-#define YB_RPC_LOCAL_CALL_H
+#pragma once
 
 #include "yb/gutil/casts.h"
 
@@ -30,10 +29,13 @@ class LocalYBInboundCall;
 // A short-circuited outbound call.
 class LocalOutboundCall : public OutboundCall {
  public:
-  LocalOutboundCall(const RemoteMethod* remote_method,
+  LocalOutboundCall(const RemoteMethod& remote_method,
                     const std::shared_ptr<OutboundCallMetrics>& outbound_call_metrics,
-                    AnyMessagePtr response_storage, RpcController* controller,
-                    std::shared_ptr<RpcMetrics> rpc_metrics, ResponseCallback callback);
+                    AnyMessagePtr response_storage,
+                    RpcController* controller,
+                    std::shared_ptr<RpcMetrics> rpc_metrics,
+                    ResponseCallback callback,
+                    ThreadPool* callback_thread_pool);
 
   Status SetRequestParam(AnyMessageConstPtr req, const MemTrackerPtr& mem_tracker) override;
 
@@ -46,10 +48,10 @@ class LocalOutboundCall : public OutboundCall {
   }
 
  protected:
-  void Serialize(boost::container::small_vector_base<RefCntBuffer>* output) override;
+  void Serialize(ByteBlocks* output) override;
 
-  Result<Slice> GetSidecar(size_t idx) const override;
-  Result<SidecarHolder> GetSidecarHolder(size_t idx) const override;
+  Result<RefCntSlice> ExtractSidecar(size_t idx) const override;
+  size_t TransferSidecars(Sidecars* context) override;
 
  private:
   friend class LocalYBInboundCall;
@@ -76,12 +78,6 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
-  size_t AddRpcSidecar(Slice car) override {
-    auto buf = RefCntBuffer(car);
-    sidecars_.push_back(std::move(buf));
-    return sidecars_.size() - 1;
-  }
-
   std::shared_ptr<LocalOutboundCall> outbound_call() const {
     return outbound_call_.lock();
   }
@@ -92,10 +88,8 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
  private:
   friend class LocalOutboundCall;
 
-  Result<size_t> ParseRequest(Slice param) override;
+  Result<size_t> ParseRequest(Slice param, const RefCntBuffer& buffer) override;
   AnyMessageConstPtr SerializableResponse() override;
-
-  boost::container::small_vector<RefCntBuffer, kMinBufferForSidecarSlices> sidecars_;
 
   // Weak pointer back to the outbound call owning this inbound call to avoid circular reference.
   std::weak_ptr<LocalOutboundCall> outbound_call_;
@@ -128,5 +122,3 @@ auto HandleCall(InboundCallPtr call, F f) {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_LOCAL_CALL_H

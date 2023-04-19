@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_COMMON_PG_TYPES_H
-#define YB_COMMON_PG_TYPES_H
+#pragma once
 
 #include <boost/functional/hash/hash.hpp>
 
@@ -23,7 +22,7 @@ namespace yb {
 class Slice;
 
 // Postgres object identifier (OID).
-typedef uint32_t PgOid;
+using PgOid = uint32_t;
 static constexpr PgOid kPgInvalidOid = 0;
 static constexpr PgOid kPgByteArrayOid = 17;
 
@@ -59,17 +58,6 @@ struct PgObjectId {
 
   std::string ToString() const;
 
-  bool operator== (const PgObjectId& other) const {
-    return database_oid == other.database_oid && object_oid == other.object_oid;
-  }
-
-  friend std::size_t hash_value(const PgObjectId& id) {
-    std::size_t value = 0;
-    boost::hash_combine(value, id.database_oid);
-    boost::hash_combine(value, id.object_oid);
-    return value;
-  }
-
   template <class PB>
   void ToPB(PB* pb) const {
     pb->set_database_oid(database_oid);
@@ -87,12 +75,27 @@ struct PgObjectId {
   }
 };
 
-typedef boost::hash<PgObjectId> PgObjectIdHash;
+using PgObjectIdHash = boost::hash<PgObjectId>;
 
 inline std::ostream& operator<<(std::ostream& out, const PgObjectId& id) {
   return out << id.ToString();
 }
 
-}  // namespace yb
+inline bool operator==(const PgObjectId& lhs, const PgObjectId& rhs) {
+  return lhs.database_oid == rhs.database_oid && lhs.object_oid == rhs.object_oid;
+}
 
-#endif  // YB_COMMON_PG_TYPES_H
+inline bool operator<(const PgObjectId& lhs, const PgObjectId& rhs) {
+  return lhs.database_oid == rhs.database_oid
+      ? (lhs.object_oid < rhs.object_oid)
+      : (lhs.database_oid < rhs.database_oid);
+}
+
+inline size_t hash_value(const PgObjectId& id) {
+  size_t value = 0;
+  boost::hash_combine(value, id.database_oid);
+  boost::hash_combine(value, id.object_oid);
+  return value;
+}
+
+}  // namespace yb

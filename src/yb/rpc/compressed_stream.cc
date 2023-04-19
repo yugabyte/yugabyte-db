@@ -26,21 +26,23 @@
 #include "yb/rpc/circular_read_buffer.h"
 #include "yb/rpc/outbound_data.h"
 #include "yb/rpc/refined_stream.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status_format.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int32(stream_compression_algo, 0, "Algorithm used for stream compression. "
+DEFINE_UNKNOWN_int32(stream_compression_algo, 0, "Algorithm used for stream compression. "
                                          "0 - no compression, 1 - gzip, 2 - snappy, 3 - lz4.");
 
 namespace yb {
 namespace rpc {
 
-using SmallRefCntBuffers = boost::container::small_vector_base<RefCntBuffer>;
+using SmallRefCntBuffers = ByteBlocks;
 
 namespace {
 
@@ -64,7 +66,7 @@ class Compressor {
   virtual ~Compressor() = default;
 };
 
-size_t EntrySize(const RefCntBuffer& buffer) {
+size_t EntrySize(const RefCntSlice& buffer) {
   return buffer.size();
 }
 
@@ -72,11 +74,11 @@ size_t EntrySize(const iovec& iov) {
   return iov.iov_len;
 }
 
-char* EntryData(const RefCntBuffer& buffer) {
+const char* EntryData(const RefCntSlice& buffer) {
   return buffer.data();
 }
 
-char* EntryData(const iovec& iov) {
+const char* EntryData(const iovec& iov) {
   return static_cast<char*>(iov.iov_base);
 }
 
@@ -177,7 +179,8 @@ class ZlibCompressor : public Compressor {
   }
 
   Status Compress(
-      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
+      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
+      ON_REACTOR_THREAD override {
     RefCntBuffer output(deflateBound(&deflate_stream_, TotalLen(input)));
     deflate_stream_.avail_out = static_cast<unsigned int>(output.size());
     deflate_stream_.next_out = output.udata();
@@ -398,7 +401,8 @@ class SnappyCompressor : public Compressor {
   }
 
   Status Compress(
-      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
+      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
+      ON_REACTOR_THREAD override {
     RangeSource<SmallRefCntBuffers::const_iterator> source(input.begin(), input.end());
     auto input_size = source.Available();
     bool stop = false;
@@ -682,7 +686,8 @@ class LZ4Compressor : public Compressor {
   }
 
   Status Compress(
-      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data) override {
+      const SmallRefCntBuffers& input, RefinedStream* stream, OutboundDataPtr data)
+      ON_REACTOR_THREAD override {
     // Increment iterator in loop body to be able to check whether it is last iteration or not.
     for (auto input_it = input.begin(); input_it != input.end();) {
       Slice input_slice = input_it->AsSlice();
@@ -765,7 +770,7 @@ class CompressedRefiner : public StreamRefiner {
     stream_ = stream;
   }
 
-  Status ProcessHeader() override {
+  Status ProcessHeader() ON_REACTOR_THREAD override {
     constexpr int kHeaderLen = 3;
 
     auto data = stream_->ReadBuffer().AppendedVecs();
@@ -790,13 +795,13 @@ class CompressedRefiner : public StreamRefiner {
     return stream_->Established(RefinedStreamState::kDisabled);
   }
 
-  Status Send(OutboundDataPtr data) override {
-    boost::container::small_vector<RefCntBuffer, 10> input;
+  Status Send(OutboundDataPtr data) ON_REACTOR_THREAD override {
+    boost::container::small_vector<RefCntSlice, 10> input;
     data->Serialize(&input);
     return compressor_->Compress(input, stream_, std::move(data));
   }
 
-  Status Handshake() override {
+  Status Handshake() ON_REACTOR_THREAD override {
     if (stream_->local_side() == LocalSide::kClient) {
       compressor_ = CreateOutboundCompressor(stream_->buffer_tracker());
       if (!compressor_) {

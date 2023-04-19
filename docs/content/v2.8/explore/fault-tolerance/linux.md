@@ -14,29 +14,29 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/fault-tolerance/macos" class="nav-link">
-      <i class="fab fa-apple" aria-hidden="true"></i>
+    <a href="../macos/" class="nav-link">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
       macOS
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/fault-tolerance/linux" class="nav-link active">
-      <i class="fab fa-linux" aria-hidden="true"></i>
+    <a href="../linux/" class="nav-link active">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
       Linux
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/fault-tolerance/docker" class="nav-link">
-      <i class="fab fa-docker" aria-hidden="true"></i>
+    <a href="../docker/" class="nav-link">
+      <i class="fa-brands fa-docker" aria-hidden="true"></i>
       Docker
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/fault-tolerance/kubernetes" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../kubernetes/" class="nav-link">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
@@ -78,7 +78,7 @@ Next, create a 3 node cluster by joining two more nodes with the previous node. 
 Download the YugabyteDB workload generator JAR file (`yb-sample-apps.jar`).
 
 ```sh
-$ wget https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true -O yb-sample-apps.jar
+wget 'https://github.com/yugabyte/yb-sample-apps/releases/download/1.3.9/yb-sample-apps.jar?raw=true' -O yb-sample-apps.jar
 ```
 
 Run the `SqlInserts` workload against the local universe using the following command.

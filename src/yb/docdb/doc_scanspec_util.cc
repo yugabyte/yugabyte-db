@@ -115,7 +115,7 @@ bool GetQLRangeBoundIsInclusive(const QLScanRange::QLRange& ql_range,
     return ql_bound->IsInclusive();
   }
 
-  return true;
+  return false;
 }
 
 KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
@@ -128,6 +128,13 @@ KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
       return KeyEntryValue::NullValue(sorting_type);
     }
     return KeyEntryValue::FromQLValuePB(ql_bound->GetValue(), sorting_type);
+  }
+
+  // If there is any constraint on this range then NULL's should not be included
+  // in this range. Note that GetQLRangeBoundIsInclusive defaults to false in
+  // the absence of a range.
+  if (ql_range.min_bound || ql_range.max_bound) {
+    return KeyEntryValue(lower_bound ? KeyEntryType::kNullLow : KeyEntryType::kNullHigh);
   }
 
   // For unset use kLowest/kHighest to ensure we cover entire scanned range.

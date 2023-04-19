@@ -17,14 +17,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/explore/transactions/scaling-transactions/" class="nav-link active">
+    <a href="../scaling-transactions/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="/preview/explore/transactions/distributed-transactions-ycql/" class="nav-link">
+    <a href="../distributed-transactions-ycql/" class="nav-link">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>
@@ -191,7 +191,7 @@ ycqlsh> CREATE KEYSPACE ybdemo_keyspace;
 ycqlsh> CREATE TABLE ybdemo_keyspace.cassandrakeyvalue (k text PRIMARY KEY, v blob);
 ```
 
-By default, [yugabyted](../../../reference/configuration/yugabyted) creates one tablet per node per table. So for a 3 node cluster, 3 tablets are created for the above table; one on every node. Every such tablet is replicated 3 times for fault tolerance, so that makes the total number of nodes to be 3*3=9. Every node thus contains 3 tablets, one of which it is the leader and the remaining 2 of which it is the follower.
+By default, [yugabyted](../../../reference/configuration/yugabyted) creates one tablet per node per table. So for a 3 node cluster, 3 tablets are created for the above table; one on every node. Every such tablet is replicated 3 times for fault tolerance, so that makes the total number of tablets to be 3*3=9. Every node thus contains 3 tablets, one of which it is the leader and the remaining 2 of which it is the follower.
 
 ### Explore tablets
 
@@ -395,8 +395,8 @@ $ ./bin/yugabyted destroy \
 
 To learn more about sharding in YugabyteDB, you may wish to read the [architecture documentation](../../../architecture/docdb-sharding/), or the following blog posts:
 
-[How Data Sharding Works in a Distributed SQL Database](https://blog.yugabyte.com/how-data-sharding-works-in-a-distributed-sql-database/)
+[How Data Sharding Works in a Distributed SQL Database](https://www.yugabyte.com/blog/how-data-sharding-works-in-a-distributed-sql-database/)
 
-[Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://blog.yugabyte.com/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
+[Four Data Sharding Strategies We Analyzed in Building a Distributed SQL Database](https://www.yugabyte.com/blog/four-data-sharding-strategies-we-analyzed-in-building-a-distributed-sql-database/)
 
-[Overcoming MongoDB Sharding and Replication Limitations with YugabyteDB](https://blog.yugabyte.com/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)
+[Overcoming MongoDB Sharding and Replication Limitations with YugabyteDB](https://www.yugabyte.com/blog/overcoming-mongodb-sharding-and-replication-limitations-with-yugabyte-db/)

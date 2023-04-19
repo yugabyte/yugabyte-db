@@ -16,8 +16,9 @@
 #include "yb/rpc/connection.h"
 
 #include "yb/util/mem_tracker.h"
+#include "yb/util/flags.h"
 
-DEFINE_int64(read_buffer_memory_limit, -5,
+DEFINE_UNKNOWN_int64(read_buffer_memory_limit, -5,
              "Overall limit for read buffers. "
              "Positive value - limit in bytes. "
              "Negative value - percent of root process memory. "

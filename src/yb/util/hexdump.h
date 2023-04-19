@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_HEXDUMP_H
-#define YB_UTIL_HEXDUMP_H
+#pragma once
 
 #include <string>
 
@@ -45,4 +44,3 @@ class Slice;
 std::string HexDump(const Slice &slice);
 
 } // namespace yb
-#endif

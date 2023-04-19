@@ -81,7 +81,7 @@
 #include "yb/util/capabilities.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -96,24 +96,21 @@
 
 using namespace std::literals;
 
-DEFINE_int32(heartbeat_rpc_timeout_ms, 15000,
-             "Timeout used for the TS->Master heartbeat RPCs.");
+DEFINE_RUNTIME_int32(heartbeat_rpc_timeout_ms, 15000,
+    "Timeout used for the TS->Master heartbeat RPCs.");
 TAG_FLAG(heartbeat_rpc_timeout_ms, advanced);
-TAG_FLAG(heartbeat_rpc_timeout_ms, runtime);
 
-DEFINE_int32(heartbeat_interval_ms, 1000,
-             "Interval at which the TS heartbeats to the master.");
+DEFINE_RUNTIME_int32(heartbeat_interval_ms, 1000,
+    "Interval at which the TS heartbeats to the master.");
 TAG_FLAG(heartbeat_interval_ms, advanced);
-TAG_FLAG(heartbeat_interval_ms, runtime);
 
-DEFINE_int32(heartbeat_max_failures_before_backoff, 3,
+DEFINE_UNKNOWN_int32(heartbeat_max_failures_before_backoff, 3,
              "Maximum number of consecutive heartbeat failures until the "
              "Tablet Server backs off to the normal heartbeat interval, "
              "rather than retrying.");
 TAG_FLAG(heartbeat_max_failures_before_backoff, advanced);
 
 DEFINE_test_flag(bool, tserver_disable_heartbeat, false, "Should heartbeat be disabled");
-TAG_FLAG(TEST_tserver_disable_heartbeat, runtime);
 
 DEFINE_CAPABILITY(TabletReportLimit, 0xb1a2a020);
 
@@ -146,14 +143,20 @@ class Heartbeater::Thread {
   void TriggerASAP();
 
   void set_master_addresses(server::MasterAddressesPtr master_addresses) {
-    std::lock_guard<std::mutex> l(master_addresses_mtx_);
+    std::lock_guard<std::mutex> l(master_meta_mtx_);
     master_addresses_ = std::move(master_addresses);
     VLOG_WITH_PREFIX(1) << "Setting master addresses to " << yb::ToString(master_addresses_);
   }
 
+  std::string get_leader_master_hostport() {
+    std::lock_guard<std::mutex> l(master_meta_mtx_);
+    return leader_master_hostport_.ToString();
+  }
+
  private:
   void RunThread();
-  Status FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport);
+  Status FindLeaderMaster(CoarseTimePoint deadline,
+                          HostPort* leader_hostport) REQUIRES(master_meta_mtx_);;
   Status ConnectToMaster();
   int GetMinimumHeartbeatMillis() const;
   int GetMillisUntilNextHeartbeat() const;
@@ -162,19 +165,22 @@ class Heartbeater::Thread {
   Status SetupRegistration(master::TSRegistrationPB* reg);
   void SetupCommonField(master::TSToMasterCommonPB* common);
   bool IsCurrentThread() const;
-
   const std::string& LogPrefix() const {
     return server_->LogPrefix();
   }
 
-  server::MasterAddressesPtr get_master_addresses() {
-    std::lock_guard<std::mutex> l(master_addresses_mtx_);
+  server::MasterAddressesPtr get_master_addresses_unlocked() {
     CHECK_NOTNULL(master_addresses_.get());
     return master_addresses_;
   }
 
-  // Protecting master_addresses_.
-  std::mutex master_addresses_mtx_;
+  server::MasterAddressesPtr get_master_addresses() {
+    std::lock_guard<std::mutex> l(master_meta_mtx_);
+    return get_master_addresses_unlocked();
+  }
+
+  // Protecting master list and leader.
+  std::mutex master_meta_mtx_;
 
   // The hosts/ports of masters that we may heartbeat to.
   //
@@ -245,6 +251,11 @@ void Heartbeater::set_master_addresses(server::MasterAddressesPtr master_address
   thread_->set_master_addresses(std::move(master_addresses));
 }
 
+std::string Heartbeater::get_leader_master_hostport() {
+  return thread_->get_leader_master_hostport();
+}
+
+
 ////////////////////////////////////////////////////////////
 // Heartbeater::Thread
 ////////////////////////////////////////////////////////////
@@ -281,9 +292,10 @@ void LeaderMasterCallback(const std::shared_ptr<FindLeaderMasterData>& data,
 
 } // anonymous namespace
 
-Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort* leader_hostport) {
+Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline,
+                                             HostPort* leader_hostport) {
   Status s = Status::OK();
-  const auto master_addresses = get_master_addresses();
+  const auto master_addresses = get_master_addresses_unlocked();
   if (master_addresses->size() == 1 && (*master_addresses)[0].size() == 1) {
     // "Shortcut" the process when a single master is specified.
     *leader_hostport = (*master_addresses)[0][0];
@@ -312,6 +324,7 @@ Status Heartbeater::Thread::FindLeaderMaster(CoarseTimePoint deadline, HostPort*
 }
 
 Status Heartbeater::Thread::ConnectToMaster() {
+  std::lock_guard<std::mutex> l(master_meta_mtx_);
   auto deadline = CoarseMonoClock::Now() + FLAGS_heartbeat_rpc_timeout_ms * 1ms;
   // TODO send heartbeats without tablet reports to non-leader masters.
   Status s = FindLeaderMaster(deadline, &leader_master_hostport_);
@@ -418,6 +431,12 @@ Status Heartbeater::Thread::TryHeartbeat() {
 
   req.set_config_index(server_->GetCurrentMasterIndex());
   req.set_cluster_config_version(server_->cluster_config_version());
+  auto result = server_->XClusterConfigVersion();
+  if (result.ok()) {
+    req.set_xcluster_config_version(*result);
+  } else if (!result.status().IsNotFound()) {
+    return result.status();
+  }
   req.set_rtt_us(heartbeat_rtt_.ToMicroseconds());
   if (server_->has_faulty_drive()) {
     req.set_faulty_drive(true);
@@ -493,17 +512,24 @@ Status Heartbeater::Thread::TryHeartbeat() {
       } else {
         cluster_config_version = resp.cluster_config_version();
       }
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(cluster_config_version, &resp.consumer_registry()));
+      RETURN_NOT_OK(server_->SetConfigVersionAndConsumerRegistry(
+          cluster_config_version, &resp.consumer_registry()));
+      server_->SetXClusterDDLOnlyMode(resp.consumer_registry().role() != cdc::XClusterRole::ACTIVE);
     } else if (resp.has_cluster_config_version()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->
-          SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
+      RETURN_NOT_OK(
+          server_->SetConfigVersionAndConsumerRegistry(resp.cluster_config_version(), nullptr));
     }
 
     // Check whether the cluster is a producer of a CDC stream.
     if (resp.has_xcluster_enabled_on_producer() &&
         resp.xcluster_enabled_on_producer()) {
-      RETURN_NOT_OK(static_cast<enterprise::TabletServer*>(server_)->SetCDCServiceEnabled());
+      RETURN_NOT_OK(server_->SetCDCServiceEnabled());
+    }
+
+    if (resp.has_xcluster_producer_registry() && resp.has_xcluster_config_version()) {
+      RETURN_NOT_OK(server_->SetPausedXClusterProducerStreams(
+          resp.xcluster_producer_registry().paused_producer_stream_ids(),
+          resp.xcluster_config_version()));
     }
 
     // At this point we know resp is a successful heartbeat response from the master so set it as
@@ -656,7 +682,7 @@ void Heartbeater::Thread::RunThread() {
     if (!s.ok()) {
       const auto master_addresses = get_master_addresses();
       LOG_WITH_PREFIX(WARNING)
-          << "Failed to heartbeat to " << leader_master_hostport_.ToString()
+          << "Failed to heartbeat to " << get_leader_master_hostport()
           << ": " << s << " tries=" << consecutive_failed_heartbeats_
           << ", num=" << master_addresses->size()
           << ", masters=" << yb::ToString(master_addresses)
@@ -700,6 +726,9 @@ Status Heartbeater::Thread::Stop() {
     should_run_ = false;
     cond_.Signal();
   }
+
+  rpcs_.Shutdown();
+
   RETURN_NOT_OK(ThreadJoiner(thread_.get()).Join());
   thread_ = nullptr;
   return Status::OK();

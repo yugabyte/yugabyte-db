@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_SHARED_LOCK_MANAGER_H
-#define YB_DOCDB_SHARED_LOCK_MANAGER_H
+#pragma once
 
 #include <string>
 #include <vector>
@@ -67,5 +66,3 @@ bool IntentTypeSetsConflict(IntentTypeSet lhs, IntentTypeSet rhs);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif // YB_DOCDB_SHARED_LOCK_MANAGER_H

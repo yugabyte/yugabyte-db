@@ -1,6 +1,14 @@
+/*
+ * Copyright 2022 YugaByte, Inc. and Contributors
+ *
+ * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+ * may not use this file except in compliance with the License. You
+ * may obtain a copy of the License at
+ *
+ *     https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
+ */
 package com.yugabyte.yw.common.cdc;
 
-import com.azure.core.annotation.Get;
 import com.cronutils.utils.VisibleForTesting;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
@@ -9,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import org.yb.client.*;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass;
-
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import java.util.ArrayList;
@@ -29,16 +36,16 @@ public class CdcStreamManager {
   }
 
   private YBClient getYBClientForUniverse(Universe universe) {
-    LOG.info("Getting YBClient for universeId='{}'", universe.universeUUID);
+    LOG.info("Getting YBClient for universeId='{}'", universe.getUniverseUUID());
 
     String masterAddresses = universe.getMasterAddresses();
     String certificate = universe.getCertificateNodetoNode();
 
-    LOG.info("Masters for universeId='{}' are: {}", universe.universeUUID, masterAddresses);
+    LOG.info("Masters for universeId='{}' are: {}", universe.getUniverseUUID(), masterAddresses);
 
     try {
       YBClient client = ybClientService.getClient(masterAddresses, certificate);
-      LOG.info("Got client for universeId='{}'", universe.universeUUID);
+      LOG.info("Got client for universeId='{}'", universe.getUniverseUUID());
       return client;
     } catch (Exception ex) {
       LOG.error("Exception while trying to getYBClientForUniverse.", ex);
@@ -54,7 +61,7 @@ public class CdcStreamManager {
 
       LOG.info(
           "Got response for 'listCDCStreams' for universeId='{}': hasError='{}', size='{}'",
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           response.hasError(),
           response.getStreams() != null ? response.getStreams().size() : -1);
 
@@ -108,7 +115,7 @@ public class CdcStreamManager {
 
       LOG.info(
           "Creating CDC stream for universeId='{}' dbName='{}' format='{}', checkpointType='{}'",
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           databaseName,
           format,
           checkpointType);
@@ -122,7 +129,7 @@ public class CdcStreamManager {
       LOG.info(
           "Created CDC stream id='{}' for universeId='{}' dbName='{}' format='{}', checkpointType='{}'",
           result.getStreamId(),
-          universe.universeUUID,
+          universe.getUniverseUUID(),
           databaseName,
           format,
           checkpointType);

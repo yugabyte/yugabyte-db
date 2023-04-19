@@ -1,5 +1,5 @@
 /* Copyright (c) YugaByte, Inc. */
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .preview-row {
   margin-top: 15px;
@@ -73,13 +73,13 @@
 
 .aws-instance-with-ephemeral-storage-warning {
   margin-left: 120px;
-  color: $YB_WARNING_COLOR;
+  color: colors.$YB_WARNING_COLOR;
   display: inline-block;
 }
 
 .gcp-ephemeral-storage-warning {
   display: inherit !important;
-  color: $YB_WARNING_COLOR;
+  color: colors.$YB_WARNING_COLOR;
 }
 
 .universe-form-instance-info {
@@ -154,7 +154,7 @@
   }
 
   .form-section {
-    border-bottom: solid $YB_GRAY_HOVER 1px;
+    border-bottom: solid colors.$YB_GRAY_HOVER 1px;
     padding-bottom: 20px;
     padding-top: 20px;
 
@@ -275,7 +275,7 @@
 
 .az-selector-reset {
   float: right;
-  color: $YB_FAIL_COLOR;
+  color: colors.$YB_FAIL_COLOR;
   cursor: pointer;
 }
 .universe-az-selector-container .az-table-container {
@@ -350,7 +350,7 @@
     display: block;
   }
   .full-move-config--config {
-    background-color: $YB_BACKGROUND;
+    background-color: colors.$YB_BACKGROUND;
     border-radius: 5px;
     padding: 12px 16px;
     margin-top: 10px;
@@ -375,10 +375,10 @@
   margin-left: 100px;
   font-size: 21px;
   line-height: 46px;
-  color: $YB_ORANGE;
+  color: colors.$YB_ORANGE;
 
   &:hover {
-    color: $YB_ORANGE_HOVER;
+    color: colors.$YB_ORANGE_HOVER;
   }
 }
 
@@ -390,9 +390,9 @@
 
   &__editor {
     font-family: 'Courier New', Courier, monospace;
-    background: $YB_LIGHT_BLUE;
-    color: $YB_TEXT_BLACK;
-    border: 1px solid $YB_GRAY_BORDER;
+    background: colors.$YB_LIGHT_BLUE;
+    color: colors.$YB_TEXT_BLACK;
+    border: 1px solid colors.$YB_GRAY_BORDER;
     padding: 15px;
     min-height: 100px;
     overflow-y: auto;
@@ -407,7 +407,7 @@
 }
 
 .array-block.standard-error {
-  color: $YB_ERROR_TEXT_COLOR;
+  color: colors.$YB_ERROR_TEXT_COLOR;
   margin-bottom: 10px;
 }
 
@@ -420,7 +420,7 @@
   height: 610px;
   width: 100%;
   flex-direction: row;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
   border-radius: 8px;
 }
 
@@ -432,8 +432,8 @@
 }
 
 .add-border-left {
-  border-left: 1px solid $YB_LIGHT_GRAY_BORDER;
-  background-color: $YB_BG_WHITE_2;
+  border-left: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+  background-color: colors.$YB_BG_WHITE_2;
 }
 
 .g-flag-list {
@@ -462,8 +462,8 @@
   border-radius: 6px;
   font-weight: 400;
   &:hover {
-    color: $YB_ORANGE_HOVER !important;
-    background-color: $YB_BACKGROUND;
+    color: colors.$YB_ORANGE_HOVER !important;
+    background-color: colors.$YB_BACKGROUND;
   }
 }
 
@@ -473,9 +473,9 @@
   cursor: pointer;
   color: #333333;
   font-weight: 700;
-  background-color: $YB_BACKGROUND;
+  background-color: colors.$YB_BACKGROUND;
   &:hover {
-    color: $YB_ORANGE_HOVER !important;
+    color: colors.$YB_ORANGE_HOVER !important;
   }
 }
 
@@ -484,8 +484,8 @@
   height: fit-content;
   display: inline-flex;
   align-items: flex-start;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
-  background: $YB_LIGHT_BLUE_BACKGROUND;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+  background: colors.$YB_LIGHT_BLUE_BACKGROUND;
   border-radius: 8px;
   padding: 12px;
   font-weight: normal;
@@ -496,7 +496,7 @@
 .gflag-badge {
   height: 22px;
   width: fit-content;
-  background: $YB_LIGHT_BLUE_BACKGROUND;
+  background: colors.$YB_LIGHT_BLUE_BACKGROUND;
   border: 1px solid #e2e3e4;
   border-radius: 4px;
   font-weight: 400;
@@ -512,16 +512,16 @@
   display: flex;
   flex-direction: column;
   padding: 16px;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
   border-radius: 4px;
-  background: $YB_BACKGROUND;
+  background: colors.$YB_BACKGROUND;
 }
 
 .gflag-description-title {
   font-weight: normal;
   font-size: 13px;
   display: block;
-  color: $YB_TEXT_BLACK;
+  color: colors.$YB_TEXT_BLACK;
   margin-bottom: 3px;
 }
 
@@ -539,7 +539,7 @@
   display: flex;
   flex-shrink: 1;
   flex-direction: row;
-  border-top: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border-top: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
   padding: 16px 0px 0px;
 }
 
@@ -548,8 +548,8 @@
   display: flex;
   flex-direction: column;
   padding: 32px 0px;
-  background-color: $YB_BG_WHITE_2;
-  border-bottom: 1px solid $YB_LIGHT_GRAY_BORDER;
+  background-color: colors.$YB_BG_WHITE_2;
+  border-bottom: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
 }
 
 .row-flex {
@@ -559,7 +559,7 @@
 }
 
 .table-val-column {
-  background-color: $YB_CODE_BACKGROUND;
+  background-color: colors.$YB_CODE_BACKGROUND;
   border-radius: 8px;
   height: 36px;
   padding: 14px;
@@ -587,6 +587,15 @@
 
 .table-val-column:hover > .icons > .more-icon {
   display: none;
+}
+
+.empty-cell {
+  background-color: colors.$YB_BG_WHITE_3;
+  border: 1px dashed #e3e3e5;
+}
+
+.no-boder {
+  border: none !important;
 }
 
 .flag-icon-button {
@@ -637,7 +646,7 @@
 }
 
 .error-val-column {
-  background-color: $YB_ERROR_LIGHT;
+  background-color: colors.$YB_ERROR_LIGHT;
   border-radius: 8px;
   height: 36px;
   padding: 14px;
@@ -645,7 +654,7 @@
   align-items: center;
   justify-content: space-between;
   &:hover {
-    background-color: $YB_ERROR_LIGHT;
+    background-color: colors.$YB_ERROR_LIGHT;
   }
 }
 
@@ -660,26 +669,26 @@
 }
 
 .popover-container {
-  background-color: $YB_BG_WHITE_3;
-  color: $YB_TEXT_BLACK;
+  background-color: colors.$YB_BG_WHITE_3;
+  color: colors.$YB_TEXT_BLACK;
   padding: 0px;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
   border-radius: 4px;
   z-index: 9999;
 }
 
 .popover-title {
-  background-color: $YB_ERROR_LIGHT;
+  background-color: colors.$YB_ERROR_LIGHT;
   width: 100%;
   height: 100%;
-  color: $YB_TEXT_BLACK;
+  color: colors.$YB_TEXT_BLACK;
 }
 
 .gflag-edit-table,
 .gflag-read-table {
   width: 100%;
   padding: 10px;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
   border-radius: 8px;
   margin-top: 10px;
 }
@@ -730,7 +739,7 @@
 }
 
 .error-icon {
-  color: $YB_ERROR_ICON_COLOR;
+  color: colors.$YB_ERROR_ICON_COLOR;
 }
 
 .muted-text {
@@ -778,7 +787,7 @@
 .button-container {
   margin-top: -2px;
   padding-bottom: 8px;
-  border-bottom: 1px solid $YB_LIGHT_GRAY_BORDER;
+  border-bottom: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
 }
 
 .mt-16 {
@@ -818,7 +827,7 @@
 }
 
 .muted-text-2 {
-  color: $YB_DARKER_GRAY;
+  color: colors.$YB_DARKER_GRAY;
 }
 
 .bold-600 {
@@ -829,14 +838,14 @@
   height: 440px;
   width: 100%;
   display: flex;
-  border: 1px solid $YB_LIGHT_GRAY_BORDER;
-  background: $YB_BG_WHITE_3;
+  border: 1px solid colors.$YB_LIGHT_GRAY_BORDER;
+  background: colors.$YB_BG_WHITE_3;
   border-radius: 8px;
   margin-top: 10px;
   justify-content: center;
 
   .empty-text {
-    color: $YB_DARKER_GRAY;
+    color: colors.$YB_DARKER_GRAY;
     margin-top: 56px;
   }
 }

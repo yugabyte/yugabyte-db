@@ -3,11 +3,16 @@ import * as Yup from 'yup';
 import React, { useState } from 'react';
 import { Field, Form, Formik } from 'formik';
 import { Row, Col } from 'react-bootstrap';
-import { YBButton, YBControlledNumericInput, YBFormInput, YBToggle } from '../../../common/forms/fields';
+import {
+  YBButton,
+  YBControlledNumericInput,
+  YBFormInput,
+  YBToggle
+} from '../../../common/forms/fields';
 import { AzureRegions } from './AzureRegions';
 import YBInfoTip from '../../../common/descriptors/YBInfoTip';
 import { FIELD_TYPE, NTPConfig, NTP_TYPES } from './NTPConfig';
-import { specialChars } from '../../constants';
+import { ACCEPTABLE_CHARS } from '../../constants';
 
 const initialValues = {
   providerName: '', // not a part of config payload
@@ -24,9 +29,9 @@ const initialValues = {
 };
 
 const validationSchema = Yup.object().shape({
-  providerName: Yup.string().required('Provider Name is a required field').matches( 
-    specialChars, 'Provider Name cannot contain special characters except - and _'
-  ),
+  providerName: Yup.string()
+    .required('Provider Name is a required field')
+    .matches(ACCEPTABLE_CHARS, 'Provider Name cannot contain special characters except - and _'),
   AZURE_CLIENT_ID: Yup.string().required('Azure Client ID is a required field'),
   AZURE_CLIENT_SECRET: Yup.string().required('Azure Client Secret is a required field'),
   AZURE_TENANT_ID: Yup.string().required('Azure Tenant ID is a required field'),
@@ -66,7 +71,17 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
   const [regionsFormData, setRegionsFormData] = useState([]);
 
   const createProviderConfig = (values) => {
-    const config = _.omit(values, 'providerName', 'networkSetup', 'sshPort', 'sshUser', 'ntpServers', 'ntp_option', 'setUpChrony', 'airGapInstall');
+    const config = _.omit(
+      values,
+      'providerName',
+      'networkSetup',
+      'sshPort',
+      'sshUser',
+      'ntpServers',
+      'ntp_option',
+      'setUpChrony',
+      'airGapInstall'
+    );
     const regions = convertFormDataToPayload(regionsFormData);
     if (values['sshPort']) {
       regions['sshPort'] = values['sshPort'];
@@ -74,9 +89,9 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
     if (values['sshUser']) {
       regions['sshUser'] = values['sshUser'];
     }
-    regions['ntpServers'] = values['ntpServers']
-    regions['setUpChrony'] = values['setUpChrony']
-    regions['airGapInstall'] = values['airGapInstall']
+    regions['ntpServers'] = values['ntpServers'];
+    regions['setUpChrony'] = values['setUpChrony'];
+    regions['airGapInstall'] = values['airGapInstall'];
     createAzureProvider(values.providerName, config, regions);
   };
 
@@ -298,7 +313,7 @@ export const AzureProviderInitView = ({ createAzureProvider, isBack, onBack }) =
                     <div className="form-item-custom-label">NTP Setup</div>
                   </Col>
                   <Col lg={7}>
-                    <NTPConfig onChange={setFieldValue} fieldType={FIELD_TYPE.FORMIK} hideHelp/>
+                    <NTPConfig onChange={setFieldValue} fieldType={FIELD_TYPE.FORMIK} hideHelp />
                   </Col>
                 </Row>
                 <Row className="config-provider-row">

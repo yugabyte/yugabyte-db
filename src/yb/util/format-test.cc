@@ -169,6 +169,12 @@ TEST(FormatTest, MultiArgs) {
   CheckPlain(kLongFormat, 5, "String", "zero\0zero"s);
 }
 
+TEST(FormatTest, MultiArgsTwoDigit) {
+  ASSERT_EQ(
+      Format("$0 $1 $2 $3 $4 $5 $6 $7 $8 $9 $10 $11", 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, "A", "B"),
+      "0 1 2 3 4 5 6 7 8 9 A B");
+}
+
 TEST(FormatTest, Custom) {
   for (const auto& format : kFormats) {
     Custom value(42);

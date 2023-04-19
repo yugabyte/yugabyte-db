@@ -23,14 +23,14 @@ export default class NodeActionModal extends Component {
     const { getNodeDetails, getNodeDetailsResponse } = this.props;
     this.interval = setTimeout(() => {
       getNodeDetails(universeUUID, nodeName).then((response) => {
-        if (response.payload && response.payload.data) {
+        if (response.payload?.data) {
           const node = response.payload.data;
           if (
             actionType === 'DELETE' ||
             node.state === nodeActionExpectedResult[actionType]
           ) {
             clearInterval(this.interval);
-            getNodeDetailsResponse(response.payload)
+            getNodeDetailsResponse(response.payload);
             return;
           }
           getNodeDetailsResponse(response.payload);

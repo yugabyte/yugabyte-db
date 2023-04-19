@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H
-#define YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H
+#pragma once
 
 #include <atomic>
 #include <string>
@@ -110,7 +109,7 @@ class RemoteBootstrapClient {
   // 'caller_term' is lower than the current term stored in that consensus
   // metadata, then this method will fail with a Status::InvalidArgument error.
   Status SetTabletToReplace(const scoped_refptr<tablet::RaftGroupMetadata>& meta,
-                                    int64_t caller_term);
+                            int64_t caller_term);
 
   // Start up a remote bootstrap session to bootstrap from the specified
   // bootstrap peer. Place a new superblock indicating that remote bootstrap is
@@ -121,11 +120,11 @@ class RemoteBootstrapClient {
   // data and wal directories for the bootstrapped tablets.
   // TODO: Rename these parameters to bootstrap_source_*.
   Status Start(const std::string& bootstrap_peer_uuid,
-                       rpc::ProxyCache* proxy_cache,
-                       const HostPort& bootstrap_peer_addr,
-                       const ServerRegistrationPB& tablet_leader_conn_info,
-                       scoped_refptr<tablet::RaftGroupMetadata>* metadata,
-                       TSTabletManager* ts_manager = nullptr);
+               rpc::ProxyCache* proxy_cache,
+               const HostPort& bootstrap_peer_addr,
+               const ServerRegistrationPB& tablet_leader_conn_info,
+               scoped_refptr<tablet::RaftGroupMetadata>* metadata,
+               TSTabletManager* ts_manager = nullptr);
 
   // Runs a "full" remote bootstrap, copying the physical layout of a tablet
   // from the leader of the specified consensus configuration.
@@ -244,5 +243,3 @@ class RemoteBootstrapClient {
 
 } // namespace tserver
 } // namespace yb
-
-#endif // YB_TSERVER_REMOTE_BOOTSTRAP_CLIENT_H

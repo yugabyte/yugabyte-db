@@ -11,10 +11,11 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_DOC_READ_CONTEXT_H
-#define YB_DOCDB_DOC_READ_CONTEXT_H
+#pragma once
 
 #include "yb/common/schema.h"
+#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/schema_packing.h"
 
@@ -22,33 +23,31 @@ namespace yb {
 namespace docdb {
 
 struct DocReadContext {
-  DocReadContext() = default;
+  explicit DocReadContext(const std::string& log_prefix, TableType table_type);
 
-  DocReadContext(const Schema& schema_, SchemaVersion schema_version) : schema(schema_) {
-    schema_packing_storage.AddSchema(schema_version, schema_);
-  }
+  DocReadContext(
+      const std::string& log_prefix, TableType table_type, const Schema& schema_,
+      SchemaVersion schema_version);
 
-  DocReadContext(const DocReadContext& rhs, const Schema& schema_, SchemaVersion schema_version)
-      : schema(schema_), schema_packing_storage(rhs.schema_packing_storage) {
-    schema_packing_storage.AddSchema(schema_version, schema_);
-  }
+  DocReadContext(const DocReadContext& rhs, const Schema& schema_, SchemaVersion schema_version);
 
-  DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version)
-      : schema(rhs.schema), schema_packing_storage(rhs.schema_packing_storage, min_schema_version) {
-  }
+  DocReadContext(const DocReadContext& rhs, SchemaVersion min_schema_version);
 
   template <class PB>
   Status LoadFromPB(const PB& pb) {
     RETURN_NOT_OK(SchemaFromPB(pb.schema(), &schema));
     RETURN_NOT_OK(schema_packing_storage.LoadFromPB(pb.old_schema_packings()));
     schema_packing_storage.AddSchema(pb.schema_version(), schema);
+    LogAfterLoad();
     return Status::OK();
   }
 
   template <class PB>
-  Status MergeWithRestored(const PB& pb) {
-    return schema_packing_storage.MergeWithRestored(
-        pb.schema_version(), pb.schema(), pb.old_schema_packings());
+  Status MergeWithRestored(const PB& pb, OverwriteSchemaPacking overwrite) {
+    RETURN_NOT_OK(schema_packing_storage.MergeWithRestored(
+        pb.schema_version(), pb.schema(), pb.old_schema_packings(), overwrite));
+    LogAfterMerge(overwrite);
+    return Status::OK();
   }
 
   template <class PB>
@@ -64,11 +63,23 @@ struct DocReadContext {
         lhs.schema_packing_storage == rhs.schema_packing_storage;
   }
 
+  static DocReadContext TEST_Create(const Schema& schema) {
+    return DocReadContext("TEST: ", TableType::YQL_TABLE_TYPE, schema, 0);
+  }
+
   Schema schema;
   SchemaPackingStorage schema_packing_storage;
+
+ private:
+  void LogAfterLoad();
+  void LogAfterMerge(OverwriteSchemaPacking overwrite);
+
+  const std::string& LogPrefix() const {
+    return log_prefix_;
+  }
+
+  std::string log_prefix_;
 };
 
 } // namespace docdb
 } // namespace yb
-
-#endif // YB_DOCDB_DOC_READ_CONTEXT_H

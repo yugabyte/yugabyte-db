@@ -63,6 +63,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
 
+#include "yb/tserver/service_util.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
 
@@ -70,6 +71,7 @@
 #include "yb/util/url-coding.h"
 #include "yb/util/version_info.h"
 #include "yb/util/version_info.pb.h"
+#include "yb/util/flags.h"
 
 using yb::consensus::GetConsensusRole;
 using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
@@ -92,6 +94,9 @@ using std::string;
 using strings::Substitute;
 
 using namespace std::placeholders;  // NOLINT(build/namespaces)
+
+DEFINE_UNKNOWN_bool(enable_intentsdb_page, false,
+    "Enable displaying the contents of intentsdb page.");
 
 namespace {
 
@@ -236,7 +241,8 @@ void HandleTabletPage(
       {"tablet-consensus-status", "Consensus Status"},
       {"log-anchors", "Tablet Log Anchors"},
       {"transactions", "Transactions"},
-      {"rocksdb", "RocksDB" }};
+      {"rocksdb", "RocksDB" },
+      {"waitqueue", "Wait Queue"}};
 
   auto encoded_tablet_id = UrlEncodeToString(tablet_id);
   for (const auto& entry : entries) {
@@ -382,6 +388,29 @@ void HandleRocksDBPage(
   DumpRocksDB("Intents", doc_db.intents, output);
 }
 
+void HandleWaitQueuePage(
+    const std::string& tablet_id, const tablet::TabletPeerPtr& peer,
+    const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *out = &resp->output;
+  *out << "<h1>Waiters for Tablet " << EscapeForHtmlToString(tablet_id) << "</h1>" << std::endl;
+
+  auto tablet_result = peer->shared_tablet_safe();
+  if (!tablet_result.ok()) {
+    *out << tablet_result.status();
+    return;
+  }
+  auto* tp = (*tablet_result)->transaction_participant();
+  docdb::WaitQueue* wq = nullptr;
+  if (tp) {
+    wq = tp->wait_queue();
+  }
+  if (wq) {
+    wq->DumpStatusHtml(*out);
+  } else {
+    *out << "<h3>" << "No wait queue found" << "</h3>" << std::endl;
+  }
+}
+
 template<class F>
 void RegisterTabletPathHandler(
     Webserver* web_server, TabletServer* tserver, const std::string& path, const F& f) {
@@ -418,10 +447,17 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   RegisterTabletPathHandler(server, tserver_, "/log-anchors", &HandleLogAnchorsPage);
   RegisterTabletPathHandler(server, tserver_, "/transactions", &HandleTransactionsPage);
   RegisterTabletPathHandler(server, tserver_, "/rocksdb", &HandleRocksDBPage);
+  RegisterTabletPathHandler(server, tserver_, "/waitqueue", &HandleWaitQueuePage);
   server->RegisterPathHandler(
       "/", "Dashboards",
       std::bind(&TabletServerPathHandlers::HandleDashboardsPage, this, _1, _2), true /* styled */,
       true /* is_on_nav_bar */, "fa fa-dashboard");
+#ifndef NDEBUG
+  server->RegisterPathHandler(
+      "/intentsdb", "IntentsDB",
+      std::bind(&TabletServerPathHandlers::HandleIntentsDBPage, this, _1, _2), true /* styled */,
+      true /* is_on_nav_bar */, "fa fa-lock");
+#endif
   server->RegisterPathHandler(
       "/maintenance-manager", "",
       std::bind(&TabletServerPathHandlers::HandleMaintenanceManagerPage, this, _1, _2),
@@ -433,6 +469,10 @@ Status TabletServerPathHandlers::Register(Webserver* server) {
   server->RegisterPathHandler(
       "/api/v1/version", "YB Version Information",
       std::bind(&TabletServerPathHandlers::HandleVersionInfoDump, this, _1, _2),
+      false /* styled */, false /* is_on_nav_bar */);
+  server->RegisterPathHandler(
+      "/api/v1/masters", "Master servers and their role (Leader/Follower)",
+      std::bind(&TabletServerPathHandlers::HandleListMasterServers, this, _1, _2),
       false /* styled */, false /* is_on_nav_bar */);
   return Status::OK();
 }
@@ -461,10 +501,10 @@ void TabletServerPathHandlers::HandleOperationsPage(const Webserver::WebRequest&
       arg.c_str(), false) ? Operation::TRACE_TXNS : Operation::NO_TRACE_TXNS;
 
   if (!as_text) {
-    *output << "<h1>Transactions</h1>\n";
+    *output << "<h1>Operations</h1>\n";
     *output << "<table class='table table-striped'>\n";
     *output << "   <tr><th>Tablet id</th><th>Op Id</th>"
-      "<th>Transaction Type</th><th>"
+      "<th>Operation Type</th><th>"
       "Total time in-flight</th><th>Description</th></tr>\n";
   }
 
@@ -690,7 +730,7 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
 
     // TODO: would be nice to include some other stuff like memory usage
     shared_ptr<consensus::Consensus> consensus = peer->shared_consensus();
-    (*output) << Substitute(
+    (*output) << Format(
         // Namespace, Table name, UUID of table, tablet id, partition
         "<tr><td>$0</td><td>$1</td><td>$2</td><td>$3</td><td>$4</td>"
         // State, Hidden, num SST files, on-disk size, consensus configuration, last status
@@ -709,6 +749,19 @@ void TabletServerPathHandlers::HandleTabletsPage(const Webserver::WebRequest& re
         EscapeForHtmlToString(status.last_status()));  // $10
   }
   *output << "</table>\n";
+}
+
+void TabletServerPathHandlers::HandleListMasterServers(const Webserver::WebRequest& req,
+                                                       Webserver::WebResponse* resp) {
+  // Get the version info.
+  ListMasterServersRequestPB list_masters_req;
+  ListMasterServersResponsePB list_masters_resp;
+
+  const Status s = tserver_->ListMasterServers(&list_masters_req, &list_masters_resp);
+
+  std::stringstream *output = &resp->output;
+  JsonWriter jw(output, JsonWriter::PRETTY);
+  jw.Protobuf(list_masters_resp);
 }
 
 namespace {
@@ -757,6 +810,51 @@ void TabletServerPathHandlers::HandleDashboardsPage(const Webserver::WebRequest&
   *output << GetDashboardLine("maintenance-manager", "Maintenance Manager",
                               "List of operations that are currently running and those "
                               "that are registered.");
+}
+
+void TabletServerPathHandlers::HandleIntentsDBPage(const Webserver::WebRequest& req,
+                                                   Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  if (!FLAGS_enable_intentsdb_page) {
+    (*output) << "Intentsdb is disabled, please set the gflag enable_intentsdb_page to true "
+                 "to show the content of intentsdb.";
+    return;
+  }
+
+  TSTabletManager::TabletPtrs tablet_ptrs;
+  std::vector<tablet::TabletPeerPtr> tablet_peers;
+
+  auto it = req.parsed_args.find("tablet_id");
+  if (it != req.parsed_args.end()) {
+    auto tablet_id = it->second;
+    auto tablet_peer = LookupTabletPeer(tserver_->tablet_peer_lookup(), tablet_id);
+    if (!tablet_peer.ok()) {
+      (*output) << Format("Unable to lookup tablet with ID {}", tablet_id);
+      return;
+    }
+    auto tablet = tablet_peer.get().tablet;
+    if (tablet == nullptr) {
+      (*output) << Format("Unable to lookup tablet with ID {}", tablet_id);
+      return;
+    }
+    tablet_ptrs.push_back(std::move(tablet));
+  } else {
+    tablet_peers = tserver_->tablet_manager()->GetTabletPeers(&tablet_ptrs);
+  }
+
+  std::vector<std::string> intents;
+  for (const auto& tablet : tablet_ptrs) {
+    auto res = tablet->ReadIntents(&intents);
+    if (!res.ok()) {
+      (*output) << "Got an error when reading intents";
+      return;
+    }
+  }
+
+  (*output) << Format("Intents size: $0<br>", intents.size()) << "\n";
+  for (const auto& item : intents) {
+    (*output) << Format("$0<br>", item);
+  }
 }
 
 string TabletServerPathHandlers::GetDashboardLine(const std::string& link,

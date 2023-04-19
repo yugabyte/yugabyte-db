@@ -18,8 +18,7 @@
 // parser_gram.y will link the tree nodes together to form this parse tree.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_
-#define YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_
+#pragma once
 
 #include <functional>
 #include <memory>
@@ -104,7 +103,7 @@ class ParseTree {
   Result<SchemaVersion> GetYBTableSchemaVersion() const;
 
   // Check if the used schema version is not in sync with the Master.
-  Result<bool> IsYBTableAltered(QLEnv *ql_env) const;
+  Result<bool> IsYBTableAltered(QLEnv *ql_env, bool use_cache) const;
 
   // Add table to the set of tables used during semantic analysis.
   void AddAnalyzedTable(const client::YBTableName& table_name);
@@ -160,5 +159,3 @@ class ParseTree {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PARSE_TREE_H_

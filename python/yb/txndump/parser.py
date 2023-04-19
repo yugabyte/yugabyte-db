@@ -4,6 +4,7 @@
 Generic binary transaction dump parser.
 """
 
+import gzip
 import os
 import sys
 
@@ -16,7 +17,7 @@ from typing import Any, Dict, Generic, List, NamedTuple, Optional, Set, TypeVar
 from uuid import UUID
 from yb.txndump.io import BinaryIO
 from yb.txndump.model import DocHybridTime, HybridTime, ReadHybridTime, SubDocKey, \
-    TransactionStatus, decode_value, read_txn_id
+    TransactionStatus, decode_value, read_slice, read_txn_id
 
 
 class CommitTimeReason(Enum):
@@ -34,6 +35,8 @@ class RemoveReason(Enum):
     kProcessCleanup = 2
     kStatusReceived = 3
     kAbortReceived = 4
+    kShutdown = 5
+    kSetDB = 6
 
 
 class WriteBatchEntryType(Enum):
@@ -94,17 +97,19 @@ class Analyzer:
 class DumpProcessor:
     def __init__(self, analyzer):
         self.cnt_commands = 0
+        self.cnt_bytes = 0
         self.start_time = monotonic()
         self.analyzer = analyzer
         self.txns = {}
         self.commands = {
-            1: DumpProcessor.parse_apply,
+            1: DumpProcessor.parse_apply_intent,
             2: DumpProcessor.parse_read,
             3: DumpProcessor.parse_commit,
             4: DumpProcessor.parse_status,
             5: DumpProcessor.parse_conflicts,
             6: DumpProcessor.parse_applied,
             7: DumpProcessor.parse_remove,
+            8: DumpProcessor.parse_remove_intent,
         }
 
     def process(self, input_path: str):
@@ -118,13 +123,14 @@ class DumpProcessor:
     def process_file(self, fname: str):
         # path, processing_file = os.path.split(fname)
         print("Processing {}".format(fname))
-        with open(fname, 'rb') as raw_input:
+        with gzip.open(fname, 'rb') as raw_input:
             inp = BinaryIO(raw_input)
             while True:
                 size = inp.read_int64()
                 if size is None:
                     break
                 body = inp.read(size)
+                self.cnt_bytes += 8 + size
                 block = BinaryIO(BytesIO(body))
                 cmd = block.read_int8()
                 self.commands[cmd](self, block)
@@ -132,24 +138,20 @@ class DumpProcessor:
                 if len(left) != 0:
                     raise Exception("Extra data left in block {}: {}".format(cmd, left))
                 self.cnt_commands += 1
-                if self.cnt_commands % 10000 == 0:
-                    print("Parsed {} commands, passed: {}".format(
-                        self.cnt_commands, monotonic() - self.start_time))
+                if self.cnt_commands % 100000 == 0:
+                    print("Parsed {} commands, {} bytes, passed: {}".format(
+                        self.cnt_commands, self.cnt_bytes, monotonic() - self.start_time))
 
-    def parse_apply(self, inp: BinaryIO):
-        tablet = inp.read(32).decode('utf-8')
-        txn = read_txn_id(inp)
-        log_ht = HybridTime.load(inp)
-        inp.read_int64()  # Sequence no
-        count = inp.read_int32()
-        for i in range(0, count):
-            cmd = WriteBatchEntryType(inp.read_int8())
-            if cmd == WriteBatchEntryType.kTypeValue:
-                key = SubDocKey.decode(inp.read_varbytes(), True)
-                value = decode_value(inp.read_varbytes())
-                self.analyzer.apply_row(tablet, txn, key, value, log_ht)
-            else:
-                raise Exception('Not supported write batch entry type: {}'.format(cmd))
+    def parse_apply_intent(self, inp: BinaryIO):
+        txn_id = read_txn_id(inp)
+        key = read_slice(inp)
+        commit_ht = HybridTime.load(inp)
+        write_id = inp.read_uint32()
+        value = inp.read()
+
+    def parse_remove_intent(self, inp: BinaryIO):
+        txn_id = read_txn_id(inp)
+        key = inp.read()
 
     def parse_read(self, inp: BinaryIO):
         tablet = inp.read(32).decode('utf-8')

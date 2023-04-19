@@ -51,16 +51,17 @@ public class UpdateNodeDetails extends NodeTaskBase {
           };
       saveUniverseDetails(updater);
       if (taskParams().updateCustomImageUsage) {
-        getUniverse()
-            .updateConfig(
-                ImmutableMap.of(
-                    Universe.USE_CUSTOM_IMAGE,
-                    Boolean.toString(
-                        getUniverse()
-                            .getUniverseDetails()
-                            .nodeDetailsSet
-                            .stream()
-                            .allMatch(n -> n.ybPrebuiltAmi))));
+        Universe universe = getUniverse();
+        universe.updateConfig(
+            ImmutableMap.of(
+                Universe.USE_CUSTOM_IMAGE,
+                Boolean.toString(
+                    getUniverse()
+                        .getUniverseDetails()
+                        .nodeDetailsSet
+                        .stream()
+                        .allMatch(n -> n.ybPrebuiltAmi))));
+        universe.save();
       }
     } catch (Exception e) {
       throw new RuntimeException(e);

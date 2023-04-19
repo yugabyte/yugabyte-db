@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_UTIL_STATUS_EC_H
-#define YB_UTIL_STATUS_EC_H
+#pragma once
 
 #include <boost/optional.hpp>
 
@@ -264,5 +263,3 @@ boost::optional<typename StatusErrorCodeImpl<Tag>::Value> StatusErrorCodeImpl<Ta
 }
 
 } // namespace yb
-
-#endif // YB_UTIL_STATUS_EC_H

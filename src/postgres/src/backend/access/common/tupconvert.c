@@ -21,6 +21,8 @@
 #include "access/tupconvert.h"
 #include "executor/tuptable.h"
 
+#include "pg_yb_utils.h"
+#include "access/sysattr.h"
 
 /*
  * The conversion setup routines have the following common API:
@@ -230,12 +232,18 @@ execute_attr_map_slot(AttrMap *attrMap,
  * Perform conversion of bitmap of columns according to the map.
  *
  * The input and output bitmaps are offset by
- * FirstLowInvalidHeapAttributeNumber to accommodate system cols, like the
+ * YBGetFirstLowInvalidAttributeNumber to accommodate system cols, like the
  * column-bitmaps in RangeTblEntry.
+ *
+ * Note: Postgres uses FirstLowInvalidHeapAttributeNumber.
  */
+/* YB_TODO(neil) Need to choose between attrMap and map when fixing compiling errors */
 Bitmapset *
-execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols)
+execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols,
+					  TupleConversionMap *map, Relation rel))
 {
+	AttrNumber *attrMap = map->attrMap;
+	int			maplen = map->outdesc->natts;
 	Bitmapset  *out_cols;
 	int			out_attnum;
 
@@ -248,7 +256,7 @@ execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols)
 	 */
 	out_cols = NULL;
 
-	for (out_attnum = FirstLowInvalidHeapAttributeNumber;
+	for (out_attnum = YBGetFirstLowInvalidAttributeNumber(rel) + 1;
 		 out_attnum <= attrMap->maplen;
 		 out_attnum++)
 	{
@@ -270,8 +278,9 @@ execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols)
 				continue;
 		}
 
-		if (bms_is_member(in_attnum - FirstLowInvalidHeapAttributeNumber, in_cols))
-			out_cols = bms_add_member(out_cols, out_attnum - FirstLowInvalidHeapAttributeNumber);
+		if (bms_is_member(in_attnum - YBGetFirstLowInvalidAttributeNumber(rel), in_cols))
+			out_cols = bms_add_member(out_cols,
+									  out_attnum - YBGetFirstLowInvalidAttributeNumber(rel));
 	}
 
 	return out_cols;

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_TRACE_H
-#define YB_UTIL_TRACE_H
+#pragma once
 
 #include <atomic>
 #include <functional>
@@ -38,7 +37,7 @@
 #include <string>
 #include <vector>
 
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
@@ -185,8 +184,18 @@ class Trace : public RefCountedThreadSafe<Trace> {
     return threadlocal_trace_;
   }
 
-  static scoped_refptr<Trace> NewTrace();
-  static scoped_refptr<Trace> NewTraceForParent(Trace* parent);
+  // Returns a new Trace object, or nullptr either based on
+  // 1) sampling, if sampled_trace_1_in_n > 0 or
+  // 2) unconditionally, if enable_tracing is true.
+  static scoped_refptr<Trace> MaybeGetNewTrace();
+  // Similar to MaybeGetNewTrace.
+  // Returns a new Trace object, or nullptr either based on
+  // 1) sampling, if sampled_trace_1_in_n > 0 or
+  // 2) unconditionally, if
+  //        a) enable_tracing is true or
+  //        b) parent is not null.
+  // The created trace will also be added as a child trace to the parent.
+  static scoped_refptr<Trace> MaybeGetNewTraceForParent(Trace* parent);
 
   // Simple function to dump the current trace to stderr, if one is
   // available. This is meant for usage when debugging in gdb via
@@ -308,5 +317,3 @@ class PlainTrace {
 };
 
 } // namespace yb
-
-#endif /* YB_UTIL_TRACE_H */

@@ -13,7 +13,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
+import com.yugabyte.yw.models.helpers.NodeStatus;
 import java.time.Duration;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +32,7 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
     public String process;
     public String command;
     public int sleepAfterCmdMills = 0;
-    public boolean isForceDelete = false;
+    public boolean isIgnoreError = false;
 
     public boolean checkVolumesAttached = false;
   }
@@ -56,13 +57,19 @@ public class AnsibleClusterServerCtl extends NodeTaskBase {
   @Override
   public void run() {
     try {
+      if (ServerType.MASTER.name().equalsIgnoreCase(taskParams().process)
+          && "start".equalsIgnoreCase(taskParams().command)) {
+        // Master is fully configured and ready to start.
+        // TODO This is not the right place but this comes after AnsibleConfigureServer
+        // which does too many things.
+        setNodeStatus(NodeStatus.builder().masterState(MasterState.Configured).build());
+      }
       // Execute the ansible command.
-      Universe universe = Universe.getOrBadRequest(taskParams().universeUUID);
       getNodeManager()
           .nodeCommand(NodeManager.NodeCommandType.Control, taskParams())
           .processErrors();
     } catch (Exception e) {
-      if (!taskParams().isForceDelete) {
+      if (!taskParams().isIgnoreError) {
         throw e;
       } else {
         log.debug("Ignoring error: {}", e.getMessage());

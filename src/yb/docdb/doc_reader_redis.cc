@@ -96,7 +96,7 @@ Status BuildSubDocument(
     int64* num_values_observed) {
   VLOG(3) << "BuildSubDocument data: " << data << " read_time: " << iter->read_time()
           << " low_ts: " << low_ts;
-  while (iter->valid()) {
+  while (!iter->IsOutOfRecords()) {
     if (data.deadline_info && data.deadline_info->CheckAndSetDeadlinePassed()) {
       return STATUS(Expired, "Deadline for query passed.");
     }
@@ -104,7 +104,7 @@ Status BuildSubDocument(
     int64 current_values_observed = *num_values_observed;
     auto key_data = VERIFY_RESULT(iter->FetchKey());
     auto key = key_data.key;
-    const auto write_time = key_data.write_time;
+    const auto write_time = VERIFY_RESULT(key_data.write_time.Decode());
     VLOG(4) << "iter: " << SubDocKey::DebugSliceToString(key)
             << ", key: " << SubDocKey::DebugSliceToString(data.subdocument_key);
     DCHECK(key.starts_with(data.subdocument_key))
@@ -295,9 +295,9 @@ Status FindLastWriteTime(
     Expiration* exp,
     Value* result_value = nullptr) {
   Slice value;
-  DocHybridTime doc_ht = *max_overwrite_time;
-  RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &doc_ht, &value));
-  if (!iter->valid()) {
+  EncodedDocHybridTime pre_doc_ht(*max_overwrite_time);
+  RETURN_NOT_OK(iter->FindLatestRecord(key_without_ht, &pre_doc_ht, &value));
+  if (iter->IsOutOfRecords()) {
     return Status::OK();
   }
 
@@ -307,6 +307,8 @@ Status FindLastWriteTime(
   if (value_type == ValueEntryType::kInvalid) {
     return Status::OK();
   }
+
+  auto doc_ht = VERIFY_RESULT(pre_doc_ht.Decode());
 
   // We update the expiration if and only if the write time is later than the write time
   // currently stored in expiration, and the record is not a regular record with default TTL.
@@ -328,19 +330,19 @@ Status FindLastWriteTime(
   // If we encounter a TTL row, we assign max_overwrite_time to be the write time of the
   // original value/init marker.
   if (control_fields.merge_flags == ValueControlFields::kTtlFlag) {
-    DocHybridTime new_ht;
+    EncodedDocHybridTime new_ht;
     RETURN_NOT_OK(iter->NextFullValue(&new_ht, &value));
 
     // There could be a case where the TTL row exists, but the value has been
     // compacted away. Then, it is treated as a Tombstone written at the time
     // of the TTL row.
-    if (!iter->valid() && !new_exp.ttl.IsNegative()) {
+    if (iter->IsOutOfRecords() && !new_exp.ttl.IsNegative()) {
       new_exp.ttl = -new_exp.ttl;
     } else {
       RETURN_NOT_OK(Value::DecodePrimitiveValueType(value));
       // Because we still do not know whether we are seeking something expired,
       // we must take the max_overwrite_time as if the value were not expired.
-      doc_ht = new_ht;
+      doc_ht = VERIFY_RESULT(new_ht.Decode());
     }
   }
 

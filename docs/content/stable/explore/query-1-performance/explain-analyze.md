@@ -41,6 +41,8 @@ The *option* and its values are described in the following table. The most impor
 
 ### Examples
 
+{{% explore-setup-single %}}
+
 Typically, you start by creating a table in YugabyteDB and inserting rows into it.
 
 To create a table called `employees`, execute the following:

@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
-#ifndef YB_MASTER_CATALOG_MANAGER_BG_TASKS_H
-#define YB_MASTER_CATALOG_MANAGER_BG_TASKS_H
+#pragma once
 
 #include <atomic>
 #include <unordered_set>
@@ -48,10 +47,6 @@ class Thread;
 namespace master {
 
 class CatalogManager;
-
-namespace enterprise {
-class CatalogManager;
-}
 
 class CatalogManagerBgTasks final {
  public:
@@ -76,11 +71,9 @@ class CatalogManagerBgTasks final {
   mutable Mutex lock_;
   ConditionVariable cond_;
   scoped_refptr<yb::Thread> thread_;
-  enterprise::CatalogManager *catalog_manager_;
+  CatalogManager *catalog_manager_;
   bool was_leader_ = false;
 };
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_CATALOG_MANAGER_BG_TASKS_H

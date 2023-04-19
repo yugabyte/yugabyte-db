@@ -18,7 +18,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 #include "yb/rocksdb/memtable/hash_skiplist_rep.h"
 
 #include <atomic>
@@ -353,4 +352,3 @@ MemTableRepFactory* NewHashSkipListRepFactory(
 }
 
 } // namespace rocksdb
-#endif  // ROCKSDB_LITE

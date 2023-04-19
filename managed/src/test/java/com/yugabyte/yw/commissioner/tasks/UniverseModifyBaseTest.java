@@ -3,8 +3,8 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
+import static play.libs.Json.newObject;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
@@ -82,11 +82,12 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
                 ShellResponse listResponse = new ShellResponse();
                 NodeTaskParams params = invocation.getArgument(1);
                 ObjectNode respJson =
-                    (ObjectNode) Json.parse("{\"universe_uuid\":\"" + params.universeUUID + "\"}");
-                Universe universe = Universe.getOrBadRequest(params.universeUUID);
+                    (ObjectNode)
+                        Json.parse("{\"universe_uuid\":\"" + params.getUniverseUUID() + "\"}");
+                Universe universe = Universe.getOrBadRequest(params.getUniverseUUID());
                 NodeDetails nodeDetails = universe.getNode(params.nodeName);
                 if (nodeDetails != null
-                    && nodeDetails.dedicatedTo == UniverseDefinitionTaskBase.ServerType.MASTER) {
+                    && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
                   respJson.put("private_ip", "10.0.0." + masterIpCnt.incrementAndGet());
                 }
                 if (params.nodeUuid != null) {
@@ -100,16 +101,35 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     mockClient = mock(YBClient.class);
     when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
-
+    doAnswer(
+            inv -> {
+              ObjectNode res = newObject();
+              res.put("response", "success");
+              return res;
+            })
+        .when(mockYsqlQueryExecutor)
+        .executeQueryInNodeShell(any(), any(), any());
     // Create hooks
     hook1 =
         Hook.create(
-            defaultCustomer.uuid, "hook1", Hook.ExecutionLang.Python, "HOOK\nTEXT\n", true, null);
+            defaultCustomer.getUuid(),
+            "hook1",
+            Hook.ExecutionLang.Python,
+            "HOOK\nTEXT\n",
+            true,
+            null);
     hook2 =
         Hook.create(
-            defaultCustomer.uuid, "hook2", Hook.ExecutionLang.Bash, "HOOK\nTEXT\n", true, null);
-    hookScope1 = HookScope.create(defaultCustomer.uuid, HookScope.TriggerType.PreNodeProvision);
-    hookScope2 = HookScope.create(defaultCustomer.uuid, HookScope.TriggerType.PostNodeProvision);
+            defaultCustomer.getUuid(),
+            "hook2",
+            Hook.ExecutionLang.Bash,
+            "HOOK\nTEXT\n",
+            true,
+            null);
+    hookScope1 =
+        HookScope.create(defaultCustomer.getUuid(), HookScope.TriggerType.PreNodeProvision);
+    hookScope2 =
+        HookScope.create(defaultCustomer.getUuid(), HookScope.TriggerType.PostNodeProvision);
     hookScope1.addHook(hook1);
     hookScope2.addHook(hook2);
   }
@@ -124,11 +144,11 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     userIntent.ybSoftwareVersion = "yb-version";
     userIntent.accessKeyCode = "default-key";
     userIntent.replicationFactor = 3;
-    userIntent.regionList = ImmutableList.of(region.uuid);
+    userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
-    Common.CloudType providerType = Common.CloudType.valueOf(provider.code);
+    Common.CloudType providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.providerType = providerType;
-    userIntent.provider = provider.uuid.toString();
+    userIntent.provider = provider.getUuid().toString();
     userIntent.universeName = universeName;
     if (providerType == Common.CloudType.onprem) {
       createOnpremInstance(zone);
@@ -139,13 +159,14 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     gflags.put("foo", "bar");
     userIntent.masterGFlags = gflags;
     userIntent.tserverGFlags = gflags;
-    Universe result = createUniverse(universeName, defaultCustomer.getCustomerId(), providerType);
+    Universe result = createUniverse(universeName, defaultCustomer.getId(), providerType);
     result =
         Universe.saveDetails(
-            result.universeUUID, ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+            result.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
     if (providerType == Common.CloudType.onprem) {
       Universe.saveDetails(
-          result.universeUUID,
+          result.getUniverseUUID(),
           u -> {
             String instanceType = u.getNodes().iterator().next().cloudInfo.instance_type;
             Map<UUID, List<String>> onpremAzToNodes = new HashMap<>();
@@ -169,14 +190,15 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     return result;
   }
 
-  protected void createOnpremInstance(AvailabilityZone zone) {
+  protected NodeInstance createOnpremInstance(AvailabilityZone zone) {
     NodeInstanceFormData.NodeInstanceData nodeData = new NodeInstanceFormData.NodeInstanceData();
-    nodeData.ip = "fake_ip_" + zone.region.code;
-    nodeData.region = zone.region.code;
-    nodeData.zone = zone.code;
+    nodeData.ip = "fake_ip_" + zone.getRegion().getCode();
+    nodeData.region = zone.getRegion().getCode();
+    nodeData.zone = zone.getCode();
     nodeData.instanceType = ApiUtils.UTIL_INST_TYPE;
-    NodeInstance node = NodeInstance.create(zone.uuid, nodeData);
+    NodeInstance node = NodeInstance.create(zone.getUuid(), nodeData);
     node.save();
+    return node;
   }
 
   protected Universe createUniverseForProviderWithReadReplica(
@@ -193,23 +215,24 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     userIntent.instanceType = ApiUtils.UTIL_INST_TYPE;
     userIntent.regionList = new ArrayList<>(primaryCluster.userIntent.regionList);
     userIntent.enableYSQL = true;
-    Common.CloudType providerType = Common.CloudType.valueOf(provider.code);
+    Common.CloudType providerType = Common.CloudType.valueOf(provider.getCode());
     userIntent.providerType = providerType;
-    userIntent.provider = provider.uuid.toString();
+    userIntent.provider = provider.getUuid().toString();
     userIntent.universeName = universeName;
 
-    Region region = Region.getByProvider(provider.uuid).get(0);
+    Region region = Region.getByProvider(provider.getUuid()).get(0);
     PlacementInfo pi = new PlacementInfo();
     AvailabilityZone az4 = AvailabilityZone.createOrThrow(region, "az-4", "AZ 4", "subnet-1");
     AvailabilityZone az5 = AvailabilityZone.createOrThrow(region, "az-5", "AZ 5", "subnet-2");
     AvailabilityZone az6 = AvailabilityZone.createOrThrow(region, "az-6", "AZ 6", "subnet-3");
-    PlacementInfoUtil.addPlacementZone(az4.uuid, pi, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az5.uuid, pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az6.uuid, pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az4.getUuid(), pi, 1, 1, false);
+    PlacementInfoUtil.addPlacementZone(az5.getUuid(), pi, 1, 1, true);
+    PlacementInfoUtil.addPlacementZone(az6.getUuid(), pi, 1, 1, false);
 
     universe =
         Universe.saveDetails(
-            universe.universeUUID, ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
+            universe.getUniverseUUID(),
+            ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
     return universe;
   }
 
@@ -217,7 +240,7 @@ public abstract class UniverseModifyBaseTest extends CommissionerBaseTest {
     AccessKey.KeyInfo keyInfo = new AccessKey.KeyInfo();
     keyInfo.sshUser = "ssh_user";
     keyInfo.sshPort = 22;
-    AccessKey accessKey = AccessKey.create(provider.uuid, keyCode, keyInfo);
+    AccessKey accessKey = AccessKey.create(provider.getUuid(), keyCode, keyInfo);
     return accessKey;
   }
 }

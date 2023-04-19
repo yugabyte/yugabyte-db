@@ -10,7 +10,7 @@ type: indexpage
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="learn/">
+    <a class="section-link icon-offset" href="build-apps/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
         <div class="title">Build an application</div>
@@ -95,7 +95,7 @@ type: indexpage
 
 <!--  <a class="section-link icon-offset" href="port-existing-apps/">
     <div class="icon">
-      <i class="fas fa-sign-in" aria-hidden="true"></i>
+      <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
     </div>
     <div class="text">
       Port Existing Apps

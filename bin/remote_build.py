@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.join(
 
 
 from yb import remote
-from yb.common_util import init_env
+from yb.common_util import init_logging
 
 
 def add_extra_yb_build_args(yb_build_args: List[str], extra_args: List[str]) -> List[str]:
@@ -56,7 +56,7 @@ def main() -> None:
     remote.add_common_args(parser)
     remote.handle_yb_build_cmd_line()
     args = parser.parse_args()
-    init_env(verbose=args.verbose)
+    init_logging(verbose=args.verbose)
 
     remote.load_profile(args, args.profile)
     remote.apply_default_arg_values(args)

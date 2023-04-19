@@ -6,12 +6,13 @@ import { MetricsFilterHeader } from './MetricsFilterHeader';
 import { ComparisonFilterContextProvider } from './ComparisonFilterContextProvider';
 import { MetricsComparisonContent } from './MetricsComparisonContent';
 
-export const MetricsComparisonModal = ({ 
+export const MetricsComparisonModal = ({
   selectedUniverse,
   visible,
   onHide,
   origin,
-  selectedRegionClusterUUID
+  selectedRegionClusterUUID,
+  isTopKMetricsEnabled
 }) => {
   return (
     <ComparisonFilterContextProvider selectedUniverse={selectedUniverse}>
@@ -31,6 +32,7 @@ export const MetricsComparisonModal = ({
           <NodeSelectorHeader
             universe={selectedUniverse}
             selectedRegionClusterUUID={selectedRegionClusterUUID}
+            isTopKMetricsEnabled={isTopKMetricsEnabled}
           />
           <MetricsComparisonContent universe={selectedUniverse} visible={visible} />
         </YBModal>

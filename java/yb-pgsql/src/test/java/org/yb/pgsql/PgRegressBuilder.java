@@ -12,12 +12,6 @@
 //
 package org.yb.pgsql;
 
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yb.client.TestUtils;
-import org.yb.util.SystemUtil;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -29,6 +23,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+
+import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.TestUtils;
+import org.yb.util.SystemUtil;
 
 /**
  * Build a ProcessBuilder for pg_regress.  Also, set up the output directory.
@@ -99,6 +99,10 @@ public class PgRegressBuilder {
       // TODO(dmitry): Workaround for #1721, remove after fix.
       try {
         for (File f : (new File(outputDir, "sql")).listFiles()) {
+          if (f.isDirectory()) {
+            LOG.info("Skipping " + f.getAbsolutePath() + " because it is a directory");
+            continue;
+          }
           if (!f.setWritable(true)) {
             throw new IOException("Couldn't set write permissions for " + f.getAbsolutePath());
           }

@@ -1,4 +1,4 @@
-```ebnf
+```output.ebnf
 create_trigger ::= CREATE TRIGGER name { BEFORE | AFTER | INSTEAD OF } 
                    { event [ OR ... ] } ON table_name 
                    [ FROM table_name ]  [ NOT DEFERRABLE ] 

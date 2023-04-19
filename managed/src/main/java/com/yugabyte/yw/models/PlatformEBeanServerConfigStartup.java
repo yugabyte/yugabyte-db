@@ -12,9 +12,9 @@ package com.yugabyte.yw.models;
 
 import com.yugabyte.yw.common.YbEncryptKeyManager;
 import com.yugabyte.yw.common.YbPgDbEncrypt;
-import io.ebean.config.ServerConfig;
+import com.yugabyte.yw.modules.CustomObjectMapperModule;
+import io.ebean.config.DatabaseConfig;
 import io.ebean.event.ServerConfigStartup;
-import play.libs.Json;
 
 /**
  * Here we will modify EBean server config at startup. EBeans framework will make sure that this
@@ -22,19 +22,19 @@ import play.libs.Json;
  */
 public class PlatformEBeanServerConfigStartup implements ServerConfigStartup {
   @Override
-  public void onStart(ServerConfig serverConfig) {
+  public void onStart(DatabaseConfig databaseConfig) {
     // Use same object mapper so that play.libs.Json and ebean's json serialization and
     // deserialization yields same results. Specifically FAIL_ON_UNKNOWN_PROPERTIES is
     // set to false by play.
-    serverConfig.setObjectMapper(Json.mapper());
-    serverConfig.setEncryptKeyManager(new YbEncryptKeyManager());
+    databaseConfig.setObjectMapper(CustomObjectMapperModule.createDefaultMapper());
+    databaseConfig.setEncryptKeyManager(new YbEncryptKeyManager());
 
     // See PLAT-5237 - Do not prefetch and cache audit id entries.
     // this is like using the bigserial type with GenerationType.IDENTITY and leave
     // it to database to do the right thing. We already use bigserial in customer and customer_task
-    serverConfig.setDatabaseSequenceBatch(1);
+    databaseConfig.setDatabaseSequenceBatch(1);
 
     // Do not overwrite the test server's encryption object
-    if (serverConfig.getDbEncrypt() == null) serverConfig.setDbEncrypt(new YbPgDbEncrypt());
+    if (databaseConfig.getDbEncrypt() == null) databaseConfig.setDbEncrypt(new YbPgDbEncrypt());
   }
 }

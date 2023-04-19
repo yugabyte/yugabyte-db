@@ -17,7 +17,6 @@
 // under the License.
 //
 
-#ifndef ROCKSDB_LITE
 
 #include "yb/rocksdb/table/plain_table_reader.h"
 
@@ -738,4 +737,3 @@ Status PlainTableIterator::status() const {
 }
 
 }  // namespace rocksdb
-#endif  // ROCKSDB_LITE

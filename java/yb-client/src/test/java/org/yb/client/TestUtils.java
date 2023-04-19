@@ -39,7 +39,7 @@ import org.yb.BaseYBTest;
 import org.yb.client.YBClient.Condition;
 import org.yb.util.ConfForTesting;
 import org.yb.util.EnvAndSysPropertyUtil;
-import org.yb.util.RandomNumberUtil;
+import org.yb.util.RandomUtil;
 import org.yb.util.BuildTypeUtil;
 
 import java.io.*;
@@ -341,7 +341,7 @@ public class TestUtils {
   public static int findFreePort(String bindInterface) throws IOException {
     final InetAddress bindIp = InetAddress.getByName(bindInterface);
     final int MAX_ATTEMPTS = 1000;
-    Random rng = RandomNumberUtil.getRandomGenerator();
+    Random rng = RandomUtil.getRandomGenerator();
     for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
       final int port = MIN_PORT_TO_USE + rng.nextInt(MAX_PORT_TO_USE - MIN_PORT_TO_USE);
       if (!isReservedPort(bindIp, port) && isPortFree(bindIp, port, attempt == MAX_ATTEMPTS - 1)) {

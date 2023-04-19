@@ -279,6 +279,7 @@
 /* Yugabyte includes */
 #include "catalog/yb_type.h"
 #include "utils/fmgroids.h"
+#include "utils/numeric.h"
 #include "utils/rel.h"
 
 /*
@@ -2185,7 +2186,8 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		if (strcmp(func_name, "count") != 0 &&
 			strcmp(func_name, "min") != 0 &&
 			strcmp(func_name, "max") != 0 &&
-			strcmp(func_name, "sum") != 0)
+			strcmp(func_name, "sum") != 0 &&
+			strcmp(func_name, "avg") != 0)
 			return;
 
 		/* No ORDER BY. */
@@ -2216,11 +2218,20 @@ yb_agg_pushdown_supported(AggState *aggstate)
 		if (aggref->aggsplit != AGGSPLIT_SIMPLE)
 			return;
 
+
 		/* Aggtranstype is a supported YB key type and is not INTERNAL or NUMERIC. */
 		if (!YbDataTypeIsValidForKey(aggref->aggtranstype) ||
 			aggref->aggtranstype == INTERNALOID ||
 			aggref->aggtranstype == NUMERICOID)
-			return;
+		{
+			/*
+			 * However, AVG with INT8ARRAYOID is a special case
+			 * that we support.
+			 */
+			if (!(strcmp(func_name, "avg") == 0 &&
+				aggref->aggtranstype == INT8ARRAYOID))
+				return;
+		}
 
 		/*
 		 * The builtin functions max and min imply comparison. Character type
@@ -2316,8 +2327,32 @@ yb_agg_pushdown(AggState *aggstate)
 	for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 	{
 		Aggref *aggref = aggstate->peragg[aggno].aggref;
+		const char *func_name = get_func_name(aggref->aggfnoid);
 
-		pushdown_aggs = lappend(pushdown_aggs, aggref);
+		if (strcmp(func_name, "avg") == 0)
+		{
+			Aggref *count_aggref = makeNode(Aggref);
+			Aggref *sum_aggref = makeNode(Aggref);
+
+			count_aggref->aggfnoid = 2147;
+			count_aggref->aggtranstype = INT8OID;
+			count_aggref->aggcollid = aggref->aggcollid;
+			count_aggref->aggstar = aggref->aggstar;
+			count_aggref->args = aggref->args;
+
+			sum_aggref->aggfnoid = 2108;
+			sum_aggref->aggtranstype = INT8OID;
+			sum_aggref->aggcollid = aggref->aggcollid;
+			sum_aggref->aggstar = aggref->aggstar;
+			sum_aggref->args = aggref->args;
+
+			pushdown_aggs = lappend(pushdown_aggs, sum_aggref);
+			pushdown_aggs = lappend(pushdown_aggs, count_aggref);
+		}
+		else
+		{
+			pushdown_aggs = lappend(pushdown_aggs, aggref);
+		}
 	}
 	scan_state->yb_fdw_aggs = pushdown_aggs;
 	/* Disable projection for tuples produced by pushed down aggregate operators. */
@@ -2558,6 +2593,9 @@ agg_retrieve_direct(AggState *aggstate)
 			 *
 			 * We special case for COUNT and sum values so it returns the proper count
 			 * aggregated across all responses.
+			 *
+			 * We also special case AVG, which is pushed down as two values:
+			 * a count and a sum.
 			 */
 			for (;;)
 			{
@@ -2568,7 +2606,12 @@ agg_retrieve_direct(AggState *aggstate)
 					break;
 				}
 
-				Assert(aggstate->numaggs == outerslot->tts_nvalid);
+				/*
+				 * Each AVG is responsible for two values, so the
+				 * index into the input values is no longer aligned
+				 * with aggno. So, we keep track of it separately
+				 */
+				int valno = 0;
 
 				for (aggno = 0; aggno < aggstate->numaggs; aggno++)
 				{
@@ -2580,8 +2623,10 @@ agg_retrieve_direct(AggState *aggstate)
 					AggStatePerGroup pergroupstate = &pergroup[transno];
 					AggStatePerTrans pertrans = &aggstate->pertrans[transno];
 					FunctionCallInfo fcinfo = &pertrans->transfn_fcinfo;
-					Datum value = outerslot->tts_values[aggno];
-					bool isnull = outerslot->tts_isnull[aggno];
+
+					Assert(valno < outerslot->tts_nvalid);
+					Datum value = outerslot->tts_values[valno];
+					bool isnull = outerslot->tts_isnull[valno];
 
 					if (strcmp(func_name, "count") == 0)
 					{
@@ -2594,6 +2639,39 @@ agg_retrieve_direct(AggState *aggstate)
 						pergroupstate->transValue += value;
 						MemoryContextSwitchTo(oldContext);
 					}
+					else if (strcmp(func_name, "avg") == 0)
+					{
+						++valno;
+						Assert(valno < outerslot->tts_nvalid);
+						Datum count_value = outerslot->tts_values[valno];
+						bool count_isnull = outerslot->tts_isnull[valno];
+
+						if (isnull || count_isnull)
+							continue;
+
+						/*
+						 * Like COUNT, add the sum and count values directly.
+						 * The datum is guaranteed to be an Int8TransTypeData.
+						 * The checking code is taken from int8_avg()
+						 * in numeric.c.
+						 */
+						oldContext = MemoryContextSwitchTo(
+							aggstate->curaggcontext->ecxt_per_tuple_memory);
+						Int8TransTypeData *transdata;
+						ArrayType *transarray = (ArrayType *)(pergroupstate->transValue);
+
+						if (ARR_HASNULL(transarray) ||
+							ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) +
+							sizeof(Int8TransTypeData))
+							elog(ERROR, "expected 2-element int8 array");
+
+						transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+
+						transdata->sum += value;
+						transdata->count += count_value;
+
+						MemoryContextSwitchTo(oldContext);
+					}
 					else
 					{
 						/* Set slot result as argument, then advance the transition function. */
@@ -2601,6 +2679,7 @@ agg_retrieve_direct(AggState *aggstate)
 						fcinfo->argnull[1] = isnull;
 						advance_transition_function(aggstate, pertrans, pergroupstate);
 					}
+					++valno;
 				}
 
 				/* Reset per-input-tuple context after each tuple */

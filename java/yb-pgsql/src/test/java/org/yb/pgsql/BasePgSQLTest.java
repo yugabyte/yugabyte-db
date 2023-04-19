@@ -23,10 +23,9 @@ import static org.yb.AssertionWrappers.fail;
 import static org.yb.util.BuildTypeUtil.isASAN;
 import static org.yb.util.BuildTypeUtil.isTSAN;
 
-import java.io.ByteArrayOutputStream;
-import java.io.PrintStream;
 import java.io.File;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.StandardCharsets;
@@ -45,6 +44,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.TreeMap;
@@ -73,9 +74,11 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.minicluster.RocksDBMetrics;
 import org.yb.minicluster.YsqlSnapshotVersion;
-import org.yb.util.*;
+import org.yb.util.BuildTypeUtil;
+import org.yb.util.EnvAndSysPropertyUtil;
 import org.yb.util.MiscUtil.ThrowingCallable;
-import org.yb.util.MiscUtil.ThrowingRunnable;
+import org.yb.util.SystemUtil;
+import org.yb.util.ThrowingRunnable;
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
 
@@ -109,6 +112,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected static final String DEFAULT_PG_USER = "yugabyte";
   protected static final String DEFAULT_PG_PASS = "yugabyte";
   protected static final String TEST_PG_USER = "yugabyte_test";
+  protected static final String TEST_PG_PASS = "pass";
 
   // Non-standard PSQL states defined in yb_pg_errcodes.h
   protected static final String SERIALIZATION_FAILURE_PSQL_STATE = "40001";
@@ -321,15 +325,19 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       connection = null;
     }
 
-    // Create test role.
+    connection = createTestRole();
+    pgInitialized = true;
+  }
+
+  protected Connection createTestRole() throws Exception {
     try (Connection initialConnection = getConnectionBuilder().withUser(DEFAULT_PG_USER).connect();
          Statement statement = initialConnection.createStatement()) {
-      statement.execute(
-          "CREATE ROLE " + TEST_PG_USER + " SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN");
+        statement.execute(
+            String.format("CREATE ROLE %s SUPERUSER CREATEROLE CREATEDB BYPASSRLS LOGIN ",
+                          TEST_PG_USER));
     }
 
-    connection = getConnectionBuilder().connect();
-    pgInitialized = true;
+    return getConnectionBuilder().connect();
   }
 
   public void restartClusterWithFlags(
@@ -338,6 +346,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     destroyMiniCluster();
 
     createMiniCluster(additionalMasterFlags, additionalTserverFlags);
+    pgInitialized = false;
+    initPostgresBefore();
+  }
+
+  public void restartClusterWithFlagsAndEnv(
+      Map<String, String> additionalMasterFlags,
+      Map<String, String> additionalTserverFlags,
+      Map<String, String> additionalEnvironmentVars) throws Exception {
+    destroyMiniCluster();
+
+    createMiniCluster(additionalMasterFlags, additionalTserverFlags, additionalEnvironmentVars);
     pgInitialized = false;
     initPostgresBefore();
   }
@@ -585,8 +604,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
                                       ts.getLocalhostIP(),
                                       ts.getPgsqlWebPort()));
       Scanner scanner = new Scanner(url.openConnection().getInputStream());
-      JsonParser parser = new JsonParser();
-      JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());
+      JsonElement tree = JsonParser.parseString(scanner.useDelimiter("\\A").next());
       JsonObject obj = tree.getAsJsonObject();
       YSQLStat ysqlStat = new Metrics(obj, true).getYSQLStat(statName);
       if (ysqlStat != null) {
@@ -642,30 +660,51 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     verifyStatementStats(stmt, sql, statName, numLoopsAfterReset, oldValue);
   }
 
-  private JsonArray[] getRawMetric(
-      Function<MiniYBDaemon, Integer> portFetcher) throws Exception {
+  private URL[] getMetricSources(
+      Collection<MiniYBDaemon> servers, Function<MiniYBDaemon, Integer> portFetcher)
+        throws MalformedURLException {
+    URL[] result = new URL[servers.size()];
+    int index = 0;
+    for (MiniYBDaemon s : servers) {
+      result[index++] = new URL(String.format(
+          "http://%s:%d/metrics", s.getLocalhostIP(), portFetcher.apply(s)));
+    }
+    return result;
+  }
+
+  protected URL[] getTSMetricSources() throws MalformedURLException {
+    return getMetricSources(miniCluster.getTabletServers().values(), (s) -> s.getWebPort());
+  }
+
+  protected URL[] getYSQLMetricSources() throws MalformedURLException {
+    return getMetricSources(miniCluster.getTabletServers().values(), (s) -> s.getPgsqlWebPort());
+  }
+
+  protected URL[] getMasterMetricSources() throws MalformedURLException {
+    return getMetricSources(miniCluster.getMasters().values(), (s) -> s.getWebPort());
+  }
+
+  private JsonArray[] getRawMetric(URL[] sources) throws Exception {
     Collection<MiniYBDaemon> servers = miniCluster.getTabletServers().values();
     JsonArray[] result = new JsonArray[servers.size()];
     int index = 0;
-    for (MiniYBDaemon ts : servers) {
-      URLConnection connection = new URL(String.format("http://%s:%d/metrics",
-          ts.getLocalhostIP(),
-          portFetcher.apply(ts))).openConnection();
+    for (URL url : sources) {
+      URLConnection connection = url.openConnection();
       connection.setUseCaches(false);
       Scanner scanner = new Scanner(connection.getInputStream());
       result[index++] =
-          new JsonParser().parse(scanner.useDelimiter("\\A").next()).getAsJsonArray();
+          JsonParser.parseString(scanner.useDelimiter("\\A").next()).getAsJsonArray();
       scanner.close();
     }
     return result;
   }
 
   protected JsonArray[] getRawTSMetric() throws Exception {
-    return getRawMetric((ts) -> ts.getWebPort());
+    return getRawMetric(getTSMetricSources());
   }
 
   protected JsonArray[] getRawYSQLMetric() throws Exception {
-    return getRawMetric((ts) -> ts.getPgsqlWebPort());
+    return getRawMetric(getYSQLMetricSources());
   }
 
   protected AggregatedValue getMetric(String metricName) throws Exception {
@@ -682,10 +721,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return value;
   }
 
-  protected Long getTserverMetricCountForTable(String metricName, String tableName)
-      throws Exception {
+  protected long getMetricCountForTable(
+      URL[] sources, String metricName, String tableName) throws Exception {
     long count = 0;
-    for (JsonArray rawMetric : getRawTSMetric()) {
+    for (JsonArray rawMetric : getRawMetric(sources)) {
       for (JsonElement elem : rawMetric.getAsJsonArray()) {
         JsonObject obj = elem.getAsJsonObject();
         if (obj.get("type").getAsString().equals("tablet") &&
@@ -705,13 +744,17 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return count;
   }
 
-  protected AggregatedValue getTServerMetric(String metricName) throws Exception {
+  protected long getTserverMetricCountForTable(
+      String metricName, String tableName) throws Exception {
+    return getMetricCountForTable(getTSMetricSources(), metricName, tableName);
+  }
+
+  protected AggregatedValue getServerMetric(URL[] sources, String metricName) throws Exception {
     AggregatedValue value = new AggregatedValue();
-    for (JsonArray rawMetric : getRawTSMetric()) {
+    for (JsonArray rawMetric : getRawMetric(sources)) {
       for (JsonElement elem : rawMetric.getAsJsonArray()) {
         JsonObject obj = elem.getAsJsonObject();
         if (obj.get("type").getAsString().equals("server")) {
-          assertEquals(obj.get("id").getAsString(), "yb.tabletserver");
           Metrics.Histogram histogram = new Metrics(obj).getHistogram(metricName);
           value.count += histogram.totalCount;
           value.value += histogram.totalSum;
@@ -719,6 +762,14 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
       }
     }
     return value;
+  }
+
+  protected AggregatedValue getReadRPCMetric(URL[] sources) throws Exception {
+    return getServerMetric(sources, "handler_latency_yb_tserver_TabletServerService_Read");
+  }
+
+  protected AggregatedValue getTServerMetric(String metricName) throws Exception {
+    return getServerMetric(getTSMetricSources(), metricName);
   }
 
   protected List<String> getTabletsForTable(
@@ -1061,6 +1112,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
 
     String getString(int index) {
       return (String) elems.get(index);
+    }
+
+    Float getFloat(int index) {
+      return (Float) elems.get(index);
     }
 
     public boolean elementEquals(int idx, Object value) {
@@ -1493,6 +1548,11 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return doesQueryPlanContainsSubstring(stmt, query, "Filter:");
   }
 
+  /** Whether or not this query pushes down a filter condition */
+  protected boolean doesPushdownCondition(Statement stmt, String query) throws SQLException {
+    return doesQueryPlanContainsSubstring(stmt, query, "Remote Filter:");
+  }
+
   /**
    * Return whether this select query uses a partitioned index in an IndexScan for ordering.
    */
@@ -1683,48 +1743,58 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   }
 
   /**
-   * @param statement The statement used to execute the query.
-   * @param query The query string.
-   * @param errorSubstring A (case-insensitive) substring of the expected error message.
+   * @param statement       The statement used to execute the query.
+   * @param query           The query string.
+   * @param errorSubstrings An array of (case-insensitive) substrings of the expected error
+   *                        messages.
    */
-  protected void runInvalidQuery(Statement statement, String query, String errorSubstring) {
-    try {
-      statement.execute(query);
-      fail(String.format("Statement did not fail: %s", query));
-    } catch (SQLException e) {
-      if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
-        LOG.info("Expected exception", e);
-      } else {
-        fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: '%s'",
-                           e.getMessage(), errorSubstring));
-      }
-    }
+  protected void runInvalidQuery(Statement statement, String query, String... errorSubstrings) {
+    runInvalidQuery(statement, query, false, errorSubstrings);
   }
 
   /**
-   * @param statement The statement used to execute the query.
-   * @param query The query string.
-   * @param errorSubstrings An array of (case-insensitive) substrings of the
-   * expected error messages.
+   * @param statement       The statement used to execute the query.
+   * @param query           The query string.
+   * @param matchAll        A flag to indicate whether all errorSubstrings must be present (true)
+   *                       or if only one is sufficient (false).
+   * @param errorSubstrings An array of (case-insensitive) substrings of the expected error
+   *                        messages.
    */
-  protected void runInvalidQuery(Statement statement, String query, String[] errorSubstrings) {
+  protected void runInvalidQuery(Statement statement, String query, boolean matchAll,
+                                 String... errorSubstrings) {
     try {
       statement.execute(query);
       fail(String.format("Statement did not fail: %s", query));
     } catch (SQLException e) {
-      for (String errorSubstring : errorSubstrings) {
-        if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
-          LOG.info("Expected exception", e);
-          return;
+      if (matchAll) {
+        List<String> missingSubstrings = new ArrayList<>();
+
+        for (String errorSubstring : errorSubstrings) {
+          if (!StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
+            missingSubstrings.add(errorSubstring);
+          }
         }
+
+        if (!missingSubstrings.isEmpty()) {
+          String missingSubstringsStr = missingSubstrings.stream().map(s -> "'" + s + "'")
+            .collect(Collectors.joining(", "));
+          fail(String.format("Unexpected Error Message. Got: '%s', Expected to contain: %s",
+            e.getMessage(), missingSubstringsStr));
+        }
+      } else {
+        for (String errorSubstring : errorSubstrings) {
+          if (StringUtils.containsIgnoreCase(e.getMessage(), errorSubstring)) {
+            LOG.info("Expected exception", e);
+            return;
+          }
+        }
+
+        final String expectedErrMsg = Arrays.asList(errorSubstrings).stream().map(i -> "'" + i +
+            "'").collect(Collectors.joining(", "));
+        final String failMessage = String.format("Unexpected Error Message. Got: '%s', Expected " +
+          "to contain one of the error messages: %s.", e.getMessage(), expectedErrMsg);
+        fail(failMessage);
       }
-      String faillMessage = "Unexpected Error Message. Got: '" + e.getMessage() +
-          "', Expected to contain one of the error messages: ";
-      for (int i = 0; i < errorSubstrings.length-1; i++) {
-        faillMessage.concat("'").concat(errorSubstrings[i]).concat("', ");
-      }
-      faillMessage.concat("'").concat(errorSubstrings[errorSubstrings.length-1]).concat("'.");
-      fail(faillMessage);
     }
   }
 
@@ -2069,6 +2139,22 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     }
   }
 
+  static final Pattern roundtrips_pattern = Pattern.compile("Storage Read Requests: (\\d+)\\s*$");
+
+  protected Long getNumStorageRoundtrips(Statement stmt, String query) throws Exception {
+    try (ResultSet rs = stmt.executeQuery(
+        "EXPLAIN (ANALYZE, DIST, COSTS OFF, TIMING OFF) " + query)) {
+      while (rs.next()) {
+        String line = rs.getString(1);
+        Matcher m = roundtrips_pattern.matcher(line);
+        if (m.find()) {
+          return Long.parseLong(m.group(1));
+        }
+      }
+    }
+    return null;
+  }
+
   protected Long getNumDocdbRequests(Statement stmt, String query) throws Exception {
     // Executing query once just in case if master catalog cache is not refreshed
     stmt.execute(query);
@@ -2080,12 +2166,20 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
     return rpc_count_after - rpc_count_before;
   }
 
+  /** Creates a new tserver and returns its id. **/
+  protected int spawnTServer() throws Exception {
+    int tserverId = miniCluster.getNumTServers();
+    miniCluster.startTServer(getTServerFlags());
+    return tserverId;
+  }
+
+  /** Creates a new tserver with additional flags and returns its id. **/
   protected int spawnTServerWithFlags(Map<String, String> additionalFlags) throws Exception {
     Map<String, String> tserverFlags = getTServerFlags();
     tserverFlags.putAll(additionalFlags);
-    int tserver = miniCluster.getNumTServers();
+    int tserverId = miniCluster.getNumTServers();
     miniCluster.startTServer(tserverFlags);
-    return tserver;
+    return tserverId;
   }
 
   /**

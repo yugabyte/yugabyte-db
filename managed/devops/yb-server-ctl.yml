@@ -127,6 +127,13 @@
         become: yes
         become_method: sudo
 
+      - name: Delete yb-bind check service
+        file:
+          path: "{{ systemd_dir }}/yb-bind_check.service"
+          state: absent
+        become: yes
+        become_method: sudo
+
       - name: Delete metrics collection timer
         file:
           path: "{{ systemd_dir }}/yb-collect_metrics.timer"
@@ -184,7 +191,7 @@
 
       - name: Remove old cron job that cleans cores
         cron:
-          name: "cleanup core files hourly"
+          name: "cleanup core files every 5 minutes"
           user: "yugabyte"
           state: absent
         become: yes
@@ -192,7 +199,7 @@
 
       - name: Remove old cron job that purges logs
         cron:
-          name: "cleanup yb log files hourly"
+          name: "cleanup yb log files every 5 minutes"
           user: "yugabyte"
           state: absent
         become: yes

@@ -19,7 +19,7 @@ from ybops.cloud.common.method import AccessCreateVaultMethod, ConfigureInstance
     ListInstancesMethod, InitYSQLMethod, UpdateDiskMethod, CronCheckMethod, \
     AccessEditVaultMethod, AccessDeleteKeyMethod, TransferXClusterCerts, \
     VerifySSHConnection, AddAuthorizedKey, RemoveAuthorizedKey, RebootInstancesMethod, RunHooks, \
-    WaitForSSHConnection, HardRebootInstancesMethod
+    WaitForConnection
 
 
 class AzureNetworkCommand(NetworkCommand):
@@ -53,8 +53,7 @@ class AzureInstanceCommand(InstanceCommand):
         self.add_method(AzureResumeInstancesMethod(self))
         self.add_method(RebootInstancesMethod(self))
         self.add_method(RunHooks(self))
-        self.add_method(WaitForSSHConnection(self))
-        self.add_method(HardRebootInstancesMethod(self))
+        self.add_method(WaitForConnection(self))
 
 
 class AzureAccessCommand(AccessCommand):

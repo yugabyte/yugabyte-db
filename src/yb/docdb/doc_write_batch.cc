@@ -15,25 +15,29 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/ql_value.h"
 
+#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_key.h"
 #include "yb/docdb/doc_path.h"
+#include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/doc_ttl_util.h"
+#include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/docdb-internal.h"
-#include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/kv_debug.h"
 #include "yb/docdb/schema_packing.h"
 #include "yb/docdb/subdocument.h"
 #include "yb/docdb/value_type.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/write_batch.h"
 #include "yb/rocksutil/write_batch_formatter.h"
+
 #include "yb/server/hybrid_clock.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/checked_narrow_cast.h"
 #include "yb/util/enums.h"
+#include "yb/util/fast_varint.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -100,38 +104,100 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
 
   // Seek the value.
   doc_iter->Seek(key_prefix_.AsSlice());
-  if (!doc_iter->valid()) {
-    return Status::OK();
+  VLOG_WITH_FUNC(4) << SubDocKey::DebugSliceToString(key_prefix_.AsSlice())
+                    << ", IsOutOfRecords: " << doc_iter->IsOutOfRecords()
+                    << ", prev_subdoc_ht: " << prev_subdoc_ht
+                    << ", prev_key_prefix_exact: " << prev_key_prefix_exact
+                    << ", has_ancestor: " << has_ancestor;
+
+  FetchKeyResult key_data;
+  if (!doc_iter->IsOutOfRecords()) {
+    key_data = VERIFY_RESULT(doc_iter->FetchKey());
+    VLOG_WITH_FUNC(4)
+            << "Found: " << SubDocKey::DebugSliceToString(key_data.key) << ", good: "
+            << key_prefix_.IsPrefixOf(key_data.key);
   }
 
-  auto key_data = VERIFY_RESULT(doc_iter->FetchKey());
-  if (!key_prefix_.IsPrefixOf(key_data.key)) {
+  bool use_packed_row = false;
+  Slice recent_value;
+  if (!packed_row_key_.empty() && key_prefix_.AsSlice().starts_with(packed_row_key_.AsSlice())) {
+    auto subkeys = key_prefix_.AsSlice().WithoutPrefix(packed_row_key_.size());
+    if (!subkeys.empty() && IsColumnId(static_cast<KeyEntryType>(subkeys[0]))) {
+      if (key_data.key.empty() || key_data.write_time < packed_row_write_time_) {
+        KeyEntryType entry_type = static_cast<KeyEntryType>(subkeys.consume_byte());
+        int64_t column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&subkeys));
+        ColumnId column_id_ref;
+        RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id_ref));
+        if (subkeys.empty()) {
+          key_data.write_time = packed_row_write_time_;
+          key_data.key = key_prefix_.AsSlice();
+          auto value_opt = packed_row_packing_->GetValue(
+              column_id_ref, packed_row_value_.AsSlice());
+          if (value_opt) {
+            recent_value = *value_opt;
+            use_packed_row = true;
+          }
+          VLOG_WITH_FUNC(4)
+              << "Has packed row for: " << AsString(entry_type) << ", " << column_id_ref << ": "
+              << recent_value.ToDebugHexString();
+        }
+      }
+    }
+  }
+
+  if (key_data.key.empty() || !key_prefix_.IsPrefixOf(key_data.key)) {
     return Status::OK();
   }
 
   // Checking for expiration.
-  Slice recent_value = doc_iter->value();
+  if (!use_packed_row) {
+    recent_value = doc_iter->value();
+  }
   ValueControlFields control_fields;
   {
     auto value_copy = recent_value;
     control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value_copy));
     current_entry_.user_timestamp = control_fields.timestamp;
     current_entry_.value_type = DecodeValueEntryType(value_copy);
+    if (doc_read_context_ && value_copy.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+      packed_row_key_.Assign(key_data.key);
+      packed_row_packing_ = &VERIFY_RESULT_REF(
+          doc_read_context_->schema_packing_storage.GetPacking(&value_copy));
+      packed_row_value_.Assign(value_copy);
+      packed_row_write_time_ = key_data.write_time;
+
+      VLOG_WITH_FUNC(4)
+          << "Init packed row: " << SubDocKey::DebugSliceToString(packed_row_key_.AsSlice())
+          << ", value: " << packed_row_key_.AsSlice().ToDebugHexString() << ", write time: "
+          << packed_row_write_time_.ToString();
+    }
   }
 
-  if (HasExpiredTTL(
-          key_data.write_time.hybrid_time(), control_fields.ttl, doc_iter->read_time().read)) {
+  bool expired = VERIFY_RESULT(HasExpiredTTL(
+      key_data.write_time, control_fields.ttl, doc_iter->read_time().read));
+
+  VLOG_WITH_FUNC(4)
+      << "Value: " << recent_value.ToDebugHexString() << ", control_fields: "
+      << control_fields.ToString() << ", expired: " << expired << ", use_packed_row: "
+      << use_packed_row << ", write time: " << key_data.write_time.ToString();
+
+  if (expired) {
     current_entry_.value_type = ValueEntryType::kTombstone;
     current_entry_.doc_hybrid_time = key_data.write_time;
+    current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
     cache_.Put(key_prefix_, current_entry_);
     return Status::OK();
   }
 
   Slice value;
-  RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
+  if (use_packed_row) {
+    RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
 
-  if (!doc_iter->valid()) {
-    return Status::OK();
+    if (doc_iter->IsOutOfRecords()) {
+      return Status::OK();
+    }
+  } else {
+    value = recent_value;
   }
 
   // If the first key >= key_prefix_ in RocksDB starts with key_prefix_, then a
@@ -146,6 +212,10 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
     }
     current_entry_.found_exact_key_prefix = key_prefix_ == key_data.key;
     current_entry_.doc_hybrid_time = key_data.write_time;
+    VLOG_WITH_FUNC(4)
+        << "Current found_exact_key_prefix: " << current_entry_.found_exact_key_prefix
+        << ", doc_hybrid_time: " << current_entry_.doc_hybrid_time << ", value_type: "
+        << AsString(current_entry_.value_type);
 
     // TODO: with optional init markers we can find something that is more than one level
     //       deep relative to the current prefix.
@@ -196,6 +266,15 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
   // NOOP if we've already performed the seek due to the cache.
   RETURN_NOT_OK(SeekToKeyPrefix(iter, HasAncestor::kFalse));
   // We'd like to include tombstones in our timestamp comparisons as well.
+
+  VLOG_WITH_FUNC(4)
+      << "found_exact_key_prefix: " << current_entry_.found_exact_key_prefix
+      << ", subdoc_exists: " << subdoc_exists_ << ", value_type: "
+      << AsString(current_entry_.value_type) << ", user_timestamp: "
+      << current_entry_.user_timestamp << ", control fields: " << control_fields.ToString()
+      << ", doc_hybrid_time: "
+      << current_entry_.doc_hybrid_time;
+
   if (!current_entry_.found_exact_key_prefix) {
     return true;
   }
@@ -208,14 +287,14 @@ Result<bool> DocWriteBatch::SetPrimitiveInternalHandleUserTimestamp(
   }
 
   // Look at the hybrid time instead.
-  const DocHybridTime& doc_hybrid_time = current_entry_.doc_hybrid_time;
-  if (!doc_hybrid_time.hybrid_time().is_valid()) {
+  const auto& doc_hybrid_time = current_entry_.doc_hybrid_time;
+  if (doc_hybrid_time.empty()) {
     return true;
   }
 
   return control_fields.timestamp >= 0 &&
          implicit_cast<size_t>(control_fields.timestamp) >=
-             doc_hybrid_time.hybrid_time().GetPhysicalValueMicros();
+             VERIFY_RESULT(doc_hybrid_time.Decode()).hybrid_time().GetPhysicalValueMicros();
 }
 
 namespace {
@@ -256,7 +335,7 @@ Status DocWriteBatch::SetPrimitiveInternal(
   IntraTxnWriteId ht_write_id = write_id
       ? *write_id
       : VERIFY_RESULT(checked_narrow_cast<IntraTxnWriteId>(put_batch_.size()));
-  DocHybridTime hybrid_time(HybridTime::kMax, ht_write_id);
+  EncodedDocHybridTime hybrid_time(DocHybridTime(HybridTime::kMax, ht_write_id));
 
   auto num_subkeys = doc_path.num_subkeys();
   for (size_t subkey_index = 0; subkey_index < num_subkeys; ++subkey_index) {
@@ -415,7 +494,7 @@ Status DocWriteBatch::DoSetPrimitive(
     std::optional<IntraTxnWriteId> write_id) {
   DOCDB_DEBUG_LOG("Called SetPrimitive with doc_path=$0, value=$1",
                   doc_path.ToString(), value.ToString());
-  current_entry_.doc_hybrid_time = DocHybridTime::kMin;
+  current_entry_.doc_hybrid_time.Assign(EncodedDocHybridTime::kMin);
   const bool is_deletion = value.custom_value_type() == ValueEntryType::kTombstone;
 
   key_prefix_ = doc_path.encoded_doc_key();
@@ -622,7 +701,7 @@ Status DocWriteBatch::ReplaceRedisInList(
   SubDocKey found_key;
   FetchKeyResult key_data;
   for (auto current_index = start_index;;) {
-    if (index <= 0 || !iter->valid() ||
+    if (index <= 0 || iter->IsOutOfRecords() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return STATUS_SUBSTITUTE(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
@@ -709,7 +788,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
-  if (!iter->valid()) {
+  if (iter->IsOutOfRecords()) {
     return STATUS(QLError, "Unable to replace items in empty list.");
   }
 
@@ -722,8 +801,8 @@ Status DocWriteBatch::ReplaceCqlInList(
   // collection item found in DocDB as if there were no higher-level overwrite or invalidation of
   // it.
   auto current_key_is_init_marker = current_key.key.compare(key_prefix_) == 0;
-  auto collection_write_time = current_key_is_init_marker
-      ? current_key.write_time : DocHybridTime::kMin;
+  const auto& collection_write_time = current_key_is_init_marker
+      ? current_key.write_time : DocHybridTime::EncodedMin();
 
   Slice value_slice;
   SubDocKey found_key;
@@ -735,7 +814,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   FetchKeyResult key_data;
   while (true) {
-    if (target_cql_index < 0 || !iter->valid() ||
+    if (target_cql_index < 0 || iter->IsOutOfRecords() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return STATUS_SUBSTITUTE(
           QLError,
@@ -755,7 +834,7 @@ Status DocWriteBatch::ReplaceCqlInList(
       has_expired = true;
     } else {
       entry_ttl = ComputeTTL(entry_ttl, default_ttl);
-      has_expired = HasExpiredTTL(key_data.write_time.hybrid_time(), entry_ttl, read_ht.read);
+      has_expired = VERIFY_RESULT(HasExpiredTTL(key_data.write_time, entry_ttl, read_ht.read));
     }
 
     if (has_expired) {
@@ -794,24 +873,23 @@ void DocWriteBatch::Clear() {
   cache_.Clear();
 }
 
-void DocWriteBatch::MoveToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) {
-  kv_pb->mutable_write_pairs()->Reserve(narrow_cast<int>(put_batch_.size()));
+// TODO(lw_uc) allocate entries on the same arena, then just reference them.
+void DocWriteBatch::MoveToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) {
   for (auto& entry : put_batch_) {
-    KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->mutable_key()->swap(entry.key);
-    kv_pair->mutable_value()->swap(entry.value);
+    auto* kv_pair = kv_pb->add_write_pairs();
+    kv_pair->dup_key(entry.key);
+    kv_pair->dup_value(entry.value);
   }
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
   }
 }
 
-void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
-  kv_pb->mutable_write_pairs()->Reserve(narrow_cast<int>(put_batch_.size()));
+void DocWriteBatch::TEST_CopyToWriteBatchPB(LWKeyValueWriteBatchPB *kv_pb) const {
   for (auto& entry : put_batch_) {
-    KeyValuePairPB* kv_pair = kv_pb->add_write_pairs();
-    kv_pair->mutable_key()->assign(entry.key);
-    kv_pair->mutable_value()->assign(entry.value);
+    auto* kv_pair = kv_pb->add_write_pairs();
+    kv_pair->dup_key(entry.key);
+    kv_pair->dup_value(entry.value);
   }
   if (has_ttl()) {
     kv_pb->set_ttl(ttl_ns());
@@ -822,43 +900,40 @@ void DocWriteBatch::TEST_CopyToWriteBatchPB(KeyValueWriteBatchPB *kv_pb) const {
 // Converting a RocksDB write batch to a string.
 // ------------------------------------------------------------------------------------------------
 
-class DocWriteBatchFormatter : public WriteBatchFormatter {
- public:
-  DocWriteBatchFormatter(
-      StorageDbType storage_db_type,
-      BinaryOutputFormat binary_output_format,
-      WriteBatchOutputFormat batch_output_format,
-      std::string line_prefix)
-      : WriteBatchFormatter(binary_output_format, batch_output_format, std::move(line_prefix)),
-        storage_db_type_(storage_db_type) {}
- protected:
-  std::string FormatKey(const Slice& key) override {
-    const auto key_result = DocDBKeyToDebugStr(key, storage_db_type_);
-    if (key_result.ok()) {
-      return *key_result;
-    }
-    return Format(
-        "$0 (error: $1)",
-        WriteBatchFormatter::FormatKey(key),
-        key_result.status());
-  }
+DocWriteBatchFormatter::DocWriteBatchFormatter(
+    StorageDbType storage_db_type,
+    BinaryOutputFormat binary_output_format,
+    WriteBatchOutputFormat batch_output_format,
+    std::string line_prefix)
+    : WriteBatchFormatter(binary_output_format,
+                          batch_output_format,
+                          std::move(line_prefix)),
+      storage_db_type_(storage_db_type) {
+}
 
-  std::string FormatValue(const Slice& key, const Slice& value) override {
-    auto key_type = GetKeyType(key, storage_db_type_);
-    const auto value_result = DocDBValueToDebugStr(
-        key_type, key, value, SchemaPackingStorage());
-    if (value_result.ok()) {
-      return *value_result;
-    }
-    return Format(
-        "$0 (error: $1)",
-        WriteBatchFormatter::FormatValue(key, value),
-        value_result.status());
+std::string DocWriteBatchFormatter::FormatKey(const Slice& key) {
+  const auto key_result = DocDBKeyToDebugStr(key, storage_db_type_);
+  if (key_result.ok()) {
+    return *key_result;
   }
+  return Format(
+      "$0 (error: $1)",
+      WriteBatchFormatter::FormatKey(key),
+      key_result.status());
+}
 
- private:
-  StorageDbType storage_db_type_;
-};
+std::string DocWriteBatchFormatter::FormatValue(const Slice& key, const Slice& value) {
+  auto key_type = GetKeyType(key, storage_db_type_);
+  const auto value_result = DocDBValueToDebugStr(
+      key_type, key, value, SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
+  if (value_result.ok()) {
+    return *value_result;
+  }
+  return Format(
+      "$0 (error: $1)",
+      WriteBatchFormatter::FormatValue(key, value),
+      value_result.status());
+}
 
 Result<std::string> WriteBatchToString(
     const rocksdb::WriteBatch& write_batch,

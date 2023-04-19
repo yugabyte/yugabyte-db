@@ -10,6 +10,8 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -21,9 +23,8 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.SupportBundle.SupportBundleStatusType;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.BundleDetails.ComponentType;
-
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -37,6 +38,7 @@ import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import play.mvc.Http;
 import play.mvc.Result;
 
 @Api(
@@ -52,6 +54,7 @@ public class SupportBundleController extends AuthenticatedController {
   @Inject Commissioner commissioner;
   @Inject SupportBundleUtil supportBundleUtil;
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
+  @Inject private RuntimeConfGetter confGetter;
   @Inject Config config;
 
   @ApiOperation(
@@ -65,30 +68,29 @@ public class SupportBundleController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.SupportBundleFormData",
           required = true))
-  public Result create(UUID customerUUID, UUID universeUUID) {
-    JsonNode requestBody = request().body().asJson();
+  public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
+    JsonNode requestBody = request.body().asJson();
     SupportBundleFormData bundleData =
         formFactory.getFormDataOrBadRequest(requestBody, SupportBundleFormData.class);
 
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     // Do not create support bundle when either backup, update, or universe is paused
-    if (universe.getUniverseDetails().backupInProgress
-        || universe.getUniverseDetails().updateInProgress
+    if (universe.getUniverseDetails().updateInProgress
         || universe.getUniverseDetails().universePaused) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
               "Cannot create support bundle since the universe %s"
                   + "is currently in a locked/paused state or has backup running",
-              universe.universeUUID));
+              universe.getUniverseUUID()));
     }
 
     // Support bundle for onprem and k8s universes was originally behind a runtime flag.
     // Now both are enabled by default.
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
-    Boolean k8s_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(K8S_ENABLED);
-    Boolean onprem_enabled = runtimeConfigFactory.globalRuntimeConf().getBoolean(ONPREM_ENABLED);
+    Boolean k8s_enabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleK8sEnabled);
+    Boolean onprem_enabled = confGetter.getGlobalConf(GlobalConfKeys.supportBundleOnPremEnabled);
     if (cloudType == CloudType.onprem && !onprem_enabled) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -100,6 +102,15 @@ public class SupportBundleController extends AuthenticatedController {
           BAD_REQUEST,
           "Creating support bundle for k8s universes is not enabled. "
               + "Please set k8s_enabled=true to create support bundle");
+    }
+
+    if (cloudType != CloudType.kubernetes
+        && bundleData.components.contains(ComponentType.K8sInfo)) {
+      bundleData.components.remove(ComponentType.K8sInfo);
+      log.warn(
+          "Component 'K8sInfo' is only applicable for kubernetes universes, not cloud type = "
+              + cloudType.toString()
+              + ". Continuing without it.");
     }
 
     SupportBundle supportBundle = SupportBundle.create(bundleData, universe);
@@ -114,7 +125,7 @@ public class SupportBundleController extends AuthenticatedController {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.CreateSupportBundle,
-        universe.name);
+        universe.getName());
     log.info(
         "Saved task uuid "
             + taskUUID.toString()
@@ -125,11 +136,10 @@ public class SupportBundleController extends AuthenticatedController {
 
     auditService()
         .createAuditEntryWithReqBody(
-            ctx(),
+            request,
             Audit.TargetType.SupportBundle,
             Objects.toString(supportBundle.getBundleUUID(), null),
             Audit.ActionType.Create,
-            requestBody,
             taskUUID);
     return new YBPTask(taskUUID, supportBundle.getBundleUUID()).asResult();
   }
@@ -141,7 +151,7 @@ public class SupportBundleController extends AuthenticatedController {
       produces = "application/x-compressed")
   public Result download(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
+    Universe.getValidUniverseOrBadRequest(universeUUID, customer);
     SupportBundle bundle = SupportBundle.getOrBadRequest(bundleUUID);
 
     if (bundle.getStatus() != SupportBundleStatusType.Success) {
@@ -149,11 +159,11 @@ public class SupportBundleController extends AuthenticatedController {
           NOT_FOUND, String.format("No bundle found for %s", bundleUUID.toString()));
     }
     InputStream is = SupportBundle.getAsInputStream(bundleUUID);
-    response()
-        .setHeader(
+    return ok(is)
+        .as("application/x-compressed")
+        .withHeader(
             "Content-Disposition",
             "attachment; filename=" + SupportBundle.get(bundleUUID).getFileName());
-    return ok(is).as("application/x-compressed");
   }
 
   @ApiOperation(
@@ -183,7 +193,8 @@ public class SupportBundleController extends AuthenticatedController {
       value = "Delete a support bundle",
       response = YBPSuccess.class,
       nickname = "deleteSupportBundle")
-  public Result delete(UUID customerUUID, UUID universeUUID, UUID bundleUUID) {
+  public Result delete(
+      UUID customerUUID, UUID universeUUID, UUID bundleUUID, Http.Request request) {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
 
     // Deletes row from the support_bundle db table
@@ -193,8 +204,11 @@ public class SupportBundleController extends AuthenticatedController {
     supportBundleUtil.deleteFile(supportBundle.getPathObject());
 
     auditService()
-        .createAuditEntryWithReqBody(
-            ctx(), Audit.TargetType.SupportBundle, bundleUUID.toString(), Audit.ActionType.Delete);
+        .createAuditEntry(
+            request,
+            Audit.TargetType.SupportBundle,
+            bundleUUID.toString(),
+            Audit.ActionType.Delete);
     log.info("Successfully deleted the support bundle: " + bundleUUID.toString());
     return YBPSuccess.empty();
   }

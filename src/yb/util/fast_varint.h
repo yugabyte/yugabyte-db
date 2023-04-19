@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_FAST_VARINT_H
-#define YB_UTIL_FAST_VARINT_H
+#pragma once
 
 #include <string>
 
@@ -93,6 +92,7 @@ inline void FastEncodeDescendingSignedVarInt(int64_t v, std::string *dest) {
 // Decode a "descending VarInt" encoded by FastEncodeDescendingVarInt.
 Status FastDecodeDescendingSignedVarIntUnsafe(Slice *slice, int64_t *dest);
 Result<int64_t> FastDecodeDescendingSignedVarIntUnsafe(Slice* slice);
+size_t FastDecodeDescendingSignedVarIntSize(Slice src);
 
 size_t UnsignedVarIntLength(uint64_t v);
 size_t FastEncodeUnsignedVarInt(uint64_t v, uint8_t *dest);
@@ -109,7 +109,9 @@ inline void FastAppendUnsignedVarInt(uint64_t v, Out* dest) {
   dest->append(buf, len);
 }
 
+inline size_t FastEncodeUnsignedVarInt(uint64_t v, std::byte* dest) {
+  return FastEncodeUnsignedVarInt(v, pointer_cast<uint8_t*>(dest));
+}
+
 }  // namespace util
 }  // namespace yb
-
-#endif  // YB_UTIL_FAST_VARINT_H

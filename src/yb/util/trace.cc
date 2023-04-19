@@ -42,7 +42,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/random.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/memory/arena.h"
@@ -53,27 +53,26 @@
 using std::vector;
 using std::string;
 
-DEFINE_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
+DEFINE_RUNTIME_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
 TAG_FLAG(enable_tracing, advanced);
-TAG_FLAG(enable_tracing, runtime);
 
-DEFINE_int32(sampled_trace_1_in_n, 1000, "Flag to enable/disable sampled tracing. 0 disables.");
+DEFINE_RUNTIME_int32(sampled_trace_1_in_n, 1000,
+    "Flag to enable/disable sampled tracing. 0 disables.");
 TAG_FLAG(sampled_trace_1_in_n, advanced);
-TAG_FLAG(sampled_trace_1_in_n, runtime);
 
-DEFINE_bool(use_monotime_for_traces, false, "Flag to enable use of MonoTime::Now() instead of "
+DEFINE_RUNTIME_bool(use_monotime_for_traces, false,
+    "Flag to enable use of MonoTime::Now() instead of "
     "CoarseMonoClock::Now(). CoarseMonoClock is much cheaper so it is better to use it. However "
     "if we need more accurate sub-millisecond level breakdown, we could use MonoTime.");
 TAG_FLAG(use_monotime_for_traces, advanced);
-TAG_FLAG(use_monotime_for_traces, runtime);
 
-DEFINE_int32(tracing_level, 0, "verbosity levels (like --v) up to which tracing is enabled.");
+DEFINE_RUNTIME_int32(tracing_level, 0,
+    "verbosity levels (like --v) up to which tracing is enabled.");
 TAG_FLAG(tracing_level, advanced);
-TAG_FLAG(tracing_level, runtime);
 
-DEFINE_int32(print_nesting_levels, 5, "controls the depth of the child traces to be printed.");
+DEFINE_RUNTIME_int32(print_nesting_levels, 5,
+    "controls the depth of the child traces to be printed.");
 TAG_FLAG(print_nesting_levels, advanced);
-TAG_FLAG(print_nesting_levels, runtime);
 
 namespace yb {
 
@@ -279,7 +278,7 @@ ThreadSafeArena* Trace::GetAndInitArena() {
   return arena;
 }
 
-scoped_refptr<Trace> Trace::NewTrace() {
+scoped_refptr<Trace> Trace::MaybeGetNewTrace() {
   if (GetAtomicFlag(&FLAGS_enable_tracing)) {
     return scoped_refptr<Trace>(new Trace());
   }
@@ -298,13 +297,13 @@ scoped_refptr<Trace> Trace::NewTrace() {
   return ret;
 }
 
-scoped_refptr<Trace>  Trace::NewTraceForParent(Trace* parent) {
+scoped_refptr<Trace>  Trace::MaybeGetNewTraceForParent(Trace* parent) {
   if (parent) {
     scoped_refptr<Trace> trace(new Trace);
     parent->AddChildTrace(trace.get());
     return trace;
   }
-  return NewTrace();
+  return MaybeGetNewTrace();
 }
 
 void Trace::SubstituteAndTrace(

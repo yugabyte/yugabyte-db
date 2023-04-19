@@ -12,8 +12,7 @@
 // under the License.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_PGGATE_UTIL_PG_TUPLE_H_
-#define YB_YQL_PGGATE_UTIL_PG_TUPLE_H_
+#pragma once
 
 #include "yb/yql/pggate/util/pg_wire.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -53,5 +52,3 @@ class PgTuple {
 
 }  // namespace pggate
 }  // namespace yb
-
-#endif // YB_YQL_PGGATE_UTIL_PG_TUPLE_H_

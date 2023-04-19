@@ -1578,6 +1578,68 @@ generate_mergejoin_paths(PlannerInfo *root,
 	}
 }
 
+Relids
+yb_get_batched_relids(NestPath *nest)
+{
+	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
+	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
+
+	Relids outer_unbatched =
+		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
+	Relids inner_batched = innerppi ? innerppi->yb_ppi_req_outer_batched : NULL;
+
+	/* Rels not in this join that can't be batched. */
+	Relids param_unbatched =
+		nest->path.param_info ?
+		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
+
+	return bms_difference(bms_difference(inner_batched, outer_unbatched),
+						  param_unbatched);
+}
+
+Relids
+yb_get_unbatched_relids(NestPath *nest)
+{
+	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
+	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
+
+	Relids outer_unbatched =
+		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
+	Relids inner_unbatched =
+		innerppi ? innerppi->yb_ppi_req_outer_unbatched : NULL;
+
+	/* Rels not in this join that can't be batched. */
+	Relids param_unbatched =
+		nest->path.param_info ?
+		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
+
+	return bms_union(outer_unbatched,
+					 bms_union(inner_unbatched, param_unbatched));
+}
+
+bool
+yb_is_outer_inner_batched(Path *outer, Path *inner)
+{
+	ParamPathInfo *innerppi = inner->param_info;
+	ParamPathInfo *outerppi = outer->param_info;
+
+	Relids outer_unbatched =
+		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
+	Relids inner_batched =
+		innerppi ? innerppi->yb_ppi_req_outer_batched : NULL;
+
+	return bms_overlap(outer->parent->relids,
+		bms_difference(inner_batched, outer_unbatched));
+}
+
+bool
+yb_is_nestloop_batched(NestPath *nest)
+{
+	Relids batched_relids = yb_get_batched_relids(nest);
+	return bms_overlap(nest->outerjoinpath->parent->relids,
+					  batched_relids);
+}
+
 /*
  * match_unsorted_outer
  *	  Creates possible join paths for processing a single join relation

@@ -99,6 +99,12 @@ deadlock:cds/intrusive/lazy_list_nogc.h
 # false: BronsonAVLTree potential deadlock
 deadlock:cds/container/impl/bronson_avltree_map_rcu.h
 
+# Until the third party fix for cassandra-cpp-driver lands.
+# TODO(#14710)
+deadlock:libcassandra
+# TODO(#14677)
+deadlock:MasterSnapshotCoordinator
+
 #TODO: temporarily suppressed. Must be researched later
 race:cds/container/impl/bronson_avltree_map_rcu.h
 

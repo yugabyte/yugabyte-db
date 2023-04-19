@@ -255,6 +255,15 @@ message SetUniverseReplicationEnabledResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message PauseResumeXClusterProducerStreamsRequestPB {
+  repeated string stream_ids = 1;
+  optional bool is_paused = 2;
+}
+
+message PauseResumeXClusterProducerStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 message GetUniverseReplicationRequestPB {
   optional string producer_id = 1;
 }
@@ -351,11 +360,19 @@ message UpdateConsumerOnProducerMetadataRequestPB {
   optional string stream_id = 2;
   optional string consumer_tablet_id = 3;
   optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;
+  optional uint32 colocation_id = 5;
+  optional uint32 producer_schema_version = 6;
+  optional uint32 consumer_schema_version = 7;
 }
 
 message UpdateConsumerOnProducerMetadataResponsePB {
   optional MasterErrorPB error = 1;
   optional bool should_wait = 2 [default = true];
+
+  // The last Consumer schema version that was EquivalentForDataCopy with the Producer
+  optional uint32 last_compatible_consumer_schema_version = 3;
+
+  optional cdc.SchemaVersionsPB schema_versions = 4;
 }
 
 message GetXClusterEstimatedDataLossRequestPB {}
@@ -431,6 +448,8 @@ service MasterReplication {
       returns (AlterUniverseReplicationResponsePB);
   rpc SetUniverseReplicationEnabled(SetUniverseReplicationEnabledRequestPB)
       returns (SetUniverseReplicationEnabledResponsePB);
+  rpc PauseResumeXClusterProducerStreams(PauseResumeXClusterProducerStreamsRequestPB)
+      returns (PauseResumeXClusterProducerStreamsResponsePB);
   rpc GetUniverseReplication(GetUniverseReplicationRequestPB)
       returns (GetUniverseReplicationResponsePB);
   rpc IsSetupUniverseReplicationDone(IsSetupUniverseReplicationDoneRequestPB)

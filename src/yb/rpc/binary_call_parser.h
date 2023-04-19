@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_RPC_BINARY_CALL_PARSER_H
-#define YB_RPC_BINARY_CALL_PARSER_H
+#pragma once
 
 #include "yb/util/mem_tracker.h"
 #include "yb/util/net/socket.h"
@@ -20,6 +19,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/call_data.h"
+#include "yb/rpc/reactor_thread_role.h"
 
 namespace yb {
 namespace rpc {
@@ -45,9 +45,10 @@ class BinaryCallParser {
 
   // If tracker_for_throttle is not nullptr - throttle big requests when tracker_for_throttle
   // (or any of its ancestors) exceeds soft memory limit.
-  Result<ProcessCallsResult> Parse(const rpc::ConnectionPtr& connection, const IoVecs& data,
-                                   ReadBufferFull read_buffer_full,
-                                   const MemTrackerPtr* tracker_for_throttle);
+  Result<ProcessCallsResult> Parse(
+      const rpc::ConnectionPtr& connection, const IoVecs& data,
+      ReadBufferFull read_buffer_full,
+      const MemTrackerPtr* tracker_for_throttle) ON_REACTOR_THREAD;
 
  private:
   MemTrackerPtr buffer_tracker_;
@@ -68,5 +69,3 @@ bool ShouldThrottleRpc(
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_BINARY_CALL_PARSER_H

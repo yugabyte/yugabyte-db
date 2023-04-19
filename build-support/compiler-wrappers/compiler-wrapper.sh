@@ -404,7 +404,8 @@ fi
 if [[ $local_build_only == "false" &&
       ${YB_REMOTE_COMPILATION:-} == "1" &&
       $is_build_worker == "false" &&
-      $lld_linking == "false" ]]; then
+      $lld_linking == "false" ]] &&
+   ! is_configure_mode_invocation; then
 
   trap remote_build_exit_handler EXIT
 

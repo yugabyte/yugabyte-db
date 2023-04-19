@@ -14,13 +14,16 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -45,11 +48,11 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       if (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth) {
         ycqlPassword = primaryCluster.userIntent.ycqlPassword;
-        primaryCluster.userIntent.ycqlPassword = Util.redactString(ycqlPassword);
+        primaryCluster.userIntent.ycqlPassword = RedactingService.redactString(ycqlPassword);
       }
       if (primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth) {
         ysqlPassword = primaryCluster.userIntent.ysqlPassword;
-        primaryCluster.userIntent.ysqlPassword = Util.redactString(ysqlPassword);
+        primaryCluster.userIntent.ysqlPassword = RedactingService.redactString(ysqlPassword);
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
@@ -73,27 +76,36 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
 
       String masterAddresses =
-          PlacementInfoUtil.computeMasterAddresses(
+          KubernetesUtil.computeMasterAddresses(
               pi,
               placement.masters,
               taskParams().nodePrefix,
+              universe.getName(),
               provider,
               taskParams().communicationPorts.masterRpcPort,
-              newNamingStyle,
-              provider.getK8sPodAddrTemplate());
+              newNamingStyle);
 
       boolean isMultiAz = PlacementInfoUtil.isMultiAZ(provider);
 
-      createPodsTask(placement, masterAddresses, /*isReadOnlyCluster*/ false);
+      createPodsTask(
+          universe.getName(),
+          placement,
+          masterAddresses,
+          false, /*isReadOnlyCluster*/
+          taskParams().isEnableYbc());
 
       createSingleKubernetesExecutorTask(
-          KubernetesCommandExecutor.CommandType.POD_INFO, pi, /*isReadOnlyCluster*/ false);
+          universe.getName(),
+          KubernetesCommandExecutor.CommandType.POD_INFO,
+          pi,
+          false); /*isReadOnlyCluster*/
 
       Set<NodeDetails> tserversAdded =
           getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, false);
 
       // Check if we need to create read cluster pods also.
       List<Cluster> readClusters = taskParams().getReadOnlyClusters();
+      Set<NodeDetails> readOnlyTserversAdded = new HashSet<>();
       if (readClusters.size() > 1) {
         String msg = "Expected at most 1 read cluster but found " + readClusters.size();
         log.error(msg);
@@ -117,21 +129,48 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
             new KubernetesPlacement(readClusterPI, /*isReadOnlyCluster*/ true);
         // Skip choosing masters from read cluster.
         boolean isReadClusterMultiAz = PlacementInfoUtil.isMultiAZ(readClusterProvider);
-        createPodsTask(readClusterPlacement, masterAddresses, true);
+        createPodsTask(
+            universe.getName(),
+            readClusterPlacement,
+            masterAddresses,
+            true,
+            taskParams().isEnableYbc());
         createSingleKubernetesExecutorTask(
-            KubernetesCommandExecutor.CommandType.POD_INFO, readClusterPI, true);
-        tserversAdded.addAll(
+            universe.getName(),
+            KubernetesCommandExecutor.CommandType.POD_INFO,
+            readClusterPI,
+            true);
+        readOnlyTserversAdded =
             getPodsToAdd(
                 readClusterPlacement.tservers,
                 null,
                 ServerType.TSERVER,
                 isReadClusterMultiAz,
-                true));
+                true);
       }
 
       // Wait for new tablet servers to be responsive.
-      createWaitForServersTasks(tserversAdded, ServerType.TSERVER)
+      Set<NodeDetails> allTserversAdded = new HashSet<>();
+      allTserversAdded.addAll(tserversAdded);
+      allTserversAdded.addAll(readOnlyTserversAdded);
+      createWaitForServersTasks(allTserversAdded, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+      // Install YBC on the pods
+      if (taskParams().isEnableYbc()) {
+        installYbcOnThePods(
+            universe.getName(), tserversAdded, false, taskParams().getYbcSoftwareVersion());
+        if (readClusters.size() == 1) {
+          installYbcOnThePods(
+              universe.getName(),
+              readOnlyTserversAdded,
+              true,
+              taskParams().getYbcSoftwareVersion());
+        }
+        createWaitForYbcServerTask(allTserversAdded);
+        createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
       createConfigureUniverseTasks(primaryCluster);
 

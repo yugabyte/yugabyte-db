@@ -1,4 +1,4 @@
-@import '../../../_style/colors.scss';
+@use '../../../_style/colors.scss';
 
 .errCodeLink {
   text-decoration: underline;
@@ -14,7 +14,7 @@
   }
   .acknowledge-link-button {
     padding: 0;
-    color: $YB_ORANGE;
+    color: colors.$YB_ORANGE;
     border: 0;
     background: transparent;
   }

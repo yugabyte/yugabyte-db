@@ -236,8 +236,8 @@ Status Executor::PreExecTreeNode(PTInsertJsonClause* json_clause) {
 }
 
 Status Executor::InsertJsonClauseToPB(const PTInsertStmt* insert_stmt,
-                                              const PTInsertJsonClause* json_clause,
-                                              QLWriteRequestPB* req) {
+                                      const PTInsertJsonClause* json_clause,
+                                      QLWriteRequestPB* req) {
   const auto& column_map = insert_stmt->column_map();
   const auto& loc        = json_clause->Expr()->loc_ptr();
 

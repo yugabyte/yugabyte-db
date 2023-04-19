@@ -17,8 +17,7 @@
 // A collection of methods to convert back and forth between a number
 // and a human-readable string representing the number.
 
-#ifndef YB_GUTIL_STRINGS_HUMAN_READABLE_H
-#define YB_GUTIL_STRINGS_HUMAN_READABLE_H
+#pragma once
 
 #include <functional>
 #include <string>
@@ -89,23 +88,6 @@ class HumanReadableNumBytes {
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableNumBytes);
 };
 
-
-// See documentation at HumanReadableNumBytes::LessThan().
-struct humanreadablebytes_less
-    : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string &b) const {
-    return HumanReadableNumBytes::LessThan(a, b);
-  }
-};
-
-// See documentation at HumanReadableNumBytes::LessThan().
-struct humanreadablebytes_greater
-    : public std::binary_function<const std::string&, const std::string&, bool> {
-  bool operator()(const std::string& a, const std::string &b) const {
-    return HumanReadableNumBytes::LessThan(b, a);
-  }
-};
-
 class HumanReadableInt {
  public:
   // Similar to HumanReadableNumBytes::ToInt64(), but uses decimal
@@ -170,5 +152,3 @@ class HumanReadableElapsedTime {
  private:
   DISALLOW_IMPLICIT_CONSTRUCTORS(HumanReadableElapsedTime);
 };
-
-#endif  // YB_GUTIL_STRINGS_HUMAN_READABLE_H

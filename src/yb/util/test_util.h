@@ -30,8 +30,7 @@
 // under the License.
 //
 // Base test class, with various utility functions.
-#ifndef YB_UTIL_TEST_UTIL_H
-#define YB_UTIL_TEST_UTIL_H
+#pragma once
 
 #include <dirent.h>
 
@@ -104,7 +103,7 @@ bool AllowSlowTests();
 void OverrideFlagForSlowTests(const std::string& flag_name,
                               const std::string& new_value);
 
-void EnableVerboseLoggingForModule(const std::string& module, int level);
+Status EnableVerboseLoggingForModule(const std::string& module, int level);
 
 // Call srand() with a random seed based on the current time, reporting
 // that seed to the logs. The time-based seed may be overridden by passing
@@ -193,6 +192,8 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
+std::string GetCertsDir();
+
 int CalcNumTablets(size_t num_tablet_servers);
 
 template<uint32_t limit>
@@ -235,11 +236,14 @@ class StopOnFailure {
   std::atomic<bool>& stop_;
 };
 
+// Corrupt bytes_to_corrupt bytes at specified offset. If offset is negative, treats it as
+// an offset relative to the end of file. Also fixes specified region to not exceed the file before
+// corrupting data.
+Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to_corrupt);
+
 } // namespace yb
 
 // Gives ability to define custom parent class for test fixture.
 #define TEST_F_EX(test_case_name, test_name, parent_class) \
   GTEST_TEST_(test_case_name, test_name, parent_class, \
               ::testing::internal::GetTypeId<test_case_name>())
-
-#endif  // YB_UTIL_TEST_UTIL_H

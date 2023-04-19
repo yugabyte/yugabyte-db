@@ -6,7 +6,6 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.models.Universe;
 import lombok.extern.slf4j.Slf4j;
 
@@ -18,7 +17,9 @@ public class ChangeInstanceType extends NodeTaskBase {
     super(baseTaskDependencies, nodeManager);
   }
 
-  public static class Params extends NodeTaskParams {}
+  public static class Params extends NodeTaskParams {
+    public boolean force = false;
+  }
 
   @Override
   protected Params taskParams() {
@@ -35,7 +36,7 @@ public class ChangeInstanceType extends NodeTaskBase {
     log.info(
         "Running ChangeInstanceType against node {} to change its type from {} to {}",
         taskParams().nodeName,
-        Universe.getOrBadRequest(taskParams().universeUUID)
+        Universe.getOrBadRequest(taskParams().getUniverseUUID())
             .getNode(taskParams().nodeName)
             .cloudInfo
             .instance_type,
@@ -44,5 +45,10 @@ public class ChangeInstanceType extends NodeTaskBase {
     getNodeManager()
         .nodeCommand(NodeManager.NodeCommandType.Change_Instance_Type, taskParams())
         .processErrors();
+  }
+
+  @Override
+  public int getRetryLimit() {
+    return 2;
   }
 }

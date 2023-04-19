@@ -35,7 +35,7 @@ The statement can fail if the specified keyspace does not exist or if the user (
 
 ### Grammar
 
-```
+```ebnf
 alter_keyspace ::= ALTER { KEYSPACE | SCHEMA } keyspace_name
                        [ WITH REPLICATION '=' '{' keyspace_property '}']
                        [ AND DURABLE_WRITES '=' { true | false } ]
@@ -72,7 +72,7 @@ ycqlsh> ALTER KEYSPACE example WITH REPLICATION = {'class': 'SimpleStrategy', 'r
 ycqlsh> ALTER SCHEMA keyspace_example;
 ```
 
-```
+```output
 SQL error: Keyspace Not Found.
 ALTER SCHEMA keyspace_example;
              ^^^^^^
@@ -82,7 +82,7 @@ ALTER SCHEMA keyspace_example;
 ycqlsh> ALTER KEYSPACE example;
 ```
 
-```
+```output
 SQL error: Unauthorized. User test_role has no ALTER permission on <keyspace example> or any of its parents.
 ALTER KEYSPACE example;
 ^^^^^^

@@ -18,9 +18,12 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.typesafe.config.Config;
+import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
@@ -40,6 +43,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Singleton
 @Slf4j
@@ -51,17 +55,32 @@ public class PlatformReplicationManager {
   @VisibleForTesting
   public static final String NO_LOCAL_INSTANCE_MSG = "NO LOCAL INSTANCE! Won't sync";
 
+  public static final String STORAGE_PATH = "yb.storage.path";
+
   private final AtomicReference<Cancellable> schedule;
 
   private final PlatformScheduler platformScheduler;
 
   private final PlatformReplicationHelper replicationHelper;
 
+  private final ConfigHelper configHelper;
+
+  private final Config appConfig;
+
+  private final FileDataService fileDataService;
+
   @Inject
   public PlatformReplicationManager(
-      PlatformScheduler platformScheduler, PlatformReplicationHelper replicationHelper) {
+      PlatformScheduler platformScheduler,
+      PlatformReplicationHelper replicationHelper,
+      ConfigHelper configHelper,
+      Config appConfig,
+      FileDataService fileDataService) {
     this.platformScheduler = platformScheduler;
     this.replicationHelper = replicationHelper;
+    this.configHelper = configHelper;
+    this.appConfig = appConfig;
+    this.fileDataService = fileDataService;
     this.schedule = new AtomicReference<>(null);
   }
 
@@ -164,12 +183,12 @@ public class PlatformReplicationManager {
     }
 
     // Update which instance should be local.
-    previousLocal.get().setIsLocalAndUpdate(false);
+    previousLocal.get().updateIsLocal(false);
     config
         .getInstances()
         .forEach(
             i -> {
-              i.setIsLocalAndUpdate(i.getUUID().equals(newLeader.getUUID()));
+              i.updateIsLocal(i.getUuid().equals(newLeader.getUuid()));
               try {
                 // Clear out any old backups.
                 replicationHelper.cleanupReceivedBackups(new URL(i.getAddress()), 0);
@@ -305,7 +324,7 @@ public class PlatformReplicationManager {
                             instancesToSync.forEach(replicationHelper::syncToRemoteInstance);
                           });
                 } catch (Exception e) {
-                  log.error("Error running sync for HA config {}", config.getUUID(), e);
+                  log.error("Error running sync for HA config {}", config.getUuid(), e);
                 } finally {
                   // Remove locally created backups since they have already been sent to followers.
                   replicationHelper.cleanupCreatedBackups();
@@ -320,13 +339,13 @@ public class PlatformReplicationManager {
     replicationHelper.cleanupReceivedBackups(leader, replicationHelper.getNumBackupsRetention());
   }
 
-  public boolean saveReplicationData(String fileName, File uploadedFile, URL leader, URL sender) {
+  public boolean saveReplicationData(String fileName, Path uploadedFile, URL leader, URL sender) {
     Path replicationDir = replicationHelper.getReplicationDirFor(leader.getHost());
     Path saveAsFile = Paths.get(replicationDir.toString(), fileName).normalize();
     if ((replicationDir.toFile().exists() || replicationDir.toFile().mkdirs())
         && saveAsFile.toString().startsWith(replicationDir.toString())) {
       try {
-        FileUtils.moveFile(uploadedFile.toPath(), saveAsFile);
+        FileUtils.moveFile(uploadedFile, saveAsFile);
         log.debug(
             "Store platform backup received from leader {} via {} as {}.",
             leader.toString(),
@@ -335,7 +354,7 @@ public class PlatformReplicationManager {
 
         return true;
       } catch (IOException ioException) {
-        log.error("File move failed from {} as {}", uploadedFile.toPath(), saveAsFile, ioException);
+        log.error("File move failed from {} as {}", uploadedFile, saveAsFile, ioException);
       }
     } else {
       log.error(
@@ -357,6 +376,9 @@ public class PlatformReplicationManager {
 
     // The addr that the prometheus server is running on.
     private final String prometheusHost;
+
+    // The port that the prometheus server is running on.
+    private final int prometheusPort;
     // The username that YW uses to connect to it's DB.
     private final String dbUsername;
     // The password that YW uses to authenticate connections to it's DB.
@@ -368,6 +390,7 @@ public class PlatformReplicationManager {
 
     protected PlatformBackupParams() {
       this.prometheusHost = replicationHelper.getPrometheusHost();
+      this.prometheusPort = replicationHelper.getPrometheusPort();
       this.dbUsername = replicationHelper.getDBUser();
       this.dbPassword = replicationHelper.getDBPassword();
       this.dbHost = replicationHelper.getDBHost();
@@ -388,6 +411,8 @@ public class PlatformReplicationManager {
       commandArgs.add(Integer.toString(dbPort));
       commandArgs.add("--prometheus_host");
       commandArgs.add(prometheusHost);
+      commandArgs.add("--prometheus_port");
+      commandArgs.add(String.valueOf(prometheusPort));
       commandArgs.add("--verbose");
       commandArgs.add("--skip_restart");
 
@@ -403,6 +428,15 @@ public class PlatformReplicationManager {
       }
 
       return extraVars;
+    }
+
+    List<String> getYbaInstallerArgs() {
+      List<String> commandArgs = new ArrayList<>();
+      commandArgs.add("--yba_installer");
+      commandArgs.add("--data_dir");
+      commandArgs.add(replicationHelper.getBaseInstall());
+
+      return commandArgs;
     }
   }
 
@@ -434,6 +468,13 @@ public class PlatformReplicationManager {
         commandArgs.add("--exclude_releases");
       }
 
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_dump_path");
+        commandArgs.add(replicationHelper.getPGDumpPath());
+        commandArgs.addAll(getYbaInstallerArgs());
+      }
+
       commandArgs.add("--output");
       commandArgs.add(outputDirectory);
 
@@ -457,6 +498,14 @@ public class PlatformReplicationManager {
       commandArgs.add("--input");
       commandArgs.add(input.getAbsolutePath());
       commandArgs.add("--disable_version_check");
+      String installation = replicationHelper.getInstallationType();
+      if (StringUtils.isNotBlank(installation) && installation.trim().equals("yba-installer")) {
+        commandArgs.add("--pg_restore_path");
+        commandArgs.add(replicationHelper.getPGRestorePath());
+        commandArgs.addAll(getYbaInstallerArgs());
+        commandArgs.add("--destination");
+        commandArgs.add(replicationHelper.getBaseInstall());
+      }
 
       return commandArgs;
     }
@@ -492,6 +541,9 @@ public class PlatformReplicationManager {
     ShellResponse response = replicationHelper.runCommand(new RestorePlatformBackupParams(input));
     if (response.code != 0) {
       log.error("Restore failed: " + response.message);
+    } else {
+      // Sync the files stored in DB to FS in case restore is successful.
+      fileDataService.syncFileData(appConfig.getString(STORAGE_PATH), true);
     }
 
     return response.code == 0;

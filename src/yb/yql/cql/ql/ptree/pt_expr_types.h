@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_EXPR_TYPES_H
-#define YB_YQL_CQL_QL_PTREE_PT_EXPR_TYPES_H
+#pragma once
 
 #include "yb/util/memory/mc_types.h"
 
@@ -110,5 +109,3 @@ using PTRelation3 = PTExpr3<InternalType::kBoolValue, DataType::BOOL, PTRelation
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_EXPR_TYPES_H

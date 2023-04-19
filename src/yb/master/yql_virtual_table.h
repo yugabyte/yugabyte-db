@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_YQL_VIRTUAL_TABLE_H
-#define YB_MASTER_YQL_VIRTUAL_TABLE_H
+#pragma once
 
 #include "yb/common/ql_rowblock.h"
 
@@ -78,15 +77,16 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override {
+      std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter,
+      const docdb::DocDBStatistics* statistics = nullptr) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
 
-  Status InitIterator(docdb::YQLRowwiseIteratorIf* iter,
-                              const PgsqlReadRequestPB& request,
-                              const Schema& schema,
-                              const QLValuePB& ybctid) const override {
+  Status InitIterator(docdb::DocRowwiseIterator* iter,
+                      const PgsqlReadRequestPB& request,
+                      const Schema& schema,
+                      const QLValuePB& ybctid) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -99,7 +99,9 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const docdb::DocKey& start_doc_key,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
+      boost::optional<size_t> end_referenced_key_column_index = boost::none,
+      const docdb::DocDBStatistics* statistics = nullptr) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -111,8 +113,10 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const QLValuePB& ybctid,
-      docdb::YQLRowwiseIteratorIf::UniPtr* iter) const override {
+      const QLValuePB& min_ybctid,
+      const QLValuePB& max_ybctid,
+      docdb::YQLRowwiseIteratorIf::UniPtr* iter,
+      const docdb::DocDBStatistics* statistics = nullptr) const override {
     LOG(FATAL) << "Postgresql virtual tables are not yet implemented";
     return Status::OK();
   }
@@ -147,4 +151,3 @@ extern const std::string kSystemTablesReleaseVersionColumn;
 
 }  // namespace master
 }  // namespace yb
-#endif // YB_MASTER_YQL_VIRTUAL_TABLE_H

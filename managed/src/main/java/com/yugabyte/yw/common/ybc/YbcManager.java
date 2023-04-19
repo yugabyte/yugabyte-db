@@ -1,0 +1,548 @@
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.yw.common.ybc;
+
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
+import com.google.protobuf.Descriptors.FieldDescriptor;
+import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.YbcThrottleParameters;
+import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdater;
+import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Random;
+import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.stream.Collectors;
+
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yb.client.YbcClient;
+import org.yb.ybc.BackupServiceNfsDirDeleteRequest;
+import org.yb.ybc.BackupServiceNfsDirDeleteResponse;
+import org.yb.ybc.BackupServiceTaskAbortRequest;
+import org.yb.ybc.BackupServiceTaskAbortResponse;
+import org.yb.ybc.BackupServiceTaskCreateRequest;
+import org.yb.ybc.BackupServiceTaskCreateResponse;
+import org.yb.ybc.BackupServiceTaskDeleteRequest;
+import org.yb.ybc.BackupServiceTaskDeleteResponse;
+import org.yb.ybc.BackupServiceTaskResultRequest;
+import org.yb.ybc.BackupServiceTaskResultResponse;
+import org.yb.ybc.BackupServiceTaskThrottleParametersGetRequest;
+import org.yb.ybc.BackupServiceTaskThrottleParametersGetResponse;
+import org.yb.ybc.BackupServiceTaskThrottleParametersSetRequest;
+import org.yb.ybc.BackupServiceTaskThrottleParametersSetResponse;
+import org.yb.ybc.ControllerObjectTaskThrottleParameters;
+import org.yb.ybc.ControllerStatus;
+import org.yb.ybc.PingRequest;
+import org.yb.ybc.PingResponse;
+
+@Singleton
+public class YbcManager {
+
+  private static final Logger LOG = LoggerFactory.getLogger(YbcManager.class);
+
+  private final YbcClientService ybcClientService;
+  private final CustomerConfigService customerConfigService;
+  private final BackupUtil backupUtil;
+  private final RuntimeConfGetter confGetter;
+  private final ReleaseManager releaseManager;
+  private final NodeManager nodeManager;
+
+  private static final int WAIT_EACH_ATTEMPT_MS = 5000;
+  private static final int WAIT_EACH_SHORT_ATTEMPT_MS = 2000;
+  private static final int MAX_RETRIES = 10;
+
+  @Inject
+  public YbcManager(
+      YbcClientService ybcClientService,
+      CustomerConfigService customerConfigService,
+      BackupUtil backupUtil,
+      RuntimeConfGetter confGetter,
+      ReleaseManager releaseManager,
+      NodeManager nodeManager) {
+    this.ybcClientService = ybcClientService;
+    this.customerConfigService = customerConfigService;
+    this.backupUtil = backupUtil;
+    this.confGetter = confGetter;
+    this.releaseManager = releaseManager;
+    this.nodeManager = nodeManager;
+  }
+
+  public boolean deleteNfsDirectory(Backup backup) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = getYbcClient(backup.getUniverseUUID());
+      CustomerConfigStorageNFSData configData =
+          (CustomerConfigStorageNFSData)
+              customerConfigService
+                  .getOrBadRequest(
+                      backup.getCustomerUUID(), backup.getBackupInfo().storageConfigUUID)
+                  .getDataObject();
+      String nfsDir = configData.backupLocation;
+      for (String location : backupUtil.getBackupLocations(backup)) {
+        String cloudDir = BackupUtil.getBackupIdentifier(location, true);
+        BackupServiceNfsDirDeleteRequest nfsDirDelRequest =
+            BackupServiceNfsDirDeleteRequest.newBuilder()
+                .setNfsDir(nfsDir)
+                .setBucket(configData.nfsBucket)
+                .setCloudDir(cloudDir)
+                .build();
+        BackupServiceNfsDirDeleteResponse nfsDirDeleteResponse =
+            ybcClient.backupServiceNfsDirDelete(nfsDirDelRequest);
+        if (!nfsDirDeleteResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+          LOG.error(
+              "Nfs Dir deletion for backup {} failed with error: {}.",
+              backup.getBackupUUID(),
+              nfsDirDeleteResponse.getStatus().getErrorMessage());
+          return false;
+        }
+      }
+    } catch (Exception e) {
+      LOG.error("Backup {} deletion failed with error: {}", backup.getBackupUUID(), e.getMessage());
+      return false;
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+    LOG.debug("Nfs dir for backup {} is successfully deleted.", backup.getBackupUUID());
+    return true;
+  }
+
+  public void abortBackupTask(
+      UUID customerUUID, UUID backupUUID, String taskID, YbcClient ybcClient) {
+    Backup backup = Backup.getOrBadRequest(customerUUID, backupUUID);
+    try {
+      BackupServiceTaskAbortRequest abortTaskRequest =
+          BackupServiceTaskAbortRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskAbortResponse abortTaskResponse =
+          ybcClient.backupServiceTaskAbort(abortTaskRequest);
+      if (!abortTaskResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        LOG.error(
+            "Aborting backup {} task errored out with {}.",
+            backup.getBackupUUID(),
+            abortTaskResponse.getStatus().getErrorMessage());
+        return;
+      }
+      BackupServiceTaskResultRequest taskResultRequest =
+          BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskResultResponse taskResultResponse =
+          ybcClient.backupServiceTaskResult(taskResultRequest);
+      if (!taskResultResponse.getTaskStatus().equals(ControllerStatus.ABORT)) {
+        LOG.error(
+            "Aborting backup {} task errored out and is in {} state.",
+            backup.getBackupUUID(),
+            taskResultResponse.getTaskStatus());
+        return;
+      } else {
+        LOG.info(
+            "Backup {} task is successfully aborted on Yb-controller.", backup.getBackupUUID());
+        deleteYbcBackupTask(backup.getUniverseUUID(), taskID, ybcClient);
+      }
+    } catch (Exception e) {
+      LOG.error(
+          "Backup {} task abort failed with error: {}.", backup.getBackupUUID(), e.getMessage());
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  public void deleteYbcBackupTask(UUID universeUUID, String taskID, YbcClient ybcClient) {
+    try {
+      BackupServiceTaskResultRequest taskResultRequest =
+          BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskResultResponse taskResultResponse =
+          ybcClient.backupServiceTaskResult(taskResultRequest);
+      if (taskResultResponse.getTaskStatus().equals(ControllerStatus.NOT_FOUND)) {
+        return;
+      }
+      BackupServiceTaskDeleteRequest taskDeleteRequest =
+          BackupServiceTaskDeleteRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskDeleteResponse taskDeleteResponse = null;
+      int numRetries = 0;
+      while (numRetries < MAX_RETRIES) {
+        taskDeleteResponse = ybcClient.backupServiceTaskDelete(taskDeleteRequest);
+        if (!taskDeleteResponse.getStatus().getCode().equals(ControllerStatus.IN_PROGRESS)) {
+          break;
+        }
+        Thread.sleep(WAIT_EACH_ATTEMPT_MS);
+        numRetries++;
+      }
+      if (!taskDeleteResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        LOG.error(
+            "Deleting task {} errored out and is in {} state.",
+            taskID,
+            taskDeleteResponse.getStatus());
+        return;
+      }
+      LOG.info("Task {} is successfully deleted on Yb-controller.", taskID);
+    } catch (Exception e) {
+      LOG.error("Task {} deletion failed with error: {}", taskID, e.getMessage());
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  /** Returns the success marker for a particular backup, returns null if not found. */
+  public String downloadSuccessMarker(
+      BackupServiceTaskCreateRequest downloadSuccessMarkerRequest,
+      UUID universeUUID,
+      String taskID) {
+    YbcClient ybcClient = null;
+    String successMarker = null;
+    try {
+      ybcClient = getYbcClient(universeUUID);
+      BackupServiceTaskCreateResponse downloadSuccessMarkerResponse =
+          ybcClient.restoreNamespace(downloadSuccessMarkerRequest);
+      if (!downloadSuccessMarkerResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        throw new Exception(
+            String.format(
+                "Failed to send download success marker request, failure status: %s",
+                downloadSuccessMarkerResponse.getStatus().getCode().name()));
+      }
+      BackupServiceTaskResultRequest downloadSuccessMarkerResultRequest =
+          BackupServiceTaskResultRequest.newBuilder().setTaskId(taskID).build();
+      BackupServiceTaskResultResponse downloadSuccessMarkerResultResponse = null;
+      int numRetries = 0;
+      while (numRetries < MAX_RETRIES) {
+        downloadSuccessMarkerResultResponse =
+            ybcClient.backupServiceTaskResult(downloadSuccessMarkerResultRequest);
+        if (!(downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.IN_PROGRESS)
+            || downloadSuccessMarkerResultResponse
+                .getTaskStatus()
+                .equals(ControllerStatus.NOT_STARTED))) {
+          break;
+        }
+        Thread.sleep(WAIT_EACH_SHORT_ATTEMPT_MS);
+        numRetries++;
+      }
+      if (!downloadSuccessMarkerResultResponse.getTaskStatus().equals(ControllerStatus.OK)) {
+        throw new RuntimeException(
+            String.format(
+                "Failed to download success marker, failure status: %s",
+                downloadSuccessMarkerResultResponse.getTaskStatus().name()));
+      }
+      LOG.info("Task {} on YB-Controller to fetch success marker is successful", taskID);
+      successMarker = downloadSuccessMarkerResultResponse.getMetadataJson();
+      deleteYbcBackupTask(universeUUID, taskID, ybcClient);
+      return successMarker;
+    } catch (Exception e) {
+      LOG.error(
+          "Task {} on YB-Controller to fetch success marker for restore failed. Error: {}",
+          taskID,
+          e.getMessage());
+      return successMarker;
+    } finally {
+      ybcClientService.closeClient(ybcClient);
+    }
+  }
+
+  public String getStableYbcVersion() {
+    return confGetter.getGlobalConf(GlobalConfKeys.ybcStableVersion);
+  }
+
+  /**
+   * @param universe
+   * @param node
+   * @return pair of string containing osType and archType of ybc-server-package
+   */
+  public Pair<String, String> getYbcPackageDetailsForNode(Universe universe, NodeDetails node) {
+    Cluster nodeCluster = Universe.getCluster(universe, node.nodeName);
+    String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
+    String ybServerPackage =
+        nodeManager.getYbServerPackageName(
+            ybSoftwareVersion,
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
+    return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
+  }
+
+  /**
+   * @param universe
+   * @param node
+   * @param ybcVersion
+   * @return Temp location of ybc server package on a DB node.
+   */
+  public String getYbcPackageTmpLocation(Universe universe, NodeDetails node, String ybcVersion) {
+    Pair<String, String> ybcPackageDetails = getYbcPackageDetailsForNode(universe, node);
+    return String.format(
+        "/tmp/ybc-%s-%s-%s.tar.gz",
+        ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
+  }
+
+  /**
+   * @param universe
+   * @param node
+   * @param ybcVersion
+   * @return complete file path of ybc server package present in YBA node.
+   */
+  public String getYbcServerPackageForNode(Universe universe, NodeDetails node, String ybcVersion) {
+    Pair<String, String> ybcPackageDetails = getYbcPackageDetailsForNode(universe, node);
+    ReleaseManager.ReleaseMetadata releaseMetadata =
+        releaseManager.getYbcReleaseByVersion(
+            ybcVersion, ybcPackageDetails.getFirst(), ybcPackageDetails.getSecond());
+    String ybcServerPackage =
+        releaseMetadata.getFilePath(
+            getFirstRegion(
+                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
+    if (StringUtils.isBlank(ybcServerPackage)) {
+      throw new RuntimeException("Ybc package cannot be empty.");
+    }
+    Matcher matcher = NodeManager.YBC_PACKAGE_PATTERN.matcher(ybcServerPackage);
+    boolean matches = matcher.matches();
+    if (!matches) {
+      throw new RuntimeException(
+          String.format(
+              "Ybc package: %s does not follow the format required: %s",
+              ybcServerPackage, NodeManager.YBC_PACKAGE_REGEX));
+    }
+    return ybcServerPackage;
+  }
+
+  public void setThrottleParams(UUID universeUUID, YbcThrottleParameters throttleParams) {
+    try {
+      BackupServiceTaskThrottleParametersSetRequest.Builder throttleParamsSetterBuilder =
+          BackupServiceTaskThrottleParametersSetRequest.newBuilder();
+      ControllerObjectTaskThrottleParameters.Builder controllerObjectThrottleParams =
+          ControllerObjectTaskThrottleParameters.newBuilder();
+      List<String> toRemove = new ArrayList<>();
+      Map<String, String> toAddModify = new HashMap<>();
+      Map<String, Integer> paramsToSet = throttleParams.getThrottleFlagsMap();
+      if (throttleParams.resetDefaults) {
+        // Nothing required to do for controllerObjectThrottleParams,
+        // empty object sets default values on YB-Controller.
+        toRemove.addAll(new ArrayList<>(paramsToSet.keySet()));
+      } else {
+        Map<FieldDescriptor, Object> currentThrottleParamsMap =
+            getThrottleParamsAsFieldDescriptor(universeUUID);
+        if (MapUtils.isEmpty(currentThrottleParamsMap)) {
+          throw new RuntimeException(
+              "Got empty map for current throttle params from YB-Controller");
+        }
+        currentThrottleParamsMap.forEach(
+            (k, v) -> {
+              if (paramsToSet.get(k.getName()) > 0) {
+                controllerObjectThrottleParams.setField(k, paramsToSet.get(k.getName()));
+                toAddModify.put(k.getName(), paramsToSet.get(k.getName()).toString());
+              } else {
+                controllerObjectThrottleParams.setField(k, v);
+              }
+            });
+      }
+      throttleParamsSetterBuilder.setParams(controllerObjectThrottleParams.build());
+      throttleParamsSetterBuilder.setPersistAcrossReboots(true);
+      BackupServiceTaskThrottleParametersSetRequest throttleParametersSetRequest =
+          throttleParamsSetterBuilder.build();
+
+      Universe universe = Universe.getOrBadRequest(universeUUID);
+      Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+      String certFile = universe.getCertificateNodetoNode();
+      universe
+          .getNodes()
+          .stream()
+          .forEach(
+              (n) -> {
+                YbcClient client = null;
+                try {
+                  String nodeIp = n.cloudInfo.private_ip;
+                  if (nodeIp == null || !n.isTserver) {
+                    return;
+                  }
+                  client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+                  BackupServiceTaskThrottleParametersSetResponse throttleParamsSetResponse =
+                      client.backupServiceTaskThrottleParametersSet(throttleParametersSetRequest);
+                  if (throttleParamsSetResponse != null
+                      && !throttleParamsSetResponse
+                          .getStatus()
+                          .getCode()
+                          .equals(ControllerStatus.OK)) {
+                    throw new RuntimeException(
+                        String.format(
+                            "Failed to set throttle params on node {} universe {} with error: {}",
+                            nodeIp,
+                            universeUUID.toString(),
+                            throttleParamsSetResponse.getStatus()));
+                  }
+                } finally {
+                  ybcClientService.closeClient(client);
+                }
+              });
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+              params.clusters.forEach(
+                  c -> {
+                    Map<String, String> ybcFlags = new HashMap<>(c.userIntent.ybcFlags);
+                    ybcFlags.putAll(toAddModify);
+                    ybcFlags.keySet().removeAll(toRemove);
+                    c.userIntent.ybcFlags = ybcFlags;
+                  });
+              universe.setUniverseDetails(params);
+            }
+          };
+      Universe.saveDetails(universeUUID, updater, false);
+    } catch (Exception e) {
+      LOG.info(
+          "Setting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
+  public Map<String, String> getThrottleParams(UUID universeUUID) {
+    try {
+      Map<String, String> throttleParamMap =
+          getThrottleParamsAsFieldDescriptor(universeUUID)
+              .entrySet()
+              .stream()
+              .collect(Collectors.toMap(k -> k.getKey().getName(), v -> v.getValue().toString()));
+      return throttleParamMap;
+    } catch (Exception e) {
+      LOG.info(
+          "Getting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    }
+  }
+
+  public Map<FieldDescriptor, Object> getThrottleParamsAsFieldDescriptor(UUID universeUUID) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = getYbcClient(universeUUID);
+      BackupServiceTaskThrottleParametersGetRequest throttleParametersGetRequest =
+          BackupServiceTaskThrottleParametersGetRequest.getDefaultInstance();
+      BackupServiceTaskThrottleParametersGetResponse throttleParametersGetResponse =
+          ybcClient.backupServiceTaskThrottleParametersGet(throttleParametersGetRequest);
+      if (throttleParametersGetResponse == null) {
+        throw new RuntimeException("Get throttle parameters: No response from YB-Controller");
+      }
+      if (!throttleParametersGetResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
+        throw new RuntimeException(
+            String.format(
+                "Getting throttle params failed with exception: %s",
+                throttleParametersGetResponse.getStatus()));
+      }
+      ControllerObjectTaskThrottleParameters throttleParams =
+          throttleParametersGetResponse.getParams();
+      return throttleParams.getAllFields();
+    } catch (Exception e) {
+      LOG.info(
+          "Getting throttle params for universe {} failed with: {}", universeUUID, e.getMessage());
+      throw new RuntimeException(e.getMessage());
+    } finally {
+      if (ybcClient != null) {
+        ybcClientService.closeClient(ybcClient);
+      }
+    }
+  }
+
+  // Ping check for YbcClient.
+  public boolean ybcPingCheck(String nodeIp, String certDir, int port) {
+    YbcClient ybcClient = null;
+    try {
+      ybcClient = ybcClientService.getNewClient(nodeIp, port, certDir);
+      return ybcPingCheck(ybcClient);
+    } finally {
+      try {
+        ybcClientService.closeClient(ybcClient);
+      } catch (Exception e) {
+      }
+    }
+  }
+
+  public boolean ybcPingCheck(YbcClient ybcClient) {
+    if (ybcClient == null) {
+      return false;
+    }
+    try {
+      long pingSeq = new Random().nextInt();
+      PingResponse pingResponse =
+          ybcClient.ping(PingRequest.newBuilder().setSequence(pingSeq).build());
+      if (pingResponse != null && pingResponse.getSequence() == pingSeq) {
+        return true;
+      }
+      return false;
+    } catch (Exception e) {
+      return false;
+    }
+  }
+
+  /**
+   * Returns a YbcClient <-> node-ip pair if available, after doing a ping check. If nodeIp provided
+   * in params is non-null, will attempt to create client with only that node-ip. Throws
+   * RuntimeException if client creation fails.
+   *
+   * @param nodeIp
+   * @param universeUUID
+   */
+  public Pair<YbcClient, String> getAvailableYbcClientIpPair(UUID universeUUID, String nodeIp) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    String certFile = universe.getCertificateNodetoNode();
+    int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    List<String> nodeIPs = new ArrayList<>();
+    if (StringUtils.isNotBlank(nodeIp)) {
+      nodeIPs.add(nodeIp);
+    } else {
+      nodeIPs.addAll(
+          universe
+              .getLiveTServersInPrimaryCluster()
+              .parallelStream()
+              .map(nD -> nD.cloudInfo.private_ip)
+              .collect(Collectors.toList()));
+    }
+    Optional<Pair<YbcClient, String>> clientIpPair =
+        nodeIPs
+            .parallelStream()
+            .map(
+                ip -> {
+                  YbcClient ybcClient = ybcClientService.getNewClient(ip, ybcPort, certFile);
+                  return ybcPingCheck(ybcClient)
+                      ? new Pair<YbcClient, String>(ybcClient, ip)
+                      : null;
+                })
+            .filter(Objects::nonNull)
+            .findAny();
+    if (!clientIpPair.isPresent()) {
+      throw new RuntimeException("YB-Controller server unavailable");
+    }
+    return clientIpPair.get();
+  }
+
+  public YbcClient getYbcClient(UUID universeUUID) {
+    return getYbcClient(universeUUID, null);
+  }
+
+  public YbcClient getYbcClient(UUID universeUUID, String nodeIp) {
+    return getAvailableYbcClientIpPair(universeUUID, nodeIp).getFirst();
+  }
+
+  private Region getFirstRegion(Universe universe, Cluster cluster) {
+    Customer customer = Customer.get(universe.getCustomerId());
+    UUID providerUuid = UUID.fromString(cluster.userIntent.provider);
+    UUID regionUuid = cluster.userIntent.regionList.get(0);
+    return Region.getOrBadRequest(customer.getUuid(), providerUuid, regionUuid);
+  }
+}

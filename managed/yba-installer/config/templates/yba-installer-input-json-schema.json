@@ -1,0 +1,107 @@
+  {
+    "$schema": "https://json-schema.org/draft/2022-08/schema",
+    "$id": "yba-installer-input-json-schema.json",
+    "title": "Configuration Validation",
+    "description": "Validation of user Configuration parameters in YAML",
+    "type": "object",
+    "properties": {
+        "prometheus": {
+            "description": "Prometheus Config Parameters",
+            "type": "object",
+            "properties": {
+              "scrapeInterval": {
+                "type": "integer"
+              },
+              "scrapeTimeout": {
+                "type": "integer"
+              },
+              "port": {
+                "type": "integer"
+              },
+              "maxConcurrency": {
+                "type": "integer"
+              },
+              "maxSamples": {
+                "type": "integer"
+              },
+              "timeout": {
+                "type": "integer"
+              }
+            },
+            "required": ["scrapeInterval", "scrapeTimeout", "port", "maxConcurrency",
+              "maxSamples", "timeout"]
+        },
+        "platform": {
+          "description": "Platform Config Parameters",
+          "type": "object",
+          "properties": {
+            "platformDbUser": {
+              "type": "string"
+            },
+            "platformDbPassword": {
+              "type": "string"
+            },
+            "useOauth": {
+              "type": "boolean"
+            },
+            "ybSecurityType": {
+              "type": "string"
+            },
+            "ybOidcClientId": {
+              "type": "string"
+            },
+            "ybOidcSecret": {
+              "type": "string"
+            },
+            "ybOidcDiscoveryUri": {
+              "anyOf": [
+                  {
+                      "type": "string",
+                      "format": "uri"
+                  },
+                  {
+                      "type": "string",
+                      "maxLength": 0
+                  }
+              ]
+            },
+            "ywUrl": {
+              "anyOf": [
+                  {
+                      "type": "string",
+                      "format": "uri"
+                  },
+                  {
+                      "type": "string",
+                      "maxLength": 0
+                  }
+              ]
+            },
+            "ybOidcScope": {
+              "type": "string"
+            },
+            "ybOidcEmailAttr": {
+              "anyOf": [
+                  {
+                      "type": "string",
+                      "pattern":
+                      "^[a-z0-9][-a-z0-9._]+@([-a-z0-9]+.)+[a-z]{2,5}$"
+                  },
+                  {
+                      "type": "string",
+                      "maxLength": 0
+                  }
+              ]
+            },
+            "port": {
+              "type": "integer"
+            } ,
+            "keyStorePassword": {
+              "type": "string"
+            }
+          },
+          "required": ["port", "keyStorePassword"]
+        }
+    },
+    "required": ["prometheus", "platform"]
+  }

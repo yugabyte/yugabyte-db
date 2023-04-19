@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: YugabyteDB Python Driver for YCQL
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Python driver for YCQL
+description: Connect an application using YugabyteDB Python driver for YCQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
@@ -11,20 +12,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li>
-      <a href="../yugabyte-psycopg2/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li class="active">
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../yugabyte-psycopg2/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li class="active">
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
    <li >
@@ -95,6 +94,28 @@ for row in rows:
 
 # Close the connection.
 cluster.shutdown()
+```
+
+#### Use SSL
+
+To run the application with SSL, create the cluster connection with additional SSL imports and parameters described as follows:
+
+```python
+# Include additional imports.
+from ssl import SSLContext, PROTOCOL_TLS_CLIENT, CERT_REQUIRED
+from cassandra.auth import PlainTextAuthProvider
+
+# Include additional parameters.
+ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
+ssl_context.load_verify_locations('path to certs file')
+ssl_context.verify_mode = CERT_REQUIRED
+
+# Create the cluster connection.
+cluster = Cluster(contact_points=['ip_address'],
+    ssl_context=ssl_context,
+    ssl_options={'server_hostname': 'ip_address'},
+    auth_provider=PlainTextAuthProvider(username='username', password='password'))
+session = cluster.connect()
 ```
 
 ### Run the application

@@ -15,8 +15,7 @@
 // Tree node definitions for SELECT statement.
 //--------------------------------------------------------------------------------------------------
 
-#ifndef YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
-#define YB_YQL_CQL_QL_PTREE_PT_SELECT_H_
+#pragma once
 
 #include "yb/yql/cql/ql/ptree/list_node.h"
 #include "yb/yql/cql/ql/ptree/tree_node.h"
@@ -122,7 +121,7 @@ using PTTableRefListNode = TreeListNode<PTTableRef>;
 
 //--------------------------------------------------------------------------------------------------
 // State variables for INDEX analysis.
-class SelectScanInfo : public MCBase {
+class SelectScanInfo : public MCBase, public AnalyzeStepState {
  public:
   // Public types.
   typedef MCSharedPtr<SelectScanInfo> SharedPtr;
@@ -130,6 +129,7 @@ class SelectScanInfo : public MCBase {
   // Constructor.
   explicit SelectScanInfo(MemoryContext *memctx,
                           size_t num_columns,
+                          MCList<PartitionKeyOp> *partition_key_ops,
                           MCVector<const PTExpr*> *scan_filtering_exprs,
                           MCMap<MCString, ColumnDesc> *scan_column_map);
 
@@ -141,10 +141,10 @@ class SelectScanInfo : public MCBase {
 
   // Collecting references of operators on WHERE clause.
   Status AddWhereExpr(SemContext *sem_context,
-                              const PTRelationExpr *expr,
-                              const ColumnDesc *col_desc,
-                              PTExprPtr value,
-                              PTExprListNode::SharedPtr col_args = nullptr);
+                      const PTRelationExpr *expr,
+                      const ColumnDesc *col_desc,
+                      PTExprPtr value,
+                      PTExprListNode::SharedPtr col_args = nullptr);
 
   // Setup for analyzing where clause.
   void set_analyze_where(bool val) { analyze_where_ = val; }
@@ -371,6 +371,12 @@ class PTSelectStmt : public PTDmlStmt {
     return is_aggregate_;
   }
 
+  // For top-level SELECT it's the same as 'is_aggregate()'.
+  // For child-SELECT it's the parent's 'is_aggregate()' value.
+  bool is_top_level_aggregate() const {
+    return IsTopLevelReadNode() ? is_aggregate_ : is_parent_aggregate_;
+  }
+
   const SelectScanInfo *select_scan_info() const {
     return select_scan_info_;
   }
@@ -385,6 +391,10 @@ class PTSelectStmt : public PTDmlStmt {
 
   bool covers_fully() const {
     return covers_fully_;
+  }
+
+  size_t prefix_length() const {
+    return prefix_length_;
   }
 
   // Certain tables can be read by any authorized role specifically because they are being used
@@ -450,8 +460,8 @@ class PTSelectStmt : public PTDmlStmt {
   Status AnalyzeReferences(SemContext *sem_context);
   Status AnalyzeIndexes(SemContext *sem_context, SelectScanSpec *scan_spec);
   Status AnalyzeOrderByClause(SemContext *sem_context,
-                                      const TableId& index_id,
-                                      bool *is_forward_scan);
+                              const TableId& index_id,
+                              bool *is_forward_scan);
   Status SetupScanPath(SemContext *sem_context, const SelectScanSpec& scan_spec);
 
   // --- The parser will decorate this node with the following information --
@@ -484,6 +494,7 @@ class PTSelectStmt : public PTDmlStmt {
 
   bool is_forward_scan_ = true;
   bool is_aggregate_ = false;
+  bool is_parent_aggregate_ = false;
 
   // Child select statement. Currently only a select statement using an index (covered or uncovered)
   // has a child select statement to query an index.
@@ -492,6 +503,8 @@ class PTSelectStmt : public PTDmlStmt {
   // For nested select from an index: the index id and whether it covers the query fully.
   TableId index_id_;
   bool covers_fully_ = false;
+
+  size_t prefix_length_ = 0;
 
   // Name of all columns the SELECT statement is referenced. Similar to the list "column_refs_",
   // but this is a list of column names instead of column ids.
@@ -505,5 +518,3 @@ class PTSelectStmt : public PTDmlStmt {
 
 }  // namespace ql
 }  // namespace yb
-
-#endif  // YB_YQL_CQL_QL_PTREE_PT_SELECT_H_

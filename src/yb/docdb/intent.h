@@ -11,16 +11,22 @@
 // under the License.
 //
 
-#ifndef YB_DOCDB_INTENT_H_
-#define YB_DOCDB_INTENT_H_
+#pragma once
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
-#include "yb/docdb/docdb_fwd.h"
+#include "yb/docdb/docdb_encoding_fwd.h"
+#include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
 namespace docdb {
+
+// We may write intents with empty groups to intents_db, but when interacting with SharedLockManager
+// or WaitQueue, we expect no kGroupEnd markers in keys. This method normalizes the passed in key to
+// the format expected by conflict resolution. Returns an error if the provided key begins with a
+// kGroupEnd marker.
+Status RemoveGroupEndSuffix(RefCntPrefix* key);
 
 // "Intent types" are used for single-tablet operations and cross-shard transactions. For example,
 // multiple write-only operations don't need to conflict. However, if one operation is a
@@ -61,7 +67,7 @@ typedef EnumBitSet<IntentType> IntentTypeSet;
 struct DecodedIntentKey {
   Slice intent_prefix;
   IntentTypeSet intent_types;
-  DocHybridTime doc_ht;
+  EncodedDocHybridTime doc_ht;
 
   std::string ToString() const {
     return Format("{ intent_prefix: $0 intent_types: $1 doc_ht: $2 }",
@@ -92,11 +98,12 @@ struct DecodedIntentValue {
 // encoded_intent_value - input intent value to decode.
 // transaction_id_slice - input transaction id (to double-check with transaction id in value). If
 //                        empty, decode TransactionId into returned result instead.
+// require_write_id     - If true, require a write_id in the value and return an error if not found.
 // Returned DecodedIntentValue will have a Nil transaction_id unless transaction_id_slice was
-// non-null.
+// non-null, and will have write_id set as long as one was found.
 Result<DecodedIntentValue> DecodeIntentValue(
     const Slice& encoded_intent_value, const Slice* transaction_id_slice = nullptr,
-    bool has_strong_intent = true);
+    bool require_write_id = true);
 
 // Decodes transaction ID from intent value. Consumes it from intent_value slice.
 Result<TransactionId> DecodeTransactionIdFromIntentValue(Slice* intent_value);
@@ -126,5 +133,3 @@ bool IntentValueType(char ch);
 
 }  // namespace docdb
 }  // namespace yb
-
-#endif  // YB_DOCDB_INTENT_H_

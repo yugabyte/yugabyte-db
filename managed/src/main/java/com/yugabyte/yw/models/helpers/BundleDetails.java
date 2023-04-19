@@ -2,36 +2,60 @@ package com.yugabyte.yw.models.helpers;
 
 import io.ebean.annotation.EnumValue;
 import java.util.EnumSet;
+import java.util.stream.Collectors;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public class BundleDetails {
 
+  public enum ComponentLevel {
+    NodeLevel,
+    GlobalLevel;
+  }
+
   public enum ComponentType {
     @EnumValue("UniverseLogs")
-    UniverseLogs,
+    UniverseLogs(ComponentLevel.NodeLevel),
 
     @EnumValue("ApplicationLogs")
-    ApplicationLogs,
+    ApplicationLogs(ComponentLevel.GlobalLevel),
 
     @EnumValue("OutputFiles")
-    OutputFiles,
+    OutputFiles(ComponentLevel.NodeLevel),
 
     @EnumValue("ErrorFiles")
-    ErrorFiles,
+    ErrorFiles(ComponentLevel.NodeLevel),
+
+    @EnumValue("CoreFiles")
+    CoreFiles(ComponentLevel.NodeLevel),
 
     @EnumValue("GFlags")
-    GFlags,
+    GFlags(ComponentLevel.NodeLevel),
 
     @EnumValue("Instance")
-    Instance,
+    Instance(ComponentLevel.NodeLevel),
 
     @EnumValue("ConsensusMeta")
-    ConsensusMeta,
+    ConsensusMeta(ComponentLevel.NodeLevel),
 
     @EnumValue("TabletMeta")
-    TabletMeta,
+    TabletMeta(ComponentLevel.NodeLevel),
 
     @EnumValue("YbcLogs")
-    YbcLogs;
+    YbcLogs(ComponentLevel.NodeLevel),
+
+    @EnumValue("K8sInfo")
+    K8sInfo(ComponentLevel.GlobalLevel);
+
+    private final ComponentLevel componentLevel;
+
+    ComponentType(ComponentLevel componentLevel) {
+      this.componentLevel = componentLevel;
+    }
+
+    public ComponentLevel getComponentLevel() {
+      return this.componentLevel;
+    }
 
     public static boolean isValid(String type) {
       for (ComponentType t : ComponentType.values()) {
@@ -50,5 +74,21 @@ public class BundleDetails {
 
   public BundleDetails(EnumSet<ComponentType> components) {
     this.components = components;
+  }
+
+  @JsonIgnore
+  public EnumSet<ComponentType> getNodeLevelComponents() {
+    return this.components
+        .stream()
+        .filter(ct -> ComponentLevel.NodeLevel.equals(ct.getComponentLevel()))
+        .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
+  }
+
+  @JsonIgnore
+  public EnumSet<ComponentType> getGlobalLevelComponents() {
+    return this.components
+        .stream()
+        .filter(ct -> ComponentLevel.GlobalLevel.equals(ct.getComponentLevel()))
+        .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
   }
 }

@@ -55,7 +55,6 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
-#include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/net/net_util.h"
@@ -64,20 +63,20 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
 
-DEFINE_bool(enable_data_block_fsync, true,
+DEFINE_UNKNOWN_bool(enable_data_block_fsync, true,
             "Whether to enable fsync() of data blocks, metadata, and their parent directories. "
             "Disabling this flag may cause data loss in the event of a system crash.");
 TAG_FLAG(enable_data_block_fsync, unsafe);
 
 DECLARE_string(fs_data_dirs);
 
-DEFINE_string(fs_wal_dirs, "",
+DEFINE_UNKNOWN_string(fs_wal_dirs, "",
               "Comma-separated list of directories for write-ahead logs. This is an optional "
                   "argument. If this is not specified, fs_data_dirs is used for write-ahead logs "
                   "also and that's a reasonable default for most use cases.");
 TAG_FLAG(fs_wal_dirs, stable);
 
-DEFINE_string(instance_uuid_override, "",
+DEFINE_UNKNOWN_string(instance_uuid_override, "",
               "When creating local instance metadata (for master or tserver) in an empty data "
               "directory, use this UUID instead of randomly-generated one. Can be used to replace "
               "a node that had its disk wiped in some scenarios.");
@@ -85,6 +84,9 @@ DEFINE_string(instance_uuid_override, "",
 DEFINE_test_flag(bool, simulate_fs_create_failure, false,
                  "Simulate failure during initial creation of fs during the first time "
                  "process creation.");
+
+DEFINE_test_flag(bool, simulate_fs_create_with_empty_uuid, false,
+                 "Simulate empty uuid during opening filesystem root.");
 
 METRIC_DEFINE_entity(drive);
 
@@ -141,7 +143,7 @@ FsManagerOpts::FsManagerOpts()
   if (FLAGS_fs_wal_dirs.empty() && !FLAGS_fs_data_dirs.empty()) {
     // It is sufficient if user sets the data dirs. By default we use the same
     // directories for WALs as well.
-    CHECK_OK(SetFlagDefaultAndCurrent("fs_wal_dirs", FLAGS_fs_data_dirs));
+    CHECK_OK(SET_FLAG_DEFAULT_AND_CURRENT(fs_wal_dirs, FLAGS_fs_data_dirs));
   }
   wal_paths = strings::Split(FLAGS_fs_wal_dirs, ",", strings::SkipEmpty());
   data_paths = strings::Split(FLAGS_fs_data_dirs, ",", strings::SkipEmpty());
@@ -353,6 +355,10 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
     }
     if (!metadata_) {
       metadata_.reset(pb.release());
+      if (metadata_->uuid().empty() || FLAGS_TEST_simulate_fs_create_with_empty_uuid) {
+        LOG(ERROR) << "FSManager contains empty UUID at the startup";
+        return STATUS(Corruption, "Empty UUID from filesystem root", root);
+      }
     } else if (pb->uuid() != metadata_->uuid()) {
       return STATUS(Corruption, Substitute(
           "Mismatched UUIDs across filesystem roots: $0 vs. $1",

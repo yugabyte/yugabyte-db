@@ -14,15 +14,15 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="/preview/yugabyte-platform/administer-yugabyte-platform/back-up-restore-yp" class="nav-link">
-      <i class="fas fa-cloud"></i>
+    <a href="../back-up-restore-yp" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>
       Default
     </a>
   </li>
 
   <li>
-    <a href="/preview/yugabyte-platform/administer-yugabyte-platform/back-up-restore-k8s" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+    <a href="../back-up-restore-k8s" class="nav-link active">
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>

@@ -17,6 +17,7 @@ export enum Backup_States {
   DELETED = 'Deleted',
   SKIPPED = 'Skipped',
   FAILED_TO_DELETE = 'FailedToDelete',
+  STOPPING = 'Stopping',
   STOPPED = 'Stopped',
   DELETE_IN_PROGRESS = 'DeleteInProgress',
   QUEUED_FOR_DELETION = 'QueuedForDeletion'
@@ -29,12 +30,14 @@ export const BACKUP_LABEL_MAP: Record<Backup_States, string> = {
   Deleted: 'Deleted',
   Skipped: 'Cancelled',
   FailedToDelete: 'Deletion failed',
+  Stopping: 'Cancelling',
   Stopped: 'Cancelled',
   DeleteInProgress: 'Deleting',
   QueuedForDeletion: 'Queued for deletion'
 };
 
 export interface Keyspace_Table {
+  allTables: boolean;
   keyspace: string;
   tablesList: string[];
   storageLocation?: string;
@@ -44,24 +47,27 @@ export interface Keyspace_Table {
 export interface ICommonBackupInfo {
   backupUUID: string;
   baseBackupUUID: string;
-  completionTime: number;
-  createTime: number;
+  completionTime: string;
+  createTime: string;
   responseList: Keyspace_Table[];
   sse: boolean;
   state: Backup_States;
   storageConfigUUID: string;
   taskUUID: string;
   totalBackupSizeInBytes?: number;
-  updateTime: number;
+  updateTime: string;
   parallelism: number;
+  kmsConfigUUID?: string;
 }
 
 export interface IBackup {
   commonBackupInfo: ICommonBackupInfo;
   isFullBackup: boolean;
   hasIncrementalBackups: boolean;
+  lastIncrementalBackupTime: number;
   lastBackupState: Backup_States;
   backupType: TableType;
+  category: 'YB_BACKUP_SCRIPT' | 'YB_CONTROLLER';
   universeUUID: string;
   scheduleUUID: string;
   customerUUID: string;
@@ -69,10 +75,19 @@ export interface IBackup {
   isStorageConfigPresent: boolean;
   isUniversePresent: boolean;
   onDemand: boolean;
-  updateTime: number;
-  expiryTime: number;
+  updateTime: string;
+  expiryTime: string;
+  expiryTimeUnit: string;
   fullChainSizeInBytes: number;
   kmsConfigUUID?: null | string;
+  scheduleName: string;
+}
+
+export interface IBackupEditParams {
+  backupUUID: string,
+  timeBeforeDeleteFromPresentInMillis: number;
+  storageConfigUUID: string;
+  expiryTimeUnit: string;
 }
 
 export interface IUniverse {

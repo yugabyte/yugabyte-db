@@ -62,10 +62,8 @@ std::shared_ptr<DB> OpenDb(bool read_only = false) {
       FLAGS_min_write_buffer_number_to_merge;
 
     if (FLAGS_use_set_based_memetable) {
-#ifndef ROCKSDB_LITE
       options.prefix_extractor.reset(rocksdb::NewFixedPrefixTransform(0));
       options.memtable_factory.reset(NewHashSkipListRepFactory());
-#endif  // ROCKSDB_LITE
     }
 
     Status s;
@@ -159,10 +157,11 @@ TEST_F(PerfContextTest, SeekIntoDeletion) {
     }
 
     perf_context.Reset();
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     StopWatchNano timer2(Env::Default(), true);
     iter->Next();
     auto elapsed_nanos2 = timer2.ElapsedNanos();
+    ASSERT_OK(iter->status());
     if (FLAGS_verbose) {
       std::cout << "next cmp: " << perf_context.user_key_comparison_count
                 << "elapsed: " << elapsed_nanos2 << "ns\n";
@@ -459,7 +458,6 @@ void ProfileQueries(bool enabled_time = false) {
   }
 }
 
-#ifndef ROCKSDB_LITE
 TEST_F(PerfContextTest, KeyComparisonCount) {
   SetPerfLevel(PerfLevel::kEnableCount);
   ProfileQueries();
@@ -470,7 +468,6 @@ TEST_F(PerfContextTest, KeyComparisonCount) {
   SetPerfLevel(PerfLevel::kEnableTime);
   ProfileQueries(true);
 }
-#endif  // ROCKSDB_LITE
 
 // make perf_context_test
 // export ROCKSDB_TESTS=PerfContextTest.SeekKeyComparison
@@ -538,13 +535,13 @@ TEST_F(PerfContextTest, SeekKeyComparison) {
     std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
     perf_context.Reset();
     iter->Seek(key);
-    ASSERT_TRUE(iter->Valid());
+    ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
     ASSERT_EQ(iter->value().ToString(), value);
     hist_seek.Add(perf_context.user_key_comparison_count);
   }
 
   std::unique_ptr<Iterator> iter(db->NewIterator(read_options));
-  for (iter->SeekToFirst(); iter->Valid();) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid());) {
     perf_context.Reset();
     iter->Next();
     hist_next.Add(perf_context.user_key_comparison_count);

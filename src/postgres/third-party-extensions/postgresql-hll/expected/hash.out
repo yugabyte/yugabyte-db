@@ -1,0 +1,328 @@
+-- ----------------------------------------------------------------
+-- Misc Tests on Hash Function
+-- ----------------------------------------------------------------
+SELECT hll_set_output_version(1);
+ hll_set_output_version
+------------------------
+                      1
+(1 row)
+
+-- ---------------- boolean
+SELECT hll_hash_boolean(FALSE);
+  hll_hash_boolean
+---------------------
+ 5048724184180415669
+(1 row)
+
+SELECT hll_hash_boolean(TRUE);
+  hll_hash_boolean
+---------------------
+ 8849112093580131862
+(1 row)
+
+-- ---------------- smallint
+SELECT hll_hash_smallint(0::smallint);
+  hll_hash_smallint
+---------------------
+ 3478107235931676136
+(1 row)
+
+SELECT hll_hash_smallint(100::smallint);
+  hll_hash_smallint
+---------------------
+ 4631120266694327276
+(1 row)
+
+SELECT hll_hash_smallint(-100::smallint);
+  hll_hash_smallint
+---------------------
+ 5357168029120347761
+(1 row)
+
+-- ---------------- integer
+SELECT hll_hash_integer(0);
+   hll_hash_integer
+----------------------
+ -3485513579396041028
+(1 row)
+
+SELECT hll_hash_integer(100);
+   hll_hash_integer
+----------------------
+ -5003248654201747171
+(1 row)
+
+SELECT hll_hash_integer(-100);
+   hll_hash_integer
+----------------------
+ -2771615523823720964
+(1 row)
+
+-- ---------------- bigint
+SELECT hll_hash_bigint(0);
+   hll_hash_bigint
+---------------------
+ 2945182322382062539
+(1 row)
+
+SELECT hll_hash_bigint(100);
+   hll_hash_bigint
+---------------------
+ 8349353095166695771
+(1 row)
+
+SELECT hll_hash_bigint(-100);
+   hll_hash_bigint
+---------------------
+ -886862857196634693
+(1 row)
+
+-- ---------------- bytea
+-- Check some small values.
+SELECT hll_hash_bytea(E'\\x');
+ hll_hash_bytea
+----------------
+ 0
+(1 row)
+
+SELECT hll_hash_bytea(E'\\x41');
+   hll_hash_bytea
+--------------------
+ 243126998722523514
+(1 row)
+
+SELECT hll_hash_bytea(E'\\x42');
+    hll_hash_bytea
+----------------------
+ -4837624800923759386
+(1 row)
+
+SELECT hll_hash_bytea(E'\\x4142');
+   hll_hash_bytea
+---------------------
+ 5365230931951287672
+(1 row)
+
+-- ---------------- text
+-- Check some small values.
+SELECT hll_hash_text('');
+ hll_hash_text
+---------------
+ 0
+(1 row)
+
+SELECT hll_hash_text('A');
+   hll_hash_text
+--------------------
+ 243126998722523514
+(1 row)
+
+SELECT hll_hash_text('B');
+    hll_hash_text
+----------------------
+ -4837624800923759386
+(1 row)
+
+SELECT hll_hash_text('AB');
+    hll_hash_text
+---------------------
+ 5365230931951287672
+(1 row)
+
+-- ---------------- seed stuff
+-- Seed 0 ok.
+SELECT hll_hash_bigint(0, 0);
+   hll_hash_bigint
+---------------------
+ 2945182322382062539
+(1 row)
+
+-- Positive seed ok.
+SELECT hll_hash_bigint(0, 1);
+   hll_hash_bigint
+---------------------
+ 8297479994805284640
+(1 row)
+
+-- Max positive seed ok.
+SELECT hll_hash_bigint(0, 2147483647);
+   hll_hash_bigint
+----------------------
+ -4042198036618575253
+(1 row)
+
+-- WARNING:  negative seed values not compatible
+SELECT hll_hash_bigint(0, -1);
+WARNING:  negative seed values not compatible
+   hll_hash_bigint
+----------------------
+ -8352849679461500862
+(1 row)
+
+-- WARNING:  negative seed values not compatible
+SELECT hll_hash_bigint(0, -2);
+WARNING:  negative seed values not compatible
+   hll_hash_bigint
+----------------------
+ -8080898605520838299
+(1 row)
+
+-- WARNING:  negative seed values not compatible
+SELECT hll_hash_bigint(0, -2147483648);
+WARNING:  negative seed values not compatible
+   hll_hash_bigint
+---------------------
+ 8620050269462747046
+(1 row)
+
+-- WARNING:  negative seed values not compatible
+SELECT hll_hash_boolean(0, -1);
+ERROR:  function hll_hash_boolean(integer, integer) does not exist
+LINE 1: SELECT hll_hash_boolean(0, -1);
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT hll_hash_smallint(0::smallint, -1);
+WARNING:  negative seed values not compatible
+  hll_hash_smallint
+---------------------
+ 1411828310742905942
+(1 row)
+
+SELECT hll_hash_integer(0, -1);
+WARNING:  negative seed values not compatible
+  hll_hash_integer
+---------------------
+ 7867003898269499267
+(1 row)
+
+SELECT hll_hash_bigint(0, -1);
+WARNING:  negative seed values not compatible
+   hll_hash_bigint
+----------------------
+ -8352849679461500862
+(1 row)
+
+SELECT hll_hash_bytea(E'\\x', -1);
+WARNING:  negative seed values not compatible
+   hll_hash_bytea
+---------------------
+ 7706185961851046380
+(1 row)
+
+SELECT hll_hash_text('AB', -1);
+WARNING:  negative seed values not compatible
+    hll_hash_text
+----------------------
+ -6228783906452318195
+(1 row)
+
+-- ---------------- Matches
+SELECT hll_hash_boolean(FALSE, 0), hll_hash_bytea(E'\\x00', 0);
+  hll_hash_boolean   |   hll_hash_bytea
+---------------------+---------------------
+ 5048724184180415669 | 5048724184180415669
+(1 row)
+
+SELECT hll_hash_boolean(TRUE, 0), hll_hash_bytea(E'\\x01', 0);
+  hll_hash_boolean   |   hll_hash_bytea
+---------------------+---------------------
+ 8849112093580131862 | 8849112093580131862
+(1 row)
+
+SELECT hll_hash_smallint(0::smallint, 0), hll_hash_bytea(E'\\x0000', 0);
+  hll_hash_smallint  |   hll_hash_bytea
+---------------------+---------------------
+ 3478107235931676136 | 3478107235931676136
+(1 row)
+
+SELECT hll_hash_integer(0, 0), hll_hash_bytea(E'\\x00000000', 0);
+   hll_hash_integer   |    hll_hash_bytea
+----------------------+----------------------
+ -3485513579396041028 | -3485513579396041028
+(1 row)
+
+SELECT hll_hash_bigint(0, 0),  hll_hash_bytea(E'\\x0000000000000000', 0);
+   hll_hash_bigint   |   hll_hash_bytea
+---------------------+---------------------
+ 2945182322382062539 | 2945182322382062539
+(1 row)
+
+SELECT hll_hash_bytea(E'\\x4142', 0), hll_hash_text('AB', 0);
+   hll_hash_bytea    |    hll_hash_text
+---------------------+---------------------
+ 5365230931951287672 | 5365230931951287672
+(1 row)
+
+-- ---------------- Default seed = 0
+SELECT hll_hash_boolean(TRUE) = hll_hash_boolean(TRUE, 0);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT hll_hash_smallint(100::smallint) = hll_hash_smallint(100::smallint, 0);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT hll_hash_integer(100) = hll_hash_integer(100, 0);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT hll_hash_bigint(100) = hll_hash_bigint(100, 0);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT hll_hash_bytea(E'\\x42') = hll_hash_bytea(E'\\x42', 0);
+ ?column?
+----------
+ t
+(1 row)
+
+SELECT hll_hash_text('AB') = hll_hash_text('AB', 0);
+ ?column?
+----------
+ t
+(1 row)
+
+-- ---------------- Explicit casts work for already hashed numbers.
+SELECT hll_empty() || 42::hll_hashval;
+         ?column?
+--------------------------
+ \x128b7f000000000000002a
+(1 row)
+
+SELECT hll_empty() || CAST(42 AS hll_hashval);
+         ?column?
+--------------------------
+ \x128b7f000000000000002a
+(1 row)
+
+SELECT hll_empty() || 42::bigint::hll_hashval;
+         ?column?
+--------------------------
+ \x128b7f000000000000002a
+(1 row)
+
+SELECT hll_empty() || CAST(42 AS bigint)::hll_hashval;
+         ?column?
+--------------------------
+ \x128b7f000000000000002a
+(1 row)
+
+-- ERROR: doesn't cast implicitly
+SELECT hll_empty() || 42;
+ERROR:  operator does not exist: hll || integer
+LINE 1: SELECT hll_empty() || 42;
+                           ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.
+SELECT hll_empty() || 42::bigint;
+ERROR:  operator does not exist: hll || bigint
+LINE 1: SELECT hll_empty() || 42::bigint;
+                           ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts.

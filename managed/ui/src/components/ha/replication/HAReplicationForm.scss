@@ -1,3 +1,5 @@
+@use '../../../_style/colors';
+
 .ha-replication-form {
   &__row {
     margin-bottom: 25px;
@@ -6,7 +8,7 @@
     &,
     & > div {
       display: flex;
-      align-items: center;
+      align-items: top;
     }
 
     .yb-field-group {
@@ -27,6 +29,11 @@
       position: absolute;
       bottom: -20px;
     }
+  }
+
+  &__action-bar {
+    display: flex;
+    justify-content: flex-end;
   }
 
   &__alert {
@@ -72,6 +79,35 @@
   .radio-label {
     margin: 0;
     line-height: unset;
+  }
+
+  &__certs {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  &__no-cert--add-button {
+    background: none;
+    border: none;
+    padding: 0;
+
+    color: colors.$YB_ORANGE;
+    &:hover {
+      color: colors.$YB_ORANGE_HOVER;
+      text-decoration: underline;
+    }
+    cursor: pointer;
+  }
+
+  &__cert-container {
+    display: flex;
+    &--identifier {
+      min-width: 750px;
+    }
+    &--ellipse {
+      min-width: 35px;
+    }
   }
 
   &__footer {

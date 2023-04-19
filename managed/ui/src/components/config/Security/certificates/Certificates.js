@@ -4,19 +4,19 @@ import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Field } from 'formik';
 import * as Yup from 'yup';
-import { YBButton } from '../../../common/forms/fields';
+import { YBButton , YBFormInput } from '../../../common/forms/fields';
 import { YBModalForm } from '../../../common/forms';
 import { getPromiseState } from '../../../../utils/PromiseUtils';
-import moment from 'moment';
 import { isNotHidden, isDisabled } from '../../../../utils/LayoutUtils';
 
-import './certificates.scss';
 import { AddCertificateFormContainer } from './';
 import { CertificateDetails } from './CertificateDetails';
 import { api } from '../../../../redesign/helpers/api';
-import { YBFormInput } from '../../../common/forms/fields';
+
 import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
 import { YBConfirmModal } from '../../../modals';
+import { ybFormatDate } from '../../../../redesign/helpers/DateUtils';
+import './certificates.scss';
 
 const validationSchema = Yup.object().shape({
   username: Yup.string().required('Enter username for certificate')
@@ -101,7 +101,7 @@ class Certificates extends Component {
   };
   getDateColumn = (key) => (item, row) => {
     if (key in row) {
-      return moment.utc(row[key], 'YYYY-MM-DD hh:mm:ss a').local().calendar();
+      return ybFormatDate(row[key]);
     } else {
       return null;
     }
@@ -173,8 +173,8 @@ class Certificates extends Component {
     const payload = {
       name: row.name,
       uuid: row.uuid,
-      creationTime: row.creationTime,
-      expiryDate: row.expiryDate,
+      creationTime: row.creationTimeIso,
+      expiryDate: row.expiryDateIso,
       universeDetails: row.universeDetails
     };
     const disableCertEdit = row.type !== 'HashicorpVault';
@@ -269,29 +269,29 @@ class Certificates extends Component {
 
     const certificateArray = getPromiseState(userCertificates).isSuccess()
       ? userCertificates.data
-          .reduce((allCerts, cert) => {
-            const certInfo = {
-              type: cert.certType,
-              uuid: cert.uuid,
-              name: cert.label,
-              expiryDate: cert.expiryDate,
-              certificate: cert.certificate,
-              creationTime: cert.startDate,
-              privateKey: cert.privateKey,
-              customCertInfo: cert.customCertInfo,
-              inUse: cert.inUse,
-              universeDetails: cert.universeDetails,
-              hcVaultCertParams: cert.customHCPKICertInfo
-            };
+        .reduce((allCerts, cert) => {
+          const certInfo = {
+            type: cert.certType,
+            uuid: cert.uuid,
+            name: cert.label,
+            expiryDate: cert.expiryDateIso,
+            certificate: cert.certificate,
+            creationTime: cert.startDateIso,
+            privateKey: cert.privateKey,
+            customCertInfo: cert.customCertInfo,
+            inUse: cert.inUse,
+            universeDetails: cert.universeDetails,
+            hcVaultCertParams: cert.customHCPKICertInfo
+          };
 
-            const isVaultCert = cert.certType === 'HashicorpVault';
-            if (isVaultCert) {
-              isHCVaultEnabled && allCerts.push(certInfo);
-            } else allCerts.push(certInfo);
+          const isVaultCert = cert.certType === 'HashicorpVault';
+          if (isVaultCert) {
+            isHCVaultEnabled && allCerts.push(certInfo);
+          } else allCerts.push(certInfo);
 
-            return allCerts;
-          }, [])
-          .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
+          return allCerts;
+        }, [])
+        .sort((a, b) => new Date(b.creationTime) - new Date(a.creationTime))
       : [];
 
     return (

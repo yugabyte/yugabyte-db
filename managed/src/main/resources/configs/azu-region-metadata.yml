@@ -10,6 +10,10 @@ westus2:
   name: West US 2
   latitude: 47.233
   longitude: -119.852
+westus3:
+  name: West US 3
+  latitude: 33.448376
+  longitude: -112.074036
 westcentralus:
   name: West Central US
   latitude: 40.890

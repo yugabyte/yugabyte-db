@@ -1,8 +1,18 @@
 import axios, { Canceler } from 'axios';
+import {
+  YBProviderMutation,
+  YBProvider,
+  InstanceTypeMutation
+} from '../../components/configRedesign/providerRedesign/types';
+import {
+  HostInfo,
+  Provider as Provider_Deprecated,
+  SuggestedKubernetesConfig,
+  YBPSuccess
+} from './dtos';
 import { ROOT_URL } from '../../config';
 import {
   AvailabilityZone,
-  Provider,
   Region,
   Universe,
   UniverseDetails,
@@ -13,10 +23,15 @@ import {
   UniverseConfigure,
   HAConfig,
   HAReplicationSchedule,
-  HAPlatformInstance
+  HAPlatformInstance,
+  YBPTask
 } from './dtos';
+import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../actions/customers';
+import { UniverseTableFilters } from '../../actions/xClusterReplication';
 
-// define unique names to use them as query keys
+/**
+ * @deprecated Use query key factories for more flexable key organization
+ */
 export enum QUERY_KEY {
   fetchUniverse = 'fetchUniverse',
   getProvidersList = 'getProvidersList',
@@ -24,14 +39,59 @@ export enum QUERY_KEY {
   universeConfigure = 'universeConfigure',
   getInstanceTypes = 'getInstanceTypes',
   getDBVersions = 'getDBVersions',
+  getDBVersionsByProvider = 'getDBVersionsByProvider',
   getAccessKeys = 'getAccessKeys',
   getCertificates = 'getCertificates',
   getKMSConfigs = 'getKMSConfigs',
   deleteCertificate = 'deleteCertificate',
   getHAConfig = 'getHAConfig',
   getHAReplicationSchedule = 'getHAReplicationSchedule',
-  getHABackups = 'getHABackups'
+  getHABackups = 'getHABackups',
+  validateGflags = 'validateGflags',
+  getMostUsedGflags = 'getMostUsedGflags',
+  getAllGflags = 'getAllGflags',
+  getGflagByName = 'getGlagByName'
 }
+
+// --------------------------------------------------------------------------------------
+// React Query Key Factories
+// --------------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------------
+// TODO: Upgrade React Query to 3.17+ to get the change for supporting
+//       annotating these as readonly query keys. (PLAT-4896)
+
+export const providerQueryKey = {
+  ALL: ['provider'],
+  detail: (providerUUID: string) => [...providerQueryKey.ALL, providerUUID]
+};
+
+export const hostInfoQueryKey = {
+  ALL: ['hostInfo']
+};
+
+export const universeQueryKey = {
+  ALL: ['universe'],
+  detail: (universeUUID: string | undefined) => [...universeQueryKey.ALL, universeUUID],
+  tables: (universeUUID: string | undefined, filters: UniverseTableFilters) => [
+    ...universeQueryKey.detail(universeUUID),
+    'tables',
+    { filters }
+  ]
+};
+
+export const runtimeConfigQueryKey = {
+  ALL: ['runtimeConfig'],
+  customerScope: (customerUUID: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUUID]
+};
+
+export const instanceTypeQueryKey = {
+  ALL: ['instanceType'],
+  provider: (providerUUID: string) => [...instanceTypeQueryKey.ALL, 'provider', providerUUID]
+};
+
+export const suggestedKubernetesConfigQueryKey = {
+  ALL: ['suggestedKubernetesConfig']
+};
 
 class ApiService {
   private cancellers: Record<string, Canceler> = {};
@@ -41,7 +101,18 @@ class ApiService {
     return customerId || '';
   }
 
-  findUniverseByName = (universeName: string): Promise<Universe> => {
+  fetchHostInfo = () => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/host_info`;
+    return axios.get<HostInfo>(requestUrl).then((response) => response.data);
+  };
+
+  fetchRuntimeConfigs = (scope?: string, includeInherited = false) => {
+    const configScope = scope || DEFAULT_RUNTIME_GLOBAL_SCOPE;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${configScope}?includeInherited=${includeInherited}`;
+    return axios.get(requestUrl).then((response) => response.data);
+  };
+
+  findUniverseByName = (universeName: string): Promise<string[]> => {
     // auto-cancel previous request, if any
     if (this.cancellers.findUniverseByName) this.cancellers.findUniverseByName();
 
@@ -49,10 +120,15 @@ class ApiService {
     const source = axios.CancelToken.source();
     this.cancellers.findUniverseByName = source.cancel;
 
-    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/find/${universeName}`;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/find?name=${universeName}`;
     return axios
-      .get<Universe>(requestUrl, { cancelToken: source.token })
+      .get<string[]>(requestUrl, { cancelToken: source.token })
       .then((resp) => resp.data);
+  };
+
+  fetchUniverseList = (): Promise<Universe[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes`;
+    return axios.get<Universe[]>(requestUrl).then((response) => response.data);
   };
 
   fetchUniverse = (universeUUID: string | undefined): Promise<Universe> => {
@@ -60,20 +136,101 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUUID}`;
       return axios.get<Universe>(requestUrl).then((resp) => resp.data);
     }
-    return Promise.reject('Querying universe failed: No universe UUID provided.');
+    return Promise.reject('Failed to fetch universe: No universe UUID provided.');
   };
 
-  getProvidersList = (): Promise<Provider[]> => {
+  createProvider = (providerConfigMutation: YBProviderMutation, shouldValidate = true) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
+    return axios
+      .post<YBPTask>(requestURL, providerConfigMutation, {
+        params: {
+          validate: shouldValidate
+        }
+      })
+      .then((response) => response.data);
+  };
+
+  editProvider = (
+    providerUUID: string,
+    providerConfigMutation: YBProviderMutation,
+    shouldValidate = true
+  ) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/edit`;
+    return axios
+      .put<YBPTask>(requestURL, providerConfigMutation, {
+        params: {
+          validate: shouldValidate
+        }
+      })
+      .then((response) => response.data);
+  };
+
+  fetchProviderList = (): Promise<YBProvider[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
-    return axios.get<Provider[]>(requestUrl).then((resp) => resp.data);
+    return axios.get<YBProvider[]>(requestUrl).then((resp) => resp.data);
   };
 
-  getRegionsList = (providerId?: string): Promise<Region[]> => {
+  deleteProvider = (providerUUID: string) => {
+    if (providerUUID) {
+      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
+      return axios.delete<YBPTask>(requestURL).then((response) => response.data);
+    }
+    return Promise.reject('Failed to delete provider: No provider UUID provided.');
+  };
+
+  /**
+   * @Deprecated This function uses an old provider type.
+   */
+  fetchProviderList_Deprecated = (): Promise<Provider_Deprecated[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
+    return axios.get<Provider_Deprecated[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  fetchProvider = (providerUUID: string | undefined): Promise<YBProvider> => {
+    if (providerUUID) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
+      return axios.get<YBProvider>(requestUrl).then((resp) => resp.data);
+    }
+    return Promise.reject('Failed to fetch provider: No provider UUID provided.');
+  };
+
+  fetchSuggestedKubernetesConfig = () => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/suggested_kubernetes_config`;
+    return axios.get<SuggestedKubernetesConfig>(requestURL).then((response) => response.data);
+  };
+
+  fetchProviderRegions = (providerId?: string): Promise<Region[]> => {
     if (providerId) {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/regions`;
       return axios.get<Region[]>(requestUrl).then((resp) => resp.data);
     } else {
-      return Promise.reject('Querying regions failed: no provider ID provided');
+      return Promise.reject('Failed to fetch provider regions: No provider UUID provided.');
+    }
+  };
+
+  createInstanceType = (providerUUID: string, instanceType: InstanceTypeMutation) => {
+    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
+    return axios.post<InstanceType>(requestURL, instanceType).then((response) => response.data);
+  };
+
+  fetchInstanceTypes = (providerUUID?: string): Promise<InstanceType[]> => {
+    if (providerUUID) {
+      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
+      return axios.get<InstanceType[]>(requestURL).then((response) => response.data);
+    } else {
+      return Promise.reject('Failed to fetch provider regions: No provider UUID provided');
+    }
+  };
+
+  deleteInstanceType = (providerUUID: string, instanceTypeCode: string) => {
+    if (providerUUID && instanceTypeCode) {
+      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types/${instanceTypeCode}`;
+      return axios.delete<YBPSuccess>(requestURL).then((response) => response.data);
+    } else {
+      const errorMessage = providerUUID
+        ? 'No instance type code provided'
+        : 'No provider UUID provided';
+      return Promise.reject(`Failed to fetch provider regions: ${errorMessage}`);
     }
   };
 
@@ -97,18 +254,18 @@ class ApiService {
     return axios.put<Universe>(requestUrl, data).then((resp) => resp.data);
   };
 
-  getInstanceTypes = (providerId?: string): Promise<InstanceType[]> => {
-    if (providerId) {
-      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`;
-      return axios.get<InstanceType[]>(requestUrl).then((resp) => resp.data);
-    } else {
-      return Promise.reject('Querying instance types failed: no provider ID provided');
-    }
-  };
-
   getDBVersions = (): Promise<string[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
     return axios.get<string[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {
+    if (providerId) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/releases`;
+      return axios.get<string[]>(requestUrl).then((resp) => resp.data);
+    } else {
+      return Promise.reject('Querying access keys failed: no provider ID provided');
+    }
   };
 
   getAccessKeys = (providerId?: string): Promise<AccessKey[]> => {

@@ -10,7 +10,6 @@
  *
  *-------------------------------------------------------------------------
  */
-#include <pg_yb_utils.h>
 #include "postgres.h"
 
 #include "access/genam.h"
@@ -39,6 +38,10 @@
 #include "utils/fmgroids.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
+
+#include "catalog/pg_yb_role_profile.h"
+#include "commands/yb_profile.h"
+#include "pg_yb_utils.h"
 
 /* Potentially set by pg_upgrade_support functions */
 Oid			binary_upgrade_next_pg_authid_oid = InvalidOid;
@@ -522,6 +525,12 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	DefElem    *dbypassRLS = NULL;
 	Oid			roleid;
 
+	char       *profile = NULL;
+	int			unlocked = -1;
+	DefElem    *dprofile = NULL;
+	DefElem    *dnoprofile = NULL;
+	DefElem    *dunlocked = NULL;
+
 	check_rolespec_name(stmt->role,
 						_("Cannot alter reserved roles."));
 
@@ -597,6 +606,30 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 				errorConflictingDefElem(defel, pstate);
 			dbypassRLS = defel;
 		}
+		else if (strcmp(defel->defname, "profile") == 0)
+		{
+			if (dprofile)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dprofile = defel;
+		}
+		else if (strcmp(defel->defname, "noprofile") == 0)
+		{
+			if (dnoprofile)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dnoprofile = defel;
+		}
+		else if (strcmp(defel->defname, "unlocked") == 0)
+		{
+			if (dunlocked)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dunlocked = defel;
+		}
 		else
 			elog(ERROR, "option \"%s\" not recognized",
 				 defel->defname);
@@ -614,6 +647,11 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 	}
 	if (dvalidUntil)
 		validUntil = strVal(dvalidUntil->arg);
+
+	if (dprofile && dprofile->arg)
+		profile = strVal(dprofile->arg);
+	if (dunlocked && dunlocked->arg)
+		unlocked = intVal(dunlocked->arg);
 
 	/*
 	 * Scan the pg_authid relation to be certain the user exists.
@@ -654,6 +692,14 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 					 errmsg("must be superuser or a member of the yb_db_admin "
 					 		"role to change bypassrls attribute")));
 	}
+	else if (profile != NULL || dnoprofile != NULL || dunlocked != NULL)
+	{
+		if (!superuser() && !IsYbDbAdminUser(GetUserId()))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser or a member of the yb_db_admin "
+							"role to change profile configuration")));
+	}
 	else if (!have_createrole_privilege())
 	{
 		/* check the rest */
@@ -662,6 +708,25 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 					 errmsg("permission denied")));
+	}
+
+	if (profile != NULL || dnoprofile != NULL || dunlocked != NULL)
+	{
+		if (profile != NULL)
+			YbCreateRoleProfile(roleid, rolename, profile);
+		else if (dunlocked != NULL)
+			YbSetRoleProfileStatus(roleid, rolename,
+								   unlocked == 0 ? YB_ROLPRFSTATUS_LOCKED
+												 : YB_ROLPRFSTATUS_OPEN);
+		else
+		{
+			Assert(dnoprofile);
+			YbRemoveRoleProfileForRoleIfExists(roleid);
+		}
+
+		ReleaseSysCache(tuple);
+		heap_close(pg_authid_rel, NoLock);
+		return roleid;
 	}
 
 	/* Convert validuntil to internal form */
@@ -1021,6 +1086,12 @@ DropRole(DropRoleStmt *stmt)
 					 errdetail_internal("%s", detail),
 					 errdetail_log("%s", detail_log)));
 		}
+
+		/*
+		 * If the role is attached to a profile, auto-remove that association.
+		 */
+		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
+			YbRemoveRoleProfileForRoleIfExists(roleid);
 
 		/*
 		 * Remove the role from the pg_authid table

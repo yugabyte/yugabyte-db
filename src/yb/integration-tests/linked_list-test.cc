@@ -80,19 +80,21 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/flags.h"
 
 using namespace std::literals;
 
-DEFINE_int32(seconds_to_run, 5, "Number of seconds for which to run the test");
+DEFINE_UNKNOWN_int32(seconds_to_run, 5, "Number of seconds for which to run the test");
 
-DEFINE_int32(num_chains, 50, "Number of parallel chains to generate");
-DEFINE_int32(num_tablets, 3, "Number of tablets over which to split the data");
-DEFINE_bool(enable_mutation, true, "Enable periodic mutation of inserted rows");
-DEFINE_int32(num_snapshots, 3, "Number of snapshots to verify across replicas and reboots.");
+DEFINE_UNKNOWN_int32(num_chains, 50, "Number of parallel chains to generate");
+DEFINE_UNKNOWN_int32(num_tablets, 3, "Number of tablets over which to split the data");
+DEFINE_UNKNOWN_bool(enable_mutation, true, "Enable periodic mutation of inserted rows");
+DEFINE_UNKNOWN_int32(num_snapshots, 3,
+    "Number of snapshots to verify across replicas and reboots.");
 
-DEFINE_bool(stress_flush_compact, false,
+DEFINE_UNKNOWN_bool(stress_flush_compact, false,
             "Flush and compact way more aggressively to try to find bugs");
-DEFINE_bool(stress_wal_gc, false,
+DEFINE_UNKNOWN_bool(stress_wal_gc, false,
             "Set WAL segment size small so that logs will be GCed during the test");
 DECLARE_int32(replication_factor);
 DECLARE_string(ts_flags);
@@ -180,9 +182,9 @@ class LinkedListTester {
 
   // Variant of VerifyLinkedListRemote that verifies without specifying a snapshot hybrid_time.
   Status VerifyLinkedListNoSnapshotRemote(const int64_t expected,
-                                                  const bool log_errors,
-                                                  const bool latest_at_leader,
-                                                  int64_t* verified_count) {
+                                          const bool log_errors,
+                                          const bool latest_at_leader,
+                                          int64_t* verified_count) {
     LOG(INFO) << __func__ << ": expected=" << expected
               << ", log_errors=" << log_errors
               << ", latest_at_leader=" << latest_at_leader;
@@ -201,8 +203,8 @@ class LinkedListTester {
   // A variant of VerifyLinkedListRemote that is more robust towards ongoing
   // bootstrapping and replication.
   Status WaitAndVerify(const int seconds_to_run,
-                               const int64_t expected,
-                               const bool latest_at_leader) {
+                       const int64_t expected,
+                       const bool latest_at_leader) {
     LOG(INFO) << __func__ << ": seconds_to_run=" << seconds_to_run
               << ", expected=" << expected
               << ", latest_at_leader=" << latest_at_leader;

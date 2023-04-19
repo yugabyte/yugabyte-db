@@ -79,22 +79,18 @@ export default class AZPlacementInfo extends Component {
           if (replicationFactor / 2 < az.replicationFactor) {
             multiAz = false;
           }
-        } else {
-          if ((replicationFactor - 1) / 2 < az.replicationFactor) {
+        } else if ((replicationFactor - 1) / 2 < az.replicationFactor) {
             multiAz = false;
           }
-        }
       });
 
       if (replicationFactor % 2 === 0) {
         if (replicationFactor / 2 < regionNumReplicas) {
           multiRegion = false;
         }
-      } else {
-        if ((replicationFactor - 1) / 2 < regionNumReplicas) {
+      } else if ((replicationFactor - 1) / 2 < regionNumReplicas) {
           multiRegion = false;
         }
-      }
     });
     
 

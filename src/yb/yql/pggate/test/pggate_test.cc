@@ -19,8 +19,7 @@
 #include <string>
 #include <unordered_set>
 
-#include <boost/optional.hpp>
-#include <gflags/gflags.h>
+#include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
@@ -215,6 +214,12 @@ void PggateTest::BeginTransaction() {
 
 void PggateTest::CommitTransaction() {
   CHECK_YBC_STATUS(YBCPgCommitTransaction());
+}
+
+void PggateTest::ExecCreateTableTransaction(YBCPgStatement pg_stmt) {
+  BeginDDLTransaction();
+  CHECK_YBC_STATUS(YBCPgExecCreateTable(pg_stmt));
+  CommitDDLTransaction();
 }
 
 // ------------------------------------------------------------------------------------------------

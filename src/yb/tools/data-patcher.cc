@@ -16,6 +16,7 @@
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/transaction.h"
 
+#include "yb/consensus/log.messages.h"
 #include "yb/consensus/log_index.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/log_util.h"
@@ -372,7 +373,7 @@ Status AddDeltaToSstFile(
     auto builder = helper->NewTableBuilder(base_file_writer.get(), data_file_writer.get());
     const auto add_kv = [&builder, debug, storage_db_type](const Slice& k, const Slice& v) {
       if (debug) {
-        static docdb::SchemaPackingStorage schema_packing_storage;
+        static docdb::SchemaPackingStorage schema_packing_storage(TableType::YQL_TABLE_TYPE);
         const Slice user_key(k.data(), k.size() - kKeySuffixLen);
         auto key_type = docdb::GetKeyType(user_key, storage_db_type);
         auto rocksdb_value_type = static_cast<rocksdb::ValueType>(*(k.end() - kKeySuffixLen));
@@ -418,20 +419,24 @@ Status AddDeltaToSstFile(
           if (storage_db_type == StorageDbType::kRegular) {
             docdb::Value docdb_value;
             auto value_slice = iterator->value();
-            auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
-            if (control_fields.intent_doc_ht.is_valid()) {
-              auto intent_ht = control_fields.intent_doc_ht.hybrid_time();
+            Slice encoded_intent_doc_ht;
+            auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::DecodeWithIntentDocHt(
+                &value_slice, &encoded_intent_doc_ht));
+            if (!encoded_intent_doc_ht.empty()) {
+              auto intent_doc_ht = VERIFY_RESULT(DocHybridTime::FullyDecodeFrom(
+                  encoded_intent_doc_ht));
               if (is_final_pass) {
                 DocHybridTime new_intent_doc_ht(
-                    VERIFY_RESULT(delta_data.AddDelta(intent_ht, FileType::kSST)),
-                    docdb_value.intent_doc_ht().write_id());
-                control_fields.intent_doc_ht = new_intent_doc_ht;
+                    VERIFY_RESULT(delta_data.AddDelta(intent_doc_ht.hybrid_time(), FileType::kSST)),
+                    intent_doc_ht.write_id());
                 value_buffer.clear();
+                value_buffer.push_back(docdb::KeyEntryTypeAsChar::kHybridTime);
+                new_intent_doc_ht.AppendEncodedInDocDbFormat(&value_buffer);
                 control_fields.AppendEncoded(&value_buffer);
                 value_buffer.append(value_slice.cdata(), value_slice.size());
                 value_updated = true;
               } else {
-                delta_data.AddEarlyTime(intent_ht);
+                delta_data.AddEarlyTime(intent_doc_ht.hybrid_time());
               }
             }
           }
@@ -504,12 +509,13 @@ Status AddDeltaToSstFile(
                 << "value " << value.ToDebugHexString() << " (" << FormatSliceAsStr(value) << "), "
                 << "decoded value " << DocDBValueToDebugStr(
                     docdb::KeyType::kReverseTxnKey, iterator->key(), iterator->value(),
-                    docdb::SchemaPackingStorage());
+                    docdb::SchemaPackingStorage(TableType::YQL_TABLE_TYPE));
             return doc_ht_result.status();
           }
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
         }
       }
+      RETURN_NOT_OK(iterator->status());
 
       if (is_final_pass) {
         done = true;
@@ -606,9 +612,9 @@ Status ChangeTimeInWalDir(
   header.set_minor_version(log::kLogMinorVersion);
   header.set_sequence_number(1);
   header.set_unused_tablet_id("TABLET ID");
-  header.mutable_schema();
+  header.mutable_deprecated_schema();
 
-  RETURN_NOT_OK(new_segment.WriteHeaderAndOpen(header));
+  RETURN_NOT_OK(new_segment.WriteHeader(header));
 
   // Set up the new footer. This will be maintained as the segment is written.
   size_t num_entries = 0;
@@ -667,7 +673,7 @@ Status ChangeTimeInWalDir(
       };
 
       auto add_entry = [&write_entry_batch, &batch, &last_index, &committed_op_id](
-          std::unique_ptr<log::LogEntryPB> entry) -> Status {
+          std::shared_ptr<log::LWLogEntryPB> entry) -> Status {
         if (entry->has_replicate() && entry->replicate().id().index() <= last_index) {
           RETURN_NOT_OK(write_entry_batch(/* last_batch_of_segment= */ false));
         }
@@ -676,7 +682,7 @@ Status ChangeTimeInWalDir(
             entry->replicate().has_committed_op_id()) {
           committed_op_id = OpId::FromPB(entry->replicate().committed_op_id());
         }
-        batch.mutable_entry()->AddAllocated(entry.release());
+        entry->ToGoogleProtobuf(batch.add_entry());
         return Status::OK();
       };
 

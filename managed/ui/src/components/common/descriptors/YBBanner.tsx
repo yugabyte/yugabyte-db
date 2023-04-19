@@ -3,20 +3,22 @@ import clsx from 'clsx';
 
 import styles from './stylesheets/YBBanner.module.scss';
 
+// Add more variants as needed
+// eslint-disable-next-line @typescript-eslint/no-use-before-define
+export enum YBBannerVariant {
+  WARNING = 'warning',
+  DANGER = 'danger'
+}
+
 interface YBBannerProps {
   children: ReactNode;
-
   bannerIcon?: ReactNode;
   className?: string;
   showBannerIcon?: boolean;
   variant?: YBBannerVariant;
 }
 
-// Add more variants as needed
-export enum YBBannerVariant {
-  WARNING = 'warning',
-  DANGER = 'danger'
-}
+
 
 export const YBBanner = ({
   className,

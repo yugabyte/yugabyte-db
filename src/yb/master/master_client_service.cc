@@ -16,9 +16,9 @@
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
 
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 
-DEFINE_int32(master_inject_latency_on_tablet_lookups_ms, 0,
+DEFINE_UNKNOWN_int32(master_inject_latency_on_tablet_lookups_ms, 0,
              "Number of milliseconds that the master will sleep before responding to "
              "requests for tablet locations.");
 TAG_FLAG(master_inject_latency_on_tablet_lookups_ms, unsafe);
@@ -124,6 +124,8 @@ class MasterClientServiceImpl : public MasterServiceBase, public MasterClientIf 
     (RedisConfigSet)
     (RedisConfigGet)
     (ReservePgsqlOids)
+    (GetIndexBackfillProgress)
+    (GetStatefulServiceLocation)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(

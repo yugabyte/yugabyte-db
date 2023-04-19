@@ -87,6 +87,7 @@
 
 /*  YB includes. */
 #include "commands/ybccmds.h"
+#include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
 
 /*
@@ -847,8 +848,10 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 					 errhint("Consider using tablespaces instead."),
 					 parser_errposition(pstate, defel->location)));
 		}
-		else if (strcmp(defel->defname, "colocated") == 0)
+		else if (strcmp(defel->defname, "colocated") == 0
+				 || strcmp(defel->defname, "colocation") == 0)
 		{
+			/* Ensure only one of colocation and colocated can be specified. */
 			if (dcolocated)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
@@ -964,6 +967,9 @@ createdb(ParseState *pstate, const CreatedbStmt *stmt)
 	}
 	if (dcolocated && dcolocated->arg)
 		dbcolocated = defGetBoolean(dcolocated);
+	else
+		dbcolocated = YBColocateDatabaseByDefault();
+
 	if (dcollversion)
 		dbcollversion = defGetString(dcollversion);
 

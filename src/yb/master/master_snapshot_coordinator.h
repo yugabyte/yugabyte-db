@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
-#define YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H
+#pragma once
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
@@ -41,6 +40,8 @@ struct SnapshotScheduleRestoration {
   OpId op_id;
   HybridTime write_time;
   int64_t term;
+  // DB OID of the database that is being restored.
+  std::optional<int64_t> db_oid;
   std::vector<std::pair<SnapshotScheduleId, SnapshotScheduleFilterPB>> schedules;
   std::vector<std::pair<TabletId, SysTabletsEntryPB>> non_system_obsolete_tablets;
   std::vector<std::pair<TableId, SysTablesEntryPB>> non_system_obsolete_tables;
@@ -54,6 +55,7 @@ struct SnapshotScheduleRestoration {
     std::pair<TabletId, SysTabletsEntryPB*> parent;
     std::unordered_map<TabletId, SysTabletsEntryPB*> children;
   };
+  std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
   // Tablets as of the restoring time with their parent-child relationships.
   // Map from parent tablet id -> information about parent and children.
   // For colocated tablets or tablets that have not been split as of restoring time,
@@ -65,8 +67,7 @@ struct SnapshotScheduleRestoration {
 // Class that coordinates transaction aware snapshots at master.
 class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
  public:
-  explicit MasterSnapshotCoordinator(
-      SnapshotCoordinatorContext* context, enterprise::CatalogManager* cm);
+  explicit MasterSnapshotCoordinator(SnapshotCoordinatorContext* context, CatalogManager* cm);
   ~MasterSnapshotCoordinator();
 
   Result<TxnSnapshotId> Create(
@@ -157,5 +158,3 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_SNAPSHOT_COORDINATOR_H

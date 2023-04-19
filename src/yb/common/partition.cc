@@ -33,6 +33,7 @@
 #include "yb/common/partition.h"
 
 #include <algorithm>
+#include <climits>
 #include <limits>
 #include <set>
 
@@ -55,7 +56,6 @@
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/util/status_format.h"
-#include "yb/util/yb_partition.h"
 
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
@@ -368,7 +368,9 @@ Status PartitionSchema::EncodeKey(const RepeatedPtrField<QLExpressionPB>& hash_c
       for (const auto &col_expr_pb : hash_col_values) {
         AppendToKey(col_expr_pb.value(), &tmp);
       }
-      return CompleteEncodeKey(tmp, buf);
+      const auto hash_value = YBPartition::HashColumnCompoundValue(tmp);
+      *buf = EncodeMultiColumnHashValue(hash_value);
+      return Status::OK();
     }
     case YBHashSchema::kPgsqlHash:
       DLOG(FATAL) << "Illegal code path. PGSQL hash cannot be computed from CQL expression";
@@ -499,30 +501,78 @@ bool PartitionSchema::IsValidHashPartitionKeyBound(const string& partition_key) 
   return partition_key.empty() || partition_key.size() == kPartitionKeySize;
 }
 
-uint32_t PartitionSchema::GetOverlap(
+Result<std::string> PartitionSchema::GetLexicographicMiddleKey(
+    const std::string& key_start, const std::string& key_end) {
+  constexpr uint16_t base = UCHAR_MAX + 1;
+  // Note:
+  // Currently for range sharded tablets, this algorithm may end up overweighing unused ASCII values
+  // at the key range edges (since all ASCII values are assumed equally weighted). This preference
+  // may lead to the end tablets, ("", __) and (__, "") to be selected more frequently for xCluster
+  // poller assignments.
+  SCHECK(
+      key_end.empty() || (key_start <= key_end), InvalidArgument,
+      "key_start ($0) cannot be larger than key_end ($1)", Slice(key_start).ToDebugHexString(),
+      Slice(key_end).ToDebugHexString());
+  string middle_key = {};
+  size_t key_size = max(key_start.size(), key_end.size());
+
+  if (key_size == 0) {
+    // Pick the center ASCII char (128) as the midpoint for ["",""].
+    middle_key.push_back((unsigned char)(base / 2));
+    return middle_key;
+  }
+  middle_key.reserve(key_size);
+
+  uint16_t carry_over = 0;
+  // Take average of each character from both strings. If we have a remainder, keep track of that
+  // in carry_over, and use that in next average calculation too. Note that when doing so, we may
+  // end up overflowing, in which case we need to correct for the previous char as well.
+  // Example:
+  // Middle of {1, 255, 20} and {2, 5, 101} (converting chars to ASCII vals).
+  // First char 1, 2:
+  //    1 + 2 = 3
+  //    3 // 2 = 1 and carry over 1
+  // Second char 255, 5:
+  //    255 + 5 + 256 (carryover) = 516
+  //    516 / 2 = 258
+  //    258 >= 256, so need to overflow to previous char and add 1 (so now first char is 1+1=2)
+  //    258 - 256 = 2 and no carry over
+  // Third char 20, 100:
+  //    20 + 101 = 121
+  //    121 // 2 = 60 and no carry over since this is the last char.
+  //
+  // So in the end we get {2, 2, 60}.
+  for (size_t i = 0; i < key_size; ++i) {
+    // Keep everything in [0,255] so that averages work as expected.
+    uint8_t left = (i >= key_start.size()) ? 0 : key_start[i];
+    uint8_t right = (i >= key_end.size()) ? UCHAR_MAX : key_end[i];
+
+    uint16_t sum = left + right + carry_over;
+    uint16_t avg = sum / 2;  // Intentionally truncating.
+    if (avg >= base) {
+      // Need to modify the previous value due to overflow. At most we could have:
+      //  ((base-1) + (base-1) + base) / 2 < 3/2 base
+      // So if avg >= base, then we only need to add an overflow of 1 to previous value.
+      // No worries then about overflowing the previous value as it is strictly less than UCHAR_MAX.
+      middle_key.back() += 1;
+      // Same as avg = avg % base.
+      avg -= base;
+    }
+    middle_key.push_back((unsigned char)avg);
+    // Update carry over for next value.
+    carry_over = sum % 2 ? base : 0;
+  }
+
+  return middle_key;
+}
+
+bool PartitionSchema::HasOverlap(
     const std::string& key_start,
     const std::string& key_end,
     const std::string& other_key_start,
     const std::string& other_key_end) {
-  uint16_t first_start_val = PartitionSchema::DecodeMultiColumnHashLeftBound(key_start);
-  uint16_t second_start_val = PartitionSchema::DecodeMultiColumnHashLeftBound(other_key_start);
-  uint16_t first_end_val = PartitionSchema::DecodeMultiColumnHashRightBound(key_end);
-  uint16_t second_end_val = PartitionSchema::DecodeMultiColumnHashRightBound(other_key_end);
-
-  // Use uint32 as max Overlap is uint16_t max + 1
-  uint32_t start_key = max(first_start_val, second_start_val);
-  uint32_t end_key = min(first_end_val, second_end_val);
-
-  if (end_key >= start_key) {
-    return end_key - start_key + 1;
-  }
-
-  return 0;
-}
-
-uint32_t PartitionSchema::GetPartitionRangeSize(
-    const std::string& key_start, const std::string& key_end) {
-  return GetOverlap(key_start, key_end, key_start, key_end);
+  return (other_key_end.empty() || key_start < other_key_end) &&
+         (key_end.empty() || other_key_start < key_end);
 }
 
 Status PartitionSchema::CreateRangePartitions(std::vector<Partition>* partitions) const {
@@ -1233,7 +1283,7 @@ Status PartitionSchema::EncodeColumns(const YBPartialRow& row,
   return Status::OK();
 }
 
-uint16_t PartitionSchema::HashColumnCompoundValue(const string& compound) {
+uint16_t PartitionSchema::HashColumnCompoundValue(std::string_view compound) {
   // In the future, if you wish to change the hashing behavior, you must introduce a new hashing
   // method for your newly-created tables.  Existing tables must continue to use their hashing
   // methods that was define by their PartitionSchema.
@@ -1384,12 +1434,6 @@ void PartitionSchema::ProcessHashKeyEntry(const LWPgsqlExpressionPB& expr, std::
 
 void PartitionSchema::ProcessHashKeyEntry(const PgsqlExpressionPB& expr, std::string* out) {
   AppendToKey(expr.value(), out);
-}
-
-Status PartitionSchema::CompleteEncodeKey(const std::string& key, std::string* buf) {
-  const uint16_t hash_value = YBPartition::HashColumnCompoundValue(key);
-  *buf = EncodeMultiColumnHashValue(hash_value);
-  return Status::OK();
 }
 
 } // namespace yb

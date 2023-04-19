@@ -34,6 +34,8 @@ Once defined, the index is used when the expression that defines the index is in
 
 ## Example
 
+{{% explore-setup-single %}}
+
 A common use case of an expression index is to support case-insensitive text to enable efficient searchability.
 
 For example, suppose you have a `users` table with an `email` column to store login email addresses, and you want to maintain case-insensitive authentication. Using the WHERE clause as WHERE LOWER(email) = '<lower_case_email>' allows you to store the email address as originally entered by the user.
@@ -79,9 +81,9 @@ The following example uses the `employees` table from the Secondary indexes [exa
 ## Explore covering indexes
 
 - Learn how [covering indexes](../../indexes-constraints/covering-index-ysql/) can optimize query performance by covering all the columns needed by a query.
-- [Benefits of an Index-only scan](https://blog.yugabyte.com/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
+- [Benefits of an Index-only scan](https://www.yugabyte.com/blog/how-a-distributed-sql-database-boosts-secondary-index-queries-with-index-only-scan/)
 
 ## Learn more
 
 - [Partial and expression indexes](../../json-support/jsonb-ysql/#partial-and-expression-indexes)
-- [SQL Puzzle: Partial Versus Expression Indexes](https://blog.yugabyte.com/sql-puzzle-partial-versus-expression-indexes/)
+- [SQL Puzzle: Partial Versus Expression Indexes](https://www.yugabyte.com/blog/sql-puzzle-partial-versus-expression-indexes/)

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_CATALOG_MANAGER_IF_H
-#define YB_MASTER_CATALOG_MANAGER_IF_H
+#pragma once
 
 #include "yb/common/common_fwd.h"
 
@@ -116,6 +115,9 @@ class CatalogManagerIf {
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
 
+  virtual Status GetXClusterConfig(GetMasterXClusterConfigResponsePB* resp) = 0;
+  virtual Status GetXClusterConfig(SysXClusterConfigEntryPB* config) = 0;
+
   virtual Status SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) = 0;
 
@@ -151,7 +153,7 @@ class CatalogManagerIf {
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentTasks() = 0;
 
   virtual Result<boost::optional<TablespaceId>> GetTablespaceForTable(
-      const scoped_refptr<TableInfo>& table) = 0;
+      const scoped_refptr<TableInfo>& table) const = 0;
 
   virtual bool IsLoadBalancerEnabled() = 0;
 
@@ -225,9 +227,10 @@ class CatalogManagerIf {
 
   virtual void DumpState(std::ostream* out, bool on_disk_dump = false) const = 0;
 
-  virtual Status VisitSysCatalog(int64_t term) = 0;
+  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id, bool colocated) = 0;
 
-  virtual scoped_refptr<TableInfo> NewTableInfo(TableId id) = 0;
+  virtual Status AreLeadersOnPreferredOnly(const AreLeadersOnPreferredOnlyRequestPB* req,
+                                   AreLeadersOnPreferredOnlyResponsePB* resp) = 0;
 
   // If is_manual_split is true, we will not call ShouldSplitValidCandidate.
   virtual Status SplitTablet(const TabletId& tablet_id, ManualSplit is_manual_split) = 0;
@@ -253,6 +256,8 @@ class CatalogManagerIf {
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
 
+  virtual XClusterSafeTimeService* TEST_xcluster_safe_time_service() = 0;
+
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 
   virtual intptr_t tablets_version() const = 0;
@@ -260,6 +265,11 @@ class CatalogManagerIf {
   virtual intptr_t tablet_locations_version() const = 0;
 
   virtual tablet::SnapshotCoordinator& snapshot_coordinator() = 0;
+
+  virtual Status UpdateLastFullCompactionRequestTime(const TableId& table_id) = 0;
+
+  virtual Status GetCompactionStatus(
+      const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };
@@ -272,5 +282,3 @@ bool IsYcqlTable(const TableInfo& table);
 
 }  // namespace master
 }  // namespace yb
-
-#endif  // YB_MASTER_CATALOG_MANAGER_IF_H

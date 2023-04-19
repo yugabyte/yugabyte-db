@@ -21,7 +21,6 @@ import subprocess
 import sys
 import os
 import logging
-import yugabyte_pycommon  # type: ignore
 import argparse
 import xml.etree.ElementTree as ET
 import json
@@ -29,6 +28,10 @@ import signal
 import glob
 
 from typing import Any, Dict, AnyStr
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from yb.common_util import init_logging  # noqa
+
 
 # Example test failure (from C++)
 # <?xml version="1.0" ?><testsuites disabled="0" errors="0" failures="1" name="AllTests" tests="1
@@ -89,7 +92,8 @@ FAIL_TAG_AND_PATTERN: Dict[str, str] = {
     'asan_heap_use_after_free': 'AddressSanitizer: heap-use-after-free',
     'asan_undefined': 'AddressSanitizer: undefined-behavior',
     'undefined_behavior': 'UndefinedBehaviorSanitizer: undefined-behavior',
-    'tsan': 'ThreadSanitizer',
+    'tsan_race': 'ThreadSanitizer: data race',
+    'tsan_deadlock': 'ThreadSanitizer: lock-order-inversion',
     'leak_check_failure': 'Leak check.*detected leaks',
     'segmentation_fault': 'Segmentation fault: ',
     'gtest': r'^\[  FAILED  \]',
@@ -318,5 +322,5 @@ def main() -> None:
 
 
 if __name__ == '__main__':
-    yugabyte_pycommon.init_logging()
+    init_logging(verbose=False)
     main()

@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_MASTER_MASTER_FWD_H
-#define YB_MASTER_MASTER_FWD_H
+#pragma once
 
 #include <map>
 #include <memory>
@@ -80,8 +79,10 @@ class SysRowEntries;
 class TSDescriptor;
 class TSManager;
 class UDTypeInfo;
+class XClusterSafeTimeService;
 class YQLPartitionsVTable;
 class YQLVirtualTable;
+class YsqlBackendsManager;
 class YsqlTablegroupManager;
 class YsqlTablespaceManager;
 class YsqlTransactionDdl;
@@ -96,7 +97,6 @@ using AsyncTabletSnapshotOpPtr = std::shared_ptr<AsyncTabletSnapshotOp>;
 
 class TableInfo;
 using TableInfoPtr = scoped_refptr<TableInfo>;
-using TableInfoMap = std::map<TableId, TableInfoPtr>;
 
 class TabletInfo;
 using TabletInfoPtr = scoped_refptr<TabletInfo>;
@@ -109,6 +109,7 @@ YB_STRONGLY_TYPED_BOOL(RegisteredThroughHeartbeat);
 
 YB_STRONGLY_TYPED_BOOL(IncludeInactive);
 YB_STRONGLY_TYPED_BOOL(IncludeDeleted);
+YB_STRONGLY_TYPED_BOOL(IsSystemObject);
 
 YB_DEFINE_ENUM(
     CollectFlag,
@@ -133,13 +134,7 @@ using RetryingTSRpcTaskPtr = std::shared_ptr<RetryingTSRpcTask>;
 using DbOidToCatalogVersionMap = std::map<uint32_t, std::pair<uint64_t, uint64_t>>;
 using RelIdToAttributesMap = std::unordered_map<uint32_t, std::vector<PgAttributePB>>;
 using RelTypeOIDMap = std::unordered_map<uint32_t, uint32_t>;
-namespace enterprise {
-
 class CatalogManager;
-
-} // namespace enterprise
 
 } // namespace master
 } // namespace yb
-
-#endif // YB_MASTER_MASTER_FWD_H

@@ -30,8 +30,7 @@
 // under the License.
 //
 // Utility methods for dealing with string case.
-#ifndef YB_UTIL_STRING_CASE_H_
-#define YB_UTIL_STRING_CASE_H_
+#pragma once
 
 #include <string>
 
@@ -93,4 +92,3 @@ std::string Capitalize(const std::string& word);
 bool ContainsUpperCase(const std::string& str);
 
 }  // namespace yb
-#endif  // YB_UTIL_STRING_CASE_H_

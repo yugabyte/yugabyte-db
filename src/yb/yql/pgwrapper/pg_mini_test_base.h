@@ -11,13 +11,14 @@
 // under the License.
 //
 
-#ifndef YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
-#define YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H
+#pragma once
 
 #include <functional>
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
+
+#include "yb/gutil/macros.h"
 
 #include "yb/util/result.h"
 
@@ -31,7 +32,7 @@ class RpcServerBase;
 
 namespace pgwrapper {
 
-class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
+class PgMiniTestBase : public MiniClusterTestWithClient<MiniCluster> {
  protected:
   // This allows modifying flags before we start the postgres process in SetUp.
   virtual void BeforePgProcessStart() {
@@ -80,6 +81,10 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
 
   Result<TableId> GetTableIDFromTableName(const std::string table_name);
 
+  Result<master::CatalogManagerIf*> catalog_manager() const;
+
+  void FlushAndCompactTablets();
+
  private:
   Result<PgProcessConf> CreatePgProcessConf(uint16_t port);
 
@@ -87,10 +92,11 @@ class PgMiniTestBase : public YBMiniClusterTestBase<MiniCluster> {
   HostPort pg_host_port_;
 };
 
-class HistogramMetricWatcher {
+class MetricWatcher {
  public:
   using DeltaFunctor = std::function<Status()>;
-  HistogramMetricWatcher(const server::RpcServerBase& server, const MetricPrototype& metric);
+  MetricWatcher(std::reference_wrapper<const server::RpcServerBase> server,
+                std::reference_wrapper<const MetricPrototype> metric);
 
   Result<size_t> Delta(const DeltaFunctor& functor) const;
 
@@ -99,9 +105,9 @@ class HistogramMetricWatcher {
 
   const server::RpcServerBase& server_;
   const MetricPrototype& metric_;
+
+  DISALLOW_COPY_AND_ASSIGN(MetricWatcher);
 };
 
 } // namespace pgwrapper
 } // namespace yb
-
-#endif // YB_YQL_PGWRAPPER_PG_MINI_TEST_BASE_H

@@ -19,7 +19,7 @@
  *
  *-------------------------------------------------------------------------
  */
- 
+
 #ifndef NODEYBBATCHEDNESTLOOP_H
 #define NODEYBBATCHEDNESTLOOP_H
 

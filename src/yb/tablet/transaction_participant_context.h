@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H
-#define YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H
+#pragma once
 
 #include <future>
 
@@ -42,7 +41,7 @@ class TransactionParticipantContext {
   virtual void StrandEnqueue(rpc::StrandTask* task) = 0;
   virtual void UpdateClock(HybridTime hybrid_time) = 0;
   virtual bool IsLeader() = 0;
-  virtual void SubmitUpdateTransaction(
+  virtual Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> state, int64_t term) = 0;
 
   // Returns hybrid time that lower than any future transaction apply record.
@@ -60,5 +59,3 @@ class TransactionParticipantContext {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TRANSACTION_PARTICIPANT_CONTEXT_H

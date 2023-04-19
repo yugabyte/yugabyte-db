@@ -63,7 +63,6 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
-#include "catalog/pg_yb_tablegroup.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -91,6 +90,11 @@
 #include "utils/memutils.h"
 #include "utils/regproc.h"
 #include "utils/syscache.h"
+
+#include "catalog/pg_yb_profile.h"
+#include "catalog/pg_yb_role_profile.h"
+#include "catalog/pg_yb_tablegroup.h"
+#include "commands/yb_profile.h"
 
 /*
  * ObjectProperty
@@ -635,6 +639,19 @@ static const ObjectPropertyType ObjectProperty[] =
 		OBJECT_USER_MAPPING,
 		false
 	},
+	{
+		/* YB_TODO(neil) Need name for the new entry */
+		YbProfileRelationId,
+		YbProfileOidIndexId,
+		-1,
+		-1,
+		Anum_pg_yb_profile_prfname,
+		InvalidAttrNumber,
+		InvalidAttrNumber,
+		InvalidAttrNumber,
+		OBJECT_YBPROFILE,
+		true
+	},
 };
 
 /*
@@ -871,6 +888,10 @@ static const struct object_type_map
 	/* OCLASS_STATISTIC_EXT */
 	{
 		"statistics object", OBJECT_STATISTIC_EXT
+	},
+	/* OBJECT_YBPROFILE */
+	{
+		"profile", OBJECT_YBPROFILE
 	}
 };
 
@@ -1044,6 +1065,7 @@ get_object_address(ObjectType objtype, Node *object,
 			case OBJECT_PUBLICATION:
 			case OBJECT_SUBSCRIPTION:
 			case OBJECT_YBTABLEGROUP:
+			case OBJECT_YBPROFILE:
 				address = get_object_address_unqualified(objtype,
 														 castNode(String, object), missing_ok);
 				break;
@@ -1360,6 +1382,11 @@ get_object_address_unqualified(ObjectType objtype,
 		case OBJECT_SUBSCRIPTION:
 			address.classId = SubscriptionRelationId;
 			address.objectId = get_subscription_oid(name, missing_ok);
+			address.objectSubId = 0;
+			break;
+		case OBJECT_YBPROFILE:
+			address.classId = YbProfileRelationId;
+			address.objectId = yb_get_profile_oid(name, missing_ok);
 			address.objectSubId = 0;
 			break;
 		default:
@@ -2341,6 +2368,7 @@ pg_get_object_address(PG_FUNCTION_ARGS)
 		case OBJECT_TABCONSTRAINT:
 		case OBJECT_OPCLASS:
 		case OBJECT_OPFAMILY:
+		case OBJECT_YBPROFILE:
 			objnode = (Node *) name;
 			break;
 		case OBJECT_ACCESS_METHOD:
@@ -2661,6 +2689,15 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 			if (!pg_statistics_object_ownercheck(address.objectId, roleid))
 				aclcheck_error(ACLCHECK_NOT_OWNER, objtype,
 							   NameListToString(castNode(List, object)));
+			break;
+		case OBJECT_YBPROFILE:
+			/* A profile can be dropped by the super user or yb_db_admin */
+			if (!superuser() && !IsYbDbAdminUser(GetUserId()))
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("permission denied to drop profile"),
+						 errhint("Must be superuser or a member of the"
+								 " yb_db_admin role to drop a profile.")));
 			break;
 		default:
 			elog(ERROR, "unrecognized object type: %d",
@@ -4107,7 +4144,28 @@ getObjectDescription(const ObjectAddress *object, bool missing_ok)
 				ReleaseSysCache(trfTup);
 				break;
 			}
+		case OCLASS_YBPROFILE:
+			{
+				char	   *profile;
+				profile = yb_get_profile_name(object->objectId);
+				appendStringInfo(&buffer, _("profile %s"), profile);
+				break;
+			}
+		case OCLASS_YBROLE_PROFILE:
+			{
+				HeapTuple tup = yb_get_role_profile_tuple_by_oid(object->objectId);
 
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "could not find tuple for role profile %u",
+						 object->objectId);
+
+				Form_pg_yb_role_profile rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(tup);
+
+				appendStringInfo(&buffer, _("association between role \"%s\" and profile %s"),
+								 GetUserNameFromId(rolprfform->rolprfrole, false),
+								 yb_get_profile_name(rolprfform->rolprfprofile));
+				break;
+			}
 			/*
 			 * There's intentionally no default: case here; we want the
 			 * compiler to warn if a new OCLASS hasn't been handled above.
@@ -4667,6 +4725,13 @@ getObjectTypeDescription(const ObjectAddress *object, bool missing_ok)
 			appendStringInfoString(&buffer, "transform");
 			break;
 
+		case OCLASS_YBPROFILE:
+			appendStringInfoString(&buffer, "profile");
+			break;
+
+		case OCLASS_YBROLE_PROFILE:
+			appendStringInfoString(&buffer, "role profile");
+			break;
 			/*
 			 * There's intentionally no default: case here; we want the
 			 * compiler to warn if a new OCLASS hasn't been handled above.
@@ -5991,6 +6056,31 @@ getObjectIdentityParts(const ObjectAddress *object,
 				table_close(transformDesc, AccessShareLock);
 			}
 			break;
+		case OCLASS_YBPROFILE:
+			{
+				char	   *profile;
+				profile = yb_get_profile_name(object->objectId);
+				if (objname)
+					*objname = list_make1(profile);
+				appendStringInfoString(&buffer,
+									   quote_identifier(profile));
+				break;
+			}
+		case OCLASS_YBROLE_PROFILE:
+			{
+				HeapTuple tup = yb_get_role_profile_tuple_by_oid(object->objectId);
+
+				if (!HeapTupleIsValid(tup))
+					elog(ERROR, "could not find tuple for role profile %u",
+						 object->objectId);
+
+				Form_pg_yb_role_profile rolprfform = (Form_pg_yb_role_profile) GETSTRUCT(tup);
+
+				appendStringInfo(&buffer, _("association between role \"%s\" and profile %s"),
+								 GetUserNameFromId(rolprfform->rolprfrole, false),
+								 yb_get_profile_name(rolprfform->rolprfprofile));
+				break;
+			}
 
 			/*
 			 * There's intentionally no default: case here; we want the

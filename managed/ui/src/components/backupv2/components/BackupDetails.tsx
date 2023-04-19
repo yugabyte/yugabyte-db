@@ -10,14 +10,10 @@
 import React, { FC, useState } from 'react';
 import { Col, Row } from 'react-bootstrap';
 import { Link } from 'react-router';
-import { Backup_States, IBackup, Keyspace_Table } from '..';
+import { Backup_States, IBackup, ITable, Keyspace_Table } from '..';
 import { StatusBadge } from '../../common/badge/StatusBadge';
 import { YBButton } from '../../common/forms/fields';
-import {
-  convertBackupToFormValues,
-  FormatUnixTimeStampTimeToTimezone,
-  RevealBadge
-} from '../common/BackupUtils';
+import { RevealBadge, calculateDuration } from '../common/BackupUtils';
 import {
   IncrementalTableBackupList,
   YCQLTableList,
@@ -25,13 +21,16 @@ import {
   YSQLTableProps
 } from './BackupTableList';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
-import { TableType, TABLE_TYPE_MAP } from '../../../redesign/helpers/dtos';
-import { isFunction } from 'lodash';
+import { TableType, TableTypeLabel } from '../../../redesign/helpers/dtos';
+import { find, isFunction } from 'lodash';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
-import { useQuery } from 'react-query';
-import { getKMSConfigs } from '../common/BackupAPI';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { getKMSConfigs, addIncrementalBackup } from '../common/BackupAPI';
 
-import { BackupCreateModal } from './BackupCreateModal';
+import { YBConfirmModal } from '../../modals';
+import { toast } from 'react-toastify';
+import { createErrorMessage } from '../../../utils/ObjectUtils';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './BackupDetails.scss';
 
 interface BackupDetailsProps {
@@ -43,9 +42,11 @@ interface BackupDetailsProps {
   storageConfigs: {
     data?: any[];
   };
+  onEdit?: () => void;
   hideRestore?: boolean;
   onAssignStorageConfig?: () => void;
   currentUniverseUUID?: string;
+  tablesInUniverse?: ITable[];
 }
 const SOURCE_UNIVERSE_DELETED_MSG = (
   <span className="alert-message warning">
@@ -64,19 +65,68 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   storageConfigName,
   onRestore,
   onDelete,
+  onEdit,
   storageConfigs,
   hideRestore = false,
   onAssignStorageConfig,
-  currentUniverseUUID
+  currentUniverseUUID,
+  tablesInUniverse
 }) => {
   const [searchKeyspaceText, setSearchKeyspaceText] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-
-  const [formValues, setFormValues] = useState<Record<string, any>>();
-
+  const [showAddIncrementalBackupModal, setShowAddIncrementalBackupModal] = useState(false);
+  const queryClient = useQueryClient();
   const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs(), {
     enabled: backupDetails?.kmsConfigUUID !== undefined
   });
+
+  const doAddIncrementalBackup = useMutation(
+    () => {
+      let responseList: Keyspace_Table[] = [];
+
+      if (!backupDetails?.isFullBackup) {
+        responseList = backupDetails!.commonBackupInfo.responseList;
+      }
+
+      if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
+        responseList = responseList.map((r) => {
+          const backupTablesPresentInUniverse = r.tablesList.filter(
+            (tableName) => find(tablesInUniverse, { tableName })?.tableName
+          );
+
+          return {
+            ...r,
+            tablesList: r.allTables ? [] : backupTablesPresentInUniverse,
+            tableUUIDList: r.allTables
+              ? []
+              : backupTablesPresentInUniverse.map(
+                  (tableName) => find(tablesInUniverse, { tableName })?.tableUUID
+                )
+          };
+        });
+      }
+
+      return addIncrementalBackup({
+        ...backupDetails!,
+        commonBackupInfo: {
+          ...backupDetails!.commonBackupInfo,
+          responseList
+        }
+      });
+    },
+    {
+      onSuccess: () => {
+        toast.success('Incremental backup added successfully!');
+        queryClient.invalidateQueries([
+          'incremental_backups',
+          backupDetails!.commonBackupInfo.baseBackupUUID
+        ]);
+        setShowAddIncrementalBackupModal(false);
+      },
+      onError: (resp: any) => {
+        toast.error(createErrorMessage(resp));
+      }
+    }
+  );
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
@@ -95,6 +145,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
   if (backupDetails.hasIncrementalBackups) {
     TableListComponent = IncrementalTableBackupList;
   } else {
+    // eslint-disable-next-line no-lonely-if
     if (
       backupDetails.backupType === TableType.YQL_TABLE_TYPE ||
       backupDetails.backupType === TableType.REDIS_TABLE_TYPE
@@ -142,6 +193,17 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 }
               />
             )}
+            {onEdit && (
+              <YBButton
+                btnText="Edit Backup"
+                btnIcon="fa fa-pencil"
+                onClick={() => onEdit()}
+                disabled={
+                  backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED ||
+                  !backupDetails.isStorageConfigPresent
+                }
+              />
+            )}
           </Row>
           <Row className="backup-details-info">
             <div className="name-and-status">
@@ -171,11 +233,11 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             <div className="details-rest">
               <div>
                 <div className="header-text">Backup Type</div>
-                <div>{backupDetails.backupType ? 'On Demand' : 'Scheduled'}</div>
+                <div>{backupDetails.onDemand ? 'On Demand' : 'Scheduled'}</div>
               </div>
               <div>
                 <div className="header-text">Table Type</div>
-                <div>{TABLE_TYPE_MAP[backupDetails.backupType]}</div>
+                <div>{TableTypeLabel[backupDetails.backupType]}</div>
               </div>
               <div>
                 <div className="header-text">Size</div>
@@ -186,20 +248,24 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                   )}
                 </div>
               </div>
-              <div></div>
+              {!backupDetails.hasIncrementalBackups && (
+                <div>
+                  <div className="header-text">Duration</div>
+                  <div>
+                    {calculateDuration(
+                      backupDetails?.commonBackupInfo?.createTime,
+                      backupDetails?.commonBackupInfo?.completionTime
+                    )}
+                  </div>
+                </div>
+              )}
               <div>
                 <div className="header-text">Created At</div>
-                <div>
-                  <FormatUnixTimeStampTimeToTimezone
-                    timestamp={backupDetails.commonBackupInfo.createTime}
-                  />
-                </div>
+                <div>{ybFormatDate(backupDetails.commonBackupInfo.createTime)}</div>
               </div>
               <div>
                 <div className="header-text">Expiration</div>
-                <div>
-                  <FormatUnixTimeStampTimeToTimezone timestamp={backupDetails.expiryTime} />
-                </div>
+                <div>{ybFormatDate(backupDetails.expiryTime)}</div>
               </div>
               <span className="flex-divider" />
               <div className="details-storage-config">
@@ -252,10 +318,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                     btnText="Add Incremental Backup"
                     btnIcon="fa fa-plus"
                     className="add-increment-backup-btn"
-                    onConfirm={() => {}}
+                    disabled={backupDetails.commonBackupInfo.state !== Backup_States.COMPLETED}
                     onClick={() => {
-                      setFormValues(convertBackupToFormValues(backupDetails, storageConfig));
-                      setShowCreateModal(true);
+                      setShowAddIncrementalBackupModal(true);
                     }}
                   />
                 </Col>
@@ -281,15 +346,18 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
           )}
         </div>
       </div>
-      <BackupCreateModal
-        visible={showCreateModal}
-        onHide={() => {
-          setShowCreateModal(false);
-        }}
-        editValues={formValues}
-        currentUniverseUUID={currentUniverseUUID}
-        isIncrementalBackup={true}
-      />
+      <YBConfirmModal
+        name="add-incremental-modal"
+        title="Add Incremental Backup"
+        visibleModal={showAddIncrementalBackupModal}
+        currentModal={true}
+        modalClassname="backup-modal"
+        onConfirm={() => doAddIncrementalBackup.mutate()}
+        hideConfirmModal={() => setShowAddIncrementalBackupModal(false)}
+      >
+        You are about to add an incremental backup to your existing backup. This will back up only
+        the data that has changed since your full backup.
+      </YBConfirmModal>
     </div>
   );
 };

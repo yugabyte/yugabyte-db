@@ -14,10 +14,12 @@ type: docs
 
 ## Synopsis
 
-<b>`ZREM key member [member...]`</b><br>
+`ZREM key member [member...]`
+
 This command removes the `members` specified in the sorted set at `key` and returns the number of `members` removed.
 `Members` specified that do not exist in key are ignored. If `key` does not exist, 0 is returned.
-If `key` is associated with non sorted-set data, an error is returned.
+
+- If `key` is associated with non sorted-set data, an error is returned.
 
 ## Return Value
 

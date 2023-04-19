@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_UTIL_THREADPOOL_H
-#define YB_UTIL_THREADPOOL_H
+#pragma once
 
 #include <condition_variable>
 #include <deque>
@@ -304,7 +303,7 @@ class ThreadPool {
   // Initialize the thread pool by starting the minimum number of threads.
   Status Init();
 
-  // Dispatcher responsible for dequeueing and executing the tasks
+  // Dispatcher responsible for dequeuing and executing the tasks
   void DispatchThread(bool permanent);
 
   // Create new thread. Required that lock_ is held.
@@ -548,4 +547,3 @@ class TaskRunner {
 };
 
 } // namespace yb
-#endif // YB_UTIL_THREADPOOL_H

@@ -1,7 +1,8 @@
 ---
-title: Connect an application
+title: Ruby PostgreSQL driver
+headerTitle: Connect an application
 linkTitle: Connect an app
-description: Ruby drivers for YSQL
+description: Connect a Ruby application using the Pg Gem Driver for YSQL
 image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /develop/client-drivers/ruby/
@@ -16,20 +17,18 @@ menu:
 type: docs
 ---
 
-<div class="custom-tabs tabs-style-2">
-  <ul class="tabs-name">
-    <li class="active">
-      <a href="../ysql-pg/" class="nav-link">
-        YSQL
-      </a>
-    </li>
-    <li>
-      <a href="../ycql/" class="nav-link">
-        YCQL
-      </a>
-    </li>
-  </ul>
-</div>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li class="active">
+    <a href="../ysql-pg/" class="nav-link">
+      YSQL
+    </a>
+  </li>
+  <li>
+    <a href="../ycql/" class="nav-link">
+      YCQL
+    </a>
+  </li>
+</ul>
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
@@ -107,5 +106,5 @@ Query returned: John 35 Ruby
 
 ## Learn more
 
-- Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/).
-- Build Ruby applications using [Active Record ORM](../activerecord/).
+- Build Ruby applications using [YugabyteDB Ruby Driver for YCQL](../ycql/)
+- Build Ruby applications using [Active Record ORM](../activerecord/)

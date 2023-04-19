@@ -32,18 +32,16 @@
 #include "yb/server/tcmalloc_metrics.h"
 
 #include <glog/logging.h>
-#ifdef TCMALLOC_ENABLED
-#include <gperftools/malloc_extension.h>
-#endif
 
 #include "yb/gutil/bind.h"
 
+#include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 
-#ifndef TCMALLOC_ENABLED
-#define TCM_ASAN_MSG " (Disabled - no tcmalloc in this build)"
-#else
+#ifdef YB_TCMALLOC_ENABLED
 #define TCM_ASAN_MSG
+#else
+#define TCM_ASAN_MSG " (Disabled - no tcmalloc in this build)"
 #endif
 
 // As of this writing, we expose all of the un-deprecated tcmalloc status metrics listed at:
@@ -90,10 +88,8 @@ namespace tcmalloc {
 
 static uint64_t GetTCMallocPropValue(const char* prop) {
   size_t value = 0;
-#ifdef TCMALLOC_ENABLED
-  if (!MallocExtension::instance()->GetNumericProperty(prop, &value)) {
-    LOG(DFATAL) << "Failed to get value of numeric tcmalloc property: " << prop;
-  }
+#ifdef YB_TCMALLOC_ENABLED
+  value = MemTracker::GetTCMallocProperty(prop);
 #endif
   return value;
 }

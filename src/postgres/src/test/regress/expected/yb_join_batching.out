@@ -11,6 +11,11 @@ ANALYZE p3;
 CREATE TABLE p4 (a int, b int, c varchar, primary key(a,b));
 INSERT INTO p4 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 7 = 0;
 ANALYZE p4;
+CREATE TABLE p5 (a int, b int, c varchar, primary key(a asc,b asc));
+INSERT INTO p5 SELECT i / 10, i % 10, to_char(i, 'FM0000') FROM generate_series(0, 599) i;
+CREATE INDEX p5_hash ON p5((a,b) hash);
+CREATE INDEX p5_hash_asc ON p5(a hash, b asc);
+ANALYZE p5;
 -- We're testing nested loop join batching in this file
 SET enable_hashjoin = off;
 SET enable_mergejoin = off;
@@ -23,22 +28,22 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p2 t2
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
 (7 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
  a  | b  |  c   | a  | b  |  c
 ----+----+------+----+----+------
  78 |  3 | 0078 | 78 |  3 | 0078
- 12 | 12 | 0012 | 12 | 12 | 0012
  90 | 15 | 0090 | 90 | 15 | 0090
+ 12 | 12 | 0012 | 12 | 12 | 0012
   6 |  6 | 0006 |  6 |  6 | 0006
+ 96 | 21 | 0096 | 96 | 21 | 0096
  42 | 17 | 0042 | 42 | 17 | 0042
  48 | 23 | 0048 | 48 | 23 | 0048
- 96 | 21 | 0096 | 96 | 21 | 0096
  60 | 10 | 0060 | 60 | 10 | 0060
  72 | 22 | 0072 | 72 | 22 | 0072
  36 | 11 | 0036 | 36 | 11 | 0036
@@ -52,25 +57,25 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 (17 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-                              QUERY PLAN                               
+                              QUERY PLAN
 -----------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = (t2.a + 1))
    ->  Seq Scan on p2 t2
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[(t2.a + 1), ($1 + 1), ($2 + 1)]))
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
 (7 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-  a  | b  |  c   | a  | b  |  c   
+  a  | b  |  c   | a  | b  |  c
 -----+----+------+----+----+------
   46 | 21 | 0046 | 45 | 20 | 0045
   82 |  7 | 0082 | 81 |  6 | 0081
   22 | 22 | 0022 | 21 | 21 | 0021
-  16 | 16 | 0016 | 15 | 15 | 0015
   52 |  2 | 0052 | 51 |  1 | 0051
+  16 | 16 | 0016 | 15 | 15 | 0015
   10 | 10 | 0010 |  9 |  9 | 0009
   70 | 20 | 0070 | 69 | 19 | 0069
   88 | 13 | 0088 | 87 | 12 | 0087
@@ -78,26 +83,26 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 
  100 |  0 | 0100 | 99 | 24 | 0099
   64 | 14 | 0064 | 63 | 13 | 0063
   76 |  1 | 0076 | 75 |  0 | 0075
-  28 |  3 | 0028 | 27 |  2 | 0027
   94 | 19 | 0094 | 93 | 18 | 0093
-  34 |  9 | 0034 | 33 |  8 | 0033
+  28 |  3 | 0028 | 27 |  2 | 0027
   40 | 15 | 0040 | 39 | 14 | 0039
+  34 |  9 | 0034 | 33 |  8 | 0033
    4 |  4 | 0004 |  3 |  3 | 0003
 (17 rows)
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
-                QUERY PLAN                
+                QUERY PLAN
 ------------------------------------------
  Nested Loop
    Join Filter: ((t1.a - 1) = (t2.a + 1))
    ->  Seq Scan on p2 t2
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 100)
+         Remote Filter: (a <= 100)
 (6 rows)
 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a <= 100;
- a  | b  |  c   | a  | b  |  c   
+ a  | b  |  c   | a  | b  |  c
 ----+----+------+----+----+------
  80 |  5 | 0080 | 78 |  3 | 0078
  92 | 17 | 0092 | 90 | 15 | 0090
@@ -118,40 +123,265 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a - 1 = t2.a + 1 WHERE t1.a <= 100 AND t2.a
  26 |  1 | 0026 | 24 | 24 | 0024
 (17 rows)
 
--- Disabling batching for compound clauses
+-- Batching on compound clauses
 /*+ Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
-                   QUERY PLAN
--------------------------------------------------
+                                        QUERY PLAN
+------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((p1.a = p2.b) AND (p1.b = p2.a))
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW(p2.b, p2.a), ROW($1, $4), ROW($2, $5)]))
+(5 rows)
+
+/*+ Leading((p2 p1)) */ SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+ a  | b  |  c   | a  | b  |  c
+----+----+------+----+----+------
+ 12 | 12 | 0012 | 12 | 12 | 0012
+  6 |  6 | 0006 |  6 |  6 | 0006
+ 18 | 18 | 0018 | 18 | 18 | 0018
+  0 |  0 | 0000 |  0 |  0 | 0000
+ 24 | 24 | 0024 | 24 | 24 | 0024
+(5 rows)
+
+explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
+                                                          QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (((p1.a - 1) = p5.a) AND ((p1.b - 1) = p5.b))
+   ->  Seq Scan on p1
+         Remote Filter: (a <= 30)
+   ->  Index Scan using p5_pkey on p5
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((p1.a - 1), (p1.b - 1)), ROW(($1 - 1), ($4 - 1)), ROW(($2 - 1), ($5 - 1))]))
+(6 rows)
+
+select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
+ a  | b  |  c   | a  | b |  c
+----+----+------+----+---+------
+  6 |  6 | 0006 |  5 | 5 | 0055
+ 12 | 12 | 0012 |    |   | 
+ 16 | 16 | 0016 |    |   | 
+  4 |  4 | 0004 |  3 | 3 | 0033
+ 10 | 10 | 0010 |  9 | 9 | 0099
+ 18 | 18 | 0018 |    |   |
+  2 |  2 | 0002 |  1 | 1 | 0011
+ 30 |  5 | 0030 | 29 | 4 | 0294
+  0 |  0 | 0000 |    |   |
+  8 |  8 | 0008 |  7 | 7 | 0077
+ 14 | 14 | 0014 |    |   |
+ 22 | 22 | 0022 |    |   |
+ 26 |  1 | 0026 | 25 | 0 | 0250
+ 28 |  3 | 0028 | 27 | 2 | 0272
+ 24 | 24 | 0024 |    |   |
+ 20 | 20 | 0020 |    |   |
+(16 rows)
+
+-- Batching should still be disabled if there is a filter
+-- clause on a batched relation.
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+              QUERY PLAN
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on p2
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.a)
+         Filter: (p2.b = a)
+(5 rows)
+
+/*+ set(enable_seqscan on) IndexScan(p1 p1_b_idx) Leading((p2 p3)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1, p2, p3 where p1.a = p3.a AND p2.a = p3.a and p1.b = p2.b;
+                        QUERY PLAN
+-----------------------------------------------------------
+ Nested Loop
+   Join Filter: (p3.a = p1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (p2.a = p3.a)
+         ->  Seq Scan on p2
+         ->  Index Scan using p3_pkey on p3
+               Index Cond: (a = ANY (ARRAY[p2.a, $1, $2]))
+   ->  Index Scan using p1_b_idx on p1
+         Index Cond: (b = p2.b)
+         Filter: (p2.a = a)
+(10 rows)
+
+/*+ set(enable_seqscan on) Leading((p2 p1)) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p1.b < p2.b + 1;
+                      QUERY PLAN
+-------------------------------------------------------
  Nested Loop
    ->  Seq Scan on p2
    ->  Index Scan using p1_pkey on p1
-         Index Cond: ((a = p2.b) AND (b = p2.a))
+         Index Cond: ((a = p2.b) AND (b < (p2.b + 1)))
 (4 rows)
 
-/*+ Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
-                   QUERY PLAN
--------------------------------------------------
+/*+IndexScan(p5 p5_hash)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
+                                                          QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (((p1.a - 1) = p5.a) AND ((p1.b - 1) = p5.b))
+   ->  Seq Scan on p1
+         Remote Filter: (a <= 30)
+   ->  Index Scan using p5_hash on p5
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((p1.a - 1), (p1.b - 1)), ROW(($1 - 1), ($4 - 1)), ROW(($2 - 1), ($5 - 1))]))
+(6 rows)
+
+/*+IndexScan(p5 p5_hash)*/ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
+ a  | b  |  c   | a  | b |  c
+----+----+------+----+---+------
+  6 |  6 | 0006 |  5 | 5 | 0055
+ 12 | 12 | 0012 |    |   | 
+ 16 | 16 | 0016 |    |   | 
+ 10 | 10 | 0010 |  9 | 9 | 0099
+  4 |  4 | 0004 |  3 | 3 | 0033
+ 18 | 18 | 0018 |    |   |
+ 30 |  5 | 0030 | 29 | 4 | 0294
+  2 |  2 | 0002 |  1 | 1 | 0011
+  0 |  0 | 0000 |    |   | 
+  8 |  8 | 0008 |  7 | 7 | 0077
+ 14 | 14 | 0014 |    |   | 
+ 22 | 22 | 0022 |    |   | 
+ 28 |  3 | 0028 | 27 | 2 | 0272
+ 26 |  1 | 0026 | 25 | 0 | 0250
+ 24 | 24 | 0024 |    |   | 
+ 20 | 20 | 0020 |    |   | 
+(16 rows)
+
+/*+IndexScan(p5 p5_hash_asc)*/explain (costs off) select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
+                                                          QUERY PLAN
+------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (((p1.a - 1) = p5.a) AND ((p1.b - 1) = p5.b))
+   ->  Seq Scan on p1
+         Remote Filter: (a <= 30)
+   ->  Index Scan using p5_hash_asc on p5
+         Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((p1.a - 1), (p1.b - 1)), ROW(($1 - 1), ($4 - 1)), ROW(($2 - 1), ($5 - 1))]))
+(6 rows)
+
+/*+IndexScan(p5 p5_hash_asc)*/ select * from p1 left join p5 on p1.a - 1 = p5.a and p1.b - 1 = p5.b where p1.a <= 30;
+ a  | b  |  c   | a  | b |  c
+----+----+------+----+---+------
+  6 |  6 | 0006 |  5 | 5 | 0055
+ 12 | 12 | 0012 |    |   | 
+ 16 | 16 | 0016 |    |   | 
+ 10 | 10 | 0010 |  9 | 9 | 0099
+  4 |  4 | 0004 |  3 | 3 | 0033
+ 18 | 18 | 0018 |    |   |
+  2 |  2 | 0002 |  1 | 1 | 0011
+ 30 |  5 | 0030 | 29 | 4 | 0294
+  0 |  0 | 0000 |    |   |
+  8 |  8 | 0008 |  7 | 7 | 0077
+ 14 | 14 | 0014 |    |   |
+ 22 | 22 | 0022 |    |   |
+ 28 |  3 | 0028 | 27 | 2 | 0272
+ 26 |  1 | 0026 | 25 | 0 | 0250
+ 24 | 24 | 0024 |    |   |
+ 20 | 20 | 0020 |    |   |
+(16 rows)
+
+/*+ set(enable_seqscan true) Leading((p2 p1)) IndexScan(p1 p1_b_idx) */ EXPLAIN (COSTS OFF) SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+              QUERY PLAN
+---------------------------------------
  Nested Loop
+   ->  Seq Scan on p2
    ->  Index Scan using p1_b_idx on p1
-   ->  Index Scan using p2_pkey on p2
-         Index Cond: ((a = p1.b) AND (b = p1.a))
-(4 rows)
+         Index Cond: (b = p2.a)
+         Filter: (p2.b = a)
+(5 rows)
 
+CREATE TABLE t10 (r1 int, r2 int, r3 int, r4 int);
+INSERT INTO t10
+  SELECT DISTINCT
+    i1, i2+5, i3, i4
+  FROM generate_series(1, 5) i1,
+       generate_series(1, 5) i2,
+       generate_series(1, 5) i3,
+       generate_series(1, 10) i4;
+CREATE index i_t ON t10 (r1 ASC, r2 ASC, r3 ASC, r4 ASC);
+CREATE TABLE t11 (c1 int, c3 int, x int);
+INSERT INTO t11 VALUES (1,2,0), (1,3,0), (5,2,0), (5,3,0), (5,4,0);
+CREATE TABLE t12 (c4 int, c2 int, y int);
+INSERT INTO t12 VALUES (3,7,0),(6,9,0),(9,7,0),(4,9,0);
+EXPLAIN (COSTS OFF) /*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+                                                                    QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Sort
+   Sort Key: t10.r1, t10.r2, t10.r3, t10.r4
+   ->  Nested Loop
+         ->  Seq Scan on t12
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((t12.y = t11.x) AND (t11.c1 = t10.r1) AND (t11.c3 = t10.r3))
+               ->  Seq Scan on t11
+               ->  Index Only Scan using i_t on t10
+                     Index Cond: ((ROW(r1, r3) = ANY (ARRAY[ROW(t11.c1, t11.c3), ROW($1, $4), ROW($2, $5)])) AND (r2 = t12.c2) AND (r4 = t12.c4))
+(9 rows)
+
+/*+ Leading((t12 (t11 t10))) Set(enable_seqscan true) */ SELECT t10.* FROM t12, t11, t10 WHERE x = y AND c1 = r1 AND c2 = r2 AND c3 = r3 AND c4 = r4 order by c1, c2, c3, c4;
+ r1 | r2 | r3 | r4
+----+----+----+----
+  1 |  7 |  2 |  3
+  1 |  7 |  2 |  9
+  1 |  7 |  3 |  3
+  1 |  7 |  3 |  9
+  1 |  9 |  2 |  4
+  1 |  9 |  2 |  6
+  1 |  9 |  3 |  4
+  1 |  9 |  3 |  6
+  5 |  7 |  2 |  3
+  5 |  7 |  2 |  9
+  5 |  7 |  3 |  3
+  5 |  7 |  3 |  9
+  5 |  7 |  4 |  3
+  5 |  7 |  4 |  9
+  5 |  9 |  2 |  4
+  5 |  9 |  2 |  6
+  5 |  9 |  3 |  4
+  5 |  9 |  3 |  6
+  5 |  9 |  4 |  4
+  5 |  9 |  4 |  6
+(20 rows)
+
+DROP TABLE t10;
+DROP TABLE t11;
+DROP TABLE t12;
+create table d1(a int, primary key(a));
+create table d2(a int, primary key(a));
+create table d3(a int, primary key(a));
+create table d4(a int, primary key(a));
+/*+Leading(((d2 (d3 d4)) d1))*/ explain (costs off) select * from d1,d2,d3,d4 where d1.a = d3.a and d2.a = d3.a and d4.a = d2.a;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (d3.a = d1.a)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (d3.a = d2.a)
+         ->  YB Batched Nested Loop Join
+               Join Filter: (d3.a = d4.a)
+               ->  Seq Scan on d3
+               ->  Index Scan using d4_pkey on d4
+                     Index Cond: (a = ANY (ARRAY[d3.a, $1, $2]))
+         ->  Index Scan using d2_pkey on d2
+               Index Cond: (a = ANY (ARRAY[d3.a, $4, $5]))
+   ->  Index Scan using d1_pkey on d1
+         Index Cond: (a = ANY (ARRAY[d3.a, $7, $8]))
+(13 rows)
+
+drop table d1;
+drop table d2;
+drop table d3;
+drop table d4;
 EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
                         QUERY PLAN
 -----------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t3.a = t1.a)
    ->  Seq Scan on p3 t3
-         Filter: (a <= 30)
+         Remote Filter: (a <= 30)
    ->  YB Batched Nested Loop Join
          Join Filter: (t1.a = t2.b)
          ->  Index Scan using p1_pkey on p1 t1
                Index Cond: (a = ANY (ARRAY[t3.a, $1, $2]))
-               Filter: (a <= 100)
+               Remote Filter: (a <= 100)
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b = ANY (ARRAY[t1.a, $4, $5]))
-               Filter: (a <= 100)
+               Remote Filter: (a <= 100)
 (12 rows)
 
 SELECT * FROM p3 t3 LEFT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.a <= 100 AND t2.a <= 100) s ON t3.a = s.a WHERE t3.a <= 30;
@@ -177,7 +407,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM 
          ->  Index Scan using p2_pkey on p2 t2
                Index Cond: (b <= 15)
          ->  Index Scan using p1_pkey on p1 t1
-               Index Cond: ((a = ANY (ARRAY[t2.b, $1, $2])) AND (b <= 10))
+               Index Cond: ((b <= 10) AND (a = ANY (ARRAY[t2.b, $1, $2])))
    ->  Index Scan using p3_pkey on p3 t3
          Index Cond: (a = ANY (ARRAY[t1.a, $4, $5]))
 (10 rows)
@@ -191,29 +421,29 @@ SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON 
  10 | 10 | 0010 | 10
  10 | 10 | 0010 | 10
     |    |      |  8
-    |    |      |  4
-    |    |      |  2
-    |    |      |  2
-  0 |  0 | 0000 |  0
-  0 |  0 | 0000 |  0
  10 | 10 | 0010 | 10
+    |    |      |  2
+    |    |      |  2
+  0 |  0 | 0000 |  0
   0 |  0 | 0000 |  0
     |    |      |  4
+  0 |  0 | 0000 |  0
+    |    |      |  4
+    |    |      |  8
+ 10 | 10 | 0010 | 10
+    |    |      |  4
+    |    |      |  6
+ 10 | 10 | 0010 | 10
+    |    |      |  4
+    |    |      |  4
+    |    |      |  2
     |    |      |  8
     |    |      |  6
-    |    |      |  4
-    |    |      |  4
  10 | 10 | 0010 | 10
- 10 | 10 | 0010 | 10
-    |    |      |  4
-    |    |      |  2
-    |    |      |  8
-    |    |      |  6
-    |    |      |  4
     |    |      |  2
     |    |      |  8
   0 |  0 | 0000 |  0
- 10 | 10 | 0010 | 10
+    |    |      |  4
     |    |      |  6
   0 |  0 | 0000 |  0
     |    |      |  4
@@ -242,7 +472,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -272,7 +502,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE NOT EXISTS (SELECT 1 FROM p2 t2 WH
  YB Batched Nested Loop Anti Join
    Join Filter: (t1.a = t2.b)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (b = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -297,7 +527,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
  YB Batched Nested Loop Semi Join
    Join Filter: (t1.a = t2.a)
    ->  Seq Scan on p1 t1
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
    ->  Index Scan using p2_pkey on p2 t2
          Index Cond: (a = ANY (ARRAY[t1.a, $1, $2]))
 (6 rows)
@@ -324,7 +554,7 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE 
          ->  Seq Scan on p2 t2
    ->  Index Scan using p1_pkey on p1 t1
          Index Cond: (a = ANY (ARRAY[t2.b, $1, $2]))
-         Filter: (a <= 40)
+         Remote Filter: (a <= 40)
 (8 rows)
 
 SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.a <= 40;
@@ -338,10 +568,10 @@ SELECT * FROM p1 t1 WHERE EXISTS (SELECT 1 FROM p2 t2 WHERE t1.a = t2.b) AND t1.
  22 | 22 | 0022
  20 | 20 | 0020
  10 | 10 | 0010
-  2 |  2 | 0002
  18 | 18 | 0018
-  6 |  6 | 0006
+  2 |  2 | 0002
  16 | 16 | 0016
+  6 |  6 | 0006
  12 | 12 | 0012
 (13 rows)
 
@@ -385,8 +615,8 @@ INSERT INTO int2type VALUES (1), (4), (555), (-33), (6923);
 DROP TABLE int2type;
 set yb_bnl_batch_size to 10;
 explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a = c.a join p4 d on a.b = d.b where a.b = 10 ORDER BY a.a, b.a, c.a, d.a;
-                                             QUERY PLAN
------------------------------------------------------------------------------------------------------
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
  Sort
    Sort Key: a.a, d.a
    ->  Nested Loop
@@ -397,9 +627,9 @@ explain (costs off) select * from p1 a join p2 b on a.a = b.a join p3 c on b.a =
                      ->  Index Scan using p1_b_idx on p1 a
                            Index Cond: (b = 10)
                      ->  Index Scan using p3_pkey on p3 c
-                           Index Cond: (a = ANY (ARRAY[a.a, $1, $2, $3, $4, $5, $6, $7, $8, $9]))
+                           Index Cond: (a = ANY (ARRAY[a.a, $1, $2, ..., $9]))
                ->  Index Scan using p2_pkey on p2 b
-                     Index Cond: (a = ANY (ARRAY[c.a, $11, $12, $13, $14, $15, $16, $17, $18, $19]))
+                     Index Cond: (a = ANY (ARRAY[c.a, $11, $12, ..., $19]))
          ->  Index Scan using p4_pkey on p4 d
                Index Cond: (b = 10)
 (15 rows)
@@ -429,9 +659,105 @@ DROP TABLE p1;
 DROP TABLE p2;
 DROP TABLE p3;
 DROP TABLE p4;
+DROP TABLE p5;
+CREATE TABLE s1(r1 int, r2 int, r3 int);
+CREATE TABLE s2(r1 int, r2 int, r3 int);
+CREATE TABLE s3(r1 int, r2 int);
+CREATE INDEX ON s3 (r1 asc, r2 asc);
+INSERT INTO s1 select i,i,i from generate_series(1,10) i;
+INSERT INTO s2 select i,i,i from generate_series(1,10) i;
+INSERT INTO s3 select i,i from generate_series(1,100) i;
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/explain (costs off) select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+                                      QUERY PLAN
+--------------------------------------------------------------------------------------
+ Sort
+   Sort Key: s3.r1, s3.r2
+   ->  Nested Loop
+         ->  Seq Scan on s2
+         ->  YB Batched Nested Loop Join
+               Join Filter: ((s2.r3 = s1.r3) AND (s1.r1 = s3.r1))
+               ->  Seq Scan on s1
+               ->  Index Only Scan using s3_r1_r2_idx on s3
+                     Index Cond: ((r1 = ANY (ARRAY[s1.r1, $1, $2])) AND (r2 = s2.r2))
+(9 rows)
+
+/*+Set(enable_seqscan true) Set(yb_bnl_batch_size 3) Leading((s2 (s1 s3))) NestLoop(s1 s3)*/select s3.* from s1, s2, s3 where s3.r1 = s1.r1 and s3.r2 = s2.r2 and s1.r3 = s2.r3 order by s3.r1, s3.r2;
+ r1 | r2
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+(10 rows)
+
+DROP TABLE s3;
+DROP TABLE s2;
+DROP TABLE s1;
+create table s1(a int, primary key (a asc));
+create table s2(a int, primary key (a asc));
+create table s3(a int, primary key (a asc));
+insert into s1 values (24), (25);
+insert into s2 values (24), (25);
+insert into s3 values (24), (25);
+explain (costs off) /*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/select * from s1 left outer join s2
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
+                     QUERY PLAN
+-----------------------------------------------------
+ YB Batched Nested Loop Left Join
+   Join Filter: (s2.a = s3.a)
+   ->  Merge Left Join
+         Merge Cond: (s1.a = s2.a)
+         ->  Index Scan using s1_pkey on s1
+               Index Cond: (a > 20)
+         ->  Index Scan using s2_pkey on s2
+   ->  Index Scan using s3_pkey on s3
+         Index Cond: (a = ANY (ARRAY[s2.a, $1, $2]))
+(9 rows)
+
+/*+set(yb_bnl_batch_size 3) Leading(( ( s1 s2 ) s3 )) MergeJoin(s1 s2)*/ select * from s1 left outer join s2
+on s1.a = s2.a left outer join s3 on s2.a = s3.a where s1.a > 20;
+ a  | a  | a
+----+----+----
+ 24 | 24 | 24
+ 25 | 25 | 25
+(2 rows)
+
+drop table s1;
+drop table s2;
+drop table s3;
+SET yb_bnl_batch_size = 3;
+-- Testing column groups in HybridScanChoices
+create table test2 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp asc, b asc, pp2 asc, c asc));
+insert into test2 values (1,0, 2,0,1), (2,0, 3,0,3), (2,0,3,0,5);
+create table test1 (a int, pp int, b int, pp2 int, c int, primary key(a asc, pp asc, b asc, pp2 asc, c asc));
+insert into test1 values (1,0,2,0,1), (1,0,2,0,2), (2,0,3,0,3), (2,0,4,0,4), (2,0,4,0,5), (2,0,4,0,6);
+explain (costs off) select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
+                                                QUERY PLAN
+-----------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((p1.a = p2.a) AND (p1.b = p2.b) AND (p1.c = p2.c))
+   ->  Index Scan using test1_pkey on test1 p1
+   ->  Index Scan using test2_pkey on test2 p2
+         Index Cond: (ROW(a, b, c) = ANY (ARRAY[ROW(p1.a, p1.b, p1.c), ROW($1, $4, $7), ROW($2, $5, $8)]))
+(5 rows)
+
+select * from test1 p1 join test2 p2 on p1.a = p2.a AND p1.b = p2.b AND p1.c = p2.c;
+ a | pp | b | pp2 | c | a | pp | b | pp2 | c
+---+----+---+-----+---+---+----+---+-----+---
+ 1 |  0 | 2 |   0 | 1 | 1 |  0 | 2 |   0 | 1
+ 2 |  0 | 3 |   0 | 3 | 2 |  0 | 3 |   0 | 3
+(2 rows)
+
+drop table test1;
+drop table test2;
 -- Test on unhashable join operations. These should use the tuplestore
 -- strategy.
-SET yb_bnl_batch_size = 3;
 CREATE TABLE m1 (a money, primary key(a asc));
 INSERT INTO m1 SELECT i*2 FROM generate_series(1, 2000) i;
 CREATE TABLE m2 (a money, primary key(a asc));
@@ -574,9 +900,158 @@ create index q3_range on q3(a asc);
                Index Cond: (c1 = p1.c1)
 (7 rows)
 
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/ explain (costs off) select * from q1, q2, q3 where q1.c1 = q2.c1 and q3.a = q1.c2;
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (q1.c2 = q3.a)
+   ->  Seq Scan on q3
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1.c1 = q2.c1)
+         ->  Seq Scan on q2
+         ->  Index Scan using q1_pkey on q1
+               Index Cond: ((c1 = ANY (ARRAY[q2.c1, $1, $2])) AND (c2 = ANY (ARRAY[q3.a, $4, $5])))
+(8 rows)
+
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+create table g1(h int, r int, primary key(h hash, r asc));
+create table g2(h int, r int, primary key(h hash, r asc));
+create table main(h1 int, h2 int, r1 int, r2 int, primary key((h1,h2) hash, r1 asc, r2 asc));
+insert into main select i/1000, (i/100) % 10, (i/10) % 10, i % 10 from generate_series(1,9999) i;
+insert into g1 values (1,3), (5,7);
+insert into g2 values (2,4), (6,8);
+/*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ explain (costs off) select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
+                                                                                   QUERY PLAN                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: ((main.h1 = g1.h) AND (main.r2 = g1.r))
+   ->  Seq Scan on g1
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((g2.h = main.h2) AND (g2.r = main.r1))
+         ->  Seq Scan on g2
+         ->  Index Scan using main_pkey on main
+               Index Cond: ((ROW(h2, r1) = ANY (ARRAY[ROW(g2.h, g2.r), ROW($7, $10), ROW($8, $11)])) AND (ROW(h1, r2) = ANY (ARRAY[ROW(g1.h, g1.r), ROW($1, $4), ROW($2, $5)])))
+(8 rows)
+
+/*+Leading((g1 (g2 main))) Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_material off) Set(enable_seqscan on)*/ select main.* from g1,g2,main where main.h1 = g1.h and main.h2 = g2.h and main.r2 = g1.r and main.r1 = g2.r;
+ h1 | h2 | r1 | r2 
+----+----+----+----
+  5 |  6 |  8 |  7
+  5 |  2 |  4 |  7
+  1 |  6 |  8 |  3
+  1 |  2 |  4 |  3
+(4 rows)
+
+drop table g1;
+drop table g2;
+drop table main;
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan on) Set(enable_material off) Leading((q3 (q2 q1)))*/EXPLAIN (COSTS OFF) SELECT c.column_name, c.is_nullable = 'YES', c.udt_name, c.character_maximum_length, c.numeric_precision,
+	c.numeric_precision_radix, c.numeric_scale, c.datetime_precision, 8 * typlen, c.column_default, pd.description,
+	c.identity_increment
+	FROM information_schema.columns AS c
+	JOIN pg_type AS pgt ON c.udt_name = pgt.typname
+	LEFT JOIN pg_catalog.pg_description as pd ON pd.objsubid = c.ordinal_position AND pd.objoid = (
+	  SELECT oid FROM pg_catalog.pg_class
+	  WHERE relname = c.table_name AND relnamespace = (
+	    SELECT oid FROM pg_catalog.pg_namespace
+	    WHERE nspname = c.table_schema
+	    )
+	  )
+	where table_catalog = 'yugabyte' AND table_schema = 'clusters' AND table_name = 'clusters';
+                                                                                                                                                            QUERY PLAN                                                                                                                                                             
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Result
+   One-Time Filter: (((current_database())::information_schema.sql_identifier)::text = 'yugabyte'::text)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (((COALESCE(bt.typname, t.typname))::information_schema.sql_identifier)::name = pgt.typname)
+         ->  YB Batched Nested Loop Left Join
+               Join Filter: ((pd.objsubid = ((a.attnum)::information_schema.cardinal_number)::integer) AND (pd.objoid = (SubPlan 2)))
+               ->  YB Batched Nested Loop Left Join
+                     Join Filter: (a.attcollation = co.oid)
+                     ->  YB Batched Nested Loop Left Join
+                           Join Filter: ((dep.refobjid = c.oid) AND (dep.refobjsubid = a.attnum))
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (t.typnamespace = nt.oid)
+                                 ->  Nested Loop
+                                       ->  YB Batched Nested Loop Left Join
+                                             Join Filter: ((a.attrelid = ad.adrelid) AND (a.attnum = ad.adnum))
+                                             ->  Nested Loop Left Join
+                                                   Join Filter: (t.typtype = 'd'::"char")
+                                                   ->  YB Batched Nested Loop Join
+                                                         Join Filter: (a.atttypid = t.oid)
+                                                         ->  Nested Loop
+                                                               ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute a
+                                                                     Index Cond: (attnum > 0)
+                                                                     Remote Filter: (NOT attisdropped)
+                                                               ->  Index Scan using pg_class_oid_index on pg_class c
+                                                                     Index Cond: (oid = a.attrelid)
+                                                                     Filter: ((relkind = ANY ('{r,v,f,p}'::"char"[])) AND (pg_has_role(relowner, 'USAGE'::text) OR has_column_privilege(oid, a.attnum, 'SELECT, INSERT, UPDATE, REFERENCES'::text)) AND (((relname)::information_schema.sql_identifier)::text = 'clusters'::text))
+                                                         ->  Index Scan using pg_type_oid_index on pg_type t
+                                                               Index Cond: (oid = ANY (ARRAY[a.atttypid, $6, $7]))
+                                                   ->  YB Batched Nested Loop Join
+                                                         Join Filter: (bt.typnamespace = nbt.oid)
+                                                         ->  Index Scan using pg_type_oid_index on pg_type bt
+                                                               Index Cond: (t.typbasetype = oid)
+                                                         ->  Index Scan using pg_namespace_oid_index on pg_namespace nbt
+                                                               Index Cond: (oid = ANY (ARRAY[bt.typnamespace, $10, $11]))
+                                             ->  Index Scan using pg_attrdef_adrelid_adnum_index on pg_attrdef ad
+                                                   Index Cond: (ROW(adrelid, adnum) = ANY (ARRAY[ROW(a.attrelid, a.attnum), ROW($13, $16), ROW($14, $17)]))
+                                       ->  Index Scan using pg_namespace_oid_index on pg_namespace nc
+                                             Index Cond: (oid = c.relnamespace)
+                                             Filter: ((NOT pg_is_other_temp_schema(oid)) AND (((nspname)::information_schema.sql_identifier)::text = 'clusters'::text))
+                                 ->  Index Scan using pg_namespace_oid_index on pg_namespace nt
+                                       Index Cond: (oid = ANY (ARRAY[t.typnamespace, $20, $21]))
+                           ->  YB Batched Nested Loop Join
+                                 Join Filter: (dep.objid = seq.seqrelid)
+                                 ->  Index Scan using pg_depend_reference_index on pg_depend dep
+                                       Index Cond: ((refclassid = '1259'::oid) AND (ROW(refobjid, refobjsubid) = ANY (ARRAY[ROW(c.oid, (a.attnum)::integer), ROW($23, ($26)::integer), ROW($24, ($27)::integer)])))
+                                       Remote Filter: ((classid = '1259'::oid) AND (deptype = 'i'::"char"))
+                                 ->  Index Scan using pg_sequence_seqrelid_index on pg_sequence seq
+                                       Index Cond: (seqrelid = ANY (ARRAY[dep.objid, $29, $30]))
+                     ->  Nested Loop
+                           ->  Index Scan using pg_collation_oid_index on pg_collation co
+                                 Index Cond: (oid = ANY (ARRAY[a.attcollation, $32, $33]))
+                           ->  Index Scan using pg_namespace_oid_index on pg_namespace nco
+                                 Filter: ((nspname <> 'pg_catalog'::name) OR (co.collname <> 'default'::name))
+               ->  Index Scan using pg_description_o_c_o_index on pg_description pd
+                     Index Cond: (objoid = ANY (ARRAY[(SubPlan 2), (SubPlan 2), (SubPlan 2)]))
+                     SubPlan 2
+                       ->  Index Scan using pg_class_relname_nsp_index on pg_class
+                             Index Cond: ((relname = ((c.relname)::information_schema.sql_identifier)::name) AND (relnamespace = $1))
+                             InitPlan 1 (returns $1)
+                               ->  Index Scan using pg_namespace_nspname_index on pg_namespace
+                                     Index Cond: (nspname = ((nc.nspname)::information_schema.sql_identifier)::name)
+         ->  Index Scan using pg_type_typname_nsp_index on pg_type pgt
+               Index Cond: (typname = ANY (ARRAY[((COALESCE(bt.typname, t.typname))::information_schema.sql_identifier)::name, ((COALESCE($43, $46))::information_schema.sql_identifier)::name, ((COALESCE($44, $47))::information_schema.sql_identifier)::name]))
+(63 rows)
+
+create table oidtable(a oid, primary key(a asc));
+create table int4table(a int4, primary key(a asc));
+insert into oidtable select i from generate_series(1,20) i where i % 2 = 0;
+insert into int4table select i from generate_series(1,20) i where i % 3 = 0;
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off) Leading((oidtable int4table))*/explain (costs off) select * from oidtable, int4table where oidtable.
+a = int4table.a;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (oidtable.a = (int4table.a)::oid)
+   ->  Seq Scan on int4table
+   ->  Index Scan using oidtable_pkey on oidtable
+         Index Cond: (a = ANY (ARRAY[(int4table.a)::oid, ($1)::oid, ($2)::oid]))
+(5 rows)
+
+/*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off) Leading((oidtable int4table))*/ select * from oidtable, int4table where oidtable.a = int4table.a;
+ a  | a  
+----+----
+  6 |  6
+ 12 | 12
+ 18 | 18
+(3 rows)
+
+drop table oidtable;
+drop table int4table;
 SELECT '' AS "xxx", *
   FROM J1_TBL AS tx order by 1, 2, 3, 4;
  xxx | i | j |   t

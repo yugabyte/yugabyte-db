@@ -33,8 +33,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_GUTIL_STRINGS_ESCAPING_H
-#define YB_GUTIL_STRINGS_ESCAPING_H
+#pragma once
 
 #include <stddef.h>
 
@@ -119,7 +118,8 @@ size_t UnescapeCEscapeSequences(const char* source, char* dest, std::vector<std:
 //    *** DEPRECATED: Use CUnescape() in new code ***
 // ----------------------------------------------------------------------
 size_t UnescapeCEscapeString(const std::string& src, std::string* dest);
-size_t UnescapeCEscapeString(const std::string& src, std::string* dest, std::vector<std::string>* errors);
+size_t UnescapeCEscapeString(
+    const std::string& src, std::string* dest, std::vector<std::string>* errors);
 std::string UnescapeCEscapeString(const std::string& src);
 
 // ----------------------------------------------------------------------
@@ -364,7 +364,8 @@ void WebSafeBase64Escape(const std::string& src, std::string* dest);
 void WebSafeBase64EscapeWithPadding(const std::string& src, std::string* dest);
 
 void Base64Escape(const unsigned char* src, size_t szsrc, std::string* dest, bool do_padding);
-void WebSafeBase64Escape(const unsigned char* src, size_t szsrc, std::string* dest, bool do_padding);
+void WebSafeBase64Escape(
+    const unsigned char* src, size_t szsrc, std::string* dest, bool do_padding);
 
 // ----------------------------------------------------------------------
 // Base32Unescape()
@@ -518,7 +519,7 @@ inline int hex_digit_to_int(char c) {
 void a2b_hex(const char* from, unsigned char* to, size_t num);
 void a2b_hex(const char* from, char* to, size_t num);
 void a2b_hex(const char* from, std::string* to, size_t num);
-std::string a2b_hex(const std::string& a);
+std::string a2b_hex(const std::string_view& a);
 
 // ----------------------------------------------------------------------
 // a2b_bin()
@@ -548,7 +549,7 @@ void b2a_hex(const unsigned char* from, std::string* to, size_t num);
 //    Return value: 2*'num' characters of ascii string
 // ----------------------------------------------------------------------
 std::string b2a_hex(const char* from, size_t num);
-std::string b2a_hex(const GStringPiece& b);
+std::string b2a_hex(const std::string_view& b);
 
 // ----------------------------------------------------------------------
 // b2a_bin()
@@ -680,5 +681,3 @@ using strings::ShellEscapeCommandLine;
 using strings::ByteStringFromAscii;
 using strings::ByteStringToAscii;
 using strings::CleanStringLineEndings;
-
-#endif  // YB_GUTIL_STRINGS_ESCAPING_H

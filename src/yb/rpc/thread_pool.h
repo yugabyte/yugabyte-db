@@ -13,8 +13,7 @@
 //
 //
 
-#ifndef YB_RPC_THREAD_POOL_H
-#define YB_RPC_THREAD_POOL_H
+#pragma once
 
 #include <memory>
 #include <string>
@@ -74,11 +73,10 @@ FunctorThreadPoolTask<F>* MakeFunctorThreadPoolTask(F&& f) {
 
 struct ThreadPoolOptions {
   std::string name;
-  size_t queue_limit;
   size_t max_workers;
 
   std::string ToString() const {
-    return YB_STRUCT_TO_STRING(name, queue_limit, max_workers);
+    return YB_STRUCT_TO_STRING(name, max_workers);
   }
 };
 
@@ -126,5 +124,3 @@ class ThreadPool {
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_THREAD_POOL_H

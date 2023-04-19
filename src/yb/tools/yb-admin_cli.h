@@ -29,8 +29,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 //
-#ifndef YB_TOOLS_YB_ADMIN_CLI_H
-#define YB_TOOLS_YB_ADMIN_CLI_H
+#pragma once
 
 #include <functional>
 #include <map>
@@ -50,8 +49,6 @@ class YBTableName;
 } // namespace client
 
 namespace tools {
-
-typedef enterprise::ClusterAdminClient ClusterAdminClientClass;
 
 // Tool to administer a cluster from the CLI.
 class ClusterAdminCli {
@@ -78,11 +75,12 @@ class ClusterAdminCli {
   void RegisterJson(std::string&& cmd_name, std::string&& cmd_args, JsonAction&& action);
   void SetUsage(const std::string& prog_name);
 
-  virtual void RegisterCommandHandlers(ClusterAdminClientClass* client);
+  virtual void RegisterCommandHandlers(ClusterAdminClient* client);
 
  private:
   Status RunCommand(
       const Command& command, const CLIArguments& command_args, const std::string& program_name);
+  std::string GetArgumentExpressions(const std::string& usage_arguments);
   std::vector<Command> commands_;
   std::map<std::string, size_t> command_indexes_;
 };
@@ -92,14 +90,14 @@ using TailArgumentsProcessor =
     std::function<Status(CLIArgumentsIterator, const CLIArgumentsIterator&)>;
 
 Result<std::vector<client::YBTableName>> ResolveTableNames(
-    ClusterAdminClientClass* client,
+    ClusterAdminClient* client,
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
     const TailArgumentsProcessor& tail_processor = TailArgumentsProcessor(),
     bool allow_namespace_only = false);
 
 Result<client::YBTableName> ResolveSingleTableName(
-    ClusterAdminClientClass* client,
+    ClusterAdminClient* client,
     CLIArgumentsIterator i,
     const CLIArgumentsIterator& end,
     TailArgumentsProcessor tail_processor = TailArgumentsProcessor());
@@ -108,5 +106,3 @@ Status CheckArgumentsCount(size_t count, size_t min, size_t max);
 
 }  // namespace tools
 }  // namespace yb
-
-#endif // YB_TOOLS_YB_ADMIN_CLI_H

@@ -22,11 +22,11 @@ import org.slf4j.LoggerFactory;
 
 import org.yb.util.YBBackupException;
 import org.yb.util.YBBackupUtil;
-import org.yb.util.YBTestRunnerNonSanitizersOrMac;
+import org.yb.util.YBTestRunnerNonTsanAsan;
 
 import static org.yb.AssertionWrappers.fail;
 
-@RunWith(value=YBTestRunnerNonSanitizersOrMac.class)
+@RunWith(value=YBTestRunnerNonTsanAsan.class)
 public class TestYbBackup extends BaseYbBackupTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestYbBackup.class);
 

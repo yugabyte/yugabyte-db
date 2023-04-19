@@ -14,7 +14,7 @@
 #include "yb/master/state_with_tablets.h"
 
 #include "yb/util/enums.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -54,7 +54,7 @@ SysSnapshotEntryPB::State InitialStateToTerminalState(SysSnapshotEntryPB::State 
 StateWithTablets::StateWithTablets(
     SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state,
     std::string log_prefix)
-    : context_(*context), initial_state_(initial_state), log_prefix_(std::move(log_prefix)) {
+    : initial_state_(initial_state), context_(*context), log_prefix_(std::move(log_prefix)) {
 }
 
 Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
@@ -153,17 +153,18 @@ void StateWithTablets::Done(const TabletId& tablet_id, Status status) {
     } else {
       auto full_status = status.CloneAndPrepend(
           Format("Failed to $0 snapshot at $1", InitialStateName(), tablet_id));
-      bool terminal = IsTerminalFailure(status);
-      tablets_.modify(it, [&full_status, terminal](TabletData& data) {
-        if (terminal) {
-          data.state = SysSnapshotEntryPB::FAILED;
+      auto maybe_terminal_state = GetTerminalStateForStatus(status);
+      tablets_.modify(it, [&full_status, maybe_terminal_state](TabletData& data) {
+        if (maybe_terminal_state) {
+          data.state = maybe_terminal_state.value();
         }
         data.last_error = full_status;
       });
-      LOG_WITH_PREFIX(WARNING)
-          << full_status << ", terminal: " << terminal << ", " << num_tablets_in_initial_state_
-          << " was running";
-      if (!terminal) {
+
+      LOG_WITH_PREFIX(WARNING) << Format(
+          "$0, terminal: $1, $2 was running", full_status, maybe_terminal_state.has_value(),
+          num_tablets_in_initial_state_);
+      if (!maybe_terminal_state) {
         return;
       }
     }

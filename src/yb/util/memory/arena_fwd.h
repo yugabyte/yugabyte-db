@@ -13,8 +13,9 @@
 //
 //
 
-#ifndef YB_UTIL_MEMORY_ARENA_FWD_H
-#define YB_UTIL_MEMORY_ARENA_FWD_H
+#pragma once
+
+#include <vector>
 
 namespace yb {
 
@@ -41,6 +42,9 @@ using ArenaAllocator = internal::ArenaAllocatorBase<T, internal::ArenaTraits>;
 template<class T>
 using ThreadSafeArenaAllocator = internal::ArenaAllocatorBase<T, internal::ThreadSafeArenaTraits>;
 
-} // namespace yb
+template <class Entry>
+class ArenaList;
+template <class Object>
+using ArenaVector = std::vector<Object, ThreadSafeArenaAllocator<Object>>;
 
-#endif // YB_UTIL_MEMORY_ARENA_FWD_H
+} // namespace yb

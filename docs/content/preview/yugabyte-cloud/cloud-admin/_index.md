@@ -17,7 +17,7 @@ Before you can add Dedicated clusters, you need to create a billing profile and 
 
 {{< note title="Note" >}}
 
-You must be signed in as an Admin user to perform Admin tasks. Developer users cannot invite other users or view the billing profile.
+You must be signed in as an Admin user to perform Admin tasks. Developer users cannot invite other users, manage API keys, or view the billing profile.
 
 {{< /note >}}
 
@@ -36,21 +36,9 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="cloud-admin-apikeys/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/secure/checklist.png" aria-hidden="true" />
-        <div class="title">Manage API keys</div>
-      </div>
-      <div class="body">
-        Create and revoke API keys for accessing the YugabyteDB Managed API.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-billing-profile/">
       <div class="head">
-        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
         <div class="title">Manage billing</div>
       </div>
       <div class="body">
@@ -62,7 +50,7 @@ You must be signed in as an Admin user to perform Admin tasks. Developer users c
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cloud-billing-costs/">
       <div class="head">
-        <div class="icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="icon"><i class="fa-solid fa-file-invoice-dollar"></i></div>
         <div class="title">Cluster costs</div>
       </div>
       <div class="body">

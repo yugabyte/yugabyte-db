@@ -29,7 +29,7 @@ import org.yb.client.TestUtils;
 import org.yb.client.YBClient;
 import org.yb.client.YBTable;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import static org.yb.AssertionWrappers.*;
 
@@ -39,7 +39,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-@RunWith(value = YBTestRunnerNonTsanOnly.class)
+@RunWith(value = YBTestRunner.class)
 public class TestDBStreamInfo extends CDCBaseClass {
   private final static Logger LOG = LoggerFactory.getLogger(TestDBStreamInfo.class);
 
@@ -228,7 +228,8 @@ public class TestDBStreamInfo extends CDCBaseClass {
 
     // Assert that we receive all the tablets in the response.
     for (TabletCheckpointPair pair : resp1.getTabletCheckpointPairList()) {
-      assertTrue(tabletsInTableOne.contains(pair.getTabletId().toStringUtf8()));
+      assertTrue(
+          tabletsInTableOne.contains(pair.getTabletLocations().getTabletId().toStringUtf8()));
     }
 
     // Verify that all the tablets of table test_2 (tableTwo) are there in the cdc_state table.
@@ -241,7 +242,8 @@ public class TestDBStreamInfo extends CDCBaseClass {
 
     // Assert that we receive all the tablets in the response.
     for (TabletCheckpointPair pair : resp2.getTabletCheckpointPairList()) {
-      assertTrue(tabletsInTableTwo.contains(pair.getTabletId().toStringUtf8()));
+      assertTrue(
+          tabletsInTableTwo.contains(pair.getTabletLocations().getTabletId().toStringUtf8()));
     }
   }
 

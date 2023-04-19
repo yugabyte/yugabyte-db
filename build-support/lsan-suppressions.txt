@@ -44,3 +44,6 @@ leak:__strdup
 # https://gist.githubusercontent.com/mbautin/864e341c578f30b478da93f59cf098cc/raw
 leak:guc_strdup
 leak:postmaster_strdup
+
+# https://github.com/yugabyte/yugabyte-db/issues/14745
+leak:ThreadSafeObjectPool

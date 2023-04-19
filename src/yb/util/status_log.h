@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_UTIL_STATUS_LOG_H
-#define YB_UTIL_STATUS_LOG_H
+#pragma once
 
 #include <glog/logging.h>
 
@@ -86,5 +85,3 @@
 // Checks that result is ok, extracts result value is case of success.
 #define CHECK_RESULT(expr) \
   RESULT_CHECKER_HELPER(expr, CHECK_OK(__result))
-
-#endif  // YB_UTIL_STATUS_LOG_H

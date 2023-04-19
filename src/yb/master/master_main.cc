@@ -54,10 +54,17 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/result.h"
 #include "yb/util/size_literals.h"
+#include "yb/util/thread.h"
 #include "yb/util/ulimit_util.h"
 #include "yb/util/debug/trace_event.h"
+#include "yb/util/path_util.h"
+#include "yb/common/termination_monitor.h"
 
 #include "yb/tserver/server_main_util.h"
+
+#if YB_LTO_ENABLED
+#include "yb/tserver/tablet_server_main_impl.h"
+#endif
 
 using std::string;
 
@@ -119,9 +126,11 @@ static int MasterMain(int argc, char** argv) {
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(
       MasterTServerParseFlagsAndInit(MasterOptions::kServerType, &argc, &argv));
 
+  auto termination_monitor = TerminationMonitor::Create();
+
   auto opts_result = MasterOptions::CreateMasterOptions();
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(opts_result);
-  enterprise::Master server(*opts_result);
+  Master server(*opts_result);
 
   SetDefaultInitialSysCatalogSnapshotFlags();
 
@@ -144,16 +153,40 @@ static int MasterMain(int argc, char** argv) {
   call_home->ScheduleCallHome();
 
   auto total_mem_watcher = server::TotalMemWatcher::Create();
-  total_mem_watcher->MemoryMonitoringLoop(
-      [&server]() { server.Shutdown(); },
-      [&server]() { return server.IsShutdown(); }
-  );
-  return EXIT_FAILURE;
+  scoped_refptr<Thread> total_mem_watcher_thread;
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(Thread::Create(
+      "total_mem_watcher", "loop",
+      [&total_mem_watcher, &termination_monitor]() {
+        total_mem_watcher->MemoryMonitoringLoop(
+            [&termination_monitor]() { termination_monitor->Terminate(); });
+      },
+      &total_mem_watcher_thread));
+
+  termination_monitor->WaitForTermination();
+
+  total_mem_watcher->Shutdown();
+  LOG_AND_RETURN_FROM_MAIN_NOT_OK(ThreadJoiner(total_mem_watcher_thread.get()).Join());
+
+  call_home.reset();
+
+  server.Shutdown();
+
+  return EXIT_SUCCESS;
 }
 
 } // namespace master
 } // namespace yb
 
 int main(int argc, char** argv) {
-  return yb::master::MasterMain(argc, argv);
+  const auto executable_basename = yb::BaseName(argv[0]);
+  if (boost::starts_with(executable_basename, "yb-tserver") ||
+      boost::starts_with(executable_basename, "tserver")) {
+#if YB_LTO_ENABLED
+    return yb::tserver::TabletServerMain(argc, argv);
+#else
+    LOG(FATAL) << "yb-master executable can only function as yb-tserver in LTO mode. "
+               << "The basename of argv[0] is: " << executable_basename;
+#endif
+    }
+    return yb::master::MasterMain(argc, argv);
 }

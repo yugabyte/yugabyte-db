@@ -11,8 +11,7 @@
 // under the License.
 //
 
-#ifndef YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
-#define YB_TABLET_TRANSACTION_STATUS_RESOLVER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -31,7 +30,7 @@ namespace tablet {
 struct TransactionStatusInfo {
   TransactionId transaction_id = TransactionId::Nil();
   TransactionStatus status;
-  AbortedSubTransactionSet aborted_subtxn_set;
+  SubtxnSet aborted_subtxn_set;
   HybridTime status_ht;
   HybridTime coordinator_safe_time;
 
@@ -78,5 +77,3 @@ class TransactionStatusResolver {
 
 } // namespace tablet
 } // namespace yb
-
-#endif // YB_TABLET_TRANSACTION_STATUS_RESOLVER_H

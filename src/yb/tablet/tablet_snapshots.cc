@@ -16,9 +16,9 @@
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "yb/common/index.h"
+#include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/snapshot.h"
-#include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -35,7 +35,7 @@
 
 #include "yb/util/debug-util.h"
 #include "yb/util/file_util.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/operation_counter.h"
@@ -50,7 +50,6 @@ using namespace std::literals;
 DEFINE_test_flag(int32, delay_tablet_split_metadata_restore_secs, 0,
                  "How much time in secs to delay restoring tablet split metadata after restoring "
                  "checkpoint.");
-TAG_FLAG(TEST_delay_tablet_split_metadata_restore_secs, runtime);
 
 namespace yb {
 namespace tablet {
@@ -252,8 +251,9 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   RestoreMetadata restore_metadata;
   if (request.has_schema()) {
     restore_metadata.schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(request.schema(), restore_metadata.schema.get_ptr()));
-    restore_metadata.index_map.emplace(request.indexes());
+    RETURN_NOT_OK(SchemaFromPB(
+        request.schema().ToGoogleProtobuf(), restore_metadata.schema.get_ptr()));
+    restore_metadata.index_map.emplace(ToRepeatedPtrField(request.indexes()));
     restore_metadata.schema_version = request.schema_version();
     restore_metadata.hide = request.hide();
   }
@@ -262,12 +262,14 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
     auto* table_metadata = restore_metadata.colocated_tables_metadata.Add();
     table_metadata->schema_version = entry.schema_version();
     table_metadata->schema.emplace();
-    RETURN_NOT_OK(SchemaFromPB(entry.schema(), table_metadata->schema.get_ptr()));
-    table_metadata->index_map.emplace(entry.indexes());
-    table_metadata->table_id = entry.table_id();
+    RETURN_NOT_OK(SchemaFromPB(
+        entry.schema().ToGoogleProtobuf(), table_metadata->schema.get_ptr()));
+    table_metadata->index_map.emplace(ToRepeatedPtrField(entry.indexes()));
+    table_metadata->table_id = entry.table_id().ToBuffer();
   }
-
-  Status s = RestoreCheckpoint(snapshot_dir, restore_at, restore_metadata, frontier);
+  Status s = RestoreCheckpoint(
+      snapshot_dir, restore_at, restore_metadata, frontier,
+      !request.schedule_id().empty(), operation->op_id());
   VLOG_WITH_PREFIX(1) << "Complete checkpoint restoring with result " << s << " in folder: "
                       << metadata().rocksdb_dir();
   int32 delay_time_secs = GetAtomicFlag(&FLAGS_TEST_delay_tablet_split_metadata_restore_secs);
@@ -281,10 +283,11 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
 }
 
 Status TabletSnapshots::RestorePartialRows(SnapshotOperation* operation) {
-  docdb::DocWriteBatch write_batch(tablet().doc_db(), docdb::InitMarkerBehavior::kOptional);
+  docdb::DocWriteBatch write_batch(
+      tablet().doc_db(), docdb::InitMarkerBehavior::kOptional, nullptr);
 
   auto restore_patch = VERIFY_RESULT(GenerateRestoreWriteBatch(
-      *operation->request(), &write_batch));
+      operation->request()->ToGoogleProtobuf(), &write_batch));
   if (restore_patch.TotalTickerCount() != 0 || VLOG_IS_ON(3)) {
     LOG(INFO) << "PITR: Sequences data tablet: " << tablet().tablet_id()
               << ", " << restore_patch.TickersToString();
@@ -320,21 +323,25 @@ Result<TabletRestorePatch> TabletSnapshots::GenerateRestoreWriteBatch(
     RETURN_NOT_OK(restoring_state.SetPrefix(""));
 
     TabletRestorePatch restore_patch(
-        &existing_state, &restoring_state, write_batch, request.db_oid());
+        &existing_state, &restoring_state, write_batch,
+        tablet().metadata()->primary_table_info().get(), request.db_oid());
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    RETURN_NOT_OK(restore_patch.Finish());
     return std::move(restore_patch);
   } else {
     LOG_WITH_PREFIX(INFO) << "Cleaning only rows with db oid " << request.db_oid();
     TabletRestorePatch restore_patch(
-        &existing_state, nullptr, write_batch, request.db_oid());
+        &existing_state, nullptr, write_batch,
+        tablet().metadata()->primary_table_info().get(), request.db_oid());
     RETURN_NOT_OK(restore_patch.PatchCurrentStateFromRestoringState());
+    RETURN_NOT_OK(restore_patch.Finish());
     return std::move(restore_patch);
   }
 }
 
 Status TabletSnapshots::RestoreCheckpoint(
     const std::string& dir, HybridTime restore_at, const RestoreMetadata& restore_metadata,
-    const docdb::ConsensusFrontier& frontier) {
+    const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
   const auto destroy = !dir.empty();
@@ -385,9 +392,11 @@ Status TabletSnapshots::RestoreCheckpoint(
 
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
-        restore_metadata.schema_version);
+        restore_metadata.schema_version, op_id);
     tablet().metadata()->SetHidden(restore_metadata.hide);
     need_flush = true;
   }
@@ -395,10 +404,13 @@ Status TabletSnapshots::RestoreCheckpoint(
   for (const auto& colocated_table_metadata : restore_metadata.colocated_tables_metadata) {
     LOG(INFO) << "Setting schema, index information and schema version for table "
               << colocated_table_metadata.table_id;
+    // OpId::Invalid() is used to indicate the callee to not
+    // set last_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,
-        colocated_table_metadata.schema_version, colocated_table_metadata.table_id);
+        colocated_table_metadata.schema_version, op_id,
+        colocated_table_metadata.table_id);
     need_flush = true;
   }
 
@@ -406,8 +418,13 @@ Status TabletSnapshots::RestoreCheckpoint(
     auto tablet_metadata_file = TabletMetadataFile(dir);
     // Old snapshots could lack tablet metadata, so just do nothing in this case.
     if (env().FileExists(tablet_metadata_file)) {
-      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file;
-      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(tablet_metadata_file));
+      LOG_WITH_PREFIX(INFO) << "Merging metadata with restored: " << tablet_metadata_file
+                            << " , force overwrite of schema packing " << !is_pitr_restore;
+      RETURN_NOT_OK(tablet().metadata()->MergeWithRestored(
+          tablet_metadata_file,
+          is_pitr_restore ? docdb::OverwriteSchemaPacking::kFalse
+              : docdb::OverwriteSchemaPacking::kTrue));
+      need_flush = true;
     }
   }
 
@@ -469,7 +486,7 @@ Status TabletSnapshots::Delete(const SnapshotOperation& operation) {
   const auto& snapshot_id = operation.request()->snapshot_id();
   auto txn_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_id);
   const std::string snapshot_dir = JoinPathSegments(
-      top_snapshots_dir, !txn_snapshot_id ? snapshot_id : txn_snapshot_id.ToString());
+      top_snapshots_dir, !txn_snapshot_id ? snapshot_id.ToBuffer() : txn_snapshot_id.ToString());
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
   Env* const env = metadata().fs_manager()->env();
@@ -571,6 +588,109 @@ Result<bool> TabletRestorePatch::ShouldSkipEntry(const Slice& key, const Slice& 
     return true;
   }
   return false;
+}
+
+Status TabletRestorePatch::UpdateColumnValueInMap(
+    const Slice& key, const Slice& value,
+    std::map<docdb::DocKey, SequencesDataInfo>* key_to_seq_info_map) {
+  docdb::SubDocKey decoded_key;
+  RETURN_NOT_OK(decoded_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+
+  auto last_value_opt = VERIFY_RESULT(GetInt64ColumnValue(
+      decoded_key, value, table_info_, "last_value"));
+  auto is_called_opt = VERIFY_RESULT(GetBoolColumnValue(
+      decoded_key, value, table_info_, "is_called"));
+
+  if (!last_value_opt && !is_called_opt) {
+    return Status::OK();
+  }
+  std::optional<int64_t> updated_last_value = last_value_opt;
+  std::optional<bool> updated_is_called = is_called_opt;
+  const auto& doc_key = decoded_key.doc_key();
+  auto it = key_to_seq_info_map->find(doc_key);
+  if (it != key_to_seq_info_map->end()) {
+    // Only update if last_value has increased.
+    if (it->second.last_value) {
+      if (!last_value_opt || *(it->second.last_value) >= *last_value_opt) {
+        updated_last_value = *(it->second.last_value);
+      }
+    }
+    // Only update if is_called has changed from false to true.
+    if (it->second.is_called) {
+      if (!is_called_opt || *(it->second.is_called) == true) {
+        updated_is_called = *(it->second.is_called);
+      }
+    }
+    key_to_seq_info_map->erase(doc_key);
+  }
+  SequencesDataInfo seq_values(updated_last_value, updated_is_called);
+  key_to_seq_info_map->emplace(doc_key, seq_values);
+  VLOG_WITH_FUNC(3) << "Inserted in map " << doc_key.ToString() << ": " << seq_values;
+  return Status::OK();
+}
+
+Status TabletRestorePatch::ProcessCommonEntry(
+    const Slice& key, const Slice& existing_value, const Slice& restoring_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessCommonEntry(key, existing_value, restoring_value));
+  RETURN_NOT_OK(UpdateColumnValueInMap(
+      key, existing_value, &existing_key_to_seq_info_map_));
+  return UpdateColumnValueInMap(
+      key, restoring_value, &restoring_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::ProcessRestoringOnlyEntry(
+    const Slice& restoring_key, const Slice& restoring_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessRestoringOnlyEntry(restoring_key, restoring_value));
+  return UpdateColumnValueInMap(
+      restoring_key, restoring_value, &restoring_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::ProcessExistingOnlyEntry(
+    const Slice& existing_key, const Slice& existing_value) {
+  RETURN_NOT_OK(RestorePatch::ProcessExistingOnlyEntry(existing_key, existing_value));
+  return UpdateColumnValueInMap(
+      existing_key, existing_value, &existing_key_to_seq_info_map_);
+}
+
+Status TabletRestorePatch::Finish() {
+  for (const auto& doc_key_and_value : restoring_key_to_seq_info_map_) {
+    auto value_to_insert = doc_key_and_value.second;
+    auto it = existing_key_to_seq_info_map_.find(doc_key_and_value.first);
+    if (it != existing_key_to_seq_info_map_.end()) {
+      value_to_insert = it->second;
+    }
+    // Insert this kv into the write batch.
+    if (value_to_insert.last_value) {
+      QLValuePB value_pb;
+      value_pb.set_int64_value(*(value_to_insert.last_value));
+      VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.last_value);
+      auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("last_value"));
+      auto doc_path = docdb::DocPath(
+          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+          doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+      IncrementTicker(RestoreTicker::kInserts);
+    }
+    if (value_to_insert.is_called) {
+      QLValuePB value_pb;
+      value_pb.set_bool_value(*(value_to_insert.is_called));
+      VLOG_WITH_FUNC(3) << doc_key_and_value.first << ": " << *(value_to_insert.is_called);
+      auto column_id = VERIFY_RESULT(table_info_->schema().ColumnIdByName("is_called"));
+      auto doc_path = docdb::DocPath(
+          doc_key_and_value.first.Encode(), docdb::KeyEntryValue::MakeColumnId(column_id));
+      RETURN_NOT_OK(DocBatch()->SetPrimitive(
+          doc_path, docdb::ValueRef(value_pb, SortingType::kNotSpecified)));
+      IncrementTicker(RestoreTicker::kInserts);
+    }
+  }
+  return Status::OK();
+}
+
+std::ostream& operator<<(std::ostream& out, const SequencesDataInfo& value) {
+  out << "[last_value: " << (value.last_value ? std::to_string(*(value.last_value)) : "none")
+      << ", is_called: " << (value.is_called ? (*(value.is_called) ? "true" : "false") : "none")
+      << "]";
+  return out;
 }
 
 } // namespace tablet

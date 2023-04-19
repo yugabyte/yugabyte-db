@@ -13,8 +13,7 @@
 //
 // This file contains the QLValue class that represents QL values.
 
-#ifndef YB_COMMON_QL_VALUE_H
-#define YB_COMMON_QL_VALUE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -44,6 +43,8 @@
   case GIN_NULL
 
 namespace yb {
+
+using ColumnListVector = std::vector<int>;
 
 //--------------------------------------------------------------------------------------------------
 void AppendToKey(const QLValuePB &value_pb, std::string *bytes);
@@ -273,6 +274,9 @@ class QLValue {
   void set_jsonb_value(const std::string& val) {
     pb_.set_jsonb_value(val);
   }
+  void set_jsonb_value(const void* value, size_t size) {
+    pb_.set_jsonb_value(value, size);
+  }
   void set_bool_value(bool val) {
     pb_.set_bool_value(val);
   }
@@ -501,8 +505,8 @@ class QLValue {
 
   //----------------------------- serializer / deserializer ---------------------------------
   Status Deserialize(const std::shared_ptr<QLType>& ql_type,
-                             const QLClient& client,
-                             Slice* data);
+                     const QLClient& client,
+                     Slice* data);
 
   //------------------------------------ debug string ---------------------------------------
   // Return a string for debugging.
@@ -596,8 +600,9 @@ void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValuePB* re
 void ConcatStrings(const std::string& lhs, const std::string& rhs, QLValue* result);
 void ConcatStrings(const Slice& lhs, const Slice& rhs, LWQLValuePB* result);
 
-std::vector<QLValuePB> SortTuplesbyOrdering(
-    const QLSeqValuePB& options, const std::vector<bool>& reverse);
+std::vector<const QLValuePB*> GetTuplesSortedByOrdering(
+    const QLSeqValuePB& options, const Schema& schema, bool is_forward_scan,
+    const ColumnListVector& col_idxs);
 
 #define YB_SET_INT_VALUE(ql_valuepb, input, bits) \
   case DataType::BOOST_PP_CAT(INT, bits): { \
@@ -607,5 +612,3 @@ std::vector<QLValuePB> SortTuplesbyOrdering(
   } break;
 
 } // namespace yb
-
-#endif // YB_COMMON_QL_VALUE_H

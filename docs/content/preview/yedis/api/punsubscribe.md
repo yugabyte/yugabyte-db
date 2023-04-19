@@ -14,7 +14,8 @@ type: docs
 
 ## Synopsis
 
-<b>`PUNSUBSCRIBE [pattern [pattern ...]]`</b><br>
+**`PUNSUBSCRIBE [pattern [pattern ...]]`**
+
 This command unsubscribes the client from the specified pattern(s). If no pattern is specified, the client is unsubscribed from all patterns that it has subscribed to.
 
 ## See also

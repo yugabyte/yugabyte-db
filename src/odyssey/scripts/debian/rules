@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# NOTE: Only TABs allowed here !!!
+
+override_dh_strip:
+	dh_strip --dbg-package=@NAME@-dbg
+
+override_dh_usrlocal:
+
+override_dh_auto_build:
+	make BUILD_REL_DIR=build build_release 
+
+override_dh_auto_install:
+	dh_auto_install --destdir=debian/@NAME@
+
+%:
+	dh $@

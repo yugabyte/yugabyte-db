@@ -64,6 +64,7 @@ OBJS = \
 	variable.o \
 	view.o \
 	ybccmds.o \
-	ybc_builtin.o
+	ybc_builtin.o \
+	yb_profile.o
 
 include $(top_srcdir)/src/backend/common.mk

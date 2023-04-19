@@ -4,8 +4,6 @@ headerTitle: Build a Java application
 linkTitle: Java
 description: Build a simple Java application using the YugabyteDB JDBC Driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: Yugabyte JDBC"
-aliases:
-  - /preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/
 menu:
   preview:
     parent: build-apps
@@ -19,7 +17,7 @@ The following tutorial shows a small [Java application](https://github.com/yugab
 
 ## Prerequisites
 
-- Java Development Kit (JDK) 1.8, or later, is installed. JDK installers for Linux and macOS can be downloaded from [Oracle](http://jdk.java.net/), [Adoptium (OpenJDK)](https://adoptium.net/), or [Azul Systems (OpenJDK)](https://www.azul.com/downloads/?package=jdk). Homebrew users on macOS can install using `brew install openjdk`.
+- Java Development Kit (JDK) 1.8, or later, is installed. {{% jdk-setup %}}
 - [Apache Maven](https://maven.apache.org/index.html) 3.3 or later, is installed.
 
 ### Clone the application from GitHub
@@ -40,9 +38,10 @@ To do this:
 
 2. Set the following configuration parameters:
 
-    - **host** - the host name of your YugabyteDB cluster. To obtain a YugabyteDB Managed cluster host name, sign in to YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
-    - **port** - the port number that will be used by the JDBC driver (the default YugabyteDB YSQL port is 5433).
-    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. If you are using the credentials you created when deploying a cluster in YugabyteDB Managed, these can be found in the credentials file you downloaded.
+    - **host** - the host name of your YugabyteDB cluster. For local clusters, use the default (127.0.0.1). For YugabyteDB Managed, select your cluster on the **Clusters** page, and click **Settings**. The host is displayed under **Connection Parameters**.
+    - **port** - the port number for the driver to use (the default YugabyteDB YSQL port is 5433).
+    - **database** - the name of the database you are connecting to (the default is `yugabyte`).
+    - **dbUser** and **dbPassword** - the username and password for the YugabyteDB database. For local clusters, use the defaults (`yugabyte` and `yugabyte`). For YugabyteDB Managed, use the credentials in the credentials file you downloaded.
     - **sslMode** - the SSL mode to use. YugabyteDB Managed [requires SSL connections](../../../../yugabyte-cloud/cloud-secure-clusters/cloud-authentication/); use `verify-full`.
     - **sslRootCert** - the full path to the YugabyteDB Managed cluster CA certificate.
 

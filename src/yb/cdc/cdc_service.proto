@@ -39,6 +39,7 @@ import "yb/common/common.proto";
 import "yb/common/common_net.proto";
 import "yb/common/value.proto";
 import "yb/common/wire_protocol.proto";
+import "yb/master/master_client.proto";
 import "yb/rpc/service.proto";
 import "yb/tablet/operations.proto";
 import "yb/tserver/tserver.proto";
@@ -115,7 +116,7 @@ enum CDCRequestSource {
 }
 
 enum CDCCheckpointType {
-  IMPLICIT = 1; // Used for 2DC
+  IMPLICIT = 1; // Used for 2DC and CDC
   EXPLICIT = 2; // Used for CDC
 }
 
@@ -205,6 +206,11 @@ message GetChangesRequestPB {
   optional CDCSDKCheckpointPB from_cdc_sdk_checkpoint = 8;
 
   optional bool need_schema_info = 9 [default = false];
+
+  // This will be the checkpoint used for 'EXPLICIT' checkpoint streams.
+  optional CDCSDKCheckpointPB explicit_cdc_sdk_checkpoint = 10;
+
+  optional int64 safe_hybrid_time = 11 [default = -1];
 }
 
 message KeyValuePairPB {
@@ -219,7 +225,8 @@ message CDCRecordPB {
     APPLY = 3;
     SPLIT_OP = 4;
     CHANGE_METADATA = 5;
-    COMMITTED = 6;
+    TRANSACTION_COMMITTED = 6;
+    TRANSACTION_CREATED = 7;
   }
   optional uint64 time = 1;
   optional OperationType operation = 2;
@@ -342,6 +349,7 @@ message RowMessage {
     DDL      = 5;
     TRUNCATE = 6;
     READ     = 7;
+    SAFEPOINT= 8;
   }
 
   optional bytes  transaction_id = 1;
@@ -365,6 +373,7 @@ message RowMessage {
 
   // truncate info
   optional yb.tserver.TruncateRequestPB truncate_request_info = 13;
+  optional uint64 record_time = 14;
 }
 
 message CDCSDKProtoRecordPB {
@@ -402,11 +411,16 @@ message GetChangesResponsePB {
 message GetCheckpointRequestPB {
   optional bytes stream_id = 1;
   optional bytes tablet_id = 2;
+  // The table_id will be required in case of colocated tables.
+  optional bytes table_id = 3;
 }
 
 message GetCheckpointResponsePB {
   optional CDCErrorPB error = 1;
   optional CDCCheckpointPB checkpoint = 2;
+  // The snapshot_key and snapshot_time will be used for CDCSDK snapshot purposes.
+  optional bytes snapshot_key = 3;
+  optional uint64 snapshot_time = 4;
 }
 
 message UpdateCdcReplicatedIndexRequestPB {
@@ -424,6 +438,8 @@ message UpdateCdcReplicatedIndexRequestPB {
   repeated OpIdPB cdc_sdk_consumed_ops = 7;
   repeated uint64 cdc_sdk_ops_expiration_ms = 8;
   repeated bytes stream_ids = 9;
+  optional fixed64 cdc_sdk_safe_time = 10;
+  repeated fixed64 cdc_sdk_safe_times = 11;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {
@@ -472,6 +488,7 @@ message SetCDCCheckpointRequestPB {
   optional bytes tablet_id = 4;
   optional bool initial_checkpoint = 5 [default = false];
   optional bool bootstrap = 6 [default = false];
+  optional fixed64 cdc_sdk_safe_time = 7;
 }
 
 message SetCDCCheckpointResponsePB {
@@ -479,12 +496,13 @@ message SetCDCCheckpointResponsePB {
 }
 
 message TabletCheckpointPair {
-  optional bytes tablet_id = 1;
+  optional yb.master.TabletLocationsPB tablet_locations = 1;
   optional CDCSDKCheckpointPB cdc_sdk_checkpoint = 2;
 }
 
 message GetTabletListToPollForCDCRequestPB {
   optional TableInfo table_info = 1;
+  optional bytes tablet_id = 2;
 }
 
 message GetTabletListToPollForCDCResponsePB {

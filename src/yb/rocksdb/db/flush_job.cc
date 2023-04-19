@@ -60,22 +60,22 @@
 #include "yb/rocksdb/util/mutexlock.h"
 #include "yb/rocksdb/util/statistics.h"
 #include "yb/rocksdb/util/stop_watch.h"
-#include "yb/rocksdb/util/sync_point.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/flag_tags.h"
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/stats/iostats_context_imp.h"
+#include "yb/util/sync_point.h"
 
-DEFINE_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
+DEFINE_UNKNOWN_int32(rocksdb_nothing_in_memtable_to_flush_sleep_ms, 10,
     "Used for a temporary workaround for http://bit.ly/ybissue437. How long to wait (ms) in case "
     "we could not flush any memtables, usually due to filters preventing us from doing so.");
 
 DEFINE_test_flag(bool, rocksdb_crash_on_flush, false,
                  "When set, memtable flush in rocksdb crashes.");
 
-DEFINE_bool(rocksdb_release_mutex_during_wait_for_memtables_to_flush, true,
+DEFINE_UNKNOWN_bool(rocksdb_release_mutex_during_wait_for_memtables_to_flush, true,
             "When a flush is scheduled, but there isn't a memtable eligible yet, release "
             "the mutex before going to sleep and reacquire it post sleep.");
 

@@ -214,11 +214,11 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
         {
           host_base: editInitialValues.data.AWS_HOST_BASE
             ? [
-                {
-                  value: editInitialValues.data.AWS_HOST_BASE,
-                  label: editInitialValues.data.AWS_HOST_BASE
-                }
-              ]
+              {
+                value: editInitialValues.data.AWS_HOST_BASE,
+                label: editInitialValues.data.AWS_HOST_BASE
+              }
+            ]
             : [],
           region: [{ value: null, label: null }],
           bucket: { label: bucketAndFolder.bucket, value: bucketAndFolder.bucket },
@@ -232,10 +232,10 @@ export const CreateAWSConfigForm: FC<CreateAWSConfigFormProps> = ({
   let hostBase: OptionTypeBase[] = [];
 
   if (resp?.data) {
-    buckets = uniq(Object.values(resp.data)).map((e) => {
+    buckets = uniq(Object.keys(resp.data)).map((e) => {
       return { value: e, label: e };
     });
-    hostBase = uniq(Object.keys(resp.data)).map((e) => {
+    hostBase = uniq(Object.values(resp.data)).map((e) => {
       return { value: e, label: e };
     });
   }

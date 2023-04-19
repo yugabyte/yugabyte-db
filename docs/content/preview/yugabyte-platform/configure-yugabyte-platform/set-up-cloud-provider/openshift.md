@@ -16,14 +16,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
     <a href="../aws/" class="nav-link">
-      <i class="fab fa-aws"></i>
+      <i class="fa-brands fa-aws"></i>
       AWS
     </a>
   </li>
 
   <li>
     <a href="../gcp/" class="nav-link">
-      <i class="fab fa-google" aria-hidden="true"></i>
+      <i class="fa-brands fa-google" aria-hidden="true"></i>
       GCP
     </a>
   </li>
@@ -31,32 +31,34 @@ type: docs
   <li>
     <a href="../azure/" class="nav-link">
       <i class="icon-azure" aria-hidden="true"></i>
-      &nbsp;&nbsp; Azure
+      Azure
     </a>
   </li>
 
   <li>
     <a href="../kubernetes/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
     </a>
   </li>
 
   <li>
     <a href="../vmware-tanzu/" class="nav-link">
-      <i class="fas fa-cubes" aria-hidden="true"></i>
+      <i class="fa-solid fa-cubes" aria-hidden="true"></i>
       VMware Tanzu
     </a>
   </li>
 
 <li>
     <a href="../openshift/" class="nav-link active">
-      <i class="fas fa-cubes" aria-hidden="true"></i>OpenShift</a>
+      <i class="fa-brands fa-redhat" aria-hidden="true"></i>
+      OpenShift
+    </a>
   </li>
 
   <li>
     <a href="../on-premises/" class="nav-link">
-      <i class="fas fa-building"></i>
+      <i class="fa-solid fa-building"></i>
       On-premises
     </a>
   </li>
@@ -71,11 +73,21 @@ To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you star
 
 kubeconfig is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
 
+Set the `YBA_NAMESPACE` environment variable to the project where your YugabyteDB Anywhere is installed, as follows:
+
+```sh
+export YBA_NAMESPACE="yb-platform"
+```
+
+Note that the `YBA_NAMESPACE` variable is used in the commands throughout this document.
+
 To create a service account in the yb-platform project, execute the following command:
 
 ```shell
+export YBA_NAMESPACE="yb-platform"
+
 oc apply \
-  -n yb-platform \
+  -n ${YBA_NAMESPACE} \
   -f https://raw.githubusercontent.com/yugabyte/charts/master/rbac/yugabyte-platform-universe-management-sa.yaml
 ```
 
@@ -90,9 +102,11 @@ The next step is to grant access to this service account using Roles and RoleBin
 To create the required RBAC objects, execute the following command:
 
 ```shell
+export YBA_NAMESPACE="yb-platform"
+
 curl -s https://raw.githubusercontent.com/yugabyte/charts/master/rbac/platform-namespaced.yaml \
- | sed "s/namespace: <SA_NAMESPACE>/namespace: yb-platform/g" \
- | oc apply -n yb-platform -f -
+ | sed "s/namespace: <SA_NAMESPACE>/namespace: ${YBA_NAMESPACE}/g" \
+ | oc apply -n ${YBA_NAMESPACE} -f -
 ```
 
 Expect the following output:
@@ -113,9 +127,11 @@ wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/ge
 To generate the kubeconfig file, execute the following:
 
 ```shell
+export YBA_NAMESPACE="yb-platform"
+
 python generate_kubeconfig.py \
  --service_account yugabyte-platform-universe-management \
- --namespace yb-platform
+ --namespace ${YBA_NAMESPACE}
 ```
 
 Expect the following output:
@@ -124,9 +140,11 @@ Expect the following output:
 Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 ```
 
+The kubeconfig needs to be generated for each OpenShift cluster if you are doing a multi-cluster setup.
+
 ## Create a provider in YugabyteDB Anywhere
 
-Since YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
+Because YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
 You can create a provider as follows:
 
@@ -137,12 +155,13 @@ You can create a provider as follows:
   - Use the **Kube Config** field to select the file that you created in the preceding step.
   - In the **Service Account** field, enter yugabyte-platform-universe-management.
   - In the **Image Registry** field, if you are performing Operator-based installation, use  `registry.connect.redhat.com/yugabytedb/yugabyte`, and if you are performing Helm-based installation, use  `quay.io/yugabyte/yugabyte-ubi`
-  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support. <br><br>
-![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
+  - Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support.
+
+  ![OpenShift Provider Config](/images/ee/openshift-cloud-provider-setup.png)
 
 - Click **Add Region** and complete the **Add new region** dialog shown in the following illustration by first selecting the region you found previously (US East), and then entering the following information:
   - In the **Zone** field, enter the exact zone label (us-east4-a).
-  - In the **Namespace** field, enter yb-platform.<br><br>
+  - In the **Namespace** field, enter yb-platform.
 
   ![Add Region](/images/ee/openshift-add-region.png)
 
@@ -162,7 +181,7 @@ You can create a universe using the provider as follows:
   - In the **Name** field, enter universe-1.
   - In the **Provider** field, enter ocp-test.
   - In the **Regions** field, enter US East.
-  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).<br><br>
+  - In the **Instance Type** field, enter xsmall (2 cores, 4GB RAM).
 
   ![Create Universe](/images/ee/openshift-create-uni.png)
 
@@ -189,7 +208,9 @@ If the universe creation remains in Pending state for more than 2-3 minutes, ope
 Alternatively, you can execute the following command to check status of the pods:
 
 ```shell
-oc get pods -n yb-platform -l chart=yugabyte
+export YBA_NAMESPACE="yb-platform"
+
+oc get pods -n ${YBA_NAMESPACE} -l chart=yugabyte
 ```
 
 Expect an output similar to the following:

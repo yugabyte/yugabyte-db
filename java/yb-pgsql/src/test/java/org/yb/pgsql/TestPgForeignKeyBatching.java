@@ -15,7 +15,7 @@ package org.yb.pgsql;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.yb.util.YBTestRunnerNonTsanOnly;
+import org.yb.YBTestRunner;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -23,7 +23,7 @@ import java.util.Map;
 
 import static org.yb.AssertionWrappers.*;
 
-@RunWith(YBTestRunnerNonTsanOnly.class)
+@RunWith(YBTestRunner.class)
 public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
   private final static int MAX_BATCH_SIZE = 512;
 
@@ -118,17 +118,17 @@ public class TestPgForeignKeyBatching extends BasePgSQLTestWithRpcMetric {
       stmt.execute("INSERT INTO parent VALUES (1), (2), (3), (4), (5)");
       stmt.execute("BEGIN");
       stmt.execute("INSERT INTO child VALUES(1, 1), (2, 2), (3, 3)");
-      runInvalidQuery(extraStmt,
-        "DELETE FROM parent WHERE k = 1",
-        "Conflicts with higher priority transaction");
+      runInvalidQuery(extraStmt, "DELETE FROM parent WHERE k = 1", true,
+        "could not serialize access due to concurrent update",
+        "conflicts with higher priority transaction");
       stmt.execute("COMMIT");
 
       stmt.execute("DELETE FROM child");
       stmt.execute("BEGIN ISOLATION LEVEL REPEATABLE READ");
       stmt.execute("INSERT INTO child VALUES (1, 1), (2, 2), (3, 3)");
-      runInvalidQuery(extraStmt,
-        "DELETE FROM parent WHERE k = 1",
-        "Conflicts with higher priority transaction");
+      runInvalidQuery(extraStmt, "DELETE FROM parent WHERE k = 1", true,
+        "could not serialize access due to concurrent update",
+        "conflicts with higher priority transaction");
       stmt.execute("COMMIT");
     }
   }

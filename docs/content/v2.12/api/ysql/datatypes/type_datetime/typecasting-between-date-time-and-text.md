@@ -24,7 +24,7 @@ PostgreSQL, and therefore YSQL, provide many functions and equivalent syntactica
 - [General-purpose date and time functions](../functions/).
 - [Date and time formatting functions](../formatting-functions/).
 
-The following _to_char_demo()_ code example uses the _to_timestamp()_ function to produce a _timestamptz_ value from a _double precision_ value. The input represents the real number of seconds after, or before, the start of the Unix Epoch (a.k.a. the POSIX Epoch). See the Wikipedia article <a href="https://en.wikipedia.org/wiki/Unix_time" target="_blank">Unix time <i class="fas fa-external-link-alt"></i></a>. The Unix Epoch begins at midnight on 1-January-1970 _UTC_. Try this:
+The following _to_char_demo()_ code example uses the _to_timestamp()_ function to produce a _timestamptz_ value from a _double precision_ value. The input represents the real number of seconds after, or before, the start of the Unix Epoch (a.k.a. the POSIX Epoch). See the Wikipedia article <a href="https://en.wikipedia.org/wiki/Unix_time" target="_blank">Unix time <i class="fa-solid fa-up-right-from-square"></i></a>. The Unix Epoch begins at midnight on 1-January-1970 _UTC_. Try this:
 
 ```plpgsql
 set datestyle = 'ISO, DMY';
@@ -110,7 +110,7 @@ $body$;
 select z from to_char_demo();
 ```
 
-Because this uses the _to_char()_ function, and not typecasting, the result is not sensitive to the _DateStyle_ setting. PostgreSQL documents the various components, like _'TMDay'_, _'TMMonth'_, _'yyyy'_, _dd_, and so on that define the format that _to_char()_ produces in <a href="https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIME-TABLE" target="_blank">Table 9.24. Template Patterns for Date/Time Formatting <i class="fas fa-external-link-alt"></i></a>.
+Because this uses the _to_char()_ function, and not typecasting, the result is not sensitive to the _DateStyle_ setting. PostgreSQL documents the various components, like _'TMDay'_, _'TMMonth'_, _'yyyy'_, _dd_, and so on that define the format that _to_char()_ produces in <a href="https://www.postgresql.org/docs/11/functions-formatting.html#FUNCTIONS-FORMATTING-DATETIME-TABLE" target="_blank">Table 9.24. Template Patterns for Date/Time Formatting <i class="fa-solid fa-up-right-from-square"></i></a>.
 
 And because _to_char_demo()_ uses the _at time zone_ operator, it is not sensitive to the current _TimeZone_ setting. This is the result:
 
@@ -125,7 +125,7 @@ And because _to_char_demo()_ uses the _at time zone_ operator, it is not sensiti
  Pe 07-Syy-1042 11:59:59.543216 BC
 ```
 
-As you see, the _lc_time_ session parameter determines the national language that is used for the spellings of the short and long day and month names. The PostgreSQL documentation describes this parameter in the section <a href="https://www.postgresql.org/docs/11/locale.html" target="_blank">23.1. Locale Support <i class="fas fa-external-link-alt"></i></a> Notice that this section, in turn, references the section <a href="https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT" target="_blank">23.1. 19.11.2. Locale and Formatting <i class="fas fa-external-link-alt"></i></a>.
+As you see, the _lc_time_ session parameter determines the national language that is used for the spellings of the short and long day and month names. The PostgreSQL documentation describes this parameter in the section <a href="https://www.postgresql.org/docs/11/locale.html" target="_blank">23.1. Locale Support <i class="fa-solid fa-up-right-from-square"></i></a> Notice that this section, in turn, references the section <a href="https://www.postgresql.org/docs/11/runtime-config-client.html#RUNTIME-CONFIG-CLIENT-FORMAT" target="_blank">23.1. 19.11.2. Locale and Formatting <i class="fa-solid fa-up-right-from-square"></i></a>.
 
 In short, a setting like _'fi_FI'_ is operating-system-dependent and may, or may not, be available according to what local support files have been installed. You can see what's available on a Unix-like system with this shell command:
 

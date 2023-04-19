@@ -11,17 +11,14 @@
 // under the License.
 //
 
-#ifndef YB_RPC_RPC_TEST_UTIL_H
-#define YB_RPC_RPC_TEST_UTIL_H
+#pragma once
 
-#include "yb/rpc/rpc_fwd.h"
+#include <memory>
+
+#include "yb/rpc/rpc_util.h"
 
 namespace yb {
 namespace rpc {
-
-struct MessengerShutdownDeleter {
-  void operator()(Messenger* messenger) const;
-};
 
 using AutoShutdownMessengerHolder = std::unique_ptr<Messenger, MessengerShutdownDeleter>;
 
@@ -30,5 +27,3 @@ AutoShutdownMessengerHolder CreateAutoShutdownMessengerHolder(
 
 } // namespace rpc
 } // namespace yb
-
-#endif // YB_RPC_RPC_TEST_UTIL_H

@@ -19,6 +19,8 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.AccessKeyRotationUtil;
+import com.yugabyte.yw.common.AccessManager;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.models.AccessKey;
@@ -50,6 +52,8 @@ public class UniverseMetricProvider implements MetricsProvider {
 
   @Inject MetricService metricService;
 
+  @Inject AccessManager accessManager;
+
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
           PlatformMetrics.UNIVERSE_EXISTS,
@@ -57,6 +61,7 @@ public class UniverseMetricProvider implements MetricsProvider {
           PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
           PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
           PlatformMetrics.UNIVERSE_NODE_FUNCTION,
+          PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
           PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
           PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
           PlatformMetrics.UNIVERSE_REPLICATION_FACTOR);
@@ -67,11 +72,11 @@ public class UniverseMetricProvider implements MetricsProvider {
     Map<UUID, KmsHistory> activeEncryptionKeys =
         KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY)
             .stream()
-            .collect(Collectors.toMap(key -> key.uuid.targetUuid, Function.identity()));
+            .collect(Collectors.toMap(key -> key.getUuid().targetUuid, Function.identity()));
     Map<UUID, KmsConfig> kmsConfigMap =
         KmsConfig.listAllKMSConfigs()
             .stream()
-            .collect(Collectors.toMap(config -> config.configUUID, Function.identity()));
+            .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     for (Customer customer : Customer.getAll()) {
       for (Universe universe : Universe.getAllWithoutResources(customer)) {
@@ -91,12 +96,6 @@ public class UniverseMetricProvider implements MetricsProvider {
                   universe,
                   PlatformMetrics.UNIVERSE_UPDATE_IN_PROGRESS,
                   statusValue(universe.getUniverseDetails().updateInProgress)));
-          universeGroup.metric(
-              createUniverseMetric(
-                  customer,
-                  universe,
-                  PlatformMetrics.UNIVERSE_BACKUP_IN_PROGRESS,
-                  statusValue(universe.getUniverseDetails().backupInProgress)));
           Double encryptionKeyExpiryDays =
               getEncryptionKeyExpiryDays(
                   activeEncryptionKeys.get(universe.getUniverseUUID()), kmsConfigMap);
@@ -108,26 +107,37 @@ public class UniverseMetricProvider implements MetricsProvider {
                     PlatformMetrics.UNIVERSE_ENCRYPTION_KEY_EXPIRY_DAY,
                     encryptionKeyExpiryDays));
           }
-          Double sshKeyExpiryDays =
-              accessKeyRotationUtil.getSSHKeyExpiryDays(universe, allAccessKeys);
-          if (sshKeyExpiryDays != null) {
-            universeGroup.metric(
-                createUniverseMetric(
-                    customer,
-                    universe,
-                    PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
-                    sshKeyExpiryDays));
-          }
           universeGroup.metric(
               createUniverseMetric(
                   customer,
                   universe,
                   PlatformMetrics.UNIVERSE_REPLICATION_FACTOR,
                   universe.getUniverseDetails().getPrimaryCluster().userIntent.replicationFactor));
+          if (!Util.isKubernetesBasedUniverse(universe)) {
+            boolean validPermission =
+                accessManager.checkAccessKeyPermissionsValidity(universe, allAccessKeys);
+            universeGroup.metric(
+                createUniverseMetric(
+                    customer,
+                    universe,
+                    PlatformMetrics.UNIVERSE_PRIVATE_ACCESS_KEY_STATUS,
+                    statusValue(validPermission)));
+            Double sshKeyExpiryDays =
+                accessKeyRotationUtil.getSSHKeyExpiryDays(universe, allAccessKeys);
+            if (sshKeyExpiryDays != null) {
+              universeGroup.metric(
+                  createUniverseMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
+                      sshKeyExpiryDays));
+            }
+          }
 
           if (universe.getUniverseDetails().nodeDetailsSet != null) {
             for (NodeDetails nodeDetails : universe.getUniverseDetails().nodeDetailsSet) {
-              if (!nodeDetails.isActive()) {
+              if (nodeDetails.cloudInfo == null || nodeDetails.cloudInfo.private_ip == null) {
+                // Node IP is missing - node is being created
                 continue;
               }
 
@@ -145,11 +155,29 @@ public class UniverseMetricProvider implements MetricsProvider {
                   createNodeMetric(
                       customer,
                       universe,
+                      PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
+                      ipAddress,
+                      nodeDetails.masterHttpPort,
+                      "master_export",
+                      statusValue(nodeDetails.isMaster && nodeDetails.isActive())));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
                       PlatformMetrics.UNIVERSE_NODE_FUNCTION,
                       ipAddress,
                       nodeDetails.tserverHttpPort,
                       "tserver_export",
                       statusValue(nodeDetails.isTserver)));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
+                      ipAddress,
+                      nodeDetails.tserverHttpPort,
+                      "tserver_export",
+                      statusValue(nodeDetails.isTserver && nodeDetails.isActive())));
               universeGroup.metric(
                   createNodeMetric(
                       customer,
@@ -188,6 +216,15 @@ public class UniverseMetricProvider implements MetricsProvider {
                       nodeDetails.nodeExporterPort,
                       "node_export",
                       statusValue(hasNodeExporter)));
+              universeGroup.metric(
+                  createNodeMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_NODE_PROCESS_STATUS,
+                      ipAddress,
+                      nodeDetails.nodeExporterPort,
+                      "node_export",
+                      statusValue(hasNodeExporter && nodeDetails.isActive())));
             }
           }
           universeGroup.cleanMetricFilter(
@@ -239,19 +276,19 @@ public class UniverseMetricProvider implements MetricsProvider {
     if (activeKey == null) {
       return null;
     }
-    KmsConfig kmsConfig = configMap.get(activeKey.configUuid);
+    KmsConfig kmsConfig = configMap.get(activeKey.getConfigUuid());
     if (kmsConfig == null) {
       log.warn(
           "Active universe {} key config {} is missing",
-          activeKey.uuid.targetUuid,
-          activeKey.configUuid);
+          activeKey.getUuid().targetUuid,
+          activeKey.getConfigUuid());
       return null;
     }
-    if (kmsConfig.keyProvider != KeyProvider.HASHICORP) {
+    if (kmsConfig.getKeyProvider() != KeyProvider.HASHICORP) {
       // For now only Hashicorp config expires.
       return null;
     }
-    ObjectNode credentials = kmsConfig.authConfig;
+    ObjectNode credentials = kmsConfig.getAuthConfig();
     JsonNode keyTtlNode = credentials.get(HashicorpVaultConfigParams.HC_VAULT_TTL);
     if (keyTtlNode == null || keyTtlNode.asLong() == 0) {
       return null;
