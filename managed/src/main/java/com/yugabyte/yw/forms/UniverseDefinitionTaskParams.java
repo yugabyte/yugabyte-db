@@ -1088,6 +1088,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
     return null;
   }
+
+  @JsonIgnore
+  public boolean isUniverseBusyByTask() {
+    return updateInProgress
+        && updatingTask != TaskType.BackupTable
+        && updatingTask != TaskType.MultiTableBackup
+        && updatingTask != TaskType.CreateBackup
+        && updatingTask != TaskType.RestoreBackup;
+  }
   // --------------------------------------------------------------------------------
   // End of XCluster.
 }
