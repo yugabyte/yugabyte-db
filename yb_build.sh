@@ -462,8 +462,8 @@ run_cxx_build() {
       cmake_binary=/opt/homebrew/bin/cmake
     else
       if ! which cmake &> /dev/null; then
-          echo "Error: cmake not found in PATH" >&2
-          exit 1
+        echo "Error: cmake not found in PATH" >&2
+        exit 1
       fi
       cmake_binary=$( which cmake )
     fi
