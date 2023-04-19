@@ -374,7 +374,7 @@ To create a YugabyteDB Anywhere instance, perform the following:
   ```
 
   - ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
-  - Few metrics (CPU, memory) will be unavailable without the above `ClusterRoleBinding`.
+  - Certain container-level metrics like CPU, memory will be unavailable without the above `ClusterRoleBinding`.
 
 ### Delete the Helm installation of YugabyteDB Anywhere
 
