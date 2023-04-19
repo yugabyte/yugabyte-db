@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.messages.h"
 #include "yb/common/schema.h"
@@ -50,7 +50,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   const client::YBTableName& table_name() const;
 
-  const PartitionSchema& partition_schema() const;
+  const dockv::PartitionSchema& partition_schema() const;
 
   size_t num_range_key_columns() const;
   size_t num_hash_key_columns() const;
@@ -113,7 +113,7 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
 
   client::YBTableName table_name_;
   Schema schema_;
-  PartitionSchema partition_schema_;
+  dockv::PartitionSchema partition_schema_;
 
   // Attr number to column index map.
   std::unordered_map<int, size_t> attr_num_map_;

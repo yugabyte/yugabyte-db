@@ -394,13 +394,23 @@ if(IS_GCC)
   # TODO: Subtitute it with '-as-needed' instead to avoid linking with unused library (issue #1495)
   # for reducing pocess start time
   ADD_LINKER_FLAGS("-Wl,-no-as-needed")
-  if ("${COMPILER_VERSION}" MATCHES "^11[.].*$")
+  if ("${COMPILER_VERSION}" MATCHES "^1[12][.].*$")
     # To silence these spurious warnings:
     # https://gist.githubusercontent.com/mbautin/60c7fb897a92b998a111ff38429a1158/raw
     # https://gist.githubusercontent.com/mbautin/56b95b7a6816ccdf77eaa60f53a7d3ef/raw
     ADD_CXX_FLAGS("-Wno-array-bounds")
     ADD_CXX_FLAGS("-Wno-stringop-overflow")
     ADD_CXX_FLAGS("-Wno-stringop-overread")
+  endif()
+  if ("${COMPILER_VERSION}" MATCHES "^12[.].*$")
+    if("${YB_BUILD_TYPE}" STREQUAL "release")
+      # To avoid https://github.com/yugabyte/yugabyte-db/issues/16076
+      ADD_CXX_FLAGS("-Wno-restrict")
+    endif()
+    if("${YB_BUILD_TYPE}" MATCHES "^(fastdebug|release)$")
+      # To avoid https://github.com/yugabyte/yugabyte-db/issues/16767"
+      ADD_CXX_FLAGS("-Wno-maybe-uninitialized")
+    endif()
   endif()
 endif()
 
@@ -816,6 +826,7 @@ set(YB_SUBDIR_NAMES
     common
     consensus
     docdb
+    dockv
     encryption
     fs
     gen_yrpc

@@ -22,8 +22,6 @@ using std::string;
 using std::vector;
 
 using strings::Substitute;
-using yb::master::ListTablesRequestPB;
-using yb::master::ListTablesResponsePB;
 using yb::master::TSDescriptor;
 
 namespace yb {

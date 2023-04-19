@@ -18,6 +18,7 @@ test: yb_pg_create_function_1
 test: yb_pg_create_type
 test: yb_pg_create_table
 test: yb_pg_copy
+test: yb_pg_create_misc
 
 test: yb_pg_join
 

@@ -105,7 +105,7 @@ export default class DiskUsagePanel extends Component {
         ) : (
           <Fragment>
             <div className={'tserver-section'}>
-              {space.free && (
+              {space.used && (
                 <>
                   <span className={`gray-text metric-left-subtitle ${customClassName}-mode-space`}>
                     {isDedicatedNodes && (
@@ -116,7 +116,7 @@ export default class DiskUsagePanel extends Component {
                 </>
               )}
               <span className="gray-text metric-right-subtitle">
-                {Number(space.used).toFixed(2)} GB of {Math.round(space.free)} GB used
+                {Number(space.used).toFixed(2)} GB of {Math.round(space.size)} GB used
               </span>
               <Graph value={value} unit={'percent'} />
             </div>
@@ -124,7 +124,7 @@ export default class DiskUsagePanel extends Component {
             <div className={'master-section'}>
               {isDedicatedNodes && (
                 <>
-                  {masterSpace.free && (
+                  {masterSpace.used && (
                     <span
                       className={`gray-text metric-left-subtitle ${customClassName}-mode-space`}
                     >
@@ -133,7 +133,7 @@ export default class DiskUsagePanel extends Component {
                     </span>
                   )}
                   <span className="gray-text metric-right-subtitle">
-                    {Number(masterSpace.used).toFixed(2)} GB of {Math.round(masterSpace.free)} GB
+                    {Number(masterSpace.used).toFixed(2)} GB of {Math.round(masterSpace.size)} GB
                     used
                   </span>
                   <Graph value={masterValue} unit={'percent'} />

@@ -27,6 +27,10 @@ FlushManager* MasterServiceBase::handler(FlushManager*) {
   return server_->flush_manager();
 }
 
+YsqlBackendsManager* MasterServiceBase::handler(YsqlBackendsManager*) {
+  return server_->ysql_backends_manager();
+}
+
 PermissionsManager* MasterServiceBase::handler(PermissionsManager*) {
   return &server_->permissions_manager();
 }

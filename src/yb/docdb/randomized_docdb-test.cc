@@ -44,10 +44,11 @@ constexpr int kNumUniqueSubKeys = 500;
 
 using std::vector;
 using std::pair;
-using std::sort;
 
 namespace yb {
 namespace docdb {
+
+using dockv::UseHash;
 
 namespace {
 
@@ -69,7 +70,7 @@ class RandomizedDocDBTest : public DocDBTestBase,
   RandomizedDocDBTest() : verify_history_cleanup_(true) {
   }
 
-  void Init(const UseHash use_hash) {
+  void Init(const dockv::UseHash use_hash) {
     // This test was created when this was the only supported init marker behavior.
     SetInitMarkerBehavior(InitMarkerBehavior::kRequired);
     if (load_gen_.get() != nullptr) {

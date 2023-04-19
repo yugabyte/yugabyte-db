@@ -28,8 +28,6 @@
 
 using namespace std::literals;
 
-using strings::Substitute;
-
 namespace yb {
 
 OperationCounter::OperationCounter(const std::string& log_prefix) : log_prefix_(log_prefix) {

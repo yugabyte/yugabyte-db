@@ -620,11 +620,12 @@ TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
   client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
 
   // Allocate the partitions.
-  Partition partitions[kNumPartitions];
-  const uint16_t interval = PartitionSchema::kMaxPartitionKey / (kNumPartitions + 1);
+  dockv::Partition partitions[kNumPartitions];
+  const uint16_t interval = dockv::PartitionSchema::kMaxPartitionKey / (kNumPartitions + 1);
 
-  partitions[0].set_partition_key_end(PartitionSchema::EncodeMultiColumnHashValue(interval));
-  partitions[1].set_partition_key_start(PartitionSchema::EncodeMultiColumnHashValue(interval));
+  partitions[0].set_partition_key_end(dockv::PartitionSchema::EncodeMultiColumnHashValue(interval));
+  partitions[1].set_partition_key_start(
+      dockv::PartitionSchema::EncodeMultiColumnHashValue(interval));
 
   // create a table
   ASSERT_OK(table_creator->table_name(kTableName)
@@ -639,8 +640,8 @@ TEST_F(CreateTableITest, TestCreateTableWithDefinedPartition) {
       kTableName, -1, &tablets, /* partition_list_version =*/ nullptr,
       RequireTabletsRunning::kFalse));
   for (int i = 0 ; i < kNumPartitions; ++i) {
-    Partition p;
-    Partition::FromPB(tablets[i].partition(), &p);
+    dockv::Partition p;
+    dockv::Partition::FromPB(tablets[i].partition(), &p);
     ASSERT_TRUE(partitions[i].BoundsEqualToPartition(p));
   }
 }

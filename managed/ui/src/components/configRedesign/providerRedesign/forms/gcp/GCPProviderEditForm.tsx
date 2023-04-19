@@ -225,7 +225,7 @@ export const GCPProviderEditForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -320,6 +320,7 @@ export const GCPProviderEditForm = ({
                       control={formMethods.control}
                       options={credentialOptions}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT && (
@@ -363,6 +364,7 @@ export const GCPProviderEditForm = ({
                       formMethods.setValue('destVpcId', '');
                     }
                   }}
+                  isDisabled={isFormDisabled}
                 />
               </FormField>
               {(vpcSetupType === VPCSetupType.EXISTING || vpcSetupType === VPCSetupType.NEW) && (
@@ -463,6 +465,7 @@ export const GCPProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
@@ -504,7 +507,7 @@ export const GCPProviderEditForm = ({
                 />
               </FormField>
               <FormField>
-                                <FieldLabel
+                <FieldLabel
                   infoTitle="DB Nodes have public internet access?"
                   infoContent="If yes, YBA will install some software packages on the DB nodes by downloading from the public internet. If not, all installation of software on the nodes will download from only this YBA instance."
                 >
@@ -571,7 +574,7 @@ const constructDefaultFormValues = (
   providerConfig: GCPProvider
 ): Partial<GCPProviderEditFormFieldValues> => ({
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
-  destVpcId: providerConfig.details.cloudInfo.gcp.destVpcId,
+  destVpcId: providerConfig.details.cloudInfo.gcp.destVpcId ?? '',
   editCloudCredentials: false,
   editSSHKeypair: false,
   ntpServers: providerConfig.details.ntpServers,
@@ -594,11 +597,11 @@ const constructDefaultFormValues = (
     )
   })),
   sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort,
-  sshUser: providerConfig.details.sshUser,
+  sshPort: providerConfig.details.sshPort ?? '',
+  sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
   vpcSetupType: providerConfig.details.cloudInfo.gcp.vpcType,
-  ybFirewallTags: providerConfig.details.cloudInfo.gcp.ybFirewallTags
+  ybFirewallTags: providerConfig.details.cloudInfo.gcp.ybFirewallTags ?? ''
 });
 
 const constructProviderPayload = async (

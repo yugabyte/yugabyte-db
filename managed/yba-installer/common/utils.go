@@ -32,7 +32,7 @@ import (
 // Systemctl linux command.
 const Systemctl string = "systemctl"
 
-const PostgresPackageGlob = "yba_installer-*linux*/postgresql-*-linux-x64-binaries.tar.gz"
+const PostgresPackageGlob = "yba_installer-*linux*/postgres-linux-*.tar.gz"
 
 var skipConfirmation = false
 

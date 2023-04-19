@@ -127,14 +127,10 @@ DECLARE_string(placement_region);
 
 namespace yb {
 
-using consensus::RaftPeerPB;
 using master::GetTableLocationsRequestPB;
 using master::GetTableLocationsResponsePB;
 using master::TabletLocationsPB;
 using master::TabletLocationsPB_ReplicaPB;
-using master::TSInfoPB;
-using rpc::Messenger;
-using rpc::Rpc;
 using tablet::RaftGroupStatePB;
 using tserver::LocalTabletServer;
 using tserver::TabletServerServiceProxy;
@@ -312,7 +308,7 @@ std::string ReplicasCount::ToString() {
 ////////////////////////////////////////////////////////////
 
 RemoteTablet::RemoteTablet(std::string tablet_id,
-                           Partition partition,
+                           dockv::Partition partition,
                            boost::optional<PartitionListVersion> partition_list_version,
                            uint64 split_depth,
                            const TabletId& split_parent_tablet_id)
@@ -1075,8 +1071,8 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
     } else {
       VLOG_WITH_PREFIX(5) << "Caching tablet " << tablet_id << ": " << location.ShortDebugString();
 
-      Partition partition;
-      Partition::FromPB(location.partition(), &partition);
+      dockv::Partition partition;
+      dockv::Partition::FromPB(location.partition(), &partition);
       remote = new RemoteTablet(
           tablet_id, partition, table_partition_list_version, location.split_depth(),
           location.split_parent_tablet_id());

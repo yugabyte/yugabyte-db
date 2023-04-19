@@ -57,6 +57,11 @@ namespace yb {
 namespace docdb {
 
 using server::HybridClock;
+using dockv::DocKey;
+using dockv::DocPath;
+using dockv::KeyEntryValue;
+using dockv::KeyEntryValues;
+using dockv::ValueEntryType;
 
 namespace {
 
@@ -379,7 +384,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 
   // Read key from rocksdb.
-  const KeyBytes doc_key = DocKey::FromRedisKey(123, "abc").Encode();
+  const auto doc_key = DocKey::FromRedisKey(123, "abc").Encode();
   rocksdb::ReadOptions read_opts;
   auto iter = std::unique_ptr<rocksdb::Iterator>(db->NewIterator(read_opts));
   ROCKSDB_SEEK(iter.get(), doc_key.AsSlice());
@@ -387,7 +392,7 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
 
   // Verify correct ttl.
   auto value = iter->value();
-  auto ttl = ASSERT_RESULT(ValueControlFields::Decode(&value)).ttl;
+  auto ttl = ASSERT_RESULT(dockv::ValueControlFields::Decode(&value)).ttl;
   EXPECT_EQ(2000, ttl.ToMilliseconds());
 }
 
@@ -545,8 +550,8 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
 }
 
 TEST_F(DocOperationTest, TestQLReadWithoutLivenessColumn) {
-  const DocKey doc_key(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
-  KeyBytes encoded_doc_key(doc_key.Encode());
+  const DocKey doc_key(kFixedHashCode, dockv::MakeKeyEntryValues(100), KeyEntryValues());
+  auto encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          QLValue::Primitive(2), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
@@ -572,8 +577,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 }
 
 TEST_F(DocOperationTest, TestQLReadWithTombstone) {
-  DocKey doc_key(0, KeyEntryValues(100), KeyEntryValues());
-  KeyBytes encoded_doc_key(doc_key.Encode());
+  DocKey doc_key(0, dockv::MakeKeyEntryValues(100), KeyEntryValues());
+  auto encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
@@ -596,12 +601,12 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   ASSERT_FALSE(ASSERT_RESULT(iter.FetchNext(nullptr)));
 
   // Now verify row exists even with one valid column.
-  doc_key = DocKey(kFixedHashCode, KeyEntryValues(100), KeyEntryValues());
+  doc_key = DocKey(kFixedHashCode, dockv::MakeKeyEntryValues(100), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
-                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         dockv::ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
                          ValueRef(QLValue::Primitive(2)),
                          HybridTime(2001)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
@@ -617,7 +622,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3001
 SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000 }]) -> DEL
       )#");
 
-  std::vector<KeyEntryValue> hashed_components({KeyEntryValue::Int32(100)});
+  KeyEntryValues hashed_components({KeyEntryValue::Int32(100)});
   DocQLScanSpec ql_scan_spec(schema, kFixedHashCode, kFixedHashCode, hashed_components,
       /* req */ nullptr, /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
@@ -634,7 +639,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   EXPECT_EQ(101, value_map.TestValue(3).value.int32_value());
 
   // Now verify row exists as long as liveness system column exists.
-  doc_key = DocKey(kFixedHashCode, KeyEntryValues(101), KeyEntryValues());
+  doc_key = DocKey(kFixedHashCode, dockv::MakeKeyEntryValues(101), KeyEntryValues());
   encoded_doc_key = doc_key.Encode();
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn),
                          ValueRef(ValueEntryType::kNullLow),
@@ -642,7 +647,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(1))),
                          ValueRef(ValueEntryType::kTombstone), HybridTime(1000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(2))),
-                         ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
+                         dockv::ValueControlFields{.ttl = MonoDelta::FromMilliseconds(1)},
                          ValueRef(QLValue::Primitive(2)),
                          HybridTime(2000)));
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),

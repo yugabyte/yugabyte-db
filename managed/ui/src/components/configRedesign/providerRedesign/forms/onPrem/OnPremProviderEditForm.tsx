@@ -165,7 +165,7 @@ export const OnPremProviderEditForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: ConfigureOnPremRegionFormValues[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: ConfigureOnPremRegionFormValues) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -419,7 +419,7 @@ const constructDefaultFormValues = (
   editSSHKeypair: false,
   installNodeExporter: !!providerConfig.details.installNodeExporter,
   nodeExporterPort: providerConfig.details.nodeExporterPort,
-  nodeExporterUser: providerConfig.details.nodeExporterUser,
+  nodeExporterUser: providerConfig.details.nodeExporterUser ?? '',
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
   providerName: providerConfig.name,
@@ -432,10 +432,10 @@ const constructDefaultFormValues = (
     }))
   })),
   skipProvisioning: providerConfig.details.skipProvisioning,
-  sshPort: providerConfig.details.sshPort,
-  sshUser: providerConfig.details.sshUser,
+  sshPort: providerConfig.details.sshPort ?? '',
+  sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
-  ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir
+  ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir ?? ''
 });
 
 const constructProviderPayload = async (

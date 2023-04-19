@@ -4,6 +4,7 @@ package com.yugabyte.yw.common;
 
 import static com.cronutils.model.CronType.UNIX;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 import static java.lang.Math.abs;
 import static java.lang.Math.max;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -550,7 +551,8 @@ public class BackupUtil {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
       if (!backupInfo.backupType.equals(TableType.REDIS_TABLE_TYPE)) {
-        if (CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
+        if (backupInfo.backupType.equals(TableType.YQL_TABLE_TYPE)
+            && CollectionUtils.isNotEmpty(backupInfo.tableNameList)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()
@@ -566,8 +568,7 @@ public class BackupUtil {
                     "Keyspace %s contains tables with same names, overwriting data is not allowed",
                     backupInfo.keyspace));
           }
-        } else if (category.equals(Backup.BackupCategory.YB_BACKUP_SCRIPT)
-            && backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
+        } else if (backupInfo.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
           List<TableInfo> tableInfos =
               tableInfoList
                   .parallelStream()

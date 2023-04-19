@@ -78,10 +78,11 @@ version_menu_pagelinks = true
 
 # Header logo link
 [yb.navbar_logo]
+  path = "/images/yugabytedb-logo.svg"
   url = "/"
-  title = "Yugabyte"
+  title = "YugabyteDB"
 # Footer logo link
 [yb.footer_logo]
   path = "/images/yugabytedb-logo.svg"
   url = "/"
-  title = "Yugabyte"
+  title = "YugabyteDB"

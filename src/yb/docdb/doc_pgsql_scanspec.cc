@@ -19,16 +19,21 @@
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/docdb/doc_scanspec_util.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
 namespace yb {
 namespace docdb {
+
+using dockv::DocKey;
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryValue;
 
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
@@ -80,9 +85,9 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
 DocPgsqlScanSpec::DocPgsqlScanSpec(
     const Schema& schema,
     const rocksdb::QueryId query_id,
-    std::reference_wrapper<const std::vector<KeyEntryValue>>
+    std::reference_wrapper<const dockv::KeyEntryValues>
         hashed_components,
-    std::reference_wrapper<const std::vector<KeyEntryValue>>
+    std::reference_wrapper<const dockv::KeyEntryValues>
         range_components,
     const PgsqlConditionPB* condition,
     const boost::optional<int32_t>
@@ -97,8 +102,8 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const size_t prefix_length)
     : PgsqlScanSpec(
           schema, is_forward_scan, query_id,
-          condition ? std::make_unique<QLScanRange>(schema, *condition) : nullptr, prefix_length,
-          where_expr),
+          condition ? std::make_unique<dockv::QLScanRange>(schema, *condition) : nullptr,
+          prefix_length, where_expr),
       hashed_components_(&hashed_components.get()),
       range_components_(&range_components.get()),
       options_groups_(schema.num_dockey_components()),
@@ -113,7 +118,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
   }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
-    options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
+    options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
     options_col_ids_.reserve(schema.num_dockey_components());
 
     // should come here if we are not batching hash keys as a part of IN condition
@@ -144,7 +149,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       (rangebounds->has_in_range_options() || rangebounds->has_in_hash_options())) {
     DCHECK(condition);
     if (options_ == nullptr)
-      options_ = std::make_shared<std::vector<OptionList>>(schema.num_dockey_components());
+      options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
     InitOptions(*condition);
   }
 
@@ -346,10 +351,10 @@ void DocPgsqlScanSpec::InitOptions(const PgsqlConditionPB& condition) {
 
 KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_bound) const {
   KeyBytes result;
-  auto encoder = DocKeyEncoder(&result).Schema(schema);
+  auto encoder = dockv::DocKeyEncoder(&result).Schema(schema);
 
   bool has_hash_columns = schema.num_hash_key_columns() > 0;
-  std::vector<KeyEntryValue> hashed_components;
+  dockv::KeyEntryValues hashed_components;
   hashed_components.reserve(schema.num_hash_key_columns());
 
   int32_t hash_code;
@@ -402,9 +407,9 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
   return result;
 }
 
-std::vector<KeyEntryValue> DocPgsqlScanSpec::range_components(const bool lower_bound,
-                                                              std::vector<bool> *inclusivities,
-                                                              bool use_strictness) const {
+dockv::KeyEntryValues DocPgsqlScanSpec::range_components(const bool lower_bound,
+                                                         std::vector<bool> *inclusivities,
+                                                         bool use_strictness) const {
   return GetRangeKeyScanSpec(schema(),
                              range_components_,
                              range_bounds(),

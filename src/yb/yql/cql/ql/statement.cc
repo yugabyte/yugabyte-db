@@ -25,10 +25,7 @@
 namespace yb {
 namespace ql {
 
-using std::list;
-using std::shared_ptr;
 using std::string;
-using std::unique_ptr;
 
 Statement::Statement(const string& keyspace, const string& text)
     : keyspace_(keyspace), text_(text) {

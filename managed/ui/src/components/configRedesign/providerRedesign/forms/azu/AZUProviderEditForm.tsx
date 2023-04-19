@@ -166,7 +166,9 @@ export const AZUProviderEditForm = ({
     setIsRegionFormModalOpen(false);
   };
 
-  const onFormReset = () => formMethods.reset();
+  const onFormReset = () => {
+    formMethods.reset(defaultValues);
+  };
   const onFormSubmit: SubmitHandler<AZUProviderEditFormFieldValues> = async (formValues) => {
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
@@ -190,7 +192,7 @@ export const AZUProviderEditForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -364,6 +366,7 @@ export const AZUProviderEditForm = ({
                       control={formMethods.control}
                       options={KEY_PAIR_MANAGEMENT_OPTIONS}
                       orientation={RadioGroupOrientation.HORIZONTAL}
+                      isDisabled={isFormDisabled}
                     />
                   </FormField>
                   {keyPairManagement === KeyPairManagement.SELF_MANAGED && (
@@ -462,12 +465,12 @@ export const AZUProviderEditForm = ({
 const constructDefaultFormValues = (
   providerConfig: AZUProvider
 ): Partial<AZUProviderEditFormFieldValues> => ({
-  azuClientId: providerConfig.details.cloudInfo.azu.azuClientId,
-  azuClientSecret: providerConfig.details.cloudInfo.azu.azuClientSecret,
-  azuHostedZoneId: providerConfig.details.cloudInfo.azu.azuHostedZoneId,
-  azuRG: providerConfig.details.cloudInfo.azu.azuRG,
-  azuSubscriptionId: providerConfig.details.cloudInfo.azu.azuSubscriptionId,
-  azuTenantId: providerConfig.details.cloudInfo.azu.azuTenantId,
+  azuClientId: providerConfig.details.cloudInfo.azu.azuClientId ?? '',
+  azuClientSecret: providerConfig.details.cloudInfo.azu.azuClientSecret ?? '',
+  azuHostedZoneId: providerConfig.details.cloudInfo.azu.azuHostedZoneId ?? '',
+  azuRG: providerConfig.details.cloudInfo.azu.azuRG ?? '',
+  azuSubscriptionId: providerConfig.details.cloudInfo.azu.azuSubscriptionId ?? '',
+  azuTenantId: providerConfig.details.cloudInfo.azu.azuTenantId ?? '',
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   editSSHKeypair: false,
   ntpServers: providerConfig.details.ntpServers,
@@ -482,8 +485,8 @@ const constructDefaultFormValues = (
     zones: region.zones
   })),
   sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort,
-  sshUser: providerConfig.details.sshUser,
+  sshPort: providerConfig.details.sshPort ?? '',
+  sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version
 });
 

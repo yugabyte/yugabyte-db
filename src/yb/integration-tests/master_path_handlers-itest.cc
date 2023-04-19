@@ -18,7 +18,7 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/integration-tests/external_mini_cluster.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -163,7 +163,7 @@ TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
   std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
       .schema(&schema)
-      .hash_schema(YBHashSchema::kMultiColumnHash)
+      .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
       .Create());
   std::shared_ptr<client::YBTable> table;
   ASSERT_OK(client->OpenTable(table_name, &table));
@@ -244,7 +244,7 @@ TEST_F(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint) {
   std::unique_ptr<client::YBTableCreator> table_creator(client->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
       .schema(&schema)
-      .hash_schema(YBHashSchema::kMultiColumnHash)
+      .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
       .Create());
   std::shared_ptr<client::YBTable> table;
   ASSERT_OK(client->OpenTable(table_name, &table));
@@ -357,7 +357,7 @@ class MasterPathHandlersExternalItest : public MasterPathHandlersBaseItest<Exter
     CHECK_OK(table_creator->table_name(table_name)
         .num_tablets(num_tablets)
         .schema(&schema)
-        .hash_schema(YBHashSchema::kMultiColumnHash)
+        .hash_schema(dockv::YBHashSchema::kMultiColumnHash)
         .Create());
     std::shared_ptr<client::YBTable> table;
     CHECK_OK(client->OpenTable(table_name, &table));

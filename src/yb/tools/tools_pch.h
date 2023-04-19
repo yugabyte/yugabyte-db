@@ -86,6 +86,7 @@
 #include <boost/circular_buffer.hpp>
 #include <boost/container/container_fwd.hpp>
 #include <boost/container/small_vector.hpp>
+#include <boost/container/stable_vector.hpp>
 #include <boost/core/demangle.hpp>
 #include <boost/core/enable_if.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
@@ -95,6 +96,7 @@
 #include <boost/functional/hash/hash.hpp>
 #include <boost/icl/discrete_interval.hpp>
 #include <boost/icl/interval_set.hpp>
+#include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/intrusive/list.hpp>
 #include <boost/iterator/transform_iterator.hpp>
 #include <boost/lexical_cast.hpp>
@@ -103,6 +105,8 @@
 #include <boost/mpl/if.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/global_fun.hpp>
+#include <boost/multi_index/hashed_index.hpp>
+#include <boost/multi_index/mem_fun.hpp>
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/optional.hpp>
@@ -129,6 +133,7 @@
 #include <boost/tti/has_type.hpp>
 #include <boost/type_traits.hpp>
 #include <boost/type_traits/is_const.hpp>
+#include <boost/type_traits/is_detected.hpp>
 #include <boost/type_traits/make_signed.hpp>
 #include <boost/unordered_map.hpp>
 #include <boost/uuid/uuid.hpp>
@@ -283,9 +288,11 @@
 #include "yb/util/rwc_lock.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/semaphore.h"
+#include "yb/util/service_util.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
+#include "yb/util/slice_parts.h"
 #include "yb/util/split.h"
 #include "yb/util/stack_trace.h"
 #include "yb/util/status.h"
@@ -308,6 +315,7 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
+#include "yb/util/thread_annotations_util.h"
 #include "yb/util/threadlocal.h"
 #include "yb/util/threadpool.h"
 #include "yb/util/timestamp.h"
@@ -320,4 +328,5 @@
 #include "yb/util/varint.h"
 #include "yb/util/version_info.pb.h"
 #include "yb/util/web_callback_registry.h"
+#include "yb/util/write_buffer.h"
 #include "yb/util/yb_partition.h"

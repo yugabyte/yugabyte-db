@@ -80,8 +80,8 @@
 #include "yb/common/common_flags.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
-#include "yb/common/partial_row.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/roles_permissions.h"
@@ -96,7 +96,7 @@
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/bind.h"
@@ -195,6 +195,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/string_case.h"
 #include "yb/util/string_util.h"
 #include "yb/util/sync_point.h"
 #include "yb/util/thread.h"
@@ -567,7 +568,6 @@ DEFINE_test_flag(bool, pause_before_upsert_ysql_sys_table, false,
 namespace yb {
 namespace master {
 
-using std::atomic;
 using std::shared_ptr;
 using std::string;
 using std::unique_ptr;
@@ -579,46 +579,31 @@ using std::pair;
 
 using namespace std::placeholders;
 
-using base::subtle::NoBarrier_Load;
-using base::subtle::NoBarrier_CompareAndSwap;
 using consensus::kMinimumTerm;
 using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::CONSENSUS_CONFIG_ACTIVE;
-using consensus::COMMITTED_OPID;
 using consensus::Consensus;
-using consensus::ConsensusMetadata;
-using consensus::ConsensusServiceProxy;
 using consensus::ConsensusStatePB;
 using consensus::GetConsensusRole;
 using consensus::PeerMemberType;
 using consensus::RaftPeerPB;
 using consensus::StartRemoteBootstrapRequestPB;
+using dockv::Partition;
+using dockv::PartitionSchema;
 using rpc::RpcContext;
 using server::MonitoredTask;
 using strings::Substitute;
-using tablet::TABLET_DATA_COPYING;
 using tablet::TABLET_DATA_DELETED;
-using tablet::TABLET_DATA_READY;
 using tablet::TABLET_DATA_TOMBSTONED;
 using tablet::TabletDataState;
-using tablet::RaftGroupMetadata;
 using tablet::RaftGroupMetadataPtr;
 using tablet::TabletPeer;
 using tablet::RaftGroupStatePB;
-using tablet::TabletStatusListener;
-using tablet::TabletStatusPB;
-using tserver::HandleReplacingStaleTablet;
-using tserver::TabletServerErrorPB;
 using yb::pgwrapper::PgWrapper;
 using yb::server::MasterAddressesToString;
 
-using yb::client::YBClient;
-using yb::client::YBClientBuilder;
-using yb::client::YBColumnSchema;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
-using yb::client::YBTable;
-using yb::client::YBTableName;
 
 namespace {
 
@@ -2944,9 +2929,9 @@ Status CatalogManager::DoSplitTablet(
 Status CatalogManager::DoSplitTablet(
     const scoped_refptr<TabletInfo>& source_tablet_info, const docdb::DocKeyHash split_hash_code,
     const ManualSplit is_manual_split) {
-  docdb::KeyBytes split_encoded_key;
-  docdb::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
-      .Hash(split_hash_code, std::vector<docdb::KeyEntryValue>());
+  dockv::KeyBytes split_encoded_key;
+  dockv::DocKeyEncoderAfterTableIdStep(&split_encoded_key)
+      .Hash(split_hash_code, dockv::KeyEntryValues());
 
   const auto split_partition_key = PartitionSchema::EncodeMultiColumnHashValue(split_hash_code);
 
@@ -3525,7 +3510,7 @@ Status CheckNumReplicas(const PlacementInfoPB& placement_info,
 }
 
 std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
-  return StatefulServiceKind_Name(service_kind) + "_table";
+  return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
 }
 } // namespace
 
@@ -4789,8 +4774,9 @@ Status CatalogManager::CreateTestEchoService() {
   }
 
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn("timestamp")->HashPrimaryKey()->Type(DataType::TIMESTAMP);
-  schema_builder.AddColumn("text")->Type(DataType::STRING);
+  schema_builder.AddColumn(kTestEchoTimestamp)->HashPrimaryKey()->Type(DataType::TIMESTAMP);
+  schema_builder.AddColumn(kTestEchoNodeId)->Type(DataType::STRING);
+  schema_builder.AddColumn(kTestEchoMessage)->Type(DataType::STRING);
 
   client::YBSchema yb_schema;
   CHECK_OK(schema_builder.Build(&yb_schema));
@@ -12888,37 +12874,25 @@ void CatalogManager::StartXClusterSafeTimeServiceIfStopped() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 
-Status CatalogManager::GetXClusterEstimatedDataLoss(
-    const GetXClusterEstimatedDataLossRequestPB* req,
-    GetXClusterEstimatedDataLossResponsePB* resp) {
-  const auto result = xcluster_safe_time_service_->GetEstimatedDataLossMicroSec();
-  if (!result) {
-    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
-  }
-
-  const auto per_namespace_data_loss_map = result.get();
-  for (const auto& [namespace_id, data_loss] : per_namespace_data_loss_map) {
-    auto entry = resp->add_namespace_data_loss();
-    entry->set_namespace_id(namespace_id);
-    entry->set_data_loss_us(data_loss);
-  }
-  return Status::OK();
-}
-
 Status CatalogManager::GetXClusterSafeTime(
     const GetXClusterSafeTimeRequestPB* req, GetXClusterSafeTimeResponsePB* resp) {
-  const auto ns_safe_time_map =
-      xcluster_safe_time_service_->RefreshAndGetXClusterNamespaceToSafeTimeMap();
-  if (!ns_safe_time_map) {
-    return SetupError(
-        resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, ns_safe_time_map.status());
+  const auto status = xcluster_safe_time_service_->GetXClusterSafeTimeInfoFromMap(resp);
+  if (!status.ok()) {
+    return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, status);
   }
 
-  for (const auto& [namespace_id, safe_time] : ns_safe_time_map.get()) {
-    auto entry = resp->add_namespace_safe_times();
-    entry->set_namespace_id(namespace_id);
-    entry->set_safe_time_ht(safe_time.ToUint64());
+  // Also fill out the namespace_name for each entry.
+  if (resp->namespace_safe_times_size()) {
+    SharedLock lock(mutex_);
+    for (auto& safe_time_info : *resp->mutable_namespace_safe_times()) {
+      const auto result = FindNamespaceByIdUnlocked(safe_time_info.namespace_id());
+      if (!result) {
+        return SetupError(resp->mutable_error(), MasterErrorPB::INTERNAL_ERROR, result.status());
+      }
+      safe_time_info.set_namespace_name(result.get()->name());
+    }
   }
+
   return Status::OK();
 }
 

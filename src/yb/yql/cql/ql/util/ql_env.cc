@@ -49,14 +49,10 @@ namespace ql {
 using std::string;
 using std::shared_ptr;
 using std::unique_ptr;
-using std::weak_ptr;
 
-using client::TransactionManager;
-using client::YBClient;
 using client::YBSession;
 using client::YBSessionPtr;
 using client::YBTable;
-using client::YBTransaction;
 using client::YBTransactionPtr;
 using client::YBMetaDataCache;
 using client::YBTableCreator;

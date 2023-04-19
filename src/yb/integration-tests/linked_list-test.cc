@@ -102,9 +102,6 @@ DECLARE_string(ts_flags);
 namespace yb {
 
 using yb::client::YBClient;
-using yb::client::YBClientBuilder;
-using yb::client::YBSchema;
-using yb::client::YBTableName;
 using std::shared_ptr;
 using std::string;
 using std::vector;

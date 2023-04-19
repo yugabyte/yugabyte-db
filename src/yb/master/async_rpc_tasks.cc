@@ -319,11 +319,26 @@ void RetryingTSRpcTask::DoRpcCallback() {
     LOG_WITH_PREFIX(WARNING) << "TS " << target_ts_desc_->permanent_uuid() << ": "
                              << type_name() << " RPC failed for tablet "
                              << tablet_id() << ": " << rpc_.status().ToString();
-    if (!target_ts_desc_->IsLive() && type() == MonitoredTaskType::kDeleteReplica) {
-      LOG_WITH_PREFIX(WARNING)
-          << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
-          << tablet_id() << ". TS is DEAD. No further retry.";
-      TransitionToCompleteState();
+    if (!target_ts_desc_->IsLive()) {
+      switch (type()) {
+        case MonitoredTaskType::kBackendsCatalogVersionTs:
+          // A similar check is done in BackendsCatalogVersionTS::HandleResponse.  This check is hit
+          // when this RPC failed and tserver is dead.  That check is hit when this RPC succeeded
+          // and tserver is dead.
+          LOG_WITH_PREFIX(WARNING)
+              << "TS " << target_ts_desc_->permanent_uuid() << "is DEAD. Assume backends on that TS"
+              << " will be resolved to sufficient catalog version";
+          TransitionToCompleteState();
+          break;
+        case MonitoredTaskType::kDeleteReplica:
+          LOG_WITH_PREFIX(WARNING)
+              << "TS " << target_ts_desc_->permanent_uuid() << ": delete failed for tablet "
+              << tablet_id() << ". TS is DEAD. No further retry.";
+          TransitionToCompleteState();
+          break;
+        default:
+          break;
+      }
     }
   } else if (state() != MonitoredTaskState::kAborted) {
     HandleResponse(attempt_);  // Modifies state_.

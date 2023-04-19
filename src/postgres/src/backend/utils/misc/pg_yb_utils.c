@@ -1049,6 +1049,7 @@ bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
+bool yb_disable_wait_for_backends_catalog_version = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -2060,8 +2061,18 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	bool		nulls[ncols];
 
 	Relation	rel = relation_open(relid, AccessShareLock);
+	Oid dbid		= YBCGetDatabaseOid(rel);
+	Oid storage_relid = YbGetStorageRelid(rel);
 
-	YbTableProperties yb_props = YbTryGetTableProperties(rel);
+	YBCPgTableDesc yb_tabledesc = NULL;
+	YbTablePropertiesData yb_table_properties;
+	bool not_found = false;
+	HandleYBStatusIgnoreNotFound(
+		YBCPgGetTableDesc(dbid, storage_relid, &yb_tabledesc), &not_found);
+	if (!not_found)
+		HandleYBStatusIgnoreNotFound(
+			YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties),
+			&not_found);
 
 	tupdesc = CreateTemplateTupleDesc(ncols, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1,
@@ -2079,8 +2090,9 @@ yb_table_properties(PG_FUNCTION_ARGS)
 	}
 	BlessTupleDesc(tupdesc);
 
-	if (yb_props)
+	if (!not_found)
 	{
+		YbTableProperties yb_props = &yb_table_properties;
 		values[0] = Int64GetDatum(yb_props->num_tablets);
 		values[1] = Int64GetDatum(yb_props->num_hash_key_columns);
 		values[2] = BoolGetDatum(yb_props->is_colocated);

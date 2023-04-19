@@ -42,9 +42,7 @@
 #include "yb/master/ts_descriptor.h"
 #include "yb/util/atomic.h"
 
-using std::shared_ptr;
 using std::string;
-using std::vector;
 
 DEFINE_NON_RUNTIME_bool(
     master_register_ts_check_desired_host_port, true,

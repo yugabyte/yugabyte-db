@@ -18,7 +18,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/async_rpc_tasks.h"
@@ -51,7 +51,7 @@ DEPRECATE_FLAG(int32, max_queued_split_candidates, "10_2022");
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 
-DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 1,
+DEFINE_RUNTIME_uint64(outstanding_tablet_split_limit, 0,
               "Limit of the number of outstanding tablet splits. Limitation is disabled if this "
               "value is set to 0.");
 
@@ -165,7 +165,7 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
   }
 
   // Nothing to validate for hash partitioned tables
-  if (PartitionSchema::IsHashPartitioning(table_locked->pb.partition_schema())) {
+  if (dockv::PartitionSchema::IsHashPartitioning(table_locked->pb.partition_schema())) {
     return Status::OK();
   }
 

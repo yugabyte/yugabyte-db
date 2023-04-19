@@ -32,7 +32,7 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_util.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
 #include "yb/integration-tests/mini_cluster.h"
@@ -127,9 +127,9 @@ Status DoSplitTablet(master::CatalogManagerIf* catalog_mgr, const tablet::Tablet
   const auto encoded_split_key = VERIFY_RESULT(tablet.GetEncodedMiddleSplitKey());
   std::string partition_split_key = encoded_split_key;
   if (tablet.metadata()->partition_schema()->IsHashPartitioning()) {
-    const auto doc_key_hash = VERIFY_RESULT(docdb::DecodeDocKeyHash(encoded_split_key)).value();
+    const auto doc_key_hash = VERIFY_RESULT(dockv::DecodeDocKeyHash(encoded_split_key)).value();
     LOG(INFO) << "Middle hash key: " << doc_key_hash;
-    partition_split_key = PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
+    partition_split_key = dockv::PartitionSchema::EncodeMultiColumnHashValue(doc_key_hash);
   }
   LOG(INFO) << "Partition split key: " << Slice(partition_split_key).ToDebugHexString();
 
@@ -169,7 +169,7 @@ Result<tserver::ReadRequestPB> TabletSplitITestBase<MiniClusterType>::CreateRead
 
   std::string partition_key;
   RETURN_NOT_OK(op->GetPartitionKey(&partition_key));
-  const auto& hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+  const auto& hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
   ql_batch->set_hash_code(hash_code);
   ql_batch->set_max_hash_code(hash_code);
   req.set_tablet_id(tablet_id);
@@ -194,7 +194,7 @@ tserver::WriteRequestPB TabletSplitITestBase<MiniClusterType>::CreateInsertReque
 
   std::string partition_key;
   EXPECT_OK(op->GetPartitionKey(&partition_key));
-  const auto& hash_code = PartitionSchema::DecodeMultiColumnHashValue(partition_key);
+  const auto& hash_code = dockv::PartitionSchema::DecodeMultiColumnHashValue(partition_key);
   ql_batch->set_hash_code(hash_code);
   req.set_tablet_id(tablet_id);
   return req;
@@ -261,32 +261,9 @@ Status TabletSplitITestBase<MiniClusterType>::FlushTestTable() {
   return FlushTable(this->table_->id());
 }
 
-Status TabletSplitITest::WaitForTableIntentsApplied(const TableId& table_id) {
-  for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), table_id)) {
-      RETURN_NOT_OK(WaitFor([&]() {
-        // This tablet might has been shut down or in the process of shutting down.
-        // Thus, we need to check whether shared_tablet is nullptr or not
-        // TEST_CountIntent return non ok status also means shutdown has started.
-        const auto tablet = peer->shared_tablet();
-        if (!tablet) {
-          return true;
-        }
-        auto result = tablet->transaction_participant()->TEST_CountIntents();
-        return !result.ok() || result->first == 0;
-      }, 30s, "Did not apply write transactions from intents db in time."));
-  }
-  return Status::OK();
-}
-
-Status TabletSplitExternalMiniClusterITest::WaitForTableIntentsApplied(const TableId& table_id) {
-  // TODO(jhe) - Check for just table_id, currently checking for all intents.
-  RETURN_NOT_OK(cluster_->WaitForAllIntentsApplied(30s));
-  return Status::OK();
-}
-
 template <class MiniClusterType>
 Status TabletSplitITestBase<MiniClusterType>::WaitForTestTableIntentsApplied() {
-  return WaitForTableIntentsApplied(this->table_->id());
+  return WaitForTableIntentsApplied(this->cluster_.get(), this->table_->id());
 }
 
 template <class MiniClusterType>
@@ -298,7 +275,7 @@ TabletSplitITestBase<MiniClusterType>::WriteRowsAndFlush(
   // Wait for the write transaction to move from intents db to regular db on each peer before
   // trying to flush.
   if (wait_for_intents) {
-    RETURN_NOT_OK(WaitForTableIntentsApplied(table->table()->id()));
+    RETURN_NOT_OK(WaitForTableIntentsApplied(this->cluster_.get(), table->table()->id()));
   }
   RETURN_NOT_OK(FlushTable(table->table()->id()));
   return result;

@@ -41,10 +41,6 @@ TAG_FLAG(cql_table_is_transactional_by_default, advanced);
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-using std::to_string;
-using client::YBColumnSchema;
-
 //--------------------------------------------------------------------------------------------------
 
 PTCreateTable::PTCreateTable(MemoryContext *memctx,

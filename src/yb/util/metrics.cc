@@ -62,7 +62,6 @@ namespace yb {
 void RegisterMetricPrototype(const MetricPrototype* prototype);
 
 using std::string;
-using std::vector;
 using strings::Substitute;
 
 //

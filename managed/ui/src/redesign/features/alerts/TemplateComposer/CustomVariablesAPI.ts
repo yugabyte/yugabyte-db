@@ -75,3 +75,12 @@ export const createAlertChannelTemplates = (template: IAlertChannelTemplates) =>
     template
   );
 };
+
+
+export const previewAlertNotification = (template: IAlertChannelTemplates, alertConfigUuid: string) => {
+  const cUUID = localStorage.getItem('customerId');
+  return axios.post(
+    `${ROOT_URL}/customers/${cUUID}/alert_notification_preview`,
+    { alertChannelTemplates: { ...template }, alertConfigUuid }
+  );
+}

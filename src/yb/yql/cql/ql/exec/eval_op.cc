@@ -20,8 +20,6 @@
 namespace yb {
 namespace ql {
 
-using client::YBColumnSpec;
-
 Status Executor::PTUMinusToPB(const PTOperator1 *op_pt, QLExpressionPB *op_pb) {
   return PTUMinusToPB(op_pt, op_pb->mutable_value());
 }

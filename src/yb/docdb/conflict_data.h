@@ -17,7 +17,7 @@
 #include "yb/common/hybrid_time.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction.pb.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/status.h"
 
@@ -26,7 +26,7 @@ namespace yb::docdb {
 // Key and intent type info for a lock or conflicting write.
 struct LockInfo {
   const RefCntPrefix doc_path;
-  const IntentTypeSet intent_types;
+  const dockv::IntentTypeSet intent_types;
 };
 
 // Represents the conflicts found from a specific subtransaction.

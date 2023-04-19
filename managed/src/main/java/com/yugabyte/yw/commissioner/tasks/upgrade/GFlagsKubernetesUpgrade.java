@@ -5,17 +5,29 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import javax.inject.Inject;
 
 public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
+  private final GFlagsValidation gFlagsValidation;
+  private final XClusterUniverseService xClusterUniverseService;
+
   @Inject
-  protected GFlagsKubernetesUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected GFlagsKubernetesUpgrade(
+      BaseTaskDependencies baseTaskDependencies,
+      GFlagsValidation gFlagsValidation,
+      XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies);
+    this.gFlagsValidation = gFlagsValidation;
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   @Override
@@ -38,17 +50,37 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           Universe universe = getUniverse();
           // Verify the request params and fail if invalid
           taskParams().verifyParams(universe);
+          if (CommonUtils.isAutoFlagSupported(cluster.userIntent.ybSoftwareVersion)) {
+            // Verify auto flags compatibility.
+            taskParams()
+                .checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
+          }
           // Update the list of parameter key/values in the universe with the new ones.
           updateGFlagsPersistTasks(taskParams().masterGFlags, taskParams().tserverGFlags)
               .setSubTaskGroupType(getTaskSubGroupType());
           // Create Kubernetes Upgrade Task
-          createUpgradeTask(
-              getUniverse(),
-              userIntent.ybSoftwareVersion,
-              !taskParams().masterGFlags.equals(userIntent.masterGFlags),
-              !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
-              universe.isYbcEnabled(),
-              universe.getUniverseDetails().getYbcSoftwareVersion());
+          switch (taskParams().upgradeOption) {
+            case ROLLING_UPGRADE:
+              createUpgradeTask(
+                  getUniverse(),
+                  userIntent.ybSoftwareVersion,
+                  !taskParams().masterGFlags.equals(userIntent.masterGFlags),
+                  !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+                  universe.isYbcEnabled(),
+                  universe.getUniverseDetails().getYbcSoftwareVersion());
+              break;
+            case NON_ROLLING_UPGRADE:
+              createNonRollingGflagUpgradeTask(
+                  getUniverse(),
+                  userIntent.ybSoftwareVersion,
+                  !taskParams().masterGFlags.equals(userIntent.masterGFlags),
+                  !taskParams().tserverGFlags.equals(userIntent.tserverGFlags),
+                  universe.isYbcEnabled(),
+                  universe.getUniverseDetails().getYbcSoftwareVersion());
+              break;
+            case NON_RESTART_UPGRADE:
+              throw new RuntimeException("Non-restart unimplemented for K8s");
+          }
         });
   }
 }

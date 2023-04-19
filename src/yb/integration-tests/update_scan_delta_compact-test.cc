@@ -75,15 +75,9 @@ namespace yb {
 namespace tablet {
 
 using client::YBClient;
-using client::YBClientBuilder;
-using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::YBStatusCallback;
-using client::YBStatusMemberCallback;
-using client::YBTable;
-using client::YBTableCreator;
 using client::YBTableName;
 using std::shared_ptr;
 using std::vector;

@@ -24,10 +24,10 @@
 #include "yb/common/snapshot.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/rocksdb_writer.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/master/async_snapshot_tasks.h"
 #include "yb/master/catalog_entity_info.h"
@@ -356,8 +356,8 @@ class MasterSnapshotCoordinator::Impl {
   }
 
   Status ApplyWritePair(Slice key, const Slice& value) {
-    docdb::SubDocKey sub_doc_key;
-    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey sub_doc_key;
+    RETURN_NOT_OK(sub_doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
 
     if (sub_doc_key.doc_key().has_cotable_id()) {
       return Status::OK();
@@ -371,7 +371,7 @@ class MasterSnapshotCoordinator::Impl {
     }
 
     auto first_key = sub_doc_key.doc_key().range_group().front();
-    if (first_key.type() != docdb::KeyEntryType::kInt32) {
+    if (first_key.type() != dockv::KeyEntryType::kInt32) {
       LOG(DFATAL) << "Unexpected value type for the first range component of sys catalog entry "
                   << "(kInt32 expected): "
                   << AsString(sub_doc_key.doc_key().range_group());;
@@ -397,12 +397,12 @@ class MasterSnapshotCoordinator::Impl {
 
   template <class Pb, class Map>
   Status DoApplyWrite(const std::string& id_str, const Slice& value, Map* map) {
-    docdb::Value decoded_value;
+    dockv::Value decoded_value;
     RETURN_NOT_OK(decoded_value.Decode(value));
 
     auto value_type = decoded_value.primitive_value().value_type();
 
-    if (value_type == docdb::ValueEntryType::kTombstone) {
+    if (value_type == dockv::ValueEntryType::kTombstone) {
       std::lock_guard<std::mutex> lock(mutex_);
       auto id = Uuid::TryFullyDecode(id_str);
       if (id.IsNil()) {
@@ -414,7 +414,7 @@ class MasterSnapshotCoordinator::Impl {
       return Status::OK();
     }
 
-    if (value_type != docdb::ValueEntryType::kString) {
+    if (value_type != dockv::ValueEntryType::kString) {
       return STATUS_FORMAT(
           Corruption,
           "Bad value type: $0, expected kString while replaying write for sys catalog",
@@ -1456,7 +1456,7 @@ class MasterSnapshotCoordinator::Impl {
 
   template <typename Map, typename Id>
   void CleanupObject(int64_t leader_term, Id id, const Map& map,
-                     const Result<docdb::KeyBytes>& encoded_key) {
+                     const Result<dockv::KeyBytes>& encoded_key) {
     if (!encoded_key.ok()) {
       LOG(DFATAL) << "Failed to encode id for deletion: " << encoded_key.status();
       return;
@@ -1469,7 +1469,7 @@ class MasterSnapshotCoordinator::Impl {
     auto* write_batch = query->operation().AllocateRequest()->mutable_write_batch();
     auto pair = write_batch->add_write_pairs();
     pair->dup_key(encoded_key->AsSlice());
-    char value = docdb::ValueEntryTypeAsChar::kTombstone;
+    char value = dockv::ValueEntryTypeAsChar::kTombstone;
     pair->dup_value(Slice(&value, 1));
 
     query->set_callback([this, id, &map](const Status& s) {

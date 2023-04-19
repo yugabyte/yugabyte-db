@@ -105,7 +105,6 @@ using std::shared_ptr;
 using std::vector;
 using std::string;
 using yb::rpc::ServiceIf;
-using yb::tablet::TabletPeer;
 
 using namespace yb::size_literals;
 using namespace std::placeholders;
@@ -533,8 +532,8 @@ Status TabletServer::RegisterServices() {
       FLAGS_pg_client_svc_queue_length, std::move(pg_client_service)));
 
   if (FLAGS_TEST_echo_service_enabled) {
-    auto test_echo_service =
-        std::make_shared<stateful_service::TestEchoService>(permanent_uuid(), metric_entity());
+    auto test_echo_service = std::make_unique<stateful_service::TestEchoService>(
+        permanent_uuid(), metric_entity(), client_future());
     LOG(INFO) << "yb::tserver::stateful_service::TestEchoService created at "
               << test_echo_service.get();
     RETURN_NOT_OK(test_echo_service->Init(tablet_manager_.get()));
@@ -543,7 +542,7 @@ Status TabletServer::RegisterServices() {
   }
 
   auto pg_auto_analyze_service =
-      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity());
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future());
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
@@ -728,11 +727,11 @@ Status TabletServer::get_ysql_db_oid_to_cat_version_info_map(
     resp->set_num_entries(narrow_cast<uint32_t>(ysql_db_catalog_version_map_.size()));
   } else {
     const auto db_oid = req.db_oid();
-    for (const auto it : ysql_db_catalog_version_map_) {
-      if (db_oid == kInvalidOid || db_oid == it.first) {
+    for (const auto& map_entry : ysql_db_catalog_version_map_) {
+      if (db_oid == kInvalidOid || db_oid == map_entry.first) {
         auto* entry = resp->add_entries();
-        entry->set_db_oid(it.first);
-        entry->set_shm_index(it.second.shm_index);
+        entry->set_db_oid(map_entry.first);
+        entry->set_shm_index(map_entry.second.shm_index);
         if (db_oid != kInvalidOid) {
           break;
         }

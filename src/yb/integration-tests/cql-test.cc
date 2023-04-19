@@ -16,7 +16,7 @@
 
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/docdb/primitive_value.h"
+#include "yb/dockv/primitive_value.h"
 
 #include "yb/integration-tests/cql_test_base.h"
 
@@ -468,10 +468,10 @@ TEST_F_EX(CqlTest, RangeGC, CqlRF1Test) {
     }
     auto files = db->GetLiveFilesMetaData();
     for (const auto& file : files) {
-      auto value = ASSERT_RESULT(docdb::KeyEntryValue::FullyDecodeFromKey(
+      auto value = ASSERT_RESULT(dockv::KeyEntryValue::FullyDecodeFromKey(
           file.smallest.user_values[0].AsSlice()));
       ASSERT_EQ(value.GetInt32(), kKeptKey * kRangeMultiplier);
-      value = ASSERT_RESULT(docdb::KeyEntryValue::FullyDecodeFromKey(
+      value = ASSERT_RESULT(dockv::KeyEntryValue::FullyDecodeFromKey(
           file.largest.user_values[0].AsSlice()));
       ASSERT_EQ(value.GetInt32(), kKeptKey * kRangeMultiplier);
     }

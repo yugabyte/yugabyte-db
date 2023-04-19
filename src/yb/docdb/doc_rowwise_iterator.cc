@@ -21,11 +21,11 @@
 
 #include "yb/common/ql_expr.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_path.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_rowwise_iterator_base.h"
 #include "yb/docdb/docdb_statistics.h"
-#include "yb/docdb/expiration.h"
+#include "yb/dockv/expiration.h"
 #include "yb/docdb/intent_aware_iterator.h"
 #include "yb/docdb/scan_choices.h"
 
@@ -204,10 +204,11 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     }
     const auto& key_data = *key_data_result;
 
-    VLOG(4) << "*fetched_key is " << SubDocKey::DebugSliceToString(key_data.key);
+    VLOG(4) << "*fetched_key is " << dockv::SubDocKey::DebugSliceToString(key_data.key);
     if (debug_dump_) {
-      LOG(INFO) << __func__ << ", fetched key: " << SubDocKey::DebugSliceToString(key_data.key)
-                << ", " << key_data.key.ToDebugHexString();
+      LOG(INFO)
+          << __func__ << ", fetched key: " << dockv::SubDocKey::DebugSliceToString(key_data.key)
+          << ", " << key_data.key.ToDebugHexString();
     }
 
     // The iterator is positioned by the previous GetSubDocument call (which places the iterator
@@ -224,7 +225,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     }
 
     // e.g in cotable, row may point outside table bounds.
-    if (!DocKeyBelongsTo(key_data.key, doc_read_context_.schema)) {
+    if (!dockv::DocKeyBelongsTo(key_data.key, doc_read_context_.schema)) {
       Done();
       return false;
     }
@@ -238,7 +239,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
     // Prepare the DocKey to get the SubDocument. Trim the DocKey to contain just the primary key.
     Slice doc_key = row_key_;
-    VLOG(4) << " sub_doc_key part of iter_key_ is " << DocKey::DebugSliceToString(doc_key);
+    VLOG(4) << " sub_doc_key part of iter_key_ is " << dockv::DocKey::DebugSliceToString(doc_key);
 
     bool is_static_column = IsFetchedRowStatic();
     if (scan_choices_ && !is_static_column) {
@@ -248,7 +249,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
         // Update the target key and iterator and call HasNext again to try the next target.
         if (!VERIFY_RESULT(scan_choices_->SkipTargetsUpTo(row_key_))) {
           // SkipTargetsUpTo returns false when it fails to decode the key.
-          if (!VERIFY_RESULT(IsColocatedTableTombstoneKey(row_key_))) {
+          if (!VERIFY_RESULT(dockv::IsColocatedTableTombstoneKey(row_key_))) {
             return STATUS_FORMAT(
                 Corruption, "Key $0 is not table tombstone key.", row_key_.ToDebugHexString());
           }
@@ -283,7 +284,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     }
 
     if (!is_flat_doc_) {
-      DCHECK(row_->type() == ValueEntryType::kObject);
+      DCHECK(row_->type() == dockv::ValueEntryType::kObject);
       row_->object_container().clear();
     }
 
@@ -354,7 +355,7 @@ Status DocRowwiseIterator::FillRow(
   for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
     const auto& column_id = projection.column_id(i);
     const auto ql_type = projection.column(i).type();
-    const SubDocument* column_value = row_->GetChild(KeyEntryValue::MakeColumnId(column_id));
+    const auto* column_value = row_->GetChild(dockv::KeyEntryValue::MakeColumnId(column_id));
     if (column_value != nullptr) {
       QLTableColumn& column = table_row->AllocColumn(column_id);
       column_value->ToQLValuePB(ql_type, &column.value);
@@ -372,8 +373,8 @@ Status DocRowwiseIterator::FillRow(
 
 bool DocRowwiseIterator::LivenessColumnExists() const {
   CHECK(!is_flat_doc_) << "Flat doc mode not supported yet";
-  const SubDocument* subdoc = row_->GetChild(KeyEntryValue::kLivenessColumn);
-  return subdoc != nullptr && subdoc->value_type() != ValueEntryType::kInvalid;
+  const auto* subdoc = row_->GetChild(dockv::KeyEntryValue::kLivenessColumn);
+  return subdoc != nullptr && subdoc->value_type() != dockv::ValueEntryType::kInvalid;
 }
 
 }  // namespace docdb

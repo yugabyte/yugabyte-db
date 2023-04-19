@@ -33,7 +33,7 @@
 #include "yb/consensus/consensus_util.h"
 #include "yb/consensus/raft_consensus.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_test_util.h"
 
 #include "yb/fs/fs_manager.h"
@@ -2086,16 +2086,16 @@ TEST_F(TabletSplitSingleServerITest, TabletServerGetSplitKey) {
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
   auto middle_key = ASSERT_RESULT(tablet_peer->shared_tablet()->GetEncodedMiddleSplitKey());
-  auto expected_middle_key_hash = CHECK_RESULT(docdb::DocKey::DecodeHash(middle_key));
+  auto expected_middle_key_hash = CHECK_RESULT(dockv::DocKey::DecodeHash(middle_key));
 
   // Send RPC.
   auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
 
   // Validate response.
   CHECK(!resp.has_error()) << resp.error().DebugString();
-  auto decoded_split_key_hash = CHECK_RESULT(docdb::DocKey::DecodeHash(resp.split_encoded_key()));
+  auto decoded_split_key_hash = CHECK_RESULT(dockv::DocKey::DecodeHash(resp.split_encoded_key()));
   CHECK_EQ(decoded_split_key_hash, expected_middle_key_hash);
-  auto decoded_partition_key_hash = PartitionSchema::DecodeMultiColumnHashValue(
+  auto decoded_partition_key_hash = dockv::PartitionSchema::DecodeMultiColumnHashValue(
       resp.split_partition_key());
   CHECK_EQ(decoded_partition_key_hash, expected_middle_key_hash);
 }

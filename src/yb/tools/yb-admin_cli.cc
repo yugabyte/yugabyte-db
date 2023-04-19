@@ -68,8 +68,6 @@ DEFINE_UNKNOWN_bool(exclude_dead, false, "Exclude dead tservers from output");
 using std::cerr;
 using std::endl;
 using std::ostringstream;
-using std::make_pair;
-using std::next;
 using std::pair;
 using std::string;
 using std::vector;
@@ -1982,15 +1980,22 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
       });
 
   RegisterJson(
-      "get_xcluster_estimated_data_loss", "",
+      "get_xcluster_safe_time", " [include_lag_and_skew]",
       [client](const CLIArguments& args) -> Result<rapidjson::Document> {
-        return client->GetXClusterEstimatedDataLoss();
-      });
+        if (args.size() != 0 && args.size() != 1) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
 
-  RegisterJson(
-      "get_xcluster_safe_time", "",
-      [client](const CLIArguments& args) -> Result<rapidjson::Document> {
-        return client->GetXClusterSafeTime();
+        bool include_lag_and_skew = false;
+        if (args.size() > 0) {
+          if (IsEqCaseInsensitive(args[0], "include_lag_and_skew")) {
+            include_lag_and_skew = true;
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
+        }
+
+        return client->GetXClusterSafeTime(include_lag_and_skew);
       });
 } // NOLINT, prevents long function message
 

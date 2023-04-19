@@ -27,7 +27,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/partial_row.h"
+#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/gutil/strings/split.h"
@@ -54,24 +54,9 @@ using std::string;
 using std::set;
 using std::ostream;
 using std::vector;
-using yb::Status;
-using yb::ThreadPool;
-using yb::ThreadPoolBuilder;
-using yb::MonoDelta;
-using yb::MemoryOrder;
-using yb::ConditionVariable;
-using yb::Mutex;
-using yb::MutexLock;
-using yb::CountDownLatch;
-using yb::Slice;
-using yb::YBPartialRow;
-using yb::TableType;
 
-using yb::client::YBClient;
-using yb::client::YBError;
 using yb::client::YBNoOp;
 using yb::client::YBSession;
-using yb::client::YBTable;
 using yb::redisserver::RedisReply;
 
 DEFINE_UNKNOWN_bool(load_gen_verbose,
@@ -575,7 +560,7 @@ void YBSingleThreadedReader::ConfigureSession() {
 bool NoopSingleThreadedWriter::Write(
     int64_t key_index, const string& key_str, const string& value_str) {
   YBNoOp noop(table_->table());
-  std::unique_ptr<YBPartialRow> row(table_->schema().NewRow());
+  auto row = table_->schema().NewRow();
   CHECK_OK(row->SetBinary("k", key_str));
   Status s = noop.Execute(client_, *row);
   if (s.ok()) {

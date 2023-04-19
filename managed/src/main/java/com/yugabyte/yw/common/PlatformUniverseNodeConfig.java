@@ -23,4 +23,9 @@ public class PlatformUniverseNodeConfig implements UniverseNodeConfigInterface {
   @JsonProperty Universe universe;
 
   @JsonProperty ShellProcessContext shellProcessContext;
+
+  @Override
+  public String getNodePrivateIp() {
+    return nodeDetails.cloudInfo.private_ip;
+  }
 }

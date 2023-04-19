@@ -159,7 +159,16 @@ CREATE TABLE liketemptest (LIKE temptest INCLUDING ALL);
 DROP TABLE liketemptest;
 -- Test using LIKE clause where source and target tables are temp tables.
 CREATE TEMP TABLE liketemptest (LIKE temptest INCLUDING ALL);
+-- \d liketemptest has unstable output due to temporary schemaname
+-- such as pg_temp_1, pg_temp_2, etc. Use regexp_replace to change
+-- it to pg_temp_xxx so that the result is stable.
+select current_setting('data_directory') || 'describe.out' as desc_output_file
+\gset
+\o :desc_output_file
 \d liketemptest
+\o
+select regexp_replace(pg_read_file(:'desc_output_file'), 'pg_temp_\d+', 'pg_temp_xxx', 'g');
+
 -- Test using LIKE clause where the target table is a temp table.
 CREATE TEMP TABLE gin_test (a int[]);
 CREATE INDEX ON gin_test USING GIN (a);

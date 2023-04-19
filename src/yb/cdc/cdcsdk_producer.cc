@@ -24,7 +24,7 @@
 #include "yb/consensus/consensus.messages.h"
 
 #include "yb/docdb/docdb_util.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_rowwise_iterator.h"
 #include "yb/server/hybrid_clock.h"
@@ -64,9 +64,8 @@ namespace cdc {
 
 using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
-using docdb::PrimitiveValue;
-using docdb::SchemaPackingStorage;
-using tablet::TransactionParticipant;
+using dockv::PrimitiveValue;
+using dockv::SchemaPackingStorage;
 using yb::QLTableRow;
 
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
@@ -133,7 +132,7 @@ DatumMessagePB* AddTuple(RowMessage* row_message, const StreamMetadata& metadata
 }
 
 Status AddPrimaryKey(
-    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const docdb::SubDocKey& decoded_key,
+    const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const dockv::SubDocKey& decoded_key,
     const Schema& tablet_schema, const EnumOidLabelMap& enum_oid_label_map,
     const CompositeAttsMap& composite_atts_map, RowMessage* row_message,
     const StreamMetadata& metadata) {
@@ -221,7 +220,7 @@ void MakeNewProtoRecord(
 Status PopulateBeforeImage(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const ReadHybridTime& read_time,
     RowMessage* row_message, const EnumOidLabelMap& enum_oid_label_map,
-    const CompositeAttsMap& composite_atts_map, const docdb::SubDocKey& decoded_primary_key,
+    const CompositeAttsMap& composite_atts_map, const dockv::SubDocKey& decoded_primary_key,
     const Schema& schema, const SchemaVersion schema_version, const ColocationId& colocation_id) {
   auto tablet = tablet_peer->shared_tablet();
   auto docdb = tablet->doc_db();
@@ -236,7 +235,7 @@ Status PopulateBeforeImage(
                   ->doc_read_context),
       TransactionOperationContext(), docdb, CoarseTimePoint::max() /* deadline */, read_time);
 
-  const docdb::DocKey& doc_key = decoded_primary_key.doc_key();
+  const dockv::DocKey& doc_key = decoded_primary_key.doc_key();
   docdb::DocQLScanSpec spec(schema, doc_key, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(iter.Init(spec));
 
@@ -292,7 +291,7 @@ Result<size_t> PopulatePackedRows(
     const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
     const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
     Slice* value_slice, RowMessage* row_message) {
-  const docdb::SchemaPacking& packing =
+  const dockv::SchemaPacking& packing =
       VERIFY_RESULT(schema_packing_storage.GetPacking(value_slice));
   for (size_t i = 0; i != packing.columns(); ++i) {
     auto slice = packing.GetValue(i, *value_slice);
@@ -479,31 +478,31 @@ Status PopulateCDCSDKIntentRecord(
   docdb::IntentKeyValueForCDC prev_intent;
   MicrosTime prev_intent_phy_time = 0;
   bool new_cdc_record_needed = false;
-  docdb::SubDocKey prev_decoded_key;
+  dockv::SubDocKey prev_decoded_key;
 
   for (const auto& intent : intents) {
     Slice key(intent.key_buf);
     const auto key_size =
-        VERIFY_RESULT(docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::kWholeDocKey));
+        VERIFY_RESULT(dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
 
-    docdb::KeyEntryValue column_id;
-    boost::optional<docdb::KeyEntryValue> column_id_opt;
+    dockv::KeyEntryValue column_id;
+    boost::optional<dockv::KeyEntryValue> column_id_opt;
     Slice key_column = key.WithoutPrefix(key_size);
     if (!key_column.empty()) {
-      RETURN_NOT_OK(docdb::KeyEntryValue::DecodeKey(&key_column, &column_id));
+      RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&key_column, &column_id));
       column_id_opt = column_id;
     }
 
-    docdb::SubDocKey decoded_key;
+    dockv::SubDocKey decoded_key;
     Slice sub_doc_key = key;
-    RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
+    RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
 
     Slice value_slice = intent.value_buf;
-    RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
-    auto value_type = docdb::DecodeValueEntryType(value_slice);
+    RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
+    auto value_type = dockv::DecodeValueEntryType(value_slice);
     value_slice.consume_byte();
 
-    if (column_id_opt && column_id_opt->type() == docdb::KeyEntryType::kColumnId &&
+    if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId &&
         schema.is_key_column(column_id_opt->GetColumnId())) {
       *write_id = intent.write_id;
       *reverse_index_key = intent.reverse_index_key;
@@ -520,7 +519,7 @@ Status PopulateCDCSDKIntentRecord(
     if (GetAtomicFlag(&FLAGS_enable_single_record_update)) {
       new_cdc_record_needed =
           (prev_key != primary_key) || (col_count >= schema.num_columns()) ||
-          (value_type == docdb::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) ||
+          (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) ||
           prev_intent_phy_time != intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
     } else {
       new_cdc_record_needed = (prev_key != primary_key) || (col_count >= schema.num_columns());
@@ -592,17 +591,17 @@ Status PopulateCDCSDKIntentRecord(
       }
 
       // Check whether operation is WRITE or DELETE.
-      if (value_type == docdb::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
+      if (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
         if (!FLAGS_enable_single_record_update) {
           col_count = schema.num_columns();
         }
-      } else if (value_type == docdb::ValueEntryType::kPackedRow) {
+      } else if (value_type == dockv::ValueEntryType::kPackedRow) {
         SetOperation(row_message, OpType::INSERT, schema);
         col_count = schema.num_key_columns();
       } else {
-        if (column_id_opt && column_id_opt->type() == docdb::KeyEntryType::kSystemColumnId &&
-            value_type == docdb::ValueEntryType::kNullLow) {
+        if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kSystemColumnId &&
+            value_type == dockv::ValueEntryType::kNullLow) {
           SetOperation(row_message, OpType::INSERT, schema);
           col_count = schema.num_key_columns() - 1;
         } else {
@@ -663,7 +662,7 @@ Status PopulateCDCSDKIntentRecord(
     prev_key = primary_key;
     prev_intent_phy_time = intent.intent_ht.hybrid_time().GetPhysicalValueMicros();
     if (IsInsertOrUpdate(*row_message)) {
-      if (value_type == docdb::ValueEntryType::kPackedRow) {
+      if (value_type == dockv::ValueEntryType::kPackedRow) {
         col_count += VERIFY_RESULT(PopulatePackedRows(
             schema_packing_storage, schema, tablet_peer, enum_oid_label_map, composite_atts_map,
             &value_slice, row_message));
@@ -676,10 +675,10 @@ Status PopulateCDCSDKIntentRecord(
           }
         }
 
-        docdb::Value decoded_value;
+        dockv::Value decoded_value;
         RETURN_NOT_OK(decoded_value.Decode(intent.value_buf));
 
-        if (column_id_opt && column_id_opt->type() == docdb::KeyEntryType::kColumnId) {
+        if (column_id_opt && column_id_opt->type() == dockv::KeyEntryType::kColumnId) {
           const ColumnSchema& col =
               VERIFY_RESULT(schema.column_by_id(column_id_opt->GetColumnId()));
 
@@ -690,7 +689,7 @@ Status PopulateCDCSDKIntentRecord(
             row_message->add_old_tuple();
           }
 
-        } else if (column_id_opt && column_id_opt->type() != docdb::KeyEntryType::kSystemColumnId) {
+        } else if (column_id_opt && column_id_opt->type() != dockv::KeyEntryType::kSystemColumnId) {
           LOG(DFATAL) << "Unexpected value type in key: " << column_id_opt->type()
                       << " key: " << decoded_key.ToString()
                       << " value: " << decoded_value.primitive_value();
@@ -809,7 +808,7 @@ Status PopulateCDCSDKWriteRecord(
   const auto& batch = msg->write().write_batch();
   CDCSDKProtoRecordPB* proto_record = nullptr;
   RowMessage* row_message = nullptr;
-  docdb::SubDocKey prev_decoded_key;
+  dockv::SubDocKey prev_decoded_key;
   // Write batch may contain records from different rows.
   // For CDC, we need to split the batch into 1 CDC record per row of the table.
   // We'll use DocDB key hash to identify the records that belong to the same row.
@@ -835,16 +834,16 @@ Status PopulateCDCSDKWriteRecord(
   for (const auto& write_pair : batch.write_pairs()) {
     Slice key = write_pair.key();
     const auto key_size =
-        VERIFY_RESULT(docdb::DocKey::EncodedSize(key, docdb::DocKeyPart::kWholeDocKey));
+        VERIFY_RESULT(dockv::DocKey::EncodedSize(key, dockv::DocKeyPart::kWholeDocKey));
 
     Slice value_slice = write_pair.value();
-    RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
-    auto value_type = docdb::DecodeValueEntryType(value_slice);
+    RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
+    auto value_type = dockv::DecodeValueEntryType(value_slice);
     value_slice.consume_byte();
 
     Slice sub_doc_key = key;
-    docdb::SubDocKey decoded_key;
-    RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey decoded_key;
+    RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
 
     // Compare key hash with previously seen key hash to determine whether the write pair
     // is part of the same row or not.
@@ -852,8 +851,8 @@ Status PopulateCDCSDKWriteRecord(
     if (prev_key != primary_key || (!FLAGS_enable_single_record_update && row_message &&
                                     row_message->op() == RowMessage_Op_UPDATE)) {
       Slice sub_doc_key = key;
-      docdb::SubDocKey decoded_key;
-      RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, docdb::HybridTimeRequired::kFalse));
+      dockv::SubDocKey decoded_key;
+      RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
       if (colocated) {
         colocation_id = decoded_key.doc_key().colocation_id();
         auto table_info = CHECK_RESULT(tablet_ptr->metadata()->GetTableInfo("", colocation_id));
@@ -907,17 +906,17 @@ Status PopulateCDCSDKWriteRecord(
       SetCDCSDKOpId(msg->id().term(), msg->id().index(), 0, "", cdc_sdk_op_id_pb);
 
       // Check whether operation is WRITE or DELETE.
-      if (value_type == docdb::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
+      if (value_type == dockv::ValueEntryType::kTombstone && decoded_key.num_subkeys() == 0) {
         SetOperation(row_message, OpType::DELETE, schema);
-      } else if (value_type == docdb::ValueEntryType::kPackedRow) {
+      } else if (value_type == dockv::ValueEntryType::kPackedRow) {
         SetOperation(row_message, OpType::INSERT, schema);
       } else {
-        docdb::KeyEntryValue column_id;
+        dockv::KeyEntryValue column_id;
         Slice key_column(key.WithoutPrefix(key_size));
-        RETURN_NOT_OK(docdb::KeyEntryValue::DecodeKey(&key_column, &column_id));
+        RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&key_column, &column_id));
 
-        if (column_id.type() == docdb::KeyEntryType::kSystemColumnId &&
-            value_type == docdb::ValueEntryType::kNullLow) {
+        if (column_id.type() == dockv::KeyEntryType::kSystemColumnId &&
+            value_type == dockv::ValueEntryType::kNullLow) {
           SetOperation(row_message, OpType::INSERT, schema);
         } else {
           SetOperation(row_message, OpType::UPDATE, schema);
@@ -971,17 +970,17 @@ Status PopulateCDCSDKWriteRecord(
     DCHECK(proto_record);
 
     if (IsInsertOrUpdate(*row_message)) {
-      if (value_type == docdb::ValueEntryType::kPackedRow) {
+      if (value_type == dockv::ValueEntryType::kPackedRow) {
         RETURN_NOT_OK(PopulatePackedRows(
             schema_packing_storage, schema, tablet_peer, enum_oid_label_map, composite_atts_map,
             &value_slice, row_message));
       } else {
-        docdb::KeyEntryValue column_id;
+        dockv::KeyEntryValue column_id;
         Slice key_column = key.WithoutPrefix(key_size);
-        RETURN_NOT_OK(docdb::KeyEntryValue::DecodeKey(&key_column, &column_id));
-        if (column_id.type() == docdb::KeyEntryType::kColumnId) {
+        RETURN_NOT_OK(dockv::KeyEntryValue::DecodeKey(&key_column, &column_id));
+        if (column_id.type() == dockv::KeyEntryType::kColumnId) {
           const ColumnSchema& col = VERIFY_RESULT(schema.column_by_id(column_id.GetColumnId()));
-          docdb::Value decoded_value;
+          dockv::Value decoded_value;
           RETURN_NOT_OK(decoded_value.Decode(write_pair.value()));
 
           RETURN_NOT_OK(AddColumnToMap(
@@ -990,7 +989,7 @@ Status PopulateCDCSDKWriteRecord(
           if (row_message->op() == RowMessage_Op_INSERT) {
             row_message->add_old_tuple();
           }
-        } else if (column_id.type() != docdb::KeyEntryType::kSystemColumnId) {
+        } else if (column_id.type() != dockv::KeyEntryType::kSystemColumnId) {
           LOG(DFATAL) << "Unexpected value type in key: " << column_id.type();
         }
       }
@@ -1195,14 +1194,14 @@ Status ProcessIntents(
   }
 
   for (auto& keyValue : *keyValueIntents) {
-    docdb::SubDocKey sub_doc_key;
+    dockv::SubDocKey sub_doc_key;
     CHECK_OK(
-        sub_doc_key.FullyDecodeFrom(Slice(keyValue.key_buf), docdb::HybridTimeRequired::kFalse));
+        sub_doc_key.FullyDecodeFrom(Slice(keyValue.key_buf), dockv::HybridTimeRequired::kFalse));
     Slice value_slice = keyValue.value_buf;
-    RETURN_NOT_OK(docdb::ValueControlFields::Decode(&value_slice));
-    auto value_type = docdb::DecodeValueEntryType(value_slice);
-    if (value_type != docdb::ValueEntryType::kPackedRow) {
-      docdb::Value decoded_value;
+    RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
+    auto value_type = dockv::DecodeValueEntryType(value_slice);
+    if (value_type != dockv::ValueEntryType::kPackedRow) {
+      dockv::Value decoded_value;
       RETURN_NOT_OK(decoded_value.Decode(Slice(keyValue.value_buf)));
     }
   }
@@ -1381,12 +1380,18 @@ Status GetChangesForCDCSDK(
       time = ReadHybridTime::SingleTime(data.log_ht);
       // Use the last replicated hybrid time as a safe time for snapshot operation. so that
       // compaction can be restricted during snapshot operation.
-      *leader_safe_time = data.log_ht;
 
-      // This should go to cdc_state table.
-      // Below condition update the checkpoint in cdc_state table.
-      SetCheckpoint(
-          data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), &checkpoint, nullptr);
+      if (time.read.ToUint64() == 0) {
+        // This means there is no data from the sansphot.
+        SetCheckpoint(data.op_id.term, data.op_id.index, 0, "", 0, &checkpoint, nullptr);
+      } else {
+        *leader_safe_time = data.log_ht;
+        // This should go to cdc_state table.
+        // Below condition update the checkpoint in cdc_state table.
+        SetCheckpoint(
+            data.op_id.term, data.op_id.index, -1, "", time.read.ToUint64(), &checkpoint, nullptr);
+      }
+
       checkpoint_updated = true;
     } else {
       // Snapshot is already taken.
@@ -1424,7 +1429,7 @@ Status GetChangesForCDCSDK(
             composite_atts_map));
         fetched++;
       }
-      docdb::SubDocKey sub_doc_key;
+      dockv::SubDocKey sub_doc_key;
       RETURN_NOT_OK(iter->GetNextReadSubDocKey(&sub_doc_key));
 
       // Snapshot ends when next key is empty.
@@ -1478,7 +1483,7 @@ Status GetChangesForCDCSDK(
                    << OpId::FromPB(from_op_id) << ", which can impact the safe time.";
     }
 
-    RETURN_NOT_OK(reverse_index_key_slice.consume_byte(docdb::KeyEntryTypeAsChar::kTransactionId));
+    RETURN_NOT_OK(reverse_index_key_slice.consume_byte(dockv::KeyEntryTypeAsChar::kTransactionId));
     auto transaction_id = VERIFY_RESULT(DecodeTransactionId(&reverse_index_key_slice));
 
     RETURN_NOT_OK(ProcessIntents(

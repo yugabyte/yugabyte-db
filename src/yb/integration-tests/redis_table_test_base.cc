@@ -21,7 +21,7 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/redis_constants_common.h"
 #include "yb/common/redis_protocol.pb.h"
 
@@ -33,20 +33,13 @@
 
 using std::string;
 using std::vector;
-using std::unique_ptr;
 
 namespace yb {
 namespace integration_tests {
 
 using client::YBRedisWriteOp;
 using client::YBRedisReadOp;
-using client::YBColumnSchema;
-using client::YBTableCreator;
-using client::YBSchemaBuilder;
-using client::YBColumnSchema;
-using client::YBTableType;
 using client::YBTableName;
-using client::YBSession;
 
 using redisserver::RedisClientCommand;
 using redisserver::ParseSet;
@@ -60,9 +53,9 @@ void RedisTableTestBase::CreateTable() {
   if (!table_exists_) {
     CreateRedisTable(table_name());
     client::YBSchema schema;
-    PartitionSchema partition_schema;
+    dockv::PartitionSchema partition_schema;
     CHECK_OK(client_->GetTableSchema(RedisTableTestBase::table_name(), &schema, &partition_schema));
-    ASSERT_EQ(partition_schema.hash_schema(), YBHashSchema::kRedisHash);
+    ASSERT_EQ(partition_schema.hash_schema(), dockv::YBHashSchema::kRedisHash);
     table_exists_ = true;
   }
 }

@@ -22,16 +22,16 @@
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/shared_lock_manager_fwd.h"
 #include "yb/docdb/conflict_resolution.h"
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_kv_util.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_kv_util.h"
 #include "yb/docdb/docdb-internal.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/intent_iterator.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/transaction_dump.h"
-#include "yb/docdb/value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/value.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/util/bytes_formatter.h"
 #include "yb/util/debug-util.h"
@@ -53,6 +53,11 @@ DEFINE_RUNTIME_bool(use_fast_next_for_iteration, kUseFastNextForIteratorDefault,
 
 namespace yb {
 namespace docdb {
+
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryTypeAsChar;
+using dockv::SubDocKey;
 
 namespace {
 
@@ -83,7 +88,7 @@ namespace {
 bool IsIntentForTheSameKey(const Slice& key, const Slice& intent_prefix) {
   return key.starts_with(intent_prefix) &&
          key.size() > intent_prefix.size() &&
-         IntentValueType(key[intent_prefix.size()]);
+         dockv::IntentValueType(key[intent_prefix.size()]);
 }
 
 std::string DebugDumpKeyToStr(const Slice &key) {
@@ -144,7 +149,7 @@ IntentAwareIterator::IntentAwareIterator(
   VTRACE(2, "Created iterator");
 }
 
-void IntentAwareIterator::Seek(const DocKey &doc_key) {
+void IntentAwareIterator::Seek(const dockv::DocKey &doc_key) {
   Seek(doc_key.Encode());
 }
 
@@ -298,7 +303,7 @@ Status IntentAwareIterator::NextFullValue(
                               "result_value cannot be null pointers.");
   RETURN_NOT_OK(status_);
   Slice v;
-  if (IsOutOfRecords() || !IsMergeRecord(v = value())) {
+  if (IsOutOfRecords() || !dockv::IsMergeRecord(v = value())) {
     auto key_data = VERIFY_RESULT(FetchKey());
     Assign(key_data.key, final_key);
     if (latest_record_ht) {
@@ -318,7 +323,7 @@ Status IntentAwareIterator::NextFullValue(
   while ((found_record = iter_.Valid()) &&  // as long as we're pointing to a record
          (key = iter_.key()).starts_with(key_data.key) &&  // with the same key we started with
          key[key_size] == KeyEntryTypeAsChar::kHybridTime && // whose key ends with a HT
-         IsMergeRecord(v = iter_.value())) { // and whose value is a merge record
+         dockv::IsMergeRecord(v = iter_.value())) { // and whose value is a merge record
     iter_.Next(); // advance the iterator
   }
   HandleStatus(iter_.status());
@@ -335,7 +340,7 @@ Status IntentAwareIterator::NextFullValue(
   found_record = false;
   if (intent_iter_.Initialized()) {
     while ((found_record = IsIntentForTheSameKey(intent_iter_.key(), key_data.key)) &&
-           IsMergeRecord(v = intent_iter_.value())) {
+           dockv::IsMergeRecord(v = intent_iter_.value())) {
       intent_iter_.Next();
     }
     if (found_record && !(key = intent_iter_.key()).empty()) {
@@ -399,7 +404,7 @@ void IntentAwareIterator::PrevSubDocKey(const KeyBytes& key_bytes) {
   }
 }
 
-void IntentAwareIterator::PrevDocKey(const DocKey& doc_key) {
+void IntentAwareIterator::PrevDocKey(const dockv::DocKey& doc_key) {
   PrevDocKey(doc_key.Encode().AsSlice());
 }
 
@@ -435,7 +440,7 @@ void IntentAwareIterator::SeekToLatestDocKeyInternal() {
   auto subdockey_slice = LatestSubDocKey();
 
   // Seek to the first key for row containing found subdockey.
-  auto dockey_size = DocKey::EncodedSize(subdockey_slice, DocKeyPart::kWholeDocKey);
+  auto dockey_size = dockv::DocKey::EncodedSize(subdockey_slice, dockv::DocKeyPart::kWholeDocKey);
   if (!dockey_size.ok()) {
     status_ = dockey_size.status();
     return;
@@ -759,7 +764,7 @@ Result<EncodedDocHybridTime> IntentAwareIterator::FindMatchingIntentRecordDocHyb
 
 Result<EncodedDocHybridTime> IntentAwareIterator::GetMatchingRegularRecordDocHybridTime(
     const Slice& key_without_ht) {
-  size_t other_encoded_ht_size = VERIFY_RESULT(CheckHybridTimeSizeAndValueType(iter_.key()));
+  size_t other_encoded_ht_size = VERIFY_RESULT(dockv::CheckHybridTimeSizeAndValueType(iter_.key()));
   Slice iter_key_without_ht = iter_.key();
   iter_key_without_ht.remove_suffix(1 + other_encoded_ht_size);
   if (key_without_ht == iter_key_without_ht) {

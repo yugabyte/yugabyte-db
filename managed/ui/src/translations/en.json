@@ -19,7 +19,8 @@
       "active": "Active",
       "none": "None",
       "edit": "Edit",
-      "remove": "Remove"
+      "remove": "Remove",
+      "wrong": "Something went wrong."
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -297,7 +298,8 @@
           "ScanBtn": "Scan",
           "ReScanBtn": "Re-Scan",
           "Hurray": "Hurray",
-          "ScanTime": "Current Scan"
+          "ScanTime": "Current Scan",
+          "DBScanFailed": "Failed to scan the database. Try again later."
         },
         "typeTag": {
           "IndexSuggestion": "INDEX SUGGESTION",
@@ -309,7 +311,7 @@
           "HotShard": "HOT SHARD"
         },
         "suggestionTypes": {
-          "All": "All recommendation types",
+          "All": "All Recommendation Types",
           "CpuSkew": "CPU Skew",
           "CpuUsage": "CPU Usage",
           "SchemaSuggestion": "Schema Suggestion",
@@ -359,7 +361,7 @@
       "customVariables": {
         "addNewVariableText": "Create your own variables with <bold> customized value </bold> to use in the notification templates.",
         "createNewVariableButton": "Create Custom Variable",
-        "customVariables":"Custom Variables",
+        "customVariables": "Custom Variables",
         "systemVariables": "System Variables",
         "assignVariablesButton": "Assign Variable Value to Alert Policies",
         "customVariableContextMenu": {
@@ -391,20 +393,29 @@
       "composer": {
         "subject": "Subject",
         "content": "Content",
-        "helpText": "All Alert Policies that generate email alerts will use this notification template.",
+        "helpText": "All Alert Policies that generate {{type}} alerts will use this notification template.",
         "insertVariableButton": "Insert Variable",
         "previewTemplateButton": "Preview Notification Template",
         "templateSavedSuccess": "Template saved successfully",
-        "emailTemplate": "Email Template"
+        "emailTemplate": "Email Template",
+        "webhookTemplate": "Webhook Template",
+        "webhookComposer": {
+          "rollback": "Rollback to Default Template",
+          "clearTemplate": "Clear Template"
+        }
       },
       "customVariablesPlugin": {
         "sysOrCusVariable": "{{variable_type}} VAR",
         "alertValueNotFound": "No value found"
       },
       "alertVariablesPreviewModal": {
-        "modalTitle":"Preview Notification Template",
-        "info":"Choose the Alert Template to preview with the Email Notification Template.",
+        "modalTitle": "Preview Notification Template",
+        "info": "Choose the Alert Template to preview with the Email Notification Template.",
         "selectPlaceholder": "Select an alert configuration"
+      },
+      "rollbackModal": {
+        "title": "Rollback to Default Template",
+        "helpText": "Rollback to default template will discard your current edits and revert the template back to the out-of-box version. Do you want to proceed? "
       }
     },
     "alertPolicyDetails": {

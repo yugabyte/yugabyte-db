@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.commissioner;
 
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
+
 import com.amazonaws.SDKGlobalConfiguration;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
@@ -12,6 +14,7 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.TableManagerYb;
 import com.yugabyte.yw.common.TaskInfoManager;
 import com.yugabyte.yw.common.Util;
@@ -268,7 +271,7 @@ public class BackupGarbageCollector {
       UUID storageConfigUUID = backup.getBackupInfo().storageConfigUUID;
       CustomerConfig customerConfig =
           customerConfigService.getOrBadRequest(backup.getCustomerUUID(), storageConfigUUID);
-      if (isCredentialUsable(customerConfig)) {
+      if (isCredentialUsable(customerConfig, backup.getUniverseUUID())) {
         List<String> backupLocations = null;
         log.info("Backup {} deletion started", backupUUID);
         backup.transitionState(BackupState.DeleteInProgress);
@@ -378,10 +381,20 @@ public class BackupGarbageCollector {
     }
   }
 
-  private Boolean isCredentialUsable(CustomerConfig config) {
+  private Boolean isCredentialUsable(CustomerConfig config, UUID universeUUID) {
     Boolean isValid = true;
     try {
-      backupUtil.validateStorageConfig(config);
+      if (config.getName().equals(NAME_NFS)) {
+        Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+
+        if (universeOpt.isPresent()) {
+          StorageUtil.getStorageUtil(config.getName())
+              .validateStorageConfigOnUniverse(config, universeOpt.get());
+        }
+
+      } else {
+        backupUtil.validateStorageConfig(config);
+      }
     } catch (Exception e) {
       isValid = false;
     }

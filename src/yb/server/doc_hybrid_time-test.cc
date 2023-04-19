@@ -26,12 +26,10 @@
 
 using std::string;
 using std::vector;
-using std::tuple;
 using std::cout;
 using std::endl;
 
 using yb::server::HybridClock;
-using yb::FormatBytesAsStr;
 using yb::util::sgn;
 using strings::Substitute;
 

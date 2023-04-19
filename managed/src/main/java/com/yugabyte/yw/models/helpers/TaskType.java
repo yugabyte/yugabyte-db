@@ -344,6 +344,9 @@ public enum TaskType {
   XClusterInfoPersist(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist.class),
 
+  ReplicateNamespaces(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces.class),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup.class),
@@ -491,6 +494,8 @@ public enum TaskType {
   InstallNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.InstallNodeAgent.class),
 
   WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class),
+
+  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
 
   CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class);
 

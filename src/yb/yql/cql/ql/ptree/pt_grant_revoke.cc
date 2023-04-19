@@ -31,8 +31,6 @@ DECLARE_bool(use_cassandra_authentication);
 namespace yb {
 namespace ql {
 
-using std::shared_ptr;
-using std::to_string;
 using std::string;
 using strings::Substitute;
 

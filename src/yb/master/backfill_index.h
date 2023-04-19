@@ -28,7 +28,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/index.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
@@ -303,7 +303,7 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
 
   std::shared_ptr<BackfillTable> backfill_table_;
   const scoped_refptr<TabletInfo> tablet_;
-  Partition partition_;
+  dockv::Partition partition_;
 
   // if non-empty, corresponds to the row in the tablet up to which
   // backfill has been already processed (non-inclusive). The next

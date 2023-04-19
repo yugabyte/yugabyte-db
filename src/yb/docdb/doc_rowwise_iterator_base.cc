@@ -21,11 +21,11 @@
 
 #include "yb/common/ql_expr.h"
 
-#include "yb/docdb/doc_key.h"
-#include "yb/docdb/doc_path.h"
-#include "yb/docdb/doc_scanspec_util.h"
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/doc_scanspec_util.h"
 #include "yb/docdb/docdb_compaction_context.h"
-#include "yb/docdb/expiration.h"
+#include "yb/dockv/expiration.h"
 #include "yb/docdb/scan_choices.h"
 #include "yb/tablet/tablet_metrics.h"
 
@@ -50,6 +50,8 @@ DEFINE_RUNTIME_bool(
     use_offset_based_key_decoding, false, "Use Offset based key decoding for reader.");
 
 namespace yb::docdb {
+
+using dockv::DocKey;
 
 DocRowwiseIteratorBase::DocRowwiseIteratorBase(
     const Schema& projection,
@@ -128,10 +130,10 @@ DocRowwiseIteratorBase::DocRowwiseIteratorBase(
 
 void DocRowwiseIteratorBase::SetupProjectionSubkeys() {
   reader_projection_.reserve(projection_.num_columns() + 1);
-  reader_projection_.push_back({KeyEntryValue::kLivenessColumn, nullptr});
+  reader_projection_.push_back({dockv::KeyEntryValue::kLivenessColumn, nullptr});
   for (size_t i = projection_.num_key_columns(); i < projection_.num_columns(); i++) {
     reader_projection_.push_back({
-        .subkey = KeyEntryValue::MakeColumnId(projection_.column_id(i)),
+        .subkey = dockv::KeyEntryValue::MakeColumnId(projection_.column_id(i)),
         .type = projection_.column(i).type(),
     });
   }
@@ -160,7 +162,7 @@ void DocRowwiseIteratorBase::Init(TableType table_type, const Slice& sub_doc_key
   if (!sub_doc_key.empty()) {
     row_key_ = sub_doc_key;
   } else {
-    DocKeyEncoder(&iter_key_).Schema(doc_read_context_.schema);
+    dockv::DocKeyEncoder(&iter_key_).Schema(doc_read_context_.schema);
     row_key_ = iter_key_;
   }
   row_hash_key_ = row_key_;
@@ -214,7 +216,7 @@ Status DocRowwiseIteratorBase::DoInit(const T& doc_spec) {
   return Status::OK();
 }
 
-Status DocRowwiseIteratorBase::Init(const YQLScanSpec& spec) {
+Status DocRowwiseIteratorBase::Init(const dockv::YQLScanSpec& spec) {
   table_type_ = spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
                                                      : TableType::PGSQL_TABLE_TYPE;
   ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
@@ -261,7 +263,7 @@ bool DocRowwiseIteratorBase::IsFetchedRowStatic() const {
   return doc_read_context_.schema.has_statics() && row_hash_key_.end() + 1 == row_key_.end();
 }
 
-Status DocRowwiseIteratorBase::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
+Status DocRowwiseIteratorBase::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) {
   if (!is_initialized_) {
     return STATUS(Corruption, "Iterator not initialized.");
   }
@@ -274,7 +276,7 @@ Status DocRowwiseIteratorBase::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
 
   DocKey doc_key;
   RETURN_NOT_OK(doc_key.FullyDecodeFrom(row_key_));
-  *sub_doc_key = SubDocKey(doc_key, read_time_.read);
+  *sub_doc_key = dockv::SubDocKey(doc_key, read_time_.read);
   DVLOG(3) << "Next SubDocKey: " << sub_doc_key->ToString();
   return Status::OK();
 }
@@ -282,9 +284,9 @@ Status DocRowwiseIteratorBase::GetNextReadSubDocKey(SubDocKey* sub_doc_key) {
 Result<Slice> DocRowwiseIteratorBase::GetTupleId() const {
   // Return tuple id without cotable id / colocation id if any.
   Slice tuple_id = row_key_;
-  if (tuple_id.starts_with(KeyEntryTypeAsChar::kTableId)) {
+  if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kTableId)) {
     tuple_id.remove_prefix(1 + kUuidSize);
-  } else if (tuple_id.starts_with(KeyEntryTypeAsChar::kColocationId)) {
+  } else if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kColocationId)) {
     tuple_id.remove_prefix(1 + sizeof(ColocationId));
   }
   return tuple_id;
@@ -302,10 +304,10 @@ void DocRowwiseIteratorBase::SeekTuple(const Slice& tuple_id) {
       if (doc_read_context_.schema.has_cotable_id()) {
         std::string bytes;
         doc_read_context_.schema.cotable_id().EncodeToComparable(&bytes);
-        tuple_key_->AppendKeyEntryType(KeyEntryType::kTableId);
+        tuple_key_->AppendKeyEntryType(dockv::KeyEntryType::kTableId);
         tuple_key_->AppendRawBytes(bytes);
       } else {
-        tuple_key_->AppendKeyEntryType(KeyEntryType::kColocationId);
+        tuple_key_->AppendKeyEntryType(dockv::KeyEntryType::kColocationId);
         tuple_key_->AppendUInt32(doc_read_context_.schema.colocation_id());
       }
     } else {
@@ -369,7 +371,7 @@ Status SetQLPrimaryKeyColumnValues(
     const size_t column_count,
     const char* column_type,
     const size_t end_referenced_key_column_index,
-    DocKeyDecoder* decoder,
+    dockv::DocKeyDecoder* decoder,
     QLTableRow* table_row) {
   const auto end_group_index = begin_index + column_count;
   SCHECK_LE(
@@ -383,7 +385,7 @@ Status SetQLPrimaryKeyColumnValues(
           "End reference key column index $0 is higher than num of key columns in schema $1",
           end_referenced_key_column_index, schema.num_key_columns()));
 
-  KeyEntryValue key_entry_value;
+  dockv::KeyEntryValue key_entry_value;
   size_t col_idx = begin_index;
   for (; col_idx < std::min(end_group_index, end_referenced_key_column_index); ++col_idx) {
     const auto ql_type = schema.column(col_idx).type();
@@ -400,7 +402,7 @@ Status SetQLPrimaryKeyColumnValues(
 Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(QLTableRow* row) {
   if (end_referenced_key_column_index_ == 0) return Status::OK();
 
-  DocKeyDecoder decoder(row_key_);
+  dockv::DocKeyDecoder decoder(row_key_);
   RETURN_NOT_OK(decoder.DecodeCotableId());
   RETURN_NOT_OK(decoder.DecodeColocationId());
   bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());

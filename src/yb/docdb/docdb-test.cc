@@ -20,7 +20,7 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/docdb-internal.h"
@@ -30,7 +30,7 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/in_mem_docdb.h"
-#include "yb/docdb/primitive_value.h"
+#include "yb/dockv/primitive_value.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stringprintf.h"
@@ -56,20 +56,12 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/yb_partition.h"
 
-using std::cout;
-using std::endl;
-using std::make_pair;
 using std::map;
 using std::string;
 using std::unique_ptr;
-using std::shared_ptr;
-using std::make_shared;
 using std::vector;
 
-using yb::util::TrimStr;
 using yb::util::ApplyEagerLineContinuation;
-
-using rocksdb::WriteOptions;
 
 using namespace std::literals;
 
@@ -81,6 +73,20 @@ DECLARE_int32(max_nexts_to_avoid_seek);
 
 namespace yb {
 namespace docdb {
+
+using dockv::DocKey;
+using dockv::DocPath;
+using dockv::KeyBytes;
+using dockv::KeyEntryType;
+using dockv::KeyEntryValue;
+using dockv::KeyEntryValues;
+using dockv::SubDocKey;
+using dockv::MakeDocKey;
+using dockv::MakeKeyEntryValues;
+using dockv::PrimitiveValue;
+using dockv::SubDocument;
+using dockv::ValueControlFields;
+using dockv::ValueEntryType;
 
 namespace {
 
@@ -305,7 +311,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
   }
 
   void InsertInet(const std::string strval) {
-    const DocKey doc_key(KeyEntryValues("mydockey"));
+    const auto doc_key = MakeDocKey("mydockey");
     KeyBytes encoded_doc_key(doc_key.Encode());
     ASSERT_OK(SetPrimitive(
         DocPath(encoded_doc_key, KeyEntryValue::MakeInetAddress(GetInetAddress(strval))),
@@ -403,7 +409,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
                             std::string* val_string,
                             vector<HybridTime>::iterator* time_iter,
                             std::set<std::pair<string, string>>* docdb_dump) {
-    DocKey collection_key(KeyEntryValues(key_string));
+    auto collection_key = MakeDocKey(key_string);
 
     QLValuePB map_value;
     for (int i = 0; i < kNumSubKeysForCollectionsWithTTL; i++) {
@@ -511,10 +517,10 @@ class DocDBTestRedis : public DocDBTest {
 
 // Static constant initialization should be completely independent (cannot initialize one using the
 // other).
-const DocKey DocDBTest::kDocKey1(KeyEntryValues("row1", 11111));
-const DocKey DocDBTest::kDocKey2(KeyEntryValues("row2", 22222));
-const KeyBytes DocDBTest::kEncodedDocKey1(DocKey(KeyEntryValues("row1", 11111)).Encode());
-const KeyBytes DocDBTest::kEncodedDocKey2(DocKey(KeyEntryValues("row2", 22222)).Encode());
+const DocKey DocDBTest::kDocKey1 = MakeDocKey("row1", 11111);
+const DocKey DocDBTest::kDocKey2 = MakeDocKey("row2", 22222);
+const KeyBytes DocDBTest::kEncodedDocKey1(MakeDocKey("row1", 11111).Encode());
+const KeyBytes DocDBTest::kEncodedDocKey2(MakeDocKey("row2", 22222).Encode());
 
 void DocDBTest::TestInsertion(
     const DocPath doc_path,
@@ -545,7 +551,7 @@ void DocDBTest::TestDeletion(
 }
 
 void DocDBTest::CheckExpectedLatestDBState() {
-  const SubDocKey subdoc_key(DocKey(KeyEntryValues("mydockey", kIntKey1)));
+  const SubDocKey subdoc_key(MakeDocKey("mydockey", kIntKey1));
 
   SubDocument subdoc;
   bool doc_found = false;
@@ -571,7 +577,7 @@ void DocDBTest::CheckExpectedLatestDBState() {
 // ------------------------------------------------------------------------------------------------
 
 TEST_P(DocDBTestWrapper, DocPathTest) {
-  DocKey doc_key(KeyEntryValues("mydockey", 10, "mydockey", 20));
+  auto doc_key = MakeDocKey("mydockey", 10, "mydockey", 20);
   DocPath doc_path(doc_key.Encode(), KeyEntryValue("first_subkey"), KeyEntryValue::Int64(123));
   ASSERT_EQ(2, doc_path.num_subkeys());
   ASSERT_EQ("\"first_subkey\"", doc_path.subkey(0).ToString());
@@ -579,7 +585,7 @@ TEST_P(DocDBTestWrapper, DocPathTest) {
 }
 
 TEST_P(DocDBTestWrapper, KeyAsEmptyObjectIsNotMasked) {
-  const DocKey doc_key(KeyEntryValues(DocKeyHash(1234)));
+  const auto doc_key = MakeDocKey(DocKeyHash(1234));
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), 252_usec_ht));
@@ -612,7 +618,7 @@ TEST_P(DocDBTestWrapper, KeyAsEmptyObjectIsNotMasked) {
 }
 
 TEST_P(DocDBTestWrapper, NullChildObjectShouldMaskValues) {
-  const DocKey doc_key(KeyEntryValues("mydockey", kIntKey1));
+  const auto doc_key = MakeDocKey("mydockey", kIntKey1);
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), 1000_usec_ht));
@@ -645,7 +651,7 @@ TEST_P(DocDBTestWrapper, NullChildObjectShouldMaskValues) {
 // considered. This test ensures we have the correct behavior, returning true as long as any
 // projection is present, even if the last one is absent.
 TEST_F(DocDBTestQl, LastProjectionIsNull) {
-  const DocKey doc_key(KeyEntryValues("mydockey", kIntKey1));
+  const auto doc_key = MakeDocKey("mydockey", kIntKey1);
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), 1000_usec_ht));
@@ -705,9 +711,9 @@ std::string IdToString(const Uuid& id) {
 // Test that table-level tombstone properly hides records.
 template<typename T>
 void DocDBTestQl::TestTableTombstone(T id) {
-  DocKey doc_key_1(KeyEntryValues("mydockey", kIntKey1));
+  auto doc_key_1 = MakeDocKey("mydockey", kIntKey1);
   SetId(&doc_key_1, id);
-  DocKey doc_key_2(KeyEntryValues("mydockey", kIntKey2));
+  auto doc_key_2 = MakeDocKey("mydockey", kIntKey2);
   SetId(&doc_key_2, id);
   ASSERT_OK(SetPrimitive(
       doc_key_1.Encode(), QLValue::Primitive(1), 1000_usec_ht));
@@ -740,7 +746,7 @@ TEST_F(DocDBTestQl, YsqlSystemTableTombstone) {
 
 TEST_P(DocDBTestWrapper, HistoryCompactionFirstRowHandlingRegression) {
   // A regression test for a bug in an initial version of compaction cleanup.
-  const DocKey doc_key(KeyEntryValues("mydockey", kIntKey1));
+  const auto doc_key = MakeDocKey("mydockey", kIntKey1);
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), 1000_usec_ht));
@@ -775,7 +781,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey1"; HT{ physical: 3000 }]) -
 }
 
 TEST_P(DocDBTestWrapper, SetPrimitiveQL) {
-  const DocKey doc_key(KeyEntryValues("mydockey", kIntKey1));
+  const auto doc_key = MakeDocKey("mydockey", kIntKey1);
   SetupRocksDBState(doc_key.Encode());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       R"#(
@@ -800,7 +806,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["u"; HT{ physical: 1000 w: 1 }]) ->
 TEST_P(DocDBTestWrapper, ListInsertAndGetTest) {
   QLValuePB parent;
   QLValuePB list = QLValue::PrimitiveArray(10, 2);
-  DocKey doc_key(KeyEntryValues("list_test", 231));
+  auto doc_key = MakeDocKey("list_test", 231);
   KeyBytes encoded_doc_key = doc_key.Encode();
   AddMapValue("list2", list, &parent);
   AddMapValue("other", "other_value", &parent);
@@ -860,10 +866,10 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
         )#");
   ASSERT_OK(ExtendList(
       DocPath(encoded_doc_key, KeyEntryValue("list2")),
-      ValueRef(QLValue::PrimitiveArray(5, 2), ListExtendOrder::PREPEND_BLOCK),
+      ValueRef(QLValue::PrimitiveArray(5, 2), dockv::ListExtendOrder::PREPEND_BLOCK),
       HybridTime(300)));
   ASSERT_OK(ExtendList(DocPath(encoded_doc_key, KeyEntryValue("list2")),
-      ValueRef(QLValue::PrimitiveArray(7, 4), ListExtendOrder::APPEND),
+      ValueRef(QLValue::PrimitiveArray(7, 4), dockv::ListExtendOrder::APPEND),
       HybridTime(400)));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
@@ -1053,7 +1059,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["other"; \
 }
 
 TEST_P(DocDBTestWrapper, ListOverwriteAndInsertTest) {
-  DocKey doc_key(KeyEntryValues("list_test", 231));
+  auto doc_key = MakeDocKey("list_test", 231);
   KeyBytes encoded_doc_key = doc_key.Encode();
   ASSERT_OK(InsertSubDocument(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), HybridTime(100)));
@@ -1128,7 +1134,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(5); \
 }
 
 TEST_P(DocDBTestWrapper, ListInsertAndDeleteTest) {
-  DocKey doc_key(KeyEntryValues("list_test", 231));
+  auto doc_key = MakeDocKey("list_test", 231);
   KeyBytes encoded_doc_key = doc_key.Encode();
   ASSERT_OK(InsertSubDocument(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), HybridTime(100)));
@@ -1211,7 +1217,7 @@ SubDocKey(DocKey([], ["list_test", 231]), ["list", ArrayIndex(5); \
 }
 
 TEST_P(DocDBTestWrapper, MapInsertAndDeleteTest) {
-  DocKey doc_key(KeyEntryValues("map_test", 231));
+  auto doc_key = MakeDocKey("map_test", 231);
   KeyBytes encoded_doc_key = doc_key.Encode();
   ASSERT_OK(InsertSubDocument(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), HybridTime(100)));
@@ -1288,7 +1294,7 @@ TEST_P(DocDBTestWrapper, MapInsertAndDeleteTest) {
 }
 
 TEST_P(DocDBTestWrapper, ExpiredValueCompactionTest) {
-  const DocKey doc_key(KeyEntryValues("k1"));
+  const auto doc_key = MakeDocKey("k1");
   const MonoDelta one_ms = 1ms;
   const MonoDelta two_ms = 2ms;
   const HybridTime t0 = 1000_usec_ht;
@@ -1326,7 +1332,7 @@ SubDocKey(DocKey([], ["k1"]), ["s2"; HT{ physical: 1000 }]) -> "v21"; ttl: 0.003
 
 TEST_P(DocDBTestWrapper, GetDocTwoLists) {
   auto list1 = QLValue::PrimitiveArray(10, 2);
-  DocKey doc_key(KeyEntryValues("foo", 231));
+  auto doc_key = MakeDocKey("foo", 231);
 
   KeyBytes encoded_doc_key = doc_key.Encode();
   QLValuePB parent;
@@ -1407,17 +1413,17 @@ TEST_P(DocDBTestWrapper, RedisCollectionTTLCompactionTest) {
   // Stack 1
   InitializeCollection(key_string, &val_string, &time_iter, &docdb_dump);
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       ValueRef(ValueEntryType::kTombstone), *time_iter));
   ++time_iter;
   InitializeCollection(key_string, &val_string, &time_iter, &docdb_dump);
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(21ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(9ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   time_iter = t.begin();
@@ -1426,17 +1432,17 @@ TEST_P(DocDBTestWrapper, RedisCollectionTTLCompactionTest) {
   // Stack 2
   InitializeCollection(key_string, &val_string, &time_iter, &docdb_dump);
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(18ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(15ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       ValueRef(ValueEntryType::kTombstone), *time_iter));
   time_iter = t.begin();
   ++key_string[1];
@@ -1444,28 +1450,28 @@ TEST_P(DocDBTestWrapper, RedisCollectionTTLCompactionTest) {
   // Stack 3
   InitializeCollection(key_string, &val_string, &time_iter, &docdb_dump);
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(15ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(18ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   InitializeCollection(key_string, &val_string, &time_iter, &docdb_dump);
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(21ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(9ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(12ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   time_iter = t.begin();
@@ -1474,33 +1480,33 @@ TEST_P(DocDBTestWrapper, RedisCollectionTTLCompactionTest) {
   // Stack 4
   InitializeCollection(key_string, &val_string, &time_iter, &docdb_dump);
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(15ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(6ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(18ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   InitializeCollection(key_string, &val_string, &time_iter, &docdb_dump);
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(18ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(9ms), ValueRef(ValueEntryType::kObject),
       *time_iter));
   ++time_iter;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(ValueControlFields::kMaxTtl), ValueRef(ValueEntryType::kObject),
       *time_iter));
 
@@ -2003,53 +2009,53 @@ TEST_P(DocDBTestWrapper, RedisTTLCompactionTest) {
     t[i] = server::HybridClock::AddPhysicalTimeToHybridTime(t[i-1], one_ms);
   }
   // Compact at t10
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k0
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k0
                          Ttl(4ms), ValueRef(QLValue::Primitive(val_string)), t[2]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[0]));
   val_string[1]++;
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k1
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k1
                          Ttl(8ms), ValueRef(QLValue::Primitive(val_string)), t[3]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          Ttl(1ms), ValueRef(QLValue::Primitive(val_string)), t[5]));
   val_string[1]++;
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k2
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k2
                          Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[5]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          Ttl(5ms), ValueRef(QLValue::Primitive(val_string)), t[7]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(QLValue::Primitive(val_string)), t[11]));
   key_string[1]++;
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k3
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k3
                          Ttl(4ms), ValueRef(QLValue::Primitive(val_string)), t[1]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(QLValue::Primitive(val_string)), t[4]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          Ttl(1ms), ValueRef(QLValue::Primitive(val_string)), t[13]));
   val_string[1]++;
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k4
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k4
                          ValueRef(ValueEntryType::kTombstone), t[12]));
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k5
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k5
                          Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[9]));
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k6
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k6
                          Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[6]));
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       R"#(
@@ -2102,67 +2108,67 @@ SubDocKey(DocKey([], ["k2"]), [HT{ physical: 12000 }]) -> "v6"
   val_string = "v0";
   // Checking TTL rows now
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(), // k0
+      MakeDocKey(key_string).Encode(), // k0
       TtlWithMergeFlags(6ms), ValueRef(QLValue::Primitive("")),
       t[5]));
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(4ms), ValueRef(QLValue::Primitive("")),
       t[2]));
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[0]));
   val_string[1]++;
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k1
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k1
                          Ttl(8ms), ValueRef(QLValue::Primitive(val_string)), t[3]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(3ms), ValueRef(QLValue::Primitive("")),
       t[5]));
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k2
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k2
                          Ttl(3ms), ValueRef(QLValue::Primitive(val_string)), t[5]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(5ms), ValueRef(QLValue::Primitive("")),
       t[7]));
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(ValueControlFields::kMaxTtl), ValueRef(QLValue::Primitive("")),
       t[12]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive( // k3
-  DocKey(KeyEntryValues(key_string)).Encode(),
+  MakeDocKey(key_string).Encode(),
                          Ttl(4ms), ValueRef(QLValue::Primitive(val_string)), t[1]));
   val_string[1]++;
   ASSERT_OK(SetPrimitive(
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(ValueControlFields::kMaxTtl), ValueRef(QLValue::Primitive("")),
       t[4]));
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          Ttl(1ms), ValueRef(QLValue::Primitive(val_string)), t[13]));
   val_string[1]++;
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k4
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k4
                          ValueRef(ValueEntryType::kTombstone), t[12]));
   key_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(), // k5
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k5
                          Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[9]));
   key_string[1]++;
   ASSERT_OK(SetPrimitive( // k6
-      DocKey(KeyEntryValues(key_string)).Encode(),
+      MakeDocKey(key_string).Encode(),
       TtlWithMergeFlags(4ms), ValueRef(QLValue::Primitive("")),
       t[10]));
 
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          Ttl(9ms), ValueRef(QLValue::Primitive(val_string)), t[8]));
   val_string[1]++;
-  ASSERT_OK(SetPrimitive(DocKey(KeyEntryValues(key_string)).Encode(),
+  ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(),
                          ValueRef(ValueEntryType::kTombstone), t[6]));
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
@@ -2205,7 +2211,7 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   // This test does not have schema, so cannot use with packed row.
   DisableYcqlPackedRow();
 
-  const DocKey doc_key(KeyEntryValues("k1"));
+  const auto doc_key = MakeDocKey("k1");
   const MonoDelta one_ms = 1ms;
   const HybridTime t0 = 1000_usec_ht;
   HybridTime t1 = server::HybridClock::AddPhysicalTimeToHybridTime(t0, one_ms);
@@ -2225,7 +2231,7 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::MakeColumnId(ColumnId(3))),
                          QLValue::Primitive("v4"), t0));
   // Second row.
-  const DocKey doc_key_row2(KeyEntryValues("k2"));
+  const auto doc_key_row2 = MakeDocKey("k2");
   KeyBytes encoded_doc_key_row2(doc_key_row2.Encode());
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key_row2, KeyEntryValue::kLivenessColumn),
                          Ttl(3ms), ValueRef(ValueEntryType::kNullLow), t0));
@@ -2312,7 +2318,7 @@ SubDocKey(DocKey([], ["k1"]), [ColumnId(3); HT{ physical: 1000 }]) -> "v4"
 }
 
 TEST_P(DocDBTestWrapper, TableTTLCompactionTest) {
-  const DocKey doc_key(KeyEntryValues("k1"));
+  const auto doc_key = MakeDocKey("k1");
   const HybridTime t1 = 1000_usec_ht;
   const HybridTime t2 = 2000_usec_ht;
   const HybridTime t3 = 3000_usec_ht;
@@ -2486,7 +2492,7 @@ TEST_F(DocDBTestQl, YsqlSystemTableTombstoneCompaction) {
 
 TEST_P(DocDBTestWrapper, MinorCompactionNoDeletions) {
   ASSERT_OK(DisableCompactions());
-  const DocKey doc_key(KeyEntryValues("k"));
+  const auto doc_key = MakeDocKey("k");
   KeyBytes encoded_doc_key(doc_key.Encode());
   for (int i = 1; i <= 6; ++i) {
     auto value_str = Format("v$0", i);
@@ -2560,7 +2566,7 @@ SubDocKey(DocKey([], ["k"]), [HT{ physical: 5000 }]) -> "v5"  // file 11
 
 TEST_P(DocDBTestWrapper, MinorCompactionWithDeletions) {
   ASSERT_OK(DisableCompactions());
-  const DocKey doc_key(KeyEntryValues("k"));
+  const auto doc_key = MakeDocKey("k");
   KeyBytes encoded_doc_key(doc_key.Encode());
   for (int i = 1; i <= 6; ++i) {
     auto value = QLValue::Primitive(Format("v$0", i));
@@ -2647,7 +2653,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
 
   SetInitMarkerBehavior(InitMarkerBehavior::kRequired);
 
-  DocKey string_valued_doc_key(KeyEntryValues("my_key_where_value_is_a_string"));
+  auto string_valued_doc_key = MakeDocKey("my_key_where_value_is_a_string");
   ASSERT_STR_EQ_VERBOSE_TRIMMED(
   // Two zeros indicate the end of a string primitive field, and the '!' indicates the end
   // of the "range" part of the DocKey. There is no "hash" part, because the first
@@ -2662,7 +2668,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
       R"#(1. PutCF('Smy_key_where_value_is_a_string\x00\x00\
                     !', 'Svalue1'))#");
 
-  DocKey doc_key(KeyEntryValues("mydockey", kIntKey1));
+  auto doc_key = MakeDocKey("mydockey", kIntKey1);
   KeyBytes encoded_doc_key(doc_key.Encode());
 
   TestInsertion(
@@ -2880,7 +2886,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), [HT{ physical: 8000 }]) -> {}
 }
 
 TEST_P(DocDBTestWrapper, MultiOperationDocWriteBatch) {
-  const auto encoded_doc_key = DocKey(KeyEntryValues("a")).Encode();
+  const auto encoded_doc_key = MakeDocKey("a").Encode();
   auto dwb = MakeDocWriteBatch();
   ASSERT_OK(dwb.SetPrimitive(
       DocPath(encoded_doc_key, KeyEntryValue("b")), ValueRef(QLValue::Primitive("v1"))));
@@ -2935,8 +2941,8 @@ class DocDBTestBoundaryValues: public DocDBTestWrapper {
       auto key_int = distribution(rng);
       auto value_str = "value_" + std::to_string(distribution(rng));
       auto time = HybridTime::FromMicros(distribution(rng));
-      auto key = DocKey(KeyEntryValues(key_str, key_int)).Encode();
-      DocPath path(key);
+      auto key = MakeDocKey(key_str, key_int).Encode();
+      dockv::DocPath path(key);
       ASSERT_OK(SetPrimitive(path, QLValue::Primitive(value_str), time));
       trackers.back().key_ints(key_int);
       trackers.back().key_strs(key_str);
@@ -2997,9 +3003,9 @@ TEST_P(DocDBTestWrapper, BloomFilterTest) {
   auto dwb = MakeDocWriteBatch();
   ASSERT_OK(FlushRocksDbAndWait());
 
-  DocKey key1(0, KeyEntryValues("key1"), KeyEntryValues());
-  DocKey key2(0, KeyEntryValues("key2"), KeyEntryValues());
-  DocKey key3(0, KeyEntryValues("key3"), KeyEntryValues());
+  DocKey key1(0, MakeKeyEntryValues("key1"), KeyEntryValues());
+  DocKey key2(0, MakeKeyEntryValues("key2"), KeyEntryValues());
+  DocKey key3(0, MakeKeyEntryValues("key3"), KeyEntryValues());
   HybridTime ht;
 
   SubDocument doc_from_rocksdb;
@@ -3165,14 +3171,14 @@ TEST_P(DocDBTestWrapper, MergingIterator) {
   ASSERT_OK(ht.FromUint64(1000));
 
   // Put smaller key into SST file.
-  DocKey key1(123, KeyEntryValues("key1"), KeyEntryValues());
+  DocKey key1(123, MakeKeyEntryValues("key1"), KeyEntryValues());
   auto dwb = MakeDocWriteBatch();
   ASSERT_OK(dwb.SetPrimitive(DocPath(key1.Encode()), ValueRef(QLValue::Primitive("value1"))));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
   ASSERT_OK(FlushRocksDbAndWait());
 
   // Put bigger key into memtable.
-  DocKey key2(234, KeyEntryValues("key2"), KeyEntryValues());
+  DocKey key2(234, MakeKeyEntryValues("key2"), KeyEntryValues());
   dwb.Clear();
   ASSERT_OK(dwb.SetPrimitive(DocPath(key2.Encode()), ValueRef(QLValue::Primitive("value2"))));
   ASSERT_OK(WriteToRocksDB(dwb, ht));
@@ -3276,12 +3282,12 @@ SubDocKey(DocKey([], ["row2", 22222]), [ColumnId(10); HT{ physical: 2000 w: 1 }]
 }
 
 TEST_P(DocDBTestWrapper, StaticColumnCompaction) {
-  const DocKey hk(0, KeyEntryValues("h1")); // hash key
-  const DocKey pk1(hk.hash(), hk.hashed_group(), KeyEntryValues("r1")); // primary key
-  const DocKey pk2(hk.hash(), hk.hashed_group(), KeyEntryValues("r2")); //   "      "
-  const KeyBytes encoded_hk(hk.Encode());
-  const KeyBytes encoded_pk1(pk1.Encode());
-  const KeyBytes encoded_pk2(pk2.Encode());
+  const DocKey hk(0, MakeKeyEntryValues("h1")); // hash key
+  const DocKey pk1(hk.hash(), hk.hashed_group(), MakeKeyEntryValues("r1")); // primary key
+  const DocKey pk2(hk.hash(), hk.hashed_group(), MakeKeyEntryValues("r2")); //   "      "
+  const auto encoded_hk = hk.Encode();
+  const auto encoded_pk1 = pk1.Encode();
+  const auto encoded_pk2 = pk2.Encode();
 
   const MonoDelta one_ms = 1ms;
   const MonoDelta two_ms = 2ms;
@@ -3383,7 +3389,7 @@ SubDocKey(DocKey(0x0000, ["h1"], ["r2"]), ["c8"; HT{ physical: 1000 }]) -> "v82"
 }
 
 TEST_P(DocDBTestWrapper, TestUserTimestamp) {
-  const DocKey doc_key(KeyEntryValues("k1"));
+  const auto doc_key = MakeDocKey("k1");
   KeyBytes encoded_doc_key(doc_key.Encode());
 
   // Only optional init marker supported for user timestamp.
@@ -3446,7 +3452,7 @@ SubDocKey(DocKey([], ["k1"]), ["s3", "s5"; HT{ physical: 10000 w: 1 }]) -> "v1";
 }
 
 Status InsertToWriteBatchWithTTL(DocWriteBatch* dwb, const MonoDelta ttl) {
-  const DocKey doc_key(KeyEntryValues("k1"));
+  const auto doc_key = MakeDocKey("k1");
   KeyBytes encoded_doc_key(doc_key.Encode());
   QLValuePB subdoc;
   AddMapValue("sk1", "v1", &subdoc);
@@ -3491,7 +3497,7 @@ TEST_P(DocDBTestWrapper, TestUpdateDocWriteBatchTTL) {
 }
 
 TEST_P(DocDBTestWrapper, TestCompactionWithUserTimestamp) {
-  const DocKey doc_key(KeyEntryValues("k1"));
+  const auto doc_key = MakeDocKey("k1");
   HybridTime t3000 = 3000_usec_ht;
   HybridTime t5000 = 5000_usec_ht;
   KeyBytes encoded_doc_key(doc_key.Encode());
@@ -3609,7 +3615,7 @@ void QueryBoundsAndVerify(const DocKey& doc_key, int lower, int upper, int base,
 }
 
 TEST_F(DocDBTestRedis, TestBuildSubDocumentBounds) {
-  const DocKey doc_key(KeyEntryValues("key"));
+  const auto doc_key = MakeDocKey("key");
   KeyBytes encoded_doc_key(doc_key.Encode());
   const int nsubkeys = 100;
   const int base = 11000; // To ensure ints can be compared lexicographically.
@@ -3650,17 +3656,17 @@ TEST_F(DocDBTestRedis, TestBuildSubDocumentBounds) {
   EXPECT_FALSE(subdoc_found);
 
   // Try bounds without appropriate doc key.
-  QueryBounds(DocKey(KeyEntryValues("abc")), 0, nsubkeys - 1, base, doc_db(), &doc_from_rocksdb,
+  QueryBounds(dockv::MakeDocKey("abc"), 0, nsubkeys - 1, base, doc_db(), &doc_from_rocksdb,
               &subdoc_found, subdoc_to_search);
   EXPECT_FALSE(subdoc_found);
 
   // Try bounds different from doc key.
   QueryBounds(doc_key, 0, 99, base, doc_db(), &doc_from_rocksdb, &subdoc_found,
-              SubDocKey(DocKey(KeyEntryValues("abc"))));
+              SubDocKey(dockv::MakeDocKey("abc")));
   EXPECT_FALSE(subdoc_found);
 
   // Try with bounds pointing to wrong doc key.
-  DocKey doc_key_xyz(KeyEntryValues("xyz"));
+  auto doc_key_xyz = MakeDocKey("xyz");
   AddSubKeys(doc_key_xyz.Encode(), nsubkeys, base, &expected_docdb_str);
   QueryBounds(doc_key_xyz, 0, nsubkeys - 1, base, doc_db(), &doc_from_rocksdb,
               &subdoc_found, subdoc_to_search);
@@ -3668,7 +3674,7 @@ TEST_F(DocDBTestRedis, TestBuildSubDocumentBounds) {
 }
 
 TEST_P(DocDBTestWrapper, TestCompactionForCollectionsWithTTL) {
-  DocKey collection_key(KeyEntryValues("collection"));
+  auto collection_key = MakeDocKey("collection");
   SetUpCollectionWithTTL(collection_key, UseIntermediateFlushes::kFalse);
 
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(ExpectedDebugDumpForCollectionWithTTL(
@@ -3696,7 +3702,7 @@ TEST_P(DocDBTestWrapper, TestCompactionForCollectionsWithTTL) {
 
 TEST_P(DocDBTestWrapper, MinorCompactionsForCollectionsWithTTL) {
   ASSERT_OK(DisableCompactions());
-  DocKey collection_key(KeyEntryValues("c"));
+  auto collection_key = MakeDocKey("c");
   SetUpCollectionWithTTL(collection_key, UseIntermediateFlushes::kTrue);
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(
       ExpectedDebugDumpForCollectionWithTTL(collection_key, InitMarkerExpired::kFalse));
@@ -3739,14 +3745,14 @@ SubDocKey(DocKey([], ["c"]), ["k5"; HT{ physical: 1100 }]) -> "vv5"; ttl: 25.000
 
 std::string EncodeValue(const QLValuePB& value) {
   std::string result;
-  AppendEncodedValue(value, &result);
+  dockv::AppendEncodedValue(value, &result);
   return result;
 }
 
 TEST_P(DocDBTestWrapper, CompactionWithTransactions) {
   FLAGS_TEST_docdb_sort_weak_intents = true;
 
-  const DocKey doc_key(KeyEntryValues("mydockey", kIntKey1));
+  const auto doc_key = MakeDocKey("mydockey", kIntKey1);
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key), ValueRef(ValueEntryType::kObject), 1000_usec_ht));
@@ -3904,7 +3910,7 @@ TEST_P(DocDBTestWrapper, ForceFlushedFrontier) {
   op_id_ = {1, 1};
   rocksdb::UserFrontierPtr flushed_frontier;
   for (int i = 1; i < 20; ++i) {
-    const DocKey doc_key(KeyEntryValues(i));
+    const auto doc_key = MakeDocKey(i);
     const KeyBytes encoded_doc_key = doc_key.Encode();
     SetupRocksDBState(encoded_doc_key);
     ASSERT_OK(FlushRocksDbAndWait());
@@ -4021,12 +4027,12 @@ TEST_P(DocDBTestWrapper, SetHybridTimeFilter) {
                                               const Slice& key, const Slice& value) -> bool {
       scanned_keys++;
       SubDocKey expected_subdoc_key(
-          DocKey(KeyEntryValues(Format("row$0", scanned_keys), 11111 * scanned_keys)),
+          dockv::MakeDocKey(Format("row$0", scanned_keys), 11111 * scanned_keys),
           KeyEntryValue::MakeColumnId(ColumnId(10)),
           HybridTime::FromMicros(scanned_keys * 1000));
 
       SubDocKey subdoc_key;
-      EXPECT_OK(subdoc_key.FullyDecodeFrom(key, HybridTimeRequired::kTrue));
+      EXPECT_OK(subdoc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kTrue));
       PrimitiveValue primitive_value(ValueEntryType::kInt32);
       EXPECT_OK(primitive_value.DecodeFromValue(value));
 
@@ -4125,12 +4131,12 @@ TEST_P(DocDBTestWrapper, IteratorScanForwardUpperbound) {
                                               const Slice& key, const Slice& value) -> bool {
       auto expected_value = scanned_keys + 1;
       SubDocKey expected_subdoc_key(
-          DocKey(KeyEntryValues(Format("row$0", expected_value), 11111 * expected_value)),
+          dockv::MakeDocKey(Format("row$0", expected_value), 11111 * expected_value),
           KeyEntryValue::MakeColumnId(ColumnId(10)),
           HybridTime::FromMicros(expected_value * 1000));
 
       SubDocKey subdoc_key;
-      EXPECT_OK(subdoc_key.FullyDecodeFrom(key, HybridTimeRequired::kTrue));
+      EXPECT_OK(subdoc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kTrue));
       PrimitiveValue primitive_value(ValueEntryType::kInt32);
       EXPECT_OK(primitive_value.DecodeFromValue(value));
 
@@ -4150,7 +4156,7 @@ TEST_P(DocDBTestWrapper, IteratorScanForwardUpperbound) {
         iter->SeekToFirst();
         scanned_keys = 0;
 
-        auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+        auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", i), 11111 * i).Encode();
         ScanForwardWithMetricCheck(
             iter.get(), regular_db_options_.statistics.get(), encoded_doc_key,
             /*key_filter_callback=*/nullptr, &scan_callback, i - 1);
@@ -4176,7 +4182,7 @@ TEST_P(DocDBTestWrapper, IteratorScanForwardUpperbound) {
   // Add more records which will go to memtable and overlap in the range.
   for (int i = 1; i <= kNumKeys; i++) {
     auto index = i + 10;
-    auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+    auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", i), 11111 * i).Encode();
     op_id_.term = index / 2;
     op_id_.index = index;
     auto& dwb = DefaultDocWriteBatch();
@@ -4205,7 +4211,7 @@ TEST_P(DocDBTestWrapper, InterleavedRecordsScanForward) {
   // Add records to memtable interleaved with first SST file.
   for (int i = 1; i <= kNumKeys; i++) {
     auto index = i + 10;
-    auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+    auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", i), 11111 * i).Encode();
     op_id_.term = index / 2;
     op_id_.index = index;
     auto& dwb = DefaultDocWriteBatch();
@@ -4224,7 +4230,7 @@ TEST_P(DocDBTestWrapper, InterleavedRecordsScanForward) {
   // Add records to memtable interleaved with first SST file.
   for (int i = 1; i <= kNumKeys; i++) {
     auto index = i + 20;
-    auto encoded_doc_key = DocKey(KeyEntryValues(Format("row$0", i), 11111 * i)).Encode();
+    auto encoded_doc_key = dockv::MakeDocKey(Format("row$0", i), 11111 * i).Encode();
     op_id_.term = index / 2;
     op_id_.index = index;
     auto& dwb = DefaultDocWriteBatch();
