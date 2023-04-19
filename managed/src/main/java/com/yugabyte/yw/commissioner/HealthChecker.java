@@ -31,8 +31,8 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.EmailHelper;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
@@ -65,7 +65,6 @@ import com.yugabyte.yw.models.filters.MetricFilter;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
-import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -620,14 +619,6 @@ public class HealthChecker {
     return silenceEmails ? null : String.join(",", destinations);
   }
 
-  private static boolean isUniverseBusyByTask(UniverseDefinitionTaskParams details) {
-    return details.updateInProgress
-        && details.updatingTask != TaskType.BackupTable
-        && details.updatingTask != TaskType.MultiTableBackup
-        && details.updatingTask != TaskType.CreateBackup
-        && details.updatingTask != TaskType.RestoreBackup;
-  }
-
   public void checkSingleUniverse(CheckSingleUniverseParams params) {
     // Validate universe data and make sure nothing is in progress.
     UniverseDefinitionTaskParams details = params.universe.getUniverseDetails();
@@ -642,7 +633,7 @@ public class HealthChecker {
           "Skipping universe " + params.universe.getName() + " as it is in the paused state...");
       return;
     }
-    if (isUniverseBusyByTask(details)) {
+    if (details.isUniverseBusyByTask()) {
       log.warn("Skipping universe " + params.universe.getName() + " due to task in progress...");
       return;
     }
@@ -1024,7 +1015,7 @@ public class HealthChecker {
       return false;
     }
 
-    if (isUniverseBusyByTask(universeDetails)) {
+    if (universeDetails.isUniverseBusyByTask()) {
       log.warn(
           "Cancelling universe " + u.get().getName() + " health-check, some task is in progress.");
       return false;
