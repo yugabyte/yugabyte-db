@@ -185,7 +185,7 @@ Create and populate a table, get a timestamp to which you'll restore, and then w
     ```sh
     ./bin/yb-admin \
         -master_addresses 127.0.0.1:7100,127.0.0.2:7100,127.0.0.3:7100 \
-        list_snapshot_schedules
+        list_snapshots
     ```
 
     ```output
