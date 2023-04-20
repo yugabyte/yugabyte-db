@@ -78,7 +78,7 @@ public class PgRegressBuilder {
     this.outputDir = outputDir;
 
     // Create output dir.
-    if (!outputDir.mkdirs()) {
+    if (!outputDir.exists() && !outputDir.mkdirs() && !outputDir.exists()) {
       throw new RuntimeException("Failed to create directory " + outputDir);
     }
 
