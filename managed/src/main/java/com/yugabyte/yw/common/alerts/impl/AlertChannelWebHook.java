@@ -51,7 +51,9 @@ public class AlertChannelWebHook extends AlertChannelWebBase {
       WSResponse response =
           sendRequest(WEBHOOK_WS_KEY, params.getWebhookUrl(), body, params.getHttpAuth());
 
-      if (response.getStatus() != HttpStatus.SC_OK) {
+      // To be on the safe side - just accept all 2XX responses as success
+      if (response.getStatus() < HttpStatus.SC_OK
+          || response.getStatus() >= HttpStatus.SC_MULTIPLE_CHOICES) {
         throw new PlatformNotificationException(
             String.format(
                 "Error sending WebHook message for alert %s:"
