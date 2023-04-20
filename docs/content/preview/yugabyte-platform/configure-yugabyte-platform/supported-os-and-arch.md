@@ -15,6 +15,8 @@ type: docs
 
 YugabyteDB Anywhere supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
 
+Note that the default ARM release ([AWS Graviton](https://aws.amazon.com/ec2/graviton/)) packaged with YugabyteDB Anywhere is an HTTPS download link, so it won't work for [airgapped](../../install-yugabyte-platform/install-software/airgapped/) setups.
+
 ## Supported operating systems
 
 YugabyteDB Anywhere supports deploying YugabyteDB on the following operating systems:
