@@ -9204,6 +9204,7 @@ void CatalogManager::ReconcileTabletReplicasInLocalMemoryWithReport(
       LOG_IF(FATAL, !result.second) << "duplicate uuid: " << replica.ts_desc->permanent_uuid();
       if (existing_replica) {
         result.first->second.UpdateDriveInfo(existing_replica->drive_info);
+        result.first->second.UpdateLeaderLeaseInfo(existing_replica->leader_lease_info);
       }
     }
   }
@@ -11515,9 +11516,10 @@ Result<BlacklistSet> CatalogManager::BlacklistSetFromPB(bool leader_blacklist) c
   return ToBlacklistSet(GetBlacklist(l->pb, leader_blacklist));
 }
 
-void CatalogManager::ProcessTabletStorageMetadata(
+void CatalogManager::ProcessTabletMetadata(
     const std::string& ts_uuid,
-    const TabletDriveStorageMetadataPB& storage_metadata) {
+    const TabletDriveStorageMetadataPB& storage_metadata,
+    const std::optional<TabletLeaderMetricsPB>& leader_metrics) {
   const string& tablet_id = storage_metadata.tablet_id();
   scoped_refptr<TabletInfo> tablet;
   {
@@ -11528,12 +11530,43 @@ void CatalogManager::ProcessTabletStorageMetadata(
     VLOG(1) << Format("Tablet $0 not found on ts $1", tablet_id, ts_uuid);
     return;
   }
+  MicrosTime ht_lease_exp = 0;
+  uint64 new_heartbeats_without_leader_lease = 0;
+  consensus::LeaderLeaseStatus leader_lease_status =
+      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  bool leader_lease_info_initialized = false;
+  if (leader_metrics.has_value()) {
+    auto leader = tablet->GetLeader();
+    // If the peer is the current leader, update the counter to track heartbeats that
+    // the tablet doesn't have a valid lease.
+    if (leader && (*leader)->permanent_uuid() == ts_uuid) {
+      const auto& leader_info = *leader_metrics;
+      leader_lease_status = leader_info.leader_lease_status();
+      auto existing_leader_lease_info =
+          tablet->GetLeaderLeaseInfoIfLeader((*leader)->permanent_uuid());
+      // It's possible that the leader was step down after exiting GetLeader.
+      if (existing_leader_lease_info) {
+        leader_lease_info_initialized = true;
+        if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
+          ht_lease_exp = leader_info.ht_lease_expiration();
+        } else {
+          new_heartbeats_without_leader_lease =
+              existing_leader_lease_info->heartbeats_without_leader_lease + 1;
+        }
+      }
+    }
+  }
+  TabletLeaderLeaseInfo leader_lease_info{
+        leader_lease_info_initialized,
+        leader_lease_status,
+        ht_lease_exp,
+        new_heartbeats_without_leader_lease};
   TabletReplicaDriveInfo drive_info{
         storage_metadata.sst_file_size(),
         storage_metadata.wal_file_size(),
         storage_metadata.uncompressed_sst_file_size(),
         storage_metadata.may_have_orphaned_post_split_data()};
-  tablet->UpdateReplicaDriveInfo(ts_uuid, drive_info);
+  tablet->UpdateReplicaInfo(ts_uuid, drive_info, leader_lease_info);
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {

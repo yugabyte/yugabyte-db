@@ -39,6 +39,8 @@
 #include <sstream>
 #include <unordered_set>
 
+#include <boost/date_time/posix_time/time_formatters.hpp>
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/partition.h"
 #include "yb/common/schema.h"
@@ -82,6 +84,9 @@ DEFINE_int32(
     "After this many minutes of no heartbeat from a node, hide it from the UI "
     "(we presume it has been removed from the cluster). If -1, this flag is ignored and node is "
     "never hidden from the UI");
+
+DEFINE_uint64(master_maximum_heartbeats_without_lease, 10,
+    "After this number of heartbeats without a valid lease for a tablet, treat it as leaderless.");
 
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
@@ -1417,7 +1422,13 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
 
     auto has_leader = std::any_of(
       rm->begin(), rm->end(),
-      [](const auto &item) { return item.second.role == PeerRole::LEADER; });
+      [](const auto &item) {
+        auto leader_lease_info = item.second.leader_lease_info;
+        return item.second.role == PeerRole::LEADER &&
+               (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE ||
+                    leader_lease_info.heartbeats_without_leader_lease <
+                        GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease));
+      });
 
     if (!has_leader) {
       leaderless_tablets.push_back(t);
@@ -2340,7 +2351,26 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
   for (const TabletReplica& location : locations) {
     string location_html = TSDescriptorToHtml(*location.ts_desc, tablet_id);
     if (location.role == PeerRole::LEADER) {
-      html << Substitute("  <li><b>LEADER: $0</b></li>\n", location_html);
+      auto leader_lease_info = location.leader_lease_info;
+      // The master might haven't received any heartbeats containing this leader yet.
+      // Set the status to UNKNOWN.
+      auto leader_lease_status = leader_lease_info.initialized
+          ? LeaderLeaseStatus_Name(leader_lease_info.leader_lease_status)
+          : "UNKNOWN";
+      html << Format("  <li><b>LEADER: $0 ($1)</b></li>\n", location_html, leader_lease_status);
+      if (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
+        // Get the remaining milliseconds of the current valid lease.
+        boost::posix_time::ptime start(boost::gregorian::date(1970, 1, 1));
+        auto now_utc = boost::posix_time::microsec_clock::universal_time();
+        auto ht_lease_usec = boost::posix_time::microseconds(leader_lease_info.ht_lease_expiration);
+        auto diff = ht_lease_usec - (now_utc - start);
+        html << Format("Remaining ht_lease (may be stale): $0 ms<br>\n", diff.total_milliseconds());
+      } else if (leader_lease_info.heartbeats_without_leader_lease >=
+                     GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease)) {
+        html << Format(
+            "Cannot replicate lease for past <b><font color='red'>$0</font></b> heartbeats<br>",
+            leader_lease_info.heartbeats_without_leader_lease);
+      }
     } else {
       html << Substitute("  <li>$0: $1</li>\n",
                          PeerRole_Name(location.role), location_html);

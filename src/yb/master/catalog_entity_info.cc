@@ -89,6 +89,12 @@ void TabletReplica::UpdateDriveInfo(const TabletReplicaDriveInfo& info) {
   drive_info = info;
 }
 
+void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
+  bool initialized = leader_lease_info.initialized;
+  leader_lease_info = info;
+  leader_lease_info.initialized = initialized || info.initialized;
+}
+
 bool TabletReplica::IsStale() const {
   MonoTime now(MonoTime::Now());
   if (now.GetDeltaSince(time_updated).ToMilliseconds() >=
@@ -182,6 +188,18 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
   return GetLeaderNotFoundStatus();
 }
 
+// Return leader lease info of the replica with ts_uuid if it's is the current leader.
+Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
+    const std::string& ts_uuid) const {
+  std::lock_guard<simple_spinlock> l(lock_);
+
+  auto it = replica_locations_->find(ts_uuid);
+  if (it == replica_locations_->end() || it->second.role != PeerRole::LEADER) {
+    return GetLeaderNotFoundStatus();
+  }
+  return it->second.leader_lease_info;
+}
+
 TSDescriptor* TabletInfo::GetLeaderUnlocked() const {
   for (const auto& pair : *replica_locations_) {
     if (pair.second.role == PeerRole::LEADER) {
@@ -213,8 +231,9 @@ void TabletInfo::UpdateReplicaLocations(const TabletReplica& replica) {
   it->second.UpdateFrom(replica);
 }
 
-void TabletInfo::UpdateReplicaDriveInfo(const std::string& ts_uuid,
-                                        const TabletReplicaDriveInfo& drive_info) {
+void TabletInfo::UpdateReplicaInfo(const std::string& ts_uuid,
+                                   const TabletReplicaDriveInfo& drive_info,
+                                   const TabletLeaderLeaseInfo& leader_lease_info) {
   std::lock_guard<simple_spinlock> l(lock_);
   // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
   // clients that already have the old shared_ptr.
@@ -224,6 +243,7 @@ void TabletInfo::UpdateReplicaDriveInfo(const std::string& ts_uuid,
     return;
   }
   it->second.UpdateDriveInfo(drive_info);
+  it->second.UpdateLeaderLeaseInfo(leader_lease_info);
 }
 
 void TabletInfo::set_last_update_time(const MonoTime& ts) {

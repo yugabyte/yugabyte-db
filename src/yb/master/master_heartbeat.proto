@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/cdc/cdc_consumer.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
+import "yb/consensus/consensus_types.proto";
 import "yb/encryption/encryption.proto";
 import "yb/master/master_types.proto";
 import "yb/tablet/tablet_types.proto";
@@ -96,6 +97,13 @@ message TabletDriveStorageMetadataPB {
   optional uint64 wal_file_size = 3;
   optional uint64 uncompressed_sst_file_size = 4;
   optional bool may_have_orphaned_post_split_data = 5 [default = true];
+}
+
+message TabletLeaderMetricsPB {
+  required bytes tablet_id = 1;
+  optional consensus.LeaderLeaseStatus
+      leader_lease_status = 2[default = NO_MAJORITY_REPLICATED_LEASE];
+  optional fixed64 ht_lease_expiration = 3;
 }
 
 message ReportedTabletUpdatesPB {
@@ -180,6 +188,8 @@ message TSHeartbeatRequestPB {
   reserved 13;
 
   repeated TabletDriveStorageMetadataPB storage_metadata = 14;
+
+  repeated TabletLeaderMetricsPB leader_info = 19;
 }
 
 message TSHeartbeatResponsePB {

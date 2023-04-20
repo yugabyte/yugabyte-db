@@ -925,9 +925,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Result<boost::optional<TablespaceId>> GetTablespaceForTable(
       const scoped_refptr<TableInfo>& table) const override;
 
-  void ProcessTabletStorageMetadata(
+  void ProcessTabletMetadata(
       const std::string& ts_uuid,
-      const TabletDriveStorageMetadataPB& storage_metadata);
+      const TabletDriveStorageMetadataPB& storage_metadata,
+      const std::optional<TabletLeaderMetricsPB>& leader_metrics);
 
   void CheckTableDeleted(const TableInfoPtr& table) override;
 
