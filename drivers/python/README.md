@@ -22,7 +22,16 @@ pip install -r requirements.txt
 
 ### Test
 ```
-python -m unittest -v test_age_py.py
+python test_age_py.py \
+-host "127.0.0.1" \
+-db "postgres" \
+-u "postgres" \
+-pass "agens" \
+-port 5432 \
+-gn "test_graph"
+```
+
+```
 python -m unittest -v test_agtypes.py
 ```
 

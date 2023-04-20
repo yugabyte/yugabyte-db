@@ -17,19 +17,20 @@ from age.models import Vertex
 import unittest
 import decimal
 import age 
+import argparse
 
 DSN = "host=127.0.0.1 port=5432 dbname=postgres user=postgres password=agens"
-TEST_HOST = "127.0.0.1"
-TEST_PORT = 5432
-TEST_DB = "postgres"
-TEST_USER = "postgres"
-TEST_PASSWORD = "agens"
-TEST_GRAPH_NAME = "test_graph"
 
 class TestAgeBasic(unittest.TestCase):
     ag = None
     def setUp(self):
         print("Connecting to Test Graph.....")
+        TEST_DB = self.args.database
+        TEST_USER = self.args.user
+        TEST_PASSWORD = self.args.password
+        TEST_PORT = self.args.port
+        TEST_HOST = self.args.host
+        TEST_GRAPH_NAME = self.args.graphName
         self.ag = age.connect(graph=TEST_GRAPH_NAME, host=TEST_HOST, port=TEST_PORT, dbname=TEST_DB, user=TEST_USER, password=TEST_PASSWORD)
 
 
@@ -281,4 +282,40 @@ class TestAgeBasic(unittest.TestCase):
             self.assertEqual(3,len(collected))
 
 if __name__ == '__main__':
-    unittest.main()
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument('-host', 
+                        '--host', 
+                        help='Optional Host Name. Default Host is "127.0.0.1" ', 
+                        default="127.0.0.1")
+    parser.add_argument('-port', 
+                        '--port', 
+                        help='Optional Port Number. Default port no is 5432', 
+                        default=5432)
+    parser.add_argument('-db', 
+                        '--database', 
+                        help='Required Database Name', 
+                        required=True)
+    parser.add_argument('-u', 
+                        '--user', 
+                        help='Required Username Name', 
+                        required=True)
+    parser.add_argument('-pass', 
+                        '--password', 
+                        help='Required Password for authentication', 
+                        required=True)
+    parser.add_argument('-gn', 
+                        '--graphName', 
+                        help='Optional Graph Name to be created. Default graphName is "test_graph"', 
+                        default="test_graph")
+    
+    args = parser.parse_args()
+    suite = unittest.TestSuite()
+    suite.addTest(TestAgeBasic('testExec'))
+    suite.addTest(TestAgeBasic('testQuery'))
+    suite.addTest(TestAgeBasic('testChangeData'))
+    suite.addTest(TestAgeBasic('testCypher'))
+    suite.addTest(TestAgeBasic('testMultipleEdges'))
+    suite.addTest(TestAgeBasic('testCollect'))
+    TestAgeBasic.args = args
+    unittest.TextTestRunner().run(suite)

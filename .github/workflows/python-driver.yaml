@@ -55,5 +55,5 @@ jobs:
 
     - name: Test
       run: |
-        python -m unittest -v test_age_py.py
+        python test_age_py.py -db "postgres" -u "postgres" -pass "agens"
         python -m unittest -v test_agtypes.py
