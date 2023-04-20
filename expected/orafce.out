@@ -1155,6 +1155,12 @@ select 0 = instr('abcabcabc', 'abca', 1, 3);
  t
 (1 row)
 
+select 0 =  instr('ab;cdx', ';', 0);
+ ?column? 
+----------
+ t
+(1 row)
+
 select oracle.substr('This is a test', 6, 2) = 'is';
  ?column? 
 ----------

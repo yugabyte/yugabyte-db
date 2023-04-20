@@ -229,6 +229,7 @@ select 0 = instr('abcabcabc', 'abca', -10);
 select 1 = instr('abcabcabc', 'abca', 1, 1);
 select 4 = instr('abcabcabc', 'abca', 1, 2);
 select 0 = instr('abcabcabc', 'abca', 1, 3);
+select 0 =  instr('ab;cdx', ';', 0);
 select oracle.substr('This is a test', 6, 2) = 'is';
 select oracle.substr('This is a test', 6) =  'is a test';
 select oracle.substr('TechOnTheNet', 1, 4) =  'Tech';
