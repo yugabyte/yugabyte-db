@@ -98,16 +98,23 @@ class OnPremNodesList extends Component {
 
   submitAddNodesForm = (vals, dispatch, reduxProps) => {
     const {
-      cloud: { supportedRegionList, nodeInstanceList, accessKeys }
+      cloud: { supportedRegionList, nodeInstanceList, accessKeys },
+      currentProvider
     } = this.props;
-    const onPremProvider = this.findProvider();
+    const onPremProvider = currentProvider ?? this.findProvider();
     const self = this;
-    const currentCloudRegions = supportedRegionList.data.filter(
-      (region) => region.provider.uuid === onPremProvider.uuid
-    );
-    const currentCloudAccessKey = accessKeys.data
-      .filter((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid)
-      .shift();
+    const currentCloudRegions = currentProvider
+      ? currentProvider.regions
+      : supportedRegionList.data.filter((region) => region.provider.uuid === onPremProvider.uuid);
+    const currentCloudAccessKey = currentProvider
+      ? currentProvider.allAccessKeys.reduce((latestAccessKey, currentAccessKey) =>
+          new Date(latestAccessKey.creationDate) > new Date(currentAccessKey.creationDate)
+            ? latestAccessKey
+            : currentAccessKey
+        )
+      : accessKeys.data
+          .filter((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid)
+          .shift();
     // function to construct list of all zones in current configuration
     const zoneList = currentCloudRegions.reduce(function (azs, r) {
       azs[r.code] = [];
@@ -361,12 +368,15 @@ class OnPremNodesList extends Component {
     const onPremSetupReference =
       'https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/';
     let provisionMessage = <span />;
-    const onPremProvider = this.findProvider();
+    const onPremProvider = this.props.currentProvider ?? this.findProvider();
     if (isDefinedNotNull(onPremProvider)) {
       const onPremKey = accessKeys.data.find(
         (accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid
       );
-      if (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning) {
+      if (
+        onPremProvider.details.skipProvisioning ||
+        (isDefinedNotNull(onPremKey) && onPremKey.keyInfo.skipProvisioning)
+      ) {
         provisionMessage = (
           <Alert bsStyle="warning" className="pre-provision-message">
             You need to pre-provision your nodes, If the Provider SSH User has sudo privileges you
@@ -374,7 +384,10 @@ class OnPremNodesList extends Component {
             container -or- the YugabyteDB Anywhere host machine depending on your deployment type
             once for each instance that you add here.
             <YBCodeBlock>
-              {onPremKey.keyInfo.provisionInstanceScript + ' --ip '}
+              {`${
+                onPremProvider.details.provisionInstanceScript ??
+                onPremKey.keyInfo.provisionInstanceScript
+              } --ip `}
               <b>{'<IP Address> '}</b>
               {'--mount_points '}
               <b>{'<instance type mount points>'}</b>
@@ -386,9 +399,11 @@ class OnPremNodesList extends Component {
       }
     }
 
-    const currentCloudRegions = supportedRegionList.data.filter(
-      (region) => region.provider.uuid === this.props.selectedProviderUUID
-    );
+    const currentCloudRegions = this.props.currentProvider
+      ? this.props.currentProvider.regions
+      : supportedRegionList.data.filter(
+          (region) => region.provider.uuid === this.props.selectedProviderUUID
+        );
     const regionFormTemplate = isNonEmptyArray(currentCloudRegions)
       ? currentCloudRegions
           .filter((regionItem) => regionItem.active)

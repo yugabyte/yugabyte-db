@@ -27,9 +27,10 @@ import {
 } from '../../../../../redesign/helpers/hooks';
 
 import { InstanceType } from '../../../../../redesign/helpers/dtos';
+import { OnPremProvider } from '../../types';
 
 interface ManageInstancesProps {
-  providerUUID: string;
+  providerConfig: OnPremProvider;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -46,7 +47,7 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
-export const ManageInstances = ({ providerUUID }: ManageInstancesProps) => {
+export const ManageInstances = ({ providerConfig }: ManageInstancesProps) => {
   const [isInstanceTypeFormModalOpen, setIsInstanceTypeFormModalOpen] = useState<boolean>(false);
   const [isDeleteInstanceTypeModalOpen, setIsDeleteInstanceTypeModalOpen] = useState<boolean>(
     false
@@ -54,6 +55,7 @@ export const ManageInstances = ({ providerUUID }: ManageInstancesProps) => {
   const [instanceTypeSelection, setInstanceTypeSelection] = useState<InstanceType>();
   const classes = useStyles();
   const dispatch = useDispatch();
+  const providerUUID = providerConfig.uuid;
   useEffect(() => {
     dispatch(getNodeInstancesForProvider(providerUUID) as any).then((response: any) => {
       dispatch(getNodesInstancesForProviderResponse(response.payload));
@@ -178,7 +180,11 @@ export const ManageInstances = ({ providerUUID }: ManageInstancesProps) => {
       <Typography variant="h4" classes={{ h4: classes.subHeading }}>
         Instances
       </Typography>
-      <OnPremNodesListContainer selectedProviderUUID={providerUUID} isRedesignedView={true} />
+      <OnPremNodesListContainer
+        selectedProviderUUID={providerUUID}
+        isRedesignedView={true}
+        currentProvider={providerConfig}
+      />
       {isInstanceTypeFormModalOpen && (
         <ConfigureInstanceTypeModal
           instanceTypeOperation={InstanceTypeOperation.ADD}
