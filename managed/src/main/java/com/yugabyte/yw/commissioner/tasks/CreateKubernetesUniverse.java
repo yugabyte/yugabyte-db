@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.password.RedactingService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -46,11 +47,11 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
 
       if (primaryCluster.userIntent.enableYCQL && primaryCluster.userIntent.enableYCQLAuth) {
         ycqlPassword = primaryCluster.userIntent.ycqlPassword;
-        primaryCluster.userIntent.ycqlPassword = Util.redactString(ycqlPassword);
+        primaryCluster.userIntent.ycqlPassword = RedactingService.redactString(ycqlPassword);
       }
       if (primaryCluster.userIntent.enableYSQL && primaryCluster.userIntent.enableYSQLAuth) {
         ysqlPassword = primaryCluster.userIntent.ysqlPassword;
-        primaryCluster.userIntent.ysqlPassword = Util.redactString(ysqlPassword);
+        primaryCluster.userIntent.ysqlPassword = RedactingService.redactString(ysqlPassword);
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
