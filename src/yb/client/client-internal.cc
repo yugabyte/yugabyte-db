@@ -82,7 +82,6 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/atomic.h"
-#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
@@ -104,6 +103,14 @@ DEFINE_test_flag(bool, assert_local_tablet_server_selected, false, "Verify that 
 DEFINE_test_flag(string, assert_tablet_server_select_is_in_zone, "",
                  "Verify that SelectTServer selected a talet server in the AZ specified by this "
                  "flag.");
+
+DEFINE_RUNTIME_uint32(change_metadata_backoff_max_jitter_ms, 0,
+    "Max jitter (in ms) in the exponential backoff loop that checks if a change metadata operation "
+    "is finished. Only used for colocated table creation for now.");
+
+DEFINE_RUNTIME_uint32(change_metadata_backoff_init_exponent, 1,
+    "Initial exponent of 2 in the exponential backoff loop that checks if a change metadata "
+    "operation is finished. Only used for colocated table creation for now.");
 
 DECLARE_int64(reset_master_leader_timeout_ms);
 
@@ -545,11 +552,14 @@ Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
 Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                   const YBTableName& table_name,
                                                   const string& table_id,
-                                                  CoarseTimePoint deadline) {
+                                                  CoarseTimePoint deadline,
+                                                  const uint32_t max_jitter_ms,
+                                                  const uint32_t init_exponent) {
   return RetryFunc(
       deadline, "Waiting on Create Table to be completed", "Timed out waiting for Table Creation",
-      std::bind(&YBClient::Data::IsCreateTableInProgress, this, client,
-                table_name, table_id, _1, _2));
+      std::bind(
+          &YBClient::Data::IsCreateTableInProgress, this, client, table_name, table_id, _1, _2),
+      2s, max_jitter_ms, init_exponent);
 }
 
 Status YBClient::Data::DeleteTable(YBClient* client,
