@@ -141,7 +141,6 @@ void TestValueAsSecondaryIndexHelper(std::vector<Entry> entries,
       for (auto pair : data_map) {
         for (auto v : pair.second) {
           ASSERT_OK(iter->status());
-          ASSERT_TRUE(iter->Valid());
           auto write_entry = iter->Entry();
           ASSERT_EQ(pair.first, write_entry.key.ToString());
           ASSERT_EQ(v->type, write_entry.type);
@@ -1358,12 +1357,12 @@ TEST_F(WriteBatchWithIndexTest, MutateWhileIteratingCorrectnessTest) {
 }
 
 void AssertIterKey(std::string key, Iterator* iter) {
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(key, iter->key().ToString());
 }
 
 void AssertIterValue(std::string value, Iterator* iter) {
-  ASSERT_TRUE(iter->Valid());
+  ASSERT_TRUE(ASSERT_RESULT(iter->CheckedValid()));
   ASSERT_EQ(value, iter->value().ToString());
 }
 
@@ -1474,12 +1473,12 @@ TEST_F(WriteBatchWithIndexTest, MutateWhileIteratingBaseStressTest) {
         iter->Seek(std::string(2, c));
         break;
       case 6:
-        if (iter->Valid()) {
+        if (ASSERT_RESULT(iter->CheckedValid())) {
           iter->Next();
         }
         break;
       case 7:
-        if (iter->Valid()) {
+        if (ASSERT_RESULT(iter->CheckedValid())) {
           iter->Prev();
         }
         break;
@@ -1528,6 +1527,9 @@ static std::string PrintContents(WriteBatchWithIndex* batch,
     result.append(",");
     iter->Next();
   }
+  if (!iter->status().ok()) {
+    result.append(iter->status().ToString());
+  }
 
   delete iter;
   return result;
@@ -1557,6 +1559,9 @@ static std::string PrintContents(WriteBatchWithIndex* batch, KVMap* base_map,
     result.append(",");
 
     iter->Next();
+  }
+  if (!iter->status().ok()) {
+    result.append(iter->status().ToString());
   }
 
   delete iter;

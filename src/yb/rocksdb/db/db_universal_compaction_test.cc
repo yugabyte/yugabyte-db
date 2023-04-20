@@ -1074,7 +1074,7 @@ TEST_P(DBTestUniversalCompactionWithParam, IncreaseUniversalCompactionNumLevels)
   std::function<void(int)> verify_func = [&](int num_keys_in_db) {
     std::string keys_in_db;
     Iterator* iter = dbfull()->NewIterator(ReadOptions(), handles_[1]);
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       keys_in_db.append(iter->key().ToString());
       keys_in_db.push_back(',');
     }

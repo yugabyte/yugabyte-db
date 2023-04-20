@@ -44,9 +44,6 @@ class SnapshotTestUtil;
 
 }
 
-Result<size_t> SelectRowsCount(
-    const client::YBSessionPtr& session, const client::TableHandle& table);
-
 void DumpTableLocations(
     master::CatalogManagerIf* catalog_mgr, const client::YBTableName& table_name);
 
@@ -122,7 +119,7 @@ class TabletSplitITestBase : public client::TransactionTestBase<MiniClusterType>
   }
 
   Status CheckRowsCount(size_t expected_num_rows) {
-    auto rows_count = VERIFY_RESULT(SelectRowsCount(this->NewSession(), this->table_));
+    auto rows_count = VERIFY_RESULT(CountRows(this->NewSession(), this->table_));
     SCHECK_EQ(rows_count, expected_num_rows, InternalError, "Got unexpected rows count");
     return Status::OK();
   }

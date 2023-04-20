@@ -283,7 +283,7 @@ class PgPartitioningVersionTest :
     return InvokeSplitTabletRpcAndWaitForSplitCompleted(peer->tablet_id());
   }
 
-  TabletRecordsInfo GetTabletRecordsInfo(
+  Result<TabletRecordsInfo> GetTabletRecordsInfo(
       const std::vector<tablet::TabletPeerPtr>& peers) {
     TabletRecordsInfo result;
     for (const auto& peer : peers) {
@@ -292,7 +292,7 @@ class PgPartitioningVersionTest :
       rocksdb::ReadOptions read_opts;
       read_opts.query_id = rocksdb::kDefaultQueryId;
       docdb::BoundedRocksDbIterator it(db.regular, read_opts, db.key_bounds);
-      for (it.SeekToFirst(); it.Valid(); it.Next(), ++num_records) {}
+      for (it.SeekToFirst(); VERIFY_RESULT(it.CheckedValid()); it.Next(), ++num_records) {}
       result.emplace(peer->tablet_id(), std::make_tuple(*db.key_bounds, num_records));
     }
     return result;
@@ -537,7 +537,7 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
 
       // Keep current numbers of records persisted in tablets for further analyses.
       const auto peers = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
-      const auto peers_info = GetTabletRecordsInfo(peers);
+      const auto peers_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
 
       // Simulate leading nulls for the index table
       ASSERT_OK(conn.Execute(
@@ -563,8 +563,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
 
       ASSERT_OK(SetEnableIndexScan(&conn, true));
       const auto count_on = ASSERT_RESULT(FetchTableRowsCount(&conn, table_name, "i0 > 0"));
-      const auto diff =
-          ASSERT_RESULT(DiffTabletRecordsInfo(GetTabletRecordsInfo(peers), peers_info));
+      const auto tablet_records_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
+      const auto diff = ASSERT_RESULT(DiffTabletRecordsInfo(tablet_records_info, peers_info));
 
       const bool is_asc_ordering = ToLowerCase(sort_order) == "asc";
       if (partitioning_version == 0 && is_asc_ordering) {
@@ -657,7 +657,7 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     ASSERT_OK(WaitForTableIntentsApplied(cluster_.get(), table_id));
 
     // Keep current numbers of records persisted in tablets for further analyses.
-    auto peers_info = GetTabletRecordsInfo(peers);
+    auto peers_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
 
     // Insert values that match the partition bound.
     ASSERT_OK(conn.Execute(Format(
@@ -669,7 +669,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     // - for partitioning_version > 0 all records should be persisted in the second tablet
     //   with partition [split_key, <end>);
     // - for partitioning_version == 0 operation is lost, no diff in peers_info.
-    const auto diff = ASSERT_RESULT(DiffTabletRecordsInfo(GetTabletRecordsInfo(peers), peers_info));
+    const auto tablet_records_info = ASSERT_RESULT(GetTabletRecordsInfo(peers));
+    const auto diff = ASSERT_RESULT(DiffTabletRecordsInfo(tablet_records_info, peers_info));
     if (partitioning_version == 0) {
       ASSERT_EQ(diff.size(), 0); // Having diff.size() == 0 means the records are not written!
       return;

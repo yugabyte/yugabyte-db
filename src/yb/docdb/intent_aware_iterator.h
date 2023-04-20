@@ -114,7 +114,7 @@ class IntentAwareIterator {
   // contain the DocHybridTime but is returned separately and optionally.
   Result<FetchKeyResult> FetchKey();
 
-  bool valid();
+  bool IsOutOfRecords();
   Slice value();
   const ReadHybridTime& read_time() { return read_time_; }
   HybridTime max_seen_ht() { return max_seen_ht_; }
@@ -277,6 +277,8 @@ class IntentAwareIterator {
       const Slice& key, const Slice& suffix, bool use_suffix_for_prefix = true);
 
   bool NextRegular(Direction direction);
+
+  void HandleStatus(const Status& status);
 
   const ReadHybridTime read_time_;
   const std::string encoded_read_time_read_;

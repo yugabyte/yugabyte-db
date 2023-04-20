@@ -72,7 +72,8 @@ extern std::string ArchivalDirectory(const std::string& dbname);
 extern std::string ArchivedLogFileName(const std::string& dbname,
                                        uint64_t num);
 
-extern std::string MakeTableFileName(const std::string& name, uint64_t number);
+std::string MakeTableFileName(const std::string& name, uint64_t number);
+std::string MakeTableDataFilePath(const std::string& path, uint64_t number);
 
 // Return the name of sstable with LevelDB suffix
 // created from RocksDB sstable suffixed name
@@ -90,7 +91,6 @@ extern std::string TableFileName(const std::vector<DbPath>& db_paths,
 
 // Return data file name of the sstable for specific base file name.
 extern std::string TableBaseToDataFileName(const std::string& base_fname);
-
 // Sufficient buffer size for FormatFileNumber.
 const size_t kFormatFileNumberBufSize = 38;
 

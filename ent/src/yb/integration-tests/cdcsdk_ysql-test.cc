@@ -1668,7 +1668,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       std::unique_ptr<rocksdb::Iterator> iter(db->NewIterator(read_opts));
       std::unordered_map<std::string, std::string> keys;
 
-      for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+      for (iter->SeekToFirst(); EXPECT_RESULT(iter->CheckedValid()); iter->Next()) {
         Slice key = iter->key();
         EXPECT_OK(DocHybridTime::DecodeFromEnd(&key));
         LOG(INFO) << "key: " << iter->key().ToDebugString()

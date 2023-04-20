@@ -617,7 +617,7 @@ std::string DBHolder::Contents(int cf) {
   std::string result;
   Iterator* iter = (cf == 0) ? db_->NewIterator(ReadOptions())
                              : db_->NewIterator(ReadOptions(), handles_[cf]);
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); EXPECT_RESULT(iter->CheckedValid()); iter->Next()) {
     std::string s = IterStatus(iter);
     result.push_back('(');
     result.append(s);
@@ -627,7 +627,7 @@ std::string DBHolder::Contents(int cf) {
 
   // Check reverse iteration results are the reverse of forward results
   unsigned int matched = 0;
-  for (iter->SeekToLast(); iter->Valid(); iter->Prev()) {
+  for (iter->SeekToLast(); EXPECT_RESULT(iter->CheckedValid()); iter->Prev()) {
     EXPECT_LT(matched, forward.size());
     EXPECT_EQ(IterStatus(iter), forward[forward.size() - matched - 1]);
     matched++;
@@ -946,7 +946,7 @@ std::string DBHolder::IterStatus(Iterator* iter) {
   if (iter->Valid()) {
     result = iter->key().ToString() + "->" + iter->value().ToString();
   } else {
-    result = "(invalid)";
+    result = "(invalid) " + iter->status().ToString();
   }
   return result;
 }

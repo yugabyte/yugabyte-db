@@ -1415,7 +1415,7 @@ TEST_F_EX(QLTabletTest, GetMiddleKey, QLTabletRf1Test) {
   read_opts.query_id = rocksdb::kDefaultQueryId;
   std::unique_ptr<rocksdb::Iterator> iter(tablet.TEST_db()->NewIterator(read_opts));
 
-  for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+  for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
     Slice key = iter->key();
     if (key.Less(encoded_split_key)) {
       ++num_keys_less;
@@ -1776,6 +1776,41 @@ TEST_F_EX(QLTabletTest, ShortPKCompactionTime, QLTabletRf1Test) {
   ASSERT_OK(session->TEST_Flush());
 
   ASSERT_OK(cluster_->CompactTablets());
+}
+
+TEST_F_EX(QLTabletTest, CorruptData, QLTabletRf1Test) {
+  // This test corrupts cluster by intention.
+  DontVerifyClusterBeforeNextTearDown();
+
+  constexpr auto kNumRows = 1000;
+
+  CreateTable(kTable1Name, &table1_, /* num_tablets = */ 1, /* transactional = */ false);
+  LOG(INFO) << "Created table";
+
+  FillTable(0, kNumRows, table1_);
+  LOG(INFO) << "Inserted " << kNumRows << " rows";
+
+  ASSERT_OK(cluster_->FlushTablets());
+  ASSERT_OK(cluster_->RestartSync());
+
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  for (const auto& peer : peers) {
+    if (!peer->tablet()) {
+      continue;
+    }
+    auto* db = peer->tablet()->TEST_db();
+    for (const auto& sst_file : db->GetLiveFilesMetaData()) {
+      LOG(INFO) << "Found SST file: " << AsString(sst_file);
+      const auto path_to_corrupt = sst_file.DataFilePath();
+      LOG(INFO) << "Corrupting file: " << path_to_corrupt;
+      ASSERT_OK(CorruptFile(path_to_corrupt, /* offset = */ -1024, /* bytes_to_corrupt = */ 512));
+    }
+  }
+
+  auto session = CreateSession();
+  const auto rows_count_result = CountRows(session, table1_);
+  LOG(INFO) << "Rows count result: " << rows_count_result;
+  ASSERT_FALSE(rows_count_result.ok());
 }
 
 } // namespace client

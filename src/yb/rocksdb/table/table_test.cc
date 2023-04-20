@@ -787,6 +787,7 @@ class HarnessTest : public RocksDBTest {
       iter->Next();
     }
     ASSERT_TRUE(!iter->Valid());
+    ASSERT_OK(iter->status());
     if (constructor_->IsArenaMode() && !constructor_->AnywayDeleteIterator()) {
       iter->~InternalIterator();
     } else {
@@ -805,6 +806,7 @@ class HarnessTest : public RocksDBTest {
       iter->Prev();
     }
     ASSERT_TRUE(!iter->Valid());
+    ASSERT_OK(iter->status());
     if (constructor_->IsArenaMode() && !constructor_->AnywayDeleteIterator()) {
       iter->~InternalIterator();
     } else {
@@ -878,6 +880,7 @@ class HarnessTest : public RocksDBTest {
         }
       }
     }
+    ASSERT_OK(iter->status());
     if (constructor_->IsArenaMode() && !constructor_->AnywayDeleteIterator()) {
       iter->~InternalIterator();
     } else {
@@ -905,7 +908,7 @@ class HarnessTest : public RocksDBTest {
 
   std::string ToString(const InternalIterator* it) {
     if (!it->Valid()) {
-      return "END";
+      return it->status().ok() ? "END" : "Error: " + it->status().ToString();
     } else {
       return "'" + it->key().ToString() + "->" + it->value().ToString() + "'";
     }
@@ -1472,6 +1475,7 @@ void TableTest::TestIndex(BlockBasedTableOptions table_options, int expected_num
     if (i == prefixes.size() - 1) {
       // last key
       ASSERT_TRUE(!iter->Valid());
+      ASSERT_OK(iter->status());
     } else {
       ASSERT_TRUE(iter->Valid());
       // seek the first element in the block
@@ -1486,7 +1490,6 @@ void TableTest::TestIndex(BlockBasedTableOptions table_options, int expected_num
     iter->Seek(InternalKey(prefix, 0, kTypeValue).Encode());
     // regular_iter->Seek(prefix);
 
-    ASSERT_OK(iter->status());
     // Seek to non-existing prefixes should yield either invalid, or a
     // key with prefix greater than the target.
     if (iter->Valid()) {
@@ -1494,6 +1497,7 @@ void TableTest::TestIndex(BlockBasedTableOptions table_options, int expected_num
       Slice ukey_prefix = options.prefix_extractor->Transform(ukey);
       ASSERT_LT(BytewiseComparator()->Compare(prefix, ukey_prefix), 0);
     }
+    ASSERT_OK(iter->status());
   }
 }
 
@@ -2272,6 +2276,7 @@ TEST_F(MemTableTest, Simple) {
             iter->value().ToString().c_str());
     iter->Next();
   }
+  ASSERT_OK(iter->status());
 
   delete memtable->Unref();
 }
@@ -2498,6 +2503,7 @@ TEST_P(IndexBlockRestartIntervalTest, IndexBlockRestartInterval) {
       ASSERT_EQ(db_iter->value(), kv_iter->second);
       kv_iter++;
     }
+    ASSERT_OK(db_iter->status());
     ASSERT_EQ(kv_iter, kvmap.end());
   }
 }

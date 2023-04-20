@@ -134,7 +134,7 @@ class TransactionParticipant : public TransactionStatusManager {
   // When external_transaction is set for xcluster transactions, the function ignores the start time
   // of the txn when fetching the transaction since the txn status record and intent bach can come
   // out of order.
-  boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
+  Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
       bool external_transaction = false);
@@ -151,7 +151,7 @@ class TransactionParticipant : public TransactionStatusManager {
 
   void Handle(std::unique_ptr<tablet::UpdateTxnOperation> request, int64_t term);
 
-  void Cleanup(TransactionIdSet&& set) override;
+  Status Cleanup(TransactionIdSet&& set) override;
 
   // Used to pass arguments to ProcessReplicated.
   struct ReplicatedData {
@@ -167,18 +167,18 @@ class TransactionParticipant : public TransactionStatusManager {
 
   Status ProcessReplicated(const ReplicatedData& data);
 
-  void SetDB(
+  Status SetDB(
       const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
       RWOperationCounter* pending_op_counter);
 
   Status CheckAborted(const TransactionId& id);
 
-  void FillPriorities(
+  Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) override;
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) override;
+  Status FillStatusTablets(std::vector<BlockingTransactionData>* inout) override;
 
-  boost::optional<TabletId> FindStatusTablet(const TransactionId& id) override;
+  Result<boost::optional<TabletId>> FindStatusTablet(const TransactionId& id) override;
 
   void GetStatus(const TransactionId& transaction_id,
                  size_t required_num_replicated_batches,

@@ -676,7 +676,7 @@ class FaultInjectionTest : public RocksDBTest,
   void DeleteAllData() {
     Iterator* iter = db_->NewIterator(ReadOptions());
     WriteOptions options;
-    for (iter->SeekToFirst(); iter->Valid(); iter->Next()) {
+    for (iter->SeekToFirst(); ASSERT_RESULT(iter->CheckedValid()); iter->Next()) {
       ASSERT_OK(db_->Delete(WriteOptions(), iter->key()));
     }
 

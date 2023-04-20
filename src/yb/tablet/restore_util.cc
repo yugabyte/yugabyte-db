@@ -33,7 +33,7 @@ Status FetchState::SetPrefix(const Slice& prefix) {
 }
 
 Result<bool> FetchState::Update() {
-  if (!iterator_->valid()) {
+  if (iterator_->IsOutOfRecords()) {
     finished_ = true;
     return true;
   }

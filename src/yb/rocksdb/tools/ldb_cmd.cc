@@ -946,6 +946,9 @@ void InternalDumpCommand::DoCommand() {
   } else {
     fprintf(stdout, "Internal keys in range: %" PRId64 "\n", count);
   }
+  if (!iter->status().ok()) {
+    exec_state_ = LDBCommandExecuteResult::Failed(iter->status().ToString());
+  }
 }
 
 
@@ -1217,6 +1220,11 @@ void DBDumperCommand::DoDumpCommand() {
   } else {
     fprintf(stdout, "Keys in range: %" PRIu64 "\n", count);
   }
+
+  if (!iter->status().ok()) {
+    exec_state_ = LDBCommandExecuteResult::Failed(iter->status().ToString());
+  }
+
   // Clean up
   delete iter;
 }
@@ -2256,7 +2264,7 @@ void DBFileDumperCommand::DoCommand() {
   std::vector<LiveFileMetaData> metadata;
   db_->GetLiveFilesMetaData(&metadata);
   for (auto& fileMetadata : metadata) {
-    std::string filename = fileMetadata.FullName();
+    std::string filename = fileMetadata.BaseFilePath();
     std::cout << filename << " level:" << fileMetadata.level << std::endl;
     std::cout << "------------------------------" << std::endl;
     DumpSstFile(filename, false, true);

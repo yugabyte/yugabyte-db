@@ -778,7 +778,7 @@ void PgPackedRowTest::TestSstDump(bool specify_metadata, std::string* output) {
       continue;
     }
     for (const auto& file : tablet->TEST_db()->GetLiveFilesMetaData()) {
-      fname = file.FullName();
+      fname = file.BaseFilePath();
       metapath = ASSERT_RESULT(tablet->metadata()->FilePath());
       LOG(INFO) << "File: " << fname << ", metapath: " << metapath;
     }

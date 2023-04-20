@@ -2111,7 +2111,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       doc_db(), rocksdb::ReadOptions(), CoarseTimePoint::max() /* deadline */,
       ReadHybridTime::FromMicros(1000), TransactionOperationContext());
   iter.Seek(DocKey());
-  ASSERT_TRUE(iter.valid());
+  ASSERT_FALSE(iter.IsOutOfRecords());
   auto key_data = ASSERT_RESULT(iter.FetchKey());
   SubDocKey subdoc_key;
   ASSERT_OK(subdoc_key.FullyDecodeFrom(key_data.key, HybridTimeRequired::kFalse));
@@ -2159,7 +2159,7 @@ TXN REV 30303030-3030-3030-3030-303030303031 HT{ physical: 500 w: 3 } -> \
       ReadHybridTime::FromMicros(1000), TransactionOperationContext(*txn, &txn_status_manager));
   for (int i = 1; i <= 2; ++i) {
     iter.Seek(DocKey());
-    ASSERT_TRUE(iter.valid()) << "Seek #" << i << " failed";
+    ASSERT_FALSE(iter.IsOutOfRecords()) << "Seek #" << i << " failed";
   }
 }
 

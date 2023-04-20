@@ -820,7 +820,7 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
 
   const auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kNumRows));
 
-  auto rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
+  auto rows_count = ASSERT_RESULT(CountRows(NewSession(), table_));
   ASSERT_EQ(rows_count, kNumRows);
 
   auto* catalog_mgr = ASSERT_RESULT(catalog_manager());
@@ -844,7 +844,7 @@ TEST_F(TabletSplitITest, SplitDuringReplicaOffline) {
 
   DumpTableLocations(catalog_mgr, client::kTableName);
 
-  rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table_));
+  rows_count = ASSERT_RESULT(CountRows(NewSession(), table_));
   ASSERT_EQ(rows_count, kNumRows);
 
   ASSERT_OK(WriteRows(kNumRows, kNumRows + 1));
@@ -882,10 +882,10 @@ TEST_F(TabletSplitITest, DifferentYBTableInstances) {
 
   ASSERT_OK(WaitForTabletSplitCompletion(/* expected_non_split_tablets =*/ 2));
 
-  auto rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table1));
+  auto rows_count = ASSERT_RESULT(CountRows(NewSession(), table1));
   ASSERT_EQ(rows_count, kNumRows);
 
-  rows_count = ASSERT_RESULT(SelectRowsCount(NewSession(), table2));
+  rows_count = ASSERT_RESULT(CountRows(NewSession(), table2));
   ASSERT_EQ(rows_count, kNumRows);
 }
 
@@ -2073,7 +2073,7 @@ TEST_F(TabletSplitSingleServerITest, TestBackfillDuringSplit) {
 
   ASSERT_OK(index_.Open(index_name, client_.get()));
   ASSERT_OK(WaitFor([&] {
-    auto rows_count = SelectRowsCount(NewSession(), index_);
+    auto rows_count = CountRows(NewSession(), index_);
     if (!rows_count.ok()) {
       return false;
     }
@@ -3479,7 +3479,7 @@ class TabletSplitSingleBlockITest :
         table_reader->NewIndexIterator(rocksdb::ReadOptions::kDefault));
     index_iter->SeekToFirst();
     RETURN_NOT_OK(index_iter->status());
-    if (!index_iter->Valid()) {
+    if (!VERIFY_RESULT(index_iter->CheckedValid())) {
       return STATUS(Incomplete, "Empty or too small SST.");
     }
 

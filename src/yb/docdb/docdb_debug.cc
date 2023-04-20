@@ -81,6 +81,10 @@ void DocDBDebugDump(
         iter->key(), iter->value(), schema_packing_storage, db_type, include_binary, dump_func);
     iter->Next();
   }
+  const auto s = iter->status();
+  if (!s.ok()) {
+    dump_func(s.ToString());
+  }
 }
 
 } // namespace

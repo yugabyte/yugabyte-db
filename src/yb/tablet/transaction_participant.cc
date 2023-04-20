@@ -208,7 +208,7 @@ class TransactionParticipant::Impl
 
   // Adds new running transaction.
   Result<bool> Add(const TransactionMetadata& metadata) {
-    loader_.WaitLoaded(metadata.transaction_id);
+    RETURN_NOT_OK(loader_.WaitLoaded(metadata.transaction_id));
 
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
@@ -285,6 +285,7 @@ class TransactionParticipant::Impl
         LOG_WITH_PREFIX(INFO) << "Stored txn meta: " << id;
       }
     }
+    RETURN_NOT_OK(iter.status());
 
     return result;
   }
@@ -306,8 +307,8 @@ class TransactionParticipant::Impl
 
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents or not.
-    auto lock_and_iterator = LockAndFind(
-        id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+    auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
+        id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (!lock_and_iterator.found()) {
       return STATUS(TryAgain,
                     Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
@@ -317,15 +318,15 @@ class TransactionParticipant::Impl
     return lock_and_iterator.transaction().metadata();
   }
 
-  boost::optional<std::pair<IsolationLevel, TransactionalBatchData>> PrepareBatchData(
+  Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>> PrepareBatchData(
       const TransactionId& id, size_t batch_idx,
       boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
       bool external_transaction) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
-    auto lock_and_iterator = LockAndFind(
+    auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
         id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
-        external_transaction);
+        external_transaction));
     if (!lock_and_iterator.found()) {
       return boost::none;
     }
@@ -346,13 +347,19 @@ class TransactionParticipant::Impl
   }
 
   void RequestStatusAt(const StatusRequest& request) {
-    auto lock_and_iterator = LockAndFind(*request.id, *request.reason, request.flags);
-    if (!lock_and_iterator.found()) {
+    auto lock_and_iterator_result = LockAndFind(
+        *request.id, *request.reason, request.flags);
+    if (!lock_and_iterator_result.ok()) {
+      request.callback(lock_and_iterator_result.status());
+      return;
+    }
+    if (!lock_and_iterator_result->found()) {
       request.callback(
           STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
       return;
     }
-    lock_and_iterator.transaction().RequestStatusAt(request, &lock_and_iterator.lock);
+    lock_and_iterator_result->transaction().RequestStatusAt(
+        request, &lock_and_iterator_result->lock);
   }
 
   // Registers a request, giving it a newly allocated id and returning this id.
@@ -488,9 +495,13 @@ class TransactionParticipant::Impl
   void Abort(const TransactionId& id, TransactionStatusCallback callback) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
-    auto lock_and_iterator = LockAndFind(
+    auto lock_and_iterator_result = LockAndFind(
         id, "abort"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
-    if (!lock_and_iterator.found()) {
+    if (!lock_and_iterator_result.ok()) {
+      callback(lock_and_iterator_result.status());
+      return;
+    }
+    if (!lock_and_iterator_result->found()) {
       callback(STATUS_FORMAT(NotFound, "Abort of unknown transaction: $0", id));
       return;
     }
@@ -499,44 +510,48 @@ class TransactionParticipant::Impl
       callback(client_result.status());
       return;
     }
-    lock_and_iterator.transaction().Abort(
-        *client_result, std::move(callback), &lock_and_iterator.lock);
+    lock_and_iterator_result->transaction().Abort(
+        *client_result, std::move(callback), &lock_and_iterator_result->lock);
   }
 
   Status CheckAborted(const TransactionId& id) {
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents of not.
-    auto lock_and_iterator = LockAndFind(id, "check aborted"s, TransactionLoadFlags{});
+    auto lock_and_iterator =
+        VERIFY_RESULT(LockAndFind(id, "check aborted"s, TransactionLoadFlags{}));
     if (!lock_and_iterator.found()) {
       return MakeAbortedStatus(id);
     }
     return lock_and_iterator.transaction().CheckAborted();
   }
 
-  void FillPriorities(
+  Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
     // TODO(dtxn) optimize locking
     for (auto& pair : *inout) {
-      auto lock_and_iterator = LockAndFind(
-          pair.first, "fill priorities"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+      auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
+          pair.first, "fill priorities"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
       if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
         pair.second = 0; // Minimal priority for already aborted transactions
       } else {
         pair.second = lock_and_iterator.transaction().metadata().priority;
       }
     }
+    return Status::OK();
   }
 
-  void FillStatusTablets(std::vector<BlockingTransactionData>* inout) {
+  Status FillStatusTablets(std::vector<BlockingTransactionData>* inout) {
     // TODO(wait-queues) optimize locking
     std::vector<boost::optional<TabletId>> status_tablet_opts;
     for (auto& blocker : *inout) {
-      blocker.status_tablet = GetStatusTablet(blocker.id).get_value_or("");
+      blocker.status_tablet = VERIFY_RESULT(GetStatusTablet(blocker.id)).get_value_or("");
     }
+    return Status::OK();
   }
 
-  boost::optional<TabletId> GetStatusTablet(const TransactionId& id) {
-    auto lock_and_iterator = LockAndFind(id, "get status tablet"s, TransactionLoadFlags{});
+  Result<boost::optional<TabletId>> GetStatusTablet(const TransactionId& id) {
+    auto lock_and_iterator =
+        VERIFY_RESULT(LockAndFind(id, "get status tablet"s, TransactionLoadFlags{}));
     if (!lock_and_iterator.found() || lock_and_iterator.transaction().WasAborted()) {
       return boost::none;
     }
@@ -590,7 +605,7 @@ class TransactionParticipant::Impl
     return status;
   }
 
-  void Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
+  Status Cleanup(TransactionIdSet&& set, TransactionStatusManager* status_manager) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       const OpId& cdcsdk_checkpoint_op_id = GetLatestCheckPoint();
@@ -598,7 +613,7 @@ class TransactionParticipant::Impl
       if (cdcsdk_checkpoint_op_id != OpId::Max()) {
         for (auto t_iter = set.begin(); t_iter != set.end();) {
           const TransactionId& transaction_id = *t_iter;
-          loader_.WaitLoaded(transaction_id);
+          RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
           auto iter = transactions_.find(transaction_id);
           if (iter == transactions_.end()) {
             ++t_iter;
@@ -624,12 +639,13 @@ class TransactionParticipant::Impl
         &applier_, std::move(set), &participant_context_, status_manager, LogPrefix());
     cleanup_aborts_task->Prepare(cleanup_aborts_task);
     participant_context_.StrandEnqueue(cleanup_aborts_task.get());
+    return Status::OK();
   }
 
   Status ProcessApply(const TransactionApplyData& data) {
     VLOG_WITH_PREFIX(2) << "Apply: " << data.ToString();
 
-    loader_.WaitLoaded(data.transaction_id);
+    RETURN_NOT_OK(loader_.WaitLoaded(data.transaction_id));
 
     ScopedRWOperation operation(pending_op_counter_);
     if (!operation.ok()) {
@@ -644,9 +660,9 @@ class TransactionParticipant::Impl
       // Because it will be deleted when intents are applied.
       // We are not trying to cleanup intents here because we don't know whether this transaction
       // has intents of not.
-      auto lock_and_iterator = LockAndFind(
+      auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
           data.transaction_id, "pre apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist},
-          data.is_external);
+          data.is_external));
       if (!lock_and_iterator.found()) {
         // This situation is normal and could be caused by 2 scenarios:
         // 1) Write batch failed, but originator doesn't know that.
@@ -682,22 +698,22 @@ class TransactionParticipant::Impl
       VLOG_WITH_PREFIX(4) << "TXN: " << data.transaction_id << ": apply state: "
                           << apply_state.ToString();
 
-      UpdateAppliedTransaction(data, apply_state, &operation);
+      RETURN_NOT_OK(UpdateAppliedTransaction(data, apply_state, &operation));
     }
 
     NotifyApplied(data);
     return Status::OK();
   }
 
-  void UpdateAppliedTransaction(
+  Status UpdateAppliedTransaction(
        const TransactionApplyData& data,
        const docdb::ApplyTransactionState& apply_state,
        ScopedRWOperation* operation) NO_THREAD_SAFETY_ANALYSIS {
     MinRunningNotifier min_running_notifier(&applier_);
     // We are not trying to cleanup intents here because we don't know whether this transaction
     // has intents or not.
-    auto lock_and_iterator = LockAndFind(
-        data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist});
+    auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
+        data.transaction_id, "apply"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (lock_and_iterator.found()) {
       lock_and_iterator.transaction().SetApplyOpId(data.op_id);
       if (!apply_state.active()) {
@@ -706,6 +722,7 @@ class TransactionParticipant::Impl
         lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
       }
     }
+    return Status::OK();
   }
 
   void NotifyApplied(const TransactionApplyData& data) {
@@ -747,7 +764,7 @@ class TransactionParticipant::Impl
   Status ProcessCleanup(const TransactionApplyData& data, CleanupType cleanup_type) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(data) << ", " << AsString(cleanup_type);
 
-    loader_.WaitLoaded(data.transaction_id);
+    RETURN_NOT_OK(loader_.WaitLoaded(data.transaction_id));
 
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
@@ -785,7 +802,7 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  void SetDB(
+  Status SetDB(
       const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
       RWOperationCounter* pending_op_counter) {
     bool had_db = db_.intents != nullptr;
@@ -797,15 +814,16 @@ class TransactionParticipant::Impl
     // in case of truncate/restore.
     if (!had_db) {
       loader_.Start(pending_op_counter, db_);
-      return;
+      return Status::OK();
     }
 
-    loader_.WaitAllLoaded();
+    RETURN_NOT_OK(loader_.WaitAllLoaded());
     MinRunningNotifier min_running_notifier(&applier_);
     std::lock_guard<std::mutex> lock(mutex_);
     transactions_.clear();
     mem_tracker_->Release(mem_tracker_->consumption());
     TransactionsModifiedUnlocked(&min_running_notifier);
+    return Status::OK();
   }
 
   void GetStatus(
@@ -1077,7 +1095,7 @@ class TransactionParticipant::Impl
 
   Result<TransactionMetadata> UpdateTransactionStatusLocation(
       const TransactionId& transaction_id, const TabletId& new_status_tablet) {
-    loader_.WaitLoaded(transaction_id);
+    RETURN_NOT_OK(loader_.WaitLoaded(transaction_id));
     MinRunningNotifier min_running_notifier(&applier_);
 
     std::lock_guard<std::mutex> lock(mutex_);
@@ -1345,10 +1363,10 @@ class TransactionParticipant::Impl
     }
   };
 
-  LockAndFindResult LockAndFind(
+  Result<LockAndFindResult> LockAndFind(
       const TransactionId& id, const std::string& reason, TransactionLoadFlags flags,
       bool external_transaction = false) {
-    loader_.WaitLoaded(id);
+    RETURN_NOT_OK(loader_.WaitLoaded(id));
     bool recently_removed;
     {
       std::unique_lock<std::mutex> lock(mutex_);
@@ -1772,7 +1790,7 @@ Result<TransactionMetadata> TransactionParticipant::PrepareMetadata(
   return impl_->PrepareMetadata(pb);
 }
 
-boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>
+Result<boost::optional<std::pair<IsolationLevel, TransactionalBatchData>>>
     TransactionParticipant::PrepareBatchData(
     const TransactionId& id, size_t batch_idx,
     boost::container::small_vector_base<uint8_t>* encoded_replicated_batches,
@@ -1820,7 +1838,7 @@ void TransactionParticipant::Handle(
   impl_->Handle(std::move(request), term);
 }
 
-void TransactionParticipant::Cleanup(TransactionIdSet&& set) {
+Status TransactionParticipant::Cleanup(TransactionIdSet&& set) {
   return impl_->Cleanup(std::move(set), this);
 }
 
@@ -1832,24 +1850,25 @@ Status TransactionParticipant::CheckAborted(const TransactionId& id) {
   return impl_->CheckAborted(id);
 }
 
-void TransactionParticipant::FillPriorities(
+Status TransactionParticipant::FillPriorities(
     boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
   return impl_->FillPriorities(inout);
 }
 
-void TransactionParticipant::FillStatusTablets(
+Status TransactionParticipant::FillStatusTablets(
       std::vector<BlockingTransactionData>* inout) {
   return impl_->FillStatusTablets(inout);
 }
 
-boost::optional<TabletId> TransactionParticipant::FindStatusTablet(const TransactionId& id) {
+Result<boost::optional<TabletId>> TransactionParticipant::FindStatusTablet(
+    const TransactionId& id) {
   return impl_->GetStatusTablet(id);
 }
 
-void TransactionParticipant::SetDB(
+Status TransactionParticipant::SetDB(
     const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
     RWOperationCounter* pending_op_counter) {
-  impl_->SetDB(db, key_bounds, pending_op_counter);
+  return impl_->SetDB(db, key_bounds, pending_op_counter);
 }
 
 void TransactionParticipant::GetStatus(

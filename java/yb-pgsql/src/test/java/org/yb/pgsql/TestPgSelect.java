@@ -806,7 +806,10 @@ public class TestPgSelect extends BasePgSQLTest {
         // Seek(SubDocKey(DocKey(0x1210, [1], [1, 0, 6]), []))
         // ...
         // Seek(SubDocKey(DocKey(0x1210, [1], [9, 9, 6]), []))
-        assertEquals(101, metrics.seekCount);
+
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 101);
 
         // Select where hash code is specified, one range constraint
         // and one option constraint on two separate columns.
@@ -839,7 +842,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // ...
         // Seek(SubDocKey(DocKey(0x1210, [1], [1, 9, 2]), []))
         // Seek(SubDocKey(DocKey(0x1210, [1], [1, 9, kHighest]), []))
-        assertEquals(81, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 81);
 
         // Select where all keys have some sort of discrete constraint
         // on them
@@ -880,7 +885,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 8]), []))
         // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 7]), []))
         // Seek(SubDocKey(DocKey(0x1210, [1], [2, 3, 2]), []))
-        assertEquals(16, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 16);
 
 
         // Select where two out of three columns have discrete constraints
@@ -921,7 +928,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // Seek(SubDocKey(DocKey(0x1210, [1], [1, 2, 25]), []))
         // ...
         // Seek(SubDocKey(DocKey(0x1210, [1], [9, kHighest]), []))
-        assertEquals(91, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 91);
 
         // Select where we have options for the hash code and discrete
         // filters on two out of three range columns
@@ -944,7 +953,7 @@ public class TestPgSelect extends BasePgSQLTest {
         // SELECT * FROM sample_table WHERE h = 1 AND r2 IN (2,3)
         // AND r3 IN (2, 25, 8, 7, 23, 18)
         // We have 91 * 2 = 182 seeks
-        assertEquals(182, metrics.seekCount);
+        assertLessThanOrEqualTo(metrics.seekCount, 182);
     }
   }
 
@@ -999,7 +1008,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // at the start of an r1 value to determine what r2 value to start
         // with using a seek to (r1, -Inf)
         // So there are m*(n*(p+1) + 1) = 48 seeks
-        assertEquals(48, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 48);
       }
 
       {
@@ -1029,7 +1040,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // at the start of an r1 value to determine what r2 value to start
         // with using a seek to (r1, 1, +Inf)
         // So there are m*(n*(p+1) + 1) = 48 seeks
-        assertEquals(48, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 48);
       }
 
       {
@@ -1057,7 +1070,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // resulting in p + 1 seeks.
         // For each r1, there are n * (p+1) seeks.
         // So there are m*(n*(p+1)) = 60 seeks
-        assertEquals(60, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 60);
       }
 
       {
@@ -1089,7 +1104,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // with using a seek to (r1, 1, +Inf). The -n is to account for the
         // above note.
         // So there are m*(n*(p+1) + 1 - n) = 60 seeks
-        assertEquals(60, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 60);
       }
 
       {
@@ -1125,7 +1142,9 @@ public class TestPgSelect extends BasePgSQLTest {
         // So there are m*(n*(p+1) + 2) + 1 = 69 seeks
         // Each seek during a reverse scan is implemented with two seeks,
         // so in total there are 69 * 2 = 138 seeks.
-        assertEquals(138, metrics.seekCount);
+        // Actual number of seeks could be lower because there is Next instead of Seek optimisation
+        // in DocDB (see SeekPossiblyUsingNext).
+        assertLessThanOrEqualTo(metrics.seekCount, 138);
       }
     }
   }

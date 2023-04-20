@@ -100,7 +100,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
 
   // Seek the value.
   doc_iter->Seek(key_prefix_.AsSlice());
-  if (!doc_iter->valid()) {
+  if (doc_iter->IsOutOfRecords()) {
     return Status::OK();
   }
 
@@ -130,7 +130,7 @@ Status DocWriteBatch::SeekToKeyPrefix(IntentAwareIterator* doc_iter, HasAncestor
   Slice value;
   RETURN_NOT_OK(doc_iter->NextFullValue(&key_data.write_time, &value, &key_data.key));
 
-  if (!doc_iter->valid()) {
+  if (doc_iter->IsOutOfRecords()) {
     return Status::OK();
   }
 
@@ -622,7 +622,7 @@ Status DocWriteBatch::ReplaceRedisInList(
   SubDocKey found_key;
   FetchKeyResult key_data;
   for (auto current_index = start_index;;) {
-    if (index <= 0 || !iter->valid() ||
+    if (index <= 0 || iter->IsOutOfRecords() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return STATUS_SUBSTITUTE(Corruption,
           "Index Error: $0, reached beginning of list with size $1",
@@ -709,7 +709,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   RETURN_NOT_OK(SeekToKeyPrefix(iter.get(), HasAncestor::kFalse));
 
-  if (!iter->valid()) {
+  if (iter->IsOutOfRecords()) {
     return STATUS(QLError, "Unable to replace items in empty list.");
   }
 
@@ -735,7 +735,7 @@ Status DocWriteBatch::ReplaceCqlInList(
 
   FetchKeyResult key_data;
   while (true) {
-    if (target_cql_index < 0 || !iter->valid() ||
+    if (target_cql_index < 0 || iter->IsOutOfRecords() ||
         !(key_data = VERIFY_RESULT(iter->FetchKey())).key.starts_with(key_prefix_)) {
       return STATUS_SUBSTITUTE(
           QLError,

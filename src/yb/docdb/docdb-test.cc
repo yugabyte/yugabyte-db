@@ -2589,7 +2589,7 @@ TEST_P(DocDBTestWrapper, BasicTest) {
   // Compaction cleanup testing.
 
   ClearLogicalSnapshots();
-  CaptureLogicalSnapshot();
+  ASSERT_OK(CaptureLogicalSnapshot());
   FullyCompactHistoryBefore(5000_usec_ht);
   // The following entry gets deleted because it is invisible at hybrid_time 5000:
   // SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physical: 3000 }])
@@ -2611,11 +2611,11 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
     "value_bd"
       )#");
   CheckExpectedLatestDBState();
-  CaptureLogicalSnapshot();
+  ASSERT_OK(CaptureLogicalSnapshot());
   // Perform the next history compaction starting both from the initial state as well as from the
   // state with the first history compaction (at hybrid_time 5000) already performed.
   for (const auto &snapshot : logical_snapshots()) {
-    snapshot.RestoreTo(rocksdb());
+    ASSERT_OK(snapshot.RestoreTo(rocksdb()));
     FullyCompactHistoryBefore(6000_usec_ht);
     // Now the following entries get deleted, because the entire subdocument at "subkey_b" gets
     // deleted at hybrid_time 6000, so we won't look at these records if we do a scan at
@@ -2639,14 +2639,14 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physica
         )#");
     CheckExpectedLatestDBState();
   }
-  CaptureLogicalSnapshot();
+  ASSERT_OK(CaptureLogicalSnapshot());
   // Also test the next compaction starting with all previously captured states, (1) initial,
   // (2) after a compaction at hybrid_time 5000, and (3) after a compaction at hybrid_time 6000.
   // We are going through snapshots in reverse order so that we end with the initial snapshot that
   // does not have any history trimming done yet.
   for (auto i = num_logical_snapshots(); i > 0;) {
     --i;
-    RestoreToRocksDBLogicalSnapshot(i);
+    ASSERT_OK(RestoreToRocksDBLogicalSnapshot(i));
     // Test overwriting an entire document with an empty object. This should ideally happen with no
     // reads.
     TestInsertion(
@@ -2664,7 +2664,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physica
   // Reset our collection of snapshots now that we've performed one more operation.
   ClearLogicalSnapshots();
 
-  CaptureLogicalSnapshot();
+  ASSERT_OK(CaptureLogicalSnapshot());
   // This is similar to the kPredefinedDBStateDebugDumpStr, but has an additional overwrite of the
   // document with an empty object at hybrid_time 8000.
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
@@ -2693,11 +2693,11 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b"; HT{ physical: 7000 }]) 
 SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_c"; HT{ physical: 7000 w: 1 }]) \
     -> "value_bc_prime"
       )#");
-  CaptureLogicalSnapshot();
+  ASSERT_OK(CaptureLogicalSnapshot());
   // Starting with each snapshot, perform the final history compaction and verify we always get the
   // same result.
   for (size_t i = 0; i < logical_snapshots().size(); ++i) {
-    RestoreToRocksDBLogicalSnapshot(i);
+    ASSERT_OK(RestoreToRocksDBLogicalSnapshot(i));
     FullyCompactHistoryBefore(8000_usec_ht);
     ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(R"#(
 SubDocKey(DocKey([], ["my_key_where_value_is_a_string"]), [HT{ physical: 1000 }]) -> "value1"
@@ -3061,9 +3061,9 @@ TEST_P(DocDBTestWrapper, TestDisambiguationOnWriteId) {
   GetSubDoc(encoded_subdoc_key, &subdoc, &doc_found, kNonTransactionalOperationContext);
   ASSERT_FALSE(doc_found);
 
-  CaptureLogicalSnapshot();
+  ASSERT_OK(CaptureLogicalSnapshot());
   for (int cutoff_time_ms = 1000; cutoff_time_ms <= 1001; ++cutoff_time_ms) {
-    RestoreToLastLogicalRocksDBSnapshot();
+    ASSERT_OK(RestoreToLastLogicalRocksDBSnapshot());
 
     // The row should still be absent after a compaction.
     // TODO(dtxn) - check both transaction and non-transaction path?
@@ -3087,9 +3087,9 @@ TEST_P(DocDBTestWrapper, TestDisambiguationOnWriteId) {
   ASSERT_TRUE(doc_found);
 
   // The row should still exist after a compaction. The deletion marker should be compacted away.
-  CaptureLogicalSnapshot();
+  ASSERT_OK(CaptureLogicalSnapshot());
   for (int cutoff_time_ms = 2000; cutoff_time_ms <= 2001; ++cutoff_time_ms) {
-    RestoreToLastLogicalRocksDBSnapshot();
+    ASSERT_OK(RestoreToLastLogicalRocksDBSnapshot());
     FullyCompactHistoryBefore(HybridTime::FromMicros(cutoff_time_ms));
     // TODO(dtxn) - check both transaction and non-transaction path?
     GetSubDoc(encoded_subdoc_key2, &subdoc, &doc_found, kNonTransactionalOperationContext);
@@ -3783,7 +3783,7 @@ TEST_P(DocDBTestWrapper, DISABLED_DumpDB) {
   int txn_meta = 0;
   int rev_key = 0;
   int intent = 0;
-  while (iter->Valid()) {
+  while (ASSERT_RESULT(iter->CheckedValid())) {
     auto key_type = GetKeyType(iter->key(), StorageDbType::kIntents);
     if (key_type == KeyType::kTransactionMetadata) {
       ++txn_meta;
