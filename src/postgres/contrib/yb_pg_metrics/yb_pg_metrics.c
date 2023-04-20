@@ -97,7 +97,6 @@ static int num_backends = 0;
 static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
 PgBackendStatus **backendStatusArrayPointer = NULL;
-extern int too_many_conn;
 extern int MaxConnections;
 
 static long last_cache_misses_val = 0;
@@ -368,7 +367,7 @@ webserver_worker_main(Datum unused)
   callbacks.getTimestampTzDiffMs = getElapsedMs;
   callbacks.getTimestampTzToStr  = timestamptz_to_str;
 
-  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &too_many_conn, &MaxConnections);
+  RegisterRpczEntries(&callbacks, &num_backends, &rpcz, yb_too_many_conn, &MaxConnections);
 
   HandleYBStatus(StartWebserver(webserver));
 
@@ -579,7 +578,7 @@ ybpgm_ExecutorEnd(QueryDesc *queryDesc)
 
 	ybpgm_Store(type, time, rows_count);
 
-  if (queryDesc->estate->yb_es_is_single_row_modify_txn) 
+  if (queryDesc->estate->yb_es_is_single_row_modify_txn)
   {
     ybpgm_Store(Single_Shard_Transaction, time, rows_count);
     ybpgm_Store(SingleShardTransaction, time, rows_count);
