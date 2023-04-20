@@ -150,7 +150,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         top: 15,
         left: 168,
         right: 225,
-        bottom: -10,
+        bottom: 5,
       }}
       node={<CpuSankeyNode />}
       nodeWidth={4}
