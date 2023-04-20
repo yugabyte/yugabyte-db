@@ -91,7 +91,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
       if (backupDetails!.backupType === TableType.YQL_TABLE_TYPE) {
         responseList = responseList.map((r) => {
           const backupTablesPresentInUniverse = r.tablesList.filter(
-            (tableName) => find(tablesInUniverse, { tableName })?.tableName
+            (tableName) => find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableName
           );
 
           return {
@@ -100,7 +100,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                  (tableName) => find(tablesInUniverse, { tableName })?.tableUUID
+                  (tableName) => find(tablesInUniverse, { tableName,  keySpace: r.keyspace })?.tableUUID
                 )
           };
         });
