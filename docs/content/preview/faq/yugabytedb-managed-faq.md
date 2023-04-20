@@ -156,7 +156,7 @@ To view the database version running on a particular cluster, navigate to the **
 
 ### Can I test YugabyteDB locally?
 
-To test locally, [download](https://download.yugabyte.com) and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Managed.
+To test locally, download and install YugabyteDB on a local machine. Refer to [Quick Start](../../quick-start/). For accurate comparison with cloud, be sure to download the version that is running on YugabyteDB Managed.
 
 ## Support
 

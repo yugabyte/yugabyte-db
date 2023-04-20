@@ -1,8 +1,8 @@
 ---
-title: Overview
-headerTitle: Overview of Yugabyte Query Layer
+title: Overview of YugabyteDB Query Layer
+headerTitle: Overview of YugabyteDB Query Layer
 linkTitle: Overview
-description: The Yugabyte Query Layer is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers.
+description: The YugabyteDB Query Layer is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers.
 aliases:
   - /architecture/concepts/yql/
 menu:
@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-The Yugabyte Query Layer (YQL) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API-specific aspects such as query and command compilation, as well as the runtime functions such as data type representations, built-in operations, and so on. YQL is designed with extensibility in mind, allowing for new APIs to be added. Currently, YQL supports two types of distributed SQL APIs: [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/).
+The YugabyteDB Query Layer (YQL) is the upper layer of YugabyteDB. Applications interact directly with YQL using client drivers. This layer deals with the API-specific aspects such as query and command compilation, as well as the runtime functions such as data type representations, built-in operations, and so on. YQL is designed with extensibility in mind, allowing for new APIs to be added. Currently, YQL supports two types of distributed SQL APIs: [YSQL](../../../api/ysql/) and [YCQL](../../../api/ycql/).
 
 ![cluster_overview](/images/architecture/cluster_overview.png)
 
