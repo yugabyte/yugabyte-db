@@ -126,7 +126,7 @@ export const ProviderDetails = ({ linkedUniverses, providerConfig }: ProviderDet
               classes={{ root: styles.tabPanel }}
               value={ProviderDetailsTab.MANAGE_INSTANCES}
             >
-              <ManageInstances providerUUID={providerConfig.uuid} />
+              <ManageInstances providerConfig={providerConfig} />
             </TabPanel>
           )}
         </Box>
