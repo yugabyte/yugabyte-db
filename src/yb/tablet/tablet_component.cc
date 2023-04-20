@@ -21,14 +21,18 @@
 namespace yb {
 namespace tablet {
 
-Result<TabletScopedRWOperationPauses> TabletComponent::StartShutdownRocksDBs(
+TabletScopedRWOperationPauses TabletComponent::StartShutdownRocksDBs(
     DisableFlushOnShutdown disable_flush_on_shutdown) {
   return tablet_.StartShutdownRocksDBs(disable_flush_on_shutdown);
 }
 
-Status TabletComponent::CompleteShutdownRocksDBs(
-    Destroy destroy, TabletScopedRWOperationPauses* ops_pauses) {
-  return tablet_.CompleteShutdownRocksDBs(destroy, ops_pauses);
+std::vector<std::string> TabletComponent::CompleteShutdownRocksDBs(
+    const TabletScopedRWOperationPauses& ops_pauses) {
+  return tablet_.CompleteShutdownRocksDBs(ops_pauses);
+}
+
+Status TabletComponent::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
+  return tablet_.DeleteRocksDBs(db_paths);
 }
 
 Status TabletComponent::OpenRocksDBs() {

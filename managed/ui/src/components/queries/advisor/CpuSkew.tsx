@@ -46,7 +46,11 @@ export const CpuSkew: FC<CpuMeasureRecommendation> = ({ data, summary }) => {
         margin: {
           l: 165,
           b: 30,
-          t: 10
+          t: 10,
+          r: 50
+        },
+        yaxis: {
+          automargin: true
         },
         hovermode: 'closest'
       };

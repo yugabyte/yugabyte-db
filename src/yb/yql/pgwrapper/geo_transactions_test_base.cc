@@ -161,14 +161,11 @@ void GeoTransactionsTestBase::CreateMultiRegionTransactionTable() {
   WaitForStatusTabletsVersion(current_version + 1);
 }
 
-void GeoTransactionsTestBase::SetupTables(size_t tables_per_region) {
+void GeoTransactionsTestBase::SetupTablespaces() {
   // Create tablespaces and tables.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
-  tables_per_region_ = tables_per_region;
 
   auto conn = ASSERT_RESULT(Connect());
-  bool wait_for_hash = ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables);
-  auto current_version = GetCurrentVersion();
   for (size_t i = 1; i <= NumRegions(); ++i) {
     ASSERT_OK(conn.ExecuteFormat(R"#(
         CREATE TABLESPACE tablespace$0 WITH (replica_placement='{
@@ -181,7 +178,17 @@ void GeoTransactionsTestBase::SetupTables(size_t tables_per_region) {
           }]
         }')
     )#", i));
+  }
+}
+void GeoTransactionsTestBase::SetupTables(size_t tables_per_region) {
+  // Create tables.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
+  tables_per_region_ = tables_per_region;
 
+  auto conn = ASSERT_RESULT(Connect());
+  bool wait_for_hash = ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables);
+  auto current_version = GetCurrentVersion();
+  for (size_t i = 1; i <= NumRegions(); ++i) {
     for (size_t j = 1; j <= tables_per_region; ++j) {
       ASSERT_OK(conn.ExecuteFormat(
           "CREATE TABLE $0$1_$2(value int, other_value int) TABLESPACE tablespace$1",
@@ -195,16 +202,18 @@ void GeoTransactionsTestBase::SetupTables(size_t tables_per_region) {
   }
 }
 
-void GeoTransactionsTestBase::DropTables() {
-  // Drop tablespaces and tables.
+void GeoTransactionsTestBase::SetupTablesAndTablespaces(size_t tables_per_region) {
+  SetupTablespaces();
+  SetupTables(tables_per_region);
+}
+
+void GeoTransactionsTestBase::DropTablespaces() {
+  // Drop tablespaces.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = true;
   auto conn = ASSERT_RESULT(Connect());
   bool wait_for_hash = ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables);
   uint64_t current_version = GetCurrentVersion();
-  for (size_t i = 1; i <= NumTabletServers(); ++i) {
-    for (size_t j = 1; j <= tables_per_region_; ++j) {
-      ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0$1_$2", kTablePrefix, i, j));
-    }
+  for (size_t i = 1; i <= NumRegions(); ++i) {
     ASSERT_OK(conn.ExecuteFormat("DROP TABLESPACE tablespace$0", i));
 
     if (wait_for_hash) {
@@ -212,6 +221,21 @@ void GeoTransactionsTestBase::DropTables() {
       ++current_version;
     }
   }
+}
+
+void GeoTransactionsTestBase::DropTables() {
+  // Drop tables.
+  auto conn = ASSERT_RESULT(Connect());
+  for (size_t i = 1; i <= NumRegions(); ++i) {
+    for (size_t j = 1; j <= tables_per_region_; ++j) {
+      ASSERT_OK(conn.ExecuteFormat("DROP TABLE $0$1_$2", kTablePrefix, i, j));
+    }
+  }
+}
+
+void GeoTransactionsTestBase::DropTablesAndTablespaces() {
+  DropTables();
+  DropTablespaces();
 }
 
 void GeoTransactionsTestBase::WaitForStatusTabletsVersion(uint64_t version) {

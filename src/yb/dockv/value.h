@@ -13,8 +13,11 @@
 
 #pragma once
 
+#include "yb/common/common_types.pb.h"
 #include "yb/common/typedefs.h"
+
 #include "yb/dockv/primitive_value.h"
+
 #include "yb/util/monotime.h"
 
 namespace yb::dockv {
@@ -117,5 +120,7 @@ class Value {
   PrimitiveValue primitive_value_;
   ValueControlFields control_fields_;
 };
+
+bool IsFullRowValue(const Slice& value);
 
 }  // namespace yb::dockv

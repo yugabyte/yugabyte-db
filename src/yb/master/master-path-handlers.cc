@@ -1447,10 +1447,33 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   server::HtmlOutputSchemaTable(schema, output);
 
+  bool has_deleted_tablets = false;
+  for (const auto& tablet : tablets) {
+    if (tablet->LockForRead()->is_deleted()) {
+      has_deleted_tablets = true;
+      break;
+    }
+  }
+
+  const bool show_deleted_tablets =
+      has_deleted_tablets ? req.parsed_args.find("show_deleted") != req.parsed_args.end() : false;
+
+  if (has_deleted_tablets) {
+    *output << Format(
+        "<a href=\"$0?id=$1$2\">$3 deleted tablets</a>",
+        EscapeForHtmlToString(req.redirect_uri),
+        EscapeForHtmlToString(table->id()),
+        EscapeForHtmlToString(show_deleted_tablets ? "" : "&show_deleted"),
+        EscapeForHtmlToString(show_deleted_tablets ? "Hide" : "Show"));
+  }
+
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
              "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+    if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
+      continue;
+    }
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
     AppendValuesFromMap(*locations, &sorted_locations);

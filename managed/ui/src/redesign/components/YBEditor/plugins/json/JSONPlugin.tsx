@@ -16,7 +16,7 @@ import { isEmpty } from 'lodash';
 import { BasePoint, Editor, NodeEntry, Range, Selection, Transforms } from 'slate';
 import { ReactEditor } from 'slate-react';
 import { IYBSlatePlugin, SlateRenderElementProps, SlateRenderLeafProps } from '../IPlugin';
-import { Portal, deleteNChars, getBeforeNChars, isBlockActive, nonActivePluginReturnType } from '../PluginUtils';
+import { ALERT_VARIABLE_REGEX, Portal, deleteNChars, getBeforeNChars, isBlockActive, nonActivePluginReturnType } from '../PluginUtils';
 
 import { CustomText } from '../custom-types';
 import { AddAlertVariablesPopup } from '../../../../features/alerts/TemplateComposer/AlertVariablesPopup';
@@ -37,7 +37,7 @@ const Indendation = ' '.repeat(4);
 
 const PRISM_VARIABLE_PATTERN = {
     variable: {
-        pattern: /{{\s*\w+\s*}}/
+        pattern: ALERT_VARIABLE_REGEX
     }
 }
 
@@ -83,11 +83,11 @@ export const useJSONPlugin: IYBSlatePlugin = ({ enabled, editor }) => {
         hidePopver();
 
         //if preceding 2 chars is '{{', delete it
-    if (getBeforeNChars(editor, ALERT_VARIABLE_START_TAG.length) === ALERT_VARIABLE_START_TAG) {
-        deleteNChars(editor, ALERT_VARIABLE_START_TAG.length, true);
-      }
+        if (getBeforeNChars(editor, ALERT_VARIABLE_START_TAG.length) === ALERT_VARIABLE_START_TAG) {
+            deleteNChars(editor, ALERT_VARIABLE_START_TAG.length, true);
+        }
 
-      editor.insertText(`${ALERT_VARIABLE_START_TAG}${variable.name}${ALERT_VARIABLE_END_TAG}`)
+        editor.insertText(`${ALERT_VARIABLE_START_TAG}${variable.name}${ALERT_VARIABLE_END_TAG}`)
 
     }
 
@@ -103,8 +103,8 @@ export const useJSONPlugin: IYBSlatePlugin = ({ enabled, editor }) => {
     };
 
     const renderLeaf = ({ attributes, children, leaf }: SlateRenderLeafProps) => {
-        if (leaf.JSON) {
-            return <span {...attributes} className={clsx('jsonStyles', leaf.JSON.decoration)}>{children}</span>
+        if (leaf.decoration?.JSON.type) {
+            return <span {...attributes} className={clsx('jsonStyles', leaf.decoration?.JSON.type)}>{children}</span>
         }
         return undefined;
     };
@@ -149,7 +149,7 @@ export const useJSONPlugin: IYBSlatePlugin = ({ enabled, editor }) => {
                 e.preventDefault();
                 return true;
             }
-        
+
         }
 
         //if enter is pressed, go to next line and insert the line indendation
@@ -225,7 +225,7 @@ export const useJSONPlugin: IYBSlatePlugin = ({ enabled, editor }) => {
     };
 };
 
-type JSONSelection = Selection & { JSON: { decoration: string } };
+type JSONSelection = Selection & { decoration: { JSON: { type: string } } };
 
 // Extend Prism's tokenise function for syntax highlighting
 const decorator = (entry: NodeEntry<CustomText>): JSONSelection[] => {
@@ -273,8 +273,10 @@ const getDecorator = (path: BasePoint['path'], offset: BasePoint['offset'], toke
             path,
             offset: offset + token.length
         },
-        JSON: {
-            decoration: token instanceof Token ? token.type : 'string'
+        decoration: {
+            JSON: {
+                type: token instanceof Token ? token.type : 'string'
+            }
         }
     }
 }

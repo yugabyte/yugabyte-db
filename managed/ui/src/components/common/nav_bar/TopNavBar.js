@@ -50,55 +50,55 @@ export default class TopNavBar extends Component {
       <Navbar fixedTop>
         {getPromiseState(currentCustomer).isSuccess() &&
           isNotHidden(currentCustomer.data.features, 'menu.sidebar') && (
-          <Navbar.Header>
-            <Link to="/" className="left_col text-center">
-              <YBLogo />
-            </Link>
-          </Navbar.Header>
-        )}
+            <Navbar.Header>
+              <Link to="/" className="left_col text-center">
+                <YBLogo />
+              </Link>
+            </Navbar.Header>
+          )}
         <div className="flex-grow"></div>
         {getPromiseState(currentCustomer).isSuccess() &&
           isNotHidden(currentCustomer.data.features, 'main.dropdown') && (
-          <Nav pullRight>
-            <NavDropdown
-              eventKey="2"
-              title={
-                <span>
-                  <i className="fa fa-user fa-fw"></i> {customerEmail}
-                </span>
-              }
-              id="profile-dropdown"
-            >
-              {isNotHidden(currentCustomer.data.features, 'main.profile') && (
-                <YBMenuItem
-                  to={'/profile'}
-                  disabled={isDisabled(currentCustomer.data.features, 'main.profile')}
-                >
-                  <i className="fa fa-user fa-fw"></i>User Profile
+            <Nav pullRight>
+              <NavDropdown
+                eventKey="2"
+                title={
+                  <span>
+                    <i className="fa fa-user fa-fw"></i> {customerEmail}
+                  </span>
+                }
+                id="profile-dropdown"
+              >
+                {isNotHidden(currentCustomer.data.features, 'main.profile') && (
+                  <YBMenuItem
+                    to={'/profile'}
+                    disabled={isDisabled(currentCustomer.data.features, 'main.profile')}
+                  >
+                    <i className="fa fa-user fa-fw"></i>User Profile
+                  </YBMenuItem>
+                )}
+                {isNotHidden(currentCustomer.data.features, 'main.logs') && (
+                  <YBMenuItem
+                    to={'/logs'}
+                    disabled={isDisabled(currentCustomer.data.features, 'main.logs')}
+                  >
+                    <i className="fa fa-file fa-fw"></i>Logs
+                  </YBMenuItem>
+                )}
+                {isNotHidden(currentCustomer.data.features, 'main.releases') && (
+                  <YBMenuItem
+                    to={'/releases'}
+                    disabled={isDisabled(currentCustomer.data.features, 'main.releases')}
+                  >
+                    <i className="fa fa-code-fork fa-fw"></i>Releases
+                  </YBMenuItem>
+                )}
+                <YBMenuItem to="/login" id="logoutLink" onClick={this.handleLogout}>
+                  <i className="fa fa-sign-out fa-fw"></i>Logout
                 </YBMenuItem>
-              )}
-              {isNotHidden(currentCustomer.data.features, 'main.logs') && (
-                <YBMenuItem
-                  to={'/logs'}
-                  disabled={isDisabled(currentCustomer.data.features, 'main.logs')}
-                >
-                  <i className="fa fa-file fa-fw"></i>Logs
-                </YBMenuItem>
-              )}
-              {isNotHidden(currentCustomer.data.features, 'main.releases') && (
-                <YBMenuItem
-                  to={'/releases'}
-                  disabled={isDisabled(currentCustomer.data.features, 'main.releases')}
-                >
-                  <i className="fa fa-code-fork fa-fw"></i>Releases
-                </YBMenuItem>
-              )}
-              <YBMenuItem to="/login" id="logoutLink" onClick={this.handleLogout}>
-                <i className="fa fa-sign-out fa-fw"></i>Logout
-              </YBMenuItem>
-            </NavDropdown>
-          </Nav>
-        )}
+              </NavDropdown>
+            </Nav>
+          )}
       </Navbar>
     );
   }

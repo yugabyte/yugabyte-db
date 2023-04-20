@@ -35,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.inject.Singleton;
 import org.apache.commons.collections4.MapUtils;
@@ -210,18 +211,16 @@ public class GFlagsValidation {
     if (MapUtils.isEmpty(flags)) {
       return filteredList;
     }
-    List<GFlagDetails> allGFlags = extractGFlags(version, serverType.name(), false);
+    Map<String, GFlagDetails> allGFlagsMap =
+        extractGFlags(version, serverType.name(), false)
+            .stream()
+            .collect(Collectors.toMap(flagDetails -> flagDetails.name, Function.identity()));
     for (Map.Entry<String, String> entry : flags.entrySet()) {
       String flag = entry.getKey();
-      GFlagDetails flagDetail =
-          allGFlags
-              .stream()
-              .filter(gflag -> gflag.name.equals(flag))
-              .findFirst()
-              .orElseThrow(
-                  () ->
-                      new PlatformServiceException(
-                          BAD_REQUEST, flag + " is not present in metadata."));
+      if (!allGFlagsMap.containsKey(flag)) {
+        throw new PlatformServiceException(BAD_REQUEST, flag + " is not present in metadata.");
+      }
+      GFlagDetails flagDetail = allGFlagsMap.get(flag);
       if (isAutoFlag(flagDetail) && !flagDetail.initial.equals(entry.getValue())) {
         filteredList.put(entry.getKey(), entry.getValue());
       }
@@ -229,7 +228,12 @@ public class GFlagsValidation {
     return filteredList;
   }
 
-  private Set<String> getFlagsTagList(GFlagDetails flagDetails) {
+  public List<GFlagDetails> listAllAutoFlags(String version, String serverType) throws IOException {
+    List<GFlagDetails> allGFlags = extractGFlags(version, serverType, false /* mostUsedGFlags */);
+    return allGFlags.stream().filter(flag -> isAutoFlag(flag)).collect(Collectors.toList());
+  }
+
+  private Set<String> getFlagsTagSet(GFlagDetails flagDetails) {
     if (StringUtils.isEmpty(flagDetails.tags)) {
       return new HashSet<>();
     }
@@ -237,7 +241,7 @@ public class GFlagsValidation {
   }
 
   public boolean isAutoFlag(GFlagDetails flag) {
-    return getFlagsTagList(flag).contains("auto");
+    return getFlagsTagSet(flag).contains("auto");
   }
 
   private boolean isFlagFile(String fileName) {

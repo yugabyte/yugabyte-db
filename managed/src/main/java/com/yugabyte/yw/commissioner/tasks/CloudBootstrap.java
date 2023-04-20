@@ -37,9 +37,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 
+@Slf4j
 public class CloudBootstrap extends CloudTaskBase {
   @Inject
   protected CloudBootstrap(BaseTaskDependencies baseTaskDependencies) {
@@ -269,38 +271,51 @@ public class CloudBootstrap extends CloudTaskBase {
 
   @Override
   public void run() {
-    Provider p = Provider.get(taskParams().providerUUID);
+    Provider p = Provider.getOrBadRequest(taskParams().providerUUID);
+    p.setUsabilityState(Provider.UsabilityState.UPDATING);
+    p.save();
     Common.CloudType cloudType = Common.CloudType.valueOf(p.getCode());
-    if (cloudType.isRequiresBootstrap()
-        && cloudType != Common.CloudType.onprem
-        && !taskParams().skipBootstrapRegion) {
-      createCloudSetupTask()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
-    }
-    Map<String, Params.PerRegionMetadata> regionsToInit =
-        new HashMap<>(taskParams().perRegionMetadata);
-    if (!CollectionUtils.isEmpty(taskParams().addedRegionCodes)) {
-      regionsToInit.keySet().retainAll(taskParams().addedRegionCodes);
-    }
+    try {
+      if (cloudType.isRequiresBootstrap()
+          && cloudType != CloudType.onprem
+          && !taskParams().skipBootstrapRegion) {
+        createCloudSetupTask()
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+      }
+      Map<String, Params.PerRegionMetadata> regionsToInit =
+          new HashMap<>(taskParams().perRegionMetadata);
+      if (!CollectionUtils.isEmpty(taskParams().addedRegionCodes)) {
+        regionsToInit.keySet().retainAll(taskParams().addedRegionCodes);
+      }
 
-    regionsToInit.forEach(
-        (regionCode, metadata) -> {
-          createRegionSetupTask(regionCode, metadata)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
-        });
-    regionsToInit.forEach(
-        (regionCode, metadata) -> {
-          createAccessKeySetupTask(regionCode)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-        });
+      regionsToInit.forEach(
+          (regionCode, metadata) -> {
+            createRegionSetupTask(regionCode, metadata)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+          });
+      regionsToInit.forEach(
+          (regionCode, metadata) -> {
+            createAccessKeySetupTask(regionCode)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+          });
 
-    // Need not to init CloudInitializer task for onprem provider.
-    if (!p.getCloudCode().equals(Common.CloudType.onprem)) {
-      createInitializerTask()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+      // Need not to init CloudInitializer task for onprem provider.
+      if (!p.getCloudCode().equals(CloudType.onprem)) {
+        createInitializerTask()
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+      }
+
+      getRunnableTask().runSubTasks();
+      p = Provider.getOrBadRequest(taskParams().providerUUID);
+      p.setUsabilityState(Provider.UsabilityState.READY);
+      p.save();
+    } catch (RuntimeException e) {
+      log.error("Received exception during bootstrap", e);
+      p = Provider.getOrBadRequest(taskParams().providerUUID);
+      p.setUsabilityState(Provider.UsabilityState.ERROR);
+      p.save();
+      throw e;
     }
-
-    getRunnableTask().runSubTasks();
   }
 
   public SubTaskGroup createCloudSetupTask() {

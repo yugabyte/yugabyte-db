@@ -69,7 +69,7 @@ For best performance as well as lower data transfer costs, you want to minimize 
 - Use the same cloud provider as your application.
 - Locate your cluster in the same region as your application.
 
-For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via peering or using a private link. This configuration also provides the best security.
+For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC and connect it to the application VPC via peering or using a private link. This configuration also provides the best security. To connect using a private link (AWS only), the link endpoints (your cluster and the application) must be in the same region.
 
 For a list of supported regions, refer to [Cloud provider regions](../../release-notes/#cloud-provider-regions).
 

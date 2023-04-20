@@ -15,6 +15,8 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -45,6 +47,7 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
   @Mock public NodeUniverseManager mockNodeUniverseManager;
   @Mock public Config mockConfig;
   @Mock public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
+  @Mock public RuntimeConfGetter MockConfGetter;
 
   private final String testUniverseLogsRegexPattern =
       "((?:.*)(?:yb-)(?:master|tserver)(?:.*))(\\d{8})-(?:\\d*)\\.(?:.*)";
@@ -91,9 +94,11 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Mock all the invocations with fake data
     when(mockSupportBundleUtil.getDataDirPath(any(), any(), any(), any()))
         .thenReturn(fakeSupportBundleBasePath);
-    when(mockConfig.getString("yb.support_bundle.universe_logs_regex_pattern"))
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.universeLogsRegexPattern)))
         .thenReturn(testUniverseLogsRegexPattern);
-    when(mockConfig.getString("yb.support_bundle.postgres_logs_regex_pattern"))
+    when(MockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.postgresLogsRegexPattern)))
         .thenReturn(testPostgresLogsRegexPattern);
     when(mockSupportBundleUtil.extractFileTypeFromFileNameAndRegex(any(), any()))
         .thenCallRealMethod();
@@ -140,7 +145,11 @@ public class UniverseLogsComponentTest extends FakeDBApplication {
     // Calling the download function
     UniverseLogsComponent universeLogsComponent =
         new UniverseLogsComponent(
-            mockUniverseInfoHandler, mockNodeUniverseManager, mockConfig, mockSupportBundleUtil);
+            mockUniverseInfoHandler,
+            mockNodeUniverseManager,
+            mockConfig,
+            mockSupportBundleUtil,
+            MockConfGetter);
     universeLogsComponent.downloadComponentBetweenDates(
         customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 

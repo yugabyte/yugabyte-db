@@ -82,7 +82,7 @@
 DEPRECATE_FLAG(bool, enable_tablet_orphaned_block_deletion, "10_2022");
 
 DEFINE_test_flag(bool, invalidate_last_change_metadata_op, false,
-                 "Used in tests to update last_change_metadata_op_id to -1.-1 to simulate "
+                 "Used in tests to update last_flushed_change_metadata_op_id to -1.-1 to simulate "
                  "behavior of old code");
 
 // Only used for colocated table creation currently.
@@ -773,14 +773,15 @@ RaftGroupMetadata::RaftGroupMetadata(
       cdc_sdk_min_checkpoint_op_id_(OpId::Invalid()),
       cdc_sdk_safe_time_(HybridTime::kInvalid),
       log_prefix_(consensus::MakeTabletLogPrefix(raft_group_id_, fs_manager_->uuid())),
-      hosted_services_(data.hosted_services),
-      last_applied_change_metadata_op_id_(data.last_change_metadata_op_id) {
+      hosted_services_(data.hosted_services) {
   CHECK(data.table_info->schema().has_column_ids());
   CHECK_GT(data.table_info->schema().num_key_columns(), 0);
   kv_store_.tables.emplace(primary_table_id_, data.table_info);
   kv_store_.UpdateColocationMap(data.table_info);
   if (FLAGS_TEST_invalidate_last_change_metadata_op) {
     last_applied_change_metadata_op_id_ = OpId::Invalid();
+  } else {
+    last_applied_change_metadata_op_id_ = OpId::Min();
   }
 }
 
@@ -905,8 +906,9 @@ Status RaftGroupMetadata::LoadFromSuperBlock(const RaftGroupReplicaSuperBlockPB&
     }
     // If new code is reading old data then this field won't exist. In such cases,
     // we start with an invalid value of -1.-1.
-    if (superblock.has_last_change_metadata_op_id()) {
-      last_flushed_change_metadata_op_id_ = OpId::FromPB(superblock.last_change_metadata_op_id());
+    if (superblock.has_last_flushed_change_metadata_op_id()) {
+      last_flushed_change_metadata_op_id_ =
+          OpId::FromPB(superblock.last_flushed_change_metadata_op_id());
     } else {
       last_flushed_change_metadata_op_id_ = OpId::Invalid();
     }
@@ -1082,7 +1084,7 @@ void RaftGroupMetadata::ToSuperBlockUnlocked(RaftGroupReplicaSuperBlockPB* super
   }
 
   if (last_applied_change_metadata_op_id_.valid()) {
-    last_applied_change_metadata_op_id_.ToPB(pb.mutable_last_change_metadata_op_id());
+    last_applied_change_metadata_op_id_.ToPB(pb.mutable_last_flushed_change_metadata_op_id());
   }
 
   superblock->Swap(&pb);
@@ -1146,7 +1148,7 @@ void RaftGroupMetadata::SetSchemaUnlocked(const Schema& schema,
   it->second.swap(new_table_info);
   // Update op id if it is a change metadata operation.
   // We don't update if the passed op id is invalid. Cases when this will happen:
-  // 1. If we are replaying during tablet bootstrap and last_change_metadata_op_id
+  // 1. If we are replaying during tablet bootstrap and last_flushed_change_metadata_op_id
   // was invalid - For e.g. after upgrade when new code reads old data.
   // In such a case, we ensure that we are no worse than old code's behavior
   // which essentially implies that we mute this new logic until
@@ -1446,9 +1448,9 @@ bool RaftGroupMetadata::colocated() const {
 
 // Returns whether lazy superblock flush is enabled for the tablet. It requires
 // lazily_flush_superblock flag to be true and the tablet to be colocated (currently this feature is
-// only applicable on colocated table creation). This feature depends on last_change_metadata_op_id
-// to be valid. Hence, additionally requires FLAGS_TEST_invalidate_last_change_metadata_op to be
-// false.
+// only applicable on colocated table creation). This feature depends on
+// last_flushed_change_metadata_op_id to be valid. Hence, additionally requires
+// FLAGS_TEST_invalidate_last_change_metadata_op to be false.
 LazySuperblockFlushEnabled RaftGroupMetadata::IsLazySuperblockFlushEnabled() const {
   bool lazy_superblock_flush_enabled = !FLAGS_TEST_invalidate_last_change_metadata_op &&
                                        FLAGS_lazily_flush_superblock && colocated() &&

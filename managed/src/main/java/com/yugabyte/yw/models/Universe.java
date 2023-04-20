@@ -368,7 +368,7 @@ public class Universe extends Model {
   /**
    * Find a single attribute from universe_details_json column of Universe.
    *
-   * @param <T> the attribute type.
+   * @param clazz the attribute type.
    * @param universeUUID the universe UUID to be searched for.
    * @param fieldName the name of the field.
    * @return the attribute value.
@@ -383,6 +383,26 @@ public class Universe extends Model {
     SqlQuery sqlQuery = Ebean.createSqlQuery(query);
     sqlQuery.setParameter("universeUUID", universeUUID);
     return sqlQuery.findOneOrEmpty().map(row -> clazz.cast(row.get("field")));
+  }
+
+  /**
+   * Find a single attribute from universe_details_json column of all Universe records.
+   *
+   * @param clazz the attribute type.
+   * @param fieldName the name of the field.
+   * @return the attribute values for all universes.
+   */
+  public static <T> Map<UUID, T> getUniverseDetailsFields(Class<T> clazz, String fieldName) {
+    String query =
+        String.format(
+            "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe",
+            fieldName);
+    return Ebean.createSqlQuery(query)
+        .findList()
+        .stream()
+        .filter(r -> r.get("field") != null && clazz.isAssignableFrom(r.get("field").getClass()))
+        .collect(
+            Collectors.toMap(r -> (UUID) r.get("universe_uuid"), r -> clazz.cast(r.get("field"))));
   }
 
   /**

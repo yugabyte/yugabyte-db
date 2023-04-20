@@ -40,11 +40,13 @@ class TabletComponent {
   }
 
  protected:
-  Result<TabletScopedRWOperationPauses> StartShutdownRocksDBs(
+  TabletScopedRWOperationPauses StartShutdownRocksDBs(
       DisableFlushOnShutdown disable_flush_on_shutdown);
 
-  Status CompleteShutdownRocksDBs(
-      Destroy destroy, TabletScopedRWOperationPauses* ops_pauses);
+  std::vector<std::string> CompleteShutdownRocksDBs(
+      const TabletScopedRWOperationPauses& ops_pauses);
+
+  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
 
   Status OpenRocksDBs();
 

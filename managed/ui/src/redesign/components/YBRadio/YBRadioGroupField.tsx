@@ -10,6 +10,7 @@ type YBRadioGroupFieldProps<T extends FieldValues> = UseControllerProps<T> &
      * Performs additional tasks from the parent when the field element changes.
      */
     onRadioChange?: (event: React.ChangeEvent<HTMLInputElement>, value: string) => void;
+    isDisabled?: boolean;
   };
 
 export const YBRadioGroupField = <T extends FieldValues>({
@@ -19,6 +20,7 @@ export const YBRadioGroupField = <T extends FieldValues>({
   onRadioChange,
   rules,
   shouldUnregister,
+  isDisabled,
   ...ybRadioGroupProps
 }: YBRadioGroupFieldProps<T>): ReactElement => {
   const { field, fieldState } = useController({
@@ -35,6 +37,10 @@ export const YBRadioGroupField = <T extends FieldValues>({
       onRadioChange(event, value);
     }
   };
+
+  ybRadioGroupProps.options = isDisabled
+    ? ybRadioGroupProps.options.map((option) => ({ ...option, disabled: true }))
+    : ybRadioGroupProps.options;
   return (
     <Box display="flex" flexDirection="column" justifyContent="center">
       <YBRadioGroup

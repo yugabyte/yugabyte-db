@@ -461,6 +461,10 @@ run_cxx_build() {
     if is_mac && [[ "${YB_TARGET_ARCH:-}" == "arm64" ]]; then
       cmake_binary=/opt/homebrew/bin/cmake
     else
+      if ! which cmake &> /dev/null; then
+        echo "Error: cmake not found in PATH" >&2
+        exit 1
+      fi
       cmake_binary=$( which cmake )
     fi
     log "Using cmake binary: $cmake_binary"

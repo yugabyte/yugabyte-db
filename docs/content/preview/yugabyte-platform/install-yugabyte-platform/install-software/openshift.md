@@ -344,7 +344,8 @@ To create a YugabyteDB Anywhere instance, perform the following:
   helm install yw-test yugabytedb/yugaware -n yb-platform \
      --version {{<yb-version version="preview" format="short">}} \
      --set image.repository=quay.io/yugabyte/yugaware-ubi \
-     --set ocpCompatibility.enabled=true --set rbac.create=false --wait
+     --set ocpCompatibility.enabled=true --set rbac.create=false \
+     --set securityContext.enabled=false --wait
   ```
 
   Expect to see a message notifying you whether or not the deployment is successful.
@@ -372,7 +373,8 @@ To create a YugabyteDB Anywhere instance, perform the following:
   EOF
   ```
 
-  ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
+  - ClusterRole or ClusterRoleBinding with the cluster-admin role are recommended if your intention is to create clusters across multiple namespaces.
+  - Certain container-level metrics like CPU, memory will be unavailable without the above `ClusterRoleBinding`.
 
 ### Delete the Helm installation of YugabyteDB Anywhere
 

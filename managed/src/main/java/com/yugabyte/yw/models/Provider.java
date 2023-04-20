@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -311,6 +312,37 @@ public class Provider extends Model {
       ybHomeDir = DEFAULT_YB_HOME_DIR;
     }
     return ybHomeDir;
+  }
+
+  @ApiModelProperty(value = "Last validation errors json", accessMode = READ_ONLY)
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode lastValidationErrors;
+
+  public JsonNode getLastValidationErrors() {
+    return lastValidationErrors;
+  }
+
+  public void setLastValidationErrors(JsonNode lastValidationErrors) {
+    this.lastValidationErrors = lastValidationErrors;
+  }
+
+  @Column
+  @ApiModelProperty(value = "Current usability state", accessMode = READ_ONLY)
+  private UsabilityState usabilityState = UsabilityState.READY;
+
+  public UsabilityState getUsabilityState() {
+    return usabilityState;
+  }
+
+  public void setUsabilityState(UsabilityState usabilityState) {
+    this.usabilityState = usabilityState;
+  }
+
+  public enum UsabilityState {
+    READY,
+    UPDATING,
+    ERROR
   }
 
   /** Query Helper for Provider with uuid */

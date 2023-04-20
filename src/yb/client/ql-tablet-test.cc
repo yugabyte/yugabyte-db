@@ -1264,7 +1264,7 @@ void VerifyHistoryCutoff(MiniCluster* cluster, HybridTime* prev_committed,
     bool complete = false;
     for (size_t i = 0; i < peers.size(); ++i) {
       auto peer = peers[i];
-      SCOPED_TRACE(Format("Peer: $0", peer->permanent_uuid()));
+      SCOPED_TRACE(Format("Peer: $0, Trace: $1", peer->permanent_uuid(), trace));
       if (peer->state() != tablet::RaftGroupStatePB::RUNNING) {
         complete = false;
         break;
@@ -1318,9 +1318,16 @@ TEST_F(QLTabletTest, HistoryCutoff) {
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     ASSERT_OK(cluster_->mini_tablet_server(i)->Start(tserver::WaitTabletsBootstrapped::kFalse));
     for (;;) {
-      auto peers = cluster_->mini_tablet_server(i)->server()->tablet_manager()->GetTabletPeers();
+      auto tserver = cluster_->mini_tablet_server(i)->server();
+      auto peers = tserver->tablet_manager()->GetTabletPeers();
       ASSERT_LE(peers.size(), 1);
       if (peers.empty() || peers[0]->state() != tablet::RaftGroupStatePB::RUNNING) {
+        std::this_thread::sleep_for(100ms);
+        continue;
+      }
+      if (!tserver->GetXClusterSafeTimeMap()
+               .GetSafeTime(peers[0]->tablet()->metadata()->namespace_id())
+               .ok()) {
         std::this_thread::sleep_for(100ms);
         continue;
       }

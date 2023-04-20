@@ -42,6 +42,7 @@ const RollbackToTemplateModal: FC<RollbackToTemplateModalProps> = ({
       cancelLabel={t('common.close')}
       submitLabel={t('common.apply')}
       onSubmit={onSubmit}
+      enableBackdropDismiss
     >
       <Box className={classes.root}>
         <Typography variant="body2">{t('alertCustomTemplates.rollbackModal.helpText')}</Typography>

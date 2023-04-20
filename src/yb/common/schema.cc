@@ -315,7 +315,6 @@ void Schema::CopyFrom(const Schema& other) {
   cols_ = other.cols_;
   col_ids_ = other.col_ids_;
   col_offsets_ = other.col_offsets_;
-  doc_key_offsets_ = other.doc_key_offsets_;
   id_to_index_ = other.id_to_index_;
 
   // We can't simply copy name_to_index_ since the GStringPiece keys
@@ -344,7 +343,6 @@ void Schema::swap(Schema& other) {
   cols_.swap(other.cols_);
   col_ids_.swap(other.col_ids_);
   col_offsets_.swap(other.col_offsets_);
-  doc_key_offsets_.swap(other.doc_key_offsets_);
   name_to_index_.swap(other.name_to_index_);
   id_to_index_.swap(other.id_to_index_);
   std::swap(has_nullables_, other.has_nullables_);
@@ -424,36 +422,6 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
                   "Bad schema", "Cannot have both cotable ID and colocation ID");
   }
 
-  // Verify that the key columns are not nullable nor static
-  bool has_var_length_key_col = false;
-  for (size_t i = 0; i < key_columns; ++i) {
-    const auto& col = cols_[i];
-    if (PREDICT_FALSE(col.is_nullable())) {
-      return STATUS(InvalidArgument,
-        "Bad schema", strings::Substitute("Nullable key columns are not "
-                                          "supported: $0", col.name()));
-    }
-    if (PREDICT_FALSE(col.is_static())) {
-      return STATUS(InvalidArgument,
-        "Bad schema", strings::Substitute("Static key columns are not "
-                                          "allowed: $0", col.name()));
-    }
-    if (PREDICT_FALSE(col.is_counter())) {
-      return STATUS(InvalidArgument,
-        "Bad schema", strings::Substitute("Counter key columns are not allowed: $0",
-                                          col.name()));
-    }
-
-    if (KeyEntryValue::GetEncodedKeyEntryValueSize(col.type()->main()) == 0) {
-      has_var_length_key_col = true;
-    }
-  }
-
-  // Compute the key column offsets if there are no varlen columns.
-  if (!has_var_length_key_col) {
-    doc_key_offsets_ = DocKey::ComputeKeyColumnOffsets(*this);
-  }
-
   // Calculate the offset of each column in the row format.
   col_offsets_.reserve(cols_.size() + 1);  // Include space for total byte size at the end.
   size_t off = 0;
@@ -484,12 +452,6 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
     }
   }
   return Status::OK();
-}
-
-void Schema::UpdateDocKeyOffsets() {
-  if (doc_key_offsets_.has_value()) {
-    doc_key_offsets_ = DocKey::ComputeKeyColumnOffsets(*this);
-  }
 }
 
 Status Schema::CreateProjectionByNames(const std::vector<GStringPiece>& col_names,
@@ -639,9 +601,6 @@ size_t Schema::memory_footprint_excluding_this() const {
   }
   if (col_offsets_.capacity() > 0) {
     size += malloc_usable_size(col_offsets_.data());
-  }
-  if (doc_key_offsets_.has_value()) {
-    size += malloc_usable_size(doc_key_offsets_->key_offsets.data());
   }
   size += name_to_index_bytes_;
   size += id_to_index_.memory_footprint_excluding_this();

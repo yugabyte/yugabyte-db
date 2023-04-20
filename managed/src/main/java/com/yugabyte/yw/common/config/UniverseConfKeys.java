@@ -636,4 +636,20 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimum Incremental backup schedule frequency in seconds",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> universeLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.universe_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "Universe logs regex pattern",
+          "Universe logs regex pattern in support bundle",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> postgresLogsRegexPattern =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.postgres_logs_regex_pattern",
+          ScopeType.UNIVERSE,
+          "Postgres logs regex pattern",
+          "Postgres logs regex pattern in support bundle",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

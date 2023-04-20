@@ -81,7 +81,6 @@ TEST(TestSchema, TestSchema) {
             schema.ToString());
   EXPECT_EQ("key[string NOT NULL NOT A PARTITION KEY]", schema.column(0).ToString());
   EXPECT_EQ("uint32 NULLABLE NOT A PARTITION KEY", schema.column(1).TypeToString());
-  EXPECT_FALSE(schema.doc_key_offsets().has_value());
 }
 
 TEST(TestSchema, TestSwap) {
@@ -91,7 +90,6 @@ TEST(TestSchema, TestSwap) {
                    ColumnSchema("col2", STRING),
                    ColumnSchema("col3", UINT32) },
                  2, properties1);
-  ASSERT_FALSE(schema1.doc_key_offsets().has_value());
   TableProperties properties2;
   properties2.SetDefaultTimeToLive(2000);
   Schema schema2({ ColumnSchema("col3", UINT32),
@@ -104,8 +102,6 @@ TEST(TestSchema, TestSwap) {
   ASSERT_EQ(2, schema2.num_key_columns());
   ASSERT_EQ(2000, schema1.table_properties().DefaultTimeToLive());
   ASSERT_EQ(1000, schema2.table_properties().DefaultTimeToLive());
-  ASSERT_TRUE(schema1.doc_key_offsets().has_value());
-  ASSERT_FALSE(schema2.doc_key_offsets().has_value());
 }
 
 TEST(TestSchema, TestReset) {
@@ -350,52 +346,6 @@ TEST(TestSchema, TestTableProperties) {
   ASSERT_FALSE(pb.has_default_time_to_live());
   auto properties3 = TableProperties::FromTablePropertiesPB(pb);
   ASSERT_FALSE(properties3.HasDefaultTimeToLive());
-}
-
-void TestKeyColDocKeyOffsets(size_t hash_key_cols) {
-  constexpr size_t key_cols = 2;
-  LOG(INFO) << "Testing " << hash_key_cols << " hash key cols out of " << key_cols;
-  ASSERT_LE(hash_key_cols, key_cols);
-
-  size_t key_idx = 0;
-  ColumnSchema col1(
-      "key_1", INT32, /* is_nullable = */ false, /* is_hashkey = */ key_idx++ < hash_key_cols);
-  ColumnSchema col2(
-      "key_2", UINT32, /* is_nullable = */ false, /* is_hashkey = */ key_idx++ < hash_key_cols);
-  ColumnSchema col3("int32val", INT32);
-
-  vector<ColumnSchema> cols = {col1, col2, col3};
-  Schema schema(cols, key_cols);
-
-  ASSERT_EQ(cols.size(), schema.num_columns());
-  ASSERT_EQ(key_cols, schema.num_key_columns());
-  ASSERT_EQ(hash_key_cols, schema.num_hash_key_columns());
-  ASSERT_EQ(key_cols - hash_key_cols, schema.num_range_key_columns());
-
-  // Note: we only validate tracking values in this test.
-  // Offset validation is performed in DocKey test.
-  const auto& doc_key_offsets = schema.doc_key_offsets();
-  ASSERT_TRUE(doc_key_offsets.has_value());
-  ASSERT_GT(doc_key_offsets->doc_key_size, 0);
-  ASSERT_GE(doc_key_offsets->hash_part_size, 0);
-  size_t last_col_offset = 0;
-  for (size_t i = 0; i < schema.num_key_columns(); i++) {
-    const auto& cur_col_offset = doc_key_offsets->key_offsets[i];
-    ASSERT_LT(cur_col_offset, doc_key_offsets->doc_key_size);
-    if (i < hash_key_cols) {
-      ASSERT_LE(cur_col_offset, doc_key_offsets->hash_part_size);
-    } else {
-      ASSERT_GE(cur_col_offset, doc_key_offsets->hash_part_size);
-    }
-    ASSERT_GE(cur_col_offset, last_col_offset) << "Key offset: " << i;
-    last_col_offset = cur_col_offset;
-  }
-}
-
-TEST(TestSchema, KeyColDocKeyOffsets) {
-  TestKeyColDocKeyOffsets(/* hash_key_cols = */ 2);
-  TestKeyColDocKeyOffsets(/* hash_key_cols = */ 0);
-  TestKeyColDocKeyOffsets(/* hash_key_cols = */ 1);
 }
 
 } // namespace tablet

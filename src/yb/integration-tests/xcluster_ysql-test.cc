@@ -1300,6 +1300,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
 
   setup_write_verify_delete();
 
+  // Restart cluster to clear meta cache partition ranges.
+  // TODO: don't check partition bounds for txn status tablets.
+  ASSERT_OK(consumer_cluster()->RestartSync());
+
   // Now add 2 txn tablets on the consumer, then rerun test.
   global_txn_table_id = ASSERT_RESULT(client::GetTableId(consumer_client(), global_txn_table));
   ASSERT_OK(consumer_client()->AddTransactionStatusTablet(global_txn_table_id));

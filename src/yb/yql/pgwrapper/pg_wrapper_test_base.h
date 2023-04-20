@@ -34,6 +34,8 @@ class PgWrapperTestBase : public MiniClusterTestWithClient<ExternalMiniCluster> 
 
   Result<TabletId> GetSingleTabletId(const TableName& table_name);
 
+  Result<std::string> RunYbAdminCommand(const std::string& cmd);
+
   // Tablet server to use to perform PostgreSQL operations.
   ExternalTabletServer* pg_ts = nullptr;
 };

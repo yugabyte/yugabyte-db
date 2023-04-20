@@ -18,6 +18,8 @@ A virtual private cloud (VPC) is a virtual network where you can deploy clusters
 - To learn how to peer VPCs, refer to [Peer VPCs](../cloud-add-vpc-aws/).
 - To learn how to configure a private service endpoint (AWS only), refer to [Private service endpoints](../cloud-add-endpoint/).
 
+For lowest latencies, create your VPC in the same region(s) as your applications. If you are connecting to your application via a private service endpoint (AWS only), your VPC must be located in the same region as the endpoint to which you are linking.
+
 **VPCs** on the **VPC Network** tab of the **Network Access** page displays a list of VPCs configured for your cloud that includes the VPC name, provider, region, CIDR, number of peering connections, number of clusters deployed in the VPC, and status.
 
 ![VPCs](/images/yb-cloud/cloud-vpc.png)

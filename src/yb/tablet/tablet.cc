@@ -144,12 +144,7 @@ TAG_FLAG(tablet_bloom_target_fp_rate, advanced);
 METRIC_DEFINE_entity(table);
 METRIC_DEFINE_entity(tablet);
 
-// TODO: use a lower default for truncate / snapshot restore Raft operations. The one-minute timeout
-// is probably OK for shutdown.
-DEFINE_UNKNOWN_int32(tablet_rocksdb_ops_quiet_down_timeout_ms, 60000,
-             "Max amount of time we can wait for read/write operations on RocksDB to finish "
-             "so that we can perform exclusive-ownership operations on RocksDB, such as removing "
-             "all data in the tablet by replacing the RocksDB instance with an empty one.");
+DEPRECATE_FLAG(int32, tablet_rocksdb_ops_quiet_down_timeout_ms, "04_2023");
 
 DEFINE_UNKNOWN_int32(intents_flush_max_delay_ms, 2000,
              "Max time to wait for regular db to flush during flush of intents. "
@@ -277,6 +272,8 @@ DECLARE_int64(apply_intents_task_injected_delay_ms);
 DECLARE_string(regular_tablets_data_block_key_value_encoding);
 DECLARE_int64(cdc_intent_retention_ms);
 
+DEFINE_test_flag(uint64, inject_sleep_before_applying_write_batch_ms, 0,
+                 "Sleep before applying write batches");
 DEFINE_test_flag(uint64, inject_sleep_before_applying_intents_ms, 0,
                  "Sleep before applying intents to docdb after transaction commit");
 
@@ -453,8 +450,10 @@ Tablet::Tablet(const TabletInitData& data)
       mvcc_(
           MakeTabletLogPrefix(data.metadata->raft_group_id(), data.log_prefix_suffix), data.clock),
       tablet_options_(data.tablet_options),
-      pending_non_abortable_op_counter_("RocksDB non-abortable read/write operations"),
-      pending_abortable_op_counter_("RocksDB abortable read/write operations"),
+      pending_non_abortable_op_counter_(
+          Format("T $0 RocksDB non-abortable read/write operations", metadata_->raft_group_id())),
+      pending_abortable_op_counter_(
+          Format("T $0 RocksDB abortable read/write operations", metadata_->raft_group_id())),
       write_ops_being_submitted_counter_("Tablet schema"),
       client_future_(data.client_future),
       transaction_manager_provider_(data.transaction_manager_provider),
@@ -559,8 +558,12 @@ Tablet::~Tablet() {
     CompleteShutdown(DisableFlushOnShutdown::kFalse);
   } else {
     auto state = state_;
-    LOG_IF_WITH_PREFIX(DFATAL, state != kShutdown)
-        << "Destroying Tablet that did not complete shutdown: " << state;
+    if (state != kShutdown) {
+      LOG_WITH_PREFIX(DFATAL) << "Destroying Tablet that did not complete shutdown: " << state;
+      // Still try to complete shutdown in release builds, but disable flush in this state to
+      // minimize risk of flushing potentially corrupted data.
+      CompleteShutdown(DisableFlushOnShutdown::kTrue);
+    }
   }
   if (regulardb_mem_tracker_) {
     regulardb_mem_tracker_->UnregisterFromParent();
@@ -1049,10 +1052,6 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
   StartShutdown();
 
   auto op_pauses = StartShutdownRocksDBs(disable_flush_on_shutdown, Stop::kTrue);
-  if (!op_pauses.ok()) {
-    LOG_WITH_PREFIX(DFATAL) << "Failed to shut down: " << op_pauses.status();
-    return;
-  }
 
   cleanup_intent_files_token_.reset();
 
@@ -1084,10 +1083,9 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
   std::lock_guard<rw_spinlock> lock(component_lock_);
 
   // Shutdown the RocksDB instance for this tablet, if present.
-  // Destroy intents and regular DBs in reverse order to their creation.
+  // Destruct intents DB and regular DB in-memory objects in reverse order to their creation.
   // Also it makes sure that regular DB is alive during flush filter of intents db.
-  WARN_NOT_OK(CompleteShutdownRocksDBs(Destroy::kFalse, &(*op_pauses)),
-              "Failed to reset rocksdb during shutdown");
+  CompleteShutdownRocksDBs(op_pauses);
 
   {
     std::lock_guard<std::mutex> lock(full_compaction_token_mutex_);
@@ -1098,7 +1096,7 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
 
   state_ = kShutdown;
 
-  for (auto* op_pause : op_pauses->AsArray()) {
+  for (auto* op_pause : op_pauses.AsArray()) {
     // Release the mutex that prevents snapshot restore / truncate operations from running. Such
     // operations are no longer possible because the tablet has shut down. When we start the
     // "read/write operation pause", we incremented the "exclusive operation" counter. This will
@@ -1109,34 +1107,19 @@ void Tablet::CompleteShutdown(DisableFlushOnShutdown disable_flush_on_shutdown) 
   }
 }
 
-Status ResetRocksDB(
-    bool destroy, const rocksdb::Options& options, std::unique_ptr<rocksdb::DB>* db) {
-  if (!*db) {
-    return Status::OK();
-  }
-
-  auto dir = (**db).GetName();
-  db->reset();
-  if (!destroy) {
-    return Status::OK();
-  }
-
-  return rocksdb::DestroyDB(dir, options);
-}
-
-Result<TabletScopedRWOperationPauses> Tablet::StartShutdownRocksDBs(
+TabletScopedRWOperationPauses Tablet::StartShutdownRocksDBs(
     DisableFlushOnShutdown disable_flush_on_shutdown, Stop stop) {
   TabletScopedRWOperationPauses op_pauses;
 
-  auto pause = [this, stop](const Abortable abortable) -> Result<ScopedRWOperationPause> {
+  auto pause = [this, stop](const Abortable abortable) -> ScopedRWOperationPause {
     auto op_pause = PauseReadWriteOperations(abortable, stop);
     if (!op_pause.ok()) {
-      return op_pause.status().CloneAndPrepend("Failed to stop read/write operations: ");
+      LOG(FATAL) << "Failed to stop read/write operations: " << op_pause.status();
     }
-    return std::move(op_pause);
+    return op_pause;
   };
 
-  op_pauses.non_abortable = VERIFY_RESULT(pause(Abortable::kFalse));
+  op_pauses.non_abortable = pause(Abortable::kFalse);
 
   bool expected = false;
   // If shutdown has been already requested, we still might need to wait for all pending read/write
@@ -1150,30 +1133,31 @@ Result<TabletScopedRWOperationPauses> Tablet::StartShutdownRocksDBs(
     }
   }
 
-  op_pauses.abortable = VERIFY_RESULT(pause(Abortable::kTrue));
+  // TODO(#16864): Abort pending read operations in case of table drop/truncate.
+
+  op_pauses.abortable = pause(Abortable::kTrue);
 
   return op_pauses;
 }
 
-Status Tablet::CompleteShutdownRocksDBs(
-    Destroy destroy, TabletScopedRWOperationPauses* ops_pauses) {
-  // We need non-null ops_pauses just to guarantee that PauseReadWriteOperations has been called.
-  RSTATUS_DCHECK(
-      ops_pauses != nullptr, InvalidArgument,
-      "ops_pauses could not be null, StartRocksDbShutdown should be called before "
-      "ShutdownRocksDBs.");
+std::vector<std::string> Tablet::CompleteShutdownRocksDBs(
+    const TabletScopedRWOperationPauses& ops_pauses) {
+  // We need ops_pauses just to guarantee that PauseReadWriteOperations has been called.
 
   if (intents_db_) {
     intents_db_->ListenFilesChanged(nullptr);
   }
 
   rocksdb::Options rocksdb_options;
-  if (destroy) {
-    InitRocksDBOptions(&rocksdb_options, LogPrefix());
+
+  std::vector<std::string> db_paths;
+  for (auto* db_uniq_ptr : {&intents_db_, &regular_db_}) {
+    if (*db_uniq_ptr) {
+      db_paths.push_back((*db_uniq_ptr)->GetName());
+      db_uniq_ptr->reset();
+    }
   }
 
-  Status intents_status = ResetRocksDB(destroy, rocksdb_options, &intents_db_);
-  Status regular_status = ResetRocksDB(destroy, rocksdb_options, &regular_db_);
   key_bounds_ = docdb::KeyBounds();
   // Reset rocksdb_shutdown_requested_ to the initial state like RocksDBs were never opened,
   // so we don't have to reset it on RocksDB open (we potentially can have several places in the
@@ -1181,7 +1165,23 @@ Status Tablet::CompleteShutdownRocksDBs(
   // Tablet::ShutdownRocksDBs).
   rocksdb_shutdown_requested_ = false;
 
-  return regular_status.ok() ? intents_status : regular_status;
+  return db_paths;
+}
+
+Status Tablet::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
+  rocksdb::Options rocksdb_options;
+  InitRocksDBOptions(&rocksdb_options, LogPrefix());
+
+  Status status;
+  for (const auto& db_path : db_paths) {
+    // Attempt to delete each RocksDB and return the first error encountered.
+    const auto s = rocksdb::DestroyDB(db_path, rocksdb_options);
+    ERROR_NOT_OK(s, "Failed to delete rocksdb:");
+    if (status.ok()) {
+      status = s;
+    }
+  }
+  return status;
 }
 
 Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRowIterator(
@@ -1240,6 +1240,7 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
 
 Status Tablet::ApplyRowOperations(
     WriteOperation* operation, AlreadyAppliedToRegularDB already_applied_to_regular_db) {
+  AtomicFlagSleepMs(&FLAGS_TEST_inject_sleep_before_applying_write_batch_ms);
   const auto& write_request =
       operation->consensus_round() && operation->consensus_round()->replicate_msg()
           // Online case.
@@ -2183,7 +2184,7 @@ Status Tablet::AlterWalRetentionSecs(ChangeMetadataOperation* operation) {
     // still need to persist the op id corresponding to this operation
     // so as to avoid replaying during tablet bootstrap.
     // We don't update if the passed op id is invalid. One case when this will happen:
-    // If we are replaying during tablet bootstrap and last_change_metadata_op_id
+    // If we are replaying during tablet bootstrap and last_flushed_change_metadata_op_id
     // was invalid - For e.g. after upgrade when new code reads old data.
     // In such a case, we ensure that we are no worse than old code's behavior
     // which essentially implies that we mute this new logic for the entire
@@ -3029,9 +3030,7 @@ ScopedRWOperationPause Tablet::PauseReadWriteOperations(
                      Substitute("$0Waiting for pending ops to complete", LogPrefix())) {
     return ScopedRWOperationPause(
         abortable ? &pending_abortable_op_counter_ : &pending_non_abortable_op_counter_,
-        CoarseMonoClock::Now() +
-            MonoDelta::FromMilliseconds(FLAGS_tablet_rocksdb_ops_quiet_down_timeout_ms),
-        stop);
+        CoarseTimePoint::max(), stop);
   }
   FATAL_ERROR("Unreachable code -- the previous block must always return");
 }
@@ -3112,7 +3111,7 @@ Status Tablet::Truncate(TruncateOperation* operation) {
     return Status::OK();
   }
 
-  auto op_pauses = VERIFY_RESULT(StartShutdownRocksDBs(DisableFlushOnShutdown::kTrue));
+  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown::kTrue);
 
   // Check if tablet is in shutdown mode.
   if (IsShutdownRequested()) {
@@ -3122,7 +3121,7 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   const rocksdb::SequenceNumber sequence_number = regular_db_->GetLatestSequenceNumber();
   const string db_dir = regular_db_->GetName();
 
-  auto s = CompleteShutdownRocksDBs(Destroy::kTrue, &op_pauses);
+  auto s = DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses));
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to clean up db dir " << db_dir << ": " << s;
     return STATUS(IllegalState, "Failed to clean up db dir", s.ToString());
@@ -3149,9 +3148,10 @@ Status Tablet::Truncate(TruncateOperation* operation) {
   LOG_WITH_PREFIX(INFO) << "Created new db for truncated tablet";
   LOG_WITH_PREFIX(INFO) << "Sequence numbers: old=" << sequence_number
                         << ", new=" << regular_db_->GetLatestSequenceNumber();
+
   // Ensure that op_pauses stays in scope throughout this function.
   for (auto* op_pause : op_pauses.AsArray()) {
-    DFATAL_OR_RETURN_NOT_OK(op_pause->status());
+    LOG_IF(FATAL, !op_pause->ok()) << op_pause->status();
   }
   return DoEnableCompactions();
 }

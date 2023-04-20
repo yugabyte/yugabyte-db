@@ -48,7 +48,7 @@ The [INSERT](../../../../api/ysql/the-sql-language/statements/dml_insert/) state
 For example, if concurrent transactions are inserting the same row, this could cause a UniqueViolation. Instead of letting the server throw an error and handling it in code, you could just ask the server to ignore it as follows:
 
 ```plpgsql
-INSERT INTO txndemo VALUES (1,10) DO NOTHING;
+INSERT INTO txndemo VALUES (1,10) ON CONFLICT DO NOTHING;
 ```
 
 With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#conflict-action-1), the server does not throw an error, resulting in one less round trip between the application and the server.
@@ -56,8 +56,9 @@ With [DO NOTHING](../../../../api/ysql/the-sql-language/statements/dml_insert/#c
 You can also simulate an `upsert` by using `DO UPDATE SET` instead of doing a `INSERT`, fail, and `UPDATE`, as follows:
 
 ```plpgsql
-INSERT INTO txndemo VALUES (1,10) 
-        DO UPDATE SET v=10 WHERE k=1;
+INSERT INTO txndemo VALUES (1,10)
+        ON CONFLICT (k)
+        DO UPDATE SET v=10;
 ```
 
 Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.

@@ -58,20 +58,15 @@ upload_package() {
     return
   fi
 
-  # Some systems have "shasum", and some have "sha1sum". Not clear if this maps one to one to
-  # the Linux / macOS division.
-  local sha_program=shasum
-  if ! which "$sha_program" &>/dev/null; then
-    sha_program=sha1sum
+  # Macs have shasum perl script while linux hosts with have sha<precision>sum binaries
+  local sha
+  if is_mac; then
+    sha=$( shasum -a 256 <"$YB_PACKAGE_PATH" | awk '{print $1}' )
+  else
+    sha=$( sha256sum <"$YB_PACKAGE_PATH" | awk '{print $1}' )
   fi
-  local sha=$( "$sha_program" <"$YB_PACKAGE_PATH" | awk '{print $1}' )
-  if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
-    log "Failed to compute SHA sum of '$YB_PACKAGE_PATH', got '$sha' (expected 40 hex digits)."
-    return
-  fi
-
-  if [[ ! -f ~/.s3cfg ]]; then
-    log "$HOME/.s3cfg not found, cannot upload package"
+  if [[ ! $sha =~ ^[0-9a-f]{64}$ ]]; then
+    log "Failed to compute SHA sum of '$YB_PACKAGE_PATH', got '$sha' (expected 64 hex digits)."
     return
   fi
 
@@ -102,8 +97,12 @@ upload_package() {
   fi
 
   package_upload_skipped=false
+  upload_cmd="aws s3 sync --acl bucket-owner-full-control --exclude='*'"
   log "Uploading package '$YB_PACKAGE_PATH' to $YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
-  if ( set -x; s3cmd put "$YB_PACKAGE_PATH"{.md5,.sha,} "$YB_SNAPSHOT_PACKAGE_UPLOAD_URL" ); then
+  if ( set -x; $upload_cmd \
+                --include="$YB_PACKAGE_PATH*" \
+                $(dirname "$YB_PACKAGE_PATH") \
+                "$YB_SNAPSHOT_PACKAGE_UPLOAD_URL" ); then
     log "Uploaded package '$YB_PACKAGE_PATH' to $YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
     package_uploaded=true
   else

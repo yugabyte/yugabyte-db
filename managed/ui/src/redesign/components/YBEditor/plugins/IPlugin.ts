@@ -17,7 +17,7 @@ export interface SlateRenderElementProps extends RenderElementProps {
 }
 export interface SlateRenderLeafProps extends RenderLeafProps {
   text: CustomText;
-  leaf: CustomText & { JSON?: { decoration: Token['type'] } };
+  leaf: CustomText;
 }
 
 export type IYBSlatePluginInputProps = {

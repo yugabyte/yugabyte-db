@@ -8,6 +8,11 @@ export type CustomText = {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  decoration?: {
+    [key: string]: {
+      type: string;
+    }
+  }
   text: string;
 };
 

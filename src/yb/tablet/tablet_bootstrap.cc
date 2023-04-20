@@ -1489,12 +1489,13 @@ class TabletBootstrap {
       data_.retryable_requests->Clock().Adjust(last_entry_time);
     }
 
-    // Update last_change_metadata_op_id if invalid so that next tablet bootstrap
+    // Update last_flushed_change_metadata_op_id if invalid so that next tablet bootstrap
     // takes advantage of the feature. After bootstrap, when orphaned replicates are applied,
     // we are sure that we are no worse than existing since their "Apply" goes
     // through the non-tablet-bootstrap change metadata route which is the same before/after.
     if (!tablet_->metadata()->LastFlushedChangeMetadataOperationOpId().valid()) {
-      LOG(INFO) << "Updating last_change_metadata_op_id to " << replay_state_->committed_op_id
+      LOG(INFO) << "Updating last_flushed_change_metadata_op_id to "
+                << replay_state_->committed_op_id
                 << " so that subsequent bootstraps can start leveraging it";
       tablet_->metadata()->SetLastAppliedChangeMetadataOperationOpId(
           replay_state_->committed_op_id);
@@ -1543,7 +1544,7 @@ class TabletBootstrap {
   }
 
   Status PlayChangeMetadataRequestDeprecated(consensus::LWReplicateMsg* replicate_msg) {
-    LOG(INFO) << "last_change_metadata_op_id not set, replaying change metadata request"
+    LOG(INFO) << "last_flushed_change_metadata_op_id not set, replaying change metadata request"
               << " as before D19063";
     auto* request = replicate_msg->mutable_change_metadata_request();
 
@@ -1566,7 +1567,7 @@ class TabletBootstrap {
     RETURN_NOT_OK(tablet_->CreatePreparedChangeMetadata(
         &operation, request->has_schema() ? &schema : nullptr, IsLeaderSide::kTrue));
     // Set invalid op id for the operation. This ensures that the operation(s)
-    // replayed below do not update the last_change_metadata_op_id thereby keeping
+    // replayed below do not update the last_applied_change_metadata_op_id thereby keeping
     // the old behavior for subsequent change metadata operation for this entire
     // round of tablet bootstrap.
     operation.set_op_id(OpId::Invalid());
@@ -1591,13 +1592,13 @@ class TabletBootstrap {
 
   Status PlayChangeMetadataRequest(consensus::LWReplicateMsg* replicate_msg) {
     // This is to handle the upgrade case when new code runs against old data.
-    // In such cases, last_change_metadata_op_id won't be set and we want
+    // In such cases, last_flushed_change_metadata_op_id won't be set and we want
     // to ensure that we are no worse than the behavior as of the older version.
     if (!meta_->LastFlushedChangeMetadataOperationOpId().valid()) {
       return PlayChangeMetadataRequestDeprecated(replicate_msg);
     }
 
-    // If last_change_metadata_op_id is valid then new code gets executed
+    // If last_flushed_change_metadata_op_id is valid then new code gets executed
     // wherein we replay everything.
     const auto op_id = OpId::FromPB(replicate_msg->id());
 

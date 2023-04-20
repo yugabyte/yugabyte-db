@@ -149,7 +149,7 @@ YCQL is compatible with v3.4 of Apache Cassandra QL (CQL). Following questions h
 1. Lightweight transactions for compare-and-set operations, such as incrementing integers, are unnecessary because YCQL achieves single-row linearizability by default.
 1. Tunable write consistency is disallowed in YCQL because writes are committed at quorum using Raft replication protocol.
 
-For additional information, see [The Truth Behind Tunable Consistency, Lightweight Transactions, and Secondary Indexes](https://blog.yugabyte.com/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/).
+For additional information, see [The Truth Behind Tunable Consistency, Lightweight Transactions, and Secondary Indexes](https://www.yugabyte.com/blog/apache-cassandra-lightweight-transactions-secondary-indexes-tunable-consistency/).
 
 ### Do INSERTs do "upserts" by default? How do I insert data only if it is absent?
 

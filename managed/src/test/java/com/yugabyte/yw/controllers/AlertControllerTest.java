@@ -1733,8 +1733,10 @@ public class AlertControllerTest extends FakeDBApplication {
                     .setUuids(ImmutableSet.of(universe.getUniverseUUID())));
           }
           alertConfigurationService.save(configuration);
-          Alert testAlert = alertController.createTestAlert(customer, configuration);
+          Alert testAlert = alertController.createTestAlert(customer, configuration, true);
           assertThat(testAlert.getMessage(), CoreMatchers.equalTo("[TEST ALERT!!!] " + message));
+          testAlert = alertController.createTestAlert(customer, configuration, false);
+          assertThat(testAlert.getMessage(), CoreMatchers.equalTo(message));
         });
   }
 

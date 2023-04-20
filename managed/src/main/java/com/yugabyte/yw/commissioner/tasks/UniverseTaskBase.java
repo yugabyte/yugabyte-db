@@ -94,6 +94,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
+import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.nodes.UpdateNodeProcess;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteBootstrapIds;
@@ -870,6 +871,20 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       task.initialize(params);
       subTaskGroup.addSubTask(task);
     }
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Create a task to check auto flags before XCluster replication. */
+  public SubTaskGroup createCheckXUniverseAutoFlag(
+      Universe sourceUniverse, Universe targetUniverse) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckXUniverseAutoFlag");
+    CheckXUniverseAutoFlags task = createTask(CheckXUniverseAutoFlags.class);
+    CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
+    params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
+    params.targetUniverseUUID = targetUniverse.getUniverseUUID();
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

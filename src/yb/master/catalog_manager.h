@@ -1340,6 +1340,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status GetCompactionStatus(
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) override;
 
+  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;

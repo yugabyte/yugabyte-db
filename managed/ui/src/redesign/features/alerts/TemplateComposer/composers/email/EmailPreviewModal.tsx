@@ -173,6 +173,7 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
       overrideHeight="540px"
       size="lg"
       titleSeparator
+      enableBackdropDismiss
     >
       <Box className={classes.defaultPadding}>
         <Typography variant="body2">
@@ -180,6 +181,7 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
         </Typography>
         <YBSelect
           className={classes.select}
+          data-testid="email-preview-select-config"
           onChange={(e) => {
             previewTemplate(e.target.value);
           }}
@@ -196,7 +198,11 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
             <em>{t('alertCustomTemplates.alertVariablesPreviewModal.selectPlaceholder')}</em>
           </MenuItem>
           {Object.keys(alertConfigurationsMap).map((alertConfigUuid) => (
-            <MenuItem key={alertConfigurationsMap[alertConfigUuid]} value={alertConfigUuid}>
+            <MenuItem
+              data-testid={`alert-config-${alertConfigurationsMap[alertConfigUuid]}`}
+              key={alertConfigurationsMap[alertConfigUuid]}
+              value={alertConfigUuid}
+            >
               {alertConfigurationsMap[alertConfigUuid]}
             </MenuItem>
           ))}
@@ -212,7 +218,7 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
           )}
         >
           <YBEditor
-            editorProps={{ readOnly: true }}
+            editorProps={{ readOnly: true, 'data-testid': 'preview-email-subject-editor' }}
             loadPlugins={{
               alertVariablesPlugin: false,
               singleLine: true,
@@ -226,7 +232,11 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
         <Typography variant="body1">{t('alertCustomTemplates.composer.content')}</Typography>
         <Box className={clsx(commonStyles.editorBorder, classes.bodyEditor)}>
           <YBEditor
-            editorProps={{ readOnly: true, style: { height: '180px' } }}
+            editorProps={{
+              readOnly: true,
+              style: { height: '180px' },
+              'data-testid': 'preview-email-body-editor'
+            }}
             loadPlugins={{ alertVariablesPlugin: true }}
             initialValue={bodyValue}
             ref={bodyEditorRef}

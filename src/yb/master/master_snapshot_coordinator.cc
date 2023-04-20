@@ -784,6 +784,23 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
+  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+    HybridTime min_last_snapshot_ht = HybridTime::kMax;
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (const auto& schedule : schedules_) {
+      if (schedule->deleted()) {
+        continue;
+      }
+      auto complete_time = LastSnapshotTime(schedule->id());
+      // No snapshot yet for the schedule so retain everything.
+      if (!complete_time) {
+        return HybridTime::kMin;
+      }
+      min_last_snapshot_ht.MakeAtMost(complete_time);
+    }
+    return min_last_snapshot_ht;
+  }
+
   Status VerifyRestoration(RestorationState* restoration) REQUIRES(mutex_) {
     auto schedule_result = FindSnapshotSchedule(restoration->schedule_id());
     RETURN_NOT_OK_PREPEND(schedule_result, "Snapshot schedule not found.");
@@ -2091,6 +2108,11 @@ Status MasterSnapshotCoordinator::ApplyWritePair(const Slice& key, const Slice& 
 
 Status MasterSnapshotCoordinator::FillHeartbeatResponse(TSHeartbeatResponsePB* resp) {
   return impl_->FillHeartbeatResponse(resp);
+}
+
+HybridTime MasterSnapshotCoordinator::AllowedHistoryCutoffProvider(
+    tablet::RaftGroupMetadata* metadata) {
+  return impl_->AllowedHistoryCutoffProvider(metadata);
 }
 
 Result<SnapshotSchedulesToObjectIdsMap>

@@ -977,7 +977,11 @@ Status RestartAllMasters(ExternalMiniCluster* cluster);
 
 Status CompactTablets(
     ExternalMiniCluster* cluster,
-    const yb::MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
+    const MonoDelta& timeout = MonoDelta::FromSeconds(60* kTimeMultiplier));
+
+Status FlushAndCompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
+
+Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout);
 
 void StartSecure(
   std::unique_ptr<ExternalMiniCluster>* cluster,

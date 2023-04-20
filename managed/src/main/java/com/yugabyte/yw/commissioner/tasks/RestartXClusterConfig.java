@@ -36,6 +36,9 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         // Lock the target universe.
         lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
 
+        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
+
         // Set table type for old xCluster configs.
         xClusterConfig.updateTableType(taskParams().getTableInfoList());
 

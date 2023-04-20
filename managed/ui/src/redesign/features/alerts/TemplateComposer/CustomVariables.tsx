@@ -152,6 +152,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
       startIcon={<Add />}
       onClick={() => setShowCreateCustomVariableModal(true)}
       className={classes.createCustomVariableBut}
+      data-testid="create_custom_variable"
     >
       {t('alertCustomTemplates.customVariables.createNewVariableButton')}
     </YBButton>
@@ -207,7 +208,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
             }
           ]}
         >
-          <MoreHoriz className={commonStyles.clickable} />
+          <MoreHoriz className={commonStyles.clickable} data-testid={`alert-variable-${variable.name}`}/>
         </MoreOptionsMenu>
       </Grid>
     </Grid>
@@ -228,7 +229,7 @@ const CustomVariablesEditor = (props: CustomVariablesEditorProps) => {
               }
             ]}
           >
-            <IconButton className={classes.moreOptionsButton}>
+            <IconButton className={classes.moreOptionsButton} data-testid="assign-variable-button">
               <MoreHoriz />
             </IconButton>
           </MoreOptionsMenu>
@@ -327,6 +328,7 @@ const MoreOptionsMenu: FC<MoreOptionsProps> = ({ children, menuOptions }) => {
         {menuOptions.map((m) => (
           <MenuItem
             key={m.text}
+            data-testid={`variable-${m.text}`}
             onClick={() => {
               handleClose();
               m.callback();

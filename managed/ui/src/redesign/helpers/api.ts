@@ -81,6 +81,7 @@ export const universeQueryKey = {
 
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
+  globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
   customerScope: (customerUUID: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUUID]
 };
 
@@ -106,8 +107,10 @@ class ApiService {
     return axios.get<HostInfo>(requestUrl).then((response) => response.data);
   };
 
-  fetchRuntimeConfigs = (scope?: string, includeInherited = false) => {
-    const configScope = scope || DEFAULT_RUNTIME_GLOBAL_SCOPE;
+  fetchRuntimeConfigs = (
+    configScope: string = DEFAULT_RUNTIME_GLOBAL_SCOPE,
+    includeInherited = false
+  ) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/runtime_config/${configScope}?includeInherited=${includeInherited}`;
     return axios.get(requestUrl).then((response) => response.data);
   };

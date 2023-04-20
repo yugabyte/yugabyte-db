@@ -16,6 +16,8 @@ import org.apache.commons.lang3.StringUtils;
 
 public abstract class ProviderFieldsValidator extends BaseBeanValidator {
 
+  private static final long PROCESS_WAIT_TIMEOUT_MILLIS = 1000L;
+
   private final RuntimeConfGetter runtimeConfGetter;
 
   @Inject
@@ -36,7 +38,7 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
         String ntpServer = ntpServers.get(i);
         if (!StringUtils.isEmpty(ntpServer)) {
           Process process = Runtime.getRuntime().exec("ping -c 1 " + ntpServer);
-          process.waitFor(1000L, TimeUnit.MILLISECONDS);
+          process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
           if (process.exitValue() != 0) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);

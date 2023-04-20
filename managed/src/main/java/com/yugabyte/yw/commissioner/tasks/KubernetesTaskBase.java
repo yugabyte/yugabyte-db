@@ -593,7 +593,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
     } else if (serverType.equals(ServerType.TSERVER)) {
       createWaitForServersTasks(tserverNodes, ServerType.TSERVER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    } else if (serverType.equals(ServerType.TSERVER)) {
+    } else if (serverType.equals(ServerType.MASTER)) {
       createWaitForServersTasks(masterNodes, ServerType.MASTER)
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }

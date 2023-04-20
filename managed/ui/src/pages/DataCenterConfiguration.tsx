@@ -25,7 +25,7 @@ export const DataCenterConfiguration = (props: any) => {
   }
   if (customerRuntimeConfigQuery.isError) {
     return (
-      <YBErrorIndicator message="Error loading runtime configurations for current customer." />
+      <YBErrorIndicator message="Error fetching runtime configurations for current customer." />
     );
   }
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];

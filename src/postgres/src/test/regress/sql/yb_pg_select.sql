@@ -92,6 +92,10 @@ RESET enable_seqscan;
 RESET enable_bitmapscan;
 RESET enable_sort;
 
+
+SELECT two, stringu1, ten, string4
+   INTO TABLE tmp
+   FROM onek;
 --
 -- Test ORDER BY options
 --

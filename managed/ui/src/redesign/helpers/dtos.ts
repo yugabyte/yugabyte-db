@@ -25,7 +25,13 @@ export interface SuggestedKubernetesConfig {
     KUBECONFIG_IMAGE_REGISTRY: string;
     KUBECONFIG_PROVIDER: string;
   };
-  regionList: { code: string; zoneList: { config: { STORAGE_CLASS: string }; name: string }[] }[];
+  regionList: {
+    code: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    zoneList: { config: { STORAGE_CLASS: string }; name: string }[];
+  }[];
   name: string;
 }
 

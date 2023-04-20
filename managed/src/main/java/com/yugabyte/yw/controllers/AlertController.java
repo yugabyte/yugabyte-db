@@ -412,7 +412,7 @@ public class AlertController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
     AlertConfiguration configuration = alertConfigurationService.getOrBadRequest(configurationUUID);
-    Alert alert = createTestAlert(customer, configuration);
+    Alert alert = createTestAlert(customer, configuration, true);
     SendNotificationResult result = alertManager.sendNotification(alert);
     if (result.getStatus() != SendNotificationStatus.SUCCEEDED) {
       throw new PlatformServiceException(BAD_REQUEST, result.getMessage());
@@ -768,7 +768,7 @@ public class AlertController extends AuthenticatedController {
         alertConfigurationService.getOrBadRequest(previewFormData.getAlertConfigUuid());
 
     AlertChannelTemplates channelTemplates = previewFormData.getAlertChannelTemplates();
-    Alert testAlert = createTestAlert(customer, alertConfiguration);
+    Alert testAlert = createTestAlert(customer, alertConfiguration, false);
     AlertChannel channel = new AlertChannel().setName("Channel name");
     List<AlertTemplateVariable> variables = alertTemplateVariableService.list(customerUUID);
     AlertChannelTemplatesExt templatesExt =
@@ -861,7 +861,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @VisibleForTesting
-  Alert createTestAlert(Customer customer, AlertConfiguration configuration) {
+  Alert createTestAlert(
+      Customer customer, AlertConfiguration configuration, boolean testAlertPrefix) {
     AlertDefinition definition =
         alertDefinitionService
             .list(
@@ -871,7 +872,16 @@ public class AlertController extends AuthenticatedController {
             .orElse(null);
     if (definition == null) {
       if (configuration.getTargetType() == AlertConfiguration.TargetType.UNIVERSE) {
+        Universe universe = new Universe();
+        universe.setUniverseUUID(UUID.randomUUID());
+        UniverseDefinitionTaskParams details = new UniverseDefinitionTaskParams();
+        details.nodePrefix = "node_prefix";
+        universe.setUniverseDetails(details);
         definition = new AlertDefinition();
+        definition.setCustomerUUID(customer.getUuid());
+        definition.setConfigurationUUID(configuration.getUuid());
+        definition.setQuery(configuration.getTemplate().buildTemplate(customer, universe));
+        definition.generateUUID();
         definition.setLabels(
             MetricLabelsBuilder.create()
                 .appendSource(getOrCreateUniverseForTestAlert(customer))
@@ -915,11 +925,12 @@ public class AlertController extends AuthenticatedController {
     if (StringUtils.isNotEmpty(sourceUuid)) {
       alert.setSourceUUID(UUID.fromString(sourceUuid));
     }
-    alert.setMessage(buildTestAlertMessage(configuration, alert));
+    alert.setMessage(buildTestAlertMessage(configuration, alert, testAlertPrefix));
     return alert;
   }
 
-  private String buildTestAlertMessage(AlertConfiguration configuration, Alert alert) {
+  private String buildTestAlertMessage(
+      AlertConfiguration configuration, Alert alert, boolean testAlertPrefix) {
     AlertTemplate template = configuration.getTemplate();
     TestAlertSettings settings = template.getTestAlertSettings();
     if (settings.getCustomMessage() != null) {
@@ -932,7 +943,7 @@ public class AlertController extends AuthenticatedController {
     TestAlertTemplateSubstitutor testAlertTemplateSubstitutor =
         new TestAlertTemplateSubstitutor(alert, configuration);
     message = testAlertTemplateSubstitutor.replace(message);
-    return "[TEST ALERT!!!] " + message;
+    return testAlertPrefix ? "[TEST ALERT!!!] " + message : message;
   }
 
   private Universe getOrCreateUniverseForTestAlert(Customer customer) {

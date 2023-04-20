@@ -17,6 +17,8 @@ COPY onek FROM '@abs_builddir@/results/onek.data';
 
 COPY tenk1 FROM '@abs_srcdir@/data/tenk.data';
 
+COPY person FROM '@abs_srcdir@/data/person.data';
+
 COPY test_tsvector FROM '@abs_srcdir@/data/tsearch.data';
 
 COPY testjsonb FROM '@abs_srcdir@/data/jsonb.data';
@@ -29,3 +31,4 @@ COPY array_index_op_test FROM '@abs_srcdir@/data/array.data';
 -- in later tests
 
 ANALYZE tenk1;
+ANALYZE person;

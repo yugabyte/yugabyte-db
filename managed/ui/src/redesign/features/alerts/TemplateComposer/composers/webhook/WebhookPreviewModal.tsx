@@ -116,6 +116,7 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
       overrideHeight="540px"
       size="lg"
       titleSeparator
+      enableBackdropDismiss
     >
       <Box className={classes.defaultPadding}>
         <Typography variant="body2">
@@ -123,6 +124,7 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
         </Typography>
         <YBSelect
           className={classes.select}
+          data-testid="webhook-preview-select-config"
           onChange={(e) => {
             previewTemplate(e.target.value);
           }}
@@ -139,7 +141,11 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
             <em>{t('alertCustomTemplates.alertVariablesPreviewModal.selectPlaceholder')}</em>
           </MenuItem>
           {Object.keys(alertConfigurationsMap).map((alertConfigUuid) => (
-            <MenuItem key={alertConfigurationsMap[alertConfigUuid]} value={alertConfigUuid}>
+            <MenuItem
+              data-testid={`alert-config-${alertConfigurationsMap[alertConfigUuid]}`}
+              key={alertConfigurationsMap[alertConfigUuid]}
+              value={alertConfigUuid}
+            >
               {alertConfigurationsMap[alertConfigUuid]}
             </MenuItem>
           ))}
@@ -149,7 +155,11 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
         <Typography variant="body1">{t('alertCustomTemplates.composer.content')}</Typography>
         <Box className={clsx(commonStyles.editorBorder, classes.bodyEditor)}>
           <YBEditor
-            editorProps={{ readOnly: true, style: { height: '260px' } }}
+            editorProps={{
+              readOnly: true,
+              style: { height: '260px' },
+              'data-testid': 'preview-webhook-subject-editor'
+            }}
             loadPlugins={{ alertVariablesPlugin: false, jsonPlugin: true }}
             initialValue={bodyValue}
             ref={bodyEditorRef}

@@ -29,6 +29,7 @@ export const DefaultJSONElement: JSONCodeBlock = {
   children: [{ text: '' }]
 };
 
+export const ALERT_VARIABLE_REGEX = /{{\s*\w+\s*}}/g;
 /**
  * common function which can be used to return for non enabled plugins.
  */

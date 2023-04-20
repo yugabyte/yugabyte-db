@@ -1608,7 +1608,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     ASSERT_EQ(res, 0);
   }
 
-  // Subsequent bootstraps should have the last_change_metadata_op_id set but
+  // Subsequent bootstraps should have the last_flushed_change_metadata_op_id set but
   // they should also not crash.
   if (test_backward_compatibility) {
     ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "false"));
@@ -2405,6 +2405,10 @@ TEST_F_EX(
 namespace {
 
 class PgLibPqTestRF1: public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back("--replication_factor=1");
+  }
+
   int GetNumMasters() const override {
     return 1;
   }
@@ -3874,6 +3878,60 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
+}
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(YbTableProperties), PgLibPqTestRF1) {
+  const string kDatabaseName = "yugabyte";
+  const string kTableName ="test";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute(
+    "CREATE TABLE test (k int, v int, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute(
+    "INSERT INTO test SELECT i, i FROM generate_series(1,100) AS i"));
+  const string query1 =
+    "SELECT * FROM yb_table_properties('test'::regclass)";
+  auto row_str = ASSERT_RESULT(conn.FetchRowAsString(query1));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "1, 0, 0, NULL, NULL");
+  const string query2 =
+    "SELECT * FROM yb_get_range_split_clause('test'::regclass)";
+  row_str = ASSERT_RESULT(conn.FetchRowAsString(query2));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "");
+  const TabletId tablet_to_split = ASSERT_RESULT(GetSingleTabletId(kTableName));
+  LOG(INFO) << "tablet_to_split: " << tablet_to_split;
+  auto output = ASSERT_RESULT(
+      RunYbAdminCommand("flush_table ysql.yugabyte test"));
+  LOG(INFO) << "flush_table command output: " << output;
+
+  output = ASSERT_RESULT(
+      RunYbAdminCommand(Format("split_tablet $0", tablet_to_split)));
+  LOG(INFO) << "split_tablet command output: " << output;
+
+  // Wait for the tablet split to complete.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  do {
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  } while (tablets.size() < 2);
+  ASSERT_EQ(tablets.size(), 2);
+
+  // Execute simple command to update table's partitioning at pggate side.
+  // The split_tablet command does not increment catalog version or table
+  // schema version. It increments partition_list_version.
+  auto res = CHECK_RESULT(
+      conn.FetchFormat("SELECT count(*) FROM $0", kTableName));
+
+  row_str = ASSERT_RESULT(conn.FetchRowAsString(query1));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "2, 0, 0, NULL, NULL");
+
+  row_str = ASSERT_RESULT(conn.FetchRowAsString(query2));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "SPLIT AT VALUES ((49))");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(AggrSystemColumn)) {

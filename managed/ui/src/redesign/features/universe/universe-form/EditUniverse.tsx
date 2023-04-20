@@ -67,12 +67,16 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
     () => api.fetchUniverse(uuid),
     {
       onSuccess: async (resp) => {
-        initializeForm({
-          clusterType: ClusterType.PRIMARY,
-          mode: ClusterModes.EDIT,
-          universeConfigureTemplate: _.cloneDeep(resp.universeDetails)
-        });
         try {
+          const configureResponse = await api.universeConfigure({
+            ..._.cloneDeep(resp.universeDetails),
+            clusterOperation: ClusterModes.EDIT
+          });
+          initializeForm({
+            clusterType: ClusterType.PRIMARY,
+            mode: ClusterModes.EDIT,
+            universeConfigureTemplate: _.cloneDeep(configureResponse)
+          });
           //set Universe Resource Template
           const resourceResponse = await api.universeResource(_.cloneDeep(resp.universeDetails));
           setUniverseResourceTemplate(resourceResponse);

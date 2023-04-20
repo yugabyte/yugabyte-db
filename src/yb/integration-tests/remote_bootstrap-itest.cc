@@ -71,6 +71,8 @@
 #include "yb/util/tsan_util.h"
 #include "yb/util/flags.h"
 
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 using namespace std::literals;
 
 DEFINE_UNKNOWN_int32(test_delete_leader_num_iters, 3,
@@ -112,6 +114,14 @@ using yb::tablet::TabletDataState;
 
 class RemoteBootstrapITest : public CreateTableITestBase {
  public:
+  Result<pgwrapper::PGConn> ConnectToDB(
+      const std::string& dbname, bool simple_query_protocol = false) {
+    return pgwrapper::PGConnBuilder({.host = cluster_->pgsql_hostport(0).host(),
+                                     .port = cluster_->pgsql_hostport(0).port(),
+                                     .dbname = dbname})
+        .Connect(simple_query_protocol);
+  }
+
   void TearDown() override {
     client_.reset();
     if (HasFatalFailure()) {
@@ -142,7 +152,8 @@ class RemoteBootstrapITest : public CreateTableITestBase {
  protected:
   void StartCluster(const vector<string>& extra_tserver_flags = vector<string>(),
                     const vector<string>& extra_master_flags = vector<string>(),
-                    int num_tablet_servers = 3);
+                    int num_tablet_servers = 3,
+                    bool enable_ysql = false);
 
   void RejectRogueLeader(YBTableType table_type);
   void DeleteTabletDuringRemoteBootstrap(YBTableType table_type);
@@ -170,6 +181,8 @@ class RemoteBootstrapITest : public CreateTableITestBase {
   void BootstrapSourceCrashesWhileFetchingData();
 
   void ClientCrashesBeforeChangeRole(YBTableType table_type);
+
+  void RBSWithLazySuperblockFlush(int num_tables, int iterations);
 
   void LongBootstrapTestSetUpAndVerify(
       const vector<string>& tserver_flags = vector<string>(),
@@ -201,10 +214,12 @@ class RemoteBootstrapITest : public CreateTableITestBase {
 
 void RemoteBootstrapITest::StartCluster(const vector<string>& extra_tserver_flags,
                                         const vector<string>& extra_master_flags,
-                                        int num_tablet_servers) {
+                                        int num_tablet_servers,
+                                        bool enable_ysql) {
   ExternalMiniClusterOptions opts;
   opts.num_tablet_servers = num_tablet_servers;
   opts.extra_tserver_flags = extra_tserver_flags;
+  opts.enable_ysql = enable_ysql;
   opts.extra_tserver_flags.emplace_back("--remote_bootstrap_idle_timeout_ms=10000");
   opts.extra_tserver_flags.emplace_back("--never_fsync"); // fsync causes flakiness on EC2.
   if (IsTsan()) {
@@ -1789,6 +1804,135 @@ TEST_F(RemoteBootstrapITest, TestBootstrapSourceCrashesWhileFetchingData) {
 
 TEST_F(RemoteBootstrapITest, TestClientCrashesBeforeChangeRoleKeyValueTableType) {
   RemoteBootstrapITest::ClientCrashesBeforeChangeRole(YBTableType::YQL_TABLE_TYPE);
+}
+
+void RemoteBootstrapITest::RBSWithLazySuperblockFlush(int num_tables, int iterations) {
+  const string database = "test_db";
+  const string table_prefix = "foo";
+  const MonoDelta timeout = MonoDelta::FromSeconds(kTimeMultiplier * 10);
+
+  for (int itr = 0; itr < iterations; ++itr) {
+    // Create tables and rows.
+    auto conn = ASSERT_RESULT(ConnectToDB(std::string()));
+    ASSERT_OK(conn.ExecuteFormat("DROP DATABASE IF EXISTS $0", database));
+    ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", database));
+    auto db_conn = ASSERT_RESULT(ConnectToDB(database));
+    for (int i = 0; i < num_tables; ++i) {
+      ASSERT_OK(db_conn.ExecuteFormat("CREATE TABLE $0$1 (i int)", table_prefix, i));
+      ASSERT_OK(db_conn.Execute("BEGIN"));
+      ASSERT_OK(db_conn.ExecuteFormat("INSERT INTO $0$1 values (1)", table_prefix, i));
+      ASSERT_OK(db_conn.Execute("COMMIT"));
+    }
+    ASSERT_OK(cluster_->WaitForAllIntentsApplied(timeout));
+
+    // Flush rocksdb (but not superblock) so that superblock flush trails rocksdb.
+    auto client = ASSERT_RESULT(cluster_->CreateClient());
+    auto table_id =
+        ASSERT_RESULT(GetTableIdByTableName(client.get(), database, table_prefix + "0"));
+    ASSERT_OK(client->FlushTables(
+        {table_id}, /* add_indexes = */ false, 30, /* is_compaction = */ false));
+
+    const auto ts_idx_to_bootstrap = 2;
+
+    // Figure out the tablet id of the created tablet.
+    vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets;
+    TServerDetails* ts = ts_map_[cluster_->tablet_server(ts_idx_to_bootstrap)->uuid()].get();
+
+    // Wait for 4 tablets - 3 transactions related and 1 user created colocated tablet.
+    ASSERT_OK(WaitForNumTabletsOnTS(ts, /* count = */ 4, timeout, &tablets));
+    vector<string> user_tablet_ids;
+    for (auto tablet : tablets) {
+      if (tablet.tablet_status().table_name().ends_with("parent.tablename")) {
+        user_tablet_ids.push_back(tablets[0].tablet_status().tablet_id());
+      }
+    }
+
+    ASSERT_EQ(user_tablet_ids.size(), 1);
+    string tablet_id = user_tablet_ids[0];
+
+    // Delete tablet and shutdown one tserver.
+    auto* const ts_to_bootstrap = cluster_->tablet_server(ts_idx_to_bootstrap);
+    ASSERT_OK(WaitFor(
+        [&tablet_id, ts, timeout]() -> Result<bool> {
+          const auto s = itest::DeleteTablet(
+              ts, tablet_id, tablet::TABLET_DATA_TOMBSTONED, boost::none, timeout);
+          if (s.ok()) {
+            return true;
+          }
+          if (s.IsAlreadyPresent()) {
+            return false;
+          }
+          return s;
+        },
+        timeout, Format("Delete parent tablet on $0", ts_to_bootstrap->uuid())));
+
+    ts_to_bootstrap->Shutdown();
+    ASSERT_OK(cluster_->WaitForTSToCrash(ts_to_bootstrap));
+
+    // Restart tserver to trigger RBS.
+    LogWaiter log_waiter(ts_to_bootstrap, "Pausing due to flag TEST_pause_rbs_before_download_wal");
+    ASSERT_OK(ts_to_bootstrap->Restart(
+        ExternalMiniClusterOptions::kDefaultStartCqlProxy,
+        {std::make_pair("TEST_pause_rbs_before_download_wal", "true")}));
+    ASSERT_OK(log_waiter.WaitFor(timeout));
+
+    // Add more entries to WAL so that new segments are generated before downloading the WAL. New
+    // wal segments are generated as a result of the below operations because the wal size is
+    // very small (log_segment_size_bytes=1024).
+    for (int i = 0; i < num_tables; ++i) {
+      ASSERT_OK(db_conn.ExecuteFormat("CREATE TABLE $0$1 (i int)", table_prefix, num_tables + i));
+      ASSERT_OK(db_conn.Execute("BEGIN"));
+      ASSERT_OK(db_conn.ExecuteFormat("INSERT INTO $0$1 values (1)", table_prefix, num_tables + i));
+      ASSERT_OK(db_conn.Execute("COMMIT"));
+    }
+
+    // Resume WAL download.
+    ASSERT_OK(cluster_->SetFlag(ts_to_bootstrap, "TEST_pause_rbs_before_download_wal", "false"));
+
+    // Ensure the bootstrapped tablet becomes the leader.
+    ASSERT_OK(
+        cluster_->AddTServerToLeaderBlacklist(cluster_->master(), cluster_->tablet_server(0)));
+    ASSERT_OK(
+        cluster_->AddTServerToLeaderBlacklist(cluster_->master(), cluster_->tablet_server(1)));
+
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          return VERIFY_RESULT(cluster_->GetTabletLeaderIndex(tablet_id)) == ts_idx_to_bootstrap;
+        },
+        timeout, "Waiting for ts_idx_to_bootstrap to become leader"));
+
+    // Check persistence of previously inserted data.
+    auto new_conn = ASSERT_RESULT(ConnectToDB(database));
+    for (int i = 0; i < 2 * num_tables; ++i) {
+      auto res = ASSERT_RESULT(
+          new_conn.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
+      ASSERT_EQ(res, 1);
+    }
+  }
+}
+
+TEST_F(RemoteBootstrapITest, YB_DISABLE_TEST_IN_TSAN(TestRBSWithLazySuperblockFlush)) {
+  vector<string> ts_flags;
+  // Enable lazy superblock flush.
+  ts_flags.push_back("--lazily_flush_superblock=true");
+
+  // Minimize log retention.
+  ts_flags.push_back("--log_min_segments_to_retain=1");
+  ts_flags.push_back("--log_min_seconds_to_retain=0");
+
+  // Minimize log replay.
+  ts_flags.push_back("--retryable_request_timeout_secs=0");
+
+  // Reduce the WAL segment size so that the number of WAL segments are > 1.
+  ts_flags.push_back("--initial_log_segment_size_bytes=1024");
+  ts_flags.push_back("--log_segment_size_bytes=1024");
+
+  // Skip flushing superblock on table flush.
+  ts_flags.push_back("--TEST_skip_force_superblock_flush=true");
+
+  ASSERT_NO_FATALS(StartCluster(
+      ts_flags, /* master_flags = */ {}, /* num_tablet_servers = */ 3, /* enable_ysql = */ true));
+  RBSWithLazySuperblockFlush(/* num_tables */ 20, /* iterations */ 4);
 }
 
 }  // namespace yb

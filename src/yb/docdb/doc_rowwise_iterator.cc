@@ -44,6 +44,11 @@ using std::string;
 DEFINE_RUNTIME_bool(ysql_use_flat_doc_reader, true,
     "Use DocDBTableReader optimization that relies on having at most 1 subkey for YSQL.");
 
+DEFINE_test_flag(int32, fetch_next_delay_ms, 0,
+                 "Amount of time to delay inside FetchNext");
+
+using namespace std::chrono_literals;
+
 namespace yb {
 namespace docdb {
 
@@ -190,6 +195,13 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
     return false;
   }
 
+  if (PREDICT_FALSE(FLAGS_TEST_fetch_next_delay_ms > 0)) {
+    YB_LOG_EVERY_N_SECS(INFO, 1)
+        << "Delaying read for " << FLAGS_TEST_fetch_next_delay_ms << " ms"
+        << ", schema column names: " << AsString(doc_read_context_.schema.column_names());
+    SleepFor(FLAGS_TEST_fetch_next_delay_ms * 1ms);
+  }
+
   for (;;) {
     if (db_iter_->IsOutOfRecords() || (scan_choices_ && scan_choices_->FinishedWithScanChoices())) {
       Done();
@@ -230,7 +242,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
       return false;
     }
 
-    RETURN_NOT_OK(InitIterKey(key_data.key));
+    RETURN_NOT_OK(InitIterKey(key_data.key, dockv::IsFullRowValue(db_iter_->value())));
 
     if (has_bound_key_ && is_forward_scan_ == (row_key_.compare(bound_key_) >= 0)) {
       Done();

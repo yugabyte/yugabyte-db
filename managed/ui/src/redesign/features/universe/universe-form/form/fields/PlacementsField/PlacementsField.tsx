@@ -13,7 +13,8 @@ import {
   PROVIDER_FIELD,
   RESET_AZ_FIELD,
   USER_AZSELECTED_FIELD,
-  MASTER_PLACEMENT_FIELD
+  MASTER_PLACEMENT_FIELD,
+  TOTAL_NODES_FIELD
 } from '../../../utils/constants';
 //Icons
 import { CloseSharp } from '@material-ui/icons';
@@ -23,6 +24,7 @@ interface PlacementsFieldProps {
   disabled: boolean;
   isPrimary: boolean;
   isEditMode: boolean;
+  isGeoPartitionEnabled: boolean;
 }
 
 // Override MuiFormControl style to ensure flexDirection is inherited
@@ -58,7 +60,11 @@ const useStyles = makeStyles((theme) => ({
 export type PlacementWithId = Placement & { id: any };
 
 const DEFAULT_MIN_NUM_NODE = 1;
-export const PlacementsField = ({ isPrimary, isEditMode }: PlacementsFieldProps): ReactElement => {
+export const PlacementsField = ({
+  isPrimary,
+  isEditMode,
+  isGeoPartitionEnabled
+}: PlacementsFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const helperClasses = useStyles();
@@ -67,6 +73,7 @@ export const PlacementsField = ({ isPrimary, isEditMode }: PlacementsFieldProps)
   const replicationFactor = useWatch({ name: REPLICATION_FACTOR_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
+  const totalNodes = useWatch({ name: TOTAL_NODES_FIELD });
 
   //custom hooks
   const allZones = useGetAllZones(); //returns all AZ
@@ -228,28 +235,30 @@ export const PlacementsField = ({ isPrimary, isEditMode }: PlacementsFieldProps)
         </Box>
         {renderHeader}
         {renderPlacements()}
-        {unUsedZones.length > 0 && fields.length < replicationFactor && (
-          <Box display="flex" justifyContent={'flex-start'} mr={0.5} mt={1}>
-            <YBButton
-              style={{ width: '150px' }}
-              variant="primary"
-              disabled={isLoading}
-              data-testid="PlacementsField-AddAZButton"
-              onClick={() => {
-                const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - getTotalNodesinAZ();
-                append({
-                  ...unUsedZones[0],
-                  numNodesInAZ: remainingAZ > 0 || isEditMode ? 1 : 0,
-                  replicationFactor: 1,
-                  isAffinitized: true
-                });
-                setValue(USER_AZSELECTED_FIELD, true);
-              }}
-            >
-              {t('universeForm.cloudConfig.addZoneButton')}
-            </YBButton>
-          </Box>
-        )}
+        {unUsedZones.length > 0 &&
+          fields.length < (isGeoPartitionEnabled ? totalNodes : replicationFactor) &&
+          fields.length < allZones.length && (
+            <Box display="flex" justifyContent={'flex-start'} mr={0.5} mt={1}>
+              <YBButton
+                style={{ width: '150px' }}
+                variant="primary"
+                disabled={isLoading}
+                data-testid="PlacementsField-AddAZButton"
+                onClick={() => {
+                  const remainingAZ = getValues(REPLICATION_FACTOR_FIELD) - getTotalNodesinAZ();
+                  append({
+                    ...unUsedZones[0],
+                    numNodesInAZ: remainingAZ > 0 || isEditMode ? 1 : 0,
+                    replicationFactor: 1,
+                    isAffinitized: true
+                  });
+                  setValue(USER_AZSELECTED_FIELD, true);
+                }}
+              >
+                {t('universeForm.cloudConfig.addZoneButton')}
+              </YBButton>
+            </Box>
+          )}
         <PlacementStatus />
       </Box>
     );

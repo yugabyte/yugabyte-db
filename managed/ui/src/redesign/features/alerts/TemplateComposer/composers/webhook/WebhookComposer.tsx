@@ -74,6 +74,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
 
     const [showPreviewModal, setShowPreviewModal] = useState(false);
     const [showRollbackTemplateModal, setShowRollbackTemplateModal] = useState(false);
+    const [isRollbackedToDefaultTemplate, setIsRollbackedToDefaultTemplate] = useState(false);
 
     const { data: channelTemplates, isLoading: isTemplateLoading } = useQuery(
       ALERT_TEMPLATES_QUERY_KEY.getAlertChannelTemplates,
@@ -141,6 +142,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
       }
       setShowRollbackTemplateModal(false);
       resetEditorHistory(bodyEditorRef.current!);
+      setIsRollbackedToDefaultTemplate(true);
     };
 
     if (isTemplateLoading) {
@@ -162,6 +164,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                       onClick={() => {
                         setShowRollbackTemplateModal(true);
                       }}
+                      data-testid="webhook-rollback-template"
                     >
                       {t('alertCustomTemplates.composer.webhookComposer.rollback')}
                     </Typography>
@@ -175,6 +178,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                       clearEditor(bodyEditorRef.current!);
                       bodyEditorRef.current!.insertNode(DefaultJSONElement);
                     }}
+                    data-testid="webhook-clear-template"
                   >
                     {t('alertCustomTemplates.composer.webhookComposer.clearTemplate')}
                   </YBButton>
@@ -201,13 +205,18 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                 ref={bodyEditorRef}
                 initialValue={[DefaultJSONElement]}
                 showLineNumbers
-                editorProps={{ style: { height: '480px' } }}
+                editorProps={{ style: { height: '480px' }, 'data-testid': 'webhook-body-editor' }}
+                onEditorKeyDown={() => {
+                  isRollbackedToDefaultTemplate && setIsRollbackedToDefaultTemplate(false);
+                }}
               />
             </Grid>
           </Grid>
           <Grid item container alignItems="center" className={composerStyles.helpText}>
             <Info />
-            <Typography variant="body2">{t('alertCustomTemplates.composer.helpText')}</Typography>
+            <Typography variant="body2">
+              {t('alertCustomTemplates.composer.helpText', { type: 'webhook' })}
+            </Typography>
           </Grid>
         </Grid>
         <Grid item className={commonStyles.noPadding}>
@@ -222,6 +231,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
               onClick={() => {
                 setShowPreviewModal(true);
               }}
+              data-testid="preview-webhook-button"
             >
               {t('alertCustomTemplates.composer.previewTemplateButton')}
             </YBButton>
@@ -231,13 +241,14 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                 onClick={() => {
                   onClose();
                 }}
+                data-testid="cancel-webhook-button"
               >
                 {t('common.cancel')}
               </YBButton>
               <YBButton
                 variant="primary"
                 type="submit"
-                disabled={!isEditorDirty(bodyEditorRef.current)}
+                disabled={!isEditorDirty(bodyEditorRef.current) && !isRollbackedToDefaultTemplate}
                 autoFocus
                 className={composerStyles.submitButton}
                 onClick={() => {
@@ -249,6 +260,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                     });
                   }
                 }}
+                data-testid="save-webhook-button"
               >
                 {t('common.save')}
               </YBButton>
