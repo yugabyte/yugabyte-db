@@ -158,6 +158,9 @@ public class PerfAdvisorScheduler {
 
     List<UniverseNodeConfigInterface> universeNodeConfigList = new ArrayList<>();
     for (NodeDetails details : universe.getNodes()) {
+      if (!details.isTserver) {
+        continue;
+      }
       if (details.state.equals(NodeDetails.NodeState.Live)) {
         PlatformUniverseNodeConfig nodeConfig =
             new PlatformUniverseNodeConfig(details, universe, ShellProcessContext.DEFAULT);
@@ -168,7 +171,8 @@ public class PerfAdvisorScheduler {
     if (universeNodeConfigList.isEmpty()) {
       log.warn(
           String.format(
-              "Universe %s node config list is empty! Skipping..", universe.getUniverseUUID()));
+              "Universe %s node config list has no TServers! Skipping..",
+              universe.getUniverseUUID()));
       return RunResult.builder().failureReason("No Live nodes found").build();
     }
 
