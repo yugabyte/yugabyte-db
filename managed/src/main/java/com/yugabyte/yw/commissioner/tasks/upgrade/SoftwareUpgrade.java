@@ -111,7 +111,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
               SOFTWARE_UPGRADE_CONTEXT,
               false);
 
-          if (taskParams().installYbc && !isUniverseOnPremManualProvisioned) {
+          if (taskParams().installYbc
+              && !(isUniverseOnPremManualProvisioned
+                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd)) {
             createYbcSoftwareInstallTasks(nodes.getRight(), newVersion, getTaskSubGroupType());
             // Start yb-controller process and wait for it to get responsive.
             createStartYbcProcessTasks(
