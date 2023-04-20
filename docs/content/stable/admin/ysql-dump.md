@@ -91,7 +91,7 @@ Non-schema objects, such as blobs, are not dumped when `-n|--schema` is specifie
 
 #### -N *schema*, --exclude-schema=*schema*
 
-Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`-n|--schema`](#n-schema-schema-schema)` option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
+Do not dump any schemas matching the schema pattern. The pattern is interpreted according to the same rules as for [`-n|--schema`](#n-schema-schema-schema) option. `-N|--exclude-schema` can be given more than once to exclude schemas matching any of several patterns.
 
 When both [`-n|--schema`](#n-schema-schema-schema) and `-N|--exclude-schema` are given, the behavior is to dump just the schemas that match at least one [`-n|--schema`](#n-schema-schema-schema) option but no `-N|--exclude-schema` options. If `-N|--exclude-schema` appears without [`-n|--schema`](#n-schema-schema-schema), then schemas matching `-N|--exclude-schema` are excluded from what is otherwise a normal dump.
 
