@@ -30,7 +30,7 @@
   </a>
   &nbsp;
   <a href="https://github.com/apache/age/releases">
-    <img src="https://img.shields.io/badge/Release-v1.2.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
+    <img src="https://img.shields.io/badge/Release-v1.3.0-FFA500?labelColor=gray&style=flat&link=https://github.com/apache/age/releases"/>
   </a>
   &nbsp;
   <a href="https://www.postgresql.org/docs/11/index.html">
@@ -131,7 +131,7 @@ Apache AGE is intended to be simple to install and run. It can be installed with
 &nbsp;Install PosgtreSQL
 </h4>
 
-You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 11 and 12. Supporting the latest versions is on AGE roadmap. 
+You will need to install an AGE compatible version of Postgres<a>, for now AGE supports Postgres 11, 12 & 13. Supporting the latest versions is on AGE roadmap. 
      
 <h4>
 &nbsp;Install From Package Manager
@@ -158,7 +158,7 @@ You can <a href="https://www.postgresql.org/ftp/source/"> download the Postgres 
 
 Clone the <a href="https://github.com/apache/age">github repository</a> or download the<a href="https://github.com/apache/age/releases">download an official release.
 </a>
-Run the pg_config utility and check the version of PostgreSQL. Currently, only PostgreSQL versions 11 & 12 are supported. If you have any other version of Postgres, you will need to install PostgreSQL version 11 & 12.
+Run the pg_config utility and check the version of PostgreSQL. Currently, only PostgreSQL versions 11, 12 & 13 are supported. If you have any other version of Postgres, you will need to install PostgreSQL version 11, 12 or 13.
 <br>
     
 ```bash
