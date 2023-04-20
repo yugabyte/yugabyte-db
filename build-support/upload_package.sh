@@ -99,7 +99,10 @@ upload_package() {
   package_upload_skipped=false
   upload_cmd="aws s3 sync --acl bucket-owner-full-control --exclude='*'"
   log "Uploading package '$YB_PACKAGE_PATH' to $YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
-  if ( set -x; $upload_cmd --include="$YB_PACKAGE_PATH*" "$YB_SNAPSHOT_PACKAGE_UPLOAD_URL" ); then
+  if ( set -x; $upload_cmd \
+                --include="$YB_PACKAGE_PATH*" \
+                $(dirname "$YB_PACKAGE_PATH") \
+                "$YB_SNAPSHOT_PACKAGE_UPLOAD_URL" ); then
     log "Uploaded package '$YB_PACKAGE_PATH' to $YB_SNAPSHOT_PACKAGE_UPLOAD_URL"
     package_uploaded=true
   else
