@@ -598,6 +598,7 @@ export const BackupList: FC<BackupListOptions> = ({ allowTakingBackup, universeU
           setShowAssignConfigModal(true);
         }}
         currentUniverseUUID={universeUUID}
+        tablesInUniverse={tablesInUniverse?.data}
       />
       <BackupDeleteModal
         backupsList={selectedBackups}
