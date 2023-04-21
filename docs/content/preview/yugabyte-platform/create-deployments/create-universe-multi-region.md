@@ -51,7 +51,7 @@ After you have configured a cloud provider, such as, for example [Google Cloud P
   leader_lease_duration_ms 6000
   ```
 
-  Note that because the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.<br>
+  Note that because the data is globally replicated, RPC latencies are higher; these flags are used for increasing the failure detection interval in a higher RPC latency deployment.
 
   ![Create multi-region universe on GCP](/images/yp/create-deployments/create-multi-region-uni2.png)
 
