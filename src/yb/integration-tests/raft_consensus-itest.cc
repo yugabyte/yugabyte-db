@@ -99,11 +99,11 @@
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(num_client_threads, 8,
+DEFINE_NON_RUNTIME_int32(num_client_threads, 8,
              "Number of client threads to launch");
-DEFINE_UNKNOWN_int32(client_inserts_per_thread, 50,
+DEFINE_NON_RUNTIME_int32(client_inserts_per_thread, 50,
              "Number of rows inserted by each client thread");
-DEFINE_UNKNOWN_int32(client_num_batches_per_thread, 5,
+DEFINE_NON_RUNTIME_int32(client_num_batches_per_thread, 5,
              "In how many batches to group the rows, for each client");
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int32(leader_lease_duration_ms);

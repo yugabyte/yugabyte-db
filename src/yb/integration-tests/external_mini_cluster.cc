@@ -168,14 +168,14 @@ DECLARE_bool(use_client_to_server_encryption);
 DECLARE_bool(use_node_to_node_encryption);
 DECLARE_string(certs_dir);
 
-DEFINE_UNKNOWN_string(external_daemon_heap_profile_prefix, "",
+DEFINE_NON_RUNTIME_string(external_daemon_heap_profile_prefix, "",
               "If this is not empty, tcmalloc's HEAPPROFILE is set this, followed by a unique "
               "suffix for external mini-cluster daemons.");
 
 DECLARE_int64(outbound_rpc_block_size);
 DECLARE_int64(outbound_rpc_memory_limit);
 
-DEFINE_UNKNOWN_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
+DEFINE_NON_RUNTIME_int64(external_mini_cluster_max_log_bytes, 50_MB * 100,
              "Max total size of log bytes produced by all external mini-cluster daemons. "
              "The test is shut down if this limit is exceeded.");
 

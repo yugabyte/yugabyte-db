@@ -75,11 +75,11 @@ using yb::server::HybridClock;
 using std::string;
 using strings::Substitute;
 
-DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
+DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_warmup_rows, 100,
              "Number of rows to insert in the warmup phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
-DEFINE_UNKNOWN_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
+DEFINE_NON_RUNTIME_int32(single_threaded_insert_latency_bench_insert_rows, 1000,
              "Number of rows to insert in the testing phase of the single threaded"
              " tablet server insert latency micro-benchmark");
 
