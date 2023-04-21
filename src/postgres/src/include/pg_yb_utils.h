@@ -779,6 +779,9 @@ void GetStatusMsgAndArgumentsByCode(
 	const char **msg_buf, size_t *msg_nargs, const char ***msg_args,
 	const char **detail_buf, size_t *detail_nargs, const char ***detail_args);
 
+bool YbIsBatchedExecution();
+void YbSetIsBatchedExecution(bool value);
+
 #define HandleYBStatus(status) \
 	HandleYBStatusAtErrorLevel(status, ERROR)
 

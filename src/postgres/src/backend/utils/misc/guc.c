@@ -77,6 +77,7 @@
 #include "storage/pg_shmem.h"
 #include "storage/proc.h"
 #include "storage/predicate.h"
+#include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
@@ -455,6 +456,13 @@ const struct config_enum_entry ssl_protocol_versions_info[] = {
 	{"TLSv1.2", PG_TLS1_2_VERSION, false},
 	{"TLSv1.3", PG_TLS1_3_VERSION, false},
 	{NULL, 0, false}
+};
+
+const struct config_enum_entry yb_pg_batch_detection_mechanism_options[] = {
+  {"detect_by_peeking", DETECT_BY_PEEKING, false},
+  {"assume_all_batch_executions", ASSUME_ALL_BATCH_EXECUTIONS, false},
+  {"ignore_batch_delete_and_update_may_fail", IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL, false},
+  {NULL, 0, false}
 };
 
 static struct config_enum_entry shared_memory_options[] = {
@@ -4801,6 +4809,28 @@ static struct config_enum ConfigureNamesEnum[] =
 		&ssl_max_protocol_version,
 		PG_TLS_ANY,
 		ssl_protocol_versions_info,
+		NULL, NULL, NULL
+	},
+
+	  {
+		{"yb_pg_batch_detection_mechanism", PGC_SIGHUP, COMPAT_OPTIONS_CLIENT,
+			gettext_noop("The drivers use message protocol to communicate "
+						 "with PG. The driver does not inform PG in advance "
+						 "about a Batch execution. We need to identify a batch " 
+						 "because in that case the single-shard optimization "
+						 "should be disabled. Postgres drivers pipeline "
+						 "messages and we exploit this to peek the message "
+						 "following 'Execute' to detect a batch. This may "
+						 "lead to some unforeseen bugs, so this GUC provides "
+						 "a way to disable the single-shard optimization "
+						 "completely or go back to the behavior before "
+						 "#16446 was fixed."),
+		 NULL,
+		 GUC_SUPERUSER_ONLY
+		},
+		&yb_pg_batch_detection_mechanism,
+		DETECT_BY_PEEKING,
+		yb_pg_batch_detection_mechanism_options,
 		NULL, NULL, NULL
 	},
 
