@@ -264,10 +264,12 @@ shared_ptr<CQLStatement> CQLServiceImpl::AllocatePreparedStatement(
     // Allocate the prepared statement placeholder that multiple clients trying to prepare the same
     // statement to contend on. The statement will then be prepared by one client while the rest
     // wait for the results.
-    stmt = prepared_stmts_map_.emplace(
-        query_id, std::make_shared<CQLStatement>(
-            DCHECK_NOTNULL(ql_env)->CurrentKeyspace(),
-            query, prepared_stmts_list_.end())).first->second;
+    stmt = prepared_stmts_map_
+               .emplace(
+                   query_id, std::make_shared<CQLStatement>(
+                                 DCHECK_NOTNULL(ql_env)->CurrentKeyspace(), query,
+                                 prepared_stmts_list_.end(), prepared_stmts_mem_tracker_))
+               .first->second;
     InsertLruPreparedStatementUnlocked(stmt);
   } else {
     // Return existing statement if found.
