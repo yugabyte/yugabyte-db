@@ -117,7 +117,12 @@ public class CloudProviderApiController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.Provider",
           required = true,
           paramType = "body"))
-  public Result edit(UUID customerUUID, UUID providerUUID, boolean validate, Http.Request request) {
+  public Result edit(
+      UUID customerUUID,
+      UUID providerUUID,
+      boolean validate,
+      boolean ignoreValidationErrors,
+      Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
 
@@ -139,7 +144,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
     Provider editProviderReq = formFactory.getFormDataOrBadRequest(requestBody, Provider.class);
     UUID taskUUID =
-        cloudProviderHandler.editProvider(customer, provider, editProviderReq, validate);
+        cloudProviderHandler.editProvider(
+            customer, provider, editProviderReq, validate, ignoreValidationErrors);
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -156,7 +162,8 @@ public class CloudProviderApiController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.models.Provider",
           required = true))
-  public Result create(UUID customerUUID, boolean validate, Http.Request request) {
+  public Result create(
+      UUID customerUUID, boolean validate, boolean ignoreValidationErrors, Http.Request request) {
     JsonNode requestBody = mayBeMassageRequest(request.body().asJson(), false);
     Provider reqProvider =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), Provider.class);
@@ -169,7 +176,12 @@ public class CloudProviderApiController extends AuthenticatedController {
     } else {
       providerEbean =
           cloudProviderHandler.createProvider(
-              customer, providerCode, reqProvider.getName(), reqProvider, validate);
+              customer,
+              providerCode,
+              reqProvider.getName(),
+              reqProvider,
+              validate,
+              ignoreValidationErrors);
     }
 
     if (providerCode.isRequiresBootstrap()) {

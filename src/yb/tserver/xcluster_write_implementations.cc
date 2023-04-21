@@ -17,11 +17,11 @@
 #include "yb/common/transaction.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb.h"
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/key_bytes.h"
-#include "yb/docdb/packed_row.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/packed_row.h"
 #include "yb/docdb/rocksdb_writer.h"
 
 #include "yb/tserver/xcluster_write_interface.h"
@@ -66,12 +66,12 @@ Status UpdatePackedRow(const Slice& key,
   VLOG(3) << "Original value with producer schema version=" << value.ToDebugHexString();
 
   Slice value_slice = value;
-  auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
+  auto control_fields = VERIFY_RESULT(dockv::ValueControlFields::Decode(&value_slice));
 
   // Don't perform any changes to the value for the following cases:
   // 1. Non-packed rows
   // 2. We don't have a schema version map of producer to consumer schema versions
-  if (!value_slice.TryConsumeByte(docdb::ValueEntryTypeAsChar::kPackedRow) ||
+  if (!value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow) ||
       schema_versions_map.empty()) {
     // Return the whole value without changes
     out->Truncate(0);
@@ -80,8 +80,14 @@ Status UpdatePackedRow(const Slice& key,
     return Status::OK();
   }
 
-  auto status = ReplaceSchemaVersionInPackedValue(
-      value_slice, control_fields, schema_versions_map, out);
+  auto mapper = [&schema_versions_map](SchemaVersion version) -> Result<SchemaVersion> {
+    auto it = schema_versions_map.find(version);
+    if (it == schema_versions_map.end()) {
+      return STATUS_FORMAT(NotFound, "Schema version mapping for $0 not found", version);
+    }
+    return it->second;
+  };
+  auto status = ReplaceSchemaVersionInPackedValue(value_slice, control_fields, mapper, out);
 
   if (status.ok()) {
     VLOG(3) << "Updated value with consumer schema version=" << out->AsSlice().ToDebugHexString();

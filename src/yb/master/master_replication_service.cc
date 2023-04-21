@@ -53,8 +53,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (ChangeXClusterRole)
   )
 
-  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(
-      CatalogManager, (GetXClusterEstimatedDataLoss)(GetXClusterSafeTime))
+  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(CatalogManager, (GetXClusterSafeTime))
 };
 
 } // namespace

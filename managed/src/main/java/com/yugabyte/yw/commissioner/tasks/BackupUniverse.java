@@ -193,13 +193,12 @@ public class BackupUniverse extends UniverseTaskBase {
         }
       } catch (Throwable t) {
         if (taskParams().alterLoadBalancer) {
-          // Clear previous subtasks if any.
-          getRunnableTask().reset();
           // If the task failed, we don't want the loadbalancer to be
           // disabled, so we enable it again in case of errors.
-          createLoadBalancerStateChangeTask(true)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
+          setTaskQueueAndRun(
+              () ->
+                  createLoadBalancerStateChangeTask(true)
+                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
         }
         throw t;
       }

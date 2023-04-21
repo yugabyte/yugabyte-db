@@ -164,6 +164,9 @@ public class UserTaskDetails {
     // Fetch the Kubernetes pod information.
     KubernetesPodInfo,
 
+    // Delete all server type pods
+    DeleteAllServerTypePods,
+
     // Wait for Kubernetes pod deployment
     KubernetesWaitForPod,
 
@@ -423,6 +426,9 @@ public class UserTaskDetails {
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
         break;
+      case DeleteAllServerTypePods:
+        title = "Delete all pods of server type in AZ";
+        description = "Delete all pods of server type in AZ";
       case KubernetesWaitForPod:
         title = "Wait for Kubernetes pod to run";
         description = "Wait for Kubernetes pod to run";

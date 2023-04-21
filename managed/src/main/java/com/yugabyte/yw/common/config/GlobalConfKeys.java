@@ -591,7 +591,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
       new ConfKeyInfo<>(
           "yb.allow_db_version_more_than_yba_version",

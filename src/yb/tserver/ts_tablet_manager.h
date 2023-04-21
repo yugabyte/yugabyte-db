@@ -84,12 +84,11 @@
 namespace yb {
 
 class GarbageCollector;
-class PartitionSchema;
 class FsManager;
 class HostPort;
-class Partition;
 class Schema;
 class BackgroundTask;
+class XClusterSafeTimeTest;
 
 namespace consensus {
 class RaftConfigPB;
@@ -181,7 +180,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Result<tablet::TabletPeerPtr> CreateNewTablet(
       const tablet::TableInfoPtr& table_info,
       const std::string& tablet_id,
-      const Partition& partition,
+      const dockv::Partition& partition,
       consensus::RaftConfigPB config,
       const bool colocated = false,
       const std::vector<SnapshotScheduleId>& snapshot_schedules = {},
@@ -366,8 +365,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   Status TriggerAdminCompactionAndWait(const TabletPtrs& tablets);
 
  private:
-  FRIEND_TEST(TsTabletManagerTest, TestPersistBlocks);
   FRIEND_TEST(TsTabletManagerTest, TestTombstonedTabletsAreUnregistered);
+  friend class ::yb::XClusterSafeTimeTest;
 
   // Flag specified when registering a TabletPeer.
   enum RegisterTabletPeerMode {

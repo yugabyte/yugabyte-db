@@ -246,7 +246,8 @@ void Batcher::FlushAsync(
           status = STATUS_FORMAT(IllegalState, "Hash partition key is empty for $0", yb_op);
         }
       } else {
-        yb_op->SetHashCode(PartitionSchema::DecodeMultiColumnHashValue(in_flight_op.partition_key));
+        yb_op->SetHashCode(
+            dockv::PartitionSchema::DecodeMultiColumnHashValue(in_flight_op.partition_key));
       }
     }
 
@@ -357,7 +358,7 @@ std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
   std::map<RetryableRequestId, Status> errors_by_request_id;
   for (auto& op : ops_queue_) {
     if (op.tablet) {
-      const Partition& partition = op.tablet->partition();
+      const auto& partition = op.tablet->partition();
 
       bool partition_contains_row = false;
       const auto& partition_key = op.partition_key;
@@ -379,7 +380,7 @@ std::pair<std::map<PartitionKey, Status>, std::map<RetryableRequestId, Status>>
                   FLAGS_TEST_simulate_tablet_lookup_does_not_match_partition_key_probability) &&
               op.yb_op->table()->name().namespace_name() == "yb_test"))) {
         const Schema& schema = GetSchema(op.yb_op->table()->schema());
-        const PartitionSchema& partition_schema = op.yb_op->table()->partition_schema();
+        const auto& partition_schema = op.yb_op->table()->partition_schema();
         const auto msg = Format(
             "Row $0 not in partition $1, partition key: $2, tablet: $3",
             op.yb_op->ToString(),

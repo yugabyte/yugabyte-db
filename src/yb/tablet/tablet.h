@@ -676,8 +676,9 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // split_op_hybrid_time.
   // In case of error sub-tablet could be partially persisted on disk.
   Result<RaftGroupMetadataPtr> CreateSubtablet(
-      const TabletId& tablet_id, const Partition& partition, const docdb::KeyBounds& key_bounds,
-      const yb::OpId& split_op_id, const HybridTime& split_op_hybrid_time);
+      const TabletId& tablet_id, const dockv::Partition& partition,
+      const docdb::KeyBounds& key_bounds, const OpId& split_op_id,
+      const HybridTime& split_op_hybrid_time);
 
   // Scans the intent db. Potentially takes a long time. Used for testing/debugging.
   Result<int64_t> CountIntents();
@@ -858,11 +859,17 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // complete.
   // Returns TabletScopedRWOperationPauses that are preventing new read/write operations from being
   // started.
-  Result<TabletScopedRWOperationPauses> StartShutdownRocksDBs(
+  TabletScopedRWOperationPauses StartShutdownRocksDBs(
       DisableFlushOnShutdown disable_flush_on_shutdown, Stop stop = Stop::kFalse);
 
-  Status CompleteShutdownRocksDBs(
-      Destroy destroy, TabletScopedRWOperationPauses* ops_pauses);
+  // Returns DB paths for destructed in-memory RocksDBs objects, so caller can delete on-disk
+  // directories if needed.
+  std::vector<std::string> CompleteShutdownRocksDBs(
+      const TabletScopedRWOperationPauses& ops_pauses);
+
+  // Attempt to delete on-disk RocksDBs from all provided db_paths, even if errors are encountered.
+  // Return the first error encountered.
+  Status DeleteRocksDBs(const std::vector<std::string>& db_paths);
 
   ScopedRWOperation CreateAbortableScopedRWOperation(
       const CoarseTimePoint deadline = CoarseTimePoint()) const;
@@ -896,7 +903,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   void UnregisterOperationFilterUnlocked(OperationFilter* filter)
     REQUIRES(operation_filters_mutex_);
 
-  std::shared_ptr<docdb::SchemaPackingStorage> PrimarySchemaPackingStorage();
+  std::shared_ptr<dockv::SchemaPackingStorage> PrimarySchemaPackingStorage();
 
   Status AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id);
 
@@ -983,7 +990,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   const TabletOptions tablet_options_;
 
   // A lightweight way to reject new operations when the tablet is shutting down. This is used to
-  // prevent race conditions between destroying the RocksDB instance and read/write operations.
+  // prevent race conditions between destructing the RocksDB in-memory instance and read/write
+  // operations.
   std::atomic_bool shutdown_requested_{false};
 
   // This is a special atomic counter per tablet that increases monotonically.
@@ -1006,7 +1014,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Similar to pending_non_abortable_op_counter_ but for operations that could be aborted, i.e.
   // operations that could handle RocksDB shutdown during their execution, for example manual
   // compactions.
-  // We wait for this counter to go to zero after starting RocksDB shutdown and before destroying
+  // We wait for this counter to go to zero after starting RocksDB shutdown and before destructing
   // RocksDB in-memory instance.
   mutable RWOperationCounter pending_abortable_op_counter_;
 

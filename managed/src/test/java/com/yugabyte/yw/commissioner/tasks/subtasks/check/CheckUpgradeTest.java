@@ -161,7 +161,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     PromotedFlagsPerProcessPB tserverFlagPB =
         PromotedFlagsPerProcessPB.newBuilder()
             .addFlags("FLAG_1")
-            .setProcessName("yb-master")
+            .setProcessName("yb-tserver")
             .build();
     AutoFlagsConfigPB config =
         GetAutoFlagsConfigResponsePB.newBuilder()

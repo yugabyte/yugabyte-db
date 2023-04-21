@@ -14,9 +14,9 @@
 #include "yb/tablet/transaction_loader.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 
 #include "yb/tablet/transaction_status_resolver.h"
 
@@ -109,11 +109,11 @@ class TransactionLoader::Executor {
   Status LoadTransactions() {
     size_t loaded_transactions = 0;
     TransactionId id = TransactionId::Nil();
-    AppendTransactionKeyPrefix(id, &current_key_);
+    docdb::AppendTransactionKeyPrefix(id, &current_key_);
     intents_iterator_.Seek(current_key_.AsSlice());
     while (intents_iterator_.Valid()) {
       auto key = intents_iterator_.key();
-      if (!key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionId)) {
+      if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionId)) {
         break;
       }
       auto decode_id_result = DecodeTransactionId(&key);
@@ -125,7 +125,7 @@ class TransactionLoader::Executor {
       }
       id = *decode_id_result;
       current_key_.Clear();
-      AppendTransactionKeyPrefix(id, &current_key_);
+      docdb::AppendTransactionKeyPrefix(id, &current_key_);
       if (key.empty()) { // The key only contains a transaction id - it is metadata record.
         if (FLAGS_TEST_inject_load_transaction_delay_ms > 0) {
           std::this_thread::sleep_for(FLAGS_TEST_inject_load_transaction_delay_ms * 1ms);
@@ -133,7 +133,7 @@ class TransactionLoader::Executor {
         RETURN_NOT_OK(LoadTransaction(id));
         ++loaded_transactions;
       }
-      current_key_.AppendKeyEntryType(docdb::KeyEntryType::kMaxByte);
+      current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
       intents_iterator_.Seek(current_key_.AsSlice());
     }
     RETURN_NOT_OK(intents_iterator_.status());
@@ -167,23 +167,23 @@ class TransactionLoader::Executor {
 
   Status LoadPendingApplies() {
     std::array<char, 1 + sizeof(TransactionId) + 1> seek_buffer;
-    seek_buffer[0] = docdb::KeyEntryTypeAsChar::kTransactionApplyState;
-    seek_buffer[seek_buffer.size() - 1] = docdb::KeyEntryTypeAsChar::kMaxByte;
+    seek_buffer[0] = dockv::KeyEntryTypeAsChar::kTransactionApplyState;
+    seek_buffer[seek_buffer.size() - 1] = dockv::KeyEntryTypeAsChar::kMaxByte;
     regular_iterator_.Seek(Slice(seek_buffer.data(), 1));
 
     while (regular_iterator_.Valid()) {
       auto key = regular_iterator_.key();
-      if (!key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kTransactionApplyState)) {
+      if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionApplyState)) {
         break;
       }
       auto txn_id = DecodeTransactionId(&key);
-      if (!txn_id.ok() || !key.TryConsumeByte(docdb::KeyEntryTypeAsChar::kGroupEnd)) {
+      if (!txn_id.ok() || !key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kGroupEnd)) {
         LOG_WITH_PREFIX(DFATAL) << "Wrong txn id: " << regular_iterator_.key().ToDebugString();
         regular_iterator_.Next();
         continue;
       }
       Slice value = regular_iterator_.value();
-      if (value.TryConsumeByte(docdb::ValueEntryTypeAsChar::kString)) {
+      if (value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kString)) {
         auto pb = pb_util::ParseFromSlice<docdb::ApplyTransactionStatePB>(value);
         if (!pb.ok()) {
           LOG_WITH_PREFIX(DFATAL) << "Failed to decode apply state pb from RocksDB"
@@ -207,7 +207,7 @@ class TransactionLoader::Executor {
 
         VLOG_WITH_PREFIX(4) << "Loaded pending apply for " << *txn_id << ": "
                             << it->second.ToString();
-      } else if (value.TryConsumeByte(docdb::ValueEntryTypeAsChar::kTombstone)) {
+      } else if (value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kTombstone)) {
         VLOG_WITH_PREFIX(4) << "Found deleted large apply for " << *txn_id;
       } else {
         LOG_WITH_PREFIX(DFATAL)
@@ -267,7 +267,7 @@ class TransactionLoader::Executor {
       const TransactionId& id,
       TransactionalBatchData* last_batch_data,
       OneWayBitmap* replicated_batches) {
-    current_key_.AppendKeyEntryType(docdb::KeyEntryType::kMaxByte);
+    current_key_.AppendKeyEntryType(dockv::KeyEntryType::kMaxByte);
     intents_iterator_.Seek(current_key_.AsSlice());
     if (intents_iterator_.Valid()) {
       intents_iterator_.Prev();
@@ -277,16 +277,16 @@ class TransactionLoader::Executor {
     }
     current_key_.RemoveLastByte();
     while (intents_iterator_.Valid() && intents_iterator_.key().starts_with(current_key_)) {
-      auto decoded_key = docdb::DecodeIntentKey(intents_iterator_.value());
+      auto decoded_key = dockv::DecodeIntentKey(intents_iterator_.value());
       LOG_IF_WITH_PREFIX(DFATAL, !decoded_key.ok())
           << "Failed to decode intent while loading transaction " << id << ", "
           << intents_iterator_.key().ToDebugHexString() << " => "
           << intents_iterator_.value().ToDebugHexString() << ": " << decoded_key.status();
-      if (decoded_key.ok() && docdb::HasStrong(decoded_key->intent_types)) {
+      if (decoded_key.ok() && dockv::HasStrong(decoded_key->intent_types)) {
         last_batch_data->hybrid_time = CHECK_RESULT(decoded_key->doc_ht.Decode()).hybrid_time();
         Slice rev_key_slice(intents_iterator_.value());
         // Required by the transaction sealing protocol.
-        if (!rev_key_slice.empty() && rev_key_slice[0] == docdb::KeyEntryTypeAsChar::kBitSet) {
+        if (!rev_key_slice.empty() && rev_key_slice[0] == dockv::KeyEntryTypeAsChar::kBitSet) {
           CHECK(!FLAGS_TEST_fail_on_replicated_batch_idx_set_in_txn_record);
           rev_key_slice.remove_prefix(1);
           auto result = OneWayBitmap::Decode(&rev_key_slice);
@@ -308,14 +308,14 @@ class TransactionLoader::Executor {
         if (intents_iterator_.Valid() && intents_iterator_.key().starts_with(rev_key)) {
           VLOG_WITH_PREFIX(1)
               << "Found latest record for " << id
-              << ": " << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key())
+              << ": " << dockv::SubDocKey::DebugSliceToString(intents_iterator_.key())
               << " => " << intents_iterator_.value().ToDebugHexString();
           auto txn_id_slice = id.AsSlice();
-          auto decoded_value_or_status = docdb::DecodeIntentValue(
+          auto decoded_value_or_status = dockv::DecodeIntentValue(
               intents_iterator_.value(), &txn_id_slice);
           LOG_IF_WITH_PREFIX(DFATAL, !decoded_value_or_status.ok())
               << "Failed to decode intent value: " << decoded_value_or_status.status() << ", "
-              << docdb::SubDocKey::DebugSliceToString(intents_iterator_.key()) << " => "
+              << dockv::SubDocKey::DebugSliceToString(intents_iterator_.key()) << " => "
               << intents_iterator_.value().ToDebugHexString();
           if (decoded_value_or_status.ok()) {
             last_batch_data->next_write_id = decoded_value_or_status->write_id;
@@ -345,7 +345,7 @@ class TransactionLoader::Executor {
   docdb::BoundedRocksDbIterator intents_iterator_;
 
   // Buffer that contains key of current record, i.e. value type + transaction id.
-  docdb::KeyBytes current_key_;
+  dockv::KeyBytes current_key_;
 
   TransactionStatusResolver* status_resolver_ = nullptr;
 

@@ -35,8 +35,14 @@ class GenericBackoffWaiter {
   // base_delay - multiplier for wait duration.
   explicit GenericBackoffWaiter(
       TimePoint deadline, Duration max_wait = Duration::max(),
-      Duration base_delay = std::chrono::milliseconds(1))
-      : deadline_(deadline), max_wait_(max_wait), base_delay_(base_delay) {}
+      Duration base_delay = std::chrono::milliseconds(1),
+      uint32_t max_jitter_ms = kDefaultMaxJitterMs,
+      uint32_t init_exponent = kDefaultInitExponent)
+      : deadline_(deadline),
+        max_wait_(max_wait),
+        base_delay_(base_delay),
+        max_jitter_ms_(max_jitter_ms),
+        init_exponent_(init_exponent) {}
 
   bool ExpiredNow() const {
     return ExpiredAt(Clock::now());
@@ -68,11 +74,12 @@ class GenericBackoffWaiter {
 
   Duration DelayForTime(TimePoint now) const {
     Duration max_wait = std::min(deadline_ - now, max_wait_);
-    // 1st retry delayed 2^4 of base delays, 2nd 2^5 base delays, etc..
+    // 1st retry delayed 2^init_exponent of base delays, 2nd 2^(init_exponent + 1) base delays,
+    // etc..
     Duration attempt_delay =
-        base_delay_ *
-        (attempt_ >= 29 ? std::numeric_limits<int32_t>::max() : 1LL << (attempt_ + 3));
-    Duration jitter = std::chrono::milliseconds(RandomUniformInt(0, 50));
+        base_delay_ * (attempt_ >= 29 ? std::numeric_limits<int32_t>::max()
+                                      : 1LL << (attempt_ + init_exponent_ - 1));
+    Duration jitter = std::chrono::milliseconds(RandomUniformInt<uint32_t>(0, max_jitter_ms_));
     return std::min(attempt_delay + jitter, max_wait);
   }
 
@@ -85,11 +92,16 @@ class GenericBackoffWaiter {
     attempt_ = 0;
   }
 
+  static constexpr const uint32_t kDefaultMaxJitterMs = 50;
+  static constexpr const uint32_t kDefaultInitExponent = 4;
+
  private:
   TimePoint deadline_;
   size_t attempt_ = 0;
   Duration max_wait_;
   Duration base_delay_;
+  uint32_t max_jitter_ms_;
+  uint32_t init_exponent_;
 };
 
 typedef GenericBackoffWaiter<std::chrono::steady_clock> BackoffWaiter;
@@ -110,8 +122,9 @@ Status RetryFunc(
     const std::string& retry_msg,
     const std::string& timeout_msg,
     const std::function<Status(CoarseTimePoint, bool*)>& func,
-    const CoarseDuration max_wait = std::chrono::seconds(2));
-
+    const CoarseDuration max_wait = std::chrono::seconds(2),
+    const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
+    const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 
 // Waits for the given condition to be true or until the provided deadline happens.
 Status Wait(

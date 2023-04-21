@@ -18,7 +18,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/gutil/map-util.h"
 
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/async_rpc_tasks.h"
@@ -165,7 +165,7 @@ Status TabletSplitManager::ValidatePartitioningVersion(const TableInfo& table) {
   }
 
   // Nothing to validate for hash partitioned tables
-  if (PartitionSchema::IsHashPartitioning(table_locked->pb.partition_schema())) {
+  if (dockv::PartitionSchema::IsHashPartitioning(table_locked->pb.partition_schema())) {
     return Status::OK();
   }
 

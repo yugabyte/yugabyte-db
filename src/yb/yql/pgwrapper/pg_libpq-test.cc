@@ -1608,7 +1608,7 @@ void PgLibPqTest::FlushTablesAndPerformBootstrap(
     ASSERT_EQ(res, 0);
   }
 
-  // Subsequent bootstraps should have the last_change_metadata_op_id set but
+  // Subsequent bootstraps should have the last_flushed_change_metadata_op_id set but
   // they should also not crash.
   if (test_backward_compatibility) {
     ASSERT_OK(cluster_->SetFlagOnTServers("TEST_invalidate_last_change_metadata_op", "false"));
@@ -2405,6 +2405,10 @@ TEST_F_EX(
 namespace {
 
 class PgLibPqTestRF1: public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back("--replication_factor=1");
+  }
+
   int GetNumMasters() const override {
     return 1;
   }
@@ -3826,6 +3830,136 @@ TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionPrematureOn),
                       "duplicate key value violates unique constraint");
 }
 
+// Test various global DDL statements in a single-tenant cluster setting.
+// A global DDL statement is a DDL statement that has a cluster-wide impact.
+// If a global DDL statement is executed from a connection that is connected
+// to one database, it should cause catalog cache refreshes on all the active
+// connections that are connected to different databases in order to ensure
+// correctness. A simple implementation is to increment catalog versions of
+// all the databases in pg_yb_catalog_version. Per-database catalog version
+// mode should not be used in single-tenant clusters until we can properly
+// identify and support global DDL statements.
+// Not all shared relations have catalog caches. The following 6 shared
+// relations have been identified that have catalog caches:
+//   pg_authid
+//   pg_auth_members
+//   pg_database
+//   pg_replication_origin
+//   pg_subscription
+//   pg_tablespace
+// Currently, pg_replication_origin and pg_subscription are not used by YSQL.
+// These two tables are used for PostgreSQL replication but YSQL uses raft to
+// achieve that. YSQL also uses a different mechanism to do asynchronous
+// replication.
+// In this test we cover global DDL statements that involve
+//   pg_authid
+//   pg_auth_members
+//   pg_database
+//   pg_tablespace
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionGlobalDDL),
+          PgLibPqCatalogVersionTest) {
+  constexpr auto kTestUser1 = "test_user1";
+  constexpr auto kTestUser2 = "test_user2";
+  constexpr auto kTestGroup = "test_group";
+  constexpr auto kTestTablespace = "test_tsp";
+  // Test setup.
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
+  RestartClusterWithDBCatalogVersionMode();
+  LOG(INFO) << "Connects to database " << kYugabyteDatabase << " on node at index 0.";
+  pg_ts = cluster_->tablet_server(0);
+  conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
+  LOG(INFO) << "Create a new database";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", kTestDatabase));
+  LOG(INFO) << "Create two new test users";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser1));
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser2));
+  LOG(INFO) << "Create a new group that has the second new user";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "CREATE GROUP $0 WITH USER $1", kTestGroup, kTestUser2));
+  LOG(INFO) << "Create a new tablespace";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "CREATE TABLESPACE $0 LOCATION '/data'", kTestTablespace));
+  LOG(INFO) << "Connects to database " << kTestDatabase << " as user "
+            << kTestUser1 << " on node at index 1.";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(kTestDatabase, kTestUser1));
+
+  // Test case 1: global ddl writing to pg_database.
+  LOG(INFO) << "Create a temporary table t1 on conn_test";
+  ASSERT_OK(conn_test.Execute("CREATE TEMP TABLE t1(id INT)"));
+
+  // The following REVOKE is a global DDL that writes to shared relation
+  // pg_database and should cause catalog cache refresh of all connections.
+  LOG(INFO) << "Revoke temp table creation privilege on the new database";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "REVOKE TEMP ON DATABASE $0 FROM public", kTestDatabase));
+  WaitForCatalogVersionToPropagate();
+
+  // This temp table t2 creation should fail. However it succeeds because
+  // currently global DDL statements are not supported and the effect of
+  // the previous REVOKE is only seen on conn_yugabyte, not on conn_test.
+  // See https://github.com/yugabyte/yugabyte-db/issues/16962.
+  ASSERT_OK(conn_test.Execute("CREATE TEMP TABLE t2(id INT)"));
+
+  // Test case 2: global ddl writing to pg_tablespace.
+  LOG(INFO) << "Try to create a table t3 in the test tablespace on conn_test";
+  ASSERT_NOK(conn_test.ExecuteFormat(
+      "CREATE TABLE t3(id INT) TABLESPACE $0", kTestTablespace));
+
+  // The following GRANT is a global DDL that writes to shared relation
+  // pg_tablespace and should cause catalog cache refresh of all connections.
+  LOG(INFO) << "Grant usage of the new tablespace";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat(
+      "GRANT CREATE ON TABLESPACE $0 TO public", kTestTablespace));
+  WaitForCatalogVersionToPropagate();
+
+  // This table t4 creation should succeed. However it fails because currently
+  // global DDL statements are not supported and the effect of the previous
+  // GRANT is only seen on conn_yugabyte, not on conn_test.
+  // See https://github.com/yugabyte/yugabyte-db/issues/16962.
+  LOG(INFO) << "Try to create a table t4 in the test tablespace on conn_test";
+  ASSERT_NOK(conn_test.ExecuteFormat(
+      "CREATE TABLE t4(id INT) TABLESPACE $0", kTestTablespace));
+
+  // Test case 3: global ddl writing to pg_authid and pg_auth_members.
+  LOG(INFO) << "Connects to database " << kTestDatabase << " as user "
+            << kTestUser1 << " on node at index 0.";
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_test1 = ASSERT_RESULT(ConnectToDBAsUser(kTestDatabase, kTestUser1));
+  LOG(INFO) << "Create a table t5 on conn_test1 and grant all to test_group";
+  ASSERT_OK(conn_test1.Execute("CREATE TABLE t5(id INT)"));
+  ASSERT_OK(conn_test1.ExecuteFormat("GRANT ALL ON t5 TO $0", kTestGroup));
+
+  // Connect to database yugabyte as test_user2.
+  LOG(INFO) << "Connects to database " << kTestDatabase << " as user "
+            << kTestUser2 << " on node at index 1.";
+  pg_ts = cluster_->tablet_server(1);
+  auto conn_test2 = ASSERT_RESULT(ConnectToDBAsUser(kTestDatabase, kTestUser2));
+  // The test_user2 is a member of test_group, which has been granted ALL
+  // privileges on table t5. Therefore this query should succeed.
+  ASSERT_OK(conn_test2.Fetch("SELECT * FROM t5"));
+
+  LOG(INFO) << "Connects to database template1 on node at index 0.";
+  pg_ts = cluster_->tablet_server(0);
+  auto conn_template1 = ASSERT_RESULT(ConnectToDB("template1"));
+
+  // The following ALTER is a global DDL that writes to shared relations
+  // pg_authid and pg_auth_members so it should cause catalog cache refresh
+  // of all connections.
+  ASSERT_OK(conn_template1.ExecuteFormat(
+      "ALTER GROUP $0 DROP USER $1", kTestGroup, kTestUser2));
+  WaitForCatalogVersionToPropagate();
+
+  // This table t5 selection should fail because test_user2 no longer belongs
+  // to test_group and therefore has lost privilege on table t5. However it
+  // succeeds because currently global DDL statements are not supported and
+  // the effect of the previous ALTER GROUP is only seen on conn_template1,
+  // not on conn_test2.
+  // See https://github.com/yugabyte/yugabyte-db/issues/16962.
+  ASSERT_OK(conn_test2.Fetch("SELECT * FROM t5"));
+}
+
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   const string kDatabaseName = "yugabyte";
 
@@ -3874,6 +4008,60 @@ TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   ASSERT_TRUE(status.IsNetworkError()) << status;
   ASSERT_STR_CONTAINS(status.ToString(), msg);
   ASSERT_OK(conn1.Execute("ABORT"));
+}
+
+TEST_F_EX(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(YbTableProperties), PgLibPqTestRF1) {
+  const string kDatabaseName = "yugabyte";
+  const string kTableName ="test";
+
+  auto conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+  ASSERT_OK(conn.Execute(
+    "CREATE TABLE test (k int, v int, PRIMARY KEY (k ASC))"));
+  ASSERT_OK(conn.Execute(
+    "INSERT INTO test SELECT i, i FROM generate_series(1,100) AS i"));
+  const string query1 =
+    "SELECT * FROM yb_table_properties('test'::regclass)";
+  auto row_str = ASSERT_RESULT(conn.FetchRowAsString(query1));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "1, 0, 0, NULL, NULL");
+  const string query2 =
+    "SELECT * FROM yb_get_range_split_clause('test'::regclass)";
+  row_str = ASSERT_RESULT(conn.FetchRowAsString(query2));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "");
+  const TabletId tablet_to_split = ASSERT_RESULT(GetSingleTabletId(kTableName));
+  LOG(INFO) << "tablet_to_split: " << tablet_to_split;
+  auto output = ASSERT_RESULT(
+      RunYbAdminCommand("flush_table ysql.yugabyte test"));
+  LOG(INFO) << "flush_table command output: " << output;
+
+  output = ASSERT_RESULT(
+      RunYbAdminCommand(Format("split_tablet $0", tablet_to_split)));
+  LOG(INFO) << "split_tablet command output: " << output;
+
+  // Wait for the tablet split to complete.
+  auto client = ASSERT_RESULT(cluster_->CreateClient());
+  auto table_id = ASSERT_RESULT(GetTableIdByTableName(client.get(), kDatabaseName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  do {
+    std::this_thread::sleep_for(1s);
+    ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  } while (tablets.size() < 2);
+  ASSERT_EQ(tablets.size(), 2);
+
+  // Execute simple command to update table's partitioning at pggate side.
+  // The split_tablet command does not increment catalog version or table
+  // schema version. It increments partition_list_version.
+  auto res = CHECK_RESULT(
+      conn.FetchFormat("SELECT count(*) FROM $0", kTableName));
+
+  row_str = ASSERT_RESULT(conn.FetchRowAsString(query1));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "2, 0, 0, NULL, NULL");
+
+  row_str = ASSERT_RESULT(conn.FetchRowAsString(query2));
+  LOG(INFO) << "Result string: " << row_str;
+  ASSERT_EQ(row_str, "SPLIT AT VALUES ((49))");
 }
 
 TEST_F(PgLibPqTest, YB_DISABLE_TEST_IN_TSAN(AggrSystemColumn)) {

@@ -19,8 +19,8 @@
 #include "yb/client/yb_op.h"
 #include "yb/client/yb_table_name.h"
 #include "yb/client/client-test-util.h"
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 #include "yb/docdb/docdb_test_util.h"
 
 #include "yb/gutil/casts.h"

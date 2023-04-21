@@ -16,8 +16,8 @@
 #include "yb/common/transaction_error.h"
 
 #include "yb/docdb/docdb.pb.h"
-#include "yb/docdb/key_bytes.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/key_bytes.h"
+#include "yb/dockv/value_type.h"
 
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
@@ -59,7 +59,7 @@ DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs_per_tserver, 1,
 namespace yb {
 namespace master {
 
-Result<docdb::KeyBytes> EncodedSnapshotKey(
+Result<dockv::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context) {
   return EncodedKey(SysRowEntryType::SNAPSHOT, id.AsSlice(), context);
 }
@@ -152,7 +152,7 @@ Status SnapshotState::StoreToWriteBatch(docdb::KeyValueWriteBatchPB* out) {
   auto pair = out->add_write_pairs();
   pair->set_key(encoded_key.AsSlice().cdata(), encoded_key.size());
   faststring value;
-  value.push_back(docdb::ValueEntryTypeAsChar::kString);
+  value.push_back(dockv::ValueEntryTypeAsChar::kString);
   SysSnapshotEntryPB entry;
   RETURN_NOT_OK(ToEntryPB(&entry, ForClient::kFalse, ListSnapshotsDetailOptionsPB()));
   RETURN_NOT_OK(pb_util::AppendToString(entry, &value));

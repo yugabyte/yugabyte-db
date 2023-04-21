@@ -346,6 +346,8 @@ public enum TaskType {
 
   ReplicateNamespaces(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces.class),
+  CheckXUniverseAutoFlags(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags.class),
 
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
@@ -495,7 +497,15 @@ public enum TaskType {
 
   WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class),
 
-  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class);
+  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class),
+
+  CloudImageBundleSetup(
+      com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup.class),
+
+  UpdateClusterUserIntent(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class),
+
+  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class);
 
   private final Class<? extends ITask> taskClass;
 

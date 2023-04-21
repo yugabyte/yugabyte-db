@@ -21,8 +21,8 @@
 #include "yb/client/transaction.h"
 #include "yb/client/txn-test-base.h"
 
-#include "yb/docdb/primitive_value.h"
-#include "yb/docdb/value_type.h"
+#include "yb/dockv/primitive_value.h"
+#include "yb/dockv/value_type.h"
 #include "yb/docdb/docdb_test_util.h"
 
 #include "yb/integration-tests/cdc_test_util.h"

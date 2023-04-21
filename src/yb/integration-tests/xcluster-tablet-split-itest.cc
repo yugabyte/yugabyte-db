@@ -19,7 +19,7 @@
 #include "yb/client/session.h"
 #include "yb/client/table.h"
 #include "yb/client/yb_table_name.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/docdb/docdb_test_util.h"
@@ -451,7 +451,7 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
             [&](const auto& tablet) { return tablet->tablet_id() == mapped_producer_tablet; });
         ASSERT_NE(producer_tablet, producer_tablet_peers.end());
 
-        ASSERT_TRUE(PartitionSchema::HasOverlap(
+        ASSERT_TRUE(dockv::PartitionSchema::HasOverlap(
             (*consumer_tablet)->tablet_metadata()->partition()->partition_key_start(),
             (*consumer_tablet)->tablet_metadata()->partition()->partition_key_end(),
             (*producer_tablet)->tablet_metadata()->partition()->partition_key_start(),

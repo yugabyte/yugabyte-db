@@ -1004,7 +1004,7 @@ Create a single-node cluster and set additional flags for the YB-TServer process
 
 ## Upgrade a YugabyteDB cluster
 
-To use the latest features of the database and apply the latest security fixes, it's prudent to upgrade your YugabyteDB cluster to the [latest release](https://download.yugabyte.com/).
+To use the latest features of the database and apply the latest security fixes, upgrade your YugabyteDB cluster to the [latest release](https://download.yugabyte.com/#/).
 
 Upgrading an existing YugabyteDB cluster that was deployed using yugabyted includes the following steps:
 
@@ -1016,7 +1016,7 @@ Repeat the steps on all the nodes of the cluster, one node at a time.
 
 ### Upgrade a cluster from single to multi zone
 
-The following steps assume that you have a running YugabyteDB cluster deployed using `yugabyted`, and have [downloaded the update](https://download.yugabyte.com/).
+The following steps assume that you have a running YugabyteDB cluster deployed using `yugabyted`, and have downloaded the update:
 
 1. Stop the first node by using `yugabyted stop` command:
 

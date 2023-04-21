@@ -4189,37 +4189,7 @@ Status ClusterAdminClient::GetReplicationInfo(const std::string& universe_uuid) 
   return Status::OK();
 }
 
-Result<rapidjson::Document> ClusterAdminClient::GetXClusterEstimatedDataLoss() {
-  master::GetXClusterEstimatedDataLossRequestPB req;
-  master::GetXClusterEstimatedDataLossResponsePB resp;
-  RpcController rpc;
-  rpc.set_timeout(timeout_);
-  RETURN_NOT_OK(master_replication_proxy_->GetXClusterEstimatedDataLoss(req, &resp, &rpc));
-
-  if (resp.has_error()) {
-        cout << "Error getting xCluster estimated data loss values: "
-             << resp.error().status().message() << endl;
-        return StatusFromPB(resp.error().status());
-  }
-
-  rapidjson::Document document;
-  document.SetArray();
-  for (const auto& data_loss : resp.namespace_data_loss()) {
-        rapidjson::Value json_entry(rapidjson::kObjectType);
-        AddStringField(
-            "namespace_id", data_loss.namespace_id(), &json_entry, &document.GetAllocator());
-
-        // Use 1 second granularity.
-        int64_t data_loss_s = MonoDelta::FromMicroseconds(data_loss.data_loss_us()).ToSeconds();
-        AddStringField(
-            "data_loss_sec", std::to_string(data_loss_s), &json_entry, &document.GetAllocator());
-        document.PushBack(json_entry, document.GetAllocator());
-  }
-
-  return document;
-}
-
-Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime() {
+Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime(bool include_lag_and_skew) {
   master::GetXClusterSafeTimeRequestPB req;
   master::GetXClusterSafeTimeResponsePB resp;
   RpcController rpc;
@@ -4227,23 +4197,38 @@ Result<rapidjson::Document> ClusterAdminClient::GetXClusterSafeTime() {
   RETURN_NOT_OK(master_replication_proxy_->GetXClusterSafeTime(req, &resp, &rpc));
 
   if (resp.has_error()) {
-        cout << "Error getting xCluster safe time values: " << resp.error().status().message()
-             << endl;
-        return StatusFromPB(resp.error().status());
+    cout << "Error getting xCluster safe time values: " << resp.error().status().message() << endl;
+    return StatusFromPB(resp.error().status());
   }
 
   rapidjson::Document document;
   document.SetArray();
   for (const auto& safe_time : resp.namespace_safe_times()) {
-        rapidjson::Value json_entry(rapidjson::kObjectType);
-        AddStringField(
-            "namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
-        const auto& st = HybridTime::FromPB(safe_time.safe_time_ht());
-        AddStringField("safe_time", HybridTimeToString(st), &json_entry, &document.GetAllocator());
-        AddStringField(
-            "safe_time_epoch", std::to_string(st.GetPhysicalValueMicros()), &json_entry,
-            &document.GetAllocator());
-        document.PushBack(json_entry, document.GetAllocator());
+    rapidjson::Value json_entry(rapidjson::kObjectType);
+    AddStringField("namespace_id", safe_time.namespace_id(), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "namespace_name", safe_time.namespace_name(), &json_entry, &document.GetAllocator());
+    const auto& safe_time_ht = HybridTime::FromPB(safe_time.safe_time_ht());
+    AddStringField(
+        "safe_time", HybridTimeToString(safe_time_ht), &json_entry, &document.GetAllocator());
+    AddStringField(
+        "safe_time_epoch", std::to_string(safe_time_ht.GetPhysicalValueMicros()), &json_entry,
+        &document.GetAllocator());
+
+    if (include_lag_and_skew) {
+      // Print safe lag and skew in seconds with 2 decimal points.
+      // Safe time lag is calculated as (current time - current safe time).
+      std::string safe_time_lag = FormatDouble(
+          MonoDelta::FromMicroseconds(safe_time.safe_time_lag()).ToMilliseconds() / 1000.0);
+      AddStringField("safe_time_lag_sec", safe_time_lag, &json_entry, &document.GetAllocator());
+      // Safe time skew is calculated as (safe time of most caught up tablet - safe time of
+      // laggiest tablet).
+      std::string safe_time_skew = FormatDouble(
+          MonoDelta::FromMicroseconds(safe_time.safe_time_skew()).ToMilliseconds() / 1000.0);
+      AddStringField("safe_time_skew_sec", safe_time_skew, &json_entry, &document.GetAllocator());
+    }
+
+    document.PushBack(json_entry, document.GetAllocator());
   }
 
   return document;

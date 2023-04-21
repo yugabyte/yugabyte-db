@@ -43,7 +43,7 @@
 
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
@@ -1339,7 +1339,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
   }
 
   Schema schema;
-  PartitionSchema partition_schema;
+  dockv::PartitionSchema partition_schema;
   NamespaceName keyspace_name;
   TableName table_name;
   TabletInfos tablets;
@@ -1436,7 +1436,7 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     Status s = SchemaFromPB(l->pb.schema(), &schema);
     if (s.ok()) {
-      s = PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
+      s = dockv::PartitionSchema::FromPB(l->pb.partition_schema(), schema, &partition_schema);
     }
     if (!s.ok()) {
       *output << "Unable to decode partition schema: " << s.ToString();
@@ -1447,10 +1447,33 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
   server::HtmlOutputSchemaTable(schema, output);
 
+  bool has_deleted_tablets = false;
+  for (const auto& tablet : tablets) {
+    if (tablet->LockForRead()->is_deleted()) {
+      has_deleted_tablets = true;
+      break;
+    }
+  }
+
+  const bool show_deleted_tablets =
+      has_deleted_tablets ? req.parsed_args.find("show_deleted") != req.parsed_args.end() : false;
+
+  if (has_deleted_tablets) {
+    *output << Format(
+        "<a href=\"$0?id=$1$2\">$3 deleted tablets</a>",
+        EscapeForHtmlToString(req.redirect_uri),
+        EscapeForHtmlToString(table->id()),
+        EscapeForHtmlToString(show_deleted_tablets ? "" : "&show_deleted"),
+        EscapeForHtmlToString(show_deleted_tablets ? "Hide" : "Show"));
+  }
+
   *output << "<table class='table table-striped'>\n";
   *output << "  <tr><th>Tablet ID</th><th>Partition</th><th>SplitDepth</th><th>State</th>"
              "<th>Hidden</th><th>Message</th><th>RaftConfig</th></tr>\n";
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
+    if (!show_deleted_tablets && tablet->LockForRead()->is_deleted()) {
+      continue;
+    }
     auto locations = tablet->GetReplicaLocations();
     vector<TabletReplica> sorted_locations;
     AppendValuesFromMap(*locations, &sorted_locations);
@@ -1458,8 +1481,8 @@ void MasterPathHandlers::HandleTablePage(const Webserver::WebRequest& req,
 
     auto l = tablet->LockForRead();
 
-    Partition partition;
-    Partition::FromPB(l->pb.partition(), &partition);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(l->pb.partition(), &partition);
 
     string state = SysTabletsEntryPB_State_Name(l->pb.state());
     Capitalize(&state);

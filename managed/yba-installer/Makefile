@@ -35,12 +35,13 @@ VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
 #pre-reqs
 PREREQS_DIR := ${TOP_BUILDDIR}/prereqs
 
-# enterprisedb publishes statically built postgres for versions < 11
-PG_BINARY_NAME ?= postgresql-10.23-1-linux-x64-binaries.tar.gz
-PG_BINARY_URL := https://get.enterprisedb.com/postgresql/${PG_BINARY_NAME}
-JDK_BINARY_NAME ?= OpenJDK8U-jdk_x64_linux_hotspot_8u345b01.tar.gz
-JDK_BINARY_URL ?= https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u345-b01/OpenJDK8U-jdk_x64_linux_hotspot_8u345b01.tar.gz
+# https://github.com/yugabyte/yba-pg-build/releases/tag/2023-04-04-02-48
+PG_BINARY_NAME ?= postgres-linux-14.6.tar.gz
+PG_BINARY_URL := https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/yba-pg-build/postgres-linux-14.6.tar.gz
 
+# https://adoptium.net/temurin/releases/
+JDK_BINARY_NAME ?= OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
+JDK_BINARY_URL ?= https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u362-b09/OpenJDK8U-jdk_x64_linux_hotspot_8u362b09.tar.gz
 
 
 all: prereqs test yba-ctl package

@@ -7,6 +7,7 @@ import com.yugabyte.yw.common.PlatformScheduler;
 import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.Counter;
@@ -93,6 +94,10 @@ public class PerfAdvisorGarbageCollector {
   }
 
   private void scheduleRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      log.debug("Skipping perf advisor GC run for follower platform");
+      return;
+    }
     try {
       Customer.getAll().forEach(this::checkCustomerAndPurgeRecs);
     } catch (Exception e) {

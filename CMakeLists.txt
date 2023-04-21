@@ -826,6 +826,7 @@ set(YB_SUBDIR_NAMES
     common
     consensus
     docdb
+    dockv
     encryption
     fs
     gen_yrpc

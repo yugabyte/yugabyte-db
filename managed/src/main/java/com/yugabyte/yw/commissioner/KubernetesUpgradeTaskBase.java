@@ -6,17 +6,16 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -34,17 +33,17 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     return (UpgradeTaskParams) taskParams;
   }
 
+  @Override
+  protected boolean isBlacklistLeaders() {
+    return getOrCreateExecutionContext().isBlacklistLeaders();
+  }
+
   public abstract SubTaskGroupType getTaskSubGroupType();
 
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
     try {
-      isBlacklistLeaders =
-          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaders);
-      leaderBacklistWaitTimeMs =
-          confGetter.getConfForScope(
-              getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
@@ -75,23 +74,18 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      // Clear the previous subtasks if any.
-      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
-      createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
-      getRunnableTask().runSubTasks();
-
+      setTaskQueueAndRun(
+          () -> createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType()));
       throw t;
     } finally {
       try {
-        if (isBlacklistLeaders) {
-          // Clear the previous subtasks if any.
+        setTaskQueueAndRun(
+            () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
+        if (taskParams().upgradeOption.equals(UpgradeOption.NON_ROLLING_UPGRADE)) {
+          // Add logic for changing update-strategy here too.
           getRunnableTask().reset();
-          List<NodeDetails> tServerNodes = getUniverse().getTServers();
-          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
         }
       } finally {
         unlockUniverseForUpdate();
@@ -183,7 +177,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     }
 
     if (isTServerChanged) {
-      if (!isBlacklistLeaders) {
+      if (!isBlacklistLeaders()) {
         createLoadBalancerStateChangeTask(false).setSubTaskGroupType(getTaskSubGroupType());
       }
 
@@ -206,8 +200,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           ybcSoftwareVersion);
 
       if (enableYbc) {
-        Set<NodeDetails> primaryTservers =
-            new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
+        Set<NodeDetails> primaryTservers = new HashSet<>(universe.getTServersInPrimaryCluster());
         installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
         performYbcAction(primaryTservers, false, "stop");
         createWaitForYbcServerTask(primaryTservers);
@@ -255,6 +248,109 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         }
       }
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType());
+    }
+  }
+
+  public void createNonRollingGflagUpgradeTask(
+      Universe universe,
+      String softwareVersion,
+      boolean isMasterChanged,
+      boolean isTServerChanged,
+      boolean enableYbc,
+      String ybcSoftwareVersion) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    PlacementInfo placementInfo = primaryCluster.placementInfo;
+    createSingleKubernetesExecutorTask(
+        universe.getName(), CommandType.POD_INFO, placementInfo, /*isReadOnlyCluster*/ false);
+
+    KubernetesPlacement placement =
+        new KubernetesPlacement(placementInfo, /*isReadOnlyCluster*/ false);
+    Provider provider =
+        Provider.getOrBadRequest(UUID.fromString(primaryCluster.userIntent.provider));
+    boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
+
+    String universeOverrides = primaryCluster.userIntent.universeOverrides;
+    Map<String, String> azOverrides = primaryCluster.userIntent.azOverrides;
+    if (azOverrides == null) {
+      azOverrides = new HashMap<String, String>();
+    }
+
+    String masterAddresses =
+        KubernetesUtil.computeMasterAddresses(
+            placementInfo,
+            placement.masters,
+            taskParams().nodePrefix,
+            universe.getName(),
+            provider,
+            universeDetails.communicationPorts.masterRpcPort,
+            newNamingStyle);
+    ServerType serverType =
+        (isMasterChanged && isTServerChanged)
+            ? (ServerType.EITHER)
+            : (isMasterChanged
+                ? ServerType.MASTER
+                : (isTServerChanged ? ServerType.TSERVER : null));
+    if (serverType != null) {
+      upgradePodsNonRolling(
+          universe.getName(),
+          placement,
+          masterAddresses,
+          serverType,
+          softwareVersion,
+          universeOverrides,
+          azOverrides,
+          newNamingStyle,
+          /*isReadOnlyCluster*/ false,
+          enableYbc,
+          null);
+    }
+
+    if (isTServerChanged) {
+      if (enableYbc) {
+        Set<NodeDetails> primaryTservers =
+            new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
+        installYbcOnThePods(universe.getName(), primaryTservers, false, ybcSoftwareVersion);
+        performYbcAction(primaryTservers, false, "stop");
+        createWaitForYbcServerTask(primaryTservers);
+      }
+
+      // Handle read cluster upgrade.
+      if (universeDetails.getReadOnlyClusters().size() != 0) {
+        PlacementInfo readClusterPlacementInfo =
+            universeDetails.getReadOnlyClusters().get(0).placementInfo;
+        createSingleKubernetesExecutorTask(
+            universe.getName(),
+            CommandType.POD_INFO,
+            readClusterPlacementInfo, /*isReadOnlyCluster*/
+            true);
+
+        KubernetesPlacement readClusterPlacement =
+            new KubernetesPlacement(readClusterPlacementInfo, /*isReadOnlyCluster*/ true);
+
+        upgradePodsNonRolling(
+            universe.getName(),
+            readClusterPlacement,
+            masterAddresses,
+            ServerType.TSERVER,
+            softwareVersion,
+            universeOverrides,
+            azOverrides,
+            newNamingStyle,
+            /*isReadOnlyCluster*/ true,
+            enableYbc,
+            ybcSoftwareVersion);
+
+        if (enableYbc) {
+          Set<NodeDetails> replicaTservers =
+              new HashSet<NodeDetails>(
+                  universe.getNodesInCluster(
+                      universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
+          installYbcOnThePods(universe.getName(), replicaTservers, true, ybcSoftwareVersion);
+          performYbcAction(replicaTservers, true, "stop");
+          createWaitForYbcServerTask(replicaTservers);
+        }
+      }
     }
   }
 }

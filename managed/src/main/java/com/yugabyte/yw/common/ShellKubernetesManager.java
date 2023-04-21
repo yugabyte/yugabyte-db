@@ -11,6 +11,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.SupportBundleUtil.KubernetesResourceType;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceList;
@@ -290,6 +291,30 @@ public class ShellKubernetesManager extends KubernetesManager {
     List<String> masterCommandList =
         ImmutableList.of("kubectl", "--namespace", namespace, "delete", "pod", podName);
     execCommand(config, masterCommandList).processErrors("Unable to delete pod");
+  }
+
+  @Override
+  public void deleteAllServerTypePods(
+      Map<String, String> config,
+      String namespace,
+      ServerType serverType,
+      String releaseName,
+      boolean newNamingStyle) {
+    String appNameLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String serverTypeSelector = "";
+    if (serverType.equals(ServerType.EITHER)) {
+      serverTypeSelector = " in (yb-tserver,yb-master)";
+    } else if (serverType.equals(ServerType.MASTER)) {
+      serverTypeSelector = "=yb-master";
+    } else if (serverType.equals(ServerType.TSERVER)) {
+      serverTypeSelector = "=yb-tserver";
+    }
+    String appName = String.format("%s%s", appNameLabel, serverTypeSelector);
+    String labelSelector = String.format("%s,%s=%s", appName, "release", releaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "delete", "pods", "-l", labelSelector);
+    execCommand(config, commandList).processErrors("Unable to delete pods");
   }
 
   @Override

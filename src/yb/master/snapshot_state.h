@@ -122,7 +122,7 @@ class SnapshotState : public StateWithTablets {
   AsyncTaskThrottler throttler_;
 };
 
-Result<docdb::KeyBytes> EncodedSnapshotKey(
+Result<dockv::KeyBytes> EncodedSnapshotKey(
     const TxnSnapshotId& id, SnapshotCoordinatorContext* context);
 
 } // namespace master

@@ -18,11 +18,11 @@
 #include <variant>
 
 #include "yb/docdb/doc_reader.h"
-#include "yb/docdb/docdb_encoding_fwd.h"
+#include "yb/dockv/dockv_fwd.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/common/ql_scanspec.h"
+#include "yb/dockv/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
@@ -80,7 +80,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
-  Status Init(const YQLScanSpec& spec);
+  Status Init(const dockv::YQLScanSpec& spec);
 
   const Schema& schema() const override {
     // Note: this is the schema only for the columns in the projection, not all columns.
@@ -103,12 +103,9 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Result<bool> FetchTuple(const Slice& tuple_id, QLTableRow* row) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
-  Status GetNextReadSubDocKey(SubDocKey* sub_doc_key) override;
+  Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
 
   void set_debug_dump(bool value) { debug_dump_ = value; }
-
-  // Used only in debug mode to ensure that generated key offsets are correct for provided key.
-  bool ValidateDocKeyOffsets(const Slice& iter_key);
 
  private:
   virtual void InitIterator(
@@ -125,8 +122,9 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status DoInit(const T& spec);
 
  protected:
-  // Initialize iter_key_ and update the row_key_/row_hash_key_.
-  Status InitIterKey(const Slice& key);
+  // Initialize iter_key_ and update the row_key_.
+  // full_row - whether is keys is related to full row value. For instance packed row.
+  Status InitIterKey(const Slice& key, bool full_row);
 
   // Parse the row_key_ and copy key required key columns to row.
   Status CopyKeyColumnsToQLTableRow(QLTableRow* row);
@@ -144,6 +142,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void IncrementKeyFoundStats(const bool obsolete, const EncodedDocHybridTime& write_time);
 
   void Done();
+
+  Status AssignHasNextStatus(const Status& status);
 
   bool is_initialized_ = false;
 
@@ -172,7 +172,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // reaches this point. This is exclusive bound for forward scans and inclusive bound for
   // reverse scans.
   bool has_bound_key_ = false;
-  KeyBytes bound_key_;
+  dockv::KeyBytes bound_key_;
 
   std::unique_ptr<ScanChoices> scan_choices_;
 
@@ -183,10 +183,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Indicates whether we've already finished iterating.
   bool done_ = false;
 
-  // Reference to object owned by Schema (DocReadContext schema object) for easier access.
-  // This is only set when DocKey offsets are present in schema.
-  const std::optional<DocKeyOffsets>& doc_key_offsets_;
-
   // The next index of last referenced key column index. Restricts the number of key columns present
   // in output row.
   const size_t end_referenced_key_column_index_;
@@ -194,11 +190,10 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // The current row's primary key. It is set to lower bound in the beginning.
   Slice row_key_;
 
-  // The current row's hash part of primary key.
-  Slice row_hash_key_;
+  bool fetched_row_static_ = false;
 
   // The current row's iterator key.
-  KeyBytes iter_key_;
+  dockv::KeyBytes iter_key_;
 
   ReaderProjection reader_projection_;
 
@@ -206,7 +201,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status has_next_status_;
 
   // Key for seeking a YSQL tuple. Used only when the table has a cotable id.
-  boost::optional<KeyBytes> tuple_key_;
+  boost::optional<dockv::KeyBytes> tuple_key_;
 
   TableType table_type_;
   bool ignore_ttl_ = false;

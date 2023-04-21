@@ -27,18 +27,16 @@ namespace yb {
 class ClockBase;
 class ColumnId;
 class ColumnSchema;
+class ConstContiguousRow;
 class DocHybridTime;
 class EncodedDocHybridTime;
 class HybridTime;
 class IndexInfo;
 class IndexMap;
-class Partition;
-class PartitionSchema;
 class PgsqlScanSpec;
 class QLResultSet;
 class QLRow;
 class QLRowBlock;
-class QLScanSpec;
 class TableProperties;
 class TransactionStatusManager;
 class TypeInfo;
@@ -75,7 +73,6 @@ using PgObjectIds = std::vector<PgObjectId>;
 
 enum class PgSystemAttrNum : int;
 enum class QLNameOption : int8_t;
-enum class YBHashSchema;
 
 enum SortingType : uint8_t;
 

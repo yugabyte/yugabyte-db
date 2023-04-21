@@ -336,15 +336,16 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
-      // Clear all the previous subtasks if pending.
-      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be disabled,
       // so we enable it again in case of errors.
       if (loadbalancerOff) {
-        createLoadBalancerStateChangeTask(true /*enable*/)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        setTaskQueueAndRun(
+            () -> {
+              createLoadBalancerStateChangeTask(true /*enable*/)
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            });
       }
-      getRunnableTask().runSubTasks();
+
       throw t;
     } finally {
       unlockUniverseForUpdate();

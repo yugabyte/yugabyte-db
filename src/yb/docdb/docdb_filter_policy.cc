@@ -13,13 +13,13 @@
 
 #include "yb/docdb/docdb_filter_policy.h"
 
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 namespace yb::docdb {
 
 namespace {
 
-template<DocKeyPart doc_key_part>
+template<dockv::DocKeyPart doc_key_part>
 class DocKeyComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
  public:
   DocKeyComponentsExtractor(const DocKeyComponentsExtractor&) = delete;
@@ -35,7 +35,7 @@ class DocKeyComponentsExtractor : public rocksdb::FilterPolicy::KeyTransformer {
   // needed).
   // As of 2020-05-12 intents DB could contain keys in non-DocKey format.
   Slice Transform(Slice key) const override {
-    auto size_result = DocKey::EncodedSize(key, doc_key_part);
+    auto size_result = dockv::DocKey::EncodedSize(key, doc_key_part);
     return size_result.ok() ? Slice(key.data(), *size_result) : Slice();
   }
 
@@ -58,7 +58,7 @@ class HashedDocKeyUpToHashComponentsExtractor : public rocksdb::FilterPolicy::Ke
   // for non-DocKey or DocKey without hash code (for range-partitioned tables) returns empty key,
   // so they will always match the filter.
   Slice Transform(Slice key) const override {
-    auto size_result = DocKey::EncodedSizeAndHashPresent(key, DocKeyPart::kUpToHash);
+    auto size_result = dockv::DocKey::EncodedSizeAndHashPresent(key, dockv::DocKeyPart::kUpToHash);
     return (size_result.ok() && size_result->second) ? Slice(key.data(), size_result->first)
                                                      : Slice();
   }
@@ -95,7 +95,7 @@ rocksdb::FilterPolicy::FilterType DocDbAwareFilterPolicyBase::GetFilterType() co
 
 const rocksdb::FilterPolicy::KeyTransformer*
 DocDbAwareHashedComponentsFilterPolicy::GetKeyTransformer() const {
-  return &DocKeyComponentsExtractor<DocKeyPart::kUpToHash>::GetInstance();
+  return &DocKeyComponentsExtractor<dockv::DocKeyPart::kUpToHash>::GetInstance();
 }
 
 const rocksdb::FilterPolicy::KeyTransformer*
@@ -108,7 +108,7 @@ DocDbAwareV2FilterPolicy::GetKeyTransformer() const {
 
 const rocksdb::FilterPolicy::KeyTransformer*
 DocDbAwareV3FilterPolicy::GetKeyTransformer() const {
-  return &DocKeyComponentsExtractor<DocKeyPart::kUpToHashOrFirstRange>::GetInstance();
+  return &DocKeyComponentsExtractor<dockv::DocKeyPart::kUpToHashOrFirstRange>::GetInstance();
 }
 
 }   // namespace yb::docdb

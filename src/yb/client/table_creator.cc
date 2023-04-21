@@ -21,6 +21,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
+#include "yb/dockv/partition.h"
+
 #include "yb/master/master_ddl.pb.h"
 
 #include "yb/util/result.h"
@@ -31,6 +33,8 @@
 using std::string;
 
 DECLARE_bool(client_suppress_created_logs);
+DECLARE_uint32(change_metadata_backoff_max_jitter_ms);
+DECLARE_uint32(change_metadata_backoff_init_exponent);
 
 DEFINE_test_flag(bool, duplicate_create_table_request, false,
                  "Whether a table creator should send duplicate CreateTableRequestPB to master.");
@@ -75,15 +79,15 @@ YBTableCreator& YBTableCreator::is_pg_shared_table() {
   return *this;
 }
 
-YBTableCreator& YBTableCreator::hash_schema(YBHashSchema hash_schema) {
+YBTableCreator& YBTableCreator::hash_schema(dockv::YBHashSchema hash_schema) {
   switch (hash_schema) {
-    case YBHashSchema::kMultiColumnHash:
+    case dockv::YBHashSchema::kMultiColumnHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::MULTI_COLUMN_HASH_SCHEMA);
       break;
-    case YBHashSchema::kRedisHash:
+    case dockv::YBHashSchema::kRedisHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::REDIS_HASH_SCHEMA);
       break;
-    case YBHashSchema::kPgsqlHash:
+    case dockv::YBHashSchema::kPgsqlHash:
       partition_schema_->set_hash_schema(PartitionSchemaPB::PGSQL_HASH_SCHEMA);
       break;
   }
@@ -135,7 +139,7 @@ YBTableCreator& YBTableCreator::part_of_transaction(const TransactionMetadata* t
   return *this;
 }
 
-YBTableCreator &YBTableCreator::add_partition(const Partition& partition) {
+YBTableCreator &YBTableCreator::add_partition(const dockv::Partition& partition) {
     partitions_.push_back(partition);
     return *this;
 }
@@ -372,8 +376,16 @@ Status YBTableCreator::Create() {
 
   // Spin until the table is fully created, if requested.
   if (wait_) {
-    RETURN_NOT_OK(client_->data_->WaitForCreateTableToFinish(
-        client_, YBTableName(), table_id_, deadline));
+    if (req.has_tablegroup_id()) {
+        RETURN_NOT_OK(client_->data_->WaitForCreateTableToFinish(
+            client_, YBTableName(), table_id_, deadline,
+            FLAGS_change_metadata_backoff_max_jitter_ms,
+            FLAGS_change_metadata_backoff_init_exponent));
+    } else {
+        // TODO: Should we make the backoff loop aggresive for regular tables as well?
+        RETURN_NOT_OK(client_->data_->WaitForCreateTableToFinish(
+            client_, YBTableName(), table_id_, deadline));
+    }
   }
 
   if (s.ok() && !FLAGS_client_suppress_created_logs) {

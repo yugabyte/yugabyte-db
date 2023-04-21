@@ -15,7 +15,7 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/docdb/bounded_rocksdb_iterator.h"
-#include "yb/docdb/doc_key.h"
+#include "yb/dockv/doc_key.h"
 
 #include "yb/gutil/dynamic_annotations.h"
 
@@ -36,6 +36,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/logging_test_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/range.h"
 #include "yb/util/string_case.h"
@@ -47,6 +48,10 @@
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
 
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
+DECLARE_bool(ysql_enable_packed_row);
+
+DECLARE_int32(TEST_fetch_next_delay_ms);
 DECLARE_bool(TEST_skip_partitioning_version_validation);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(TEST_partitioning_version);
@@ -155,6 +160,15 @@ class PgTabletSplitTest : public PgTabletSplitTestBase {
     return InvokeSplitsAndWaitForCompletion(
         table_id, [&selector](const auto& tablets) { return selector(tablets); });
   }
+
+  Status WaitForSplitCompletion(const TableId& table_id, const size_t expected_active_leaders = 2) {
+    return WaitFor(
+        [&]() -> Result<bool> {
+          return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() ==
+                 expected_active_leaders;
+        },
+        15s * kTimeMultiplier, "Wait for split completion.");
+  }
 };
 
 TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransaction)) {
@@ -177,9 +191,7 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransact
 
   ASSERT_OK(SplitSingleTablet(table_id));
 
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() == 2;
-  }, 15s * kTimeMultiplier, "Wait for split completion."));
+  ASSERT_OK(WaitForSplitCompletion(table_id));
 
   SleepFor(FLAGS_cleanup_split_tablets_interval_sec * 10s * kTimeMultiplier);
 
@@ -188,6 +200,65 @@ TEST_F(PgTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(SplitDuringLongRunningTransact
   }
 
   ASSERT_OK(conn.CommitTransaction());
+}
+
+// Make sure parent tablet shutdown does not crash during long scans and does not abort them.
+TEST_F(PgTabletSplitTest, SplitDuringLongScan) {
+  constexpr auto kScanAfterSplitDuration = 65s;
+  constexpr auto kNumRows = 1000;
+
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_client_read_write_timeout_ms =
+      narrow_cast<int32_t>(ToMilliseconds(kScanAfterSplitDuration + 60s));
+
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t(test_key INT, v INT) SPLIT INTO 1 TABLETS;"));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO t SELECT i, 1 FROM (SELECT generate_series(1, $0) i) t2;", kNumRows));
+
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_ms) =
+      narrow_cast<int32_t>(ToMilliseconds(kScanAfterSplitDuration + 60s) / kNumRows);
+
+  std::atomic<bool> scan_finished = false;
+
+  std::thread counter([&] {
+    LOG(INFO) << "Starting scan...";
+    const auto rows_count_result = FetchTableRowsCount(&conn, "t");
+    scan_finished = true;
+    ASSERT_OK(rows_count_result);
+    LOG(INFO) << "Rows count: " << *rows_count_result;
+    ASSERT_EQ(kNumRows, *rows_count_result);
+  });
+
+  auto table_id = ASSERT_RESULT(GetTableIDFromTableName("t"));
+
+  // Wait for test tablet scan start. It could be delayed, because FLAGS_TEST_fetch_next_delay_ms
+  // impacts master perf as well.
+  RegexWaiterLogSink log_waiter(R"#(.*Delaying read for.*test_key.*)#");
+  ASSERT_OK(log_waiter.WaitFor(30s));
+
+  ASSERT_OK(SplitSingleTablet(table_id));
+
+  LOG(INFO) << "Started tablet split";
+
+  const auto scan_deadline = CoarseMonoClock::Now() + kScanAfterSplitDuration;
+  while (!scan_finished && CoarseMonoClock::Now() < scan_deadline + 1s) {
+    SleepFor(100ms);
+  }
+  LOG(INFO) << "scan_finished: " << scan_finished;
+  ASSERT_GT(CoarseMonoClock::Now(), scan_deadline)
+      << "Expected for scan to run for slightly longer than " << AsString(kScanAfterSplitDuration)
+      << " after split";
+
+  LOG(INFO) << "Waiting for scan to complete...";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_ms) = 0;
+  counter.join();
+
+  ASSERT_OK(WaitForSplitCompletion(table_id));
 }
 
 TEST_F(PgTabletSplitTest, SplitSequencesDataTable) {
@@ -379,16 +450,16 @@ class PgPartitioningVersionTest :
              "Range partitioning is expected.");
 
       // Decode partition bounds and validate bounds has expected structure.
-      docdb::DocKey start;
+      dockv::DocKey start;
       RETURN_NOT_OK(start.DecodeFrom(meta->partition()->partition_key_start(),
-                                     docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
+                                     dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
       if (!start.empty()) {
         SCHECK_EQ(num_range_components, start.range_group().size(), IllegalState,
                   Format("Unexpected number of range components: $0", start.range_group().size()));
       }
-      docdb::DocKey end;
+      dockv::DocKey end;
       RETURN_NOT_OK(end.DecodeFrom(meta->partition()->partition_key_end(),
-                                  docdb::DocKeyPart::kWholeDocKey, docdb::AllowSpecial::kTrue));
+                                  dockv::DocKeyPart::kWholeDocKey, dockv::AllowSpecial::kTrue));
       if (!end.empty()) {
         SCHECK_EQ(num_range_components, end.range_group().size(), IllegalState,
                   Format("Unexpected number of range components: $0", end.range_group().size()));
@@ -457,9 +528,7 @@ TEST_P(PgPartitioningVersionTest, ManualSplit) {
       ASSERT_EQ(status.IsNotSupported(), true) << "Unexpected status: " << status.ToString();
     } else {
       ASSERT_OK(status);
-      ASSERT_OK(WaitFor([&]() -> Result<bool> {
-        return ListTableActiveTabletLeadersPeers(cluster_.get(), table_id).size() == 2;
-      }, 15s * kTimeMultiplier, "Wait for split completion."));
+      ASSERT_OK(WaitForSplitCompletion(table_id));
 
       ASSERT_EQ(kNumRows, ASSERT_RESULT(FetchTableRowsCount(&conn, kTableName)));
     }
@@ -527,8 +596,8 @@ TEST_P(PgPartitioningVersionTest, IndexRowsPersistenceAfterManualSplit) {
       const auto encoded_split_key =
          ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
       ASSERT_TRUE(parent_peer->tablet()->metadata()->partition_schema()->IsRangePartitioning());
-      docdb::SubDocKey split_key;
-      ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, docdb::HybridTimeRequired::kFalse));
+      dockv::SubDocKey split_key;
+      ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
       LOG(INFO) << "Split key: " << AsString(split_key);
 
       // Split index table.
@@ -630,8 +699,8 @@ TEST_P(PgPartitioningVersionTest, UniqueIndexRowsPersistenceAfterManualSplit) {
     // Keep split key to check future writes are done to the correct tablet for unique index idx1.
     auto encoded_split_key = ASSERT_RESULT(parent_peer->tablet()->GetEncodedMiddleSplitKey());
     ASSERT_TRUE(parent_peer->tablet()->metadata()->partition_schema()->IsRangePartitioning());
-    docdb::SubDocKey split_key;
-    ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, docdb::HybridTimeRequired::kFalse));
+    dockv::SubDocKey split_key;
+    ASSERT_OK(split_key.FullyDecodeFrom(encoded_split_key, dockv::HybridTimeRequired::kFalse));
     LOG(INFO) << "Split key: " << AsString(split_key);
 
     // Extract and keep split key values for unique index idx1.
@@ -853,8 +922,8 @@ TEST_F(PgRangePartitionedTableSplitTest,
 
       // Exptract middle tablet bounds.
       const auto parse_partition_key = [](const std::string& key) -> Result<int> {
-        docdb::SubDocKey doc_key;
-        RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, docdb::HybridTimeRequired::kFalse));
+        dockv::SubDocKey doc_key;
+        RETURN_NOT_OK(doc_key.FullyDecodeFrom(key, dockv::HybridTimeRequired::kFalse));
         SCHECK_EQ(doc_key.doc_key().range_group().size(), 1, IllegalState, "");
         SCHECK_EQ(doc_key.doc_key().range_group().at(0).IsInt32(), true, IllegalState, "");
         return doc_key.doc_key().range_group().at(0).GetInt32();
@@ -962,9 +1031,9 @@ TEST_P(PgPartitioningTest, YB_DISABLE_TEST_IN_TSAN(PgGatePartitionsListAfterSpli
           need_comma = true;
         }
         expected_clause << "(";
-        docdb::SubDocKey partition_key;
+        dockv::SubDocKey partition_key;
         ASSERT_OK(partition_key.FullyDecodeFrom(
-            partition.partition_key_start(), docdb::HybridTimeRequired::kFalse));
+            partition.partition_key_start(), dockv::HybridTimeRequired::kFalse));
         const auto& range_keys = partition_key.doc_key().range_group();
         std::for_each(range_keys.begin(), range_keys.end(),
             [&expected_clause, need_comma = false](const auto& key) mutable {

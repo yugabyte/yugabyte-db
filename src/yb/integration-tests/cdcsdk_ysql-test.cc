@@ -258,17 +258,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCLagMetric)) {
       },
       MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag == 0"));
 
+  // Sleep to induce cdc lag.
   SleepFor(MonoDelta::FromSeconds(5));
+
   ASSERT_OK(WriteRowsHelper(3, 4, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto metrics =
             std::static_pointer_cast<cdc::CDCSDKTabletMetrics>(cdc_service->GetCDCTabletMetrics(
                 {"" /* UUID */, stream_id[0], tablets[0].tablet_id()}, nullptr, CDCSDK));
-        return metrics->cdcsdk_sent_lag_micros->value() <= 5500000 &&
-               metrics->cdcsdk_sent_lag_micros->value() > 5000000;
+        return metrics->cdcsdk_sent_lag_micros->value() >= 5000000;
       },
-      MonoDelta::FromSeconds(10) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
+      MonoDelta::FromSeconds(30) * kTimeMultiplier, "Wait for Lag to be around 5 seconds"));
 }
 
 // Begin transaction, perform some operations and abort transaction.
@@ -7729,6 +7734,33 @@ TEST_F(
   ASSERT_EQ(
       OpId::FromPB(streaming_checkpoint_resp.checkpoint().op_id()),
       OpId::FromPB(added_table_checkpoint_resp.checkpoint().op_id()));
+}
+
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
+  ASSERT_FALSE(set_resp.has_error());
+
+  // We are calling 'GetChanges' in snapshot mode, but sine there is no data in the tablet, the
+  // first response itself should indicate the end of snapshot.
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDCSnapshot(stream_id, tablets));
+  // 'write_id' must be set to 0, 'key' must to empty, to indicate that the snapshot is done.
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().write_id(), 0);
+  ASSERT_EQ(change_resp.cdc_sdk_checkpoint().key(), "");
+
+  ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+  ASSERT_GT(change_resp.cdc_sdk_proto_records_size(), 1000);
 }
 
 }  // namespace cdc

@@ -25,6 +25,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.BackupUtil;
+import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.common.ybc.YbcManager;
@@ -59,15 +61,18 @@ public class CreateBackup extends UniverseTaskBase {
 
   private final CustomerConfigService customerConfigService;
   private final YbcManager ybcManager;
+  private final BackupUtil backupUtil;
 
   @Inject
   protected CreateBackup(
       BaseTaskDependencies baseTaskDependencies,
       CustomerConfigService customerConfigService,
-      YbcManager ybcManager) {
+      YbcManager ybcManager,
+      BackupUtil backupUtil) {
     super(baseTaskDependencies);
     this.customerConfigService = customerConfigService;
     this.ybcManager = ybcManager;
+    this.backupUtil = backupUtil;
   }
 
   protected BackupRequestParams params() {
@@ -107,6 +112,9 @@ public class CreateBackup extends UniverseTaskBase {
         }
         // Clear any previous subtasks if any.
         getRunnableTask().reset();
+
+        StorageUtil.getStorageUtil(customerConfig.getName())
+            .validateStorageConfigOnUniverse(customerConfig, universe);
 
         if (ybcBackup
             && universe.isYbcEnabled()
@@ -177,13 +185,12 @@ public class CreateBackup extends UniverseTaskBase {
         throw ce;
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
-          // Clear previous subtasks if any.
-          getRunnableTask().reset();
           // If the task failed, we don't want the loadbalancer to be
           // disabled, so we enable it again in case of errors.
-          createLoadBalancerStateChangeTask(true)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
+          setTaskQueueAndRun(
+              () ->
+                  createLoadBalancerStateChangeTask(true)
+                      .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
         }
         throw t;
       }

@@ -296,7 +296,7 @@ export const GCPProviderCreateForm = ({
 
   const regions = formMethods.watch('regions', defaultValues.regions);
   const setRegions = (regions: CloudVendorRegionField[]) =>
-    formMethods.setValue('regions', regions);
+    formMethods.setValue('regions', regions, { shouldValidate: true });
   const onRegionFormSubmit = (currentRegion: CloudVendorRegionField) => {
     regionOperation === RegionOperation.ADD
       ? addItem(currentRegion, regions, setRegions)
@@ -526,12 +526,12 @@ export const GCPProviderCreateForm = ({
                 <NTPConfigField isDisabled={isFormDisabled} providerCode={ProviderCode.GCP} />
               </FormField>
             </FieldGroup>
+            {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
+              <Box display="flex" gridGap="5px" marginLeft="auto">
+                <CircularProgress size={16} color="primary" thickness={5} />
+              </Box>
+            )}
           </Box>
-          {(formMethods.formState.isValidating || formMethods.formState.isSubmitting) && (
-            <Box display="flex" gridGap="5px" marginLeft="auto">
-              <CircularProgress size={16} color="primary" thickness={5} />
-            </Box>
-          )}
           <Box marginTop="16px">
             <YBButton
               btnText="Create Provider Configuration"

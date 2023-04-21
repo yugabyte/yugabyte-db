@@ -2,7 +2,9 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -11,10 +13,12 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -23,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -40,12 +45,16 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
 
   private final RuntimeConfGetter confGetter;
+  private final ImageBundleUtil imageBundleUtil;
 
   @Inject
   protected VMImageUpgrade(
-      BaseTaskDependencies baseTaskDependencies, RuntimeConfGetter confGetter) {
+      BaseTaskDependencies baseTaskDependencies,
+      RuntimeConfGetter confGetter,
+      ImageBundleUtil imageBundleUtil) {
     super(baseTaskDependencies);
     this.confGetter = confGetter;
+    this.imageBundleUtil = imageBundleUtil;
   }
 
   @Override
@@ -101,10 +110,30 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private void createVMImageUpgradeTasks(Set<NodeDetails> nodes) {
     createRootVolumeCreationTasks(nodes).setSubTaskGroupType(getTaskSubGroupType());
 
+    Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
-      String machineImage = taskParams().machineImages.get(region);
-      String sshUserOverride = taskParams().sshUserOverrideMap.get(region);
+      String machineImage = "";
+      String sshUserOverride = "";
+      Integer sshPortOverride = null;
+      if (taskParams().imageBundleUUID != null) {
+        ImageBundle.NodeProperties toOverwriteNodeProperties =
+            imageBundleUtil.getNodePropertiesOrFail(
+                taskParams().imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
+        machineImage = toOverwriteNodeProperties.getMachineImage();
+        sshUserOverride = toOverwriteNodeProperties.getSshUser();
+        sshPortOverride = toOverwriteNodeProperties.getSshPort();
+      } else {
+        // Backward compatiblity.
+        machineImage = taskParams().machineImages.get(region);
+        sshUserOverride = taskParams().sshUserOverrideMap.get(region);
+      }
+      log.info(
+          "Upgrading universe nodes to use vm image {}, having ssh user {} & port {}",
+          machineImage,
+          sshUserOverride,
+          sshPortOverride);
+
       if (!taskParams().forceVMImageUpgrade && machineImage.equals(node.machineImage)) {
         log.info(
             "Skipping node {} as it's already running on {} and force flag is not set",
@@ -127,10 +156,12 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   .setSubTaskGroupType(getTaskSubGroupType()));
 
       createRootVolumeReplacementTask(node).setSubTaskGroupType(getTaskSubGroupType());
-
       node.machineImage = machineImage;
       if (StringUtils.isNotBlank(sshUserOverride)) {
         node.sshUserOverride = sshUserOverride;
+      }
+      if (sshPortOverride != null) {
+        node.sshPortOverride = sshPortOverride;
       }
 
       node.ybPrebuiltAmi =
@@ -172,8 +203,22 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           });
 
       createWaitForKeyInMemoryTask(node);
+      if (taskParams().imageBundleUUID != null) {
+        if (!clusterToImageBundleMap.containsKey(node.placementUuid)) {
+          clusterToImageBundleMap.put(node.placementUuid, taskParams().imageBundleUUID);
+        }
+      }
       createNodeDetailsUpdateTask(node, !taskParams().isSoftwareUpdateViaVm)
           .setSubTaskGroupType(getTaskSubGroupType());
+    }
+
+    // Update the imageBundleUUID in the cluster -> userIntent
+    if (!clusterToImageBundleMap.isEmpty()) {
+      clusterToImageBundleMap.forEach(
+          (clusterUUID, imageBundleUUID) -> {
+            createClusterUserIntentUpdateTask(clusterUUID, imageBundleUUID)
+                .setSubTaskGroupType(getTaskSubGroupType());
+          });
     }
     // Delete after all the disks are replaced.
     createDeleteRootVolumesTasks(getUniverse(), nodes, null /* volume Ids */)
@@ -189,7 +234,17 @@ public class VMImageUpgrade extends UpgradeTaskBase {
         (key, value) -> {
           NodeDetails node = value.get(0);
           UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
-          String machineImage = taskParams().machineImages.get(region);
+          String updatedMachineImage = "";
+          if (taskParams().imageBundleUUID != null) {
+            ImageBundle.NodeProperties toOverwriteNodeProperties =
+                imageBundleUtil.getNodePropertiesOrFail(
+                    taskParams().imageBundleUUID, node.cloudInfo.region, node.cloudInfo.cloud);
+            updatedMachineImage = toOverwriteNodeProperties.getMachineImage();
+          } else {
+            // Backward compatiblity.
+            updatedMachineImage = taskParams().machineImages.get(region);
+          }
+          final String machineImage = updatedMachineImage;
           int numVolumes = value.size();
 
           if (!taskParams().forceVMImageUpgrade) {

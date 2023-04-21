@@ -1577,9 +1577,9 @@ Status CatalogManager::RepartitionTable(const scoped_refptr<TableInfo> table,
 
   // Get partitions from external snapshot.
   size_t i = 0;
-  vector<Partition> partitions(table_data->partitions.size());
+  vector<dockv::Partition> partitions(table_data->partitions.size());
   for (const auto& partition_pb : table_data->partitions) {
-    Partition::FromPB(partition_pb, &partitions[i++]);
+    dockv::Partition::FromPB(partition_pb, &partitions[i++]);
   }
   VLOG_WITH_FUNC(3) << "Got " << partitions.size()
                     << " partitions from external snapshot for table " << table->id();
@@ -3155,6 +3155,10 @@ void CatalogManager::PrepareRestore() {
   LOG_WITH_PREFIX(INFO) << "Disabling concurrent RPCs since restoration is ongoing";
   std::lock_guard<simple_spinlock> l(state_lock_);
   is_catalog_loaded_ = false;
+}
+
+HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
 }
 
 }  // namespace master

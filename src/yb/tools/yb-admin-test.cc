@@ -1192,6 +1192,15 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
 
   result = ASSERT_RESULT(CallAdmin("promote_auto_flags", "kLocalVolatile", "false", "force"));
   ASSERT_NE(result.find("New AutoFlags were promoted. Config version"), std::string::npos);
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "kNewInstallsOnly", "true", "force");
+    ASSERT_NOK(status);
+    ASSERT_NE(
+        status.ToString().find(
+            "It is not allowed to promote with max_class set to kNewInstallsOnly."),
+        std::string::npos);
+  }
 }
 
 TEST_F(AdminCliTest, TestListNamespaces) {

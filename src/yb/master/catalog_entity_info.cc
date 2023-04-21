@@ -36,7 +36,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/doc_hybrid_time.h"
-#include "yb/common/partition.h"
+#include "yb/dockv/partition.h"
 #include "yb/common/ql_wire_protocol.h"
 #include "yb/common/wire_protocol.h"
 
@@ -497,9 +497,9 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
   for (const auto& entry : partitions_) {
     const auto& tablet = entry.second;
     const auto& metadata = tablet->LockForRead();
-    Partition partition;
-    Partition::FromPB(metadata->pb.partition(), &partition);
-    auto result = PartitionSchema::SplitHashPartitionForStatusTablet(partition);
+    dockv::Partition partition;
+    dockv::Partition::FromPB(metadata->pb.partition(), &partition);
+    auto result = dockv::PartitionSchema::SplitHashPartitionForStatusTablet(partition);
     if (result) {
       return TabletWithSplitPartitions{tablet, result->first, result->second};
     }
@@ -509,7 +509,7 @@ Result<TabletWithSplitPartitions> TableInfo::FindSplittableHashPartitionForStatu
 }
 
 void TableInfo::AddStatusTabletViaSplitPartition(
-    TabletInfoPtr old_tablet, const Partition& partition, const TabletInfoPtr& new_tablet) {
+    TabletInfoPtr old_tablet, const dockv::Partition& partition, const TabletInfoPtr& new_tablet) {
   std::lock_guard<decltype(lock_)> l(lock_);
 
   const auto& new_dirty = new_tablet->metadata().dirty();

@@ -341,10 +341,11 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
                                         wal_root_dir);
     }
   } else {
-    Partition partition;
-    Partition::FromPB(superblock_->partition(), &partition);
-    PartitionSchema partition_schema;
-    RETURN_NOT_OK(PartitionSchema::FromPB(table.partition_schema(), schema, &partition_schema));
+    dockv::Partition partition;
+    dockv::Partition::FromPB(superblock_->partition(), &partition);
+    dockv::PartitionSchema partition_schema;
+    RETURN_NOT_OK(dockv::PartitionSchema::FromPB(
+        table.partition_schema(), schema, &partition_schema));
     // Create the superblock on disk.
     if (ts_manager != nullptr) {
       ts_manager->GetAndRegisterDataAndWalDir(&fs_manager(),
@@ -370,7 +371,6 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
             .colocated = colocated,
             .snapshot_schedules = {},
             .hosted_services = hosted_services,
-            .last_change_metadata_op_id = OpId::Min(),
         },
         data_root_dir, wal_root_dir);
     if (ts_manager != nullptr && !create_result.ok()) {
@@ -386,7 +386,7 @@ Status RemoteBootstrapClient::Start(const string& bootstrap_peer_uuid,
       deleted_cols.push_back(col);
     }
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     meta_->SetSchema(schema,
                      IndexMap(table.indexes()),
                      deleted_cols,

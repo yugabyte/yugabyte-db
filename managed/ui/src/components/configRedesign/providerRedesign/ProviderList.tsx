@@ -50,6 +50,9 @@ type ProviderListProps = GenericProviderListProps | K8sProviderListProps;
 type ProviderListItem = YBProvider & {
   linkedUniverses: UniverseItem[];
 };
+
+const TABLE_MIN_PAGE_SIZE = 10;
+
 export const ProviderList = (props: ProviderListProps) => {
   const { providerCode, setCurrentView } = props;
   const [isDeleteProviderModalOpen, setIsDeleteProviderModalOpen] = useState<boolean>(false);
@@ -183,7 +186,12 @@ export const ProviderList = (props: ProviderListProps) => {
       ) : (
         <>
           <div className={styles.bootstrapTableContainer}>
-            <BootstrapTable tableContainerClass={styles.bootstrapTable} data={filteredProviderList}>
+            <BootstrapTable
+              tableContainerClass={styles.bootstrapTable}
+              data={filteredProviderList}
+              pagination={filteredProviderList.length > TABLE_MIN_PAGE_SIZE}
+              hover
+            >
               <TableHeaderColumn
                 dataField="name"
                 isKey={true}

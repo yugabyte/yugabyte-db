@@ -25,7 +25,7 @@
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction_error.h"
 
-#include "yb/docdb/doc_ttl_util.h"
+#include "yb/dockv/doc_ttl_util.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -68,7 +68,6 @@ DEFINE_test_flag(uint64, committed_history_cutoff_initial_value_usec, 0,
 namespace yb {
 namespace tablet {
 
-using docdb::TableTTL;
 using docdb::HistoryRetentionDirective;
 
 namespace {
@@ -116,7 +115,7 @@ HistoryRetentionDirective TabletRetentionPolicy::GetRetentionDirective() {
     }
   }
 
-  return {history_cutoff, TableTTL(*metadata_.schema()),
+  return {history_cutoff, dockv::TableTTL(*metadata_.schema()),
           docdb::ShouldRetainDeleteMarkersInMajorCompaction(
               ShouldRetainDeleteMarkersInMajorCompaction())};
 }
@@ -192,6 +191,7 @@ HybridTime TabletRetentionPolicy::SanitizeHistoryCutoff(HybridTime proposed_cuto
   if (allowed_history_cutoff_provider_) {
     provided_allowed_cutoff = allowed_history_cutoff_provider_(&metadata_);
     allowed_cutoff = std::min(provided_allowed_cutoff, allowed_cutoff);
+    VLOG_WITH_PREFIX(2) << __func__ << ", cutoff from the provider " << allowed_cutoff;
   }
 
   if (metadata_.table_id() == kObsoleteShortPrimaryTableId) {

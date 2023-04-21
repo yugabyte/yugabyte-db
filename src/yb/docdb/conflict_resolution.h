@@ -19,7 +19,7 @@
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/docdb/doc_operation.h"
-#include "yb/docdb/intent.h"
+#include "yb/dockv/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/wait_queue.h"
 
@@ -94,7 +94,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    HybridTime intial_resolution_ht,
                                    HybridTime read_time,
                                    const DocDB& doc_db,
-                                   PartialRangeKeyIntents partial_range_key_intents,
+                                   dockv::PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
                                    Counter* conflicts_metric,
                                    LockBatch* lock_batch,
@@ -117,7 +117,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const ConflictManagementPolicy conflict_management_policy,
                                  HybridTime intial_resolution_ht,
                                  const DocDB& doc_db,
-                                 PartialRangeKeyIntents partial_range_key_intents,
+                                 dockv::PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,
                                  Counter* conflicts_metric,
                                  LockBatch* lock_batch,
@@ -127,7 +127,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
 struct ParsedIntent {
   // Intent DocPath.
   Slice doc_path;
-  IntentTypeSet types;
+  dockv::IntentTypeSet types;
   // Intent doc hybrid time.
   Slice doc_ht;
 };
