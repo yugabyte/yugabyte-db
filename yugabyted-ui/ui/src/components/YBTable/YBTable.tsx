@@ -32,6 +32,7 @@ interface YBTableProps {
   withBorder?: boolean;
   touchBorder?: boolean;
   cellBorder?: boolean;
+  noCellBottomBorder?: boolean;
   alternateRowShading?: boolean;
 }
 
@@ -50,11 +51,12 @@ const useStyles = makeStyles((theme: Theme) => {
   return createStyles({
     root: {
       '& .MuiTableSortLabel-root': {
-        maxHeight: theme.spacing(3)
+        maxHeight: theme.spacing(3),
       },
       '& .expandRow': {
         '& .MuiTableCell-root': {
-          borderBottom: 0
+          borderBottom: 0,
+          
         },
         '&:hover': {
           backgroundColor: theme.palette.common.white
@@ -87,6 +89,11 @@ const useStyles = makeStyles((theme: Theme) => {
             padding: 0
         },
     },
+    noCellBottomBorder: {
+      '& .MuiTableCell-body': {
+        borderBottom: 0,
+      },
+    },
     subColumnHead: {
         borderTop: `1px solid ${theme.palette.grey[300]}`,
         whiteSpace: 'nowrap',
@@ -100,7 +107,7 @@ const useStyles = makeStyles((theme: Theme) => {
     alternateRowShading: {
         '& .MuiTableBody-root': {
             '& .MuiTableRow-root:nth-child(odd)': {
-                backgroundColor: '#F7FAFC'
+                backgroundColor: theme.palette.grey[100]
             }
         }
     },
@@ -320,6 +327,7 @@ export const YBTable = ({
   selectableRows = 'none',
   withBorder = true,
   touchBorder = false,
+  noCellBottomBorder = false,
   cellBorder = false,
   alternateRowShading = false,
   data,
@@ -427,6 +435,9 @@ export const YBTable = ({
   }
   if (alternateRowShading) {
     tableContainerDivClasses.push(classes.alternateRowShading);
+  }
+  if (noCellBottomBorder) {
+    tableContainerDivClasses.push(classes.noCellBottomBorder);
   }
   const tableContainerDiv = clsx(tableContainerDivClasses);
   return (

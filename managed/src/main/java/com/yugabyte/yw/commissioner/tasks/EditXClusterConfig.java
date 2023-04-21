@@ -47,6 +47,13 @@ public class EditXClusterConfig extends CreateXClusterConfig {
       // Lock the target universe.
       lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
       try {
+
+        // Check Auto flags on source and target universes while resuming xCluster.
+        if (editFormData.status != null && editFormData.status.equals("Running")) {
+          createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
+        }
+
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 

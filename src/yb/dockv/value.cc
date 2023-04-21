@@ -215,4 +215,11 @@ Result<bool> Value::IsTombstoned(const Slice& slice) {
   return VERIFY_RESULT(DecodePrimitiveValueType(slice)) == ValueEntryType::kTombstone;
 }
 
+bool IsFullRowValue(const Slice& value) {
+  if (value.empty()) {
+    return false;
+  }
+  return static_cast<dockv::ValueEntryType>(value[0]) == dockv::ValueEntryType::kPackedRow;
+}
+
 }  // namespace yb::dockv

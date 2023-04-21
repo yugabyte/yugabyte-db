@@ -344,11 +344,9 @@ Status TabletSnapshots::RestoreCheckpoint(
     const docdb::ConsensusFrontier& frontier, bool is_pitr_restore, const OpId& op_id) {
   LongOperationTracker long_operation_tracker("Restore checkpoint", 5s);
 
-  const auto destroy = !dir.empty();
-
   // The following two lines can't just be changed to RETURN_NOT_OK(PauseReadWriteOperations()):
   // op_pause has to stay in scope until the end of the function.
-  auto op_pauses = VERIFY_RESULT(StartShutdownRocksDBs(DisableFlushOnShutdown(destroy)));
+  auto op_pauses = StartShutdownRocksDBs(DisableFlushOnShutdown(!dir.empty()));
 
   std::lock_guard<std::mutex> lock(create_checkpoint_lock());
 
@@ -358,11 +356,11 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (dir.empty()) {
     // Just change rocksdb hybrid time limit, because it should be in retention interval.
     // TODO(pitr) apply transactions and reset intents.
-    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
+    CompleteShutdownRocksDBs(op_pauses);
   } else {
     // Destroy DB object.
     // TODO: snapshot current DB and try to restore it in case of failure.
-    RETURN_NOT_OK(CompleteShutdownRocksDBs(Destroy(destroy), &op_pauses));
+    RETURN_NOT_OK(DeleteRocksDBs(CompleteShutdownRocksDBs(op_pauses)));
 
     auto s = CopyDirectory(
         &rocksdb_env(), dir, db_dir, UseHardLinks::kTrue, CreateIfMissing::kTrue);
@@ -393,7 +391,7 @@ Status TabletSnapshots::RestoreCheckpoint(
   if (restore_metadata.schema) {
     // TODO(pitr) check deleted columns
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *restore_metadata.schema, *restore_metadata.index_map, {} /* deleted_columns */,
         restore_metadata.schema_version, op_id);
@@ -405,7 +403,7 @@ Status TabletSnapshots::RestoreCheckpoint(
     LOG(INFO) << "Setting schema, index information and schema version for table "
               << colocated_table_metadata.table_id;
     // OpId::Invalid() is used to indicate the callee to not
-    // set last_change_metadata_op_id field of tablet metadata.
+    // set last_applied_change_metadata_op_id field of tablet metadata.
     tablet().metadata()->SetSchema(
         *colocated_table_metadata.schema, *colocated_table_metadata.index_map,
         {} /* deleted_columns */,

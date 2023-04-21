@@ -13,15 +13,14 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
@@ -69,6 +68,7 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             cloudProviderFormData.code,
             cloudProviderFormData.name,
             reqProvider,
+            false,
             false);
     CloudInfoInterface.mayBeMassageResponse(provider);
     auditService()

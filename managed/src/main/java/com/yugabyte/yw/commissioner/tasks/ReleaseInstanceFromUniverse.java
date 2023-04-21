@@ -86,7 +86,9 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       if (Util.getNodeIp(universe, currentNode) != null) {
         // Create a task for removal of this server from blacklist on master leader.
         createModifyBlackListTask(
-                currentNodeDetails, false /* isAdd */, false /* isLeaderBlacklist */)
+                null /* addNodes */,
+                currentNodeDetails /* removeNodes */,
+                false /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
       UserIntent userIntent =

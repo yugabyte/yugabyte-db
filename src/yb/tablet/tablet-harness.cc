@@ -63,7 +63,6 @@ Status TabletHarness::Create(bool first_time) {
     .tablet_data_state = TABLET_DATA_READY,
     .snapshot_schedules = {},
     .hosted_services = {},
-    .last_change_metadata_op_id = OpId::Min(),
   }));
   if (options_.enable_metrics) {
     metrics_registry_.reset(new MetricRegistry());

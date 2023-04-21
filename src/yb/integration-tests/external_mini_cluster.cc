@@ -2771,17 +2771,8 @@ Status RestartAllMasters(ExternalMiniCluster* cluster) {
   return Status::OK();
 }
 
-Status CompactTablets(ExternalMiniCluster* cluster, const yb::MonoDelta& timeout) {
-  for (auto* daemon : cluster->master_daemons()) {
-    master::CompactSysCatalogRequestPB req;
-    master::CompactSysCatalogResponsePB resp;
-    rpc::RpcController controller;
-    controller.set_timeout(timeout);
-
-    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
-    RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
-  }
-
+Status CompactTablets(ExternalMiniCluster* cluster, const MonoDelta& timeout) {
+  RETURN_NOT_OK(CompactSysCatalog(cluster, timeout));
   for (auto* daemon : cluster->tserver_daemons()) {
     tserver::FlushTabletsRequestPB req;
     tserver::FlushTabletsResponsePB resp;
@@ -2796,6 +2787,33 @@ Status CompactTablets(ExternalMiniCluster* cluster, const yb::MonoDelta& timeout
     RETURN_NOT_OK(proxy.FlushTablets(req, &resp, &controller));
   }
 
+  return Status::OK();
+}
+
+Status FlushAndCompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout) {
+  for (auto* daemon : cluster->master_daemons()) {
+    master::FlushSysCatalogRequestPB req;
+    master::FlushSysCatalogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(timeout);
+
+    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
+    RETURN_NOT_OK(proxy.FlushSysCatalog(req, &resp, &controller));
+  }
+
+  return CompactSysCatalog(cluster, timeout);
+}
+
+Status CompactSysCatalog(ExternalMiniCluster* cluster, const MonoDelta& timeout) {
+  for (auto* daemon : cluster->master_daemons()) {
+    master::CompactSysCatalogRequestPB req;
+    master::CompactSysCatalogResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(timeout);
+
+    auto proxy = cluster->GetProxy<master::MasterAdminProxy>(daemon);
+    RETURN_NOT_OK(proxy.CompactSysCatalog(req, &resp, &controller));
+  }
   return Status::OK();
 }
 

@@ -2,10 +2,13 @@
 
 package com.yugabyte.yw.models.helpers.provider;
 
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.aws.AWSCloudImpl;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.configs.validators.AWSProviderValidator;
@@ -28,9 +31,17 @@ public class ProviderValidator extends BaseBeanValidator {
   }
 
   public void validate(Provider provider) {
-    ProviderFieldsValidator providerFieldsValidator = providerValidatorMap.get(provider.getCode());
-    if (providerFieldsValidator != null) {
-      providerFieldsValidator.validate(provider);
+    try {
+      ProviderFieldsValidator providerFieldsValidator =
+          providerValidatorMap.get(provider.getCode());
+      if (providerFieldsValidator != null) {
+        providerFieldsValidator.validate(provider);
+      }
+    } catch (RuntimeException e) {
+      if (!(e instanceof PlatformServiceException)) {
+        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+      }
+      throw e;
     }
   }
 }

@@ -66,6 +66,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // Lock the target universe.
         lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
 
+        createCheckXUniverseAutoFlag(sourceUniverse, targetUniverse)
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.PreflightChecks);
+
         createXClusterConfigSetStatusTask(XClusterConfigStatusType.Updating);
 
         createXClusterConfigSetStatusForTablesTask(

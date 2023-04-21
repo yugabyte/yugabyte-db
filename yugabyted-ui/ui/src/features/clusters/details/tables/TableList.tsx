@@ -3,7 +3,7 @@ import { makeStyles, Box, Typography, MenuItem } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { getMemorySizeUnits } from '@app/helpers';
 import ArrowRightIcon from '@app/assets/caret-right-circle.svg';
-import { YBButton, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
+import { YBButton, YBCheckbox, YBDropdown, YBInput, YBLoadingBox, YBSelect, YBTable } from '@app/components';
 import { ClusterTable, useGetClusterHealthCheckQuery, useGetClusterTabletsQuery } from '@app/api/src';
 import SearchIcon from '@app/assets/search.svg';
 import RefreshIcon from '@app/assets/refresh.svg';
@@ -43,9 +43,8 @@ const useStyles = makeStyles((theme) => ({
     borderColor: theme.palette.grey[300],
   },
   dropdown: {
-    width: 200,
+    width: 240,
     marginRight: theme.spacing(1),
-    flexGrow: 0
   },
   searchBox: {
     maxWidth: 520,
@@ -55,6 +54,14 @@ const useStyles = makeStyles((theme) => ({
   refreshBtn: {
     marginRight: theme.spacing(1)
   },
+  checkbox: {
+    padding: theme.spacing(0.5, 0.5, 0.5, 1.5),
+  },
+  statusContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: 240,
+  }
 }));
 
 type DatabaseListProps = {
@@ -75,9 +82,6 @@ export const TableList: FC<DatabaseListProps> = ({ tableList: tableListProp, onS
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const [tabletStatus, setTabletStatus] = React.useState<string>('');
-  const [tableName, setTableName] = React.useState<string>('');
-
   const { data: tablets } = useGetClusterTabletsQuery();
   const { data: healthCheckData } = useGetClusterHealthCheckQuery();
 
@@ -85,7 +89,23 @@ export const TableList: FC<DatabaseListProps> = ({ tableList: tableListProp, onS
      { key: t('clusterDetail.databases.healthyReplication'), value: "Healthy" },
      { key: t('clusterDetail.databases.underReplicated'), value: "Under-replicated" },
      { key: t('clusterDetail.databases.unavailable'), value: "Unavailable" },
-  ], [t]);
+  ] as const, [t]);
+
+  const [tabletStatus, setTabletStatus] = React.useState<typeof tabletStatusList[number]['value'][]>(
+    tabletStatusList.map(t => t.value)
+  );
+  const [tableName, setTableName] = React.useState<string>('');
+
+  const handleStatusChange = (newStatus: typeof tabletStatus[number]) => {
+    const statusIndex = tabletStatus.findIndex(s => s === newStatus);
+    const newTabletStatus = [ ...tabletStatus ];
+    if (statusIndex !== -1) {
+      newTabletStatus.splice(statusIndex, 1);
+    } else {
+      newTabletStatus.push(newStatus);
+    }
+    setTabletStatus(newTabletStatus);
+  }
 
   const tableList = useMemo(() => {
     let tabletList = tablets ? Object.entries(tablets.data).map(([_, value]) => value) : [];
@@ -105,8 +125,10 @@ export const TableList: FC<DatabaseListProps> = ({ tableList: tableListProp, onS
 
   const data = useMemo(() => {
     let data = tableList;
-    if (tabletStatus) {
-      data = data.filter(data => data.status === tabletStatus);
+    if (tabletStatus.length !== 0) {
+      data = data.filter(data => tabletStatus.find(status => status === data.status));
+    } else {
+      data = [];
     }
     if (tableName) {
       const searchName = tableName.toLowerCase();
@@ -200,7 +222,7 @@ export const TableList: FC<DatabaseListProps> = ({ tableList: tableListProp, onS
         {t('clusterDetail.databases.tabletStatus')}
       </Typography>
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-        <YBSelect
+        {/* <YBSelect
           value={tabletStatus}
           onChange={(ev) => setTabletStatus(ev.target.value)}
           className={classes.dropdown}
@@ -209,8 +231,24 @@ export const TableList: FC<DatabaseListProps> = ({ tableList: tableListProp, onS
           {tabletStatusList.map(tableStatus => 
             <MenuItem key={tableStatus.key} value={tableStatus.value}>{tableStatus.key}</MenuItem>
           )}
-          
-        </YBSelect>
+        </YBSelect> */}
+        <YBDropdown origin={
+          <YBSelect inputProps={{ tabIndex: -1 }} style={{ pointerEvents: "none" }} className={classes.dropdown} 
+            value={tabletStatus.join(', ')} >
+            <MenuItem value={tabletStatus.join(', ')}>
+              {tabletStatus.length === 0 ? t('clusterDetail.databases.none') : 
+                (tabletStatus.length < 3 ? tabletStatus.join(', ') : t('clusterDetail.databases.allStatuses'))}
+            </MenuItem>
+          </YBSelect>}
+          position={'bottom'} growDirection={'right'} keepOpenOnSelect>
+          <Box className={classes.statusContainer}>
+            {tabletStatusList.map(tableStatus => 
+              <YBCheckbox key={tableStatus.key} label={tableStatus.key} className={classes.checkbox}
+                checked={!!tabletStatus.find(status => status === tableStatus.value)}
+                onClick={() => handleStatusChange(tableStatus.value)} />
+            )}
+          </Box>
+        </YBDropdown>
         <YBInput
           placeholder={t('clusterDetail.databases.searchTableName')}
           InputProps={{

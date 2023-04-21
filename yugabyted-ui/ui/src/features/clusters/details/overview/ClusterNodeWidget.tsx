@@ -118,7 +118,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
                 <Typography variant="h4" className={classes.value}>
                   {fetchingNodes ? <div className={classes.loadingCount} /> : healthyNodes}
                 </Typography>
-                <YBStatus type={STATUS_TYPES.SUCCESS}/>
+                <YBStatus value={fetchingNodes ? 0 : healthyNodes} type={STATUS_TYPES.SUCCESS} tooltip />
               </Box>
               <Typography variant="body2" className={classes.label}>
                 {t('clusterDetail.nodes.running')}
@@ -131,7 +131,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
                 <Typography variant="h4" className={classes.value}>
                   {fetchingNodes ? <div className={classes.loadingCount} /> : deadNodes.length}
                 </Typography>
-                <YBStatus type={STATUS_TYPES.FAILED}/>
+                <YBStatus value={fetchingNodes ? 0 : deadNodes.length} type={STATUS_TYPES.FAILED} tooltip />
               </Box>
               <Typography variant="body2" className={classes.label}>
                 {t('clusterDetail.nodes.down')}
@@ -144,7 +144,7 @@ export const ClusterNodeWidget: FC<ClusterNodeWidgetProps> = ({ health }) => {
                 <Typography variant="h4" className={classes.value}>
                   {fetchingNodes ? <div className={classes.loadingCount} /> : bootstrappingNodes.length}
                 </Typography>
-                <YBStatus type={STATUS_TYPES.IN_PROGRESS}/>
+                <YBStatus value={fetchingNodes ? 0 : bootstrappingNodes.length} type={STATUS_TYPES.IN_PROGRESS} tooltip />
               </Box>
               <Typography variant="body2" className={classes.label}>
                 {t('clusterDetail.nodes.bootstrapping')}
