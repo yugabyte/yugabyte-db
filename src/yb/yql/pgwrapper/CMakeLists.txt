@@ -95,6 +95,7 @@ set(YB_TEST_LINK_LIBS yb_pgwrapper ql-dml-test-base pg_wrapper_test_base tools_t
 ADD_YB_TEST(pg_auto_analyze-test)
 ADD_YB_TEST(pg_backends-test)
 ADD_YB_TEST(pg_catalog_perf-test)
+ADD_YB_TEST(pg_catalog_version-test)
 ADD_YB_TEST(pg_clock_skew-test)
 ADD_YB_TEST(pg_conn-test)
 ADD_YB_TEST(pg_ddl_concurrency-test)
