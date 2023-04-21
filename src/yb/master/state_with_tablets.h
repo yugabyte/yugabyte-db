@@ -34,6 +34,8 @@
 namespace yb {
 namespace master {
 
+YB_STRONGLY_TYPED_BOOL(ForClient);
+
 class StateWithTablets {
  public:
   StateWithTablets(
@@ -190,11 +192,12 @@ class StateWithTablets {
     return tablets_;
   }
 
+  SysSnapshotEntryPB::State initial_state_;
+
  private:
   void CheckCompleteness();
 
   SnapshotCoordinatorContext& context_;
-  SysSnapshotEntryPB::State initial_state_;
   const std::string log_prefix_;
 
   Tablets tablets_;
