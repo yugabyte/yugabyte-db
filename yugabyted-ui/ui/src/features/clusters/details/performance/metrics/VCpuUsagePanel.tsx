@@ -46,7 +46,7 @@ export const VCpuUsagePanel: FC<VCpuUsagePanelProps> = ({ cluster }) => {
               top: 6,
               left: 168,
               right: 225,
-              bottom: 0,
+              bottom: 5,
             },
           }} />
       </Box>

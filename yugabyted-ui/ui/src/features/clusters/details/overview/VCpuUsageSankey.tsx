@@ -7,6 +7,7 @@ import { Box, LinearProgress, Link, makeStyles } from '@material-ui/core';
 import { Link as RouterLink } from 'react-router-dom';
 import { getInterval, RelativeInterval } from '@app/helpers';
 import { getUnixTime } from 'date-fns';
+import { StringParam, useQueryParams, withDefault } from 'use-query-params';
 
 const useStyles = makeStyles((theme) => ({
   link: {
@@ -46,6 +47,11 @@ const data = {
 export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, showTooltip, height, width }) => {
   const { t } = useTranslation();
   const { data: nodesResponse, isFetching } = useGetClusterNodesQuery();
+
+  const [{ nodeName }] = useQueryParams({
+    nodeName: withDefault(StringParam, 'all'),
+  });
+  const filteredNode = nodeName === 'all' || nodeName === '' || !nodeName ? undefined : nodeName; 
 
   const totalCores = cluster.spec?.cluster_info?.node_info.num_cores ?? 0;
 
@@ -150,12 +156,12 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
         top: 15,
         left: 168,
         right: 225,
-        bottom: -10,
+        bottom: 5,
       }}
-      node={<CpuSankeyNode />}
+      node={<CpuSankeyNode filteredNode={filteredNode} />}
       nodeWidth={4}
       nodePadding={10}
-      link={<CpuSankeyLink />}
+      link={<CpuSankeyLink nodeWidth={4} filteredNode={filteredNode} />}
       {...sankeyProps}
     >
       {showTooltip && <Tooltip />}
@@ -167,7 +173,7 @@ export const VCpuUsageSankey: FC<VCpuUsageSankey> = ({ cluster, sankeyProps, sho
 function CpuSankeyNode(props: any) {
   const classes = useStyles();
 
-  const { x, y, width, height, index, payload } = props;
+  const { x, y, width, height, index, payload, filteredNode } = props;
   const isLeftNode = index <= 1;
 
   const splitPayload = payload.name.split(' ') as string[];
@@ -180,9 +186,10 @@ function CpuSankeyNode(props: any) {
   }
 
   return (
-    <Layer key={`CustomNode${index}`}>
+    <Layer key={`CustomNode${index}`} opacity={!filteredNode ? 1 : 
+      (((isLeftNode && index === 0) || (!isLeftNode && payload.name === filteredNode)) ? 1 : 0.4 )}>
       <Rectangle 
-        x={x} y={y} 
+        x={x} y={y} opacity={isLeftNode ? (!filteredNode ? 1 : 0.4) : undefined}
         width={width} height={height} 
         fill={isLeftNode ? "#2B59C3" : "#8047F5"} 
         fillOpacity={isLeftNode ? 0.6 : 0.5} />
@@ -224,7 +231,8 @@ class CpuSankeyLink extends Component<any, any> {
   static displayName = 'CpuSankeyLink';
 
   render() {
-    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, index, payload } = this.props;
+    const { sourceX, targetX, sourceY, targetY, sourceControlX, targetControlX, linkWidth, 
+      filteredNode, index, nodeWidth, payload } = this.props;
 
     if (!payload.target.name) {
       return null;
@@ -234,7 +242,8 @@ class CpuSankeyLink extends Component<any, any> {
     const fill = this.state?.fill ?? `url(#${gradientID})`;
 
     return (
-      <Layer key={`CustomLink${index}`}>
+      <Layer key={`CustomLink${index}`} opacity={!filteredNode ? 1 : 
+        (payload.target.name === filteredNode ? 1 : 0.4 )}>
         <defs>
           <linearGradient id={gradientID}>
             <stop offset="20%" stopColor={"#2B59C3"} stopOpacity={"0.18"} />
@@ -264,6 +273,14 @@ class CpuSankeyLink extends Component<any, any> {
             }}
           />
         </Link>
+
+        {filteredNode && payload.target.name === filteredNode &&
+          <Rectangle 
+            x={sourceX - nodeWidth} y={sourceY - linkWidth / 2} 
+            width={nodeWidth} height={linkWidth} 
+            fill={"#2B59C3"} 
+            fillOpacity={0.6} />
+        }
       </Layer>
     );
   }
