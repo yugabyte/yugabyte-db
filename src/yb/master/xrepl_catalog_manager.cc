@@ -2536,6 +2536,16 @@ void CatalogManager::GetTablegroupSchemaCallback(
     consumer_parent_table_id = GetTablegroupParentTableId(consumer_tablegroup_id);
   }
 
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(consumer_parent_table_id)) {
+      std::string message = "N:1 replication topology not supported";
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
+  }
+
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
       table_bootstrap_ids,
@@ -2645,6 +2655,16 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     LOG(ERROR) << "Found incorrect number of consumer colocated parent table ids. "
                << "Expected 1, but found: [ " << oss.str() << " ]";
     return;
+  }
+
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(*consumer_parent_table_ids.begin())) {
+      std::string message = "N:1 replication topology not supported";
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
   }
 
   Status status = IsBootstrapRequiredOnProducer(
