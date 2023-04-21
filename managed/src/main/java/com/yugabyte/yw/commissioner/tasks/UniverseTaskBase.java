@@ -1494,6 +1494,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
     params.installYbc = taskParams().installYbc;
     params.setYbcInstalled(taskParams().isYbcInstalled());
+    // sshPortOverride, in case the passed imageBundle has a different port
+    // configured for the region.
+    params.sshPortOverride = node.sshPortOverride;
 
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
@@ -4010,6 +4013,9 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       transferParams.replicationGroupName = replicationGroupName;
       transferParams.producerCertsDirOnTarget = sourceRootCertDirPath;
       transferParams.ignoreErrors = false;
+      // sshPortOverride, in case the passed imageBundle has a different port
+      // configured for the region.
+      transferParams.sshPortOverride = node.sshPortOverride;
 
       TransferXClusterCerts transferXClusterCertsTask = createTask(TransferXClusterCerts.class);
       transferXClusterCertsTask.initialize(transferParams);

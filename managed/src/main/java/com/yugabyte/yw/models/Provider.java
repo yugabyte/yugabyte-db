@@ -106,6 +106,10 @@ public class Provider extends Model {
   @JsonManagedReference(value = "provider-regions")
   private List<Region> regions;
 
+  @OneToMany(cascade = CascadeType.ALL)
+  @JsonManagedReference(value = "provider-image-bundles")
+  private List<ImageBundle> imageBundles;
+
   @ApiModelProperty(required = false)
   @OneToMany(cascade = CascadeType.ALL)
   @JsonManagedReference(value = "provider-accessKey")

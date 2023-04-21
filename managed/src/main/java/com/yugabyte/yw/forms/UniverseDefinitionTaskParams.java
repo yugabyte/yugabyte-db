@@ -177,7 +177,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
-  @Nullable @ApiModelProperty public String sshUserOverride;
+  // Use imagebundle to overwrite the sshPort
+  @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -515,6 +516,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty() public boolean enableVolumeEncryption = false;
 
     @ApiModelProperty() public boolean enableIPV6 = false;
+
+    @ApiModelProperty() public UUID imageBundleUUID;
 
     // Flag to use if we need to deploy a loadbalancer/some kind of
     // exposing service for the cluster.

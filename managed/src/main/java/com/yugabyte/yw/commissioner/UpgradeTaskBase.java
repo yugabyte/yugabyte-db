@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -513,6 +514,23 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     updateNodeTask.initialize(updateNodeDetailsParams);
     updateNodeTask.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(updateNodeTask);
+
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected SubTaskGroup createClusterUserIntentUpdateTask(UUID clutserUUID, UUID imageBundleUUID) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterUserIntent");
+    UpdateClusterUserIntent.Params updateClusterUserIntentParams =
+        new UpdateClusterUserIntent.Params();
+    updateClusterUserIntentParams.setUniverseUUID(taskParams().getUniverseUUID());
+    updateClusterUserIntentParams.clusterUUID = clutserUUID;
+    updateClusterUserIntentParams.imageBundleUUID = imageBundleUUID;
+
+    UpdateClusterUserIntent updateClusterUserIntentTask = createTask(UpdateClusterUserIntent.class);
+    updateClusterUserIntentTask.initialize(updateClusterUserIntentParams);
+    updateClusterUserIntentTask.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(updateClusterUserIntentTask);
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
