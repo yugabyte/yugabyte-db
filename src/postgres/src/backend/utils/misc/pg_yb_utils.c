@@ -3204,3 +3204,13 @@ uint32_t YbGetNumberOfDatabases()
 	Assert(num_databases > 0);
 	return num_databases;
 }
+
+static bool yb_is_batched_execution = false;
+
+bool YbIsBatchedExecution() {
+	return yb_is_batched_execution;
+}
+
+void YbSetIsBatchedExecution(bool value) {
+	yb_is_batched_execution = value;
+}
