@@ -2129,13 +2129,17 @@ Status Tablet::AlterSchema(ChangeMetadataOperation *operation) {
         operation->new_table_name().ToBuffer(),
         operation->op_id(),
         current_table_info->table_id);
-    if (table_metrics_entity_) {
-      table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
-      table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
-    }
-    if (tablet_metrics_entity_) {
-      tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
-      tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+    // We shouldn't update the attributes of the colocation parent table's metrics when we alter
+    // a colocated table.
+    if (!metadata_->colocated()) {
+      if (table_metrics_entity_) {
+        table_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
+        table_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+      }
+      if (tablet_metrics_entity_) {
+        tablet_metrics_entity_->SetAttribute("table_name", operation->new_table_name().ToBuffer());
+        tablet_metrics_entity_->SetAttribute("namespace_name", current_table_info->namespace_name);
+      }
     }
   } else {
     metadata_->SetSchema(
