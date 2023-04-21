@@ -43,11 +43,11 @@ Suppose the end-user starts a donation page to raise money for a personal cause 
 
 Suppose a social media post gets a million likes and more continuously. For a post with massive likes such as this one, slightly stale reads are acceptable, and immediate updates are not necessary because the absolute number may not really matter to the end-user reading the post. Such applications do not need to always make requests directly to the leader. Instead, a slightly older value from the closest replica can achieve improved performance with lower latency.
 
-Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader. The Grand Unified Configuration (GUC) session variables that PostgreSQL supports can be used to enable follower reads.
+Follower reads are applicable for applications that can tolerate staleness. Replicas may not be completely up-to-date with all updates, so this design may respond with stale data. You can specify how much staleness the application can tolerate. When enabled, read-only operations may be handled by the closest replica, instead of having to go to the leader.
 
 ## Surface area
 
-Two session variables control the behavior of follower reads:
+Two YSQL parameters control the behavior of follower reads:
 
 - `yb_read_from_followers` controls whether or not reading from followers is enabled. The default value is false.
 
@@ -61,8 +61,8 @@ The following table provides information on the expected behavior when a read ha
 
 | Conditions | Expected behavior |
 | :--------- | :---------------- |
-| yb_read_from_followers is true AND transaction is marked read-only | Read happens from the closest replica of the tablet, which could be leader or follower. |
-| yb_read_from_followers is false OR transaction or statement is not read-only | Read happens from the leader. |
+| `yb_read_from_followers` is true AND transaction is marked read-only | Read happens from the closest replica of the tablet, which could be leader or follower. |
+| `yb_read_from_followers` is false OR transaction or statement is not read-only | Read happens from the leader. |
 
 ### Read from follower conditions
 
@@ -130,7 +130,7 @@ set yb_read_from_followers = true;
 PREPARE select_stmt(text) AS
 /*+ Set(transaction_read_only on) */
 SELECT * from t WHERE k=$1;
-EXECUTE select_stmt(‘k1’);
+EXECUTE select_stmt('k1');
 ```
 
 ```output
