@@ -57,7 +57,7 @@ export type XClusterConfigAction = typeof XClusterConfigAction[keyof typeof XClu
 
 export const XClusterConfigType = {
   BASIC: 'Basic',
-  TXN: 'Txn',
+  TXN: 'Txn'
 } as const;
 export type XClusterConfigType = typeof XClusterConfigType[keyof typeof XClusterConfigType];
 
@@ -194,3 +194,11 @@ export const XClusterModalName = {
  * The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '"' NULL])
  */
 export const XCLUSTER_CONFIG_NAME_ILLEGAL_PATTERN = /[\s_*<>?|"\0]/;
+
+/**
+ * A YB software version must exceed the threshold to be considered a supported version.
+ */
+export const TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD = '2.17.3.0-b1';
+
+export const XCLUSTER_REPLICATION_DOCUMENTATION_URL =
+  'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/';
