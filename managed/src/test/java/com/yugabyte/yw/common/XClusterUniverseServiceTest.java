@@ -41,8 +41,6 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
 
   @Before
   public void setup() {
-    when(ybService.getClient(any(), any())).thenReturn(mockYBClient);
-
     ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse("univ-1");
     TestHelper.updateUniverseVersion(defaultUniverse, "2.17.0.0-b1");

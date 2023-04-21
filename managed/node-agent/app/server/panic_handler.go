@@ -36,10 +36,10 @@ func withCorrelationID(srvCtx context.Context) context.Context {
 	return util.WithCorrelationID(srvCtx, util.NewUUID().String())
 }
 
-// UnaryPanicHandler returns the ServerOption to handle panic occurred in the unary interceptor
-// or the downstream unary handler.
-func UnaryPanicHandler(interceptor grpc.UnaryServerInterceptor) grpc.ServerOption {
-	return grpc.UnaryInterceptor(func(
+// UnaryPanicHandler returns the ServerOption to handle panic occurred in the
+// downstream unary handler.
+func UnaryPanicHandler() grpc.UnaryServerInterceptor {
+	return grpc.UnaryServerInterceptor(func(
 		ctx context.Context,
 		req interface{},
 		info *grpc.UnaryServerInfo,
@@ -52,19 +52,15 @@ func UnaryPanicHandler(interceptor grpc.UnaryServerInterceptor) grpc.ServerOptio
 			}
 		}()
 		ctx = withCorrelationID(ctx)
-		if interceptor == nil {
-			response, err = handler(ctx, req)
-		} else {
-			response, err = interceptor(ctx, req, info, handler)
-		}
+		response, err = handler(ctx, req)
 		return
 	})
 }
 
-// StreamPanicHandler returns the ServerOption to handle panic occurred in the stream interceptor
-// or the downstream stream handler.
-func StreamPanicHandler(interceptor grpc.StreamServerInterceptor) grpc.ServerOption {
-	return grpc.StreamInterceptor(func(
+// StreamPanicHandler returns the interceptor to handle panic occurred in the
+// downstream stream handler.
+func StreamPanicHandler() grpc.StreamServerInterceptor {
+	return grpc.StreamServerInterceptor(func(
 		srv interface{},
 		stream grpc.ServerStream,
 		info *grpc.StreamServerInfo,
@@ -79,11 +75,7 @@ func StreamPanicHandler(interceptor grpc.StreamServerInterceptor) grpc.ServerOpt
 		}()
 		ctx = withCorrelationID(ctx)
 		stream = &serverStream{stream, ctx}
-		if interceptor == nil {
-			err = handler(srv, stream)
-		} else {
-			err = interceptor(srv, stream, info, handler)
-		}
+		err = handler(srv, stream)
 		return
 	})
 }
