@@ -141,6 +141,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   Status AddExternalIntents(
       const TransactionId& txn_id,
+      SubTransactionId subtransaction_id,
       const std::vector<ExternalIntent>& intents,
       const Uuid& involved_tablet,
       HybridTime hybrid_time);

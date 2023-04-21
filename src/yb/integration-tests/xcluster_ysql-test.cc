@@ -799,8 +799,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-// TODO(mlillibridge): Temporarily disabled until #14308 is finished
-TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavepointsOpt) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsOpt) {
   // Test that SAVEPOINTs work correctly with xCluster replication.
   // Case I: skipping optimization pathway (see next test).
 
@@ -839,8 +838,7 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavep
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-// TODO(mlillibridge): Temporarily disabled until #14308 is finished
-TEST_F(XClusterYSqlTestConsistentTransactionsTest, DISABLED_TransactionWithSavepointsNoOpt) {
+TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionWithSavepointsNoOpt) {
   // Test that SAVEPOINTs work correctly with xCluster replication.
   // Case II: using optimization pathway (see below).
 

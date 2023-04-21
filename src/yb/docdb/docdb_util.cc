@@ -328,6 +328,7 @@ Status DocDBRocksDBUtil::SetPrimitive(
 
 Status DocDBRocksDBUtil::AddExternalIntents(
     const TransactionId& txn_id,
+    SubTransactionId subtransaction_id,
     const std::vector<ExternalIntent>& intents,
     const Uuid& involved_tablet,
     HybridTime hybrid_time) {
@@ -392,7 +393,7 @@ Status DocDBRocksDBUtil::AddExternalIntents(
   };
 
   Provider provider(&intents, involved_tablet, hybrid_time);
-  CombineExternalIntents(txn_id, &provider);
+  CombineExternalIntents(txn_id, subtransaction_id, &provider);
 
   rocksdb::WriteBatch rocksdb_write_batch;
   provider.Apply(&rocksdb_write_batch);
