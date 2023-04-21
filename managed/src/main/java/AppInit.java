@@ -117,13 +117,20 @@ public class AppInit {
           alertConfigurationService.createDefaultConfigs(customer);
         }
 
+        String storagePath = config.getString("yb.storage.path");
+        // Fix up DB paths if necessary
+        if (config.getBoolean("yb.fixPaths")) {
+          log.debug("Fixing up file paths.");
+          fileDataService.fixUpPaths(storagePath);
+          releaseManager.fixFilePaths();
+        }
+
         boolean ywFileDataSynced =
             Boolean.parseBoolean(
                 configHelper
                     .getConfig(ConfigHelper.ConfigType.FileDataSync)
                     .getOrDefault("synced", "false")
                     .toString());
-        String storagePath = config.getString("yb.storage.path");
         fileDataService.syncFileData(storagePath, ywFileDataSynced);
 
         if (mode.equals("PLATFORM")) {

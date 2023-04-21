@@ -409,6 +409,10 @@ public class CertificateInfo extends Model {
     return find.query().where().eq("label", label).findOne();
   }
 
+  public static List<CertificateInfo> getAll() {
+    return find.query().where().findList();
+  }
+
   public static CertificateInfo getOrBadRequest(String label) {
     CertificateInfo certificateInfo = get(label);
     if (certificateInfo == null) {

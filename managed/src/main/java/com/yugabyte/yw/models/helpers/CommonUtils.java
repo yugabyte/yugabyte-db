@@ -775,4 +775,11 @@ public class CommonUtils {
   public static boolean isAutoFlagSupported(String dbVersion) {
     return isReleaseEqualOrAfter(MIN_PROMOTE_AUTO_FLAG_RELEASE, dbVersion);
   }
+
+  // Only replace path at the beginning.
+  public static String replaceBeginningPath(
+      String pathToModify, String initialRoot, String finalRoot) {
+    String regex = "^" + Pattern.quote(initialRoot);
+    return pathToModify.replaceAll(regex, finalRoot);
+  }
 }
