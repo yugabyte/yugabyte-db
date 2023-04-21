@@ -59,7 +59,7 @@ public class QueryHelper {
 
   public static final String LIST_USER_DATABASES_SQL =
       "SELECT datname from pg_database where datname NOT IN "
-          + "('postgres', 'template1', 'template0', 'system_platform')";
+          + "('template1', 'template0', 'system_platform')";
 
   private final RuntimeConfigFactory runtimeConfigFactory;
   private final ExecutorService threadPool;
