@@ -46,8 +46,9 @@ func newPlatDirectories() platformDirectories {
 
 // Component 3: Platform
 type Platform struct {
-	name    string
-	version string
+	name    	string
+	version 	string
+	FixPaths	bool
 	platformDirectories
 }
 
@@ -57,6 +58,7 @@ func NewPlatform(version string) Platform {
 		name:                "yb-platform",
 		version:             version,
 		platformDirectories: newPlatDirectories(),
+		FixPaths:						 false,
 	}
 }
 
@@ -121,6 +123,15 @@ func (plat Platform) Install() error {
 
 	plat.Start()
 	log.Info("Finishing Platform install")
+	return nil
+}
+
+// SetDataDirPerms sets the YBA data dir's permissions to the service username.
+func (plat Platform) SetDataDirPerms() error {
+	userName := viper.GetString("service_username")
+	if err := common.Chown(plat.DataDir, userName, userName, true); err != nil {
+		return err
+	}
 	return nil
 }
 

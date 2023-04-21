@@ -411,6 +411,10 @@ public class Provider extends Model {
     return provider;
   }
 
+  public static List<Provider> getAll() {
+    return find.query().where().findList();
+  }
+
   /**
    * Get all the providers for a given customer uuid
    *

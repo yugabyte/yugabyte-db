@@ -610,4 +610,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "installation",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
+      new ConfKeyInfo<>(
+          "yb.fixPaths",
+          ScopeType.GLOBAL,
+          "Whether YBA should fix paths on startup",
+          "When enabled YBA will try to replace all filepaths in the database with updated values "
+              + "for the configurable part of the path (like storage or releases path)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
