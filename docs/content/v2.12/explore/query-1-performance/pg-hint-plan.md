@@ -26,7 +26,7 @@ To use `pg_hint_plan` effectively, you need thorough knowledge of how your appli
 
 ## Configuring pg_hint_plan
 
-pg_hint_plan is pre-configured, and enabled by default. The following GUC (Grand Unified Configuration) parameters control pg_hint_plan:
+pg_hint_plan is pre-configured, and enabled by default. The following parameters control pg_hint_plan:
 
 | Option | Values and notes |
 | :----- | :--------------- |
@@ -516,7 +516,7 @@ error hint:
 (5 rows)
 ```
 
-The first query uses an `IndexScan` in table `t2`. However, when we add `/*+Set(enable_indexscan off)*/`, the second query uses `SeqScan` in table `t2`. You can combine any GUC parameters in the hint phrases of your SQL queries. Refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/11/runtime-config-query.html) for the complete list of available GUC parameters.
+The first query uses an `IndexScan` in table `t2`. However, when we add `/*+Set(enable_indexscan off)*/`, the second query uses `SeqScan` in table `t2`. You can combine any parameters in the hint phrases of your SQL queries. Refer to the [PostgreSQL documentation](https://www.postgresql.org/docs/11/runtime-config-query.html) for the complete list of available configuration parameters.
 
 ## Using hint tables
 

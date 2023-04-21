@@ -54,7 +54,7 @@ The following table explains some of the differences between creating an index o
 
 `CREATE INDEX CONCURRENTLY` is supported, though online index backfill is enabled by default. Some restrictions apply (see [CONCURRENTLY](#concurrently)).
 
-To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** master and tserver.
+To disable online schema migration for YSQL `CREATE INDEX`, set the flag `ysql_disable_index_backfill=true` on **all** nodes and **both** YB-Master and YB-TServer.
 
 To disable online schema migration for one `CREATE INDEX`, use `CREATE INDEX NONCONCURRENTLY`.
 
@@ -70,19 +70,21 @@ Regarding colocation, indexes follow their table. If the table is colocated, its
 
 Creating an index on a partitioned table automatically creates a corresponding index for every partition in the default tablespace. It's also possible to create an index on each partition individually, which you should do in the following cases:
 
-* Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
-* [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
-* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
+- Parallel writes are expected while creating the index, because concurrent builds for indexes on partitioned tables aren't supported. In this case, it's better to use concurrent builds to create indexes on each partition individually.
+- [Row-level geo-partitioning](../../../../../explore/multi-region-deployments/row-level-geo-partitioning/) is being used. In this case, create the index separately on each partition to customize the tablespace in which each index is created.
+- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables (see [CONCURRENTLY](#concurrently)).
 
 ### UNIQUE
 
 Enforce that duplicate values in a table are not allowed.
 
 ### CONCURRENTLY
+
 Enable online schema migration (see [Semantics](#semantics) for details), with some restrictions:
-* When creating an index on a temporary table, online schema migration is disabled.
-* `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
-* `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
+
+- When creating an index on a temporary table, online schema migration is disabled.
+- `CREATE INDEX CONCURRENTLY` is not supported for partitioned tables.
+- `CREATE INDEX CONCURRENTLY` is not supported inside a transaction block.
 
 ### NONCONCURRENTLY
 
@@ -110,8 +112,10 @@ Specify the name of the [tablespace](../../../../../explore/ysql-language-featur
 
 A [partial index](#partial-indexes) is an index that is built on a subset of a table and includes only rows that satisfy the condition specified in the `WHERE` clause.
 It can be used to exclude NULL or common values from the index, or include just the rows of interest.
-This will speed up any writes to the table since rows containing the common column values don't need to be indexed.
-It will also reduce the size of the index, thereby improving the speed for read queries that use the index.
+
+This speeds up any writes to the table because rows containing the common column values don't need to be indexed.
+
+It also reduces the size of the index, thereby improving the speed for read queries that use the index.
 
 #### *name*
 
@@ -140,6 +144,7 @@ Specify one or more columns of the table and must be surrounded by parentheses.
 ### SPLIT INTO
 
 For hash-sharded indexes, you can use the `SPLIT INTO` clause to specify the number of tablets to be created for the index. The hash range is then evenly split across those tablets.
+
 Presplitting indexes, using `SPLIT INTO`, distributes index workloads on a production cluster. For example, if you have 3 servers, splitting the index into 30 tablets can provide higher write throughput on the index. For an example, see [Create an index specifying the number of tablets](#create-an-index-specifying-the-number-of-tablets).
 
 {{< note title="Note" >}}
@@ -223,8 +228,10 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
 
 **If online `CREATE INDEX` fails**, it likely failed in the backfill step.
+
 In that case, the index exists but is not usable.
 Drop the index and try again.
+
 If it still doesn't work, here are some troubleshooting steps:
 
 - **Did it time out?** Try increasing timeout flags:
@@ -240,6 +247,6 @@ If it still doesn't work, here are some troubleshooting steps:
 **To prioritize keeping other transactions alive** during the index backfill, bump up the following:
 
 - master flag `index_backfill_wait_for_old_txns_ms`
-- YSQL GUC variable `yb_index_state_flags_update_delay`
+- YSQL parameter `yb_index_state_flags_update_delay`
 
-**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL GUC variable `yb_index_state_flags_update_delay` to zero.
+**To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.
