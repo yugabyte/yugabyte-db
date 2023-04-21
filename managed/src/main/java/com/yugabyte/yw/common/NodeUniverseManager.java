@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -11,6 +12,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -43,6 +45,8 @@ public class NodeUniverseManager extends DevopsBase {
   public static final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   private final KeyLock<UUID> universeLock = new KeyLock<>();
+
+  @Inject ImageBundleUtil imageBundleUtil;
 
   @Override
   protected String getCommandType() {
@@ -316,12 +320,29 @@ public class NodeUniverseManager extends DevopsBase {
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
           getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+      String sshPort = providerDetails.sshPort.toString();
+      String sshUser = providerDetails.sshUser;
+      UUID imageBundleUUID = null;
+      if (cluster.userIntent.imageBundleUUID != null) {
+        imageBundleUUID = cluster.userIntent.imageBundleUUID;
+      } else {
+        ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
+      }
+      if (imageBundleUUID != null) {
+        ImageBundle.NodeProperties toOverwriteNodeProperties =
+            imageBundleUtil.getNodePropertiesOrFail(
+                imageBundleUUID, node.cloudInfo.region, cluster.userIntent.providerType.toString());
+        sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        sshUser = toOverwriteNodeProperties.getSshUser();
+      }
       if (optional.isPresent()) {
         commandArgs.add("rpc");
         NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
       } else {
         commandArgs.add("ssh");
-        String sshPort = String.valueOf(providerDetails.sshPort);
         // Default SSH port can be the custom port for custom images.
         if (context.isDefaultSshPort() && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
           sshPort = "22";
@@ -339,10 +360,7 @@ public class NodeUniverseManager extends DevopsBase {
       if (context.isCustomUser()) {
         // It is for backward compatibility after a platform upgrade as custom user is null in prior
         // versions.
-        String user =
-            StringUtils.isNotBlank(providerDetails.sshUser)
-                ? providerDetails.sshUser
-                : cloudType.getSshUser();
+        String user = StringUtils.isNotBlank(sshUser) ? sshUser : cloudType.getSshUser();
         if (StringUtils.isNotBlank(user)) {
           commandArgs.add("--user");
           commandArgs.add(user);

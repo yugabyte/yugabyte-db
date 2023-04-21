@@ -34,6 +34,8 @@ public class NodeTaskParams extends UniverseDefinitionTaskParams implements INod
 
   public String sshUserOverride;
 
+  public Integer sshPortOverride;
+
   @JsonIgnore private AvailabilityZone zone;
 
   @Override

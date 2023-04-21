@@ -690,6 +690,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.rootCA = universe.getUniverseDetails().rootCA;
       params.setClientRootCA(universe.getUniverseDetails().getClientRootCA());
       params.enableYEDIS = userIntent.enableYEDIS;
+      // sshPortOverride, in case the passed imageBundle has a different port
+      // configured for the region.
+      params.sshPortOverride = node.sshPortOverride;
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
@@ -859,6 +862,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.useSystemd = userIntent.useSystemd;
+      // sshPortOverride, in case the passed imageBundle has a different port
+      // configured for the region.
+      params.sshPortOverride = node.sshPortOverride;
       // Create the Ansible task to get the server info.
       AnsibleClusterServerCtl task = createTask(AnsibleClusterServerCtl.class);
       task.initialize(params);
@@ -984,6 +990,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.useSystemd = userIntent.useSystemd;
       paramsCustomizer.accept(params);
       params.sshUserOverride = node.sshUserOverride;
+      params.sshPortOverride = node.sshPortOverride;
 
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
@@ -1074,6 +1081,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.setClientRootCA(taskParams().getClientRootCA());
       params.enableYEDIS = userIntent.enableYEDIS;
       params.useSystemd = userIntent.useSystemd;
+      // sshPortOverride, in case the passed imageBundle has a different port
+      // configured for the region.
+      params.sshPortOverride = node.sshPortOverride;
       paramsCustomizer.accept(params);
 
       // Development testing variable.
