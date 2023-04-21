@@ -23,7 +23,8 @@ const initialStateFeatureInTest = {
   allowOptionalAuth: false,
   enablePITR: true,
   enableDedicatedNodes: false,
-  enableNotificationTemplates: false
+  enableNotificationTemplates: false,
+  enableS3BackupProxy: false
 };
 
 const initialStateFeatureReleased = {
