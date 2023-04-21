@@ -82,6 +82,12 @@ GET     /customers/:cUUID/providers/:pUUID/instance_types                      c
 POST    /customers/:cUUID/providers/:pUUID/instance_types                      com.yugabyte.yw.controllers.InstanceTypeController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/providers/:pUUID/instance_types/:code                com.yugabyte.yw.controllers.InstanceTypeController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, code: String, request: Request)
 
+POST    /customers/:cUUID/providers/:pUUID/image_bundle                        com.yugabyte.yw.controllers.ImageBundleController.create(cUUID: java.util.UUID, pUUID: java.util.UUID, request: Request)
+GET     /customers/:cUUID/providers/:pUUID/image_bundle                        com.yugabyte.yw.controllers.ImageBundleController.list(cUUID: java.util.UUID, pUUID: java.util.UUID)
+GET     /customers/:cUUID/providers/:pUUID/image_bundle/:iBUUID                com.yugabyte.yw.controllers.ImageBundleController.index(cUUID: java.util.UUID, pUUID: java.util.UUID, iBUUID: java.util.UUID)
+PUT     /customers/:cUUID/providers/:pUUID/image_bundle/:iBUUID                com.yugabyte.yw.controllers.ImageBundleController.edit(cUUID: java.util.UUID, pUUID: java.util.UUID, iBUUID: java.util.UUID, request: Request)
+DELETE  /customers/:cUUID/providers/:pUUID/image_bundle/:iBUUID                com.yugabyte.yw.controllers.ImageBundleController.delete(cUUID: java.util.UUID, pUUID: java.util.UUID, iBUUID: java.util.UUID, request: Request)
+
 POST    /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.create(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/configs                                              com.yugabyte.yw.controllers.CustomerConfigController.list(cUUID: java.util.UUID)
 PUT     /customers/:cUUID/configs/:configUUID                                  com.yugabyte.yw.controllers.CustomerConfigController.edit(cUUID: java.util.UUID, configUUID: java.util.UUID, request: Request)

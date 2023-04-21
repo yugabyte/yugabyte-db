@@ -51,6 +51,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams.CertRotationType;
@@ -64,6 +65,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -137,6 +139,8 @@ public class NodeManager extends DevopsBase {
   @Inject RuntimeConfGetter confGetter;
 
   @Inject ReleaseManager releaseManager;
+
+  @Inject ImageBundleUtil imageBundleUtil;
 
   @Override
   protected String getCommandType() {
@@ -240,16 +244,31 @@ public class NodeManager extends DevopsBase {
       String sshUser = null;
       // Currently we only need this for provision node operation.
       // All others use yugabyte user.
-      if (type == NodeCommandType.Provision) {
+      if (type == NodeCommandType.Provision
+          || type == NodeCommandType.Create
+          || type == NodeCommandType.Wait_For_Connection) {
+        // in case of sshUserOverride in ImageBundle.
         if (StringUtils.isNotBlank(params.sshUserOverride)) {
           sshUser = params.sshUserOverride;
         }
       }
 
+      Integer sshPort = null;
+      if (params.sshPortOverride != null) {
+        sshPort = params.sshPortOverride;
+      }
+
       LOG.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
+      LOG.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode, sshUser));
+              params,
+              type,
+              keyInfo,
+              userIntent.providerType,
+              userIntent.accessKeyCode,
+              sshUser,
+              sshPort));
     }
 
     return subCommand;
@@ -261,7 +280,8 @@ public class NodeManager extends DevopsBase {
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
       String accessKeyCode,
-      String sshUser) {
+      String sshUser,
+      Integer sshPort) {
     List<String> subCommand = new ArrayList<>();
 
     if (keyInfo.vaultFile != null) {
@@ -310,8 +330,11 @@ public class NodeManager extends DevopsBase {
     }
 
     ProviderDetails providerDetails = params.getProvider().getDetails();
+    if (sshPort == null) {
+      sshPort = providerDetails.getSshPort();
+    }
     subCommand.add("--custom_ssh_port");
-    subCommand.add(providerDetails.sshPort.toString());
+    subCommand.add(sshPort.toString());
 
     // TODO make this global and remove this conditional check
     // to avoid bugs.
@@ -1290,7 +1313,13 @@ public class NodeManager extends DevopsBase {
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode(), null));
+            nodeTaskParam,
+            type,
+            keyInfo,
+            Common.CloudType.onprem,
+            accessKey.getKeyCode(),
+            null,
+            null));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
@@ -1437,6 +1466,16 @@ public class NodeManager extends DevopsBase {
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    if (nodeTaskParam.sshPortOverride == null) {
+      UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+      if (imageBundleUUID != null) {
+        Region region = nodeTaskParam.getRegion();
+        ImageBundle.NodeProperties toOverwriteNodeProperties =
+            imageBundleUtil.getNodePropertiesOrFail(
+                imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+        nodeTaskParam.sshPortOverride = toOverwriteNodeProperties.getSshPort();
+      }
+    }
     Path bootScriptFile = null;
     Map<String, String> sensitiveData = new HashMap<>();
     switch (type) {
@@ -1520,9 +1559,21 @@ public class NodeManager extends DevopsBase {
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
+            String imageBundleDefaultImage = "";
+            UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+            if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
+              Region region = taskParam.getRegion();
+              ImageBundle.NodeProperties toOverwriteNodeProperties =
+                  imageBundleUtil.getNodePropertiesOrFail(
+                      imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+              taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+              imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
+            } else {
+              // Backward compatiblity.
+              imageBundleDefaultImage = taskParam.getRegion().getYbImage();
+            }
             String ybImage =
-                Optional.ofNullable(taskParam.getMachineImage())
-                    .orElse(taskParam.getRegion().getYbImage());
+                Optional.ofNullable(taskParam.getMachineImage()).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -1604,11 +1655,22 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.instanceType);
           }
 
+          String imageBundleDefaultImage = "";
+          UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+          if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
+            Region region = taskParam.getRegion();
+            ImageBundle.NodeProperties toOverwriteNodeProperties =
+                imageBundleUtil.getNodePropertiesOrFail(
+                    imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+            taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+            imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
+          } else {
+            imageBundleDefaultImage = taskParam.getRegion().getYbImage();
+          }
           // gcp uses machine_image for ansible preprovision.yml
           if (cloudType.equals(Common.CloudType.gcp)) {
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage)
-                    .orElse(taskParam.getRegion().getYbImage());
+                Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -2334,5 +2396,19 @@ public class NodeManager extends DevopsBase {
       }
     }
     return ybServerPackage;
+  }
+
+  public UUID getImageBundleUUID(UserIntent userIntent, NodeTaskParams nodeTaskParam) {
+    UUID imageBundleUUID = null;
+    if (userIntent.imageBundleUUID != null) {
+      imageBundleUUID = userIntent.imageBundleUUID;
+    } else if (nodeTaskParam.getProvider().getUuid() != null) {
+      ImageBundle bundle = ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
+      if (bundle != null) {
+        imageBundleUUID = bundle.getUuid();
+      }
+    }
+
+    return imageBundleUUID;
   }
 }

@@ -497,9 +497,15 @@ public enum TaskType {
 
   WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class),
 
-  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class),
+  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class),
 
-  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class);
+  CloudImageBundleSetup(
+      com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup.class),
+
+  UpdateClusterUserIntent(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class),
+
+  CreateBackupSchedule(com.yugabyte.yw.commissioner.tasks.CreateBackupSchedule.class);
 
   private final Class<? extends ITask> taskClass;
 

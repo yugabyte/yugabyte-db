@@ -886,6 +886,8 @@ public class CloudProviderHandler {
       // TODO: PLAT-7258 allow adding region for auto-creating VPC case
       taskUUID = addRegions(customer, provider, regionsToAdd, true);
     }
+    // TODO: SHUBHAM (PLAT-8114), allow imageBundle CRUD via provider PUT.
+    // Will make the changes post Yury's changes to move the provider edit to async task.
     providerModified =
         providerModified
             | addOrRemoveAZs(editProviderReq, provider)
