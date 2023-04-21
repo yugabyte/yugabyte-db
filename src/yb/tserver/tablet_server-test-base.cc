@@ -51,8 +51,8 @@ using std::vector;
 
 using namespace std::literals;
 
-DEFINE_UNKNOWN_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");
-DEFINE_UNKNOWN_int32(num_updater_threads, 1, "Number of updating threads to launch");
+DEFINE_NON_RUNTIME_int32(rpc_timeout, 1000, "Timeout for RPC calls, in seconds");
+DEFINE_NON_RUNTIME_int32(num_updater_threads, 1, "Number of updating threads to launch");
 DECLARE_bool(durable_wal_write);
 DECLARE_bool(enable_maintenance_manager);
 DECLARE_bool(enable_data_block_fsync);

@@ -52,10 +52,11 @@
 #include "yb/util/thread.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(num_counter_threads, 8, "Number of counting threads to launch");
-DEFINE_UNKNOWN_int32(num_summer_threads, 1, "Number of summing threads to launch");
-DEFINE_UNKNOWN_int32(num_slowreader_threads, 1, "Number of 'slow' reader threads to launch");
-DEFINE_UNKNOWN_int32(inserts_per_thread, 1000, "Number of rows inserted by the inserter thread");
+DEFINE_NON_RUNTIME_int32(num_counter_threads, 8, "Number of counting threads to launch");
+DEFINE_NON_RUNTIME_int32(num_summer_threads, 1, "Number of summing threads to launch");
+DEFINE_NON_RUNTIME_int32(num_slowreader_threads, 1, "Number of 'slow' reader threads to launch");
+DEFINE_NON_RUNTIME_int32(inserts_per_thread, 1000,
+                         "Number of rows inserted by the inserter thread");
 
 using std::shared_ptr;
 

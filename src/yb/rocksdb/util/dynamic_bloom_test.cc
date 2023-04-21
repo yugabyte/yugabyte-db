@@ -50,9 +50,9 @@ int main() {
 
 using GFLAGS::ParseCommandLineFlags;
 
-DEFINE_UNKNOWN_int32(bits_per_key, 10, "");
-DEFINE_UNKNOWN_int32(num_probes, 6, "");
-DEFINE_UNKNOWN_bool(enable_perf, false, "");
+DEFINE_NON_RUNTIME_int32(bits_per_key, 10, "");
+DEFINE_NON_RUNTIME_int32(num_probes, 6, "");
+DEFINE_NON_RUNTIME_bool(enable_perf, false, "");
 
 namespace rocksdb {
 

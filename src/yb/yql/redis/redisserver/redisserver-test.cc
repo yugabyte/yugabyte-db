@@ -74,9 +74,9 @@ DECLARE_uint64(consensus_max_batch_size_bytes);
 DECLARE_int32(consensus_rpc_timeout_ms);
 DECLARE_int64(max_time_in_queue_ms);
 
-DEFINE_UNKNOWN_uint64(test_redis_max_concurrent_commands, 20,
+DEFINE_NON_RUNTIME_uint64(test_redis_max_concurrent_commands, 20,
     "Value of redis_max_concurrent_commands for pipeline test");
-DEFINE_UNKNOWN_uint64(test_redis_max_batch, 250,
+DEFINE_NON_RUNTIME_uint64(test_redis_max_batch, 250,
     "Value of redis_max_batch for pipeline test");
 
 METRIC_DECLARE_gauge_uint64(redis_available_sessions);

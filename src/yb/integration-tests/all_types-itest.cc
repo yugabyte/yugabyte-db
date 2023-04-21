@@ -72,7 +72,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_int32(num_rows_per_tablet, 100,
+DEFINE_NON_RUNTIME_int32(num_rows_per_tablet, 100,
     "The number of rows to be inserted into each tablet");
 
 using std::vector;

@@ -38,12 +38,12 @@
 #include "yb/util/flags.h"
 #include "yb/util/test_util.h"
 
-DEFINE_UNKNOWN_int32(flag_with_no_tags, 0, "test flag that has no tags");
+DEFINE_NON_RUNTIME_int32(flag_with_no_tags, 0, "test flag that has no tags");
 
-DEFINE_UNKNOWN_int32(flag_with_one_tag, 0, "test flag that has 1 tag");
+DEFINE_NON_RUNTIME_int32(flag_with_one_tag, 0, "test flag that has 1 tag");
 TAG_FLAG(flag_with_one_tag, stable);
 
-DEFINE_UNKNOWN_int32(flag_with_two_tags, 0, "test flag that has 2 tags");
+DEFINE_NON_RUNTIME_int32(flag_with_two_tags, 0, "test flag that has 2 tags");
 TAG_FLAG(flag_with_two_tags, evolving);
 TAG_FLAG(flag_with_two_tags, unsafe);
 
