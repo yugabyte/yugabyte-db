@@ -156,7 +156,7 @@ public class AttachDetachController extends AuthenticatedController {
       ReleaseMetadata ybReleaseMetadata =
           releaseManager.getReleaseByVersion(
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion);
-      if (ybReleaseMetadata != null && ybReleaseMetadata.isLocalRelease()) {
+      if (ybReleaseMetadata != null && ybReleaseMetadata.hasLocalRelease()) {
         ybReleaseMetadata = null;
       }
 
