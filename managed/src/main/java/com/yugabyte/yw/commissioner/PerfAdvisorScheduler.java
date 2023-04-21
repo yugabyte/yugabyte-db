@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
@@ -94,6 +95,10 @@ public class PerfAdvisorScheduler {
   }
 
   void scheduleRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      log.debug("Skipping perf advisor scheduler for follower platform");
+      return;
+    }
     log.info("Running Perf Advisor Scheduler");
     int defaultUniBatchSize =
         configFactory.staticApplicationConf().getInt("yb.perf_advisor.universe_batch_size");
