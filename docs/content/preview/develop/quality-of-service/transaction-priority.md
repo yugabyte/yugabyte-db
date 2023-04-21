@@ -25,12 +25,16 @@ type: docs
 
 </ul>
 
-When using YugabyteDB with the [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy, higher priority transactions can abort lower priority transactions when conflicts occur. External applications may control the priority of individual transactions using the pair of session variables `yb_transaction_priority_lower_bound`, and `yb_transaction_priority_upper_bound`. A random number between the lower and upper bound is picked and used to compute a transaction priority for the transactions in that session as explained in detail in [Transaction Priorities](../../../architecture/transactions/transaction-priorities/). To view the transaction priority of the active transaction in current session, use the `yb_get_current_transaction_priority` function.
+When using YugabyteDB with the [Fail-on-Conflict](../../../architecture/transactions/concurrency-control/#fail-on-conflict) concurrency control policy, higher priority transactions can abort lower priority transactions when conflicts occur. External applications may control the priority of individual transactions using the YSQL parameters `yb_transaction_priority_lower_bound` and `yb_transaction_priority_upper_bound`.
+
+A random number between the lower and upper bound is picked and used to compute a transaction priority for the transactions in that session as explained in [Transaction Priorities](../../../architecture/transactions/transaction-priorities/).
 
 | Flag | Valid Range | Description |
 | :--- | :---------- | :---------- |
 | `yb_transaction_priority_lower_bound` | Any value between 0 and 1, lower than the upper bound | Minimum transaction priority for transactions run in this session |
 | `yb_transaction_priority_upper_bound` | Any value between 0 and 1, higher than the lower bound | Maximum transaction priority for transactions run in this session |
+
+To view the transaction priority of the active transaction in current session, use the `yb_get_current_transaction_priority` function.
 
 {{< note title="Note" >}}
 Currently, transaction priorities work in the following scenarios:
@@ -46,7 +50,7 @@ Currently, transaction priorities work in the following scenarios:
 Create a [YugabyteDB universe](../../../quick-start/) and open two separate [ysqlsh](../../../admin/ysqlsh/#starting-ysqlsh) connections to it.
 
 {{< tip title="Tip - Use YugabyteDB Managed" >}}
-You can create a free cluster with [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open up in two different browser tabs, which you can use to do the steps that follow.
+You can create a free cluster with [YugabyteDB Managed](../../../quick-start-yugabytedb-managed/), and open two *cloud shell* connections to it. These cloud shell connections open in two different browser tabs, which you can use to do the steps that follow.
 
 {{< /tip >}}
 

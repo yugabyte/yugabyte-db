@@ -30,7 +30,7 @@ All reads in YugabyteDB are handled by the leader to ensure that applications fe
 
 In such scenarios, you can enable [follower reads](../../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/) to read from followers instead of going to the leader, which could be far away in a different region.
 
-To enable follower reads, set the transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) and turn on the session-level setting `yb_read_from_followers`. For example:
+To enable follower reads, set the transaction to be [READ ONLY](../../../../api/ysql/the-sql-language/statements/txn_set/#read-only-mode) and turn on the YSQL parameter `yb_read_from_followers`. For example:
 
 ```plpgsql
 SET yb_read_from_followers = true;
