@@ -3085,14 +3085,11 @@ public class AsyncYBClient implements AutoCloseable {
           // TODO: Implement some policy so that the correct TS host/port can be picked.
           for (CommonNet.HostPortPB address : addresses) {
             try {
-              if (InetAddress.getByName(address.getHost())
-                      .isReachable((int) defaultOperationTimeoutMs)) {
-                addTabletClient(uuid, address.getHost(), address.getPort(),
+              addTabletClient(uuid, address.getHost(), address.getPort(),
                   replica.getRole().equals(CommonTypes.PeerRole.LEADER));
 
-                // If connection is successful, do not retry on any other host address.
-                break;
-              }
+              // If connection is successful, do not retry on any other host address.
+              break;
             } catch (UnknownHostException ex) {
               lookupExceptions.add(ex);
             } catch (IOException e) {
