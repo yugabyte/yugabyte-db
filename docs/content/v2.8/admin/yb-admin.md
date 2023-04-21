@@ -847,11 +847,13 @@ Returns a schedule ID in JSON format.
 
 ```sh
 yb-admin create_snapshot_schedule \
+    -master_addresses <master-addresses> \
     <snapshot-interval>\
     <retention-time>\
     <filter-expression>
 ```
 
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * _snapshot-interval_: The frequency at which to take snapshots, in minutes.
 * _retention-time_: The number of minutes to keep a snapshot before deleting it.
 * _filter-expression_: The set of objects to include in the snapshot.
@@ -863,7 +865,9 @@ The filter expression is a list of acceptable objects, which can be either raw t
 Take a snapshot of the `ysql.yugabyte` database once per minute, and retain each snapshot for 10 minutes:
 
 ```sh
-yb-admin create_snapshot_schedule 1 10 ysql.yugabyte
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    create_snapshot_schedule 1 10 ysql.yugabyte
 ```
 
 ```output
@@ -893,15 +897,19 @@ Returns one or more schedule lists in JSON format.
 **Syntax**
 
 ```sh
-yb-admin list_snapshot_schedules <snapshot-id>
+yb-admin \
+    -master_addresses <master-addresses> \
+    list_snapshot_schedules <schedule-id>
 ```
 
-Where _snapshot-id_ is the snapshot's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* _schedule-id_: the snapshot schedule's unique identifier. The ID is optional; omit the ID to return all schedules in the system.
 
 **Example**
 
 ```sh
 $ ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     list_snapshot_schedules 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 
@@ -937,9 +945,12 @@ Schedules group a set of items into a single tracking object (the _schedule_). W
 **Syntax**
 
 ```sh
-yb-admin restore_snapshot_schedule <schedule-id> <restore-target>
+yb-admin \
+    -master_addresses <master-addresses> \
+    restore_snapshot_schedule <schedule-id> <restore-target>
 ```
 
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
 * _schedule-id_: The identifier (ID) of the schedule to be restored.
 * _restore-target_: The time to which to restore the snapshots in the schedule. This can be either an absolute Unix timestamp, or a relative time such as `minus 5m` (to restore to 5 minutes ago).
 
@@ -967,6 +978,7 @@ Restore from an absolute timestamp:
 
 ```sh
 $ ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     1617670679185100
 ```
@@ -975,6 +987,7 @@ Restore from a relative time:
 
 ```sh
 $ ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     minus 60s
 ```
@@ -997,15 +1010,19 @@ Returns a JSON object with the schedule_id that was just deleted.
 **Syntax**
 
 ```sh
-yb-admin delete_snapshot_schedule <schedule-id>
+yb-admin \
+    -master_addresses <master-addresses> \
+    delete_snapshot_schedule <schedule-id>
 ```
 
-Where *schedule-id* is the snapshot schedule's unique identifier.
+* _master-addresses_: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* _schedule-id_: the snapshot schedule's unique identifier.
 
 **Example**
 
 ```sh
 ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     delete_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256
 ```
 

@@ -1062,6 +1062,7 @@ Restore from a relative time:
 
 ```sh
 ./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
     restore_snapshot_schedule 6eaaa4fb-397f-41e2-a8fe-a93e0c9f5256 \
     minus 60s
 ```
