@@ -5,7 +5,6 @@
 package checks
 
 import (
-	"database/sql"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,7 +12,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common/shell"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/config"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"golang.org/x/exp/slices"
 )
@@ -72,13 +71,7 @@ func (p postgresCheck) Execute() Result {
 		return res
 	}
 
-	res = p.testExistingPostgres(
-		config.GetYamlPathData("postgres.useExisting.host"),
-		"yugaware",
-		config.GetYamlPathData("postgres.useExisting.username"),
-		config.GetYamlPathData("postgres.useExisting.password"),
-		config.GetYamlPathData("postgres.useExisting.port"),
-	)
+	res = p.testExistingPostgres()
 	if res.Status != StatusPassed {
 		return res
 	}
@@ -95,30 +88,19 @@ func (p postgresCheck) Execute() Result {
 
 // If the user has specified their own postgres db endpoint, this method attempts to
 // validate it
-func (p postgresCheck) testExistingPostgres(host, dbname, username, password, port string) Result {
+func (p postgresCheck) testExistingPostgres() Result {
 
 	res := Result{
 		Check:  p.name,
 		Status: StatusPassed,
 	}
 
-	nonPwdConnStr := fmt.Sprintf(
-		"user='%s' host=%s port=%s dbname=%s sslmode=disable",
-		username,
-		host,
-		port,
-		dbname)
-	log.Debug(fmt.Sprintf("Attempting to connect to db with conn str %s", nonPwdConnStr))
-	// add pwd later so we don't log it above
-	connStr := nonPwdConnStr + fmt.Sprintf(" password='%s'", password)
-	db, err := sql.Open("postgres" /*driverName*/, connStr)
+	db, nonPwdConnStr, err := common.GetPostgresConnection("yugaware")
 	if err != nil {
 		res.Error = fmt.Errorf("Could not connect to db with connStr %s : error %s", nonPwdConnStr, err)
 		res.Status = StatusCritical
-		log.Info(res.Error.Error())
 		return res
 	}
-
 	log.Debug("Fetching server version")
 	rows, err := db.Query("SHOW server_version;")
 	if err != nil {

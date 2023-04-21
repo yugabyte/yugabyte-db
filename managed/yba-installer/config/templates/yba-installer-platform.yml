@@ -104,6 +104,7 @@ services:
         # The IP of the platform.
         url = ""
         url = "{{ yamlPath "platform.ywUrl" }}"
+        fixPaths = "{{ .FixPaths }}"
 
         docker.release = "{{ .PlatformPackages }}"
 
