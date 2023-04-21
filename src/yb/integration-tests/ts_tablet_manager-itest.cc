@@ -78,7 +78,7 @@ using std::string;
 
 DECLARE_bool(enable_leader_failure_detection);
 DECLARE_bool(catalog_manager_wait_for_new_tablets_to_elect_leader);
-DEFINE_UNKNOWN_int32(num_election_test_loops, 3,
+DEFINE_NON_RUNTIME_int32(num_election_test_loops, 3,
              "Number of random EmulateElection() loops to execute in "
              "TestReportNewLeaderOnLeaderChange");
 DECLARE_bool(enable_ysql);

@@ -49,9 +49,9 @@ using std::endl;
 using std::string;
 using yb::client::YBClientBuilder;
 
-DEFINE_UNKNOWN_bool(ybcmd_run, false, "Not to run this test unless instructed");
+DEFINE_NON_RUNTIME_bool(ybcmd_run, false, "Not to run this test unless instructed");
 
-DEFINE_UNKNOWN_string(ybcmd_master_addresses, "",
+DEFINE_NON_RUNTIME_string(ybcmd_master_addresses, "",
               "Comma-separated addresses of the existing masters ybcmd to connect to. If unset, "
               "ybcmd will start a simulated cluster instead.");
 

@@ -126,7 +126,7 @@ DECLARE_int32(max_create_tablets_per_ts);
 DECLARE_int32(tablet_server_svc_queue_length);
 DECLARE_int32(replication_factor);
 
-DEFINE_UNKNOWN_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
+DEFINE_NON_RUNTIME_int32(test_scan_num_rows, 1000, "Number of rows to insert and scan");
 DECLARE_int32(min_backoff_ms_exponent);
 DECLARE_int32(max_backoff_ms_exponent);
 DECLARE_bool(TEST_force_master_lookup_all_tablets);

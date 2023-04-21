@@ -77,7 +77,7 @@ METRIC_DECLARE_counter(tcp_bytes_sent);
 METRIC_DECLARE_counter(tcp_bytes_received);
 METRIC_DECLARE_counter(rpcs_timed_out_early_in_queue);
 
-DEFINE_UNKNOWN_int32(rpc_test_connection_keepalive_num_iterations, 1,
+DEFINE_NON_RUNTIME_int32(rpc_test_connection_keepalive_num_iterations, 1,
   "Number of iterations in TestRpc.TestConnectionKeepalive");
 
 DECLARE_bool(TEST_pause_calculator_echo_request);
