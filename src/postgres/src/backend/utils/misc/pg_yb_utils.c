@@ -2445,3 +2445,13 @@ void YBCheckServerAccessIsAllowed() {
 				 errdetail("tserver flag ysql_disable_server_file_access is "
 						   "set to true")));
 }
+
+static bool yb_is_batched_execution = false;
+
+bool YbIsBatchedExecution() {
+	return yb_is_batched_execution;
+}
+
+void YbSetIsBatchedExecution(bool value) {
+	yb_is_batched_execution = value;
+}

@@ -647,4 +647,8 @@ bool YBCIsRegionLocal(Relation rel);
  * true, then prevent any server file writes/reads/execution.
  */
 extern void YBCheckServerAccessIsAllowed();
+
+bool YbIsBatchedExecution();
+void YbSetIsBatchedExecution(bool value);
+
 #endif /* PG_YB_UTILS_H */
