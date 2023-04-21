@@ -45,8 +45,8 @@ DEFINE_NON_RUNTIME_bool(
 TAG_FLAG(enable_pg_savepoints, evolving);
 TAG_FLAG(enable_pg_savepoints, advanced);
 
-DEFINE_UNKNOWN_bool(enable_automatic_tablet_splitting, true,
-            "If false, disables automatic tablet splitting driven from the yb-master side.");
+DEFINE_RUNTIME_AUTO_bool(enable_automatic_tablet_splitting, kNewInstallsOnly, false, true,
+    "If false, disables automatic tablet splitting driven from the yb-master side.");
 
 DEFINE_UNKNOWN_bool(log_ysql_catalog_versions, false,
             "Log YSQL catalog events. For debugging purposes.");
