@@ -742,4 +742,7 @@ void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version);
 
 uint64_t YbGetSharedCatalogVersion();
 
+bool YbIsBatchedExecution();
+void YbSetIsBatchedExecution(bool value);
+
 #endif /* PG_YB_UTILS_H */
