@@ -68,6 +68,10 @@ class Statement {
     parse_tree_->clear_reparsed();
   }
 
+  size_t DynamicMemoryUsage() const {
+    return sizeof(*this) + keyspace_.size() + text_.size();
+  }
+
  protected:
   // The keyspace this statement is parsed in.
   const std::string keyspace_;
