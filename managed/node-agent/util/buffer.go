@@ -21,10 +21,23 @@ type Buffer interface {
 	StringWithLen() (string, int)
 }
 
+// ResettableBuffer is a buffer which can be reset to the beginning of the buffer.
+type ResettableBuffer interface {
+	io.Reader
+	Reset()
+}
+
+// simpleBuffer implements Buffer.
 type simpleBuffer struct {
 	maxCap int
 	mutex  *sync.Mutex
 	buffer *bytes.Buffer
+}
+
+// resettableBuffer is a resettable bufer which extends io.Reader.
+type resettableBuffer struct {
+	source     io.Reader
+	readBuffer *bytes.Buffer
 }
 
 // NewBuffer creates an instance of Buffer.
@@ -76,4 +89,23 @@ func (p *simpleBuffer) StringWithLen() (string, int) {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
 	return p.buffer.String(), p.buffer.Len()
+}
+
+// NewResettableBuffer returns a new instance of resettable buffer reader.
+func NewResettableBuffer(source io.Reader) ResettableBuffer {
+	return &resettableBuffer{source: source, readBuffer: &bytes.Buffer{}}
+}
+
+// Reset resets the buffer.
+func (rb *resettableBuffer) Reset() {
+	if rb.readBuffer.Len() > 0 {
+		readBuffer := &bytes.Buffer{}
+		rb.readBuffer.WriteTo(readBuffer)
+		rb.source = io.MultiReader(readBuffer, rb.source)
+	}
+}
+
+// Read reads bytes from the buffer.
+func (rb *resettableBuffer) Read(p []byte) (int, error) {
+	return io.TeeReader(rb.source, rb.readBuffer).Read(p)
 }
