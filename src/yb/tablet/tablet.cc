@@ -1729,7 +1729,7 @@ void Tablet::WriteToRocksDB(
   auto rocksdb_write_status = dest_db->Write(write_options, write_batch);
   if (!rocksdb_write_status.ok()) {
     LOG_WITH_PREFIX(FATAL) << "Failed to write a batch with " << write_batch->Count()
-                           << " operations into RocksDB: " << rocksdb_write_status;
+                           << " indirect operations into RocksDB: " << rocksdb_write_status;
   }
 
   if (FLAGS_TEST_docdb_log_write_batches) {
