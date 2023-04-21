@@ -45,6 +45,10 @@ func setDefaultConfigs() {
 	if err != nil {
 		panic(err)
 	}
+	_, err = config.CompareAndUpdate(util.NodeAgentDisableMetricsTLS, nil, "true")
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Entry for all commands.

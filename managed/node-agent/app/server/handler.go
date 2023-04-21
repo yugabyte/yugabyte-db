@@ -52,8 +52,11 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	util.FileLogger().Infof(ctx,
 		"Starting Node Agent registration (Version: %s)", version)
 	util.FileLogger().Info(ctx, "Starting RPC server...")
+	serverConfig := &RPCServerConfig{
+		Address: fmt.Sprintf("%s:%s", host, port),
+	}
 	// Start server to verify host.
-	server, err := NewRPCServer(ctx, fmt.Sprintf("%s:%s", host, port), false)
+	server, err := NewRPCServer(ctx, serverConfig)
 	if err != nil {
 		util.FileLogger().Errorf(ctx, "Failed to start RPC server - %s", err.Error())
 		return err
