@@ -261,8 +261,9 @@ message SysTabletsEntryPB {
   // the DocKey for the next row to be backfilled.
   map<string, bytes> backfilled_until = 12;
 
-  // Tablet IDs for the children of this tablet after splitting, if they have been registered in
-  // master.
+  // Tablet IDs for the children of this tablet after splitting. It is possible for a tablet to
+  // temporarily exist in this field but not be registered as part of the table or the catalog
+  // manager's tablet map.
   repeated bytes split_tablet_ids = 14;
 
   // Time when tablet was hidden.
