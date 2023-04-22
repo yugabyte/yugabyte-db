@@ -357,12 +357,9 @@ public class NodeAgentClient {
     return getNodeAgentJWT(nodeAgentOp.get());
   }
 
-  public static void addNodeAgentClientParams(NodeAgent nodeAgent, List<String> cmdParams) {
-    addNodeAgentClientParams(nodeAgent, cmdParams, null);
-  }
-
   public static void addNodeAgentClientParams(
-      NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> sensitiveCmdParams) {
+      NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> redactedVals) {
+    String token = getNodeAgentJWT(nodeAgent);
     cmdParams.add("--node_agent_ip");
     cmdParams.add(nodeAgent.getIp());
     cmdParams.add("--node_agent_port");
@@ -371,12 +368,9 @@ public class NodeAgentClient {
     cmdParams.add(nodeAgent.getCaCertFilePath().toString());
     cmdParams.add("--node_agent_home");
     cmdParams.add(nodeAgent.getHome());
-    if (sensitiveCmdParams == null) {
-      cmdParams.add("--node_agent_auth_token");
-      cmdParams.add(getNodeAgentJWT(nodeAgent));
-    } else {
-      sensitiveCmdParams.put("--node_agent_auth_token", getNodeAgentJWT(nodeAgent));
-    }
+    cmdParams.add("--node_agent_auth_token");
+    cmdParams.add(token);
+    redactedVals.put(token, "REDACTED");
   }
 
   public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
