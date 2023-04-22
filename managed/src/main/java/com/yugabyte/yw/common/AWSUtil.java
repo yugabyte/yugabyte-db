@@ -19,6 +19,7 @@ import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.DeleteObjectsResult;
 import com.amazonaws.services.s3.model.ListObjectsV2Result;
+import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.MultiObjectDeleteException;
 import com.amazonaws.services.s3.model.MultiObjectDeleteException.DeleteError;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -152,13 +153,20 @@ public class AWSUtil {
         String objectPrefix = splitLocation[1];
         String nextContinuationToken = null;
         do {
-          ListObjectsV2Result listObjectsResult = s3Client.listObjectsV2(bucketName, objectPrefix);
+          ListObjectsV2Result listObjectsResult;
+          ListObjectsV2Request request =
+              new ListObjectsV2Request().withBucketName(bucketName).withPrefix(objectPrefix);
+          if (StringUtils.isNotBlank(nextContinuationToken)) {
+            request.withContinuationToken(nextContinuationToken);
+          }
+          listObjectsResult = s3Client.listObjectsV2(request);
+
           if (listObjectsResult.getKeyCount() == 0) {
             break;
           }
           nextContinuationToken = null;
           if (listObjectsResult.isTruncated()) {
-            nextContinuationToken = listObjectsResult.getContinuationToken();
+            nextContinuationToken = listObjectsResult.getNextContinuationToken();
           }
           log.debug(
               "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
