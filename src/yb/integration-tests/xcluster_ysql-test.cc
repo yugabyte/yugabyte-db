@@ -106,7 +106,6 @@ DECLARE_int32(log_min_segments_to_retain);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_bool(enable_load_balancing);
 DECLARE_string(pgsql_proxy_bind_address);
-DECLARE_uint64(TEST_pg_auth_key);
 DECLARE_bool(ysql_disable_index_backfill);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
@@ -157,21 +156,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
       uint32_t num_tablet_servers = 1, bool range_partitioned = false);
 
   void TestReplicationWithPackedColumnsAndSchemaVersionMismatch(bool colocated);
-
-  Status Initialize(uint32_t replication_factor, uint32_t num_masters = 1) {
-    // In this test, the tservers in each cluster share the same postgres proxy. As each tserver
-    // initializes, it will overwrite the auth key for the "postgres" user. Force an identical key
-    // so that all tservers can authenticate as "postgres".
-    FLAGS_TEST_pg_auth_key = RandomUniformInt<uint64_t>();
-
-    MiniClusterOptions opts;
-    opts.num_tablet_servers = replication_factor;
-    opts.num_masters = num_masters;
-
-    RETURN_NOT_OK(InitClusters(opts));
-
-    return Status::OK();
-  }
 
   Result<std::vector<std::shared_ptr<client::YBTable>>> SetUpWithParams(
       std::vector<uint32_t> num_consumer_tablets,
@@ -226,23 +210,6 @@ class XClusterYsqlTest : public XClusterYsqlTestBase {
     EXPECT_OK(conn.ExecuteFormat("CREATE DATABASE $0$1",
                                  namespace_name, colocated ? " colocation = true" : ""));
     return Status::OK();
-  }
-
-  Result<string> GetUniverseId(Cluster* cluster) {
-    master::GetMasterClusterConfigRequestPB req;
-    master::GetMasterClusterConfigResponsePB resp;
-
-    master::MasterClusterProxy master_proxy(
-        &cluster->client_->proxy_cache(),
-        VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    RETURN_NOT_OK(master_proxy.GetMasterClusterConfig(req, &resp, &rpc));
-    if (resp.has_error()) {
-      return STATUS(IllegalState, "Error getting cluster config");
-    }
-    return resp.cluster_config().cluster_uuid();
   }
 
   std::string GetCompleteTableName(const YBTableName& table) {

@@ -453,6 +453,8 @@ message BootstrapProducerRequestPB {
 message BootstrapProducerResponsePB {
   optional CDCErrorPB error = 1;
   repeated bytes cdc_bootstrap_ids = 2;
+  // Minimum time after which data is available on all the bootstrapped streams.
+  optional fixed64 bootstrap_time = 3;
 }
 
 message GetLatestEntryOpIdRequestPB {
@@ -465,6 +467,7 @@ message GetLatestEntryOpIdResponsePB {
 
   optional OpIdPB op_id = 2; // Deprecated.
   repeated OpIdPB op_ids = 3; // Batch param.
+  optional fixed64 bootstrap_time = 4;
 }
 
 message TableInfo {

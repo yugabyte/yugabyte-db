@@ -524,29 +524,6 @@ class XClusterTest : public XClusterTestBase,
     return Status::OK();
   }
 
-  Status PauseResumeXClusterProducerStreams(
-      const std::vector<std::string>& stream_ids, bool is_paused) {
-    master::PauseResumeXClusterProducerStreamsRequestPB req;
-    master::PauseResumeXClusterProducerStreamsResponsePB resp;
-
-    auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-        &producer_client()->proxy_cache(),
-        VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-
-    rpc::RpcController rpc;
-    rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
-    for (const auto& stream_id : stream_ids) {
-      req.add_stream_ids(stream_id);
-    }
-    req.set_is_paused(is_paused);
-    RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
-    SCHECK(
-        !resp.has_error(), IllegalState,
-        Format(
-            "PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
-    return Status::OK();
-  }
-
   void WriteWorkloadAndVerifyWrittenRows(
       const std::shared_ptr<client::YBTable>& producer_table,
       const std::shared_ptr<client::YBTable>& consumer_table, uint32_t start, uint32_t end,

@@ -15,6 +15,7 @@
 
 #include "yb/common/common_fwd.h"
 
+#include "yb/common/schema.h"
 #include "yb/consensus/consensus_fwd.h"
 
 #include "yb/docdb/docdb_fwd.h"
@@ -148,7 +149,8 @@ class CatalogManagerIf {
       const NamespaceId& id) const = 0;
 
   virtual scoped_refptr<TableInfo> GetTableInfoFromNamespaceNameAndTableName(
-      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) = 0;
+      YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name,
+      const PgSchemaName pg_schema_name = {}) = 0;
 
   virtual std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentTasks() = 0;
 
