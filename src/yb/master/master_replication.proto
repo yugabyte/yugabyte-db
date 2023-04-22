@@ -128,6 +128,21 @@ message UpdateCDCStreamResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message BootstrapProducerRequestPB {
+  required YQLDatabase db_type = 1;
+  required string namespace_name = 2;
+  repeated string pg_schema_name = 3;
+  repeated string table_name = 4;
+}
+
+message BootstrapProducerResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated string table_ids = 2;
+  repeated bytes bootstrap_ids = 3;
+  // Minimum time after which data is available on all the bootstrapped streams.
+  optional fixed64 bootstrap_time = 4;
+}
+
 message IsBootstrapRequiredRequestPB {
   repeated string table_ids = 1;
   repeated string stream_ids = 2;
@@ -460,4 +475,7 @@ service MasterReplication {
 
   rpc GetXClusterSafeTime(GetXClusterSafeTimeRequestPB)
       returns (GetXClusterSafeTimeResponsePB);
+
+  rpc BootstrapProducer(BootstrapProducerRequestPB)
+      returns (BootstrapProducerResponsePB);
 }
