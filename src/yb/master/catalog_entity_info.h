@@ -716,6 +716,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
 
+  bool SetBootstrappingXClusterReplication(bool val) {
+    return bootstrapping_xcluster_replication_.exchange(val, std::memory_order_acq_rel);
+  }
+
+  bool GetBootstrappingXClusterReplication() const {
+    return bootstrapping_xcluster_replication_.load(std::memory_order_acquire);
+  }
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
@@ -772,6 +780,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // from PG catalog tables because the user may have used Alter Table to change
   // the table's tablespace.
   TablespaceId tablespace_id_for_table_creation_;
+
+  // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
+  // table from completing. Not needed once D23712 lands.
+  std::atomic_bool bootstrapping_xcluster_replication_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };

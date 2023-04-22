@@ -774,8 +774,28 @@ void BackfillTable::LaunchBackfillOrAbort() {
 }
 
 Status BackfillTable::LaunchComputeSafeTimeForRead() {
-  auto tablets = indexed_table_->GetTablets();
+  RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
 
+  if (master_->catalog_manager_impl()->IsTableXClusterConsumer(*indexed_table_)) {
+    auto res = master_->catalog_manager_impl()->GetXClusterSafeTime(indexed_table_->namespace_id());
+    if (res.ok()) {
+      SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
+             indexed_table_->namespace_id());
+
+      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << read_time_for_backfill_
+                            << " as the backfill read time";
+      return SetSafeTimeAndStartBackfill(*res);
+    } else {
+      if (res.status().IsNotFound()) {
+        VLOG_WITH_PREFIX(1) << "Table does not belong to transactional replication, continue with "
+                               "GetSafeTimeForTablet";
+      } else {
+        return res.status();
+      }
+    }
+  }
+
+  auto tablets = indexed_table_->GetTablets();
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   auto min_cutoff = master()->clock()->Now();
@@ -858,28 +878,45 @@ Status BackfillTable::UpdateSafeTime(const Status& s, HybridTime ht) {
     LOG_WITH_PREFIX(INFO) << "Completed fetching SafeTime for the table "
                           << yb::ToString(indexed_table_) << " will be using "
                           << read_timestamp.ToString();
-    {
-      auto l = indexed_table_->LockForWrite();
-      DCHECK_EQ(l.mutable_data()->pb.backfill_jobs_size(), 1);
-      auto* backfill_job = l.mutable_data()->pb.mutable_backfill_jobs(0);
-      backfill_job->set_backfilling_timestamp(read_timestamp.ToUint64());
-      RETURN_NOT_OK_PREPEND(
-          master_->catalog_manager_impl()->sys_catalog_->Upsert(
-              leader_term(), indexed_table_),
-          "Failed to persist backfilling timestamp. Abandoning.");
-      l.Commit();
-    }
-    VLOG_WITH_PREFIX(2) << "Saved " << read_timestamp
-                        << " as backfilling_timestamp";
-    timestamp_chosen_.store(true, std::memory_order_release);
-    Status backfill_status = DoBackfill();
-    if (!backfill_status.ok()) {
-      // Mark indexes as failed so CREATE INDEX will stop waiting and return.
-      RETURN_NOT_OK(Abort());
-      return backfill_status;
-    }
+    return PersistSafeTimeAndStartBackfill();
   }
   return Status::OK();
+}
+
+Status BackfillTable::PersistSafeTimeAndStartBackfill() {
+  {
+    std::lock_guard mutex_lock(mutex_);
+    auto l = indexed_table_->LockForWrite();
+    DCHECK_EQ(l.mutable_data()->pb.backfill_jobs_size(), 1);
+    auto* backfill_job = l.mutable_data()->pb.mutable_backfill_jobs(0);
+    backfill_job->set_backfilling_timestamp(read_time_for_backfill_.ToUint64());
+    RETURN_NOT_OK_PREPEND(
+        master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_),
+        "Failed to persist backfilling timestamp. Abandoning.");
+    l.Commit();
+    VLOG_WITH_PREFIX(2) << "Saved " << read_time_for_backfill_ << " as backfilling_timestamp";
+  }
+
+  timestamp_chosen_.store(true, std::memory_order_release);
+  Status backfill_status = DoBackfill();
+  if (!backfill_status.ok()) {
+    // Mark indexes as failed so CREATE INDEX will stop waiting and return.
+    RETURN_NOT_OK(Abort());
+    return backfill_status;
+  }
+  return Status::OK();
+}
+
+Status BackfillTable::SetSafeTimeAndStartBackfill(const HybridTime& read_time) {
+  RSTATUS_DCHECK(!timestamp_chosen(), IllegalState, "Backfill timestamp already set");
+  {
+    std::lock_guard mutex_lock(mutex_);
+    // We only expect the time to be set once.
+    DCHECK(read_time_for_backfill_.is_special());
+    read_time_for_backfill_.MakeAtLeast(read_time);
+  }
+
+  return PersistSafeTimeAndStartBackfill();
 }
 
 Status BackfillTable::WaitForTabletSplitting() {
@@ -902,7 +939,7 @@ Status BackfillTable::WaitForTabletSplitting() {
 }
 
 Status BackfillTable::DoLaunchBackfill() {
-  if (!timestamp_chosen_.load(std::memory_order_acquire)) {
+  if (!timestamp_chosen()) {
     RETURN_NOT_OK(LaunchComputeSafeTimeForRead());
   } else {
     RETURN_NOT_OK(DoBackfill());

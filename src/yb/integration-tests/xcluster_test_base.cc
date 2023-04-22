@@ -639,4 +639,122 @@ Status XClusterTestBase::SetupWaitForReplicationDrainStatus(
   return Status::OK();
 }
 
+void XClusterTestBase::VerifyReplicationError(
+    const std::string& consumer_table_id,
+    const std::string& stream_id,
+    const boost::optional<ReplicationErrorPb>
+        expected_replication_error) {
+  // 1. Verify that the RPC contains the expected error.
+  master::GetReplicationStatusRequestPB req;
+  master::GetReplicationStatusResponsePB resp;
+
+  req.set_universe_id(kUniverseId);
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &consumer_client()->proxy_cache(),
+      ASSERT_RESULT(consumer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        rpc.Reset();
+        rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+        if (!master_proxy->GetReplicationStatus(req, &resp, &rpc).ok()) {
+          return false;
+        }
+
+        if (resp.has_error()) {
+          return false;
+        }
+
+        if (resp.statuses_size() == 0 || (resp.statuses()[0].table_id() != consumer_table_id &&
+                                          resp.statuses()[0].stream_id() != stream_id)) {
+          return false;
+        }
+
+        if (expected_replication_error) {
+          return resp.statuses()[0].errors_size() == 1 &&
+                 resp.statuses()[0].errors()[0].error() == *expected_replication_error;
+        } else {
+          return resp.statuses()[0].errors_size() == 0;
+        }
+      },
+      MonoDelta::FromSeconds(30), "Waiting for replication error"));
+
+  // 2. Verify that the yb-admin output contains the expected error.
+  auto admin_out =
+      ASSERT_RESULT(CallAdmin(consumer_cluster(), "get_replication_status", kUniverseId));
+  if (expected_replication_error) {
+    ASSERT_TRUE(
+        admin_out.find(Format("error: $0", ReplicationErrorPb_Name(*expected_replication_error))) !=
+        std::string::npos);
+  } else {
+    ASSERT_TRUE(admin_out.find("error:") == std::string::npos);
+  }
+}
+
+Result<CDCStreamId> XClusterTestBase::GetCDCStreamID(const std::string& producer_table_id) {
+  master::ListCDCStreamsResponsePB stream_resp;
+  RETURN_NOT_OK(GetCDCStreamForTable(producer_table_id, &stream_resp));
+
+  SCHECK_EQ(
+      stream_resp.streams_size(), 1, IllegalState,
+      Format("Expected 1 stream, have $0", stream_resp.streams_size()));
+
+  SCHECK_EQ(
+      stream_resp.streams(0).table_id().Get(0), producer_table_id, IllegalState,
+      Format(
+          "Expected table id $0, have $1", producer_table_id,
+          stream_resp.streams(0).table_id().Get(0)));
+
+  return stream_resp.streams(0).stream_id();
+}
+
+Status XClusterTestBase::WaitForSafeTime(
+    const NamespaceId& namespace_id, const HybridTime& min_safe_time) {
+  for (auto tserver : consumer_cluster()->mini_tablet_servers()) {
+    if (!tserver->is_started()) {
+      continue;
+    }
+    RETURN_NOT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto safe_time_result =
+              tserver->server()->GetXClusterSafeTimeMap().GetSafeTime(namespace_id);
+          if (!safe_time_result) {
+            CHECK(safe_time_result.status().IsTryAgain());
+
+            return false;
+          }
+          auto safe_time = safe_time_result.get();
+          return safe_time && safe_time->is_valid() && *safe_time > min_safe_time;
+        },
+        propagation_timeout_,
+        Format("Wait for safe_time to move above $0", min_safe_time.ToDebugString())));
+  }
+
+  return Status::OK();
+}
+
+Status XClusterTestBase::PauseResumeXClusterProducerStreams(
+    const std::vector<std::string>& stream_ids, bool is_paused) {
+  master::PauseResumeXClusterProducerStreamsRequestPB req;
+  master::PauseResumeXClusterProducerStreamsResponsePB resp;
+
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  for (const auto& stream_id : stream_ids) {
+    req.add_stream_ids(stream_id);
+  }
+  req.set_is_paused(is_paused);
+  RETURN_NOT_OK(master_proxy->PauseResumeXClusterProducerStreams(req, &resp, &rpc));
+  SCHECK(
+      !resp.has_error(), IllegalState,
+      Format("PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
+  return Status::OK();
+}
+
 } // namespace yb

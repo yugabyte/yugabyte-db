@@ -53,6 +53,7 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/retryable_request.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
 #include "yb/gutil/macros.h"
@@ -559,6 +560,17 @@ class YBClient {
 
   Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
+
+  // Bootstrap the given list of tables. Returns the corresponding list of table ids, bootstrap ids
+  // and the bootstrap time.
+  Status BootstrapProducer(
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName> pg_schema_names,
+      const std::vector<TableName>& table_name,
+      std::vector<TableId>* producer_table_ids,
+      std::vector<std::string>* bootstrap_ids,
+      HybridTime* bootstrap_time);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(const std::string& producer_id,
