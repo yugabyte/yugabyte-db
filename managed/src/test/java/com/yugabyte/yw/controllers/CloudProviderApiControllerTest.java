@@ -181,19 +181,24 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         user.createAuthToken());
   }
 
-  private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
-    return editProvider(bodyJson, providerUUID, false);
+  private Result editProvider(JsonNode bodyJson, UUID providerUUID, boolean validate) {
+    return editProvider(bodyJson, providerUUID, validate, false);
   }
 
-  private Result editProvider(JsonNode bodyJson, UUID providerUUID, boolean ignoreValidation) {
+  private Result editProvider(JsonNode bodyJson, UUID providerUUID) {
+    return editProvider(bodyJson, providerUUID, true, false);
+  }
+
+  private Result editProvider(
+      JsonNode bodyJson, UUID providerUUID, boolean validate, boolean ignoreValidation) {
     return doRequestWithAuthTokenAndBody(
         "PUT",
         "/api/customers/"
             + customer.getUuid()
             + "/providers/"
             + providerUUID
-            + "/edit?validate=true&ignoreValidationErrors="
-            + ignoreValidation,
+            + String.format(
+                "/edit?validate=%s&ignoreValidationErrors=%s", validate, ignoreValidation),
         user.createAuthToken(),
         bodyJson);
   }
@@ -787,7 +792,8 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}]}";
 
     Result result =
-        assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.getUuid()));
+        assertPlatformException(
+            () -> editProvider(Json.parse(jsonString), provider.getUuid(), false));
     assertBadRequest(result, "Required field vnet name (VPC ID) for region: us-west-1");
   }
 
@@ -1407,6 +1413,56 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testOnPremProviderNameValidation() {
+    // create provider body
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "onprem");
+    bodyJson.put("name", "onprem-Provider");
+    ObjectNode region = Json.newObject();
+    ObjectNode az1 = Json.newObject().put("name", "us-west-2a").put("code", "us-west-2a");
+    ObjectNode az2 = Json.newObject().put("name", "us-west-2b").put("code", "us-west-2b");
+    ArrayNode zonesList = Json.newArray();
+    zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
+    region.put("code", "us-west-2");
+    ArrayNode regionsList = Json.newArray();
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+
+    when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
+        .thenReturn(UUID.randomUUID());
+    // Test validation pass
+    Result result = createProvider(bodyJson);
+    assertOk(result);
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  @Test
+  public void testOnPremProviderNameValidationFail() {
+    // create provider body
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("code", "onprem");
+    bodyJson.put("name", "onprem-Provider");
+    ObjectNode region = Json.newObject();
+    ObjectNode az1 = Json.newObject().put("name", "us-west&s2a").put("code", "us-west-2a");
+    ObjectNode az2 = Json.newObject().put("name", "us-westS*D2b").put("code", "us-west-2b");
+    ArrayNode zonesList = Json.newArray();
+    zonesList.add(az1).add(az2);
+    region.put("zones", zonesList);
+    region.put("code", "us-west-2");
+    ArrayNode regionsList = Json.newArray();
+    regionsList.add(region);
+    bodyJson.set("regions", regionsList);
+
+    Result result = assertPlatformException(() -> createProvider(bodyJson));
+    assertEquals(BAD_REQUEST, result.status());
+    assertBadRequestValidationResult(
+        result,
+        "data.ZONE.0",
+        "Zone name cannot contain any special characters except '-' and '_'.");
+  }
+
+  @Test
   public void testGCPProviderCreateWithImageBundle() {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
         .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
@@ -1525,7 +1581,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             provider.getVersion());
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenThrow(new PlatformServiceException(BAD_REQUEST, "Something wrong"));
-    Result result = editProvider(Json.parse(jsonString), provider.getUuid(), true);
+    Result result = editProvider(Json.parse(jsonString), provider.getUuid(), true, true);
     assertOk(result);
     provider = Provider.getOrBadRequest(provider.getUuid());
     assertNotNull(provider.getLastValidationErrors());

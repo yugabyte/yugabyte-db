@@ -120,6 +120,11 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
   }
 
+  @Override
+  public void validate(AvailabilityZone zone) {
+    // pass
+  }
+
   private void dryRun(Provider provider, Region region) {
     String fieldDetails = "REGION." + region.getCode() + ".DRY_RUN";
     try {

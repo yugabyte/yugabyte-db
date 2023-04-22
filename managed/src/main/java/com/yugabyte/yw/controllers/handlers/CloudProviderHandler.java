@@ -872,15 +872,18 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(BAD_REQUEST, "Changing provider type is not supported!");
     }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
+
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     UUID taskUUID = null;
-    boolean providerModified = false;
+    boolean providerModified =
+        updateProviderData(customer, provider, editProviderReq, validate, ignoreValidationErrors);
     if (provider.getCloudCode().equals(CloudType.kubernetes)) {
       // Edit the kubernetes provider
       LOG.debug("Trying to add regions to kubernetes provider");
       // Updating the flag based on if we have regions to add or not.
-      providerModified = editKubernetesProvider(provider, editProviderReq, regionsToAdd);
+      providerModified =
+          providerModified | editKubernetesProvider(provider, editProviderReq, regionsToAdd);
     }
     if (!regionsToAdd.isEmpty() && !provider.getCloudCode().equals(CloudType.kubernetes)) {
       // TODO: PLAT-7258 allow adding region for auto-creating VPC case
@@ -891,9 +894,7 @@ public class CloudProviderHandler {
     providerModified =
         providerModified
             | addOrRemoveAZs(editProviderReq, provider)
-            | removeAndUpdateRegions(editProviderReq, provider)
-            | updateProviderData(
-                customer, provider, editProviderReq, validate, ignoreValidationErrors);
+            | removeAndUpdateRegions(editProviderReq, provider);
 
     if (!providerModified && taskUUID == null) {
       throw new PlatformServiceException(
