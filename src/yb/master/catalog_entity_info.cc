@@ -779,6 +779,7 @@ Status TableInfo::SetIsBackfilling() {
 }
 
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
+  VLOG_WITH_FUNC(1) << status;
   std::lock_guard<decltype(lock_)> l(lock_);
   create_table_error_ = status;
 }

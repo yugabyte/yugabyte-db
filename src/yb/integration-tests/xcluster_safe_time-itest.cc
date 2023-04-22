@@ -180,21 +180,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
   Status WaitForSafeTime(HybridTime min_safe_time) {
     RETURN_NOT_OK(CorrectlyPollingAllTablets(
         consumer_cluster(), kTabletCount + static_cast<uint32_t>(global_tran_tablet_ids_.size())));
-    auto* tserver = consumer_cluster()->mini_tablet_servers().front()->server();
 
-    return WaitFor(
-        [&]() -> Result<bool> {
-          auto safe_time_result = GetSafeTime(tserver, namespace_id_);
-          if (!safe_time_result) {
-            CHECK(safe_time_result.status().IsTryAgain());
-            return false;
-          }
-
-          auto safe_time = safe_time_result.get();
-          return *safe_time && safe_time->is_valid() && *safe_time > min_safe_time;
-        },
-        propagation_timeout_,
-        Format("Wait for safe_time to move above $0", min_safe_time.ToDebugString()));
+    return XClusterTestBase::WaitForSafeTime(namespace_id_, min_safe_time);
   }
 
   Status WaitForNotFoundSafeTime() {

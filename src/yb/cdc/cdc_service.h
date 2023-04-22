@@ -321,7 +321,9 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
       bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true);
 
-  Result<OpId> TabletLeaderLatestEntryOpId(const TabletId& tablet_id);
+  // Returns the latest OpId and safe time from the leader of given tablet.
+  Result<std::pair<OpId, HybridTime>> TabletLeaderLatestEntryOpIdAndSafeTime(
+      const TabletId& tablet_id);
 
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(const TabletId& tablet_id);
   Result<client::internal::RemoteTabletServer *> GetLeaderTServer(const TabletId& tablet_id);

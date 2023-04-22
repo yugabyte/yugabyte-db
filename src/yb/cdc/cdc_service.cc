@@ -3153,7 +3153,8 @@ void CDCServiceImpl::RollbackCdcReplicatedIndexEntry(
       "Unable to update op id and expiration time for tablet $0 " + tablet_id);
 }
 
-Result<OpId> CDCServiceImpl::TabletLeaderLatestEntryOpId(const TabletId& tablet_id) {
+Result<std::pair<OpId, HybridTime>> CDCServiceImpl::TabletLeaderLatestEntryOpIdAndSafeTime(
+    const TabletId& tablet_id) {
   auto ts_leader = VERIFY_RESULT(GetLeaderTServer(tablet_id));
 
   auto cdc_proxy = GetCDCServiceProxy(ts_leader);
@@ -3177,13 +3178,21 @@ Result<OpId> CDCServiceImpl::TabletLeaderLatestEntryOpId(const TabletId& tablet_
       auto follower_cdc_proxy = GetCDCServiceProxy(server);
       status = follower_cdc_proxy->GetLatestEntryOpId(req, &resp, &rpc);
       if (status.ok()) {
-        return OpId::FromPB(resp.op_id());
+        break;
       }
     }
-    DCHECK(!status.ok());
-    return status;
+    RETURN_NOT_OK(status);
   }
-  return OpId::FromPB(resp.op_id());
+
+  OpId op_id = OpId::FromPB(resp.op_id());
+  HybridTime safe_time;
+  if (resp.has_bootstrap_time()) {
+    safe_time = HybridTime::FromPB(resp.bootstrap_time());
+  } else {
+    safe_time = HybridTime::kMax;
+  }
+
+  return std::make_pair(std::move(op_id), std::move(safe_time));
 }
 
 // Given a list of tablet ids, retrieve the latest entry op_id for each of them.
@@ -3193,33 +3202,26 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     const GetLatestEntryOpIdRequestPB& req, CoarseTimePoint deadline) {
   GetLatestEntryOpIdResponsePB resp;
 
-  // Support backwards compatibility.
+  std::unordered_set<TabletId> tablet_ids;
   if (req.has_tablet_id()) {
-    auto tablet_peer = VERIFY_RESULT_OR_SET_CODE(
-        context_->GetServingTablet(req.tablet_id()), CDCError(CDCErrorPB::INTERNAL_ERROR));
-
-    if (!tablet_peer->log_available()) {
-      const string err_message = strings::Substitute(
-          "Unable to get the latest entry op id from "
-          "peer $0 and tablet $1 because its log object hasn't been initialized",
-          tablet_peer->permanent_uuid(), tablet_peer->tablet_id());
-      LOG(WARNING) << err_message;
-      return STATUS(ServiceUnavailable, err_message, CDCError(CDCErrorPB::INTERNAL_ERROR));
+    // Support backwards compatibility.
+    tablet_ids.insert(req.tablet_id());
+  } else {
+    for (int i = 0; i < req.tablet_ids_size(); i++) {
+      tablet_ids.insert(req.tablet_ids(i));
     }
-    VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType()).ToPB(resp.mutable_op_id());
-
-    return resp;
   }
 
-  if (req.tablet_ids_size() <= 0) {
+  if (tablet_ids.empty()) {
     return STATUS(
         InvalidArgument, "Tablet IDs are required to set the log replicated index",
         CDCError(CDCErrorPB::INVALID_REQUEST));
   }
 
-  for (int i = 0; i < req.tablet_ids_size(); i++) {
+  HybridTime bootstrap_time = HybridTime::kMin;
+  for (auto& tablet_id : tablet_ids) {
     auto tablet_peer = VERIFY_RESULT_OR_SET_CODE(
-        context_->GetServingTablet(req.tablet_ids(i)), CDCError(CDCErrorPB::INTERNAL_ERROR));
+        context_->GetServingTablet(tablet_id), CDCError(CDCErrorPB::INTERNAL_ERROR));
 
     if (!tablet_peer->log_available()) {
       const string err_message = strings::Substitute(
@@ -3231,8 +3233,13 @@ Result<GetLatestEntryOpIdResponsePB> CDCServiceImpl::GetLatestEntryOpId(
     }
 
     // Add op_id to response.
-    OpId op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
+    auto [op_id, ht] = VERIFY_RESULT(tablet_peer->GetOpIdAndSafeTimeForXReplBootstrap());
     op_id.ToPB(resp.add_op_ids());
+    bootstrap_time.MakeAtLeast(ht);
+  }
+
+  if (!bootstrap_time.is_special()) {
+    resp.set_bootstrap_time(bootstrap_time.ToUint64());
   }
 
   return resp;
@@ -3365,6 +3372,7 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
     std::vector<client::YBOperationPtr>* ops,
     CDCCreationState* creation_state) {
   std::vector<CDCStreamId> bootstrap_ids;
+  HybridTime bootstrap_time = HybridTime::kMin;
   // For each (bootstrap_id, tablet_id) pair, store its op_id object.
   std::unordered_map<BootstrapTabletPair, yb::OpId, boost::hash<BootstrapTabletPair>> tablet_op_ids;
   // For each server id, store the server proxy object.
@@ -3417,7 +3425,9 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
+        HybridTime ht;
+        std::tie(op_id, ht) = VERIFY_RESULT(tablet_peer->GetOpIdAndSafeTimeForXReplBootstrap());
+        bootstrap_time.MakeAtLeast(ht);
 
         // Add checkpoint for rollback before modifying tablet state.
         impl_->AddTabletCheckpoint(
@@ -3526,6 +3536,12 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
           op_id, bootstrap_id, tablet_id, &creation_state->producer_entries_modified);
     }
 
+    if (!get_op_id_resp->has_bootstrap_time()) {
+      bootstrap_time = HybridTime::kMax;
+    } else {
+      bootstrap_time.MakeAtLeast(HybridTime(get_op_id_resp->bootstrap_time()));
+    }
+
     // Note any errors, but continue processing all RPC results.
     if (get_op_id_resp->has_error()) {
       auto err_message = get_op_id_resp->error().status().message();
@@ -3620,6 +3636,9 @@ Status CDCServiceImpl::BootstrapProducerHelperParallelized(
   for (const auto& bootstrap_id : bootstrap_ids) {
     resp->add_cdc_bootstrap_ids(bootstrap_id);
   }
+  if (!bootstrap_time.is_special()) {
+    resp->set_bootstrap_time(bootstrap_time.ToUint64());
+  }
   LOG_WITH_FUNC(INFO) << "Finished.";
 
   return Status::OK();
@@ -3632,6 +3651,7 @@ Status CDCServiceImpl::BootstrapProducerHelper(
     CDCCreationState* creation_state) {
   std::shared_ptr<yb::client::TableHandle> cdc_state_table;
   std::vector<CDCStreamId> bootstrap_ids;
+  HybridTime bootstrap_time = HybridTime::kMin;
 
   for (const auto& table_id : req->table_ids()) {
     std::shared_ptr<client::YBTable> table;
@@ -3666,6 +3686,7 @@ Status CDCServiceImpl::BootstrapProducerHelper(
       OpId op_id;
       // Get the Latest OpID.
       TabletCDCCheckpointInfo op_id_min;
+      HybridTime tablet_bootstrap_time;
 
       auto tablet_peer_result = context_->GetServingTablet(tablet.tablet_id());
       if (tablet_peer_result.ok()) {
@@ -3678,7 +3699,9 @@ Status CDCServiceImpl::BootstrapProducerHelper(
           LOG(WARNING) << err_message;
           return STATUS(InternalError, err_message);
         }
-        op_id = VERIFY_RESULT(tablet_peer->GetCdcBootstrapOpIdByTableType());
+        std::tie(op_id, tablet_bootstrap_time) =
+            VERIFY_RESULT(tablet_peer->GetOpIdAndSafeTimeForXReplBootstrap());
+
         // Update the term and index for the consumed checkpoint
         // to tablet's LEADER as well as FOLLOWER.
         op_id_min.cdc_op_id = OpId(OpId::kUnknownTerm, op_id.index);
@@ -3686,10 +3709,13 @@ Status CDCServiceImpl::BootstrapProducerHelper(
 
         RETURN_NOT_OK(tablet_peer->set_cdc_min_replicated_index(op_id.index));
       } else {  // Remote tablet.
-        op_id = VERIFY_RESULT(TabletLeaderLatestEntryOpId(tablet.tablet_id()));
+        std::tie(op_id, tablet_bootstrap_time) =
+            VERIFY_RESULT(TabletLeaderLatestEntryOpIdAndSafeTime(tablet.tablet_id()));
         op_id_min.cdc_op_id = OpId(OpId::kUnknownTerm, op_id.index);
         op_id_min.cdc_sdk_op_id = OpId::Max();
       }
+      bootstrap_time.MakeAtLeast(tablet_bootstrap_time);
+
       // Even though we let each log independently take care of updating its own log checkpoint,
       // we still call the Update RPC when we create the replication stream.
       RETURN_NOT_OK(UpdatePeersCdcMinReplicatedIndex(tablet.tablet_id(), op_id_min));
@@ -3710,6 +3736,10 @@ Status CDCServiceImpl::BootstrapProducerHelper(
   // Add bootstrap ids to response.
   for (const auto& bootstrap_id : bootstrap_ids) {
     resp->add_cdc_bootstrap_ids(bootstrap_id);
+  }
+
+  if (!bootstrap_time.is_special()) {
+    resp->set_bootstrap_time(bootstrap_time.ToUint64());
   }
 
   return Status::OK();

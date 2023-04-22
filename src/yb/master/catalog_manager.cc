@@ -568,6 +568,14 @@ DEFINE_test_flag(bool, pause_before_upsert_ysql_sys_table, false,
 DEFINE_test_flag(int32, delay_split_registration_secs, 0,
                  "Delay creating child tablets and upserting them to sys catalog");
 
+#define RETURN_FALSE_IF(cond) \
+  do { \
+    if ((cond)) { \
+      VLOG_WITH_FUNC(3) << "Returning false"; \
+      return false; \
+    } \
+  } while (0)
+
 namespace yb {
 namespace master {
 
@@ -608,8 +616,6 @@ using yb::server::MasterAddressesToString;
 using yb::client::YBSchema;
 using yb::client::YBSchemaBuilder;
 
-namespace {
-
 // Macros to access index information in CATALOG.
 //
 // NOTES from file master.proto for SysTablesEntryPB.
@@ -624,6 +630,8 @@ const std::string& GetIndexedTableId(const SysTablesEntryPB& pb) {
   return pb.has_index_info() ? pb.index_info().indexed_table_id() : pb.indexed_table_id();
 }
 
+namespace {
+
 #define PROTO_GET_IS_LOCAL(tabpb) \
   (tabpb.has_index_info() ? tabpb.index_info().is_local() \
                           : tabpb.is_local_index())
@@ -632,14 +640,6 @@ const std::string& GetIndexedTableId(const SysTablesEntryPB& pb) {
   (tabpb.has_index_info() ? tabpb.index_info().is_unique() \
                           : tabpb.is_unique_index())
 
-template <class PB>
-bool IsIndex(const PB& pb) {
-  return pb.has_index_info() || !pb.indexed_table_id().empty();
-}
-
-bool IsTable(const SysTablesEntryPB& pb) {
-  return !IsIndex(pb);
-}
 
 #define PROTO_PTR_IS_INDEX(tabpb) \
   (tabpb->has_index_info() || !tabpb->indexed_table_id().empty())
@@ -4853,11 +4853,13 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   RETURN_NOT_OK(CatalogManagerUtil::CheckIfTableDeletedOrNotVisibleToClient(l));
   const auto& pb = l->pb;
 
-  // 2. Verify if the create is in-progress.
-  auto result = !table->IsCreateInProgress();
-  TRACE("Verify if the table creation is in progress for $0, $1", table->ToString(), result);
+  {
+    auto result = !table->IsCreateInProgress();
+    TRACE("Verify if the table creation is in progress for $0, $1", table->ToString(), result);
+    RETURN_FALSE_IF(!result);
+  }
 
-  // 3. Set any current errors, if we are experiencing issues creating the table. This will be
+  // Set any current errors, if we are experiencing issues creating the table. This will be
   // bubbled up to the MasterService layer. If it is an error, it gets wrapped around in
   // MasterErrorPB::UNKNOWN_ERROR.
   // For master only tests running with TEST_create_table_in_running_state and we expect errors
@@ -4866,9 +4868,9 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
     RETURN_NOT_OK(table->GetCreateTableErrorStatus());
   }
 
-  // 4. If this is an index, we are not done until the index is in the indexed table's schema.  An
+  // If this is an index, we are not done until the index is in the indexed table's schema.  An
   // exception is YSQL system table indexes, which don't get added to their indexed tables' schemas.
-  if (result && IsIndex(pb)) {
+  if (IsIndex(pb)) {
     auto& indexed_table_id = GetIndexedTableId(pb);
     // For user indexes (which add index info to indexed table's schema),
     // - if this index is created without backfill,
@@ -4898,13 +4900,15 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
       RETURN_NOT_OK(GetTableSchemaInternal(
           &get_schema_req, &get_schema_resp, get_fully_applied_indexes));
 
-      result = false;
+      bool result = false;
       for (const auto& index : get_schema_resp.indexes()) {
         if (index.has_table_id() && index.table_id() == table->id()) {
           result = true;
           break;
         }
       }
+
+      RETURN_FALSE_IF(!result);
     }
   }
 
@@ -4912,7 +4916,6 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   // Only check if we are automatically generating the vtable on changes. If we are creating via
   // the bg task, then there may be a delay.
   if (DCHECK_IS_ON() &&
-      result &&
       IsYcqlTable(*table) &&
       YQLPartitionsVTable::GeneratePartitionsVTableOnChanges() &&
       FLAGS_TEST_catalog_manager_check_yql_partitions_exist_for_is_create_table_done) {
@@ -4928,19 +4931,21 @@ Result<bool> CatalogManager::IsCreateTableDone(const TableInfoPtr& table) {
   // However, if we are currently initializing the system catalog snapshot, we don't create the
   // transactions table.
   if (!FLAGS_create_initial_sys_catalog_snapshot &&
-      result && pb.schema().table_properties().is_transactional()) {
-    result = VERIFY_RESULT(IsTransactionStatusTableCreated());
+      pb.schema().table_properties().is_transactional()) {
+    RETURN_FALSE_IF(!VERIFY_RESULT(IsTransactionStatusTableCreated()));
   }
 
   // We are not done until the metrics snapshots table is created.
-  if (FLAGS_master_enable_metrics_snapshotter && result &&
+  if (FLAGS_master_enable_metrics_snapshotter &&
       !(table->GetTableType() == TableType::YQL_TABLE_TYPE &&
         table->namespace_id() == kSystemNamespaceId &&
         table->name() == kMetricsSnapshotsTableName)) {
-    result = VERIFY_RESULT(IsMetricsSnapshotsTableCreated());
+    RETURN_FALSE_IF(!VERIFY_RESULT(IsMetricsSnapshotsTableCreated()));
   }
 
-  return result;
+  RETURN_FALSE_IF(VERIFY_RESULT(ScheduleBootstrapForXclusterIfNeeded(table, pb)));
+
+  return true;
 }
 
 Status CatalogManager::IsCreateTableDone(const IsCreateTableDoneRequestPB* req,
@@ -5919,7 +5924,13 @@ Status CatalogManager::DeleteTableInternal(
   // Update the in-memory state.
   TRACE("Committing in-memory state");
   std::unordered_set<TableId> sys_table_ids;
+  std::vector<TableId> deleted_table_ids;
+  std::vector<TableId> deleted_index_ids;
   for (auto& table : tables) {
+    deleted_table_ids.emplace_back(table.info->id());
+    if(table.info->is_index()) {
+      deleted_index_ids.emplace_back(table.info->id());
+    }
     if (IsSystemTable(*table.info)) {
       sys_table_ids.insert(table.info->id());
     }
@@ -5931,8 +5942,9 @@ Status CatalogManager::DeleteTableInternal(
   // table_id for the requested table will be added to the end of the response.
   RSTATUS_DCHECK_GE(resp->deleted_table_ids_size(), 1, IllegalState,
       "DeleteTableInMemory expected to add the index id to resp");
-  RETURN_NOT_OK(
-      DeleteCDCStreamsForTable(resp->deleted_table_ids(resp->deleted_table_ids_size() - 1)));
+
+  RETURN_NOT_OK(DeleteCDCStreamsForTables(deleted_table_ids));
+  RETURN_NOT_OK(DeleteXReplStatesForIndexTables(deleted_index_ids));
 
   if (PREDICT_FALSE(FLAGS_catalog_manager_inject_latency_in_delete_table_ms > 0)) {
     LOG(INFO) << "Sleeping in CatalogManager::DeleteTable for " <<
@@ -6012,8 +6024,7 @@ Status CatalogManager::DeleteTableInternal(
     }
   }
 
-  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTable(
-      resp->deleted_table_ids(resp->deleted_table_ids_size() - 1)));
+  RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(deleted_table_ids));
 
   // If there are any permissions granted on this table find them and delete them. This is necessary
   // because we keep track of the permissions based on the canonical resource name which is a
@@ -6657,10 +6668,7 @@ Status CatalogManager::AlterTable(const AlterTableRequestPB* req,
     SchemaToPB(new_schema, table_pb.mutable_schema());
   }
 
-  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && [&]() {
-        SharedLock lock(mutex_);
-        return IsTableXClusterConsumer(*table);
-      }()) {
+  if (GetAtomicFlag(&FLAGS_xcluster_wait_on_ddl_alter) && IsTableXClusterConsumer(*table)) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // ensure this alter is compatible with what we're expecting.
     RETURN_NOT_OK(ValidateNewSchemaWithCdc(*table, new_schema));
@@ -7374,14 +7382,34 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfo(const TableId& table_id) {
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableName(
-    YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name) {
-  if (db_type == YQL_DATABASE_PGSQL)
-    return nullptr;
+    YQLDatabase db_type, const NamespaceName& namespace_name, const TableName& table_name,
+    const PgSchemaName pg_schema_name) {
   SharedLock lock(mutex_);
   const auto ns = FindPtrOrNull(namespace_names_mapper_[db_type], namespace_name);
-  return ns
-    ? FindPtrOrNull(table_names_map_, {ns->id(), table_name})
-    : nullptr;
+  if (!ns) {
+    return nullptr;
+  }
+
+  if (db_type != YQL_DATABASE_PGSQL) {
+    return FindPtrOrNull(table_names_map_, {ns->id(), table_name});
+  }
+
+  // YQL_DATABASE_PGSQL
+  if (pg_schema_name.empty()) {
+    return nullptr;
+  }
+
+  for (const auto& table : tables_->GetAllTables()) {
+    auto l = table->LockForRead();
+    auto& table_pb = l->pb;
+
+    if (!l->started_deleting() && table_pb.namespace_id() == ns->id() &&
+        boost::iequals(table_pb.schema().pgschema_name(), pg_schema_name) &&
+        boost::iequals(table_pb.name(), table_name)) {
+      return table;
+    }
+  }
+  return nullptr;
 }
 
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
@@ -9244,16 +9272,20 @@ Status CatalogManager::DeleteYsqlDBTables(const scoped_refptr<NamespaceInfo>& da
   // Batch remove all relevant CDC streams, handle after releasing Table locks.
   TRACE("Deleting CDC streams on table");
   vector<TableId> id_list;
+  vector<TableId> index_list;
   id_list.reserve(tables.size());
-  for (auto &table_and_lock : tables) {
-    id_list.push_back(table_and_lock.first->id());
+  for (auto &[table, lock] : tables) {
+    id_list.push_back(table->id());
+    if (table->is_index()) {
+      index_list.push_back(table->id());
+    }
   }
   RETURN_NOT_OK(DeleteCDCStreamsForTables(id_list));
   RETURN_NOT_OK(DeleteCDCStreamsMetadataForTables(id_list));
+  RETURN_NOT_OK(DeleteXReplStatesForIndexTables(index_list));
 
   // Send a DeleteTablet() RPC request to each tablet replica in the table.
-  for (auto &table_and_lock : tables) {
-    auto &table = table_and_lock.first;
+  for (auto &[table, lock] : tables) {
     // TODO(pitr) undelete for YSQL tables
     RETURN_NOT_OK(DeleteTabletsAndSendRequests(table, {}));
   }
@@ -10863,10 +10895,7 @@ Status CatalogManager::HandleTabletSchemaVersionReport(
 
   // With Replication Enabled, verify that we've finished applying the New Schema.
   // This may need to be refactored when we support Replication + Active Index Backfill in #7613.
-  if ([&]() {
-        SharedLock lock(mutex_);
-        return IsTableXClusterConsumer(*table);
-      }()) {
+  if (IsTableXClusterConsumer(*table)) {
     // If we're waiting for a Schema because we saw the a replication source with a change,
     // resume replication now that the alter is complete.
     RETURN_NOT_OK(ResumeCdcAfterNewSchema(*table, version));
@@ -12889,6 +12918,15 @@ Result<XClusterNamespaceToSafeTimeMap> CatalogManager::GetXClusterNamespaceToSaf
     result[entry.first] = HybridTime(entry.second);
   }
   return result;
+}
+
+Result<HybridTime> CatalogManager::GetXClusterSafeTime(const NamespaceId& namespace_id) const {
+  auto l = xcluster_safe_time_info_.LockForRead();
+  SCHECK(
+      l->pb.safe_time_map().count(namespace_id), NotFound,
+      "XCluster safe time not found for namspace $0", namespace_id);
+
+  return HybridTime(l->pb.safe_time_map().at(namespace_id));
 }
 
 Status CatalogManager::SetXClusterNamespaceToSafeTimeMap(

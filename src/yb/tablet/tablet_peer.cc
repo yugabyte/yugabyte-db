@@ -112,8 +112,10 @@ DEFINE_UNKNOWN_int32(cdc_min_replicated_index_considered_stale_secs, 900,
 DEFINE_UNKNOWN_bool(propagate_safe_time, true,
     "Propagate safe time to read from leader to followers");
 
-DEFINE_RUNTIME_bool(abort_active_txns_during_xcluster_bootstrap, true,
-    "Abort active transactions during bootstrapping.");
+DEFINE_RUNTIME_bool(abort_active_txns_during_xrepl_bootstrap, true,
+    "Abort active transactions during xcluster and cdc bootstrapping. Inconsistent replicated data "
+    "may be produced if this is disabled.");
+TAG_FLAG(abort_active_txns_during_xrepl_bootstrap, advanced);
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 
@@ -583,7 +585,7 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-Status TabletPeer::AbortSQLTransactions() {
+Status TabletPeer::AbortSQLTransactions() const {
   // Once raft group state enters QUIESCING state,
   // new queries cannot be processed from then onwards.
   // Aborting any remaining active transactions in the tablet.
@@ -1031,9 +1033,10 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
   return min_index;
 }
 
-Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() {
-  if (VERIFY_RESULT(shared_tablet_safe())->table_type() ==
-      TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+
+  if (tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
     // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
     // earliest required log record. This will be the CREATED\PENDING log record of the oldest
     // active transaction.
@@ -1042,14 +1045,27 @@ Result<OpId> TabletPeer::GetCdcBootstrapOpIdByTableType() {
       index--;
     }
     // Term does not matter, so can be set to 0.
-    return OpId(0, index);
+
+    auto op_id = OpId(0, index);
+    auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+    return std::make_pair(std::move(op_id), std::move(bootstrap_time));
   }
 
-  auto index = GetLatestLogEntryOpId();
-  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xcluster_bootstrap)) {
+  auto op_id = GetLatestLogEntryOpId();
+
+  // The bootstrap_time is the minium time from which the provided OpId will be transactionally
+  // consistent. It is important to call AbortSQLTransactions, which resolves the pending
+  // transactions and aborts the active ones. This step will synchronizes our clock with the
+  // transaction status tablet clock, ensuring that the bootstrap_time we compute later is correct.
+  // Ex: Our safe time is 100, and we have a pending intent for which the log got GCed. So this
+  // transaction cannot be replicated. If the transaction is still active it needs to be aborted.
+  // If, the coordinator is at 110 and the transaction was committed at 105. We need to move our
+  // clock to 110 and pick a higher bootstrap_time so that the commit is not part of the bootstrap.
+  if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xrepl_bootstrap)) {
     RETURN_NOT_OK(AbortSQLTransactions());
   }
-  return index;
+  auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
+  return std::make_pair(std::move(op_id), std::move(bootstrap_time));
 }
 
 Status TabletPeer::GetGCableDataSize(int64_t* retention_size) const {
