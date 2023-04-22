@@ -816,7 +816,7 @@ void DBIter::FindParseableKey(ParsedInternalKey* ikey, Direction direction) {
 
 void DBIter::Seek(const Slice& target) {
   saved_key_.Clear();
-  // now savved_key is used to store internal key.
+  // now saved_key_ is used to store internal key.
   saved_key_.SetInternalKey(target, sequence_);
 
   {
