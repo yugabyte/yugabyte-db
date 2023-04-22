@@ -768,6 +768,8 @@ void IntentAwareIterator::SeekToSuitableIntent() {
           intent_upperbound_keybytes_.Clear();
           intent_upperbound_keybytes_.AppendKeyEntryType(KeyEntryType::kTransactionId);
           intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
+          // We are not calling RevalidateAfterUpperBoundChange here because it is only needed
+          // during forward iteration, and is not needed immediately before a seek.
           intent_iter_.SeekToLast();
           break;
       }
@@ -939,6 +941,13 @@ Result<HybridTime> IntentAwareIterator::FindOldestRecord(
   }
   VLOG(4) << "Returning " << result;
   return result;
+}
+
+void IntentAwareIterator::SetUpperbound(const Slice& upperbound) {
+  if (!upperbound_.empty() && intent_upperbound_.data() == upperbound_.data()) {
+    DoSetIntentUpperBound(upperbound);
+  }
+  upperbound_ = upperbound;
 }
 
 Status IntentAwareIterator::FindLatestRecord(
@@ -1175,8 +1184,7 @@ Status IntentAwareIterator::SetIntentUpperbound() {
     VLOG(4) << "SetIntentUpperbound = "
             << SubDocKey::DebugSliceToString(intent_upperbound_keybytes_.AsSlice());
     intent_upperbound_keybytes_.AppendKeyEntryType(KeyEntryType::kMaxByte);
-    intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
-    intent_iter_.RevalidateAfterUpperBoundChange();
+    DoSetIntentUpperBound(intent_upperbound_keybytes_.AsSlice());
     HandleStatus(intent_iter_.status());
     RETURN_NOT_OK(status_);
   } else {
@@ -1190,11 +1198,24 @@ Status IntentAwareIterator::SetIntentUpperbound() {
 }
 
 void IntentAwareIterator::ResetIntentUpperbound() {
-  intent_upperbound_keybytes_.Clear();
-  intent_upperbound_keybytes_.AppendKeyEntryType(KeyEntryType::kHighest);
-  intent_upperbound_ = intent_upperbound_keybytes_.AsSlice();
-  intent_iter_.RevalidateAfterUpperBoundChange();
+  Slice new_intent_upper_bound;
+  if (upperbound_.empty()) {
+    // If the regular iterator does not have an upper bound, we do not restrict the intent iterator
+    // at all.
+    intent_upperbound_keybytes_.Clear();
+    intent_upperbound_keybytes_.AppendKeyEntryType(KeyEntryType::kHighest);
+    new_intent_upper_bound = intent_upperbound_keybytes_.AsSlice();
+  } else {
+    // Reuse the upper bound we already have for the regular RocksDB.
+    new_intent_upper_bound = upperbound_;
+  }
+  DoSetIntentUpperBound(new_intent_upper_bound);
   VLOG(4) << "ResetIntentUpperbound = " << intent_upperbound_.ToDebugString();
+}
+
+void IntentAwareIterator::DoSetIntentUpperBound(const Slice& intent_upper_bound) {
+  intent_upperbound_ = intent_upper_bound;
+  intent_iter_.RevalidateAfterUpperBoundChange();
 }
 
 void IntentAwareIterator::HandleStatus(const Status& status) {
