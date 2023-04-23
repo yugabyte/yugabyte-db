@@ -99,6 +99,8 @@ Monthly total costs for the cluster are based on the number of vCPUs and estimat
 
 {{% includeMarkdown "network-access.md" %}}
 
+{{% includeMarkdown "include-security-settings.md" %}}
+
 ### Database Credentials
 
 The database admin credentials are required to connect to the YugabyteDB database that is installed on the cluster.
