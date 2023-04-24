@@ -4,7 +4,6 @@ package com.yugabyte.yw.common;
 
 import static com.cronutils.model.CronType.UNIX;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
 import static java.lang.Math.abs;
 import static java.lang.Math.max;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -28,9 +27,9 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
+import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.BackupRequestParams.KeyspaceTable;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
@@ -333,10 +332,7 @@ public class BackupUtil {
       builder.responseList(Stream.of(kTList).collect(Collectors.toSet()));
     } else {
       Set<KeyspaceTablesList> kTLists =
-          backup
-              .getBackupInfo()
-              .backupList
-              .stream()
+          backup.getBackupInfo().backupList.stream()
               .map(
                   b -> {
                     return KeyspaceTablesList.builder()
@@ -762,8 +758,7 @@ public class BackupUtil {
    */
   public static long getTimeTakenForParallelBackups(List<BackupTableParams> backupList) {
     List<Pair<Long, Long>> sortedList =
-        backupList
-            .stream()
+        backupList.stream()
             .sorted(
                 (tP1, tP2) -> {
                   long delta = tP1.thisBackupSubTaskStartTime - tP2.thisBackupSubTaskStartTime;

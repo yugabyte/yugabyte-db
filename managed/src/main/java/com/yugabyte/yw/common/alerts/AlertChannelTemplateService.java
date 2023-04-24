@@ -80,8 +80,7 @@ public class AlertChannelTemplateService {
 
   public List<AlertChannelTemplatesExt> listWithDefaults(UUID customerUUID) {
     Map<ChannelType, AlertChannelTemplates> templates =
-        list(customerUUID)
-            .stream()
+        list(customerUUID).stream()
             .collect(Collectors.toMap(AlertChannelTemplates::getType, Function.identity()));
     return Arrays.stream(ChannelType.values())
         .map(type -> appendDefaults(templates.get(type), customerUUID, type))
@@ -121,8 +120,7 @@ public class AlertChannelTemplateService {
         beanValidator, "textTemplate", templates.getTextTemplate());
 
     Set<String> variables =
-        AlertTemplateVariable.list(templates.getCustomerUUID())
-            .stream()
+        AlertTemplateVariable.list(templates.getCustomerUUID()).stream()
             .map(AlertTemplateVariable::getName)
             .collect(Collectors.toSet());
 

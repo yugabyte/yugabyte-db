@@ -106,8 +106,7 @@ public class Customer extends Model {
   @JsonIgnore
   public Set<Universe> getUniversesForProvider(UUID providerUUID) {
     Set<Universe> universesInProvider =
-        getUniverses()
-            .stream()
+        getUniverses().stream()
             .filter(u -> checkClusterInProvider(u, providerUUID))
             .collect(Collectors.toSet());
     return universesInProvider;

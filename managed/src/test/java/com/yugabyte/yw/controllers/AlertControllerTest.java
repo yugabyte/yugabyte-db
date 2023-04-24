@@ -655,8 +655,7 @@ public class AlertControllerTest extends FakeDBApplication {
     try {
       channelUUIDs = Arrays.asList(mapper.readValue(json.get("channels").traverse(), UUID[].class));
       List<AlertChannel> channels =
-          channelUUIDs
-              .stream()
+          channelUUIDs.stream()
               .map(uuid -> alertChannelService.getOrBadRequest(customer.getUuid(), uuid))
               .collect(Collectors.toList());
 
@@ -1672,8 +1671,7 @@ public class AlertControllerTest extends FakeDBApplication {
     List<AlertChannelTemplatesExt> listedTemplatesWithDefault =
         Arrays.asList(Json.fromJson(templatesJson, AlertChannelTemplatesExt[].class));
     List<AlertChannelTemplates> listedTemplates =
-        listedTemplatesWithDefault
-            .stream()
+        listedTemplatesWithDefault.stream()
             .map(AlertChannelTemplatesExt::getChannelTemplates)
             .filter(t -> t.getTextTemplate() != null)
             .collect(Collectors.toList());

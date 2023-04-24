@@ -274,9 +274,7 @@ public class DestroyUniverseTest extends CommissionerBaseTest {
     assertEquals(Success, taskInfo.getTaskState());
     assertEquals(
         2,
-        taskInfo
-            .getSubTasks()
-            .stream()
+        taskInfo.getSubTasks().stream()
             .filter(task -> task.getTaskType().equals(TaskType.PromoteAutoFlags))
             .count());
     assertFalse(Universe.checkIfUniverseExists(defaultUniverse.getName()));

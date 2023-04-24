@@ -410,8 +410,7 @@ public class Schedule extends Model {
             .findList();
     // This should be safe to do since storageConfigUUID is a required constraint.
     scheduleList =
-        scheduleList
-            .stream()
+        scheduleList.stream()
             .filter(
                 s ->
                     s.getTaskParams()

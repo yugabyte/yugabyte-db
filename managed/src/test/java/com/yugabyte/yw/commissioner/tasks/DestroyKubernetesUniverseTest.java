@@ -273,8 +273,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(
         2,
-        subTasks
-            .stream()
+        subTasks.stream()
             .filter(task -> task.getTaskType().equals(TaskType.PromoteAutoFlags))
             .count());
     assertEquals(Success, taskInfo.getTaskState());

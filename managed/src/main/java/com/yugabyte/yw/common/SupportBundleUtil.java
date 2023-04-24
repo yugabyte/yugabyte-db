@@ -313,8 +313,7 @@ public class SupportBundleUtil {
     // The reason we don't use a map of <fileType, List<Date>> is because we need to return the
     // entire path.
     Map<String, List<Path>> fileTypeToDate =
-        logFilePaths
-            .stream()
+        logFilePaths.stream()
             .collect(
                 Collectors.groupingBy(
                     p -> extractFileTypeFromFileNameAndRegex(p.toString(), fileRegexList)));
@@ -409,8 +408,7 @@ public class SupportBundleUtil {
      */
     public static boolean listContainsClusterName(
         List<KubernetesCluster> kubernetesClusters, String clusterName) {
-      return kubernetesClusters
-          .stream()
+      return kubernetesClusters.stream()
           .map(KubernetesCluster::getClusterName)
           .filter(clusterName::equals)
           .findFirst()
@@ -428,8 +426,7 @@ public class SupportBundleUtil {
     public static KubernetesCluster findKubernetesClusterWithName(
         List<KubernetesCluster> kubernetesClusters, String clusterName) throws Exception {
       List<KubernetesCluster> filteredKubernetesClusters =
-          kubernetesClusters
-              .stream()
+          kubernetesClusters.stream()
               .filter(kubernetesCluster -> clusterName.equals(kubernetesCluster.getClusterName()))
               .collect(Collectors.toList());
       if (filteredKubernetesClusters == null || filteredKubernetesClusters.size() > 1) {

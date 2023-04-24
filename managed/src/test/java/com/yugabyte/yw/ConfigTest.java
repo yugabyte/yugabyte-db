@@ -72,8 +72,7 @@ public class ConfigTest {
       File candidateFile = File.createTempFile(expectedConfigFilename + "-", ".candidate");
       try (FileWriter fileWriter = new FileWriter(candidateFile)) {
         String blob =
-            candidateGeneratedFromActualConfig
-                .stream()
+            candidateGeneratedFromActualConfig.stream()
                 .sorted()
                 .collect(joining(System.lineSeparator(), "", System.lineSeparator()));
         fileWriter.write(blob);

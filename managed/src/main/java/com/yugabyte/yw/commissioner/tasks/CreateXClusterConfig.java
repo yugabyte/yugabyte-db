@@ -2,7 +2,6 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.common.KubernetesUtil;
@@ -15,7 +14,6 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.PitrConfig;
-import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -243,8 +241,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // If the table type is YCQL, delete the tables from the target universe, because if the
         // tables exist, the restore subtask will fail.
         List<String> tableNamesNeedBootstrap =
-            tablesInfoListNeedBootstrap
-                .stream()
+            tablesInfoListNeedBootstrap.stream()
                 .filter(
                     tableInfo ->
                         tableInfo.getRelationType()
@@ -252,8 +249,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
                 .collect(Collectors.toList());
         List<String> tableNamesToDeleteOnTargetUniverse =
-            getTableInfoList(targetUniverse)
-                .stream()
+            getTableInfoList(targetUniverse).stream()
                 .filter(
                     tableInfo ->
                         tableType.equals(tableInfo.getTableType())
@@ -363,8 +359,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap =
-            requestedTableInfoList
-                .stream()
+            requestedTableInfoList.stream()
                 .filter(
                     tableInfo ->
                         tableIdsNeedBootstrapAfterChanges.contains(
@@ -446,20 +441,17 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     keyspaceTable.keyspace = tablesInfoListNeedBootstrap.get(0).getNamespace().getName();
     if (backupRequestParams.backupType != CommonTypes.TableType.PGSQL_TABLE_TYPE) {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesNeedBootstrapInfoList =
-          tablesInfoListNeedBootstrap
-              .stream()
+          tablesInfoListNeedBootstrap.stream()
               .filter(
                   tableInfo ->
                       tableInfo.getRelationType() != MasterTypes.RelationType.INDEX_TABLE_RELATION)
               .collect(Collectors.toList());
       keyspaceTable.tableNameList =
-          tablesNeedBootstrapInfoList
-              .stream()
+          tablesNeedBootstrapInfoList.stream()
               .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
               .collect(Collectors.toList());
       keyspaceTable.tableUUIDList =
-          tablesNeedBootstrapInfoList
-              .stream()
+          tablesNeedBootstrapInfoList.stream()
               .map(tableInfo -> Util.getUUIDRepresentation(tableInfo.getId().toStringUtf8()))
               .collect(Collectors.toList());
     }

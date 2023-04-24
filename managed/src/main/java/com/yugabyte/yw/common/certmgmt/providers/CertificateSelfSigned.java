@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.certmgmt.CertificateDetails;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.FileData;
-
 import java.io.File;
 import java.security.KeyPair;
 import java.security.PrivateKey;

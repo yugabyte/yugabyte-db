@@ -315,8 +315,7 @@ public class GFlagsValidationUiOnlyControllerTest extends FakeDBApplication {
     for (JsonNode flag : json) {
       assertNotEquals(
           true,
-          !GFLAGS_FILTER_PATTERN
-              .stream()
+          !GFLAGS_FILTER_PATTERN.stream()
               .anyMatch(regexMatcher -> regexMatcher.matcher(flag.get("name").asText()).find()));
     }
   }

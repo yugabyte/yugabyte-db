@@ -45,8 +45,7 @@ public class AccessKeyRotationUtil {
   public Set<UUID> getScheduledAccessKeyRotationUniverses(UUID customerUUID, UUID providerUUID) {
     Set<UUID> universeUUIDs = new HashSet<UUID>();
     // populate universeUUIDs with all universes in rotation for the given provider
-    Schedule.getAllByCustomerUUIDAndType(customerUUID, TaskType.CreateAndRotateAccessKey)
-        .stream()
+    Schedule.getAllByCustomerUUIDAndType(customerUUID, TaskType.CreateAndRotateAccessKey).stream()
         .filter(schedule -> (schedule.getOwnerUUID().equals(providerUUID)))
         .filter(schedule -> (schedule.getStatus().equals(Schedule.State.Active)))
         .forEach(
@@ -128,8 +127,7 @@ public class AccessKeyRotationUtil {
 
   public List<UUID> removeDeletedUniverses(List<UUID> universeUUIDs) {
     List<UUID> filteredUniverses =
-        Universe.getAllWithoutResources(new HashSet<UUID>(universeUUIDs))
-            .stream()
+        Universe.getAllWithoutResources(new HashSet<UUID>(universeUUIDs)).stream()
             .map(universe -> universe.getUniverseUUID())
             .collect(Collectors.toList());
     return filteredUniverses;
@@ -137,8 +135,7 @@ public class AccessKeyRotationUtil {
 
   public List<UUID> removePausedUniverses(List<UUID> universeUUIDs) {
     List<UUID> filteredUniverses =
-        Universe.getAllWithoutResources(new HashSet<UUID>(universeUUIDs))
-            .stream()
+        Universe.getAllWithoutResources(new HashSet<UUID>(universeUUIDs)).stream()
             .filter(universe -> !universe.getUniverseDetails().universePaused)
             .map(universe -> universe.getUniverseUUID())
             .collect(Collectors.toList());
@@ -167,8 +164,7 @@ public class AccessKeyRotationUtil {
     }
     // if expiration is disabled and no key has an explicitly expiration set
     if (!expirationEnabled
-        && universeAccessKeys
-            .stream()
+        && universeAccessKeys.stream()
             .allMatch(clusterAccessKey -> (clusterAccessKey.getExpirationDate() == null))) {
       return null;
     }
@@ -208,8 +204,7 @@ public class AccessKeyRotationUtil {
 
   public Map<AccessKeyId, AccessKey> createAllAccessKeysMap() {
     Map<AccessKeyId, AccessKey> accessKeys =
-        AccessKey.getAll()
-            .stream()
+        AccessKey.getAll().stream()
             .collect(Collectors.toMap(accessKey -> accessKey.getIdKey(), Function.identity()));
     return accessKeys;
   }

@@ -9,9 +9,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.UUID;
-import play.libs.Json;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;
+import play.libs.Json;
 
 // Some enum constants are modified because of typos.
 // This just deletes the nodeConfigs field it is not used.

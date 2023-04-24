@@ -231,8 +231,7 @@ public class InstanceType extends Model {
       List<InstanceType> entries, Config config, boolean allowUnsupported) {
     // For AWS, we would filter and show only supported instance prefixes
     entries =
-        entries
-            .stream()
+        entries.stream()
             .filter(
                 supportedInstanceTypes(getAWSInstancePrefixesSupported(config), allowUnsupported))
             .collect(Collectors.toList());

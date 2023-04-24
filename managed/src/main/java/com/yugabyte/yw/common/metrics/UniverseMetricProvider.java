@@ -70,12 +70,10 @@ public class UniverseMetricProvider implements MetricsProvider {
   public List<MetricSaveGroup> getMetricGroups() throws Exception {
     List<MetricSaveGroup> metricSaveGroups = new ArrayList<>();
     Map<UUID, KmsHistory> activeEncryptionKeys =
-        KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY)
-            .stream()
+        KmsHistory.getAllActiveHistory(TargetType.UNIVERSE_KEY).stream()
             .collect(Collectors.toMap(key -> key.getUuid().targetUuid, Function.identity()));
     Map<UUID, KmsConfig> kmsConfigMap =
-        KmsConfig.listAllKMSConfigs()
-            .stream()
+        KmsConfig.listAllKMSConfigs().stream()
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
     for (Customer customer : Customer.getAll()) {

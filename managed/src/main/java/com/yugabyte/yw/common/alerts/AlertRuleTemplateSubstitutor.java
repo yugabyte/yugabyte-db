@@ -41,8 +41,7 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
             case DURATION:
               return configuration.getDurationSec() + "s";
             case LABELS:
-              return definition
-                  .getEffectiveLabels(configuration, templateSettings, severity)
+              return definition.getEffectiveLabels(configuration, templateSettings, severity)
                   .stream()
                   .map(
                       label ->
@@ -80,8 +79,7 @@ public class AlertRuleTemplateSubstitutor extends PlaceholderSubstitutor {
 
     @Override
     public String getLabelValue(String name) {
-      return alertDefinition
-          .getEffectiveLabels(alertConfiguration, alertTemplateSettings, severity)
+      return alertDefinition.getEffectiveLabels(alertConfiguration, alertTemplateSettings, severity)
           .stream()
           .filter(label -> name.equals(label.getName()))
           .map(AlertDefinitionLabel::getValue)

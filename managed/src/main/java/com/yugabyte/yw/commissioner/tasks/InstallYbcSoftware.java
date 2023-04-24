@@ -2,7 +2,7 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import java.util.HashSet;
+import static java.util.stream.Collectors.toList;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -14,9 +14,8 @@ import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.HashSet;
 import lombok.extern.slf4j.Slf4j;
-
-import static java.util.stream.Collectors.toList;
 
 @Slf4j
 public class InstallYbcSoftware extends UniverseDefinitionTaskBase {

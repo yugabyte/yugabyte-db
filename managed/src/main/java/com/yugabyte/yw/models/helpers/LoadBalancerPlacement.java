@@ -1,8 +1,7 @@
 package com.yugabyte.yw.models.helpers;
 
-import lombok.Data;
-
 import java.util.UUID;
+import lombok.Data;
 
 @Data
 public class LoadBalancerPlacement {

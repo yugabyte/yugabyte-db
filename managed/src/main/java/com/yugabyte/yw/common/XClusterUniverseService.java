@@ -48,8 +48,7 @@ public class XClusterUniverseService {
   public Set<UUID> getActiveXClusterSourceAndTargetUniverseSet(
       UUID universeUUID, Set<UUID> excludeXClusterConfigSet) {
     List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getByUniverseUuid(universeUUID)
-            .stream()
+        XClusterConfig.getByUniverseUuid(universeUUID).stream()
             .filter(
                 xClusterConfig ->
                     !xClusterConfig
@@ -57,8 +56,7 @@ public class XClusterUniverseService {
                         .equals(XClusterConfig.XClusterConfigStatusType.DeletedUniverse))
             .filter(xClusterConfig -> !excludeXClusterConfigSet.contains(xClusterConfig.getUuid()))
             .collect(Collectors.toList());
-    return xClusterConfigs
-        .stream()
+    return xClusterConfigs.stream()
         .map(
             config -> {
               if (config.getSourceUniverseUUID().equals(universeUUID)) {
@@ -185,8 +183,7 @@ public class XClusterUniverseService {
           getXClusterConnectedUniverses(universe, excludeXClusterConfigSet);
       multipleXClusterConnectedUniverseSet.add(xClusterConnectedUniverses);
       visitedUniverseSet.addAll(
-          xClusterConnectedUniverses
-              .stream()
+          xClusterConnectedUniverses.stream()
               .map(Universe::getUniverseUUID)
               .collect(Collectors.toList()));
     }

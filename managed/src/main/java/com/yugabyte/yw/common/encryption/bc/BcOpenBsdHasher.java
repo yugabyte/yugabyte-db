@@ -1,10 +1,8 @@
 package com.yugabyte.yw.common.encryption.bc;
 
-import java.security.SecureRandom;
-
-import org.bouncycastle.crypto.generators.OpenBSDBCrypt;
-
 import com.yugabyte.yw.common.encryption.HashBuilder;
+import java.security.SecureRandom;
+import org.bouncycastle.crypto.generators.OpenBSDBCrypt;
 
 /**
  * Bouncy Castle's OpenBSD implementation based Hash generator

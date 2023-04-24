@@ -68,8 +68,7 @@ public class AccessKeyController extends AuthenticatedController {
   public Result listAllForCustomer(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<UUID> providerUUIDs =
-        Provider.getAll(customerUUID)
-            .stream()
+        Provider.getAll(customerUUID).stream()
             .map(provider -> provider.getUuid())
             .collect(Collectors.toList());
     List<AccessKey> accessKeys = AccessKey.getByProviderUuids(providerUUIDs);

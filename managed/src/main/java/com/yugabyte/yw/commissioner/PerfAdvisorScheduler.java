@@ -104,8 +104,7 @@ public class PerfAdvisorScheduler {
 
     try {
       Map<Long, Customer> customerMap =
-          Customer.getAll()
-              .stream()
+          Customer.getAll().stream()
               .collect(Collectors.toMap(Customer::getId, Function.identity()));
       Set<UUID> uuidList = Universe.getAllUUIDs();
       for (List<UUID> batch : Iterables.partition(uuidList, defaultUniBatchSize)) {

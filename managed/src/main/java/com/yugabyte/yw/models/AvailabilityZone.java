@@ -157,8 +157,7 @@ public class AvailabilityZone extends Model {
   @JsonIgnore
   public long getNodeCount() {
     return Customer.get(getRegion().getProvider().getCustomerUUID())
-        .getUniversesForProvider(getRegion().getProvider().getUuid())
-        .stream()
+        .getUniversesForProvider(getRegion().getProvider().getUuid()).stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> nd.azUuid.equals(getUuid()))
         .count();
@@ -261,11 +260,7 @@ public class AvailabilityZone extends Model {
 
   public static Optional<AvailabilityZone> maybeGetByCode(
       Provider provider, String code, boolean onlyActive) {
-    return find.query()
-        .where()
-        .eq("code", code)
-        .findSet()
-        .stream()
+    return find.query().where().eq("code", code).findSet().stream()
         .filter(az -> az.getProvider().getUuid().equals(provider.getUuid()))
         .filter(az -> !onlyActive || az.getActive())
         .findFirst();

@@ -1,18 +1,9 @@
 package db.migration.default_.common;
 
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.mockito.Mockito.when;
-
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
-import java.util.Date;
-import java.util.Map;
-import java.util.UUID;
-
-import org.junit.Before;
-import org.junit.Test;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
@@ -38,6 +29,13 @@ import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Date;
+import java.util.Map;
+import java.util.UUID;
+import org.junit.Before;
+import org.junit.Test;
 
 public class V253__GenerateImageBundleTest extends FakeDBApplication {
 
@@ -156,13 +154,7 @@ public class V253__GenerateImageBundleTest extends FakeDBApplication {
     PlacementInfoUtil.addPlacementZone(az2.getUuid(), placementInfo, 1, 1, true);
     PlacementInfoUtil.addPlacementZone(az3.getUuid(), placementInfo, 1, 1, false);
     userIntent.numNodes =
-        placementInfo
-            .cloudList
-            .get(0)
-            .regionList
-            .get(0)
-            .azList
-            .stream()
+        placementInfo.cloudList.get(0).regionList.get(0).azList.stream()
             .mapToInt(p -> p.numNodesInAZ)
             .sum();
 

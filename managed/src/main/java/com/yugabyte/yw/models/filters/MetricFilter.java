@@ -81,8 +81,7 @@ public class MetricFilter {
 
     public MetricFilterBuilder metricNames(@NonNull Collection<PlatformMetrics> platformMetrics) {
       this.metricNames.addAll(
-          platformMetrics
-              .stream()
+          platformMetrics.stream()
               .map(PlatformMetrics::getMetricName)
               .collect(Collectors.toList()));
       return this;

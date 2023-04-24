@@ -11,15 +11,6 @@
 
 package com.yugabyte.yw.common.kms.util;
 
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.time.OffsetDateTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import org.apache.commons.lang3.StringUtils;
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.exception.ResourceNotFoundException;
 import com.azure.identity.ClientSecretCredential;
@@ -36,7 +27,16 @@ import com.azure.security.keyvault.keys.models.KeyOperation;
 import com.azure.security.keyvault.keys.models.KeyProperties;
 import com.azure.security.keyvault.keys.models.KeyVaultKey;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Random;
+import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AzuEARServiceUtil {
@@ -62,24 +62,21 @@ public class AzuEARServiceUtil {
     }
 
     public static List<String> getEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> configField.isEditable)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
 
     public static List<String> getNonEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> !configField.isEditable)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
 
     public static List<String> getMetadataFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> configField.isMetadata)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());

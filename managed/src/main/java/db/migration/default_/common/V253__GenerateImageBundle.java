@@ -1,34 +1,30 @@
 package db.migration.default_.common;
 
-import java.sql.Connection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-
-import org.flywaydb.core.api.migration.BaseJavaMigration;
-import org.flywaydb.core.api.migration.Context;
-
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.migrations.V_252.AWSRegionCloudInfo;
+import com.yugabyte.yw.models.migrations.V_252.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.migrations.V_252.Customer;
+import com.yugabyte.yw.models.migrations.V_252.GCPRegionCloudInfo;
 import com.yugabyte.yw.models.migrations.V_252.ImageBundle;
 import com.yugabyte.yw.models.migrations.V_252.ImageBundleDetails;
 import com.yugabyte.yw.models.migrations.V_252.Provider;
 import com.yugabyte.yw.models.migrations.V_252.ProviderDetails;
 import com.yugabyte.yw.models.migrations.V_252.Region;
 import com.yugabyte.yw.models.migrations.V_252.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.migrations.V_252.AWSRegionCloudInfo;
-import com.yugabyte.yw.models.migrations.V_252.AzureRegionCloudInfo;
-import com.yugabyte.yw.models.migrations.V_252.GCPRegionCloudInfo;
-
 import io.ebean.Ebean;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
+import org.flywaydb.core.api.migration.BaseJavaMigration;
+import org.flywaydb.core.api.migration.Context;
 
 @Slf4j
 public class V253__GenerateImageBundle extends BaseJavaMigration {
