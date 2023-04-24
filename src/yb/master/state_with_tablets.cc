@@ -54,7 +54,7 @@ SysSnapshotEntryPB::State InitialStateToTerminalState(SysSnapshotEntryPB::State 
 StateWithTablets::StateWithTablets(
     SnapshotCoordinatorContext* context, SysSnapshotEntryPB::State initial_state,
     std::string log_prefix)
-    : context_(*context), initial_state_(initial_state), log_prefix_(std::move(log_prefix)) {
+    : initial_state_(initial_state), context_(*context), log_prefix_(std::move(log_prefix)) {
 }
 
 Result<SysSnapshotEntryPB::State> StateWithTablets::AggregatedState() const {
