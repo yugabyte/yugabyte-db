@@ -16,7 +16,7 @@ Use the `cluster network` resource to manage cluster network resources, includin
 
 - add [IP allow lists](../../../../cloud-secure-clusters/add-connections/) to clusters
 - list cluster endpoints
-- create, update, and delete cluster private service endpoints
+- create, update, and delete cluster [private service endpoints](../../../../cloud-basics/cloud-vpcs/cloud-add-endpoint/)
 
 ## Syntax
 
@@ -54,16 +54,6 @@ Unassign an allow list from a specified cluster.
 | --cluster-name | Required. The name of the cluster from which you want to unassign the allow lists. |
 | --network-allow-list | Required. The network allow list to unassign from the cluster. |
 
-### endpoint list
-
-List the network endpoints of the specified cluster. This includes public and private host addresses, and private service endpoints.
-
-| Flag | Description |
-| :--- | :--- |
-| --cluster-name | Required. The name of the cluster for which you want to list the endpoints. |
-| --region | Return endpoints only from the specified region. |
-| --accessibility | Return endpoints only with the specified accessibility type. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`.
-
 ### endpoint create
 
 Create a private service endpoint for a specified cluster.
@@ -75,23 +65,6 @@ Create a private service endpoint for a specified cluster.
 | --accessibility-type | Required. The type of endpoint to create. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`. |
 | --security-principals | Required for `PRIVATE_SERVICE_ENDPOINT`. A comma-separated list of Amazon Resource Names (ARNs) of security principals to be granted access to this endpoint. |
 
-### endpoint describe
-
-Fetch detailed information about a specified private service endpoint.
-
-| Flag | Description |
-| :--- | :--- |
-| --endpoint-id | Required. The ID of the endpoint to describe. |
-
-### endpoint update
-
-Update the configuration of a specified private service endpoint.
-
-| Flag | Description |
-| :--- | :--- |
-| --endpoint-id | Required. The ID of the endpoint to update. |
-| --security-principals | A comma-separated list of ARNs of security principals to be granted access to this endpoint. |
-
 ### endpoint delete
 
 Delete a specified private service endpoint.
@@ -101,3 +74,30 @@ Delete a specified private service endpoint.
 | --endpoint-id | Required. The ID of the endpoint to delete. |
 
 To avoid charges from your cloud provider, be sure to delete the corresponding endpoint in your cloud provider account.
+
+### endpoint describe
+
+Fetch detailed information about a specified private service endpoint.
+
+| Flag | Description |
+| :--- | :--- |
+| --endpoint-id | Required. The ID of the endpoint to describe. |
+
+### endpoint list
+
+List the network endpoints of the specified cluster. This includes public and private host addresses, and private service endpoints.
+
+| Flag | Description |
+| :--- | :--- |
+| --cluster-name | Required. The name of the cluster for which you want to list the endpoints. |
+| --region | Return endpoints only from the specified region. |
+| --accessibility | Return endpoints only with the specified accessibility type. `PUBLIC`, `PRIVATE`, or `PRIVATE_SERVICE_ENDPOINT`.
+
+### endpoint update
+
+Update the configuration of a specified private service endpoint.
+
+| Flag | Description |
+| :--- | :--- |
+| --endpoint-id | Required. The ID of the endpoint to update. |
+| --security-principals | A comma-separated list of ARNs of security principals to be granted access to this endpoint. |
