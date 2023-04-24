@@ -72,9 +72,9 @@ Preview builds take up to 5 minutes to build.
 
 All PR previews on the main repository are of the form `https://deploy-preview-ABCDE--infallible-bardeen-164bc9.netlify.app/` where ABCDE is the pull request number.
 
-Optionally, you can tag the Netlify bot in the PR description to tell the bot where to launch the preview. For example, if you changed the page at `docs.yugabyte.com/preview/contribute/docs/docs-edit/` you could add the following to the PR description:
+Optionally, you can tag the Netlify bot in the PR description to tell the bot where to launch the preview. For example, if you changed the page at `docs.yugabyte.com/preview/contribute/docs/docs-edit/` you could add a tag the PR description as shown in the following illustration:
 
-`@netlify /preview/quick-start/contribute/docs/docs-edit/`
+![Tag Netlify in a PR](/images/contribute/contribute-docs-description.png)
 
 When your reviewer opens the build preview, it will automatically land on the page you specified.
 
@@ -84,6 +84,8 @@ When your reviewer opens the build preview, it will automatically land on the pa
 
 ### Ask for a review
 
-**External contributors**, if possible add the `area/documentation` label to your pull request, and let us know about it [in Slack](https://www.yugabyte.com/slack/) in the #contributors-docs channel.
+**External contributors**, if possible, in your PR on GitHub, click **Labels**, filter on 'doc', and apply the `area/documentation` label. Let us know about your PR [in Slack](https://www.yugabyte.com/slack/) in the `#contributors-docs` channel.
 
-**Internal contributors**, please add the `area/documentation` label to your pull request, tag a member of the docs team for review, along with technical reviewers as required, and let us know about your PR in the #docs channel in Slack.
+![Apply the docs label](/images/contribute/contribute-docs-pr-panel.png)
+
+**Internal contributors**, under **Labels**, apply the `area/documentation` label to your PR, and under **Reviewers** set a member of the docs team for review, along with technical reviewers as required. Let us know about your PR in the #docs channel in Slack.
