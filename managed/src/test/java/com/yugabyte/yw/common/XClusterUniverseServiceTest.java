@@ -91,7 +91,8 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
       flagsPerServer.autoFlagDetails = Collections.singletonList(flag);
       when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
           .thenReturn(flagsPerServer);
-      assertTrue(xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse));
+      assertTrue(
+          xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse, "2.17.0.0-b1"));
       GFlagsValidation.AutoFlagsPerServer flagsPerServer2 =
           new GFlagsValidation.AutoFlagsPerServer();
       GFlagsValidation.AutoFlagDetails flag2 = new GFlagsValidation.AutoFlagDetails();
@@ -102,7 +103,8 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
           .thenReturn(flagsPerServer)
           .thenReturn(flagsPerServer2)
           .thenReturn(flagsPerServer2);
-      assertFalse(xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse));
+      assertFalse(
+          xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse, "2.17.0.0-b1"));
     } catch (Exception e) {
       System.out.println(e.getMessage());
       fail();

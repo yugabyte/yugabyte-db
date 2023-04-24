@@ -188,6 +188,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.MDC;
 import org.yb.ColumnSchema.SortOrder;
 import org.yb.CommonTypes.TableType;
@@ -4140,36 +4141,60 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       Set<UUID> alreadyLockedUniverseUUIDSet,
       XClusterUniverseService xClusterUniverseService,
       Set<UUID> excludeXClusterConfigSet) {
+    createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+        xClusterConnectedUniverseSet,
+        alreadyLockedUniverseUUIDSet,
+        xClusterUniverseService,
+        excludeXClusterConfigSet,
+        null /* univUpgradeInProgress */,
+        null /* upgradeUniverseSoftwareVersion */);
+  }
+
+  protected void createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+      Set<UUID> xClusterConnectedUniverseSet,
+      Set<UUID> alreadyLockedUniverseUUIDSet,
+      XClusterUniverseService xClusterUniverseService,
+      Set<UUID> excludeXClusterConfigSet,
+      @Nullable Universe univUpgradeInProgress,
+      @Nullable String upgradeUniverseSoftwareVersion) {
     // Fetch all separate xCluster connected universe group and promote auto flags
     // if possible.
     xClusterUniverseService
         .getMultipleXClusterConnectedUniverseSet(
             xClusterConnectedUniverseSet, excludeXClusterConfigSet)
+        .stream()
+        .filter(universeSet -> !CollectionUtils.isEmpty(universeSet))
         .forEach(
             universeSet -> {
-              if (!CollectionUtils.isEmpty(universeSet)) {
-                Universe universe = universeSet.stream().findFirst().get();
-                if (CommonUtils.isAutoFlagSupported(
-                    universe
-                        .getUniverseDetails()
-                        .getPrimaryCluster()
-                        .userIntent
-                        .ybSoftwareVersion)) {
-                  try {
-                    if (xClusterUniverseService.canPromoteAutoFlags(universeSet, universe)) {
-                      universeSet.forEach(
-                          univ ->
-                              createPromoteAutoFlagsAndLockOtherUniverse(
-                                  univ, alreadyLockedUniverseUUIDSet));
-                    }
-                  } catch (IOException e) {
-                    throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+              Universe universe = universeSet.stream().findFirst().get();
+              String softwareVersion =
+                  universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+              if (!StringUtils.isEmpty(upgradeUniverseSoftwareVersion)
+                  && Objects.nonNull(univUpgradeInProgress)) {
+                if (universeSet.stream()
+                    .anyMatch(
+                        univ ->
+                            univ.getUniverseUUID()
+                                .equals(univUpgradeInProgress.getUniverseUUID()))) {
+                  universe = univUpgradeInProgress;
+                  softwareVersion = upgradeUniverseSoftwareVersion;
+                }
+              }
+              if (CommonUtils.isAutoFlagSupported(softwareVersion)) {
+                try {
+                  if (xClusterUniverseService.canPromoteAutoFlags(
+                      universeSet, universe, softwareVersion)) {
+                    universeSet.forEach(
+                        univ ->
+                            createPromoteAutoFlagsAndLockOtherUniverse(
+                                univ, alreadyLockedUniverseUUIDSet));
                   }
+                } catch (IOException e) {
+                  throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
                 }
               }
             });
   }
-
   // --------------------------------------------------------------------------------
   // End of XCluster.
 }

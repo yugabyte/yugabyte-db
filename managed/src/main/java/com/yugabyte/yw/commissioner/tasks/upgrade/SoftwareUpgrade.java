@@ -143,7 +143,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                 Collections.singleton(universe.getUniverseUUID()),
                 Collections.singleton(universe.getUniverseUUID()),
                 xClusterUniverseService,
-                new HashSet<>());
+                new HashSet<>(),
+                universe,
+                newVersion);
           }
 
           // Update software version in the universe metadata.
