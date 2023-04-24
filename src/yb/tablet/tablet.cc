@@ -1347,7 +1347,7 @@ Status Tablet::WriteTransactionalBatch(
   }
   rocksdb::WriteBatch write_batch;
   write_batch.SetDirectWriter(&writer);
-  RequestScope request_scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
+  RequestScope request_scope = VERIFY_RESULT(CreateRequestScope());
 
   WriteToRocksDB(frontiers, &write_batch, StorageDbType::kIntents);
 
@@ -2504,6 +2504,14 @@ Result<client::YBTablePtr> GetTable(
 
 }  // namespace
 
+Result<RequestScope> Tablet::CreateRequestScope() {
+  RequestScope scope;
+  if (transaction_participant_) {
+    return RequestScope::Create(transaction_participant_.get());
+  }
+  return scope;
+}
+
 // Should backfill the index with the information contained in this tablet.
 // Assume that we are already in the Backfilling mode.
 Status Tablet::BackfillIndexes(
@@ -2527,10 +2535,7 @@ Status Tablet::BackfillIndexes(
   Schema projection(columns, {}, schema()->num_key_columns());
   // We must hold this RequestScope for the lifetime of this iterator to ensure backfill has a
   // consistent snapshot of the tablet w.r.t. transaction state.
-  RequestScope scope;
-  if (transaction_participant_) {
-    scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
-  }
+  RequestScope scope = VERIFY_RESULT(CreateRequestScope());
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
   QLTableRow row;
@@ -2811,10 +2816,7 @@ Status Tablet::VerifyTableConsistencyForCQL(
   Schema projection(columns, {}, schema()->num_key_columns());
   // We must hold this RequestScope for the lifetime of this iterator to ensure verification has a
   // consistent snapshot of the tablet w.r.t. transaction state.
-  RequestScope scope;
-  if (transaction_participant_) {
-    scope = VERIFY_RESULT(RequestScope::Create(transaction_participant_.get()));
-  }
+  RequestScope scope = VERIFY_RESULT(CreateRequestScope());
   auto iter = VERIFY_RESULT(NewRowIterator(
       projection, ReadHybridTime::SingleTime(read_time), "" /* table_id */, deadline));
 
