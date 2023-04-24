@@ -394,6 +394,12 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status PreparePgsqlWriteOperations(WriteQuery* query);
   void KeyValueBatchFromPgsqlWriteBatch(std::unique_ptr<WriteQuery> query);
 
+  // Creates and returns a new RequestScope, which prevents intents from
+  // being removed while the object is alive. It is necessary to hold
+  // a RequestScope when scanning with IntentAwareIterator to prevent missing entries
+  // due to intent removal.
+  Result<RequestScope> CreateRequestScope();
+
   // Create a new row iterator which yields the rows as of the current MVCC
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.

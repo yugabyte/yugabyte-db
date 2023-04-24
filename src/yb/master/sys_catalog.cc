@@ -908,8 +908,11 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
   auto read_data = VERIFY_RESULT(TableReadData(ysql_catalog_table_id));
   const auto& schema = read_data.schema();
   dockv::ReaderProjection projection(schema);
+  auto tablet = tablet_peer()->shared_tablet();
+  if (!tablet) {
+    return STATUS(ShutdownInProgress, "SysConfig is shutting down.");
+  }
   auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
-
   // If 'versions' is set we read all rows. If 'catalog_version/last_breaking_version' are set,
   // we only read the global catalog version if db_oid is kInvalidOid, or read the per-db catalog
   // version if db_oid is valid.
@@ -933,6 +936,8 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
   ColumnId last_breaking_version_col_id =
       VERIFY_RESULT(schema.ColumnIdByName(kLastBreakingVersionColumnName));
 
+  // Grab a RequestScope to prevent intent clean up, before we Init the iterator.
+  auto request_scope = VERIFY_RESULT(tablet->CreateRequestScope());
   // We set up a QL_OP_EQUAL filter to read per-db catalog version. We don't need to set
   // up this filter to read the global catalog version.
   if (!versions && db_oid != kInvalidOid) {
