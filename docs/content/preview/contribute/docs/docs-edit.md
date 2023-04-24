@@ -68,13 +68,15 @@ After you've made your changes, make a pull request by telling GitHub to compare
 
 ### Use the PR preview build {#preview-build}
 
-Preview builds take 5 minutes to build.
+Preview builds take up to 5 minutes to build.
 
 All PR previews on the main repository are of the form `https://deploy-preview-ABCDE--infallible-bardeen-164bc9.netlify.app/` where ABCDE is the pull request number.
 
-Add a line in your pull request's description to tag the Netlify bot and tell it where to launch the preview:
+Optionally, you can tag the Netlify bot in the PR description to tell the bot where to launch the preview. For example, if you changed the page at `docs.yugabyte.com/preview/contribute/docs/docs-edit/` you could add the following to the PR description:
 
-`@netlify /preview/quick-start/`
+`@netlify /preview/quick-start/contribute/docs/docs-edit/`
+
+When your reviewer opens the build preview, it will automatically land on the page you specified.
 
 ### Run a link checker
 
@@ -82,6 +84,6 @@ Add a line in your pull request's description to tag the Netlify bot and tell it
 
 ### Ask for a review
 
-**Internal contributors**, please add the `area/documentation` label to your pull request, tag a member of the docs team for review, along with technical reviewers as required, and let us know about your PR in the #docs channel in Slack.
+**External contributors**, if possible add the `area/documentation` label to your pull request, and let us know about it [in Slack](https://www.yugabyte.com/slack/) in the #contributors-docs channel.
 
-**External contributors**, please add the `area/documentation` label to your pull request, and let us know about it [in Slack](https://www.yugabyte.com/slack/).
+**Internal contributors**, please add the `area/documentation` label to your pull request, tag a member of the docs team for review, along with technical reviewers as required, and let us know about your PR in the #docs channel in Slack.
