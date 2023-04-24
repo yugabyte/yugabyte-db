@@ -1167,7 +1167,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Leaves the tablet "write locked" with the new info in the
   // "dirty" state field.
   TabletInfoPtr CreateTabletInfo(TableInfo* table,
-                                 const PartitionPB& partition) REQUIRES(mutex_);
+                                 const PartitionPB& partition) REQUIRES_SHARED(mutex_);
 
   // Remove the specified entries from the protobuf field table_ids of a TabletInfo.
   Status RemoveTableIdsFromTabletInfo(
@@ -1460,13 +1460,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // partitions_vtable_cache_refresh_secs seconds.
   void RebuildYQLSystemPartitions();
 
-  // Registers new split tablet with `partition` for the same table as `source_tablet_info` tablet.
+  // Registers `new_tablet` for the same table as `source_tablet_info` tablet.
   // Does not change any other tablets and their partitions.
-  // Returns TabletInfo for registered tablet.
-  Result<TabletInfoPtr> RegisterNewTabletForSplit(
-      TabletInfo* source_tablet_info, const PartitionPB& partition,
+  Status RegisterNewTabletForSplit(
+      TabletInfo* source_tablet_info, const TabletInfoPtr& new_tablet,
       TableInfo::WriteLock* table_write_lock, TabletInfo::WriteLock* tablet_write_lock)
-      REQUIRES(mutex_);
+      EXCLUDES(mutex_);
 
   Result<scoped_refptr<TabletInfo>> GetTabletInfo(const TabletId& tablet_id) override
       EXCLUDES(mutex_);
