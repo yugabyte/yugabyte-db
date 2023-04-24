@@ -248,8 +248,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public String getLabelValue(String name) {
-    return labels
-        .stream()
+    return labels.stream()
         .filter(label -> name.equals(label.getName()))
         .map(AlertLabel::getValue)
         .findFirst()
@@ -285,8 +284,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   }
 
   public List<AlertLabel> getLabels() {
-    return labels
-        .stream()
+    return labels.stream()
         .sorted(Comparator.comparing(AlertLabel::getName))
         .collect(Collectors.toList());
   }

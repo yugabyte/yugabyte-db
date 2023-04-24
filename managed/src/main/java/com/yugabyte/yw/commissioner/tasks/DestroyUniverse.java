@@ -224,8 +224,7 @@ public class DestroyUniverse extends UniverseTaskBase {
   protected void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
     // XCluster configs whose other universe exists.
     List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getByUniverseUuid(params().getUniverseUUID())
-            .stream()
+        XClusterConfig.getByUniverseUuid(params().getUniverseUUID()).stream()
             .filter(
                 xClusterConfig ->
                     xClusterConfig.getStatus()
@@ -241,8 +240,7 @@ public class DestroyUniverse extends UniverseTaskBase {
         });
 
     Map<UUID, List<XClusterConfig>> otherUniverseUuidToXClusterConfigsMap =
-        xClusterConfigs
-            .stream()
+        xClusterConfigs.stream()
             .collect(
                 Collectors.groupingBy(
                     xClusterConfig -> {

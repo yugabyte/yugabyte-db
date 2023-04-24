@@ -591,9 +591,7 @@ public class Provider extends Model {
 
   @JsonIgnore
   public long getUniverseCount() {
-    return Customer.get(this.getCustomerUUID())
-        .getUniversesForProvider(this.getUuid())
-        .stream()
+    return Customer.get(this.getCustomerUUID()).getUniversesForProvider(this.getUuid()).stream()
         .count();
   }
 }

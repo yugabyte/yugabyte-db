@@ -8,7 +8,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import javax.inject.Inject;
 
 public class UpdateNodeDetails extends NodeTaskBase {
@@ -57,10 +56,7 @@ public class UpdateNodeDetails extends NodeTaskBase {
             ImmutableMap.of(
                 Universe.USE_CUSTOM_IMAGE,
                 Boolean.toString(
-                    getUniverse()
-                        .getUniverseDetails()
-                        .nodeDetailsSet
-                        .stream()
+                    getUniverse().getUniverseDetails().nodeDetailsSet.stream()
                         .allMatch(n -> n.ybPrebuiltAmi))));
         universe.save();
       }

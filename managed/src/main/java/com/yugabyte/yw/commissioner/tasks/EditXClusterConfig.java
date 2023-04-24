@@ -195,8 +195,7 @@ public class EditXClusterConfig extends CreateXClusterConfig {
               xClusterConfig.getTableIdsWithReplicationSetup(
                   tableIdsNeedBootstrap, true /* done */);
           tableIdsDeleteReplication.addAll(
-              tableIdsNeedBootstrapInReplication
-                  .stream()
+              tableIdsNeedBootstrapInReplication.stream()
                   .filter(tableId -> !tableIdsScheduledForBeingRemoved.contains(tableId))
                   .collect(Collectors.toSet()));
         });

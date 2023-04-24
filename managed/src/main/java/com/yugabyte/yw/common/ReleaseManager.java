@@ -54,10 +54,10 @@ import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.Environment;
 import play.data.validation.Constraints;
 import play.libs.Json;
 import play.mvc.Http.Status;
-import play.Environment;
 
 @Slf4j
 @Singleton
@@ -826,8 +826,7 @@ public class ReleaseManager {
             Status.BAD_REQUEST, "Could not find versions in response JSON.");
       }
       JsonNode latestRelease =
-          releases
-              .stream()
+          releases.stream()
               .filter(r -> Util.isYbVersionFormatValid(r.get("name").asText()))
               .filter(r -> Util.compareYbVersions(currentVersion, r.get("name").asText()) >= 0)
               .sorted(releaseNameComparator)

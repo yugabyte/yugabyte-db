@@ -33,7 +33,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -453,9 +452,7 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
         createSubTaskGroup(CommandType.HELM_UPGRADE.getSubTaskGroupName(), true);
     List<NodeDetails> tserverNodes = new ArrayList<>();
     List<NodeDetails> masterNodes = new ArrayList<>();
-    serversToUpdate
-        .entrySet()
-        .stream()
+    serversToUpdate.entrySet().stream()
         .forEach(
             serverEntry -> {
               UUID azUUID = serverEntry.getKey();
@@ -719,16 +716,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           PlacementInfoUtil.getPlacementAZMap(newPlacement.placementInfo);
 
       List<UUID> sortedZonesToUpdate =
-          serversToUpdate
-              .keySet()
-              .stream()
+          serversToUpdate.keySet().stream()
               .sorted(Comparator.comparing(zoneUUID -> !placementAZMap.get(zoneUUID).isAffinitized))
               .collect(Collectors.toList());
 
       // Put isAffinitized availability zones first
       serversToUpdate =
-          sortedZonesToUpdate
-              .stream()
+          sortedZonesToUpdate.stream()
               .collect(
                   Collectors.toMap(
                       Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));

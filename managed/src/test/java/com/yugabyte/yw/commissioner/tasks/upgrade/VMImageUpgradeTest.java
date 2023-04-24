@@ -37,7 +37,6 @@ import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -196,8 +195,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
      * from subTasks before asserting for required keys.
      */
     createRootVolumeTasks =
-        createRootVolumeTasks
-            .stream()
+        createRootVolumeTasks.stream()
             .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
             .collect(Collectors.toList());
     createRootVolumeTasks.forEach(
@@ -372,8 +370,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
      * from subTasks before asserting for required keys.
      */
     createRootVolumeTasks =
-        createRootVolumeTasks
-            .stream()
+        createRootVolumeTasks.stream()
             .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
             .collect(Collectors.toList());
     createRootVolumeTasks.forEach(

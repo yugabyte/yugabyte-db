@@ -170,8 +170,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
 
     assertThat(definitions, hasSize(2));
     Map<UUID, AlertDefinition> definitionMap =
-        definitions
-            .stream()
+        definitions.stream()
             .collect(
                 Collectors.toMap(
                     definition ->
@@ -510,9 +509,7 @@ public class AlertConfigurationTest extends FakeDBApplication {
             .setQuery(definition.getQuery())
             .setConfigurationUUID(definition.getConfigurationUUID())
             .setLabels(
-                definition
-                    .getLabels()
-                    .stream()
+                definition.getLabels().stream()
                     .map(label -> new AlertDefinitionLabel(label.getName(), label.getValue()))
                     .collect(Collectors.toList()));
     alertDefinitionService.save(duplicate);

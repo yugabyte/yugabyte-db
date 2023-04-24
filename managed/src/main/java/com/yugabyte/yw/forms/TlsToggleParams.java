@@ -9,10 +9,9 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
+import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Universe;
-
 import java.util.UUID;
 import play.mvc.Http;
 import play.mvc.Http.Status;

@@ -13,16 +13,14 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
+import com.yugabyte.yw.common.ybc.YbcManager;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
-
-import java.util.Collections;
 import java.util.Optional;
 import java.util.concurrent.CancellationException;
 import javax.inject.Inject;

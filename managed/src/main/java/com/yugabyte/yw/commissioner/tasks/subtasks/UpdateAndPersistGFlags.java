@@ -73,9 +73,7 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
               List<Cluster> clusterList;
               if (taskParams().clusterUUIDs != null && taskParams().clusterUUIDs.size() > 0) {
                 clusterList =
-                    universeDetails
-                        .clusters
-                        .stream()
+                    universeDetails.clusters.stream()
                         .filter(c -> taskParams().clusterUUIDs.contains(c.uuid))
                         .collect(Collectors.toList());
               } else {

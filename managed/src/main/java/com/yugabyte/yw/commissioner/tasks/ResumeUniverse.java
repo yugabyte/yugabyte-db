@@ -118,8 +118,7 @@ public class ResumeUniverse extends UniverseDefinitionTaskBase {
 
       // Set the node state to live.
       Set<NodeDetails> nodesToMarkLive =
-          nodes
-              .stream()
+          nodes.stream()
               .filter(node -> node.isMaster || node.isTserver)
               .collect(Collectors.toSet());
       createSetNodeStateTasks(nodesToMarkLive, NodeDetails.NodeState.Live)

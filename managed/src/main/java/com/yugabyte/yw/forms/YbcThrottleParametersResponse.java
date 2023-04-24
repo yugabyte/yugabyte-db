@@ -1,9 +1,8 @@
 package com.yugabyte.yw.forms;
 
-import java.util.Map;
-
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Map;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.Getter;

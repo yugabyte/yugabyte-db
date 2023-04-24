@@ -43,9 +43,9 @@
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
       "script-and-regex.script":
-      "cd managed; sbt javafmtCheckAll; echo ",
+      "managed/lint/lint-java.sh",
       "script-and-regex.regex":
-        "/^.*(?P<error>javafmtCheck).*(?P<message>Unformatted.*javafmt)\\:\\ (?P<file>.*)$/m"
+        "/(?P<message>.*)/is"
     },
     "text": {
       "type": "text",

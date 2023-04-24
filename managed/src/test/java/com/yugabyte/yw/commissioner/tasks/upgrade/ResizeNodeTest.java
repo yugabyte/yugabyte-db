@@ -949,8 +949,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     TaskInfo taskInfo = submitTask(taskParams);
     List<TaskInfo> subTasks = new ArrayList<>(taskInfo.getSubTasks());
     List<TaskInfo> updateMounts =
-        subTasks
-            .stream()
+        subTasks.stream()
             .filter(t -> t.getTaskType() == TaskType.UpdateMountedDisks)
             .collect(Collectors.toList());
 

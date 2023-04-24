@@ -496,9 +496,7 @@ public class AlertController extends AuthenticatedController {
   public Result listAlertChannels(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withData(
-        alertChannelService
-            .list(customerUUID)
-            .stream()
+        alertChannelService.list(customerUUID).stream()
             .map(channel -> CommonUtils.maskObject(channel))
             .collect(Collectors.toList()));
   }
@@ -790,18 +788,15 @@ public class AlertController extends AuthenticatedController {
 
   private List<AlertData> convert(List<Alert> alerts) {
     List<Alert> alertsWithoutExpressionLabel =
-        alerts
-            .stream()
+        alerts.stream()
             .filter(alert -> alert.getLabelValue(KnownAlertLabels.ALERT_EXPRESSION) == null)
             .collect(Collectors.toList());
     List<UUID> alertsConfigurationUuids =
-        alertsWithoutExpressionLabel
-            .stream()
+        alertsWithoutExpressionLabel.stream()
             .map(Alert::getConfigurationUuid)
             .collect(Collectors.toList());
     List<UUID> alertDefinitionUuids =
-        alertsWithoutExpressionLabel
-            .stream()
+        alertsWithoutExpressionLabel.stream()
             .map(Alert::getDefinitionUuid)
             .collect(Collectors.toList());
     Map<UUID, AlertConfiguration> alertConfigurationMap =
@@ -814,12 +809,10 @@ public class AlertController extends AuthenticatedController {
     Map<UUID, AlertDefinition> alertDefinitionMap =
         CollectionUtils.isNotEmpty(alertDefinitionUuids)
             ? alertDefinitionService
-                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build())
-                .stream()
+                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build()).stream()
                 .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()))
             : Collections.emptyMap();
-    return alerts
-        .stream()
+    return alerts.stream()
         .map(
             alert ->
                 convertInternal(
@@ -900,9 +893,7 @@ public class AlertController extends AuthenticatedController {
         alertTemplateSettingsService.get(
             configuration.getCustomerUUID(), configuration.getTemplate().name());
     List<AlertLabel> labels =
-        definition
-            .getEffectiveLabels(configuration, alertTemplateSettings, severity)
-            .stream()
+        definition.getEffectiveLabels(configuration, alertTemplateSettings, severity).stream()
             .map(label -> new AlertLabel(label.getName(), label.getValue()))
             .collect(Collectors.toList());
     labels.add(new AlertLabel(KnownAlertLabels.ALERTNAME.labelName(), configuration.getName()));
@@ -949,8 +940,7 @@ public class AlertController extends AuthenticatedController {
   private Universe getOrCreateUniverseForTestAlert(Customer customer) {
     Set<Universe> allUniverses = Universe.getAllWithoutResources(customer);
     Universe firstUniverse =
-        allUniverses
-            .stream()
+        allUniverses.stream()
             .filter(universe -> universe.getUniverseDetails().nodePrefix != null)
             .min(Comparator.comparing(universe -> universe.getCreationDate()))
             .orElse(null);

@@ -19,7 +19,6 @@ import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.FileData;
-
 import io.ebean.annotation.EnumValue;
 import java.security.KeyPair;
 import java.security.PrivateKey;
