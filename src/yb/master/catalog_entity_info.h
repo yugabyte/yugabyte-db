@@ -90,6 +90,13 @@ struct TabletReplicaDriveInfo {
   bool may_have_orphaned_post_split_data = true;
 };
 
+struct FullCompactionStatus {
+  tablet::FullCompactionState full_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+
+  // Not valid if full_compaction_state == UNKNOWN.
+  HybridTime last_full_compaction_time;
+};
+
 // Information on a current replica of a tablet.
 // This is copyable so that no locking is needed.
 struct TabletReplica {
@@ -110,7 +117,7 @@ struct TabletReplica {
 
   TabletLeaderLeaseInfo leader_lease_info;
 
-  tablet::FullCompactionState full_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+  FullCompactionStatus full_compaction_status;
 
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
@@ -309,8 +316,8 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
     return initiated_election_.compare_exchange_strong(expected, true);
   }
 
-  void UpdateReplicaFullCompactionState(
-      const std::string& ts_uuid, const tablet::FullCompactionState full_compaction_state);
+  void UpdateReplicaFullCompactionStatus(
+      const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status);
 
   // The next five methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's

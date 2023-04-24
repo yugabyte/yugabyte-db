@@ -23,7 +23,10 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
+#include "yb/master/catalog_entity_info.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/mini_master.h"
 
 #include "yb/tablet/tablet_peer.h"
 
@@ -48,9 +51,13 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
     ASSERT_OK(CreateClient());
   }
 
-  virtual int GetNumReplicas() { return 3; }
+  void DoTearDown() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
+    MiniClusterTestWithClient::DoTearDown();
+  }
 
-  bool AddDataSatisfies(std::function<bool(const master::TSHeartbeatRequestPB&)> metrics_check) {
+  Result<bool> AddDataSatisfies(
+      std::function<Result<bool>(const master::TSHeartbeatRequestPB&)> metrics_check) {
     for (const auto& tablet_server : cluster_->mini_tablet_servers()) {
       auto metrics_heartbeat_provider =
           TServerMetricsHeartbeatDataProvider(tablet_server->server());
@@ -59,7 +66,7 @@ class TServerMetricsHeartbeatDataProviderITest : public MiniClusterTestWithClien
 
       metrics_heartbeat_provider.AddData(resp, &req);
 
-      if (!metrics_check(req)) {
+      if (!VERIFY_RESULT(metrics_check(req))) {
         return false;
       }
     }
@@ -93,16 +100,22 @@ class TServerFullCompactionStatusMetricsHeartbeatDataProviderITest
   }
 
  protected:
-  std::function<bool(const master::TSHeartbeatRequestPB&)> GetMetricCheck(
+  std::function<Result<bool>(const master::TSHeartbeatRequestPB&)> GetMetricCheck(
       std::function<bool(const master::FullCompactionStatusPB&)> full_compaction_status_check) {
-    return [this, full_compaction_status_check](const master::TSHeartbeatRequestPB& req) {
+    return [this,
+            full_compaction_status_check](const master::TSHeartbeatRequestPB& req) -> Result<bool> {
+      auto& catalog_manager = VERIFY_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
       for (const auto& full_compaction_status : req.full_compaction_statuses()) {
         if (!full_compaction_status.has_tablet_id()) {
           return false;
         }
-        if (full_compaction_status.tablet_id() != test_table_id_) {
+
+        const auto tablet_info =
+            VERIFY_RESULT(catalog_manager.GetTabletInfo(full_compaction_status.tablet_id()));
+        if (tablet_info->table()->id() != test_table_id_) {
           continue;
         }
+
         if (!full_compaction_status_check(full_compaction_status)) {
           return false;
         }
@@ -138,13 +151,13 @@ TEST_F(
     TServerFullCompactionStatusMetricsHeartbeatDataProviderITest,
     MetricsReportIdleCompactionState) {
   TriggerAdminCompactions(true /* should_wait */);
-  ASSERT_TRUE(AddDataSatisfies(
+  ASSERT_TRUE(ASSERT_RESULT(AddDataSatisfies(
       GetMetricCheck([](const master::FullCompactionStatusPB& full_compaction_status) {
         return full_compaction_status.has_full_compaction_state() &&
                full_compaction_status.full_compaction_state() == tablet::IDLE &&
                full_compaction_status.has_last_full_compaction_time() &&
                full_compaction_status.last_full_compaction_time() > 0;
-      })));
+      }))));
 }
 
 TEST_F(
@@ -157,12 +170,13 @@ TEST_F(
         return AddDataSatisfies(
             GetMetricCheck([](const master::FullCompactionStatusPB& full_compaction_status) {
               return full_compaction_status.has_full_compaction_state() &&
-                     full_compaction_status.full_compaction_state() == tablet::COMPACTING;
+                     full_compaction_status.full_compaction_state() == tablet::COMPACTING &&
+                     full_compaction_status.has_last_full_compaction_time() &&
+                     full_compaction_status.last_full_compaction_time() == 0;
             }));
       },
       30s /* timeout */,
       "Waiting for all full compaction states to be reported as COMPACTING"));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_full_compaction) = false;
 }
 
 }  // namespace tserver
