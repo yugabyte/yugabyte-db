@@ -228,13 +228,16 @@ export const fetchThrottleParameters = (universeUUID: string) => {
   return axios.get<ThrottleParameters>(requestUrl);
 };
 
-export const setThrottleParameters = (universeUUID: string, values: ThrottleParameters) => {
+export const setThrottleParameters = (
+  universeUUID: string,
+  values: ThrottleParameters['throttleParamsMap']
+) => {
   const cUUID = localStorage.getItem('customerId');
   const payload = {
-    maxConcurrentUploads: values.max_concurrent_uploads,
-    perUploadNumObjects: values.per_upload_num_objects,
-    maxConcurrentDownloads: values.max_concurrent_downloads,
-    perDownloadNumObjects: values.per_download_num_objects
+    maxConcurrentUploads: values.max_concurrent_uploads.currentValue,
+    perUploadNumObjects: values.per_upload_num_objects.currentValue,
+    maxConcurrentDownloads: values.max_concurrent_downloads.currentValue,
+    perDownloadNumObjects: values.per_download_num_objects.currentValue
   };
   const requestUrl = `${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}/ybc_throttle_params`;
   return axios.post<ThrottleParameters>(requestUrl, payload);
