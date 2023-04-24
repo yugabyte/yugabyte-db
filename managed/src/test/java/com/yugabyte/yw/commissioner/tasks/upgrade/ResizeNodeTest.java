@@ -198,6 +198,33 @@ public class ResizeNodeTest extends UpgradeTaskTest {
         expected);
   }
 
+  @Parameters({
+    "10, c3.medium, c3.medium, UltraSSD_LRS, false",
+    "0, c3.medium, c4.medium, UltraSSD_LRS, true",
+    "10, c3.medium, c3.medium, StandardSSD_LRS, true",
+    "10, c3.medium, c4.medium, StandardSSD_LRS, true",
+    "5000, c3.medium, c3.medium, StandardSSD_LRS, false",
+  })
+  @Test
+  public void testResizeNodeAzu(
+      int volumeSizeDiff,
+      String curInstanceTypeCode,
+      String targetInstanceTypeCode,
+      String volumeType,
+      boolean expected) {
+    RuntimeConfigEntry.upsertGlobal("yb.cloud.enabled", "true");
+    testResizeNodeAvailable(
+        Common.CloudType.azu.toString(),
+        0,
+        volumeSizeDiff,
+        curInstanceTypeCode,
+        targetInstanceTypeCode,
+        false /* volumeIopsChange */,
+        false /* volumeThroughputChange */,
+        PublicCloudConstants.StorageType.valueOf(volumeType),
+        expected);
+  }
+
   private void testResizeNodeAvailable(
       String cloudTypeStr,
       int numOfVolumesDiff,

@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -44,8 +45,14 @@ import play.mvc.Http.Status;
 @Slf4j
 public class ResizeNodeParams extends UpgradeTaskParams {
 
+  public static final int AZU_DISK_LIMIT_NO_DOWNTIME = 4 * 1024; // 4 TiB
+
   private static final Set<Common.CloudType> SUPPORTED_CLOUD_TYPES =
-      EnumSet.of(Common.CloudType.gcp, Common.CloudType.aws, Common.CloudType.kubernetes);
+      EnumSet.of(
+          Common.CloudType.gcp,
+          Common.CloudType.aws,
+          Common.CloudType.kubernetes,
+          Common.CloudType.azu);
 
   private boolean forceResizeNode;
   public Map<String, String> masterGFlags;
@@ -208,8 +215,12 @@ public class ResizeNodeParams extends UpgradeTaskParams {
     }
     // Check valid provider.
     if (!SUPPORTED_CLOUD_TYPES.contains(currentUserIntent.providerType)) {
-      return "Smart resizing is only supported for AWS / GCP / K8S, It is: "
+      return "Smart resizing is only supported for AWS / GCP / K8S/ Azu, It is: "
           + currentUserIntent.providerType.toString();
+    }
+    if (currentUserIntent.providerType == Common.CloudType.azu
+        && !runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.cloudEnabled)) {
+      return "Not yet supported in YBA";
     }
     if (currentUserIntent.dedicatedNodes != newUserIntent.dedicatedNodes) {
       return "Smart resize is not possible if is dedicated mode changed";
@@ -261,6 +272,37 @@ public class ResizeNodeParams extends UpgradeTaskParams {
             currentUserIntent.instanceType,
             currentUserIntent.deviceInfo)) {
       return "ResizeNode operation is not supported for instances with ephemeral drives";
+    }
+    if ((diskChanged || masterDiskChanged)
+        && currentUserIntent.providerType == Common.CloudType.azu) {
+      if (diskChanged
+          && currentUserIntent.deviceInfo.storageType
+              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
+        return "UltraSSD doesn't support resizing without downtime";
+      }
+      if (masterDiskChanged
+          && currentUserIntent.masterDeviceInfo.storageType
+              == PublicCloudConstants.StorageType.UltraSSD_LRS) {
+        return "UltraSSD doesn't support resizing without downtime";
+      }
+      if (diskChanged
+          && currentUserIntent.deviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
+          && newUserIntent.deviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
+        return "Cannot expand from "
+            + currentUserIntent.deviceInfo.volumeSize
+            + "GB to "
+            + newUserIntent.deviceInfo.volumeSize
+            + "GB without VM deallocation";
+      }
+      if (masterDiskChanged
+          && currentUserIntent.masterDeviceInfo.volumeSize <= AZU_DISK_LIMIT_NO_DOWNTIME
+          && newUserIntent.masterDeviceInfo.volumeSize > AZU_DISK_LIMIT_NO_DOWNTIME) {
+        return "Cannot expand from "
+            + currentUserIntent.masterDeviceInfo.volumeSize
+            + "GB to "
+            + newUserIntent.masterDeviceInfo.volumeSize
+            + "GB without VM deallocation";
+      }
     }
     if ((masterDiskChanged || masterInstanceTypeChanged)
         && hasEphemeralStorage(
