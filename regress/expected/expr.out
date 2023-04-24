@@ -4320,14 +4320,14 @@ $$) AS (results agtype);
 SELECT * FROM cypher('expr', $$
     RETURN pi(null)
 $$) AS (results agtype);
-ERROR:  function pg_catalog.pi(agtype) does not exist
+ERROR:  function ag_catalog.age_pi(agtype) does not exist
 LINE 2:     RETURN pi(null)
                      ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
 SELECT * FROM cypher('expr', $$
     RETURN pi(1)
 $$) AS (results agtype);
-ERROR:  function pg_catalog.pi(agtype) does not exist
+ERROR:  function ag_catalog.age_pi(agtype) does not exist
 LINE 2:     RETURN pi(1)
                      ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

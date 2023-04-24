@@ -38,6 +38,10 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
 SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3 RETURN n$$) AS (a agtype);
 SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
 
+--Test assigning properties to rand() and pi()
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = rand() RETURN n.i < 1 AND n.i >= 0$$) AS (a agtype);
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = pi() RETURN n$$) AS (a agtype);
+
 --Handle Inheritance
 SELECT * FROM cypher('cypher_set', $$CREATE ()$$) AS (a agtype);
 SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = 3 RETURN n$$) AS (a agtype);

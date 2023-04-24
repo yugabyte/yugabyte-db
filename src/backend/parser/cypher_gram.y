@@ -2139,11 +2139,7 @@ static Node *make_function_expr(List *func_name, List *exprs, int location)
          * functions. We may want to find a better way to do this, as there
          * could be many.
          */
-        if (pg_strcasecmp(name, "rand") == 0)
-            funcname = SystemFuncName("random");
-        else if (pg_strcasecmp(name, "pi") == 0)
-            funcname = SystemFuncName("pi");
-        else if (pg_strcasecmp(name, "count") == 0)
+        if (pg_strcasecmp(name, "count") == 0)
             funcname = SystemFuncName("count");
         else
             /*

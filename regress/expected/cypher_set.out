@@ -92,6 +92,23 @@ SELECT * FROM cypher('cypher_set', $$MATCH (n) RETURN n$$) AS (a agtype);
  {"id": 844424930131970, "label": "v", "properties": {"a": 0, "i": 3, "j": 5}}::vertex
 (3 rows)
 
+--Test assigning properties to rand() and pi()
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = rand() RETURN n.i < 1 AND n.i >= 0$$) AS (a agtype);
+  a   
+------
+ true
+ true
+ true
+(3 rows)
+
+SELECT * FROM cypher('cypher_set', $$MATCH (n) SET n.i = pi() RETURN n$$) AS (a agtype);
+                                                  a                                                   
+------------------------------------------------------------------------------------------------------
+ {"id": 844424930131969, "label": "v", "properties": {"i": 3.14159265358979}}::vertex
+ {"id": 844424930131971, "label": "v", "properties": {"i": 3.14159265358979}}::vertex
+ {"id": 844424930131970, "label": "v", "properties": {"a": 0, "i": 3.14159265358979, "j": 5}}::vertex
+(3 rows)
+
 --Handle Inheritance
 SELECT * FROM cypher('cypher_set', $$CREATE ()$$) AS (a agtype);
  a 
