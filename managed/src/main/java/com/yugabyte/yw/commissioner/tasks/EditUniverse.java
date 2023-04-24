@@ -79,9 +79,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
-                dedicatedNodesChanged.set(
-                    taskParams().getPrimaryCluster().userIntent.dedicatedNodes
-                        != u.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
+                if (taskParams().getPrimaryCluster() != null) {
+                  dedicatedNodesChanged.set(
+                      taskParams().getPrimaryCluster().userIntent.dedicatedNodes
+                          != u.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
+                }
                 // The universe parameter in this callback has local changes which may be needed by
                 // the methods inside e.g updateInProgress field.
                 for (Cluster cluster : taskParams().clusters) {
