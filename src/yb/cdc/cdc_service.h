@@ -398,6 +398,14 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status RefreshCacheOnFail(const Status& s) EXCLUDES(mutex_);
 
+  template <class T>
+  Result<T> RefreshCacheOnFail(Result<T> res) EXCLUDES(mutex_) {
+    if (!res.ok()) {
+      return RefreshCacheOnFail(res.status());
+    }
+    return res;
+  }
+
   client::YBClient* client();
 
   void CreateEntryInCdcStateTable(
