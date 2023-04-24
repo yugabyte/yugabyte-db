@@ -225,6 +225,11 @@ TAG_FLAG(tablet_creation_timeout_ms, advanced);
 DEFINE_test_flag(bool, disable_tablet_deletion, false,
                  "Whether catalog manager should disable tablet deletion.");
 
+DEFINE_test_flag(bool, get_ysql_catalog_version_from_sys_catalog, false,
+                 "Whether catalog manager should get the ysql catalog version "
+                 "from the sys_catalog.");
+
+
 // TODO: should this be a test flag?
 DEFINE_RUNTIME_bool(catalog_manager_wait_for_new_tablets_to_elect_leader, true,
     "Whether the catalog manager should wait for a newly created tablet to "
@@ -3412,9 +3417,16 @@ Status CatalogManager::GetYsqlCatalogConfig(const GetYsqlCatalogConfigRequestPB*
                                             GetYsqlCatalogConfigResponsePB* resp,
                                             rpc::RpcContext* rpc) {
   VLOG(1) << "GetYsqlCatalogConfig request: " << req->ShortDebugString();
+  if (PREDICT_FALSE(FLAGS_TEST_get_ysql_catalog_version_from_sys_catalog)) {
+    uint64_t catalog_version;
+    uint64_t last_breaking_version;
+    RETURN_NOT_OK(GetYsqlCatalogVersion(&catalog_version, &last_breaking_version));
+    resp->set_version(catalog_version);
+    return Status::OK();
+  }
+
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForRead();
   resp->set_version(l->pb.ysql_catalog_config().version());
-
   return Status::OK();
 }
 
