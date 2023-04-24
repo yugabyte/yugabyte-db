@@ -32,6 +32,9 @@
 namespace yb {
 namespace master {
 
+class TableInfo;
+class TabletInfo;
+
 bool IsWrite(QLWriteRequestPB::QLStmtType op_type);
 
 class SysCatalogWriter {
@@ -40,15 +43,16 @@ class SysCatalogWriter {
 
   ~SysCatalogWriter();
 
+  template <bool require_check>
   Status Mutate(QLWriteRequestPB::QLStmtType op_type) {
     return Status::OK();
   }
 
-  template <class Item, class... Items>
+  template <bool require_check, class Item, class... Items>
   Status Mutate(
       QLWriteRequestPB::QLStmtType op_type, const Item& item, Items&&... items) {
-    RETURN_NOT_OK(MutateHelper(item, op_type, true /* skip_if_clean */));
-    return Mutate(op_type, std::forward<Items>(items)...);
+    RETURN_NOT_OK(MutateHelper<require_check>(item, op_type, true /* skip_if_clean */));
+    return Mutate<require_check>(op_type, std::forward<Items>(items)...);
   }
 
   Status ForceMutate(QLWriteRequestPB::QLStmtType op_type) {
@@ -58,7 +62,7 @@ class SysCatalogWriter {
   template <class Item, class... Items>
   Status ForceMutate(
       QLWriteRequestPB::QLStmtType op_type, const Item& item, Items&&... items) {
-    RETURN_NOT_OK(MutateHelper(item, op_type, false /* skip_if_clean */));
+    RETURN_NOT_OK(MutateHelper<false>(item, op_type, false /* skip_if_clean */));
     return ForceMutate(op_type, std::forward<Items>(items)...);
   }
 
@@ -79,25 +83,30 @@ class SysCatalogWriter {
   }
 
  private:
-  template <class Item>
+  template <bool require_check, class Item>
   Status MutateHelper(const Item* item, QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
+    static_assert(
+        !require_check ||
+            (!std::is_same<Item, TableInfo>::value && !std::is_same<Item, TabletInfo>::value),
+        "To write TableInfo or TabletInfo objects to the sys catalog, use the sys catalog mutate "
+        "overloads which take a LeaderEpoch.");
     const auto& old_pb = item->old_pb();
     const auto& new_pb = IsWrite(op_type) ? item->new_pb() : old_pb;
     return DoMutateItem(Item::type(), item->id(), old_pb, new_pb, op_type, skip_if_clean);
   }
 
-  template <class Item>
+  template <bool require_check, class Item>
   Status MutateHelper(
       const scoped_refptr<Item>& item, QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
-    return MutateHelper(item.get(), op_type, skip_if_clean);
+    return MutateHelper<require_check>(item.get(), op_type, skip_if_clean);
   }
 
-  template <class Items>
+  template <bool require_check, class Items>
   typename std::enable_if<IsCollection<Items>::value, Status>::type
   MutateHelper(
       const Items& items, QLWriteRequestPB::QLStmtType op_type, bool skip_if_clean) {
     for (const auto& item : items) {
-      RETURN_NOT_OK(MutateHelper(item, op_type, skip_if_clean));
+      RETURN_NOT_OK(MutateHelper<require_check>(item, op_type, skip_if_clean));
     }
     return Status::OK();
   }

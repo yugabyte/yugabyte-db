@@ -88,7 +88,7 @@ class ClusterLoadBalancer {
 
   // Runs the load balancer once for the live and all read only clusters, in order
   // of the cluster config.
-  virtual void RunLoadBalancer(Options* options = nullptr);
+  virtual void RunLoadBalancer(const LeaderEpoch& epoch, Options* options = nullptr);
 
   // Sets whether to enable or disable the load balancer, on demand.
   void SetLoadBalancerEnabled(bool is_enabled) { is_enabled_ = is_enabled; }
@@ -438,6 +438,8 @@ class ClusterLoadBalancer {
   std::vector<scoped_refptr<TableInfo>> skipped_tables_per_run_;
 
   std::atomic<MonoTime> last_load_balance_run_;
+
+  LeaderEpoch epoch_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterLoadBalancer);
 };

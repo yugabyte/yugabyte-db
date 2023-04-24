@@ -27,6 +27,7 @@
 
 #include "yb/integration-tests/redis_table_test_base.h"
 
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/flush_manager.h"
 #include "yb/master/master_admin.pb.h"
 
@@ -313,12 +314,15 @@ class TestRedisService : public RedisTableTestBase {
 
   Status FlushRedisTable() {
     // Flush the table
+    auto epoch = master::LeaderEpoch(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())
+                                         ->catalog_manager()
+                                         .leader_ready_term());
     master::FlushTablesRequestPB req;
     req.set_is_compaction(false);
     table_name().SetIntoTableIdentifierPB(req.add_tables());
     master::FlushTablesResponsePB resp;
     RETURN_NOT_OK(VERIFY_RESULT(mini_cluster()->GetLeaderMiniMaster())->flush_manager().
-                  FlushTables(&req, &resp));
+                  FlushTables(&req, &resp, /* rpc_context */ nullptr, epoch));
 
     master::IsFlushTablesDoneRequestPB wait_req;
     // Wait for table creation.

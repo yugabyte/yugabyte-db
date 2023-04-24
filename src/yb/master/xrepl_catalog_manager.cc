@@ -549,7 +549,7 @@ void CatalogManager::GetAllCDCStreams(std::vector<scoped_refptr<CDCStreamInfo>>*
 }
 
 Status CatalogManager::BackfillMetadataForCDC(
-    scoped_refptr<TableInfo> table, rpc::RpcContext* rpc) {
+    scoped_refptr<TableInfo> table, const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
   TableId table_id;
   AlterTableRequestPB alter_table_req_pg_type;
   bool backfill_required = false;
@@ -615,7 +615,7 @@ Status CatalogManager::BackfillMetadataForCDC(
     // consumption because the former is generally done manually.
     alter_table_req_pg_type.mutable_table()->set_table_id(table_id);
     AlterTableResponsePB alter_table_resp_pg_type;
-    return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc);
+    return this->AlterTable(&alter_table_req_pg_type, &alter_table_resp_pg_type, rpc, epoch);
   } else {
     LOG_WITH_FUNC(INFO)
         << "found pgschema_name and pg_type_oid, no backfilling required for table id: "
@@ -625,7 +625,8 @@ Status CatalogManager::BackfillMetadataForCDC(
 }
 
 Status CatalogManager::CreateCDCStream(
-    const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
+    const CreateCDCStreamRequestPB* req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
   LOG(INFO) << "CreateCDCStream from " << RequestorString(rpc) << ": " << req->ShortDebugString();
   std::string id_type_option_value(cdc::kTableId);
 
@@ -651,14 +652,14 @@ Status CatalogManager::CreateCDCStream(
     alter_table_req.mutable_table()->set_table_id(req->table_id());
     alter_table_req.set_wal_retention_secs(FLAGS_cdc_wal_retention_time_secs);
     AlterTableResponsePB alter_table_resp;
-    Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc);
+    Status s = this->AlterTable(&alter_table_req, &alter_table_resp, rpc, epoch);
     if (!s.ok()) {
       return STATUS(
           InternalError, "Unable to change the WAL retention time for table", req->table_id(),
           MasterError(MasterErrorPB::INTERNAL_ERROR));
     }
 
-    Status status = BackfillMetadataForCDC(table, rpc);
+    Status status = BackfillMetadataForCDC(table, epoch, rpc);
     if (!status.ok()) {
       return STATUS(
           InternalError, "Unable to backfill pgschema_name and/or pg_type_oid", req->table_id(),
@@ -667,7 +668,7 @@ Status CatalogManager::CreateCDCStream(
   }
 
   if (!req->has_db_stream_id()) {
-    RETURN_NOT_OK(CreateNewCDCStream(*req, id_type_option_value, resp, rpc));
+    RETURN_NOT_OK(CreateNewCDCStream(*req, id_type_option_value, resp, rpc, epoch));
   } else {
     // Update and add table_id.
     RETURN_NOT_OK(AddTableIdToCDCStream(*req));
@@ -681,7 +682,7 @@ Status CatalogManager::CreateCDCStream(
 
 Status CatalogManager::CreateNewCDCStream(
     const CreateCDCStreamRequestPB& req, const std::string& id_type_option_value,
-    CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc) {
+    CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   scoped_refptr<CDCStreamInfo> stream;
   {
     TRACE("Acquired catalog manager lock");
@@ -728,7 +729,8 @@ Status CatalogManager::CreateNewCDCStream(
   CreateTableResponsePB table_resp;
   RETURN_NOT_OK(CreateTableIfNotFound(
       cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
-      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr));
+      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr,
+      epoch));
   TRACE("Created CDC state table");
 
   // Skip if disable_cdc_state_insert_on_setup is set.
@@ -1242,8 +1244,8 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
 
   // Do system catalog UPDATE and DELETE based on the streams_to_update and streams_to_delete.
   auto writer = sys_catalog_->NewWriter(leader_ready_term());
-  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
-  RETURN_NOT_OK(writer->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
+  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, streams_to_delete));
+  RETURN_NOT_OK(writer->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, streams_to_update));
   RETURN_NOT_OK(CheckStatus(
       sys_catalog_->SyncWrite(writer.get()), "Cleaning CDC streams from system catalog"));
   LOG(INFO) << "Successfully cleaned up the streams " << JoinStreamsCSVLine(streams_to_delete)
@@ -1866,6 +1868,7 @@ CatalogManager::SetupReplicationWithBootstrapValidateRequestAndConnectToProducer
 Result<std::vector<TableMetaPB>>
 CatalogManager::SetupReplicationWithBootstrapCreateAndImportSnapshot(
     std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks,
+    const LeaderEpoch& epoch,
     std::vector<client::YBTableName>* tables,
     TxnSnapshotId* old_snapshot_id,
     TxnSnapshotId* new_snapshot_id,
@@ -1880,7 +1883,7 @@ CatalogManager::SetupReplicationWithBootstrapCreateAndImportSnapshot(
   ImportSnapshotMetaRequestPB import_req;
   ImportSnapshotMetaResponsePB import_resp;
   import_req.mutable_snapshot()->CopyFrom(snapshot);
-  RETURN_NOT_OK(ImportSnapshotMeta(&import_req, &import_resp, rpc));
+  RETURN_NOT_OK(ImportSnapshotMeta(&import_req, &import_resp, rpc, epoch));
 
   // Create snapshot on consumer.
   *state = SetupReplicationWithBootstrapStatePB::CREATE_CONSUMER_SNAPSHOT;
@@ -1902,7 +1905,7 @@ CatalogManager::SetupReplicationWithBootstrapCreateAndImportSnapshot(
   snapshot_req.set_add_indexes(false);
   snapshot_req.set_transaction_aware(true);
   snapshot_req.set_imported(true);
-  auto s = CreateSnapshot(&snapshot_req, &snapshot_resp, rpc);
+  auto s = CreateSnapshot(&snapshot_req, &snapshot_resp, rpc, epoch);
   if (snapshot_resp.has_snapshot_id())
     *new_snapshot_id = TryFullyDecodeTxnSnapshotId(snapshot_resp.snapshot_id());
   if (!s.ok()) return s;
@@ -1977,7 +1980,8 @@ void CatalogManager::CleanupSetupReplicationWithBootstrap(
 Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
     const SetupNamespaceReplicationWithBootstrapRequestPB* req,
     SetupNamespaceReplicationWithBootstrapResponsePB* resp,
-    rpc::RpcContext* rpc) {
+    rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
   LOG(INFO) << "SetupNamespaceReplicationWithBootstrap from " << RequestorString(rpc) << ": "
             << req->DebugString();
 
@@ -2002,7 +2006,7 @@ Status CatalogManager::SetupNamespaceReplicationWithBootstrap(
 
   auto tables_meta = VERIFY_RESULT_AND_CLEANUP(
       SetupReplicationWithBootstrapCreateAndImportSnapshot(
-          cdc_rpc_tasks, &tables, &old_snapshot_id, &new_snapshot_id, &state, rpc),
+          cdc_rpc_tasks, epoch, &tables, &old_snapshot_id, &new_snapshot_id, &state, rpc),
       state);
 
   return Status::OK();
@@ -3171,7 +3175,7 @@ void CatalogManager::MergeUniverseReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      auto s = w->Mutate(
+      auto s = w->Mutate<true>(
           QLWriteRequestPB::QL_STMT_UPDATE,
           original_universe.get(),
           universe.get(),
@@ -3713,8 +3717,8 @@ Status CatalogManager::UpdateProducerAddress(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      RETURN_NOT_OK(
-          w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get()));
+      RETURN_NOT_OK(w->Mutate<true>(
+          QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get()));
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->SyncWrite(w.get()),
           "Updating universe replication info and cluster config in sys-catalog"));
@@ -3838,7 +3842,8 @@ Status CatalogManager::RemoveTablesFromReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      auto s = w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get());
+      auto s = w->Mutate<true>(
+          QLWriteRequestPB::QL_STMT_UPDATE, universe.get(), cluster_config.get());
       if (s.ok()) {
         s = sys_catalog_->SyncWrite(w.get());
       }
@@ -4030,9 +4035,9 @@ Status CatalogManager::RenameUniverseReplication(
     {
       // Need both these updates to be atomic.
       auto w = sys_catalog_->NewWriter(leader_ready_term());
-      RETURN_NOT_OK(w->Mutate(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
+      RETURN_NOT_OK(w->Mutate<true>(QLWriteRequestPB::QL_STMT_DELETE, universe.get()));
       RETURN_NOT_OK(
-          w->Mutate(QLWriteRequestPB::QL_STMT_UPDATE, new_ri.get(), cluster_config.get()));
+          w->Mutate<true>(QLWriteRequestPB::QL_STMT_UPDATE, new_ri.get(), cluster_config.get()));
       RETURN_NOT_OK(CheckStatus(
           sys_catalog_->SyncWrite(w.get()),
           "Updating universe replication info and cluster config in sys-catalog"));
