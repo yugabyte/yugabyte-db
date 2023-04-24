@@ -7,9 +7,10 @@
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
 from ybops.cloud.common.method import ListInstancesMethod, CreateInstancesMethod, \
-    ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
+    ChangeInstanceTypeMethod, ProvisionInstancesMethod, DestroyInstancesMethod, AbstractMethod, \
     AbstractAccessMethod, AbstractNetworkMethod, AbstractInstancesMethod, \
     DestroyInstancesMethod, AbstractInstancesMethod, DeleteRootVolumesMethod
+from ybops.common.exceptions import YBOpsRuntimeError
 import logging
 import json
 import glob
@@ -272,7 +273,10 @@ class AzurePauseInstancesMethod(AbstractInstancesMethod):
                                  help="The ip of the instance to pause.")
 
     def callback(self, args):
-        self.cloud.stop_instance(args)
+        host_info = self.cloud.get_host_info(args)
+        if host_info is None:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+        self.cloud.stop_instance(host_info)
 
 
 class AzureResumeInstancesMethod(AbstractInstancesMethod):
@@ -287,4 +291,18 @@ class AzureResumeInstancesMethod(AbstractInstancesMethod):
     def callback(self, args):
         self.update_ansible_vars_with_args(args)
         server_ports = self.get_server_ports_to_check(args)
-        self.cloud.start_instance(args, server_ports)
+        host_info = self.cloud.get_host_info(args)
+        if host_info is None:
+            raise YBOpsRuntimeError("Could not find instance {}".format(args.search_pattern))
+        self.cloud.start_instance(host_info, server_ports)
+
+
+class AzureChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
+    def __init__(self, base_command):
+        super(AzureChangeInstanceTypeMethod, self).__init__(base_command)
+
+    def _change_instance_type(self, args, host_info):
+        self.cloud.change_instance_type(host_info, args.instance_type)
+
+    def _host_info(self, args, host_info):
+        return host_info
