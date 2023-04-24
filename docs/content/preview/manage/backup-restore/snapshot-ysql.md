@@ -112,7 +112,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
 1. Back up the YSQL metadata using the [`ysql_dump`](../../../admin/ysql-dump) command, as follows:
 
     ```sh
-    ./postgres/bin/ysql_dump -h <ip> --masters <ip1:7100,ip2:7100,ip3:7100> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <database_name>_schema.sql
+    ./postgres/bin/ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <database_name>_schema.sql
     ```
 
 1. Verify that the catalog version is the same as it was prior to creating the snapshot, as follows:
@@ -134,7 +134,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
 1. Copy the tablet snapshot data into the external storage directory. Do this for all tablets of all tables in the database, as follows:
 
     ```sh
-    cp -r ~/yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots snapshot/
+    cp -r ~/yugabyte-data/node-1/disk-1/yb-data/tserver/data/rocksdb/table-00004000000030008000000000004003/tablet-b0de9bc6a4cb46d4aaacf4a03bcaf6be.snapshots/snapshot_id/
     ```
 
     The following is the file path structure:
