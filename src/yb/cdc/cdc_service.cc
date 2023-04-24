@@ -27,6 +27,7 @@
 #include "yb/cdc/cdc_rpc.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service_context.h"
+#include "yb/cdc/cdc_util.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_cache.h"
@@ -3805,36 +3806,21 @@ Result<int64_t> CDCServiceImpl::GetLastActiveTime(
     }
   }
 
-  auto cdc_state_table_result = GetCdcStateTable();
-  RETURN_NOT_OK(cdc_state_table_result);
+  auto cdc_state_table_result = VERIFY_RESULT(GetCdcStateTable());
 
-  const auto readop = (*cdc_state_table_result)->NewReadOp();
-  auto* const readreq = readop->mutable_request();
-  QLAddStringHashValue(readreq, producer_tablet.tablet_id);
-
-  auto cond = readreq->mutable_where_expr()->mutable_condition();
-  cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(
-      cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
-      producer_tablet.stream_id);
-  readreq->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
-  readreq->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
-  (*cdc_state_table_result)->AddColumns({master::kCdcData}, readreq);
-
-  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK(session->ReadSync(readop));
-  auto row_block = ql::RowsResult(readop.get()).GetRowBlock();
-
-  if (row_block->row_count() != 1) {
-    // This could happen when conncurently as this function is running the stram is deleted, in
+  auto row = VERIFY_RESULT(RefreshCacheOnFail(FetchOptionalCdcStreamInfo(
+      cdc_state_table_result.get(), session.get(), producer_tablet.tablet_id,
+      producer_tablet.stream_id, {master::kCdcData})));
+  if (!row) {
+    // This could happen when concurrently as this function is running the stream is deleted, in
     // which case we return last active_time as "0".
     return 0;
   }
-  if (!row_block->row(0).column(0).IsNull()) {
-    DCHECK_EQ(row_block->row(0).column(0).type(), InternalType::kMapValue);
+  if (!row->column(0).IsNull()) {
+    DCHECK_EQ(row->column(0).type(), InternalType::kMapValue);
     int64_t last_active_time = 0;
     last_active_time = VERIFY_RESULT(
-        GetIntValueFromMap<int64_t>(row_block->row(0).column(0).map_value(), kCDCSDKActiveTime));
+        GetIntValueFromMap<int64_t>(row->column(0).map_value(), kCDCSDKActiveTime));
 
     VLOG(2) << "Found entry in cdc_state table with active time: " << last_active_time
             << ", for tablet: " << producer_tablet.tablet_id
@@ -3850,36 +3836,17 @@ Result<CDCSDKCheckpointPB> CDCServiceImpl::GetLastCDCSDKCheckpoint(
     const CDCRequestSource& request_source, const TableId& colocated_table_id) {
   auto cdc_state_table_result = VERIFY_RESULT(GetCdcStateTable());
 
-  const auto op = cdc_state_table_result->NewReadOp();
-  auto* const req = op->mutable_request();
-  DCHECK(!stream_id.empty() && !tablet_id.empty());
-  QLAddStringHashValue(req, tablet_id);
+  auto row_opt = VERIFY_RESULT(RefreshCacheOnFail(FetchOptionalCdcStreamInfo(
+      cdc_state_table_result.get(), session.get(), tablet_id,
+      colocated_table_id.empty() ? stream_id : stream_id + "_" + colocated_table_id,
+      {master::kCdcCheckpoint, master::kCdcData, master::kCdcLastReplicationTime})));
 
-  auto cond = req->mutable_where_expr()->mutable_condition();
-  cond->set_op(QLOperator::QL_OP_AND);
-  if (colocated_table_id.empty()) {
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL, stream_id);
-  } else {
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
-        stream_id + "_" + colocated_table_id);
-  }
-
-  req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
-  req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
-  cdc_state_table_result->AddColumns({master::kCdcCheckpoint}, req);
   const size_t checkpoint_idx = 0;
-  cdc_state_table_result->AddColumns({master::kCdcData}, req);
   const size_t cdc_data_idx = 1;
-  cdc_state_table_result->AddColumns({master::kCdcLastReplicationTime}, req);
   const size_t last_replicated_column_idx = 2;
 
-  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-  RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(op)));
-  auto row_block = ql::RowsResult(op.get()).GetRowBlock();
   CDCSDKCheckpointPB cdc_sdk_checkpoint_pb;
-  if (row_block->row_count() == 0) {
+  if (!row_opt) {
     LOG(WARNING) << "Did not find any row in the cdc state table for tablet: " << tablet_id
                  << ", stream: " << stream_id << ", colocated_table_id:" << colocated_table_id;
     if (colocated_table_id.empty()) {
@@ -3894,8 +3861,7 @@ Result<CDCSDKCheckpointPB> CDCServiceImpl::GetLastCDCSDKCheckpoint(
     return cdc_sdk_checkpoint_pb;
   }
 
-  DCHECK_EQ(row_block->row_count(), 1);
-  const auto& row = row_block->row(0);
+  const auto& row = *row_opt;
 
   DCHECK_EQ(row.column(checkpoint_idx).type(), InternalType::kStringValue);
 
@@ -4547,28 +4513,9 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOp(
   auto cdc_state_table = VERIFY_RESULT(GetCdcStateTable());
   // First check if the children tablet entries exist yet in cdc_state.
   for (const auto& child_tablet : children_tablets) {
-    const auto op = cdc_state_table->NewReadOp();
-    auto* const req = op->mutable_request();
-    QLAddStringHashValue(req, child_tablet);
-
-    auto cond = req->mutable_where_expr()->mutable_condition();
-    cond->set_op(QLOperator::QL_OP_AND);
-    QLAddStringCondition(
-        cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
-        producer_tablet.stream_id);
-    req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcTabletIdIdx);
-    req->mutable_column_refs()->add_ids(Schema::first_column_id() + master::kCdcStreamIdIdx);
-    cdc_state_table->AddColumns({master::kCdcCheckpoint}, req);
-
-    // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
-    RETURN_NOT_OK(RefreshCacheOnFail(session->ReadSync(op)));
-
-    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
-    SCHECK(
-        row_block->row_count() == 1, NotFound,
-        Format(
-            "Error finding entry in cdc_state table for tablet: $0, stream $1.", child_tablet,
-            producer_tablet.stream_id));
+    RETURN_NOT_OK(RefreshCacheOnFail(FetchCdcStreamInfo(
+      cdc_state_table.get(), session.get(), child_tablet,
+      producer_tablet.stream_id, {master::kCdcCheckpoint})));
   }
 
   // Force an update of parent tablet checkpoint/timestamp to ensure that there it gets updated at
