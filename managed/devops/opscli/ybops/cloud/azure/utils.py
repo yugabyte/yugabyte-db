@@ -14,6 +14,7 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.compute.models import DiskCreateOption
 from azure.mgmt.privatedns import PrivateDnsManagementClient
 from msrestazure.azure_exceptions import CloudError
+from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils import DNS_RECORD_SET_TTL, MIN_MEM_SIZE_GB, \
     MIN_NUM_CORES
 from ybops.utils.ssh import format_rsa_key, validated_key_file
@@ -422,6 +423,22 @@ class AzureCloudAdmin():
         async_disk_attach.wait()
         return async_disk_attach.result()
 
+    def update_disk(self, vm_name, disk_size):
+        vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
+        if not vm:
+            raise YBOpsRuntimeError("VM {} is not found".format(vm_name))
+        for disk in vm.storage_profile.data_disks:
+            update = {
+                "disk_size_gb": disk_size
+            }
+            res = self.compute_client.disks.begin_update(
+                RESOURCE_GROUP,
+                disk.name,
+                update
+            )
+            res.wait()
+            logging.info("[app] Successfully changed disk size for {}".format(disk.name))
+
     def tag_disks(self, vm, tags):
         # Updating requires Disk as input rather than OSDisk. Retrieve Disk class with OSDisk name.
         disk = self.compute_client.disks.get(
@@ -575,6 +592,23 @@ class AzureCloudAdmin():
             logging.info("[app] Deleted disk {}".format(disk_name))
 
         logging.info("[app] Sucessfully destroyed orphaned resources for {}".format(vm_name))
+
+    def change_instance_type(self, vm_name, instance_type):
+        vm = self.compute_client.virtual_machines.get(RESOURCE_GROUP, vm_name)
+        if not vm:
+            raise YBOpsRuntimeError("VM {} is not found".format(vm_name))
+        update = {
+            "hardware_profile": {
+                "vm_size": instance_type
+            }
+        }
+        update_result = self.compute_client.virtual_machines.begin_update(
+            RESOURCE_GROUP,
+            vm_name,
+            update
+        )
+        update_result.wait()
+        logging.info("[app] Successfully changed instance type for {}".format(vm_name))
 
     # The method is idempotent. Any failure raises exception such that it can be retried.
     def destroy_instance(self, vm_name, node_uuid):

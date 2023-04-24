@@ -10,7 +10,7 @@ awscli==1.19.73
 azure-common==1.1.28
 azure-core==1.24.2
 azure-identity==1.6.1
-azure-mgmt-compute==22.1.0
+azure-mgmt-compute==23.1.0
 azure-mgmt-core==1.3.2
 azure-mgmt-network==19.3.0
 azure-mgmt-privatedns==1.0.0
