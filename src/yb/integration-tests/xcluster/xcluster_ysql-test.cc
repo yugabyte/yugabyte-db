@@ -899,7 +899,8 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     auto tablet_id = tablets.front()->tablet_id();
     auto catalog_manager =
         &CHECK_NOTNULL(VERIFY_RESULT(cluster->GetLeaderMiniMaster()))->catalog_manager();
-    return catalog_manager->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+    return catalog_manager->SplitTablet(
+        tablet_id, master::ManualSplit::kTrue, catalog_manager->GetLeaderEpochInternal());
   }
 
   Status SetupReplicationAndWaitForValidSafeTime() {

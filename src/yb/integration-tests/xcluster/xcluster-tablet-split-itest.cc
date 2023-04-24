@@ -375,7 +375,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
     auto tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
     EXPECT_EQ(tablet_ids.size(), cur_num_tablets);
     for (const auto& tablet_id : tablet_ids) {
-      RETURN_NOT_OK(catalog_mgr->SplitTablet(tablet_id, master::ManualSplit::kTrue));
+      RETURN_NOT_OK(catalog_mgr->SplitTablet(
+          tablet_id, master::ManualSplit::kTrue, catalog_mgr->GetLeaderEpochInternal()));
     }
     size_t expected_non_split_tablets = cur_num_tablets * 2;
     size_t expected_split_tablets = parent_tablet_protected_from_deletion

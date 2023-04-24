@@ -31,51 +31,26 @@
 
 #pragma once
 
-#include <atomic>
-#include <unordered_set>
-
-#include "yb/common/entity_ids_types.h"
-#include "yb/gutil/ref_counted.h"
-#include "yb/master/leader_epoch.h"
-#include "yb/util/condition_variable.h"
-#include "yb/util/metrics.h"
-#include "yb/util/mutex.h"
-#include "yb/util/status_fwd.h"
+#include <cstdint>
 
 namespace yb {
-
-class Thread;
-
 namespace master {
 
-class CatalogManager;
+typedef int32_t PitrCount;
 
-class CatalogManagerBgTasks final {
- public:
-  explicit CatalogManagerBgTasks(CatalogManager *catalog_manager);
+struct LeaderEpoch {
+  int64_t leader_term;
+  // Required to write to tablets and tables in the sys catalog.
+  // Begins at 0 when a master process assumes leadership for the first time.
+  // Incremented each time a PITR restore is done.
+  // Prevents table and tablet info read from memory before a PITR is begun from
+  // being committed after a PITR completes, clobbering pitr writes.
+  PitrCount pitr_count;
 
-  ~CatalogManagerBgTasks() {}
+  explicit LeaderEpoch(int64_t term, PitrCount pitr_count)
+      : leader_term(term), pitr_count(pitr_count) {}
 
-  Status Init();
-  void Shutdown();
-
-  void Wake();
-  void Wait(int msec);
-  void WakeIfHasPendingUpdates();
-
- private:
-  void TryResumeBackfillForTables(const LeaderEpoch& epoch, std::unordered_set<TableId>* tables);
-  void Run();
-
- private:
-  std::atomic<bool> closing_;
-  bool pending_updates_;
-  mutable Mutex lock_;
-  ConditionVariable cond_;
-  scoped_refptr<yb::Thread> thread_;
-  CatalogManager *catalog_manager_;
-  bool was_leader_ = false;
-  scoped_refptr<Histogram> load_balancer_duration_;
+  explicit LeaderEpoch(int64_t term) : LeaderEpoch(term, 0) {}
 };
 
 }  // namespace master

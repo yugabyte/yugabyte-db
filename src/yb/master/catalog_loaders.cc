@@ -124,7 +124,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
     TransactionMetadata txn = VERIFY_RESULT(TransactionMetadata::FromPB(metadata.transaction()));
     if (metadata.ysql_ddl_txn_verifier_state_size() > 0) {
       if (FLAGS_ysql_ddl_rollback_enabled) {
-        catalog_manager_->ScheduleYsqlTxnVerification(table, txn);
+        catalog_manager_->ScheduleYsqlTxnVerification(table, txn, state_->epoch);
       }
     } else {
       // This is a table/index for which YSQL transaction verification is not supported yet.
@@ -132,7 +132,7 @@ Status TableLoader::Visit(const TableId& table_id, const SysTablesEntryPB& metad
       // completed, merely check for the presence of this entity in the PG catalog.
       LOG(INFO) << "Enqueuing table for Transaction Verification: " << table->ToString();
       std::function<Status(bool)> when_done =
-          std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1);
+        std::bind(&CatalogManager::VerifyTablePgLayer, catalog_manager_, table, _1, state_->epoch);
       state_->AddPostLoadTask(
           std::bind(&YsqlTransactionDdl::VerifyTransaction,
                     catalog_manager_->ysql_transaction_.get(),
@@ -289,7 +289,8 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
         if (table->IsPreparing()) {
           DCHECK(!table->HasTasks(server::MonitoredTaskType::kAddTableToTablet));
           auto call = std::make_shared<AsyncAddTableToTablet>(
-              catalog_manager_->master_, catalog_manager_->AsyncTaskPool(), tablet, table);
+              catalog_manager_->master_, catalog_manager_->AsyncTaskPool(), tablet, table,
+              state_->epoch);
           table->AddTask(call);
           WARN_NOT_OK(
               catalog_manager_->ScheduleTask(call), "Failed to send AddTableToTablet request");
@@ -406,7 +407,7 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
     LOG(INFO) << "Loaded metadata to DELETE namespace " << ns->ToString();
     if (ns->database_type() == YQL_DATABASE_PGSQL) {
       state_->AddPostLoadTask(
-          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns),
+          std::bind(&CatalogManager::DeleteYsqlDatabaseAsync, catalog_manager_, ns, state_->epoch),
           "DeleteYsqlDatabaseAsync");
     }
   };
@@ -427,18 +428,19 @@ Status NamespaceLoader::Visit(const NamespaceId& ns_id, const SysNamespaceEntryP
       // if the transaction is aborted.
       if (metadata.has_transaction()) {
         LOG(INFO) << "Enqueuing keyspace for Transaction Verification: " << ns->ToString();
-        TransactionMetadata txn = VERIFY_RESULT(
-            TransactionMetadata::FromPB(metadata.transaction()));
-        std::function<Status(bool)> when_done =
-            std::bind(&CatalogManager::VerifyNamespacePgLayer, catalog_manager_, ns, _1);
+        TransactionMetadata txn =
+            VERIFY_RESULT(TransactionMetadata::FromPB(metadata.transaction()));
+        std::function<Status(bool)> when_done = std::bind(
+            &CatalogManager::VerifyNamespacePgLayer, catalog_manager_, ns, _1, state_->epoch);
         state_->AddPostLoadTask(
-            std::bind(&YsqlTransactionDdl::VerifyTransaction,
-                      catalog_manager_->ysql_transaction_.get(),
-                      txn,
-                      nullptr /* table */,
-                      false /* has_ysql_ddl_state */,
-                      when_done),
-          "VerifyTransaction");
+            std::bind(
+                &YsqlTransactionDdl::VerifyTransaction,
+                catalog_manager_->ysql_transaction_.get(),
+                txn,
+                nullptr /* table */,
+                false /* has_ysql_ddl_state */,
+                when_done),
+            "VerifyTransaction");
       }
       break;
     case SysNamespaceEntryPB::PREPARING:
