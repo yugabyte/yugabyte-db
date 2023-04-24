@@ -931,6 +931,8 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
   ColumnId last_breaking_version_col_id =
       VERIFY_RESULT(schema.ColumnIdByName(kLastBreakingVersionColumnName));
 
+  // Grab a RequestScope to prevent intent clean up, before we Init the iterator.
+  auto request_scope = VERIFY_RESULT(tablet->CreateRequestScope());
   // We set up a QL_OP_EQUAL filter to read per-db catalog version. We don't need to set
   // up this filter to read the global catalog version.
   if (!versions && db_oid != kInvalidOid) {
