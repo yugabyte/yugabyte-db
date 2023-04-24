@@ -41,35 +41,47 @@ class TestAgeBasic(unittest.TestCase):
         self.ag.close()
 
     def testExec(self):
+
+        print("\n---------------------------------------------------")
+        print("Test 1: Checking single and multi column Returns.....")
+        print("---------------------------------------------------\n")
+
         ag = self.ag
         # Create and Return single column
         cursor = ag.execCypher("CREATE (n:Person {name: %s, title: 'Developer'}) RETURN n", params=('Andy',))
         for row in cursor:
-            print(Vertex, type(row[0]))
+            print("Vertex: %s , Type: %s " % (Vertex, type(row[0])))
 
         
         # Create and Return multi columns
         cursor = ag.execCypher("CREATE (n:Person {name: %s, title: %s}) RETURN id(n), n.name", cols=['id','name'], params=('Jack','Manager'))
         row = cursor.fetchone()
-        print(row[0], row[1])
+        print("Id: %s , Name: %s" % (row[0], row[1]))
         self.assertEqual(int, type(row[0]))
         ag.commit()
+        print("\nTest 1 Successful....")
+
 
             
         
     def testQuery(self):
+
+        print("\n--------------------------------------------------")
+        print("Test 2: Testing CREATE and query relationships....." )
+        print("--------------------------------------------------\n")
+
         ag = self.ag
         ag.execCypher("CREATE (n:Person {name: %s}) ", params=('Jack',))
         ag.execCypher("CREATE (n:Person {name: %s}) ", params=('Andy',))
         ag.execCypher("CREATE (n:Person {name: %s}) ", params=('Smith',))
-        ag.execCypher("MATCH (a:Person), (b:Person) WHERE a.name = 'Andy' AND b.name = 'Jack' CREATE (a)-[r:workWith {weight: 3}]->(b)")
+        ag.execCypher("MATCH (a:Person), (b:Person) WHERE a.name = 'Andy' AND b.name = 'Jack' CREATE (a)-[r:worksWith {weight: 3}]->(b)")
         ag.execCypher("""MATCH (a:Person), (b:Person) 
                     WHERE  a.name = %s AND b.name = %s 
-                    CREATE p=((a)-[r:workWith]->(b)) """, params=('Jack', 'Smith',))
+                    CREATE p=((a)-[r:worksWith]->(b)) """, params=('Jack', 'Smith',))
         
         ag.commit()
 
-        cursor = ag.execCypher("MATCH p=()-[:workWith]-() RETURN p")
+        cursor = ag.execCypher("MATCH p=()-[:worksWith]-() RETURN p")
         for row in cursor:
             path = row[0]
             print("START:", path[0])
@@ -82,10 +94,18 @@ class TestAgeBasic(unittest.TestCase):
             edgel = row[1]
             edgew = row[2]
             end = row[3]
-            print(start["name"] , edgel, edgew, end["name"]) 
-            
+            print("Relationship: %s %s %s. Edge weight: %s" % (start["name"] , edgel,end["name"], edgew)) 
+            #Assert that the weight of the edge is greater than 2
+            self.assertEqual(edgew > 2, True)  
+        print("\nTest 2 Successful...")
+
         
     def testChangeData(self):
+
+        print("\n-------------------------------------------------------")
+        print("Test 3: Testing changes in data using SET and REMOVE.....")
+        print("-------------------------------------------------------\n")
+
         ag = self.ag
         # Create Vertices
         # Commit automatically
@@ -116,7 +136,7 @@ class TestAgeBasic(unittest.TestCase):
         row = cursor.fetchone()
         vertex = row[0]
         for row in cursor:
-            print("SET bigNum: ", vertex)
+            print("SET bigNum: ", vertex['bigNum'])
         
         bigNum1 = vertex["bigNum"]
 
@@ -134,17 +154,25 @@ class TestAgeBasic(unittest.TestCase):
         cursor = ag.execCypher("MATCH (n:Person {name: %s}) REMOVE n.title RETURN n", params=('Smith',))
         for row in cursor:
             print("REMOVE Prop title: ", row[0])
+            #Assert that the title property is removed
+            self.assertIsNone(row[0].properties.get('title'))
+        print("\nTest 3 Successful....")
 
         # You must commit explicitly
         ag.commit()
 
     
     def testCypher(self):
+
+        print("\n--------------------------")
+        print("Test 4: Testing Cypher.....")
+        print("--------------------------\n")
+
         ag = self.ag
 
         with ag.connection.cursor() as cursor:
             try :
-                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Jone',))
+                ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Joe',))
                 ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Jack',))
                 ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Andy',))
                 ag.cypher(cursor, "CREATE (n:Person {name: %s}) ", params=('Smith',))
@@ -158,9 +186,9 @@ class TestAgeBasic(unittest.TestCase):
 
         with ag.connection.cursor() as cursor:
             try :# Create Edges
-                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE a.name = 'Joe' AND b.name = 'Smith' CREATE (a)-[r:workWith {weight: 3}]->(b)")
-                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE  a.name = 'Andy' AND b.name = 'Tom' CREATE (a)-[r:workWith {weight: 1}]->(b)")
-                ag.cypher(cursor,"MATCH (a:Person {name: 'Jack'}), (b:Person {name: 'Andy'}) CREATE (a)-[r:workWith {weight: 5}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE a.name = 'Joe' AND b.name = 'Smith' CREATE (a)-[r:worksWith {weight: 3}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE  a.name = 'Andy' AND b.name = 'Tom' CREATE (a)-[r:worksWith {weight: 1}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person {name: 'Jack'}), (b:Person {name: 'Andy'}) CREATE (a)-[r:worksWith {weight: 5}]->(b)")
 
                 # You must commit explicitly
                 ag.commit()
@@ -172,22 +200,30 @@ class TestAgeBasic(unittest.TestCase):
         # With Params
         cursor = ag.execCypher("""MATCH (a:Person), (b:Person) 
                 WHERE  a.name = %s AND b.name = %s 
-                CREATE p=((a)-[r:workWith]->(b)) RETURN p""", 
+                CREATE p=((a)-[r:worksWith]->(b)) RETURN p""", 
                 params=('Andy', 'Smith',))
 
         for row in cursor:
-            print(row[0])
+            print("CREATED EDGE: %s" % row[0])
             
         cursor = ag.execCypher("""MATCH (a:Person {name: 'Joe'}), (b:Person {name: 'Jack'}) 
-                CREATE p=((a)-[r:workWith {weight: 5}]->(b))
+                CREATE p=((a)-[r:worksWith {weight: 5}]->(b))
                 RETURN p """)
 
         for row in cursor:
-            print(row[0])
+            print("CREATED EDGE WITH PROPERTIES: %s" % row[0])
+            self.assertEqual(row[0][1].properties['weight'], 5)
+
+        print("\nTest 4 Successful...")
             
 
 
     def testMultipleEdges(self):
+
+        print("\n------------------------------------")
+        print("Test 5: Testing Multiple Edges.....")
+        print("------------------------------------\n")
+
         ag = self.ag
         with ag.connection.cursor() as cursor:
             try :
@@ -219,23 +255,33 @@ class TestAgeBasic(unittest.TestCase):
                 RETURN p""")
 
         count = 0
+        output = []
         for row in cursor:
             path = row[0]
-            indent = ""
             for e in path:
                 if e.gtype == age.TP_VERTEX:
-                    print(indent, e.label, e["name"])
+                    output.append(e.label + " " + e["name"])
                 elif e.gtype == age.TP_EDGE:
-                    print(indent, e.label, e["value"], e["unit"])
+                    output.append("---- (distance " + str(e["value"]) + " " + e["unit"] + ") --->")
                 else:
-                    print(indent, "Unknown element.", e)
+                    output.append("Unknown element. " + str(e))
                 
                 count += 1
-                indent += " >"
 
+        formatted_output = " ".join(output)
+        print("PATH WITH MULTIPLE EDGES: %s" % formatted_output)
         self.assertEqual(5,count)
 
+        print("\nTest 5 Successful...")
+
+
+
     def testCollect(self):
+
+        print("\n--------------------------")
+        print("Test 6: Testing COLLECT.....")
+        print("--------------------------\n")
+
         ag = self.ag
         
         with ag.connection.cursor() as cursor:
@@ -254,9 +300,9 @@ class TestAgeBasic(unittest.TestCase):
 
         with ag.connection.cursor() as cursor:
             try :# Create Edges
-                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE a.name = 'Joe' AND b.name = 'Smith' CREATE (a)-[r:workWith {weight: 3}]->(b)")
-                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE  a.name = 'Joe' AND b.name = 'Tom' CREATE (a)-[r:workWith {weight: 1}]->(b)")
-                ag.cypher(cursor,"MATCH (a:Person {name: 'Joe'}), (b:Person {name: 'Andy'}) CREATE (a)-[r:workWith {weight: 5}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE a.name = 'Joe' AND b.name = 'Smith' CREATE (a)-[r:worksWith {weight: 3}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person), (b:Person) WHERE  a.name = 'Joe' AND b.name = 'Tom' CREATE (a)-[r:worksWith {weight: 1}]->(b)")
+                ag.cypher(cursor,"MATCH (a:Person {name: 'Joe'}), (b:Person {name: 'Andy'}) CREATE (a)-[r:worksWith {weight: 5}]->(b)")
 
                 # You must commit explicitly
                 ag.commit()
@@ -264,22 +310,23 @@ class TestAgeBasic(unittest.TestCase):
                 print(ex)
                 ag.rollback()
 
-        print(" - COLLECT 1 --------")
+        print(" -------- TESTING COLLECT #1 --------")
         with ag.connection.cursor() as cursor:
-            ag.cypher(cursor, "MATCH (a)-[:workWith]->(c) WITH a as V, COLLECT(c) as CV RETURN V.name, CV", cols=["V","CV"])
+            ag.cypher(cursor, "MATCH (a)-[:worksWith]->(c) WITH a as V, COLLECT(c) as CV RETURN V.name, CV", cols=["V","CV"])
             for row in cursor:
                 nm = row[0]
                 collected = row[1]
-                print(nm, "workWith", [i["name"] for i in collected])
+                print(nm, "worksWith", [i["name"] for i in collected])
                 self.assertEqual(3,len(collected))
 
    
-        print(" - COLLECT 2 --------")
-        for row in ag.execCypher("MATCH (a)-[:workWith]->(c) WITH a as V, COLLECT(c) as CV RETURN V.name, CV", cols=["V1","CV"]):
+        print(" -------- TESTING COLLECT #2 --------")
+        for row in ag.execCypher("MATCH (a)-[:worksWith]->(c) WITH a as V, COLLECT(c) as CV RETURN V.name, CV", cols=["V1","CV"]):
             nm = row[0]
             collected = row[1]
-            print(nm, "workWith", [i["name"] for i in collected])
+            print(nm, "worksWith", [i["name"] for i in collected])
             self.assertEqual(3,len(collected))
+        print("\nTest 6 Successful...")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
