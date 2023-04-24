@@ -232,9 +232,7 @@ public abstract class KubernetesManager {
   }
 
   private Set<String> getNullValueKeys(Map<String, String> userMap) {
-    return userMap
-        .entrySet()
-        .stream()
+    return userMap.entrySet().stream()
         .filter(e -> e.getValue() == null)
         .map(Map.Entry::getKey)
         .collect(Collectors.toSet());

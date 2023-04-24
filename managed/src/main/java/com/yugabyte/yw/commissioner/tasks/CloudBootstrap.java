@@ -13,9 +13,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
@@ -97,8 +97,7 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.showSetUpChrony = provider.getDetails().showSetUpChrony;
       taskParams.skipProvisioning = provider.getDetails().skipProvisioning;
       taskParams.perRegionMetadata =
-          regions
-              .stream()
+          regions.stream()
               .collect(Collectors.toMap(region -> region.getCode(), PerRegionMetadata::fromRegion));
       return taskParams;
     }
@@ -180,16 +179,12 @@ public class CloudBootstrap extends CloudTaskBase {
           perRegionMetadata.azToSubnetIds = new HashMap<>();
         } else {
           perRegionMetadata.azToSubnetIds =
-              region
-                  .getZones()
-                  .stream()
+              region.getZones().stream()
                   .filter(zone -> zone.getName() != null && zone.getSubnet() != null)
                   .collect(Collectors.toMap(zone -> zone.getName(), zone -> zone.getSubnet()));
           // Check if the zones have a secondary subnet
           perRegionMetadata.azToSecondarySubnetIds =
-              region
-                  .getZones()
-                  .stream()
+              region.getZones().stream()
                   .filter(zone -> zone.getName() != null && zone.getSecondarySubnet() != null)
                   .collect(
                       Collectors.toMap(zone -> zone.getName(), zone -> zone.getSecondarySubnet()));

@@ -230,8 +230,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
         // If the table type is YCQL, delete the tables from the target universe, because if the
         // tables exist, the restore subtask will fail.
         List<String> tableNamesNeedBootstrap =
-            tablesInfoListNeedBootstrap
-                .stream()
+            tablesInfoListNeedBootstrap.stream()
                 .filter(
                     tableInfo ->
                         tableInfo.getRelationType()
@@ -239,8 +238,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
                 .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
                 .collect(Collectors.toList());
         List<String> tableNamesToDeleteOnTargetUniverse =
-            getTableInfoList(targetUniverse)
-                .stream()
+            getTableInfoList(targetUniverse).stream()
                 .filter(
                     tableInfo ->
                         tableType.equals(tableInfo.getTableType())
@@ -350,8 +348,7 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         dbToTablesInfoMapNeedBootstrap =
-            requestedTableInfoList
-                .stream()
+            requestedTableInfoList.stream()
                 .filter(
                     tableInfo ->
                         tableIdsNeedBootstrapAfterChanges.contains(
@@ -433,20 +430,17 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     keyspaceTable.keyspace = tablesInfoListNeedBootstrap.get(0).getNamespace().getName();
     if (backupRequestParams.backupType != CommonTypes.TableType.PGSQL_TABLE_TYPE) {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesNeedBootstrapInfoList =
-          tablesInfoListNeedBootstrap
-              .stream()
+          tablesInfoListNeedBootstrap.stream()
               .filter(
                   tableInfo ->
                       tableInfo.getRelationType() != MasterTypes.RelationType.INDEX_TABLE_RELATION)
               .collect(Collectors.toList());
       keyspaceTable.tableNameList =
-          tablesNeedBootstrapInfoList
-              .stream()
+          tablesNeedBootstrapInfoList.stream()
               .map(MasterDdlOuterClass.ListTablesResponsePB.TableInfo::getName)
               .collect(Collectors.toList());
       keyspaceTable.tableUUIDList =
-          tablesNeedBootstrapInfoList
-              .stream()
+          tablesNeedBootstrapInfoList.stream()
               .map(tableInfo -> Util.getUUIDRepresentation(tableInfo.getId().toStringUtf8()))
               .collect(Collectors.toList());
     }

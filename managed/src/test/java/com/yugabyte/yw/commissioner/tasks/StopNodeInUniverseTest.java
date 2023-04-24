@@ -540,9 +540,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseUUID(),
             u -> {
               NodeDetails node =
-                  u.getUniverseDetails()
-                      .nodeDetailsSet
-                      .stream()
+                  u.getUniverseDetails().nodeDetailsSet.stream()
                       .filter(n -> n.isMaster)
                       .findFirst()
                       .get();

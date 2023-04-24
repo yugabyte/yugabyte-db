@@ -73,16 +73,12 @@ public class UniverseInfoHandler {
         .getCurrentClusterType()
         .equals(UniverseDefinitionTaskParams.ClusterType.PRIMARY)) {
       nodesInCluster =
-          taskParams
-              .nodeDetailsSet
-              .stream()
+          taskParams.nodeDetailsSet.stream()
               .filter(n -> n.isInPlacement(taskParams.getPrimaryCluster().uuid))
               .collect(Collectors.toSet());
     } else {
       nodesInCluster =
-          taskParams
-              .nodeDetailsSet
-              .stream()
+          taskParams.nodeDetailsSet.stream()
               .filter(n -> n.isInPlacement(taskParams.getReadOnlyClusters().get(0).uuid))
               .collect(Collectors.toSet());
     }
@@ -312,8 +308,7 @@ public class UniverseInfoHandler {
       List<MetricQueryResponse.Entry> values) {
     Map<String, Map<Integer, Boolean>> nodePortStatus = new HashMap<>();
 
-    values
-        .stream()
+    values.stream()
         .filter(entry -> entry.labels != null && entry.labels.containsKey("instance"))
         .filter(entry -> CollectionUtils.isNotEmpty(entry.values))
         .forEach(

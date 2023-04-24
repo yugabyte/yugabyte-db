@@ -169,8 +169,7 @@ public class MetricQueryResponse {
         nameOrderMap.put(alias, position++);
       }
     }
-    return graphData
-        .stream()
+    return graphData.stream()
         .sorted(
             Comparator.comparing(
                 data -> {

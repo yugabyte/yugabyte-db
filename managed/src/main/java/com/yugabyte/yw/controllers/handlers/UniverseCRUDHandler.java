@@ -281,9 +281,7 @@ public class UniverseCRUDHandler {
       if (op == OpType.CREATE || op == OpType.UPDATE) {
         int nodesInDefRegion =
             (int)
-                taskParams
-                    .nodeDetailsSet
-                    .stream()
+                taskParams.nodeDetailsSet.stream()
                     .filter(n -> n.isActive() && defaultRegion.getCode().equals(n.cloudInfo.region))
                     .count();
         if (nodesInDefRegion < intent.replicationFactor) {
@@ -1307,8 +1305,7 @@ public class UniverseCRUDHandler {
         universe.getUniverseDetails().getNonPrimaryClusters();
 
     Cluster cluster =
-        existingNonPrimaryClusters
-            .stream()
+        existingNonPrimaryClusters.stream()
             .filter(c -> c.uuid.equals(clusterUUID))
             .findFirst()
             .orElse(null);
@@ -1879,8 +1876,7 @@ public class UniverseCRUDHandler {
 
     // Collect all the nodes which are not in ToBeAdded state and validate.
     Map<String, NodeDetails> inputNodesMap =
-        inputNodes
-            .stream()
+        inputNodes.stream()
             .filter(
                 node -> {
                   if (node.state != NodeState.ToBeAdded) {
@@ -1924,8 +1920,7 @@ public class UniverseCRUDHandler {
     }
 
     // Ensure all the nodes in the cluster are present in the input.
-    existingNodes
-        .stream()
+    existingNodes.stream()
         .filter(existingNode -> existingNode.state != NodeState.ToBeAdded)
         .forEach(
             existingNode -> {
@@ -1956,15 +1951,11 @@ public class UniverseCRUDHandler {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     Set<UUID> taskParamClustersUuids =
-        taskParams
-            .clusters
-            .stream()
+        taskParams.clusters.stream()
             .map(c -> c.uuid)
             .collect(Collectors.toCollection(HashSet::new));
 
-    universeDetails
-        .clusters
-        .stream()
+    universeDetails.clusters.stream()
         .forEach(
             c -> {
               taskParamClustersUuids.remove(c.uuid);

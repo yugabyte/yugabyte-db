@@ -41,8 +41,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -174,12 +172,10 @@ public class CustomerTaskController extends AuthenticatedController {
     Set<UUID> taskUuids =
         customerTaskList.stream().map(CustomerTask::getTaskUUID).collect(Collectors.toSet());
     Map<UUID, TaskInfo> taskInfoMap =
-        TaskInfo.find(taskUuids)
-            .stream()
+        TaskInfo.find(taskUuids).stream()
             .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
     Map<UUID, CustomerTask> lastTaskByTargetMap =
-        customerTaskList
-            .stream()
+        customerTaskList.stream()
             .filter(c -> c.getCompletionTime() != null)
             .collect(
                 Collectors.toMap(

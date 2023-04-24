@@ -500,9 +500,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
       // Persist whether bootstrap is required.
       Map<Boolean, List<String>> tableIdsPartitionedByNeedBootstrap =
-          isBootstrapRequiredMap
-              .keySet()
-              .stream()
+          isBootstrapRequiredMap.keySet().stream()
               .collect(Collectors.partitioningBy(isBootstrapRequiredMap::get));
       xClusterConfig.updateNeedBootstrapForTables(
           tableIdsPartitionedByNeedBootstrap.get(true), true /* needBootstrap */);
@@ -528,9 +526,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @see #checkBootstrapRequiredForReplicationSetup(Set)
    */
   protected Set<XClusterTableConfig> getTablesNeedBootstrap(Set<String> tableIds) {
-    return getXClusterConfigFromTaskParams()
-        .getTablesById(tableIds)
-        .stream()
+    return getXClusterConfigFromTaskParams().getTablesById(tableIds).stream()
         .filter(tableConfig -> tableConfig.isNeedBootstrap())
         .collect(Collectors.toSet());
   }
@@ -541,8 +537,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected Set<String> getTableIdsNeedBootstrap(Set<String> tableIds) {
-    return getTablesNeedBootstrap(tableIds)
-        .stream()
+    return getTablesNeedBootstrap(tableIds).stream()
         .map(tableConfig -> tableConfig.getTableId())
         .collect(Collectors.toSet());
   }
@@ -562,9 +557,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @see #checkBootstrapRequiredForReplicationSetup(Set)
    */
   protected Set<XClusterTableConfig> getTablesNotNeedBootstrap(Set<String> tableIds) {
-    return getXClusterConfigFromTaskParams()
-        .getTablesById(tableIds)
-        .stream()
+    return getXClusterConfigFromTaskParams().getTablesById(tableIds).stream()
         .filter(tableConfig -> !tableConfig.isNeedBootstrap())
         .collect(Collectors.toSet());
   }
@@ -575,8 +568,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   protected Set<String> getTableIdsNotNeedBootstrap(Set<String> tableIds) {
-    return getTablesNotNeedBootstrap(tableIds)
-        .stream()
+    return getTablesNotNeedBootstrap(tableIds).stream()
         .map(tableConfig -> tableConfig.getTableId())
         .collect(Collectors.toSet());
   }
@@ -652,10 +644,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             return;
           }
           consumerTableIdsFromClusterConfig.addAll(
-              replicationGroup
-                  .getStreamMapMap()
-                  .values()
-                  .stream()
+              replicationGroup.getStreamMapMap().values().stream()
                   .map(StreamEntryPB::getConsumerTableId)
                   .collect(Collectors.toSet()));
         });
@@ -700,9 +689,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     // Sync id and status for each stream.
     Map<String, CdcConsumer.StreamEntryPB> replicationStreams = replicationGroup.getStreamMapMap();
     Map<String, String> streamMap =
-        replicationStreams
-            .entrySet()
-            .stream()
+        replicationStreams.entrySet().stream()
             .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
     for (String tableId : tableIds) {
       Optional<XClusterTableConfig> tableConfig = xClusterConfig.maybeGetTableById(tableId);
@@ -759,10 +746,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 xClusterConfig.getTargetUniverseUUID()));
       }
       Map<String, String> txnReplicationStreamMap =
-          txnTableReplicationGroup
-              .getStreamMapMap()
-              .entrySet()
-              .stream()
+          txnTableReplicationGroup.getStreamMapMap().entrySet().stream()
               .collect(Collectors.toMap(e -> e.getValue().getProducerTableId(), Map.Entry::getKey));
       XClusterTableConfig txnTableConfig = xClusterConfig.getTxnTableDetails();
       if (Objects.isNull(txnTableConfig)) {
@@ -971,10 +955,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     Set<String> tableIdsWithReplication =
-        replicationGroup
-            .getStreamMapMap()
-            .values()
-            .stream()
+        replicationGroup.getStreamMapMap().values().stream()
             .map(CdcConsumer.StreamEntryPB::getProducerTableId)
             .collect(Collectors.toSet());
     log.debug("Table ids found in the target universe cluster config: {}", tableIdsWithReplication);
@@ -1035,8 +1016,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-        sourceTableInfoList
-            .stream()
+        sourceTableInfoList.stream()
             .filter(tableInfo -> requestedTableIds.contains(tableInfo.getId().toStringUtf8()))
             .collect(Collectors.toList());
 
@@ -1044,8 +1024,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     if (requestedTableInfoList.size() != requestedTableIds.size()) {
       Set<String> foundTableIds = getTableIds(requestedTableInfoList);
       Set<String> missingTableIds =
-          requestedTableIds
-              .stream()
+          requestedTableIds.stream()
               .filter(tableId -> !foundTableIds.contains(tableId))
               .collect(Collectors.toSet());
       throw new IllegalArgumentException(
@@ -1057,8 +1036,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
     CommonTypes.TableType tableType = requestedTableInfoList.get(0).getTableType();
     // All tables have the same type.
-    if (!requestedTableInfoList
-        .stream()
+    if (!requestedTableInfoList.stream()
         .allMatch(tableInfo -> tableInfo.getTableType().equals(tableType))) {
       throw new IllegalArgumentException(
           "At least one table has a different type from others. "
@@ -1106,9 +1084,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       // replication. It also includes tables that are in reverse replication between the same
       // universes.
       Map<String, String> sourceTableIdTargetTableIdWithBootstrapMap =
-          sourceTableIdTargetTableIdMap
-              .entrySet()
-              .stream()
+          sourceTableIdTargetTableIdMap.entrySet().stream()
               .filter(entry -> bootstrapParams.tables.contains(entry.getKey()))
               .collect(Collectors.toMap(Entry::getKey, Entry::getValue));
       bootstrapParams.tables =
@@ -1125,14 +1101,12 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
                 (namespaceId, tablesInfoList) -> {
                   Set<String> selectedTableIdsInNamespace = getTableIds(tablesInfoList);
                   Set<String> tableIdsNeedBootstrap =
-                      selectedTableIdsInNamespace
-                          .stream()
+                      selectedTableIdsInNamespace.stream()
                           .filter(bootstrapParams.tables::contains)
                           .collect(Collectors.toSet());
                   if (!tableIdsNeedBootstrap.isEmpty()) {
                     Set<String> tableIdsInNamespace =
-                        sourceTableInfoList
-                            .stream()
+                        sourceTableInfoList.stream()
                             .filter(
                                 tableInfo ->
                                     !tableInfo
@@ -1201,9 +1175,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     xClusterConfigsAsSource.forEach(
         xClusterConfig -> {
           tableIdsInReplicationOnTargetUniverse.addAll(
-              xClusterConfig
-                  .getTableIds()
-                  .stream()
+              xClusterConfig.getTableIds().stream()
                   .filter(tableIds::contains)
                   .collect(Collectors.toSet()));
         });
@@ -1247,9 +1219,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             + "bootstrapped; Bootstrapping for their corresponding source table will be disabled.",
         tableIdsInReplicationOnTargetUniverse,
         targetUniverse.getUniverseUUID());
-    return sourceTableIdTargetTableIdMap
-        .entrySet()
-        .stream()
+    return sourceTableIdTargetTableIdMap.entrySet().stream()
         .filter(entry -> !tableIdsInReplicationOnTargetUniverse.contains(entry.getValue()))
         .map(Entry::getKey)
         .collect(Collectors.toSet());
@@ -1272,8 +1242,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
         targetNamespaceNameTablesInfoListMap =
             groupByNamespaceName(
-                targetTablesInfoList
-                    .stream()
+                targetTablesInfoList.stream()
                     .filter(tableInfo -> tableInfo.getTableType().equals(tableType))
                     .collect(Collectors.toList()));
 
@@ -1349,8 +1318,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     Map<String, String> sourceTableIdTargetTableIdMap = new HashMap<>();
     Set<String> notFoundTables = new HashSet<>();
     Map<String, String> tableNameTableIdOnTargetMap =
-        tableInfoListOnTarget
-            .stream()
+        tableInfoListOnTarget.stream()
             .collect(
                 Collectors.toMap(
                     TableInfo::getName, tableInfo -> tableInfo.getId().toStringUtf8()));
@@ -1426,16 +1394,14 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static Set<String> getTableIdsToAdd(
       Set<String> currentTableIds, Set<String> destinationTableIds) {
-    return destinationTableIds
-        .stream()
+    return destinationTableIds.stream()
         .filter(tableId -> !currentTableIds.contains(tableId))
         .collect(Collectors.toSet());
   }
 
   public static Set<String> getTableIdsToRemove(
       Set<String> currentTableIds, Set<String> destinationTableIds) {
-    return currentTableIds
-        .stream()
+    return currentTableIds.stream()
         .filter(tableId -> !destinationTableIds.contains(tableId))
         .collect(Collectors.toSet());
   }
@@ -1448,8 +1414,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   }
 
   public static Set<String> convertTableUuidStringsToTableIdSet(Collection<String> tableUuids) {
-    return tableUuids
-        .stream()
+    return tableUuids.stream()
         .map(uuidOrId -> uuidOrId.replace("-", ""))
         .collect(Collectors.toSet());
   }
@@ -1479,8 +1444,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
       YBClientService ybService, Universe universe, Collection<String> tableIds) {
-    return getTableInfoList(ybService, universe)
-        .stream()
+    return getTableInfoList(ybService, universe).stream()
         .filter(tableInfo -> tableIds.contains(tableInfo.getId().toStringUtf8()))
         .collect(Collectors.toList());
   }
@@ -1499,8 +1463,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     if (tablesInfoList == null) {
       return Collections.emptySet();
     }
-    return tablesInfoList
-        .stream()
+    return tablesInfoList.stream()
         .map(XClusterConfigTaskBase::getTableId)
         .collect(Collectors.toSet());
   }
@@ -1519,8 +1482,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
       groupByNamespaceId(
           Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
-    return tablesInfoList
-        .stream()
+    return tablesInfoList.stream()
         .collect(
             Collectors.groupingBy(tableInfo -> tableInfo.getNamespace().getId().toStringUtf8()));
   }
@@ -1528,8 +1490,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   public static Map<String, List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>>
       groupByNamespaceName(
           Collection<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tablesInfoList) {
-    return tablesInfoList
-        .stream()
+    return tablesInfoList.stream()
         .collect(Collectors.groupingBy(tableInfo -> tableInfo.getNamespace().getName()));
   }
 

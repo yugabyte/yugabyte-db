@@ -564,12 +564,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       int change,
       Predicate<PlacementAZ> filter) {
     Optional<PlacementAZ> zone =
-        udtp.getPrimaryCluster()
-            .placementInfo
-            .cloudList
-            .get(cloudIndex)
-            .regionList
-            .stream()
+        udtp.getPrimaryCluster().placementInfo.cloudList.get(cloudIndex).regionList.stream()
             .flatMap(r -> r.azList.stream())
             .filter(filter)
             .findFirst();
@@ -613,8 +608,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
       // Don't remove node from the same availability zone, otherwise
       // updateUniverseDefinition will rebuild a lot of nodes (by unknown reason).
       List<UUID> zonesWithRemovedServers =
-          nodes
-              .stream()
+          nodes.stream()
               .filter(node -> !node.isActive())
               .map(node -> node.azUuid)
               .collect(Collectors.toList());
@@ -664,22 +658,12 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Universe.saveDetails(univUuid, t.setAzUUIDs());
     t.setAzUUIDs(ud);
     int numAzs =
-        t.universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .placementInfo
-            .cloudList
-            .stream()
+        t.universe.getUniverseDetails().getPrimaryCluster().placementInfo.cloudList.stream()
             .flatMap(cloud -> cloud.regionList.stream())
             .map(region -> region.azList.size())
             .reduce(0, Integer::sum);
     List<PlacementAZ> placementAZS =
-        t.universe
-            .getUniverseDetails()
-            .getPrimaryCluster()
-            .placementInfo
-            .cloudList
-            .stream()
+        t.universe.getUniverseDetails().getPrimaryCluster().placementInfo.cloudList.stream()
             .flatMap(cloud -> cloud.regionList.stream())
             .flatMap(region -> region.azList.stream())
             .collect(Collectors.toList());
@@ -825,8 +809,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     createUniverse(customer.getId());
     Provider p =
-        testData
-            .stream()
+        testData.stream()
             .filter(t -> t.provider.getCode().equals(onprem.name()))
             .findFirst()
             .get()
@@ -866,8 +849,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     Customer customer = ModelFactory.testCustomer();
     Universe universe = createUniverse(customer.getId());
     Provider p =
-        testData
-            .stream()
+        testData.stream()
             .filter(t -> t.provider.getCode().equals(onprem.name()))
             .findFirst()
             .get()
@@ -2118,8 +2100,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     selection.addedMasters.forEach(allNodes::add);
 
     List<NodeDetails> masters =
-        allNodes
-            .stream()
+        allNodes.stream()
             .filter(
                 node ->
                     node.state != ToBeRemoved
@@ -2399,8 +2380,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertNotNull(pi);
 
     List<PlacementAZ> placementAZs =
-        pi.cloudList
-            .stream()
+        pi.cloudList.stream()
             .flatMap(c -> c.regionList.stream())
             .flatMap(region -> region.azList.stream())
             .collect(Collectors.toList());
@@ -2417,20 +2397,17 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertNotNull(pi);
 
     placementAZs =
-        pi.cloudList
-            .stream()
+        pi.cloudList.stream()
             .flatMap(c -> c.regionList.stream())
             .flatMap(region -> region.azList.stream())
             .collect(Collectors.toList());
     assertTrue(
-        placementAZs
-                .stream()
+        placementAZs.stream()
                 .filter(p -> defaultAZs.contains(p.uuid) && p.replicationFactor > 0)
                 .count()
             > 0);
     assertTrue(
-        placementAZs
-                .stream()
+        placementAZs.stream()
                 .filter(p -> !defaultAZs.contains(p.uuid) && p.replicationFactor > 0)
                 .count()
             > 0);
@@ -2871,8 +2848,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     assertEquals(nodesToMove, PlacementInfoUtil.getTserversToProvision(primaryNodes).size());
 
     Set<NodeDetails> replicaNodes =
-        udtp.nodeDetailsSet
-            .stream()
+        udtp.nodeDetailsSet.stream()
             .filter(n -> !n.isInPlacement(primaryCluster.uuid))
             .collect(Collectors.toSet());
     assertEquals(0, PlacementInfoUtil.getTserversToBeRemoved(replicaNodes).size());
@@ -2969,15 +2945,13 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UUID primaryClusterUUID = primaryCluster.uuid;
     // Adding nodes from Read Replica.
     Set<NodeDetails> replicaNodes =
-        udtp.nodeDetailsSet
-            .stream()
+        udtp.nodeDetailsSet.stream()
             .filter(n -> !n.isInPlacement(primaryClusterUUID))
             .collect(Collectors.toSet());
     updatedNodes.addAll(replicaNodes);
     // Adding nodes from the primary cluster.
     updatedNodes.addAll(
-        udtp.nodeDetailsSet
-            .stream()
+        udtp.nodeDetailsSet.stream()
             .filter(n -> n.isInPlacement(primaryClusterUUID))
             .collect(Collectors.toSet()));
     updatedNodes.forEach(n -> n.state = NodeState.ToBeAdded);
@@ -3003,10 +2977,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     params.currentClusterType = ClusterType.PRIMARY;
     params.clusters = existing.getUniverseDetails().clusters;
     params.nodeDetailsSet =
-        existing
-            .getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        existing.getUniverseDetails().nodeDetailsSet.stream()
             .peek(
                 node -> {
                   node.isMaster = false;
@@ -3059,9 +3030,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
         params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
 
     long cnt =
-        params
-            .nodeDetailsSet
-            .stream()
+        params.nodeDetailsSet.stream()
             .filter(n -> n.isTserver)
             .mapToInt(
                 node -> {
@@ -3075,9 +3044,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
             .sum();
     assertEquals(3, cnt); // 3 masters marked to stop.
     cnt =
-        params
-            .nodeDetailsSet
-            .stream()
+        params.nodeDetailsSet.stream()
             .filter(n -> n.state == NodeState.ToBeAdded)
             .peek(
                 node -> {
@@ -3128,9 +3095,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
 
     AtomicInteger addedMasters = new AtomicInteger();
     AtomicInteger addedTservers = new AtomicInteger();
-    params
-        .nodeDetailsSet
-        .stream()
+    params.nodeDetailsSet.stream()
         .filter(n -> n.state == NodeState.ToBeAdded)
         .forEach(
             node -> {
@@ -3169,8 +3134,7 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     UUID clusterUUID = UUID.randomUUID();
 
     List<NodeDetails> currentNodes =
-        Arrays.asList(z1, z2, z2)
-            .stream()
+        Arrays.asList(z1, z2, z2).stream()
             .map(
                 zone -> {
                   NodeDetails details = new NodeDetails();
@@ -3386,15 +3350,11 @@ public class PlacementInfoUtilTest extends FakeDBApplication {
     PlacementInfoUtil.updateUniverseDefinition(
         params, customer.getId(), params.getPrimaryCluster().uuid, EDIT);
     List<NodeDetails> toBeAdded =
-        params
-            .nodeDetailsSet
-            .stream()
+        params.nodeDetailsSet.stream()
             .filter(n -> n.state == ToBeAdded)
             .collect(Collectors.toList());
     List<NodeDetails> toBeRemoved =
-        params
-            .nodeDetailsSet
-            .stream()
+        params.nodeDetailsSet.stream()
             .filter(n -> n.state == ToBeRemoved)
             .collect(Collectors.toList());
     assertEquals(3, toBeAdded.size());

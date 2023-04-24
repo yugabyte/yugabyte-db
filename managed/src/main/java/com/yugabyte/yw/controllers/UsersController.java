@@ -23,19 +23,17 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
-
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-
 import net.logstash.logback.encoder.org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.data.Form;
 import play.libs.Json;
-import play.mvc.Result;
 import play.mvc.Http;
+import play.mvc.Result;
 
 @Api(
     value = "User management",
@@ -91,8 +89,7 @@ public class UsersController extends AuthenticatedController {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     List<Users> users = Users.getAll(customerUUID);
     List<UserWithFeatures> userWithFeaturesList =
-        users
-            .stream()
+        users.stream()
             .map(user -> userService.getUserWithFeatures(customer, user))
             .collect(Collectors.toList());
     return PlatformResults.withData(userWithFeaturesList);

@@ -16,7 +16,6 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
-
 import java.util.Map;
 import java.util.Set;
 import org.junit.Before;

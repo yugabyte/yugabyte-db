@@ -711,8 +711,7 @@ public class CustomerTask extends Model {
   }
 
   private static String maybeGetEmailFromSchedule() {
-    return Schedule.getAllActive()
-        .stream()
+    return Schedule.getAllActive().stream()
         .filter(Schedule::isRunningState)
         .findAny()
         .map(Schedule::getUserEmail)

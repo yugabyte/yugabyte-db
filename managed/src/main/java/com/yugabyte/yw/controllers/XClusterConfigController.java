@@ -380,9 +380,7 @@ public class XClusterConfigController extends AuthenticatedController {
     if (Objects.isNull(isBootstrapRequiredMap)) {
       // We do not update the xCluster config object in the DB intentionally because `UnableToFetch`
       // is only a user facing status.
-      xClusterConfig
-          .getTableDetails(true /* includeTxnTableIfExists */)
-          .stream()
+      xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
           .filter(tableConfig -> tableIdsInRunningStatus.contains(tableConfig.getTableId()))
           .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
     } else {
@@ -392,17 +390,13 @@ public class XClusterConfigController extends AuthenticatedController {
                       isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()))
                   || isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()));
       Set<String> tableIdsInErrorStatus =
-          isBootstrapRequiredMap
-              .entrySet()
-              .stream()
+          isBootstrapRequiredMap.entrySet().stream()
               .filter(e -> e.getValue() || isTxnTableInErrorStatus)
               .map(Map.Entry::getKey)
               .collect(Collectors.toSet());
       // We do not update the xCluster config object in the DB intentionally because `Error` is
       // only a user facing status.
-      xClusterConfig
-          .getTableDetails(true /* includeTxnTableIfExists */)
-          .stream()
+      xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
           .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.getTableId()))
           .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.Error));
     }
@@ -471,14 +465,11 @@ public class XClusterConfigController extends AuthenticatedController {
             XClusterConfigTaskBase.getMainTableIndexTablesMap(
                 this.ybService, sourceUniverse, allTableIds);
         Set<String> indexTableIdSet =
-            mainTableToAddIndexTablesMap
-                .values()
-                .stream()
+            mainTableToAddIndexTablesMap.values().stream()
                 .flatMap(List::stream)
                 .collect(Collectors.toSet());
         Set<String> indexTableIdSetToAdd =
-            indexTableIdSet
-                .stream()
+            indexTableIdSet.stream()
                 .filter(tableId -> !xClusterConfig.getTableIds().contains(tableId))
                 .collect(Collectors.toSet());
         allTableIds.addAll(indexTableIdSet);
@@ -526,9 +517,7 @@ public class XClusterConfigController extends AuthenticatedController {
             XClusterConfigTaskBase.getMainTableIndexTablesMap(
                 this.ybService, sourceUniverse, tableIdsToRemove);
         Set<String> indexTableIdSet =
-            mainTableIndexTablesMap
-                .values()
-                .stream()
+            mainTableIndexTablesMap.values().stream()
                 .flatMap(List::stream)
                 .filter(currentTableIds::contains)
                 .collect(Collectors.toSet());
@@ -858,9 +847,7 @@ public class XClusterConfigController extends AuthenticatedController {
       // to get the bootstrapping parameters in the UI so always pass true.
       if (configType.equals(ConfigType.Txn)) {
         isBootstrapRequiredMap =
-            needBootstrapFormData
-                .tables
-                .stream()
+            needBootstrapFormData.tables.stream()
                 .collect(Collectors.toMap(tableId -> tableId, tableId -> true));
       } else {
         isBootstrapRequiredMap =

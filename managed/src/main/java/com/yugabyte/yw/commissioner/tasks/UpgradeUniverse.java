@@ -137,8 +137,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
                 Provider.getOrBadRequest(UUID.fromString(provider)), config);
         log.info(instanceTypes.toString());
         InstanceType newInstanceType =
-            instanceTypes
-                .stream()
+            instanceTypes.stream()
                 .filter(type -> type.getInstanceTypeCode().equals(newInstanceTypeCode))
                 .findFirst()
                 .orElse(null);
@@ -358,8 +357,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     if (nodes.isEmpty()) {
       return nodes;
     }
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(
                     node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
@@ -376,8 +374,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     Map<UUID, Map<UUID, PlacementInfo.PlacementAZ>> placementAZMapPerCluster =
         PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(
                     // Fully upgrade primary cluster first
@@ -449,8 +446,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
               if (!taskParams().forceVMImageUpgrade) {
                 numVolumes =
                     (int)
-                        e.getValue()
-                            .stream()
+                        e.getValue().stream()
                             .filter(n -> !machineImage.equals(n.machineImage))
                             .count();
               }
@@ -741,8 +737,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
       // Upgrading inactive masters from the Primary cluster only.
       List<NodeDetails> inactiveMasterNodes =
           tServerNodes != null
-              ? tServerNodes
-                  .stream()
+              ? tServerNodes.stream()
                   .filter(node -> node.placementUuid.equals(primaryClusterUuid))
                   .filter(node -> masterNodes == null || !masterNodes.contains(node))
                   .collect(Collectors.toList())

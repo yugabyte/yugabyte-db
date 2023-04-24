@@ -811,8 +811,7 @@ public class ReleaseManager {
             Status.BAD_REQUEST, "Could not find versions in response JSON.");
       }
       JsonNode latestRelease =
-          releases
-              .stream()
+          releases.stream()
               .filter(r -> Util.isYbVersionFormatValid(r.get("name").asText()))
               .filter(r -> Util.compareYbVersions(currentVersion, r.get("name").asText()) >= 0)
               .sorted(releaseNameComparator)

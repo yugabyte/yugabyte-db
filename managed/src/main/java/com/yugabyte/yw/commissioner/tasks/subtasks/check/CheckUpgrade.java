@@ -123,9 +123,7 @@ public class CheckUpgrade extends ServerSubTaskBase {
   private void checkAutoFlagsAvailability(
       ProtocolStringList oldFlags, AutoFlagsPerServer newFlags, String version) {
     for (String oldFlag : oldFlags) {
-      if (!newFlags
-          .autoFlagDetails
-          .stream()
+      if (!newFlags.autoFlagDetails.stream()
           .filter((flag -> flag.name.equals(oldFlag)))
           .findAny()
           .isPresent()) {

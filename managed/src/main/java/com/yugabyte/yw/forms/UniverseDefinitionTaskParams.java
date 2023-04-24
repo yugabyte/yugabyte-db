@@ -854,8 +854,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   @JsonIgnore
   public Cluster getPrimaryCluster() {
     List<Cluster> foundClusters =
-        clusters
-            .stream()
+        clusters.stream()
             .filter(c -> c.clusterType.equals(ClusterType.PRIMARY))
             .collect(Collectors.toList());
     if (foundClusters.size() > 1) {
@@ -898,16 +897,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @JsonIgnore
   public List<Cluster> getClusterByType(ClusterType clusterType) {
-    return clusters
-        .stream()
+    return clusters.stream()
         .filter(c -> c.clusterType.equals(clusterType))
         .collect(Collectors.toList());
   }
 
   @JsonIgnore
   public List<Cluster> getNonPrimaryClusters() {
-    return clusters
-        .stream()
+    return clusters.stream()
         .filter(c -> !c.clusterType.equals(ClusterType.PRIMARY))
         .collect(Collectors.toList());
   }
@@ -1036,8 +1033,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (universeUuid == null) {
         return new ArrayList<>();
       }
-      return XClusterConfig.getByTargetUniverseUUID(universeUuid)
-          .stream()
+      return XClusterConfig.getByTargetUniverseUUID(universeUuid).stream()
           .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }
@@ -1048,8 +1044,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       if (universeUuid == null) {
         return Collections.emptyList();
       }
-      return XClusterConfig.getBySourceUniverseUUID(universeUuid)
-          .stream()
+      return XClusterConfig.getBySourceUniverseUUID(universeUuid).stream()
           .map(xClusterConfig -> xClusterConfig.getUuid())
           .collect(Collectors.toList());
     }

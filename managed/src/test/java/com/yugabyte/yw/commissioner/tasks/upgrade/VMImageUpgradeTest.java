@@ -191,8 +191,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
      * from subTasks before asserting for required keys.
      */
     createRootVolumeTasks =
-        createRootVolumeTasks
-            .stream()
+        createRootVolumeTasks.stream()
             .filter(t -> t.getTaskType() != TaskType.ModifyBlackList)
             .collect(Collectors.toList());
     createRootVolumeTasks.forEach(

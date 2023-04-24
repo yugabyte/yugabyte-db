@@ -32,12 +32,12 @@ import com.yugabyte.yw.forms.TableManagerParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.io.File;
@@ -129,8 +129,7 @@ public class TableManager extends DevopsBase {
         && !tservers.get(0).cloudInfo.secondary_private_ip.equals("null")
         && !legacyNet) {
       secondaryToPrimaryIP =
-          tservers
-              .stream()
+          tservers.stream()
               .collect(
                   Collectors.toMap(
                       t -> t.cloudInfo.secondary_private_ip, t -> t.cloudInfo.private_ip));

@@ -114,10 +114,7 @@ public class AllowedActionsHelper {
       if (node.isMaster) {
         // a primary node is being removed
         long numNodesUp =
-            universe
-                .getUniverseDetails()
-                .getNodesInCluster(cluster.uuid)
-                .stream()
+            universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
                 .filter(n -> n != node && n.state == Live)
                 .count();
         if (numNodesUp == 0) {
@@ -134,10 +131,7 @@ public class AllowedActionsHelper {
       if (node.isMaster) {
         // Number of live masters excluding this node.
         long numOtherMasterNodesUp =
-            universe
-                .getUniverseDetails()
-                .getNodesInCluster(cluster.uuid)
-                .stream()
+            universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
                 .filter(n -> n.isMaster && n.state == Live)
                 .filter(n -> !n.nodeName.equals(node.nodeName))
                 .count();

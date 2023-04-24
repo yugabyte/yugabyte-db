@@ -129,8 +129,7 @@ public abstract class AlertChannelBase implements AlertChannelInterface {
       this.channel = channel;
       this.templates = templates;
       this.labelDefaultValues =
-          variables
-              .stream()
+          variables.stream()
               .collect(
                   Collectors.toMap(
                       AlertTemplateVariable::getName, AlertTemplateVariable::getDefaultValue));

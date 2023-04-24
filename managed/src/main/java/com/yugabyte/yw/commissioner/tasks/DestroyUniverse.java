@@ -24,15 +24,14 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
@@ -214,8 +213,7 @@ public class DestroyUniverse extends UniverseTaskBase {
   protected void createDeleteXClusterConfigSubtasksAndLockOtherUniverses() {
     // XCluster configs whose other universe exists.
     List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getByUniverseUuid(params().getUniverseUUID())
-            .stream()
+        XClusterConfig.getByUniverseUuid(params().getUniverseUUID()).stream()
             .filter(
                 xClusterConfig ->
                     xClusterConfig.getStatus()
@@ -231,8 +229,7 @@ public class DestroyUniverse extends UniverseTaskBase {
         });
 
     Map<UUID, List<XClusterConfig>> otherUniverseUuidToXClusterConfigsMap =
-        xClusterConfigs
-            .stream()
+        xClusterConfigs.stream()
             .collect(
                 Collectors.groupingBy(
                     xClusterConfig -> {

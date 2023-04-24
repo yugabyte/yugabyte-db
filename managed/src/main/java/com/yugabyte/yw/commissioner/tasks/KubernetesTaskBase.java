@@ -448,16 +448,13 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
           PlacementInfoUtil.getPlacementAZMap(newPlacement.placementInfo);
 
       List<UUID> sortedZonesToUpdate =
-          serversToUpdate
-              .keySet()
-              .stream()
+          serversToUpdate.keySet().stream()
               .sorted(Comparator.comparing(zoneUUID -> !placementAZMap.get(zoneUUID).isAffinitized))
               .collect(Collectors.toList());
 
       // Put isAffinitized availability zones first
       serversToUpdate =
-          sortedZonesToUpdate
-              .stream()
+          sortedZonesToUpdate.stream()
               .collect(
                   Collectors.toMap(
                       Function.identity(), serversToUpdate::get, (a, b) -> a, LinkedHashMap::new));

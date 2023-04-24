@@ -318,8 +318,7 @@ public class PitrController extends AuthenticatedController {
   private List<PitrConfig> createPitrConfigsWithUnknownState(UUID universeUUID) {
     List<PitrConfig> pitrConfigList = PitrConfig.getByUniverseUUID(universeUUID);
     long currentTimeMillis = System.currentTimeMillis();
-    pitrConfigList
-        .stream()
+    pitrConfigList.stream()
         .forEach(
             p -> {
               p.setState(State.UNKNOWN);

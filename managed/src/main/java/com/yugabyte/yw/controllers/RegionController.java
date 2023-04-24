@@ -71,8 +71,7 @@ public class RegionController extends AuthenticatedController {
         Provider.getAll(customerUUID).stream().map(Provider::getUuid).collect(Collectors.toSet());
     List<Region> regionList = Region.getFullByProviders(providerUuids);
     List<JsonNode> result =
-        regionList
-            .stream()
+        regionList.stream()
             .peek(region -> CloudInfoInterface.mayBeMassageResponse(region.getProvider(), region))
             .map(
                 region -> {

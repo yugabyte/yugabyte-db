@@ -19,8 +19,8 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -28,9 +28,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import lombok.extern.slf4j.Slf4j;
-
-import javax.inject.Inject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -41,6 +38,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 
 // Tracks edit intents to the cluster and then performs the sequence of configuration changes on
 // this universe to go from the current set of master/tserver nodes to the final configuration.
@@ -115,9 +114,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                   // setUserIntentToUniverse. So we need to store tags locally to be able to reset
                   // them later.
                   Map<UUID, Map<String, String>> currentTags =
-                      u.getUniverseDetails()
-                          .clusters
-                          .stream()
+                      u.getUniverseDetails().clusters.stream()
                           .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent.instanceTags));
                   // Set the prepared data to universe in-memory.
                   setUserIntentToUniverse(u, taskParams(), false);
@@ -138,15 +135,11 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
       Set<NodeDetails> addedMasters =
-          taskParams()
-              .nodeDetailsSet
-              .stream()
+          taskParams().nodeDetailsSet.stream()
               .filter(n -> n.masterState == MasterState.ToStart)
               .collect(Collectors.toSet());
       Set<NodeDetails> removedMasters =
-          taskParams()
-              .nodeDetailsSet
-              .stream()
+          taskParams().nodeDetailsSet.stream()
               .filter(n -> n.masterState == MasterState.ToStop)
               .collect(Collectors.toSet());
       boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
@@ -190,10 +183,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             ImmutableMap.of(
                 Universe.USE_CUSTOM_IMAGE,
                 Boolean.toString(
-                    universe
-                        .getUniverseDetails()
-                        .nodeDetailsSet
-                        .stream()
+                    universe.getUniverseDetails().nodeDetailsSet.stream()
                         .allMatch(n -> n.ybPrebuiltAmi))));
         universe.save();
       }
@@ -259,8 +249,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
     if (!nodesToProvision.isEmpty()) {
       Map<UUID, List<NodeDetails>> nodesPerAZ =
-          nodes
-              .stream()
+          nodes.stream()
               .filter(
                   n ->
                       n.state != NodeDetails.NodeState.ToBeAdded
@@ -270,9 +259,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       nodesToProvision.forEach(
           node -> {
             Set<String> machineImages =
-                nodesPerAZ
-                    .getOrDefault(node.azUuid, Collections.emptyList())
-                    .stream()
+                nodesPerAZ.getOrDefault(node.azUuid, Collections.emptyList()).stream()
                     .map(n -> n.machineImage)
                     .collect(Collectors.toSet());
             Iterator<String> iterator = machineImages.iterator();
@@ -456,8 +443,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       Set<String> takenMasters =
           allMasters.stream().map(n -> n.nodeName).collect(Collectors.toSet());
       allMasters.addAll(
-          liveNodes
-              .stream()
+          liveNodes.stream()
               .filter(
                   n ->
                       n.isMaster

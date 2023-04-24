@@ -11,14 +11,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -60,13 +58,12 @@ import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.CatalogEntityInfo;
-import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
-import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
-import play.libs.Json;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
@@ -175,13 +172,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
     PlacementInfo placementInfo = createPlacementInfo();
     userIntent.numNodes =
-        placementInfo
-            .cloudList
-            .get(0)
-            .regionList
-            .get(0)
-            .azList
-            .stream()
+        placementInfo.cloudList.get(0).regionList.get(0).azList.stream()
             .mapToInt(p -> p.numNodesInAZ)
             .sum();
 
@@ -337,8 +328,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
-        subTasks
-            .stream()
+        subTasks.stream()
             .map(t -> t.getDetails().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
@@ -355,8 +345,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
             List<Object> values =
-                subTaskDetails
-                    .stream()
+                subTaskDetails.stream()
                     .map(
                         t -> {
                           JsonNode data =

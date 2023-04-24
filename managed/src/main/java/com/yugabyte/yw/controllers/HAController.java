@@ -19,7 +19,6 @@ import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
-
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;

@@ -111,9 +111,7 @@ public class ConfDataType<T> {
           "Tags List",
           List.class,
           (config, path) ->
-              config
-                  .getStringList(path)
-                  .stream()
+              config.getStringList(path).stream()
                   .map(s -> ConfKeyTags.valueOf(s))
                   .collect(Collectors.toList()),
           ConfDataType::parseTagsList);
@@ -201,8 +199,7 @@ public class ConfDataType<T> {
 
   public static SetMultimap<String, String> parseSetMultimap(String s) {
     List<String> tagsValues = parseStringAndApply(s, Config::getStringList);
-    if (tagsValues
-        .stream()
+    if (tagsValues.stream()
         .map(tagAndValue -> tagAndValue.split(":"))
         .anyMatch(
             tagAndValue ->
@@ -217,8 +214,7 @@ public class ConfDataType<T> {
   }
 
   private static SetMultimap<String, String> getSetMultimap(List<String> tagValuesList) {
-    return tagValuesList
-        .stream()
+    return tagValuesList.stream()
         .map(s -> s.split(":"))
         .collect(
             ImmutableSetMultimap.toImmutableSetMultimap(

@@ -73,8 +73,7 @@ public class AlertChannelService {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Invalid Alert Channel UUID: "
-              + uuidsToReport
-                  .stream()
+              + uuidsToReport.stream()
                   .map(uuid -> uuid.toString())
                   .collect(Collectors.joining(", ")));
     }
@@ -101,9 +100,7 @@ public class AlertChannelService {
     AlertChannel channel = getOrBadRequest(customerUUID, channelUUID);
 
     List<String> blockingDestinations =
-        channel
-            .getDestinationsList()
-            .stream()
+        channel.getDestinationsList().stream()
             .filter(destination -> destination.getChannelsList().size() == 1)
             .map(AlertDestination::getName)
             .sorted()

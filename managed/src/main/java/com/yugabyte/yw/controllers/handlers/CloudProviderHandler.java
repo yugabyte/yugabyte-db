@@ -69,7 +69,6 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
-
 import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
@@ -783,14 +782,10 @@ public class CloudProviderHandler {
     if (provider.getCloudCode().canAddRegions()) {
       if (editProviderReq.getRegions() != null && !editProviderReq.getRegions().isEmpty()) {
         Map<String, Region> newRegions =
-            editProviderReq
-                .getRegions()
-                .stream()
+            editProviderReq.getRegions().stream()
                 .collect(Collectors.toMap(r -> r.getCode(), r -> r));
         Set<String> existingRegionCodes =
-            provider
-                .getRegions()
-                .stream()
+            provider.getRegions().stream()
                 .map(region -> region.getCode())
                 .collect(Collectors.toSet());
         newRegions.keySet().removeAll(existingRegionCodes);
@@ -1010,8 +1005,7 @@ public class CloudProviderHandler {
     List<Region> allRegions = new ArrayList<>(provider.getRegions());
     allRegions.addAll(regionsToAdd);
     taskParams.perRegionMetadata =
-        allRegions
-            .stream()
+        allRegions.stream()
             .collect(
                 Collectors.toMap(
                     region -> region.getCode(),
@@ -1140,9 +1134,7 @@ public class CloudProviderHandler {
       Region currentState = currentRegionMap.get(region.getCode());
       if (currentState != null) {
         Map<String, AvailabilityZone> currentAZs =
-            currentState
-                .getZones()
-                .stream()
+            currentState.getZones().stream()
                 .collect(Collectors.toMap(az -> az.getCode(), az -> az));
         for (AvailabilityZone zone : region.getZones()) {
           AvailabilityZone currentAZ = currentAZs.get(zone.getCode());

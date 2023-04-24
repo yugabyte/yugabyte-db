@@ -45,9 +45,7 @@ public class CreateAlertDefinitions extends UniverseTaskBase {
               .build();
 
       List<AlertConfiguration> configurations =
-          alertConfigurationService
-              .list(filter)
-              .stream()
+          alertConfigurationService.list(filter).stream()
               .filter(group -> group.getTarget().isAll())
               .collect(Collectors.toList());
 

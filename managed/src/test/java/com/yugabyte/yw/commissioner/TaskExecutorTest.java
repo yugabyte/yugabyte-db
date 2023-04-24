@@ -560,8 +560,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testRetryableAnnotation() {
     // Iterate through allowed Task Types by Commissioner only
     Set<TaskType> retryableTaskTypes =
-        TaskType.filteredValues()
-            .stream()
+        TaskType.filteredValues().stream()
             .filter(taskType -> TaskExecutor.isTaskRetryable(taskType.getTaskClass()))
             .collect(Collectors.toSet());
     assertEquals(RETRYABLE_TASKS, retryableTaskTypes);

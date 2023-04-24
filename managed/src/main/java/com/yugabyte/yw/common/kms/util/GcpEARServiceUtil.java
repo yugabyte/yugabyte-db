@@ -27,8 +27,11 @@ import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.cloud.kms.v1.CryptoKey;
+import com.google.cloud.kms.v1.CryptoKey.CryptoKeyPurpose;
 import com.google.cloud.kms.v1.CryptoKeyName;
 import com.google.cloud.kms.v1.CryptoKeyVersion;
+import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm;
+import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionState;
 import com.google.cloud.kms.v1.CryptoKeyVersionName;
 import com.google.cloud.kms.v1.CryptoKeyVersionTemplate;
 import com.google.cloud.kms.v1.DecryptResponse;
@@ -40,12 +43,8 @@ import com.google.cloud.kms.v1.KeyRing;
 import com.google.cloud.kms.v1.KeyRingName;
 import com.google.cloud.kms.v1.LocationName;
 import com.google.cloud.kms.v1.ProtectionLevel;
-import com.google.cloud.kms.v1.CryptoKey.CryptoKeyPurpose;
-import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionAlgorithm;
-import com.google.cloud.kms.v1.CryptoKeyVersion.CryptoKeyVersionState;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.PlatformServiceException;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -55,10 +54,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
-import org.apache.commons.lang3.StringUtils;
-
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class GcpEARServiceUtil {
@@ -92,24 +89,21 @@ public class GcpEARServiceUtil {
     }
 
     public static List<String> getEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> configField.isEditable)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
 
     public static List<String> getNonEditableFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> !configField.isEditable)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());
     }
 
     public static List<String> getMetadataFields() {
-      return Arrays.asList(values())
-          .stream()
+      return Arrays.asList(values()).stream()
           .filter(configField -> configField.isMetadata)
           .map(configField -> configField.fieldName)
           .collect(Collectors.toList());

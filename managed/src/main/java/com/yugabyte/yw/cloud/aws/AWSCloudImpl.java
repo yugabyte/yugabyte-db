@@ -58,7 +58,6 @@ import com.amazonaws.services.elasticloadbalancingv2.model.TargetTypeEnum;
 import com.amazonaws.services.kms.AWSKMS;
 import com.amazonaws.services.kms.model.CreateKeyRequest;
 import com.amazonaws.services.kms.model.CreateKeyResult;
-import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.amazonaws.services.kms.model.DisableKeyRequest;
 import com.amazonaws.services.kms.model.ScheduleKeyDeletionRequest;
 import com.amazonaws.services.kms.model.Tag;
@@ -78,8 +77,8 @@ import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil;
-import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.AwsEARServiceUtil.AwsKmsAuthConfigField;
+import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.NodeID;
@@ -180,8 +179,7 @@ public class AWSCloudImpl implements CloudAPI {
                 })
             .collect(Collectors.toList());
 
-    return results
-        .stream()
+    return results.stream()
         .flatMap(result -> result.getInstanceTypeOfferings().stream())
         .collect(
             groupingBy(
@@ -387,13 +385,11 @@ public class AWSCloudImpl implements CloudAPI {
       }
       // Add/remove nodes from target group
       List<String> addInstanceIDs =
-          instanceIDs
-              .stream()
+          instanceIDs.stream()
               .filter(i -> !currentInstanceIDs.contains(i))
               .collect(Collectors.toList());
       removeInstanceIDs.addAll(
-          currentInstanceIDs
-              .stream()
+          currentInstanceIDs.stream()
               .filter(i -> !instanceIDs.contains(i))
               .collect(Collectors.toList()));
       registerTargets(lbClient, targetGroupArn, addInstanceIDs, port);
@@ -591,8 +587,7 @@ public class AWSCloudImpl implements CloudAPI {
       AmazonElasticLoadBalancing lbClient, String targetGroupArn, List<String> instanceIDs) {
     List<TargetDescription> allTargets = getTargetGroupNodes(lbClient, targetGroupArn);
     List<TargetDescription> targets =
-        allTargets
-            .stream()
+        allTargets.stream()
             .filter(t -> instanceIDs.contains(t.getId()))
             .collect(Collectors.toList());
     return targets;
@@ -768,9 +763,7 @@ public class AWSCloudImpl implements CloudAPI {
       DescribeSubnetsRequest request =
           new DescribeSubnetsRequest()
               .withSubnetIds(
-                  region
-                      .getZones()
-                      .stream()
+                  region.getZones().stream()
                       .map(zone -> zone.getSubnet())
                       .collect(Collectors.toList()));
       DescribeSubnetsResult result = ec2Client.describeSubnets(request);

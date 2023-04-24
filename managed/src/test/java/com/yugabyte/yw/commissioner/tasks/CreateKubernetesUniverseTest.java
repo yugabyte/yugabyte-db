@@ -568,9 +568,7 @@ public class CreateKubernetesUniverseTest extends CommissionerBaseTest {
 
     Universe u = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
     Map<String, String> nodeNameToIP =
-        u.getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        u.getUniverseDetails().nodeDetailsSet.stream()
             .collect(Collectors.toMap(n -> n.nodeName, n -> n.cloudInfo.private_ip));
     assertEquals(expectedNodeNameToIP, nodeNameToIP);
     assertEquals(newNamingStyle, u.getUniverseDetails().useNewHelmNamingStyle);

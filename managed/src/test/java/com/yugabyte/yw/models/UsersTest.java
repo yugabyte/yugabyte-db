@@ -8,18 +8,18 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.typesafe.config.Config;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.typesafe.config.Config;
+import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import java.time.Duration;
 import org.junit.Before;
-import org.junit.runner.RunWith;
 import org.junit.Test;
+import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.runners.MockitoJUnitRunner;
 import play.libs.Json;
-import java.time.Duration;
 
 @RunWith(MockitoJUnitRunner.class)
 public class UsersTest extends FakeDBApplication {

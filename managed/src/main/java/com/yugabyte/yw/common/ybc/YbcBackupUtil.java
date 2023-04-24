@@ -24,7 +24,6 @@ import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.StorageUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.services.YbcClientService;
@@ -38,9 +37,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
-
 import io.ebean.annotation.EnumValue;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -64,7 +61,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
 import org.yb.CommonTypes.YQLDatabase;
-import org.yb.client.YbcClient;
 import org.yb.ybc.BackupServiceTaskCreateRequest;
 import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.BackupServiceTaskProgressRequest;
@@ -220,9 +216,7 @@ public class YbcBackupUtil {
       successMarker = mapper.readValue(metadata, YbcBackupResponse.class);
       Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
       Map<String, String> validationResponse =
-          validator
-              .validate(successMarker)
-              .stream()
+          validator.validate(successMarker).stream()
               .collect(
                   Collectors.groupingBy(
                       e -> e.getPropertyPath().toString(),
@@ -573,9 +567,7 @@ public class YbcBackupUtil {
   public List<String> getTableListFromSuccessMarker(
       YbcBackupResponse successMarker, TableType tableType) {
     List<String> ycqlTableList =
-        successMarker
-            .snapshotObjectDetails
-            .stream()
+        successMarker.snapshotObjectDetails.stream()
             .filter(
                 sOD ->
                     sOD.type.equals(SnapshotObjectType.TABLE)
@@ -591,9 +583,7 @@ public class YbcBackupUtil {
       YbcBackupResponse successMarker, UUID universeUUID, String keyspace) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     List<String> existentTables =
-        backupUtil
-            .getTableInfosOrEmpty(universe)
-            .stream()
+        backupUtil.getTableInfosOrEmpty(universe).stream()
             .filter(
                 tIL ->
                     tIL.getNamespace().getName().equals(keyspace)

@@ -174,8 +174,7 @@ public class GFlagsValidation {
     String releasesPath =
         runtimeConfigFactory.staticApplicationConf().getString(Util.YB_RELEASES_PATH);
     List<String> fileNameList =
-        GFLAG_FILENAME_LIST
-            .stream()
+        GFLAG_FILENAME_LIST.stream()
             .filter(
                 (gFlagFileName) -> !checkGFlagFileExists(releasesPath, dbVersion, gFlagFileName))
             .collect(Collectors.toList());
@@ -192,8 +191,7 @@ public class GFlagsValidation {
     ObjectMapper objectMapper = new ObjectMapper();
     try (InputStream inputStream = FileUtils.getInputStreamOrFail(autoFlagFile)) {
       AutoFlags data = objectMapper.readValue(inputStream, AutoFlags.class);
-      return data.autoFlagsPerServers
-          .stream()
+      return data.autoFlagsPerServers.stream()
           .filter(flags -> flags.serverType.equals(serverType))
           .findFirst()
           .get();
