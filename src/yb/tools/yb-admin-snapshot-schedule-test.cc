@@ -2941,6 +2941,49 @@ class YbAdminSnapshotScheduleAutoSplitting : public YbAdminSnapshotScheduleTestW
   }
 };
 
+TEST_F_EX(
+    YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(DeadlockWithSplitting),
+    YbAdminSnapshotScheduleAutoSplitting) {
+  // Create an aggressive snapshot schedule that takes a snapshot every second.
+  auto schedule_id = ASSERT_RESULT(
+      PreparePg(false /* colocated */, 1s /* interval */, 6s /* retention */));
+
+  auto conn = ASSERT_RESULT(PgConnect(client::kTableName.namespace_name()));
+
+  ASSERT_OK(conn.ExecuteFormat(
+      "CREATE TABLE $0 (key INT PRIMARY KEY, value TEXT) "
+      "SPLIT INTO 3 tablets",
+      client::kTableName.table_name()));
+
+  // Only this row should be present after restoration.
+  ASSERT_OK(conn.ExecuteFormat(
+      "INSERT INTO $0 (key, value) VALUES ($1, 'after')", client::kTableName.table_name(), 0));
+
+  auto tablets_obj = ASSERT_RESULT(ListTablets(
+      client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
+  auto prev_tablets_count = tablets_obj.GetArray().Size();
+  LOG(INFO) << prev_tablets_count << " tablets present before restore";
+
+  // Splitting should be delayed for 2 secs with the lock held. At least one snapshot
+  // should take place since the frequency is 1 every second.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_delay_split_registration_secs", "2"));
+
+  // Insert enough data conducive to splitting.
+  ASSERT_OK(InsertDataForSplitting(&conn, 15000));
+  LOG(INFO) << "Inserted 15000 rows";
+
+  // Now split and wait for them. If deadlocked this should time out.
+  ASSERT_OK(WaitFor(
+      [this, prev_tablets_count]() -> Result<bool> {
+        auto tablets_obj = VERIFY_RESULT(ListTablets(
+            client::kTableName.table_name(), client::kTableName.namespace_name(), "ysql"));
+        uint32_t tablets_count = tablets_obj.GetArray().Size();
+        LOG(INFO) << tablets_count << " tablets thus far after inserting 5000 rows";
+        return tablets_count >= prev_tablets_count + 5;
+      },
+      120s, "Wait for tablets to be split"));
+}
+
 TEST_F_EX(YbAdminSnapshotScheduleTest, YB_DISABLE_TEST_IN_TSAN(SplitDisabledDuringRestore),
           YbAdminSnapshotScheduleAutoSplitting) {
   auto schedule_id = ASSERT_RESULT(PreparePg());
