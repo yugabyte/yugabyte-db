@@ -283,7 +283,7 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedSecLabelRelationId ||
 		relationId == SubscriptionRelationId ||
 		relationId == TableSpaceRelationId ||
-		relationId == YBCatalogVersionRelationId,
+		relationId == YBCatalogVersionRelationId ||
 		relationId == YbProfileRelationId ||
 		relationId == YbRoleProfileRelationId)
 		return true;

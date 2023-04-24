@@ -51,6 +51,7 @@
 #include "access/sysattr.h"
 #include "access/xact.h"
 #include "access/yb_scan.h"
+#include "optimizer/clauses.h"
 
 /*
  * When an ordering operator is used, tuples fetched from the index that
@@ -1739,7 +1740,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 
 				Assert(rightop != NULL);
 
-				if (index->rd_amroutine->amsearcharray)
+				if (index->rd_indam->amsearcharray)
 				{
 					/* Index AM will handle this like a simple operator */
 					flags |= SK_SEARCHARRAY;

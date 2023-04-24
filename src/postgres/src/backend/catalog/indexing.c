@@ -395,7 +395,7 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 						  ONCONFLICT_NONE,
 						  &ybctid);
 	/* Update the local cache automatically */
-	YBSetSysCacheTuple(heapRel, tup);
+	YbSetSysCacheTuple(heapRel, tup);
 
 	indstate = CatalogOpenIndexes(heapRel);
 	CatalogIndexInsert(indstate, tup, yb_shared_insert);

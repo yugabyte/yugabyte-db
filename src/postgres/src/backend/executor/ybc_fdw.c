@@ -280,6 +280,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 
 /* ------------------------------------------------------------------------- */
 /*  Scanning functions */
+/* YB_TODO(neil) Need to review all of these scan functions. */
 
 /*
  * FDW-specific information for ForeignScanState.fdw_state.
@@ -339,7 +340,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 				ybc_state->exec_params->rowmark = erm->markType;
 				YBUpdateRowLockPolicyForSerializable(&ybc_state->exec_params->wait_policy, erm->waitPolicy);
 			}
-			break;
 		}
 	}
 

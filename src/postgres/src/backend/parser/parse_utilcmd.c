@@ -190,6 +190,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	ParseCallbackState pcbstate;
 	bool		specifies_type_oid = false;
 
+	bool		yb_like_found = false;
+
 	/* Set up pstate */
 	pstate = make_parsestate(NULL);
 	pstate->p_sourcetext = queryString;
@@ -338,6 +340,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				break;
 
 			case T_TableLikeClause:
+				yb_like_found = true;
 				transformTableLikeClause(&cxt, (TableLikeClause *) element);
 				break;
 
@@ -521,7 +524,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 * If YB is enabled, add the primary key constraint from the like clause to
 	 * the statement so it will be passed down to DocDB.
 	 */
-	if (IsYugaByteEnabled() && like_found)
+	if (IsYugaByteEnabled() && yb_like_found)
 	{
 		stmt->constraints =
 			list_concat(stmt->constraints, cxt.yb_likepkconstraint);

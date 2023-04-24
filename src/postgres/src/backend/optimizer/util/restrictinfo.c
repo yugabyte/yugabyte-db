@@ -665,8 +665,8 @@ yb_get_actual_batched_clauses(PlannerInfo *root,
 		}
 
 		RestrictInfo *zipped_rinfo =
-			make_restrictinfo(zipped, false, false, false, security_level,
-							required_relids, outer_relids, nullable_relids);
+			make_restrictinfo(root, zipped, false, false, false, security_level,
+							  required_relids, outer_relids, nullable_relids);
 
 		foreach(l, batched_rinfos)
 		{

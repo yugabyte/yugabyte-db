@@ -1302,10 +1302,15 @@ ExecInsert(ModifyTableContext *context,
 		}
 	}
 
+#ifdef YB_TODO
+	/* YB_TODO(neil) Postgres no longer uses tuple. Pg15 uses slot.
+	 * Either convert slot to tuple or change yb API to support slot.
+	 */
 	YbPostProcessDml(CMD_INSERT,
 					 resultRelationDesc,
 					 slot->tts_tupleDescriptor,
 					 tuple);
+#endif
 
 	if (canSetTag)
 		(estate->es_processed)++;
@@ -1649,17 +1654,17 @@ ExecDelete(ModifyTableContext *context,
 		   Author: Alex Abdugafarov <frozenspider@users.noreply.github.com>
 		   Date:   Thu Apr 28 23:06:03 2022 +0500
 		 */
+		bool row_found = YBCExecuteDelete(resultRelationDesc, context->planSlot, estate,
+										  context->mtstate, changingPart);
+#endif
 		bool row_found = YBCExecuteDelete(resultRelationDesc,
-										  planSlot,
-										  ((ModifyTable *) mtstate->ps.plan)->ybReturningColumns,
-										  mtstate->yb_fetch_target_tuple,
+										  context->planSlot,
+										  ((ModifyTable *)context->mtstate->ps.plan)->ybReturningColumns,
+										  context->mtstate->yb_fetch_target_tuple,
 										  estate->yb_es_is_single_row_modify_txn,
 										  changingPart,
 										  estate);
-#endif
 
-		bool row_found = YBCExecuteDelete(resultRelationDesc, context->planSlot, estate,
-										  context->mtstate, changingPart);
 		if (!row_found)
 		{
 			/*
@@ -1885,11 +1890,12 @@ ldelete:;
 			{
 				slot = ExecFilterJunk(resultRelInfo->ri_junkFilter, planSlot);
 			}
-#endif
+			/* Previous code */
 			if (context->mtstate->yb_mt_is_single_row_update_or_delete)
 			{
 				slot = context->planSlot;
 			}
+#endif
 
 #ifdef YB_TODO
 			/* TODO(neil@yugabyte)
@@ -2753,7 +2759,7 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 		ModifyTable *plan = (ModifyTable *) mtstate->ps.plan;
 		if (is_pk_updated)
 		{
-			YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, tuple, estate, mtstate);
+			YBCExecuteUpdateReplace(resultRelationDesc, context->planSlot, tuple, estate);
 			row_found = true;
 		}
 		else
@@ -2761,6 +2767,7 @@ ExecUpdate(ModifyTableContext *context, ResultRelInfo *resultRelInfo,
 			row_found = YBCExecuteUpdate(resultRelationDesc,
 										 resultRelInfo,
 										 context->planSlot,
+										 oldtuple,
 										 tuple,
 										 estate,
 										 plan,
@@ -4751,7 +4758,7 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 			relkind = resultRelInfo->ri_RelationDesc->rd_rel->relkind;
 			if (IsYBRelation(resultRelInfo->ri_RelationDesc))
 			{
-				if (!mtstate->yb_mt_is_single_row_update_or_delete) {
+				if (!mtstate->yb_fetch_target_tuple) {
 					resultRelInfo->ri_RowIdAttNo =
 						ExecFindJunkAttributeInTlist(subplan->targetlist, "ybctid");
 					if (!AttributeNumberIsValid(resultRelInfo->ri_RowIdAttNo))
@@ -5264,8 +5271,13 @@ YbHandlePossibleObjectPinning(TupleDesc desc,
 										  : Anum_pg_depend_refclassid;
 	int attnum_refobjid = is_shared_dep ? Anum_pg_shdepend_refobjid
 										: Anum_pg_depend_refobjid;
+#ifdef YB_TODO
+	/* Pg15  No longer use pin */
 	char pin_deptype = is_shared_dep ? SHARED_DEPENDENCY_PIN
 									 : DEPENDENCY_PIN;
+#else
+	char pin_deptype = DEPENDENCY_PARTITION_PRI;
+#endif
 
 	bool is_null; /* Can never really be null. */
 

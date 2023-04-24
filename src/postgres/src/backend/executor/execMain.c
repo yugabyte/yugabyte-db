@@ -1889,7 +1889,7 @@ ExecPartitionCheckEmitError(ResultRelInfo *resultRelInfo,
 								 ExecGetUpdatedCols(resultRelInfo, estate));
 	}
 
-	val_desc = ExecBuildSlotValueDescription(root_rel,
+	val_desc = ExecBuildSlotValueDescription(rel,
 											 slot,
 											 tupdesc,
 											 modifiedCols,

@@ -1581,6 +1581,8 @@ generate_mergejoin_paths(PlannerInfo *root,
 Relids
 yb_get_batched_relids(NestPath *nest)
 {
+#ifdef YB_TODO
+	/* This function needs to be rewritten because Pg15 change the path data structures */
 	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
 	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
 
@@ -1595,11 +1597,15 @@ yb_get_batched_relids(NestPath *nest)
 
 	return bms_difference(bms_difference(inner_batched, outer_unbatched),
 						  param_unbatched);
+#endif
+	return NULL;
 }
 
 Relids
 yb_get_unbatched_relids(NestPath *nest)
 {
+#ifdef YB_TODO
+	/* This function needs to be rewritten because Pg15 change the path data structures */
 	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
 	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
 
@@ -1615,11 +1621,15 @@ yb_get_unbatched_relids(NestPath *nest)
 
 	return bms_union(outer_unbatched,
 					 bms_union(inner_unbatched, param_unbatched));
+#endif
+	return NULL;
 }
 
 bool
 yb_is_outer_inner_batched(Path *outer, Path *inner)
 {
+#ifdef YB_TODO
+	/* This function needs to be rewritten because Pg15 change the path data structures */
 	ParamPathInfo *innerppi = inner->param_info;
 	ParamPathInfo *outerppi = outer->param_info;
 
@@ -1630,14 +1640,20 @@ yb_is_outer_inner_batched(Path *outer, Path *inner)
 
 	return bms_overlap(outer->parent->relids,
 		bms_difference(inner_batched, outer_unbatched));
+#endif
+	return false;
 }
 
 bool
 yb_is_nestloop_batched(NestPath *nest)
 {
+#ifdef YB_TODO
+	/* This function needs to be rewritten because Pg15 change the path data structures */
 	Relids batched_relids = yb_get_batched_relids(nest);
 	return bms_overlap(nest->outerjoinpath->parent->relids,
 					  batched_relids);
+#endif
+	return false;
 }
 
 /*

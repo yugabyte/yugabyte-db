@@ -59,7 +59,6 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_TABLESPACE:
 		case OBJECT_TYPE:
 		case OBJECT_VIEW:
-		case OBJECT_YBTABLEGROUP:
 			return true;
 
 		case OBJECT_ACCESS_METHOD:
@@ -93,6 +92,8 @@ SecLabelSupportsObjectType(ObjectType objtype)
 		case OBJECT_TSPARSER:
 		case OBJECT_TSTEMPLATE:
 		case OBJECT_USER_MAPPING:
+		case OBJECT_YBTABLEGROUP:
+		case OBJECT_YBPROFILE:
 			return false;
 
 			/*

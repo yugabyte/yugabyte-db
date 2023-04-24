@@ -46,6 +46,7 @@
 #include "commands/tablecmds.h"
 #include "commands/ybccmds.h"
 
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/relation.h"
 #include "utils/builtins.h"
@@ -797,7 +798,7 @@ YbOnTruncateUpdateCatalog(Relation rel)
 	HeapTuple	  tuple;
 	Form_pg_class classform;
 
-	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+	pg_class = table_open(RelationRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy1(RELOID, ObjectIdGetDatum(RelationGetRelid(rel)));
 	if (!HeapTupleIsValid(tuple))
@@ -814,7 +815,7 @@ YbOnTruncateUpdateCatalog(Relation rel)
 	CatalogTupleUpdate(pg_class, &tuple->t_self, tuple);
 
 	heap_freetuple(tuple);
-	heap_close(pg_class, RowExclusiveLock);
+	table_close(pg_class, RowExclusiveLock);
 
 	/* This makes the pg_class row change visible. */
 	CommandCounterIncrement();

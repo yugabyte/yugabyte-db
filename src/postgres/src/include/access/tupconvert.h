@@ -45,12 +45,7 @@ extern HeapTuple execute_attr_map_tuple(HeapTuple tuple, TupleConversionMap *map
 extern TupleTableSlot *execute_attr_map_slot(AttrMap *attrMap,
 											 TupleTableSlot *in_slot,
 											 TupleTableSlot *out_slot);
-extern Bitmapset *execute_attr_map_cols(AttrMap *attrMap, Bitmapset *inbitmap);
-#ifdef YB_TODO
-/* YB_TODO(neil) check if we need extra parameters */
-extern Bitmapset *execute_attr_map_cols(AttrMap *attrMap, Bitmapset *inbitmap,
-										TupleConversionMap *map, Relation rel);
-#endif
+extern Bitmapset *execute_attr_map_cols(AttrMap *attrMap, Bitmapset *inbitmap, Relation rel);
 
 extern void free_conversion_map(TupleConversionMap *map);
 

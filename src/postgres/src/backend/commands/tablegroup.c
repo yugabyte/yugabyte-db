@@ -163,8 +163,9 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 	 * 
 	 * - Postgres no longer has hidden OID. A column for OID must be included if oid is needed.
 	 * - The following is a suggestion of what to do.
-	tablegroupoid = GetNewOidWithIndex(rel, TablegroupOidIndexId, Anum_pg_yb_tablegroup_oid);
-	values[Anum_pg_yb_tablegroup_oid - 1] = ObjectIdGetDatum(tablegroupoid);
+	 *	 tablegroupoid = GetNewOidWithIndex(rel, TablegroupOidIndexId, Anum_pg_yb_tablegroup_oid);
+	 *   values[Anum_pg_yb_tablegroup_oid - 1] = ObjectIdGetDatum(tablegroupoid);
+	 * - Need to verify if following assignments to "values[]" are correct.
 	 */
 	tablegroupoid = YB_HACK_INVALID_OID;
 
@@ -184,10 +185,7 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 
 	/* Generate new proposed grpoptions (text array) */
 	/* For now no grpoptions. Will be part of Interleaved */
-
 	nulls[Anum_pg_yb_tablegroup_grpoptions - 1] = true;
-
-	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
 	/*
 	 * If YB binary restore mode is set, we want to use the specified tablegroup
@@ -232,10 +230,16 @@ CreateTableGroup(CreateTableGroupStmt *stmt)
 		 */
 		if (OidIsValid(binary_upgrade_next_tablegroup_oid))
 		{
-			HeapTupleSetOid(tuple, binary_upgrade_next_tablegroup_oid);
+			/* YB_TODO(alex) Needs to decide which column should be OID.
+			 * Following code assign oid as 1st column - values[0]
+			 */
+			int Anum_pg_yb_tablegroup_oid = 0;
+			values[Anum_pg_yb_tablegroup_oid] = binary_upgrade_next_tablegroup_oid;
 			binary_upgrade_next_tablegroup_oid = InvalidOid;
 		}
 	}
+
+	tuple = heap_form_tuple(rel->rd_att, values, nulls);
 
 	CatalogTupleInsert(rel, tuple);
 

@@ -2768,7 +2768,11 @@ CreateCommandTag(Node *parsetree)
 					tag = CMDTAG_DROP_YBTABLEGROUP;
 					break;
 				case OBJECT_YBPROFILE:
-					tag = CMDTAG_DROP_PROFILE;
+					/* YB_TODO(neil) Needs to intro tag profile to the preprocessor.
+					 * tag = CMDTAG_DROP_PROFILE;
+					 */
+					elog(WARNING, "unrecognized commandType: drop ybprofile");
+					tag = CMDTAG_UNKNOWN;
 					break;
 				default:
 					tag = CMDTAG_UNKNOWN;
@@ -3351,11 +3355,19 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_YbCreateProfileStmt:
-			tag = "CREATE PROFILE";
+			elog(WARNING, "unrecognized commandType: T_YbCreateProfileStmt");
+			tag = CMDTAG_UNKNOWN;
+			/* YB_TODO(neil) Needs entry for tags of profile ops.
+			 * tag = CMDTAG_CREATE_ PROFILE;
+			 */
 			break;
 
 		case T_YbDropProfileStmt:
-			tag = "DROP PROFILE";
+			elog(WARNING, "unrecognized commandType: T_YbCreateProfileStmt");
+			tag = CMDTAG_UNKNOWN;
+			/* YB_TODO(neil) Needs entry for tags of profile ops.
+			 * tag = CMDTAG_DROP_PROFILE;
+			 */
 			break;
 
 		default:

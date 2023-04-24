@@ -5375,7 +5375,7 @@ create_nestloop_plan(PlannerInfo *root,
 			bms_difference(outerrelids,
 						   yb_get_unbatched_relids(best_path));
 
-		Relids inner_relids = best_path->innerjoinpath->parent->relids;
+		Relids inner_relids = best_path->jpath.innerjoinpath->parent->relids;
 
 		YbBNLHashClauseInfo *current_hinfo = yb_hashClauseInfos;
 		foreach(l, joinrestrictclauses)
@@ -5407,7 +5407,7 @@ create_nestloop_plan(PlannerInfo *root,
 	}
 
 
-	inner_plan = create_plan_recurse(root, best_path->innerjoinpath, 0);
+	inner_plan = create_plan_recurse(root, best_path->jpath.innerjoinpath, 0);
 
 	bms_free(root->yb_cur_batched_relids);
 	root->yb_cur_batched_relids = prev_yb_cur_batched_relids;
@@ -6130,9 +6130,12 @@ static void
 fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 						 List **stripped_indexquals_p, List **fixed_indexquals_p)
 {
+#ifdef YB_TODO
+	/* YB_TODO(neil) Remerged this function. Original merge has error */
 	IndexOptInfo *index = index_path->indexinfo;
+	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
-	ListCell   *lcc;
+	ListCell   *lc;
 	ListCell   *lci;
 	List *batched_rinfos = NIL;
 
@@ -6143,38 +6146,7 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	 *   match Postgres's new code.
 	 * - I removed his work for now.
 	 */
-	foreach(lc, index_path->indexclauses)
-	{
-		IndexClause *iclause = lfirst_node(IndexClause, lc);
-		int			indexcol = iclause->indexcol;
-		ListCell   *lc2;
-
-
-		RestrictInfo *rinfo = lfirst_node(RestrictInfo, lcc);
-		RestrictInfo *tmp_batched =
-			get_batched_restrictinfo(rinfo,
-									 root->yb_curbatchedrelids,
-									 index_path->indexinfo->rel->relids);
-		if (tmp_batched)
-		{
-			rinfo = tmp_batched;
-		}
-		*/
-
-		foreach(lc2, iclause->indexquals)
-		{
-			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc2);
-			Node	   *clause = (Node *) rinfo->clause;
-
-			stripped_indexquals = lappend(stripped_indexquals, clause);
-			clause = fix_indexqual_clause(root, index, indexcol,
-										  clause, iclause->indexcols);
-			fixed_indexquals = lappend(fixed_indexquals, clause);
-		}
-	}
-
-	*stripped_indexquals_p = stripped_indexquals;
-	*fixed_indexquals_p = fixed_indexquals;
+#endif
 }
 
 /*

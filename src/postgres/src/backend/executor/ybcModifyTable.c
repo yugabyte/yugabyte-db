@@ -688,6 +688,8 @@ bool YBCExecuteDelete(Relation rel,
 	if (IsCatalogRelation(rel))
 	{
 		MarkCurrentCommandUsed();
+#ifdef YB_TODO
+		/* Need rework for pg15. Interface is changed for slot and tuple */
 		if (slot->tts_tuple)
 			CacheInvalidateHeapTuple(rel, slot->tts_tuple, NULL);
 		else
@@ -700,6 +702,7 @@ bool YBCExecuteDelete(Relation rel,
 			 */
 			CacheInvalidateCatalog(relid);
 		}
+#endif
 	}
 
 	YBCExecWriteStmt(delete_stmt,
@@ -806,6 +809,7 @@ void YBCExecuteDeleteIndex(Relation index,
 bool YBCExecuteUpdate(Relation rel,
 					  ResultRelInfo *resultRelInfo,
 					  TupleTableSlot *slot,
+					  HeapTuple oldtuple,
 					  HeapTuple tuple,
 					  EState *estate,
 					  ModifyTable *mt_plan,
@@ -977,7 +981,7 @@ bool YBCExecuteUpdate(Relation rel,
 	 * the first and the last conditions are checked here.
 	 */
 	bool can_batch_update = target_tuple_fetched ||
-		(!canSetTag && estate && estate->es_result_relation_info->ri_returningList == NIL);
+		(!canSetTag && estate && resultRelInfo->ri_returningList == NIL);
 
 	/*
 	 * For system tables, mark tuple pair for invalidation from system caches

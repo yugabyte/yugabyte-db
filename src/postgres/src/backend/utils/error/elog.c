@@ -243,8 +243,14 @@ typedef struct YbgErrorData *YbgError;
  * has a YbgErrorData it is referenced by the new YbgErrorData instance, forming
  * a stack.
  */
+pg_attribute_cold bool
+yb_errstart_cold(int elevel)
+{
+	return yb_errstart(elevel);
+}
+
 bool
-yb_errstart(int elevel, const char *filename, int lineno, const char *funcname)
+yb_errstart(int elevel)
 {
 	YbgStatus		status;
 	MemoryContext	error_context;
@@ -253,15 +259,6 @@ yb_errstart(int elevel, const char *filename, int lineno, const char *funcname)
 	YbgError		previous;
 
 	Assert(IsMultiThreadedMode());
-	if (filename)
-	{
-		const char *slash;
-
-		/* keep only base name, useful especially for vpath builds */
-		slash = strrchr(filename, '/');
-		if (slash)
-			filename = slash + 1;
-	}
 	status = YBCPgGetThreadLocalErrStatus();
 	if (status == NULL)
 	{
@@ -276,7 +273,7 @@ yb_errstart(int elevel, const char *filename, int lineno, const char *funcname)
 		 * Static constants of YbgStatus type have NULL context. They are read
 		 * only, and can not be used with ereport/elog
 		 */
-		YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
+		YBCLogImpl(/* severity (3=FATAL) */ 3, NULL /* filename */, 0 /* lineno */,
 				   YBShouldLogStackTraceOnError(),
 				   "PG error state is missing memory context");
 		pg_unreachable();
@@ -295,14 +292,11 @@ yb_errstart(int elevel, const char *filename, int lineno, const char *funcname)
 		YBCPgSetThreadLocalErrStatus(NULL);
 		MemoryContextSwitchTo(old_context);
 		MemoryContextReset(error_context);
-		YBCLogImpl(/* severity (3=FATAL) */ 3, filename, lineno,
+		YBCLogImpl(/* severity (3=FATAL) */ 3, NULL /* filename */, 0 /* lineno */,
 				   YBShouldLogStackTraceOnError(),
 				   "Error data stack is too deep");
 		pg_unreachable();
 	}
-	edata->filename = filename;
-	edata->lineno = lineno;
-	edata->funcname = funcname;
 	/* Select default errcode based on elevel */
 	if (elevel >= ERROR)
 		edata->sqlerrcode = ERRCODE_INTERNAL_ERROR;
@@ -343,10 +337,24 @@ yb_copy_edata_fields_to_status(YbgStatus status, YbgError edata)
  * level is severe enough, jump to the current error handler.
  */
 void
-yb_errfinish(int dummy,...)
+yb_errfinish(const char *filename, int lineno, const char *funcname)
 {
 	YbgStatus		status = YBCPgGetThreadLocalErrStatus();
 	YbgError		edata = (YbgError) YbgStatusGetEdata(status);
+
+	if (filename)
+	{
+		const char *slash;
+
+		/* keep only base name, useful especially for vpath builds */
+		slash = strrchr(filename, '/');
+		if (slash)
+			filename = slash + 1;
+	}
+	edata->filename = filename;
+	edata->lineno = lineno;
+	edata->funcname = funcname;
+
 	/*
 	 * Pop current edata frame by setting previous as current.
 	 * Even if we are going to make sigjmp from here, we may end up in a
@@ -2039,8 +2047,7 @@ static void
 ybg_status_from_edata(ErrorData *edata)
 {
 	/* Start error processing */
-	if (!yb_errstart(edata->elevel, edata->filename, edata->lineno,
-					 edata->funcname))
+	if (!yb_errstart(edata->elevel))
 		return;
 	/* Successful error start makes sure we have memory context and YbgError */
 	YbgStatus ybg_status = YBCPgGetThreadLocalErrStatus();
@@ -2053,7 +2060,7 @@ ybg_status_from_edata(ErrorData *edata)
 	newedata->sqlerrcode = edata->sqlerrcode;
 	MemoryContextSwitchTo(old_context);
 	/* Process the error */
-	yb_errfinish(0);
+	yb_errfinish(edata->filename, edata->lineno, edata->funcname);
 }
 
 /*
@@ -3929,6 +3936,9 @@ send_message_to_frontend(ErrorData *edata)
 static const char *
 yb_strerror(int errnum)
 {
+	return NULL;
+#ifdef YB_TODO
+	/* YB_TODO(neil) Needs to move this function to strerror.c to match Postgres code */
 	const char *str;
 
 #ifdef WIN32
@@ -3961,6 +3971,7 @@ yb_strerror(int errnum)
 	}
 
 	return str;
+#endif
 }
 
 /*

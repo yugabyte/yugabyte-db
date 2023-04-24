@@ -1308,7 +1308,8 @@ ExecGetInsertedCols(ResultRelInfo *relinfo, EState *estate)
 
 		if (relinfo->ri_RootToPartitionMap != NULL)
 			return execute_attr_map_cols(relinfo->ri_RootToPartitionMap->attrMap,
-										 rte->insertedCols);
+										 rte->insertedCols,
+										 relinfo->ri_RelationDesc);
 		else
 			return rte->insertedCols;
 	}
@@ -1342,7 +1343,8 @@ ExecGetUpdatedCols(ResultRelInfo *relinfo, EState *estate)
 
 		if (relinfo->ri_RootToPartitionMap != NULL)
 			return execute_attr_map_cols(relinfo->ri_RootToPartitionMap->attrMap,
-										 rte->updatedCols);
+										 rte->updatedCols,
+										 relinfo->ri_RelationDesc);
 		else
 			return rte->updatedCols;
 	}

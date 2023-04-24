@@ -4713,6 +4713,8 @@ yb_get_sleep_usecs_on_txn_conflict(int attempt) {
 
 static void yb_maybe_sleep_on_txn_conflict(int attempt)
 {
+#ifdef YB_TODO
+	/* YB_TODO(neil) Rewrite this function */
 	if (!YBIsWaitQueueEnabled())
 	{
 		/*
@@ -4726,6 +4728,7 @@ static void yb_maybe_sleep_on_txn_conflict(int attempt)
 		pg_usleep(yb_get_sleep_usecs_on_txn_conflict(attempt));
 		pgstat_report_wait_end();
 	}
+#endif
 }
 
 /*
@@ -5553,8 +5556,11 @@ PostgresMain(const char *dbname, const char *username)
 										 IdleSessionTimeout);
 				}
 
+#ifdef YB_TODO
+				/* Needs to activate this call */
 				if (IsYugaByteEnabled())
 					yb_pgstat_set_has_catalog_version(false);
+#endif
 			}
 
 			/* Report any recently-changed GUC options */
@@ -5627,7 +5633,10 @@ PostgresMain(const char *dbname, const char *username)
 
 		if (IsYugaByteEnabled())
 		{
+#ifdef YB_TODO
+			/* Needs to activate this call */
 			yb_pgstat_set_has_catalog_version(true);
+#endif
 			YBCPgResetCatalogReadTime();
 			YBCheckSharedCatalogCacheVersion();
 			yb_run_with_explain_analyze = false;

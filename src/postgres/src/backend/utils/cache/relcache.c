@@ -1803,6 +1803,12 @@ YbIsIndexProcessingRequired(const YbIndexProcessorState *state)
 static bool
 YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 {
+	return false;
+#ifdef YB_TODO
+	/* YB_TODO(neil) Postgres 15 don't have special OID insertion. Fix the following when activate
+	 * this function call.
+	 *	state->result = insert_ordered_oid(state->result, index->indexrelid);
+	 */
 	Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
 
 	if (!YbIsIndexProcessingStarted(state) || state->relid != index->indrelid)
@@ -1852,6 +1858,7 @@ YbApplyIndex(YbIndexProcessorState *state, HeapTuple htup)
 		state->candidateIndex = index->indexrelid;
 
 	return true;
+#endif
 }
 
 static void
@@ -1859,7 +1866,6 @@ YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
 {
 	Assert(YbIsIndexProcessingRequired(state));
 	Relation relation = state->relation;
-	Oid oidIndex = state->oidIndex;
 	Oid pkeyIndex = state->pkeyIndex;
 	Oid candidateIndex = state->candidateIndex;
 	List *result = state->result;
@@ -1871,7 +1877,11 @@ YbCompleteIndexProcessingImpl(const YbIndexProcessorState *state)
 	MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
 	List *oldlist = relation->rd_indexlist;
 	relation->rd_indexlist = list_copy(result);
+#ifdef YB_TODO
+	/* YB_TODO(neil) No longer needed?? */
+	Oid oidIndex = state->oidIndex;
 	relation->rd_oidindex = oidIndex;
+#endif
 	relation->rd_pkindex = pkeyIndex;
 	if (replident == REPLICA_IDENTITY_DEFAULT && OidIsValid(pkeyIndex))
 		relation->rd_replidindex = pkeyIndex;
@@ -1944,7 +1954,10 @@ YBUpdateRelationsIndicies(bool sys_relations_update_required)
 	YbIndexProcessorState state = {0};
 	while (HeapTupleIsValid(htup = systable_getnext(indscan)))
 	{
+#ifdef YB_TODO
+		/* YB_TODO(neil) This function call is no longer avail. */
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(htup);
+
 		/*
 		 * Ignore any indexes that are currently being dropped.  This will
 		 * prevent them from being searched, inserted into, or considered in
@@ -1953,6 +1966,7 @@ YBUpdateRelationsIndicies(bool sys_relations_update_required)
 		 */
 		if (!IndexIsLive(index))
 			continue;
+#endif
 
 		if (!YbApplyIndex(&state, htup))
 		{
@@ -5557,10 +5571,10 @@ RelationCacheInitializePhase2(void)
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
-			formrdesc("pg_yb_profile", YbProfileRelation_Rowtype_Id, true,
+			formrdesc("pg_yb_profile", YbProfileRelation_Rowtype_Id,
 					  true, Natts_pg_yb_profile, Desc_pg_yb_profile);
 			formrdesc("pg_yb_role_profile", YbRoleProfileRelation_Rowtype_Id,
-					  true, true, Natts_pg_yb_role_profile,
+					  true, Natts_pg_yb_role_profile,
 					  Desc_pg_yb_role_profile);
 		}
 

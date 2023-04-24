@@ -8104,23 +8104,6 @@
   proargnames => '{name,off,size,allocated_size}',
   prosrc => 'pg_get_shmem_allocations' },
 
-# YB_TODO(neil) Ask if this change is needed.
-# commit 5f9a7fafccc50dde8e036130bb9bf64176cf72b6
-# Author: Hemant Bhanawat <hbhanawat@yugabyte.com>
-# Date:   Fri Mar 17 09:57:28 2023 +0530
-# memory context of local backend
-# TODO(#13568): In Postgres 14, the opaque type was removed, and its OID is reused for
-# pg_get_backend_memory_contexts. As of D18777, opaque type exists in YugabyteDB,
-# we need to use a different OID for pg_get_backend_memory_contexts. The original
-# OID from Postgres should be used when opaque type is removed.
-# { oid => '8058', descr => 'information about all memory contexts of local backend',
-#   proname => 'pg_get_backend_memory_contexts', prorows => '100', proretset => 't',
-#   provolatile => 'v', proparallel => 'r', prorettype => 'record', proargtypes => '',
-#   proallargtypes => '{text,text,text,int4,int8,int8,int8,int8,int8}',
-#   proargmodes => '{o,o,o,o,o,o,o,o,o}',
-#   proargnames => '{name, ident, parent, level, total_bytes, total_nblocks, free_bytes, free_chunks, used_bytes}',
-#   prosrc => 'pg_get_backend_memory_contexts' },
-
 # memory context of local backend
 { oid => '2282',
   descr => 'information about all memory contexts of local backend',

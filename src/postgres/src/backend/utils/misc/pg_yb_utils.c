@@ -91,6 +91,7 @@
 #include "yb/common/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
+#include "postmaster/interrupt.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -139,7 +140,12 @@ void
 YbUpdateCatalogCacheVersion(uint64_t catalog_cache_version)
 {
 	yb_catalog_cache_version = catalog_cache_version;
+#ifdef YB_TODO
+	/* YB_TODO(neil) Postgres reorg stat work. Need to reorg ours before calling.
+	 * Pg15 moves pgstat.c else where. Make sure yb new code is included at new location.
+	 */
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
+#endif
 	YbUpdateLastKnownCatalogCacheVersion(yb_catalog_cache_version);
 	if (*YBCGetGFlags()->log_ysql_catalog_versions)
 		ereport(LOG,
@@ -158,7 +164,12 @@ void
 YbResetCatalogCacheVersion()
 {
 	yb_catalog_cache_version = YB_CATCACHE_VERSION_UNINITIALIZED;
+#ifdef YB_TODO
+	/* YB_TODO(neil) Postgres reorg stat work. Need to reorg ours before calling.
+	 * Pg15 moves pgstat.c else where. Make sure yb new code is included at new location.
+	 */
 	yb_pgstat_set_catalog_version(yb_catalog_cache_version);
+#endif
 }
 
 /** These values are lazily initialized based on corresponding environment variables. */
@@ -247,7 +258,7 @@ YbIsTempRelation(Relation relation)
 
 bool IsRealYBColumn(Relation rel, int attrNum)
 {
-	return (attrNum > 0 && !TupleDescAttr(rel->rd_att, attrNum - 1)->attisdropped));
+	return (attrNum > 0 && !TupleDescAttr(rel->rd_att, attrNum - 1)->attisdropped);
 #ifdef NEIL_OID
 			/* OID is now a regular column */
 	       || (rel->rd_rel->relhasoids && attrNum == ObjectIdAttributeNumber);

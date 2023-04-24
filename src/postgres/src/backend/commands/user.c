@@ -725,7 +725,7 @@ AlterRole(ParseState *pstate, AlterRoleStmt *stmt)
 		}
 
 		ReleaseSysCache(tuple);
-		heap_close(pg_authid_rel, NoLock);
+		table_close(pg_authid_rel, NoLock);
 		return roleid;
 	}
 

@@ -486,6 +486,7 @@ typedef enum ProgressCommandType
 
 #define PGSTAT_NUM_PROGRESS_PARAM	17
 
+#ifdef YB_TODO
 /*
  * YbPgBackendCatalogVersionStatus
  *
@@ -505,6 +506,7 @@ typedef struct YbPgBackendCatalogVersionStatus
 } YbPgBackendCatalogVersionStatus;
 
 
+/* YB_TODO(neil) Pg15 Move this to utils/backend_status.h ?? */
 /* ----------
  * PgBackendStatus
  *
@@ -599,6 +601,7 @@ typedef struct PgBackendStatus
 	/* YB catalog version */
 	YbPgBackendCatalogVersionStatus yb_st_catalog_version;
 } PgBackendStatus;
+#endif
 
 /* ----------
  * LocalPgBackendStatus

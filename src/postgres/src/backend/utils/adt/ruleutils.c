@@ -12468,8 +12468,8 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 	SysScanDesc		pg_depend_scan, pg_rewrite_scan;
 	HeapTuple		pg_depend_tuple, pg_rewrite_tuple;
 
-	pg_depend = heap_open(DependRelationId, RowExclusiveLock);
-	pg_rewrite = heap_open(RewriteRelationId, RowExclusiveLock);
+	pg_depend = table_open(DependRelationId, RowExclusiveLock);
+	pg_rewrite = table_open(RewriteRelationId, RowExclusiveLock);
 
 	/* Only interested in objects that are dependent on the given relation. */
 	ScanKeyInit(&key[0],
@@ -12516,7 +12516,7 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 		if (list_member_oid(*view_oids, view_oid))
 			continue;
 
-		r = heap_open(view_oid, NoLock);
+		r = table_open(view_oid, NoLock);
 
 		/* If the relation is indeed a view, record its oid and query. */
 		if (r->rd_rel->relkind == RELKIND_VIEW ||
@@ -12537,14 +12537,14 @@ yb_get_dependent_views(Oid relid, List **view_oids, List **view_queries)
 				(List *) stringToNode(TextDatumGetCString(ev_action_datum));
 			initStringInfo(&buf);
 			get_query_def(linitial(actions), &buf, NIL,
-						  RelationGetDescr(r), PRETTYFLAG_INDENT,
+						  RelationGetDescr(r), true, PRETTYFLAG_INDENT,
 						  WRAP_COLUMN_DEFAULT, 0);
 			*view_queries = lappend(*view_queries, pstrdup(buf.data));
 		}
 		systable_endscan(pg_rewrite_scan);
-		heap_close(r, NoLock);
+		table_close(r, NoLock);
 	}
 	systable_endscan(pg_depend_scan);
-	heap_close(pg_rewrite, RowExclusiveLock);
-	heap_close(pg_depend, RowExclusiveLock);
+	table_close(pg_rewrite, RowExclusiveLock);
+	table_close(pg_depend, RowExclusiveLock);
 }

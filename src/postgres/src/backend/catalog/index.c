@@ -1341,7 +1341,7 @@ index_create(Relation heapRelation,
 			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,
 										"backfill",
 										"non-concurrent index backfill");
-		index_build(heapRelation, indexRelation, indexInfo, isprimary, false, true);
+		index_build(heapRelation, indexRelation, indexInfo, false, true);
 
 	}
 
@@ -1524,6 +1524,8 @@ index_concurrently_create_copy(Relation heapRelation, Oid oldIndexId,
 							  NULL,
 							  NULL,
 							  true /* skip_index_backfill */,
+							  /* YB_TODO(neil) What is corect value for colocated? */
+							  false /* is_colocated */,
 							  InvalidOid /* tablegroupId */,
 							  InvalidOid /* colocationId */);
 

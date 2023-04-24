@@ -1800,7 +1800,7 @@ ybChangeDependencyOnProfile(Oid roleId, Oid newProfileId)
 {
 	Relation	sdepRel;
 
-	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
+	sdepRel = table_open(SharedDependRelationId, RowExclusiveLock);
 
 	if (newProfileId != InvalidOid)
 		shdepChangeDep(sdepRel,
@@ -1813,7 +1813,7 @@ ybChangeDependencyOnProfile(Oid roleId, Oid newProfileId)
 							InvalidOid, InvalidOid,
 							SHARED_DEPENDENCY_INVALID);
 
-	heap_close(sdepRel, RowExclusiveLock);
+	table_close(sdepRel, RowExclusiveLock);
 }
 
 /*
@@ -1826,12 +1826,12 @@ ybDropDependencyOnProfile(Oid roleId)
 {
 	Relation	sdepRel;
 
-	sdepRel = heap_open(SharedDependRelationId, RowExclusiveLock);
+	sdepRel = table_open(SharedDependRelationId, RowExclusiveLock);
 
 	shdepDropDependency(sdepRel, AuthIdRelationId, roleId, 0,
 						true,
 						YbProfileRelationId, InvalidOid,
 						SHARED_DEPENDENCY_PROFILE);
 
-	heap_close(sdepRel, RowExclusiveLock);
+	table_close(sdepRel, RowExclusiveLock);
 }

@@ -2424,7 +2424,7 @@ typedef struct YbCreateProfileStmt
 {
 	NodeTag		type;
 	char	   *prfname;
-	Value	   *prffailedloginattempts;
+	Integer	   *prffailedloginattempts;
 } YbCreateProfileStmt;
 
 typedef struct YbDropProfileStmt

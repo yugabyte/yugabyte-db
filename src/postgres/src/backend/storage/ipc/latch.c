@@ -459,7 +459,7 @@ DisownLatch(Latch *latch)
  * without being able to release its latch (for example, OOM)
  */
 void
-DisownLatchOnBehalfOfPid(volatile Latch *latch, int owner_pid)
+DisownLatchOnBehalfOfPid(Latch *latch, int owner_pid)
 {
 	Assert(latch->is_shared);
 	Assert(latch->owner_pid == owner_pid);

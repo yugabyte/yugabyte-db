@@ -2258,7 +2258,7 @@ _readYbBatchedNestLoop(void)
 	YbBNLHashClauseInfo *current_hinfo = local_node->hashClauseInfos;
 	for (int i = 0; i < num_hashClauseInfos; i++)
 	{	
-		char *tok = pg_strtok(&length);
+		const char *tok = pg_strtok(&length);
 		(void) tok;
 		tok = pg_strtok(&length);
 		current_hinfo->hashOp = atoi(tok);

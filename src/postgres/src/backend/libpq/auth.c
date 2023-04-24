@@ -261,7 +261,7 @@ ClientAuthentication_hook_type ClientAuthentication_hook = NULL;
  * particular, if logdetail isn't NULL, we send that string to the log.
  */
 static void
-auth_failed(Port *port, int status, char *logdetail, bool yb_role_is_locked_out)
+auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locked_out)
 {
 	const char *errstr;
 	char	   *cdetail;
@@ -682,6 +682,8 @@ ClientAuthentication(Port *port)
 		(*ClientAuthentication_hook) (port, status);
 
 
+#ifdef YB_TODO
+	/* YB_TODO(neil) Rewrite this. OID is no longer a special column */
 	/*
 	 * If conditions are met, update the role's profile entry.  Specific
 	 * authentication methods are isolated from profile handling.
@@ -725,6 +727,7 @@ ClientAuthentication(Port *port)
 		}
 		return;
 	}
+#endif
 
 	if (status == STATUS_OK)
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);

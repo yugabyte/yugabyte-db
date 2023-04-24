@@ -289,12 +289,14 @@ CleanupProcSignalState(int status, Datum arg)
 void
 CleanupProcSignalStateForProc(PGPROC *proc)
 {
+#ifdef YB_TODO
 	int			pss_idx = proc->backendId;
 	volatile ProcSignalSlot *slot;
 
 	slot = &ProcSignalSlots[pss_idx - 1];
 
 	CleanupProcSignalStateInternal(proc, proc->backendId, slot);
+#endif
 }
 
 /*

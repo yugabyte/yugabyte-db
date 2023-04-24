@@ -89,9 +89,14 @@ YbPgMemUpdateMax()
 static void
 YbPgMemUpdateCur()
 {
+#ifdef YB_TODO
+	/* YB_TODO(neil) Pg15 reorg stat files and functions.
+	 * Need reorg ours before activating stat related function calls.
+	 */
 #ifdef YB_TCMALLOC_ENABLED
 	YbGetActualHeapSizeBytes(&PgMemTracker.backend_cur_allocated_mem_bytes);
 	yb_pgstat_report_allocated_mem_bytes();
+#endif
 #endif
 }
 
@@ -1616,7 +1621,7 @@ PutMemoryContextsStatsTupleStore(Tuplestorestate *tupstore,
 
 	/* Examine the context itself */
 	memset(&stat, 0, sizeof(stat));
-	(*context->methods->stats) (context, NULL, (void *) &level, &stat);
+	(*context->methods->stats) (context, NULL, (void *) &level, &stat, true);
 
 	memset(values, 0, sizeof(values));
 	memset(nulls, 0, sizeof(nulls));
@@ -1665,6 +1670,8 @@ PutMemoryContextsStatsTupleStore(Tuplestorestate *tupstore,
 	}
 }
 
+#ifdef YB_TODO
+/* YB_TODO(neil) This function has been moved to a new place. Double check the merged code */
 /*
  * pg_get_backend_memory_contexts
  *		SQL SRF showing backend memory context.
@@ -1710,6 +1717,7 @@ pg_get_backend_memory_contexts(PG_FUNCTION_ARGS)
 
 	return (Datum) 0;
 }
+#endif
 
 /*
  * Get the YugaByte current memory context.

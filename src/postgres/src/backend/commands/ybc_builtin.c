@@ -79,7 +79,7 @@ yb_heap_stats(PG_FUNCTION_ARGS)
 
 	Datum		values[kRetArgNum];
 	bool		isnull[kRetArgNum];
-	TupleDesc	tupdesc = CreateTemplateTupleDesc(kRetArgNum, false);
+	TupleDesc	tupdesc = CreateTemplateTupleDesc(kRetArgNum);
 
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "TCMalloc heap_size_bytes",
 					   INT8OID, -1, 0);

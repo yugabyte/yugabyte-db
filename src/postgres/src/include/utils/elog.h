@@ -133,13 +133,18 @@
  * prevents gcc from making the unreachability deduction at optlevel -O0.
  *----------
  */
+/* YB_TODO (amartsinchyk)
+ * The macros for multi-thread needs review and modifications to match Pg15.
+ */
 #ifdef HAVE__BUILTIN_CONSTANT_P
 #define ereport_domain(elevel, domain, ...)	\
 	do { \
 		pg_prevent_errno_in_scope(); \
 		if (IsMultiThreadedMode()) { \
-			if (yb_errstart(elevel, __FILE__, __LINE__, PG_FUNCNAME_MACRO)) \
-				yb_errfinish rest; \
+			if (__builtin_constant_p(elevel) && (elevel) >= ERROR ? \
+				yb_errstart_cold(elevel) : \
+				yb_errstart(elevel)) \
+				__VA_ARGS__, yb_errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
 		} \
 		else \
 		{ \
@@ -158,8 +163,8 @@
 		pg_prevent_errno_in_scope(); \
 		if (IsMultiThreadedMode()) \
 		{ \
-			if (yb_errstart(elevel_, __FILE__, __LINE__, PG_FUNCNAME_MACRO)) \
-				yb_errfinish rest; \
+			if (yb_errstart(elevel_)) \
+				__VA_ARGS__, yb_errfinish(__FILE__, __LINE__, PG_FUNCNAME_MACRO); \
 		} \
 		else \
 		{ \
@@ -176,14 +181,18 @@
 
 #define TEXTDOMAIN NULL
 
-extern bool yb_errstart(int elevel, const char *filename, int lineno, const char *funcname);
-extern void yb_errfinish(int dummy,...);
-
 extern bool message_level_is_interesting(int elevel);
 
 extern bool errstart(int elevel, const char *domain);
 extern pg_attribute_cold bool errstart_cold(int elevel, const char *domain);
 extern void errfinish(const char *filename, int lineno, const char *funcname);
+
+/* YB_TODO (amartsinchyk)
+ * These function needs review and modifications to match Pg15.
+ */
+extern bool yb_errstart(int elevel);
+extern pg_attribute_cold bool yb_errstart_cold(int elevel);
+extern void yb_errfinish(const char *filename, int lineno, const char *funcname);
 
 extern int	errcode(int sqlerrcode);
 extern int	yb_txn_errcode(uint16_t txn_errcode);

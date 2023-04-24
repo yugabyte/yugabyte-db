@@ -77,20 +77,6 @@ typedef struct YbScanDescData
 	 */
 	TableScanDescData rs_base;
 
-	/*
-	 * Array of keys that are reordered to regular keys first then yb_hash_code().
-	 * Size and contents are the same as rs_keys in different order.
-	 */
-	ScanKey *reordered_keys;
-
-	/* 
-	 * number of regular keys
-	 *     nkeys = (rs_nkeys - nhash_keys)
-	 * number of keys which represents the yb_hash_code function.
-	 */
-	int nrkeys;
-	int nhash_keys;
-
 	/* The handle for the internal YB Select statement. */
 	YBCPgStatement handle;
 	bool is_exec_done;
@@ -108,7 +94,11 @@ typedef struct YbScanDescData
 	 * Keys in range [nkeys, nkeys + nhash_keys) are keys for yb_hash_code
 	 * Such separation allows to process regular and non-regular keys independently.
 	 */
-	ScanKey keys[YB_MAX_SCAN_KEYS];
+	/*
+	 * Array of keys that are reordered to regular keys first then yb_hash_code().
+	 * Size and contents are the same as rs_keys in different order.
+	 */
+	ScanKey *keys;
 	/* number of regular keys */
 	int nkeys;
 	/* number of keys which represents the yb_hash_code function */

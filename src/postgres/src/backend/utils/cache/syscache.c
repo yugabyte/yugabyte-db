@@ -1414,6 +1414,7 @@ YbPreloadCatalogCache(int cache_id, int idx_cache_id)
 	}
 }
 
+#ifdef YB_TODO
 static void
 YbFetchPinnedObjectKeyFromPgDepend(HeapTuple tup, YbPinnedObjectKey* key) {
 	Form_pg_depend dep = (Form_pg_depend) GETSTRUCT(tup);
@@ -1464,9 +1465,10 @@ YbBuildPinnedObjectCache(const char *name,
 	table_close(dependDesc, RowExclusiveLock);
 	return cache;
 }
+#endif
 
 static void
-YBLoadPinnedObjectsCache()
+YbLoadPinnedObjectsCache()
 {
 #ifdef YB_TODO
 	/* YB_TODO(dmitry@yugabyte)

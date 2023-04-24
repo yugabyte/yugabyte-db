@@ -29,7 +29,7 @@
 #include "pg_yb_utils.h"
 
 static bool
-yb_is_role_allowed_for_tserver_auth(const char* role, char **logdetail)
+yb_is_role_allowed_for_tserver_auth(const char* role, const char **logdetail)
 {
 	/* Currently disallow any role but "postgres" */
 	if (strcmp(role, "postgres"))

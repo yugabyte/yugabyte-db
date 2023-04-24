@@ -551,7 +551,7 @@ expand_single_inheritance_child(PlannerInfo *root, RangeTblEntry *parentrte,
 	 */
 	if (childOID != parentOID)
 	{
-		bool is_yb_relation = YBGetFirstLowInvalidAttributeNumber(parentrel);
+		bool is_yb_relation = IsYBRelation(parentrel);
 		childrte->selectedCols = translate_col_privs(parentrte->selectedCols,
 													 appinfo->translated_vars,
 													 is_yb_relation);

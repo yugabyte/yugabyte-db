@@ -239,11 +239,8 @@ execute_attr_map_slot(AttrMap *attrMap,
  */
 /* YB_TODO(neil) Need to choose between attrMap and map when fixing compiling errors */
 Bitmapset *
-execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols,
-					  TupleConversionMap *map, Relation rel))
+execute_attr_map_cols(AttrMap *attrMap, Bitmapset *in_cols, Relation rel)
 {
-	AttrNumber *attrMap = map->attrMap;
-	int			maplen = map->outdesc->natts;
 	Bitmapset  *out_cols;
 	int			out_attnum;
 

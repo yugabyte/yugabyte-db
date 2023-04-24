@@ -641,6 +641,7 @@ static const ObjectPropertyType ObjectProperty[] =
 	},
 	{
 		/* YB_TODO(neil) Need name for the new entry */
+		"ybprofile",
 		YbProfileRelationId,
 		YbProfileOidIndexId,
 		-1,

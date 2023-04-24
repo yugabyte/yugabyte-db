@@ -596,9 +596,9 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * - For IndexScan(SysTable, Index), SysTable is used for targets, but Index is for binds.
 	 * - For IndexOnlyScan(Table, Index), only Index is used to setup both target and bind.
 	 */
-	for (i = 0; i < ybScan->nrkeys; i++)
+	for (i = 0; i < ybScan->nkeys; i++)
 	{
-		ScanKey key = ybScan->reordered_keys[i];
+		ScanKey key = ybScan->keys[i];
 		if (!index)
 		{
 			/* Sequential scan */
@@ -816,7 +816,7 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	/*
 	 * Find the scan keys that are the primary key.
 	 */
-	for (int i = 0; i < ybScan->nrkeys; i++)
+	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		const AttrNumber attnum = scan_plan->bind_key_attnums[i];
 		if (attnum == InvalidAttrNumber)
@@ -831,7 +831,7 @@ ybcSetupScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 
 		if (is_primary_key &&
 		    YbShouldPushdownScanPrimaryKey(
-				tsdesc->rs_rd, scan_plan, attnum, ybScan->reordered_keys[i]))
+				tsdesc->rs_rd, scan_plan, attnum, ybScan->keys[i]))
 		{
 			scan_plan->sk_cols = bms_add_member(scan_plan->sk_cols, idx);
 		}
@@ -950,7 +950,7 @@ static bool YbIsScanCompatible(Oid column_typid,
 static bool
 YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 {
-	ScanKey key = ybScan->reordered_keys[i];
+	ScanKey key = ybScan->keys[i];
 	Oid valtypid = key->sk_subtype;
 	Oid atttypid = valtypid == RECORDOID ? RECORDOID :
 		ybc_get_atttypid(scan_plan->bind_desc, scan_plan->bind_key_attnums[i]);
@@ -1175,7 +1175,7 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 	Oid 	   *colids;
 	bool is_row = false;
 	int length_of_key = YbGetLengthOfKey(&ybScan->keys[skey_index]);
-	Relation relation = ybScan->relation;
+	Relation relation = ((TableScanDesc)ybScan)->rs_rd;
 	Relation index = ybScan->index;
 
 	ScanKey key = ybScan->keys[skey_index];
@@ -1336,7 +1336,6 @@ static bool
 YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 {
 	Relation relation = ((TableScanDesc)ybScan)->rs_rd;
-	Relation index = ybScan->index;
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
 								  YbGetStorageRelid(relation),
@@ -1355,7 +1354,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	 * negative attribute numbers of system attributes.
 	 */
 	int max_idx = 0;
-	for (int i = 0; i < ybScan->nrkeys; i++)
+	for (int i = 0; i < ybScan->nkeys; i++)
 	{
 		int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
 		if (max_idx < idx && bms_is_member(idx, scan_plan->sk_cols))
@@ -1404,11 +1403,11 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 		}
 #ifdef YB_TODO
 	/* YB_TODO(neil) recheck the following code. */
-	int offsets[ybScan->nrkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
+	int offsets[ybScan->nkeys + 1]; /* VLA - scratch space: +1 to avoid zero elements */
 
-	for (int i = 0; i < ybScan->nrkeys; i++)
+	for (int i = 0; i < ybScan->nkeys; i++)
 	{
-		ScanKey key = ybScan->reordered_keys[i];
+		ScanKey key = ybScan->keys[i];
 		/* Check if this is full key row comparison expression */
 		if (key->sk_flags & SK_ROW_HEADER)
 		{
@@ -1632,7 +1631,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 	for (int k = 0; k < noffsets; k++)
 	{
 		int i = offsets[k];
-		ScanKey key = ybScan->reordered_keys[i];
+		ScanKey key = ybScan->keys[i];
 		int idx = YBAttnumToBmsIndex(relation, scan_plan->bind_key_attnums[i]);
 		/*
 		 * YBAttnumToBmsIndex should guarantee that index is positive
@@ -1719,7 +1718,7 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan)
 
 						/* Skip integer element where the value overflows the column type */
 						if ((atttype == INT2OID || atttype == INT4OID) &&
-							!YbIsIntegerInRange(elem_values[j], ybScan->reordered_keys[i]->sk_subtype,
+							!YbIsIntegerInRange(elem_values[j], ybScan->keys[i]->sk_subtype,
                                   			   atttype == INT2OID ? SHRT_MIN : INT_MIN,
 								               atttype == INT2OID ? SHRT_MAX : INT_MAX))
 							continue;
@@ -1889,7 +1888,7 @@ YbBindHashKeys(YbScanDesc ybScan)
 
 	for(int i = 0; i < ybScan->nhash_keys; ++i)
 	{
-		ScanKey key = ybScan->reordered_keys[ybScan->nrkeys + i];
+		ScanKey key = ybScan->keys[ybScan->nkeys + i];
 		Assert(YbIsHashCodeSearch(key));
 		YbBound bound = {
 			.type = YB_YQL_BOUND_VALID,
@@ -1972,7 +1971,7 @@ YbInitColumnFilter(
 	Bitmapset *items = NULL;
 	/* Collect bound key attributes */
 	AttrNumber *sk_attno = ybScan->target_key_attnums;
-	for (AttrNumber *sk_attno_end = sk_attno + ybScan->nrkeys;
+	for (AttrNumber *sk_attno_end = sk_attno + ybScan->nkeys;
 	     sk_attno != sk_attno_end;
 	     ++sk_attno)
 	{
@@ -2214,8 +2213,8 @@ ybcBeginScan(Relation relation,
 	tsdesc->rs_nkeys = nkeys;
 
 	/* Reorder the keys to regular key first then yb_hash_code. */
-	ybScan->reordered_keys = (ScanKey*) palloc(sizeof(ScanKey) * nkeys);
-	ybScan->nrkeys = 0;
+	ybScan->keys = (ScanKey*) palloc(sizeof(ScanKey) * nkeys);
+	ybScan->nkeys = 0;
 	ybScan->nhash_keys = 0;
 	for (int i = 0; i < nkeys; ++i)
 	{
@@ -2241,7 +2240,6 @@ ybcBeginScan(Relation relation,
 		}
 	}
 	ybScan->exec_params = NULL;
-	ybScan->relation = relation;
 	ybScan->index = index;
 	ybScan->quit_scan = false;
 
@@ -2250,7 +2248,7 @@ ybcBeginScan(Relation relation,
 	ybcSetupScanPlan(xs_want_itup, ybScan, &scan_plan);
 	ybcSetupScanKeys(ybScan, &scan_plan);
 
-	if (!YbIsEmptyResultCondition(ybScan->nrkeys, ybScan->reordered_keys) &&
+	if (!YbIsEmptyResultCondition(ybScan->nkeys, ybScan->keys) &&
 	    YbBindScanKeys(ybScan, &scan_plan) &&
 	    YbBindHashKeys(ybScan))
 	{
@@ -2360,68 +2358,8 @@ ybc_keys_match(HeapTuple tup, YbScanDesc ybScan, bool *recheck)
 	return true;
 }
 
-static bool
-indextuple_matches_key(IndexTuple tup,
-					   TupleDesc tupdesc,
-					   int nkeys,
-					   ScanKey keys[],
-					   AttrNumber sk_attno[],
-					   bool *recheck)
-{
-	*recheck = false;
-
-	for (int i = 0; i < nkeys; i++)
-	{
-		if (sk_attno[i] == InvalidAttrNumber)
-			break;
-
-		bool  is_null = false;
-
-		Datum res_datum = index_getattr(tup, sk_attno[i], tupdesc, &is_null);
-
-		ScanKey key = keys[i];
-		if (key->sk_flags & SK_SEARCHNULL)
-		{
-			if (is_null)
-				continue;
-			else
-				return false;
-		}
-
-		if (key->sk_flags & SK_SEARCHNOTNULL)
-		{
-			if (!is_null)
-				continue;
-			else
-				return false;
-		}
-
-		/*
-		 * TODO: support the different search options like SK_SEARCHARRAY.
-		 */
-		if (key->sk_flags != 0)
-		{
-			*recheck = true;
-			continue;
-		}
-
-		if (is_null)
-			return false;
-
-		bool matches = DatumGetBool(FunctionCall2Coll(
-			&key->sk_func, key->sk_collation, res_datum, key->sk_argument));
-		if (!matches)
-			return false;
-	}
-
-	return true;
-}
-
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
-	int         nkeys    = ybScan->nrkeys;
-	ScanKey    *keys     = ybScan->reordered_keys;
-	AttrNumber *sk_attno = ybScan->target_key_attnums;
 	HeapTuple   tup      = NULL;
 
 	if (ybScan->quit_scan)
@@ -2456,12 +2394,6 @@ HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *r
 
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 {
-	int         nkeys    = ybScan->nrkeys;
-	ScanKey    *keys     = ybScan->reordered_keys;
-	AttrNumber *sk_attno = ybScan->target_key_attnums;
-	Relation    index    = ybScan->index;
-	IndexTuple  tup      = NULL;
-
 	if (ybScan->quit_scan)
 		return NULL;
 
@@ -3165,17 +3097,10 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy w
 	exec_params.limit_count = 1;
 	exec_params.rowmark = mode;
 	exec_params.wait_policy = wait_policy;
-#ifdef YB_TODO
-    /* YB_TODO(neil) Need check when compiling code */
     exec_params.stmt_in_txn_limit_ht_for_reads =
 		estate->yb_exec_params.stmt_in_txn_limit_ht_for_reads;
 
-	HTSU_Result res = HeapTupleMayBeUpdated;
-#else
-	exec_params.statement_in_txn_limit = estate->yb_exec_params.statement_in_txn_limit;
-
 	TM_Result res = TM_Ok;
-#endif
 	MemoryContext exec_context = GetCurrentMemoryContext();
 
 	PG_TRY();

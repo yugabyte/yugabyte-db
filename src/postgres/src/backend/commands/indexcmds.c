@@ -586,6 +586,7 @@ DefineIndex(Oid relationId,
 	bool		relIsShared;
 	Oid tablegroupId = InvalidOid;
 	Oid colocation_id = InvalidOid;
+	bool is_colocated = false;
 
 	root_save_nestlevel = NewGUCNestLevel();
 
@@ -935,6 +936,15 @@ DefineIndex(Oid relationId,
 						   get_tablespace_name(tablespaceId));
 	}
 
+	/*
+	 * Get whether the indexed table is colocated
+	 * (either via database or a tablegroup).
+	 */
+	is_colocated = (IsYBRelation(rel) &&
+					!IsBootstrapProcessingMode() &&
+					!YbIsConnectedToTemplateDb() &&
+					YbGetTableProperties(rel)->is_colocated);
+
 	if (IsYBRelation(rel))
 	{
 		/* Use tablegroup of the indexed table, if any. */
@@ -948,17 +958,6 @@ DefineIndex(Oid relationId,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 					 errmsg("Cannot use TABLEGROUP with SPLIT.")));
 		}
-
-
-		/*
-		 * Get whether the indexed table is colocated
-		 * (either via database or a tablegroup).
-		 */
-		bool is_colocated =
-			IsYBRelation(rel) &&
-			!IsBootstrapProcessingMode() &&
-			!YbIsConnectedToTemplateDb() &&
-			YbGetTableProperties(rel)->is_colocated;
 
 		colocation_id = YbGetColocationIdFromRelOptions(stmt->options);
 
@@ -1960,15 +1959,15 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
-								   false /* is_breaking_catalog_change */);
+		YBDecrementDdlNestingLevel();
 		CommitTransactionCommand();
 
 		/* Delay after committing pg_index update. */
 		pg_usleep(yb_index_state_flags_update_delay * 1000);
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel();
+		YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
+								   false /* is_breaking_catalog_change */);
 
 		/*
 		 * Update the pg_index row to mark the index as ready for inserts.
@@ -1982,15 +1981,15 @@ DefineIndex(Oid relationId,
 		 * TODO(jason): handle nested CREATE INDEX (this assumes we're at nest
 		 * level 1).
 		 */
-		YBDecrementDdlNestingLevel(true /* is_catalog_version_increment */,
-								   false /* is_breaking_catalog_change */);
+		YBDecrementDdlNestingLevel();
 		CommitTransactionCommand();
 
 		/* Delay after committing pg_index update. */
 		pg_usleep(yb_index_state_flags_update_delay * 1000);
 
 		StartTransactionCommand();
-		YBIncrementDdlNestingLevel();
+		YBIncrementDdlNestingLevel(true /* is_catalog_version_increment */,
+								   false /* is_breaking_catalog_change */);
 
 		/* TODO(jason): handle exclusion constraints, possibly not here. */
 

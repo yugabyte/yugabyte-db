@@ -112,7 +112,7 @@ static void InitPostgresImpl(const char *in_dbname, Oid dboid,
 							 bool override_allow_connections,
 							 char *out_dbname,
 							 bool* yb_sys_table_prefetching_started);
-static void YbEnsureSysTablePrefetchingStopped(bool sys_table_prefetching_started);
+static void YbEnsureSysTablePrefetchingStopped();
 
 /*** InitPostgres support ***/
 
@@ -690,6 +690,9 @@ BaseInit(void)
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
+/* YB_TODO(neil) Double check the merged in this file.
+ * Both Postgres and Yb refactor code, so merging mistakes are possible.
+ */
 void
 InitPostgres(const char *in_dbname, Oid dboid,
 			 const char *username, Oid useroid,
@@ -707,11 +710,11 @@ InitPostgres(const char *in_dbname, Oid dboid,
 	}
 	PG_CATCH();
 	{
-		YbEnsureSysTablePrefetchingStopped(sys_table_prefetching_started);
+		YbEnsureSysTablePrefetchingStopped();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-	YbEnsureSysTablePrefetchingStopped(sys_table_prefetching_started);
+	YbEnsureSysTablePrefetchingStopped();
 }
 
 static void
@@ -719,7 +722,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 				 const char *username, Oid useroid,
 				 bool load_session_libraries,
 				 bool override_allow_connections,
-				 char *out_dbname)
+				 char *out_dbname,
+				 bool* yb_sys_table_prefetching_started)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -1094,7 +1098,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		return;
 	}
 
-	if (MyDatabaseId != TemplateDbOid && YBIsDBCatalogVersionMode())
+	if (MyDatabaseId != Template1DbOid && YBIsDBCatalogVersionMode())
 	{
 		/*
 		 * Here we assume that the entire table pg_yb_catalog_version is

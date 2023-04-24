@@ -378,6 +378,9 @@ static const PgStat_KindInfo pgstat_kind_infos[PGSTAT_NUM_KINDS] = {
 	},
 };
 
+/* YB_TODO(neil) Pg15 relocation stat files and functions.
+ * Need to double check work in pgstat.c and move them to new location */
+bool yb_retrieved_concurrent_index_progress = false;
 
 /* ------------------------------------------------------------
  * Functions managing the state of the stats system for all backends.
@@ -773,6 +776,8 @@ pgstat_clear_snapshot(void)
 	 * forward the reset request.
 	 */
 	pgstat_clear_backend_activity_snapshot();
+
+	yb_retrieved_concurrent_index_progress = false;
 }
 
 void *

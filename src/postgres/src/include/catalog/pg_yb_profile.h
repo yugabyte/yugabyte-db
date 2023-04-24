@@ -39,4 +39,22 @@ CATALOG(pg_yb_profile,8051,YbProfileRelationId) BKI_SHARED_RELATION BKI_ROWTYPE_
  */
 typedef FormData_pg_yb_profile *Form_pg_yb_profile;
 
+#ifdef YB_TODO
+/* YB_TODO(neil) Need to rework on these entries.
+ * Postgres doesn't use these macros any longer?
+ */
+DECLARE_UNIQUE_INDEX(pg_yb_catalog_version_db_oid_index, 8012, on pg_yb_catalog_version using btree(db_oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_yb_profile_oid_index, 8052, on pg_yb_profile using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_yb_role_profile_oid_index, 8055, on pg_yb_role_profile using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(pg_yb_profile_prfname_index, 8057, on pg_yb_profile using btree(prfname name_ops));
+#endif
+
+#define YBCatalogVersionDbOidIndexId 8012
+
+#define YbProfileOidIndexId 8052
+
+#define YbRoleProfileOidIndexId 8055
+
+#define YbProfileRolnameIndexId	8057
+
 #endif							/* PG_YB_PROFILE_H */

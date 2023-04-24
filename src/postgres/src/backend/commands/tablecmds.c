@@ -9696,7 +9696,6 @@ YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* r
 				                                   1 /* fromrel_varno */,
 				                                   0 /* sublevels_up */,
 				                                   new2old_attmap,
-				                                   RelationGetDescr(old_rel)->natts,
 				                                   RelationGetForm(new_rel)->reltype,
 				                                   &found_whole_row);
 				if (found_whole_row)
@@ -9907,7 +9906,6 @@ YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* r
 				                                   fromrel_varno,
 				                                   0 /* sublevels_up */,
 				                                   new2old_attmap,
-				                                   RelationGetDescr(old_rel)->natts,
 				                                   RelationGetForm(new_rel)->reltype,
 				                                   &found_whole_row);
 				if (found_whole_row)
@@ -21039,7 +21037,7 @@ ybCopyMiscMetadata(Relation oldRel, Relation newRel, AttrNumber* attmap)
 	HeapTuple	  old_rel_tuple, new_rel_old_tuple, new_rel_new_tuple;
 	Form_pg_class old_rel_form;
 	Relation	  pg_class =
-		heap_open(RelationRelationId, RowExclusiveLock);
+		table_open(RelationRelationId, RowExclusiveLock);
 
 	memset(values, 0, sizeof(values));
 	memset(nulls, false, sizeof(nulls));
@@ -21085,14 +21083,14 @@ ybCopyMiscMetadata(Relation oldRel, Relation newRel, AttrNumber* attmap)
 	heap_freetuple(new_rel_new_tuple);
 	ReleaseSysCache(new_rel_old_tuple);
 	ReleaseSysCache(old_rel_tuple);
-	heap_close(pg_class, RowExclusiveLock);
+	table_close(pg_class, RowExclusiveLock);
 
 	/*
 	 * Copy attacl and attstattarget values from old relation's attributes'
 	 * pg_attribute entries.
 	 */
 	Relation	pg_attribute =
-		heap_open(AttributeRelationId, RowExclusiveLock);
+		table_open(AttributeRelationId, RowExclusiveLock);
 	for (int attno = 1; attno <= RelationGetDescr(newRel)->natts; attno++)
 	{
 		Datum			  values[Natts_pg_attribute];
@@ -21151,7 +21149,7 @@ ybCopyMiscMetadata(Relation oldRel, Relation newRel, AttrNumber* attmap)
 		ReleaseSysCache(new_rel_att_tuple);
 		ReleaseSysCache(old_rel_att_tuple);
 	}
-	heap_close(pg_attribute, RowExclusiveLock);
+	table_close(pg_attribute, RowExclusiveLock);
 }
 
 /*
@@ -21165,8 +21163,8 @@ ybReplaceViewQueries(List *view_oids, List *view_queries)
 	{
 		char *query_str = (char *) lfirst(def_cell);
 		RawStmt *rawstmt =
-			(RawStmt *) linitial(raw_parser(query_str));
-		Query *viewParse = parse_analyze(rawstmt, query_str, NULL, 0, NULL);
+			(RawStmt *) linitial(raw_parser(query_str,  RAW_PARSE_DEFAULT));
+		Query *viewParse = parse_analyze_fixedparams(rawstmt, query_str, NULL, 0, NULL);
 		StoreViewQuery(lfirst_oid(oid_cell), viewParse, true);
 	}
 }
@@ -21179,12 +21177,13 @@ ybReplaceViewQueries(List *view_oids, List *view_queries)
 static void
 ybCopyPolicyObjects(Relation oldRel, Relation newRel, AttrNumber* attmap)
 {
+#ifdef YB_TODO
 	Relation		pg_policy;
 	ScanKeyData		key;
 	HeapTuple		old_policy_tuple;
 	SysScanDesc		scan;
 
-	pg_policy = heap_open(PolicyRelationId, RowExclusiveLock);
+	pg_policy = table_open(PolicyRelationId, RowExclusiveLock);
 	ScanKeyInit(&key, Anum_pg_policy_polrelid, BTEqualStrategyNumber,
 				F_OIDEQ, ObjectIdGetDatum(RelationGetRelid(oldRel)));
 	scan = systable_beginscan(pg_policy, PolicyPolrelidPolnameIndexId,
@@ -21223,7 +21222,6 @@ ybCopyPolicyObjects(Relation oldRel, Relation newRel, AttrNumber* attmap)
 						1,
 						0,
 						attmap,
-						RelationGetDescr(oldRel)->natts,
 						RelationGetForm(newRel)->reltype,
 						&found_whole_row);
 
@@ -21253,7 +21251,6 @@ ybCopyPolicyObjects(Relation oldRel, Relation newRel, AttrNumber* attmap)
 							1,
 							0,
 							attmap,
-							RelationGetDescr(oldRel)->natts,
 							RelationGetForm(newRel)->reltype,
 							&found_whole_row);
 
@@ -21334,7 +21331,8 @@ ybCopyPolicyObjects(Relation oldRel, Relation newRel, AttrNumber* attmap)
 		}
 	}
 	systable_endscan(scan);
-	heap_close(pg_policy, RowExclusiveLock);
+	table_close(pg_policy, RowExclusiveLock);
+#endif
 }
 
 /*
@@ -21345,13 +21343,14 @@ ybCopyPolicyObjects(Relation oldRel, Relation newRel, AttrNumber* attmap)
 static void
 ybCopyStats(Oid oldRelid, RangeVar *newRel, Oid newRelid, AttrNumber* attmap)
 {
+#ifdef YB_TODO
 	Relation		pg_statistic, pg_statistic_ext;
 	HeapTuple		tuple;
 	ScanKeyData		key;
 	SysScanDesc		scan;
 
 	/* Copy extended statistics objects. */
-	pg_statistic_ext = heap_open(StatisticExtRelationId, RowExclusiveLock);
+	pg_statistic_ext = table_open(StatisticExtRelationId, RowExclusiveLock);
 	ScanKeyInit(&key, Anum_pg_statistic_ext_stxrelid, BTEqualStrategyNumber,
 				F_OIDEQ, ObjectIdGetDatum(oldRelid));
 	scan = systable_beginscan(pg_statistic_ext,
@@ -21395,10 +21394,10 @@ ybCopyStats(Oid oldRelid, RangeVar *newRel, Oid newRelid, AttrNumber* attmap)
 		CreateStatistics(stmt);
 	}
 	systable_endscan(scan);
-	heap_close(pg_statistic_ext, RowExclusiveLock);
+	table_close(pg_statistic_ext, RowExclusiveLock);
 
 	/* Copy pg_statistic entries with updated starelid and staattnum values. */
-	pg_statistic =  heap_open(StatisticRelationId, RowExclusiveLock);
+	pg_statistic =  table_open(StatisticRelationId, RowExclusiveLock);
 	ScanKeyInit(&key, Anum_pg_statistic_starelid, BTEqualStrategyNumber,
 				F_OIDEQ, ObjectIdGetDatum(oldRelid));
 	scan = systable_beginscan(pg_statistic, StatisticRelidAttnumInhIndexId,
@@ -21433,5 +21432,6 @@ ybCopyStats(Oid oldRelid, RangeVar *newRel, Oid newRelid, AttrNumber* attmap)
 		heap_freetuple(newtuple);
 	}
 	systable_endscan(scan);
-	heap_close(pg_statistic, RowExclusiveLock);
+	table_close(pg_statistic, RowExclusiveLock);
+#endif
 }

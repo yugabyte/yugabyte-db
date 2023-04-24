@@ -18268,6 +18268,7 @@ bare_label_keyword:
 			  ABORT_P
 			| ABSOLUTE_P
 			| ACCESS
+			| ACCOUNT
 			| ACTION
 			| ADD_P
 			| ADMIN
@@ -18322,6 +18323,7 @@ bare_label_keyword:
 			| COLLATE
 			| COLLATION
 			| COLOCATED
+			| COLOCATION
 			| COLUMN
 			| COLUMNS
 			| COMMENT
@@ -18399,6 +18401,7 @@ bare_label_keyword:
 			| EXTENSION
 			| EXTERNAL
 			| EXTRACT
+			| FAILED_LOGIN_ATTEMPTS
 			| FALSE_P
 			| FAMILY
 			| FINALIZE
@@ -18497,6 +18500,7 @@ bare_label_keyword:
 			| NO
 			| NONCONCURRENTLY
 			| NONE
+			| NOPROFILE
 			| NORMALIZE
 			| NORMALIZED
 			| NOT
@@ -18546,6 +18550,7 @@ bare_label_keyword:
 			| PROCEDURAL
 			| PROCEDURE
 			| PROCEDURES
+			| PROFILE
 			| PROGRAM
 			| PUBLICATION
 			| QUOTE
@@ -18657,6 +18662,7 @@ bare_label_keyword:
 			| UNIQUE
 			| UNKNOWN
 			| UNLISTEN
+			| UNLOCK
 			| UNLOGGED
 			| UNTIL
 			| UPDATE

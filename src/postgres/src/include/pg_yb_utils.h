@@ -807,16 +807,16 @@ void GetStatusMsgAndArgumentsByCode(
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(elevel, filename ? filename : __FILE__, \
-						 lineno > 0 ? lineno : __LINE__, \
-						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			if (errstart(elevel, TEXTDOMAIN)) \
 			{ \
 				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
 				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
-				errfinish(0); \
+				errfinish(filename ? filename : __FILE__, \
+						  lineno > 0 ? lineno : __LINE__, \
+						  funcname ? funcname : PG_FUNCNAME_MACRO);	   \
 				if (__builtin_constant_p(elevel) && (elevel) >= ERROR) \
 					pg_unreachable(); \
 			} \
@@ -846,16 +846,16 @@ void GetStatusMsgAndArgumentsByCode(
 										   &msg_nargs, &msg_args, &detail_buf, \
 										   &detail_nargs, &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(elevel_, filename ? filename : __FILE__, \
-						 lineno > 0 ? lineno : __LINE__, \
-						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
+			if (errstart(elevel_, TEXTDOMAIN)) \
 			{ \
 				yb_errmsg_from_status_data(msg_buf, msg_nargs, msg_args); \
 				yb_detail_from_status_data(detail_buf, detail_nargs, detail_args); \
 				errcode(pg_err_code); \
 				yb_txn_errcode(txn_err_code); \
 				errhidecontext(true); \
-				errfinish(0); \
+				errfinish(filename ? filename : __FILE__, \
+						  lineno > 0 ? lineno : __LINE__, \
+						  funcname ? funcname : PG_FUNCNAME_MACRO); \
 				if (elevel_ >= ERROR) \
 					pg_unreachable(); \
 			} \
