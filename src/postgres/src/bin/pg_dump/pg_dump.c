@@ -367,7 +367,6 @@ static void getYbTablePropertiesAndReloptions(Archive *fout,
 						PQExpBuffer reloptions_buf, Oid reloid, const char* relname,
 						char relkind);
 static void isDatabaseColocated(Archive *fout);
-static bool isDatabaseColocated(Archive *fout);
 #ifdef YB_TODO
 /* YB_TODO(neil) Need rework to match Pg15 */
 static char *getYbSplitClause(Archive *fout, const TableInfo *tbinfo);
