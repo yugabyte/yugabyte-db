@@ -1666,10 +1666,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         && isWriteReadTableEnabled) {
       // Create read-write test table
       List<NodeDetails> tserverLiveNodes =
-          getUniverse()
-              .getUniverseDetails()
-              .getNodesInCluster(primaryCluster.uuid)
-              .stream()
+          getUniverse().getUniverseDetails().getNodesInCluster(primaryCluster.uuid).stream()
               .filter(nodeDetails -> nodeDetails.isTserver)
               .collect(Collectors.toList());
       createReadWriteTestTableTask(tserverLiveNodes.size(), true)
@@ -2532,9 +2529,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
             ? Backup.getLastSuccessfulBackupInChain(
                 backupParams.customerUuid, backupParams.baseBackupUUID)
             : null;
-    backupParams
-        .backupList
-        .stream()
+    backupParams.backupList.stream()
         .filter(bTP -> !backupStates.get(bTP.getKeyspace()).alreadyScheduled)
         .forEach(
             bTP -> {
@@ -3069,8 +3064,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     List<Cluster> remainingClusters = taskParams.clusters;
     if (!allClusters) {
       remainingClusters =
-          remainingClusters
-              .stream()
+          remainingClusters.stream()
               .filter(c -> !targetClusters.contains(c))
               .collect(Collectors.toList());
     }
@@ -3117,9 +3111,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
         // Map AZ -> nodes for each cluster
         Map<AvailabilityZone, Set<NodeDetails>> azNodes = new HashMap<>();
         Set<NodeDetails> nodes =
-            taskParams
-                .getNodesInCluster(cluster.uuid)
-                .stream()
+            taskParams.getNodesInCluster(cluster.uuid).stream()
                 .filter(n -> n.isActive() && n.isTserver)
                 .collect(Collectors.toSet());
         // Ignore nodes
@@ -3896,8 +3888,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public void createXClusterConfigUpdateMasterAddressesTask() {
     SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigUpdateMasterAddresses");
     List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getBySourceUniverseUUID(taskParams().getUniverseUUID())
-            .stream()
+        XClusterConfig.getBySourceUniverseUUID(taskParams().getUniverseUUID()).stream()
             .filter(xClusterConfig -> !XClusterConfigTaskBase.isInMustDeleteStatus(xClusterConfig))
             .collect(Collectors.toList());
     Set<UUID> updatedTargetUniverses = new HashSet<>();
@@ -4051,8 +4042,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   protected void createTransferXClusterCertsCopyTasks(
       Collection<NodeDetails> nodes, Universe targetUniverse, SubTaskGroupType subTaskGroupType) {
     List<XClusterConfig> xClusterConfigs =
-        XClusterConfig.getByTargetUniverseUUID(targetUniverse.getUniverseUUID())
-            .stream()
+        XClusterConfig.getByTargetUniverseUUID(targetUniverse.getUniverseUUID()).stream()
             .filter(xClusterConfig -> !XClusterConfigTaskBase.isInMustDeleteStatus(xClusterConfig))
             .collect(Collectors.toList());
 

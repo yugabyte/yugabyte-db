@@ -12,9 +12,7 @@ package com.yugabyte.yw.forms.filters;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.filters.BackupFilter;
-
 import io.swagger.annotations.ApiModelProperty;
-
 import java.util.Date;
 import java.util.Set;
 import java.util.UUID;

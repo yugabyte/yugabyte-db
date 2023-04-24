@@ -10,8 +10,8 @@
 
 package com.yugabyte.yw.models.migrations;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
@@ -19,25 +19,23 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
-import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
-import javax.persistence.OneToMany;
 import javax.persistence.ManyToOne;
+import javax.persistence.OneToMany;
 import javax.persistence.Table;
 import javax.persistence.Transient;
-
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;

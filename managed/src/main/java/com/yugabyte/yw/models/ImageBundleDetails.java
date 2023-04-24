@@ -1,11 +1,9 @@
 package com.yugabyte.yw.models;
 
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-
 import io.swagger.annotations.ApiModelProperty;
+import java.util.Map;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 

@@ -425,16 +425,14 @@ public class CertificateInfo extends Model {
       String label, CertConfigType certType) {
     List<CertificateInfo> certificateInfoList =
         find.query().where().eq("cert_type", certType).like("label", label + "%").findList();
-    return certificateInfoList
-        .stream()
+    return certificateInfoList.stream()
         .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
         .collect(Collectors.toList());
   }
 
   public static List<CertificateInfo> getAllNoChecksum() {
     List<CertificateInfo> certificateInfoList = find.query().where().isNull("checksum").findList();
-    return certificateInfoList
-        .stream()
+    return certificateInfoList.stream()
         .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
         .collect(Collectors.toList());
   }
@@ -444,8 +442,7 @@ public class CertificateInfo extends Model {
         find.query().where().eq("customer_uuid", customerUUID).findList();
 
     certificateInfoList =
-        certificateInfoList
-            .stream()
+        certificateInfoList.stream()
             .filter(certificateInfo -> !CertificateInfo.isTemporary(certificateInfo))
             .collect(Collectors.toList());
 

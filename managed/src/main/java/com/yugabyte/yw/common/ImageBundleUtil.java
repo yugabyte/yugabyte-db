@@ -2,9 +2,6 @@ package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import java.util.UUID;
-import java.util.Map;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
@@ -12,7 +9,8 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
-
+import java.util.Map;
+import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

@@ -126,9 +126,7 @@ public class PersistResizeNode extends UniverseTaskBase {
     if (paramsClusters == null || paramsClusters.isEmpty()) {
       return universeDetails.clusters;
     }
-    return universeDetails
-        .clusters
-        .stream()
+    return universeDetails.clusters.stream()
         .filter(c -> paramsClusters.contains(c.uuid))
         .collect(Collectors.toList());
   }

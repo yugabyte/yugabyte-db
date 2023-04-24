@@ -80,8 +80,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
         // Promote auto flags on all connected universes which were blocked
         // due to the xCluster config.
         createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-            xClusterConnectedUniverseSet
-                .stream()
+            xClusterConnectedUniverseSet.stream()
                 .map(Universe::getUniverseUUID)
                 .collect(Collectors.toSet()),
             alreadyLockedUniverseUUIDSet,

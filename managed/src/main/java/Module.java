@@ -3,7 +3,6 @@
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.name.Names;
-import com.google.inject.assistedinject.FactoryModuleBuilder;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudModules;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;

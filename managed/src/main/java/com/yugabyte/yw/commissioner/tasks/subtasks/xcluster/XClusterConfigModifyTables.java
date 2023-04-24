@@ -189,9 +189,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
                     xClusterConfig.getTargetUniverseUUID()));
           }
           Set<String> tableIdsToRemoveWithReplication =
-              xClusterConfig
-                  .getTableIdsWithReplicationSetup()
-                  .stream()
+              xClusterConfig.getTableIdsWithReplicationSetup().stream()
                   .filter(tableIdsToRemove::contains)
                   .collect(Collectors.toSet());
           log.debug(

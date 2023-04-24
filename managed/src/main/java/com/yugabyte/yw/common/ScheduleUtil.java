@@ -39,8 +39,7 @@ public class ScheduleUtil {
     if (scheduleTask == null) {
       return null;
     }
-    return Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID())
-        .stream()
+    return Backup.fetchAllBackupsByTaskUUID(scheduleTask.getTaskUUID()).stream()
         .filter(bkp -> bkp.getState().equals(BackupState.Completed))
         .findFirst()
         .orElse(null);

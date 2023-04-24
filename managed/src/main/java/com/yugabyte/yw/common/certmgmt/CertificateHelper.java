@@ -912,8 +912,7 @@ public class CertificateHelper {
   private static void verifyCertValidity(List<X509Certificate> certs) {
     certs.forEach(
         cert -> {
-          if (certs
-              .stream()
+          if (certs.stream()
               .noneMatch(potentialRootCert -> verifyCertValidity(cert, potentialRootCert))) {
             X500Name x500Name = new X500Name(cert.getSubjectX500Principal().getName());
             RDN cn = x500Name.getRDNs(BCStyle.CN)[0];

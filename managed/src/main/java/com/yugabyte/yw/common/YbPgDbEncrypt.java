@@ -2,9 +2,9 @@
 
 package com.yugabyte.yw.common;
 
-import io.ebean.config.dbplatform.ExtraDbTypes;
 import io.ebean.config.dbplatform.DbEncrypt;
 import io.ebean.config.dbplatform.DbEncryptFunction;
+import io.ebean.config.dbplatform.ExtraDbTypes;
 import java.sql.Types;
 
 // An implementation of Postgresql DB encryption that supports JSON objects, since EBean's own

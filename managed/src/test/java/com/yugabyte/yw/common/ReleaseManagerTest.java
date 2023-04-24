@@ -1,8 +1,8 @@
 // Copyright (c) YugaByte, Inc.
 package com.yugabyte.yw.common;
 
-import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
+import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.SoftwareReleases;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.YbcSoftwareReleases;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
@@ -29,11 +29,9 @@ import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
@@ -49,12 +47,12 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.stubbing.Answer;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.Spy;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.runners.MockitoJUnitRunner;
-import play.libs.Json;
+import org.mockito.stubbing.Answer;
 import play.Environment;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class ReleaseManagerTest extends FakeDBApplication {

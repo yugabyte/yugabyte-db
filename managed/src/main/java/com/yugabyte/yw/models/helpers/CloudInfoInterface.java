@@ -3,9 +3,6 @@ package com.yugabyte.yw.models.helpers;
 import static com.yugabyte.yw.models.helpers.CommonUtils.maskConfigNew;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import java.util.Map;
-import java.util.Objects;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,8 +24,10 @@ import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.DefaultRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
-import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
+import com.yugabyte.yw.models.helpers.provider.region.azs.DefaultAZCloudInfo;
+import java.util.Map;
+import java.util.Objects;
 import play.libs.Json;
 
 public interface CloudInfoInterface {

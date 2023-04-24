@@ -1,14 +1,13 @@
 package com.yugabyte.yw.models.helpers;
 
 import com.yugabyte.yw.models.AvailabilityZone;
-import lombok.Data;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import lombok.Data;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 
 @Data
 public class LoadBalancerConfig {

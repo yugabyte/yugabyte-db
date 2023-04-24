@@ -64,14 +64,11 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
     // Get the bootstrap IDs to delete. Either the bootstrap flow had error, or the target universe
     // is deleted.
     Set<XClusterTableConfig> tableConfigsWithBootstrapId =
-        xClusterConfig
-            .getTableDetails(true /* includeTxnTableIfExists */)
-            .stream()
+        xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
             .filter(tableConfig -> tableConfig.getStreamId() != null)
             .collect(Collectors.toSet());
     Set<String> bootstrapIds =
-        tableConfigsWithBootstrapId
-            .stream()
+        tableConfigsWithBootstrapId.stream()
             .map(tableConfig -> tableConfig.getStreamId())
             .collect(Collectors.toSet());
 

@@ -156,8 +156,7 @@ public class BackupRequestParams extends UniverseTaskParams {
 
   @JsonIgnore
   public void initializeBackupDBStates(List<BackupTableParams> backupsList) {
-    backupsList
-        .stream()
+    backupsList.stream()
         .forEach(bTP -> this.backupDBStates.put(bTP.getKeyspace(), new ParallelBackupState()));
   }
 

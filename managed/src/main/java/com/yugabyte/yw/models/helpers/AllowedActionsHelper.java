@@ -115,10 +115,7 @@ public class AllowedActionsHelper {
       if (node.isMaster) {
         // a primary node is being removed
         long numNodesUp =
-            universe
-                .getUniverseDetails()
-                .getNodesInCluster(cluster.uuid)
-                .stream()
+            universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
                 .filter(n -> n != node && n.state == Live)
                 .count();
         if (numNodesUp == 0) {
@@ -145,10 +142,7 @@ public class AllowedActionsHelper {
       NodeActionType action, UniverseDefinitionTaskParams.Cluster cluster, boolean isMaster) {
     Predicate<NodeDetails> predicate = n -> isMaster ? n.isMaster : n.isTserver;
     long numOtherNodesUp =
-        universe
-            .getUniverseDetails()
-            .getNodesInCluster(cluster.uuid)
-            .stream()
+        universe.getUniverseDetails().getNodesInCluster(cluster.uuid).stream()
             .filter(predicate)
             .filter(n -> n.state == Live)
             .filter(n -> !n.nodeName.equals(node.nodeName))

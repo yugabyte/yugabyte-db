@@ -18,7 +18,6 @@ import com.google.common.collect.Sets;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.concurrent.KeyLock;
-import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.filters.BackupFilter;
@@ -443,8 +442,7 @@ public class Backup extends Model {
       this.expiry = newExpiryDate;
     }
     this.backupInfo.fullChainSizeInBytes =
-        fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.getBaseBackupUUID())
-            .stream()
+        fetchAllBackupsByBaseBackupUUID(this.customerUUID, this.getBaseBackupUUID()).stream()
             .filter(b -> b.getState() == BackupState.Completed)
             .mapToLong(b -> b.backupInfo.backupSizeInBytes)
             .sum();
@@ -458,8 +456,7 @@ public class Backup extends Model {
             .eq("customer_uuid", customerUUID)
             .orderBy("create_time desc")
             .findList();
-    return backupList
-        .stream()
+    return backupList.stream()
         .filter(backup -> backup.getBackupInfo().getUniverseUUID().equals(universeUUID))
         .collect(Collectors.toList());
   }
@@ -484,8 +481,7 @@ public class Backup extends Model {
 
   public static List<Backup> fetchBackupToDeleteByUniverseUUID(
       UUID customerUUID, UUID universeUUID) {
-    return fetchByUniverseUUID(customerUUID, universeUUID)
-        .stream()
+    return fetchByUniverseUUID(customerUUID, universeUUID).stream()
         .filter(b -> !Backup.IN_PROGRESS_STATES.contains(b.getState()))
         .collect(Collectors.toList());
   }
@@ -532,14 +528,8 @@ public class Backup extends Model {
   }
 
   public static Optional<Backup> fetchLatestByState(UUID customerUuid, BackupState state) {
-    return Backup.find
-        .query()
-        .where()
-        .eq("customer_uuid", customerUuid)
-        .eq("state", state)
-        .orderBy("create_time DESC")
-        .findList()
-        .stream()
+    return Backup.find.query().where().eq("customer_uuid", customerUuid).eq("state", state)
+        .orderBy("create_time DESC").findList().stream()
         .findFirst();
   }
 
@@ -560,8 +550,7 @@ public class Backup extends Model {
         (customerUUID, backups) -> {
           Customer customer = Customer.get(customerUUID);
           List<Backup> backupList =
-              backups
-                  .stream()
+              backups.stream()
                   .filter(
                       backup ->
                           !Universe.isUniversePaused(backup.getBackupInfo().getUniverseUUID())
@@ -644,8 +633,7 @@ public class Backup extends Model {
             .endOr()
             .findList();
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.backupInfo.actionType == BackupTableParams.ActionType.CREATE)
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
@@ -656,8 +644,7 @@ public class Backup extends Model {
       UUID customerConfigUUID, UUID customerUUID) {
     List<Backup> backupList = findAllBackupsQueuedForDeletion(customerUUID);
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList;
@@ -672,8 +659,7 @@ public class Backup extends Model {
             .notIn("state", IN_PROGRESS_STATES)
             .findList();
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList;
@@ -682,8 +668,7 @@ public class Backup extends Model {
   public static boolean findIfBackupsRunningWithCustomerConfig(UUID customerConfigUUID) {
     List<Backup> backupList = find.query().where().eq("state", BackupState.InProgress).findList();
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(b -> b.getBackupInfo().storageConfigUUID.equals(customerConfigUUID))
             .collect(Collectors.toList());
     return backupList.size() != 0;
@@ -708,9 +693,7 @@ public class Backup extends Model {
         }
       } else {
         Optional<BackupTableParams> backupTableParams =
-            backupInfo
-                .backupList
-                .stream()
+            backupInfo.backupList.stream()
                 .filter(bL -> storageLocation.equals(bL.storageLocation))
                 .findFirst();
         if (backupTableParams.isPresent()) {
@@ -728,8 +711,7 @@ public class Backup extends Model {
     Set<UUID> universeUUIDs = new HashSet<>();
     List<Backup> backupList = getInProgressAndCompleted(customerUUID);
     backupList =
-        backupList
-            .stream()
+        backupList.stream()
             .filter(
                 b ->
                     b.getBackupInfo().storageConfigUUID.equals(configUUID)
@@ -744,8 +726,7 @@ public class Backup extends Model {
             .eq("status", "Active")
             .findList();
     scheduleList =
-        scheduleList
-            .stream()
+        scheduleList.stream()
             .filter(
                 s ->
                     s.getTaskParams()

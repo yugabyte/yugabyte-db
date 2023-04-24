@@ -20,8 +20,8 @@ import com.yugabyte.yw.common.YsqlQueryExecutor;
 import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import javax.inject.Inject;
 import java.time.Duration;
+import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YBClient;
 

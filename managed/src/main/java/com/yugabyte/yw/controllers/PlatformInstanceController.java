@@ -15,8 +15,8 @@ import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.forms.PlatformInstanceFormData;
-import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.forms.RestorePlatformBackupFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
@@ -164,9 +164,7 @@ public class PlatformInstanceController extends AuthenticatedController {
 
     // Make sure the backup file provided exists.
     Optional<File> backup =
-        replicationManager
-            .listBackups(new URL(curLeaderAddr))
-            .stream()
+        replicationManager.listBackups(new URL(curLeaderAddr)).stream()
             .filter(f -> f.getName().equals(formData.get().backup_file))
             .findFirst();
     if (!backup.isPresent()) {

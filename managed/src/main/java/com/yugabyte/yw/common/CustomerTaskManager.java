@@ -120,23 +120,20 @@ public class CustomerTaskManager {
           // Make transition state false for inProgress backups
           List<Backup> backupList = Backup.fetchAllBackupsByTaskUUID(taskUUID);
           backupCategoryMap =
-              backupList
-                  .stream()
+              backupList.stream()
                   .filter(
                       backup ->
                           backup.getState().equals(Backup.BackupState.InProgress)
                               || backup.getState().equals(Backup.BackupState.Stopped))
                   .collect(Collectors.groupingBy(Backup::getCategory));
 
-          backupCategoryMap
-              .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
+          backupCategoryMap.getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
               .stream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           List<Backup> ybcBackups =
               backupCategoryMap.getOrDefault(BackupCategory.YB_CONTROLLER, new ArrayList<>());
           if (!optUniv.isPresent()) {
-            ybcBackups
-                .stream()
+            ybcBackups.stream()
                 .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           } else {
             if (!ybcBackups.isEmpty()) {
@@ -167,8 +164,7 @@ public class CustomerTaskManager {
 
       if (!isRestoreYbc) {
         List<Restore> restoreList =
-            Restore.fetchByTaskUUID(taskUUID)
-                .stream()
+            Restore.fetchByTaskUUID(taskUUID).stream()
                 .filter(
                     restore ->
                         restore.getState().equals(Restore.State.Created)
@@ -278,8 +274,7 @@ public class CustomerTaskManager {
     LOG.info("Handle the pending tasks...");
     try {
       String incompleteStates =
-          TaskInfo.INCOMPLETE_STATES
-              .stream()
+          TaskInfo.INCOMPLETE_STATES.stream()
               .map(Objects::toString)
               .collect(Collectors.joining("','"));
       // Retrieve all incomplete customer tasks or task in incomplete state. Task state update and

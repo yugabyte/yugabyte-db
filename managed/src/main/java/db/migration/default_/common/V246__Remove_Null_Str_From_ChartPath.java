@@ -12,9 +12,9 @@ import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Optional;
-import play.libs.Json;
 import org.flywaydb.core.api.migration.BaseJavaMigration;
 import org.flywaydb.core.api.migration.Context;
+import play.libs.Json;
 
 public class V246__Remove_Null_Str_From_ChartPath extends BaseJavaMigration {
 

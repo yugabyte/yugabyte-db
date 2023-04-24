@@ -179,13 +179,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
     PlacementInfo placementInfo = createPlacementInfo();
     userIntent.numNodes =
-        placementInfo
-            .cloudList
-            .get(0)
-            .regionList
-            .get(0)
-            .azList
-            .stream()
+        placementInfo.cloudList.get(0).regionList.get(0).azList.stream()
             .mapToInt(p -> p.numNodesInAZ)
             .sum();
 
@@ -347,8 +341,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
-        subTasks
-            .stream()
+        subTasks.stream()
             .map(t -> t.getDetails().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
@@ -365,8 +358,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
             List<Object> values =
-                subTaskDetails
-                    .stream()
+                subTaskDetails.stream()
                     .map(
                         t -> {
                           JsonNode data =

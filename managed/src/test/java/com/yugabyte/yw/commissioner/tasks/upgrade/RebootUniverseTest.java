@@ -2,8 +2,8 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
+import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;

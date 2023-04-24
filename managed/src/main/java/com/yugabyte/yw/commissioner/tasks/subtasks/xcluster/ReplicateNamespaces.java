@@ -2,11 +2,6 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 
 import com.google.inject.Inject;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
@@ -14,6 +9,11 @@ import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;

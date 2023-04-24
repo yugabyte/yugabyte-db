@@ -187,8 +187,7 @@ public class NodeAgentPoller {
         if (expiryDate.isAfter(nodeAgent.getUpdatedAt().toInstant())) {
           // Purge the node agent record and its certs.
           Set<String> nodeIps =
-              NodeInstance.getAll()
-                  .stream()
+              NodeInstance.getAll().stream()
                   .map(node -> node.getDetails().ip)
                   .collect(Collectors.toSet());
           if (!nodeIps.contains(nodeAgent.getIp())) {
@@ -316,17 +315,13 @@ public class NodeAgentPoller {
 
   private void uploadInstallerFiles(NodeAgent nodeAgent, InstallerFiles installerFiles) {
     Set<String> dirs =
-        installerFiles
-            .getCreateDirs()
-            .stream()
+        installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
     log.info("Creating directories {} on node agent {}", dirs, nodeAgent.getUuid());
     List<String> command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
     nodeAgentClient.executeCommand(nodeAgent, command);
-    installerFiles
-        .getCopyFileInfos()
-        .stream()
+    installerFiles.getCopyFileInfos().stream()
         .forEach(
             f -> {
               log.info(
@@ -357,8 +352,7 @@ public class NodeAgentPoller {
           Objects.requireNonNull(
               (String) configHelper.getConfig(ConfigType.SoftwareVersion).get("version"));
       Set<UUID> nodeUuids = new HashSet<>();
-      NodeAgent.getAll()
-          .stream()
+      NodeAgent.getAll().stream()
           .filter(n -> n.getState() != State.REGISTERING)
           .peek(n -> nodeUuids.add(n.getUuid()))
           .map(

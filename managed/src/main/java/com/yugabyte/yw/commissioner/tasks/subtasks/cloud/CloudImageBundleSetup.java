@@ -3,10 +3,6 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.cloud;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
@@ -19,7 +15,9 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

@@ -26,12 +26,12 @@ import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
 import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -129,9 +129,7 @@ public class MetricQueryHelper {
   public JsonNode query(Customer customer, MetricQueryParams metricQueryParams) {
     Map<String, MetricSettings> metricSettingsMap = new LinkedHashMap<>();
     if (CollectionUtils.isNotEmpty(metricQueryParams.getMetrics())) {
-      metricQueryParams
-          .getMetrics()
-          .stream()
+      metricQueryParams.getMetrics().stream()
           .map(MetricSettings::defaultSettings)
           .forEach(
               metricSettings -> metricSettingsMap.put(metricSettings.getMetric(), metricSettings));
@@ -163,18 +161,14 @@ public class MetricQueryHelper {
     ObjectNode filterJson = Json.newObject();
     if (StringUtils.isEmpty(metricQueryParams.getNodePrefix())) {
       String universePrefixes =
-          customer
-              .getUniverses()
-              .stream()
+          customer.getUniverses().stream()
               .map((universe -> universe.getUniverseDetails().nodePrefix))
               .collect(Collectors.joining("|"));
       filterJson.put(universeFilterLabel, universePrefixes);
     } else {
       final String nodePrefix = metricQueryParams.getNodePrefix();
       List<Universe> universes =
-          customer
-              .getUniverses()
-              .stream()
+          customer.getUniverses().stream()
               .filter(universe -> universe.getUniverseDetails().nodePrefix.equals(nodePrefix))
               .collect(Collectors.toList());
       if (universes.isEmpty()) {
@@ -531,9 +525,7 @@ public class MetricQueryHelper {
     // mount point for an onprem universe.
     if (metricNames.contains("disk_usage")) {
       List<Universe> universes =
-          customer
-              .getUniverses()
-              .stream()
+          customer.getUniverses().stream()
               .filter(
                   u ->
                       u.getUniverseDetails().nodePrefix != null
@@ -548,10 +540,7 @@ public class MetricQueryHelper {
       if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType
           == CloudType.onprem) {
         final String mountRoots =
-            universes
-                .get(0)
-                .getNodes()
-                .stream()
+            universes.get(0).getNodes().stream()
                 .filter(MetricQueryHelper::checkNonNullMountRoots)
                 .map(n -> n.cloudInfo.mount_roots)
                 .findFirst()

@@ -371,8 +371,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Universe universe = getUniverse();
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     return tServerNodes != null
-        ? tServerNodes
-            .stream()
+        ? tServerNodes.stream()
             .filter(node -> node.placementUuid.equals(primaryClusterUuid))
             .filter(node -> masterNodes == null || !masterNodes.contains(node))
             .collect(Collectors.toList())
@@ -626,8 +625,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   private List<NodeDetails> filterForClusters(List<NodeDetails> nodes) {
     Set<UUID> clusterUUIDs =
         taskParams().clusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
-    return nodes
-        .stream()
+    return nodes.stream()
         .filter(n -> clusterUUIDs.contains(n.placementUuid))
         .collect(Collectors.toList());
   }
@@ -677,8 +675,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (nodes.isEmpty()) {
       return nodes;
     }
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(node -> node.state == NodeState.Live)
                 .thenComparing(node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
@@ -696,8 +693,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Map<UUID, Map<UUID, PlacementAZ>> placementAZMapPerCluster =
         PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(
                     // Fully upgrade primary cluster first

@@ -521,8 +521,7 @@ public class AccessManager extends DevopsBase {
 
     if (Common.CloudType.valueOf(provider.getCode()) == Common.CloudType.aws) {
       ArrayNode ret = Json.mapper().getNodeFactory().arrayNode();
-      regions
-          .stream()
+      regions.stream()
           .map(r -> deleteKey(provider.getUuid(), r.getUuid(), keyCode, deleteRemote))
           .collect(Collectors.toList())
           .forEach(ret::add);
@@ -647,8 +646,7 @@ public class AccessManager extends DevopsBase {
     AccessKey newAccessKey = AccessKey.getOrBadRequest(providerUUID, newKeyCode);
     // request would fail if there is a universe which does not exist
     Set<Universe> universes =
-        universeUUIDs
-            .stream()
+        universeUUIDs.stream()
             .map((universeUUID) -> Universe.getOrBadRequest(universeUUID))
             .collect(Collectors.toSet());
     Set<Universe> providerUniverses = customer.getUniversesForProvider(providerUUID);
@@ -684,10 +682,7 @@ public class AccessManager extends DevopsBase {
    */
   public boolean checkAccessKeyPermissionsValidity(
       Universe universe, Map<AccessKeyId, AccessKey> allAccessKeysMap) {
-    return universe
-        .getUniverseDetails()
-        .clusters
-        .stream()
+    return universe.getUniverseDetails().clusters.stream()
         .noneMatch(
             cluster -> {
               String keyCode = cluster.userIntent.accessKeyCode;

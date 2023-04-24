@@ -79,16 +79,14 @@ public class PasswordPolicyService {
     }
 
     List<ValidationError> errors =
-        validators
-            .stream()
+        validators.stream()
             .map(validator -> validator.validate(password, effectivePolicy))
             .filter(Objects::nonNull)
             .collect(Collectors.toList());
 
     if (!errors.isEmpty()) {
       String fullMessage =
-          errors
-              .stream()
+          errors.stream()
               .map(ValidationError::messages)
               .flatMap(List::stream)
               .collect(Collectors.joining("; "));
