@@ -363,12 +363,12 @@ KeyBytes DocPgsqlScanSpec::bound_key(const Schema& schema, const bool lower_boun
     for (size_t i = 0; i < schema.num_hash_key_columns(); ++i) {
       DCHECK_GE(options_->size(),
                 schema.num_hash_key_columns() + schema.has_yb_hash_code());
-      KeyEntryValue keyval = (*options_)[schema.get_dockey_component_idx(i)].front();
+      const auto& current_options = (*options_)[schema.get_dockey_component_idx(i)];
+      KeyEntryValue keyval = lower_bound ? current_options.front() : current_options.back();
       hashed_components.push_back(keyval);
     }
-    hash_code = static_cast<int32_t>(options_.get()[0][0][0].GetUInt16Hash());
-    max_hash_code = (*options_)[0].size() == 1 ? hash_code
-        : max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
+    hash_code = static_cast<int32_t>((*options_)[0].front().GetUInt16Hash());
+    max_hash_code = static_cast<int32_t>((*options_)[0].back().GetUInt16Hash());
   } else {
     hash_code = hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::min());
     max_hash_code = max_hash_code_.get_value_or(std::numeric_limits<DocKeyHash>::max());
