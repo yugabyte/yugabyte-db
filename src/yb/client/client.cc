@@ -727,9 +727,10 @@ Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
                             is_compaction);
 }
 
-Result<TableCompactionStatus> YBClient::GetCompactionStatus(const YBTableName& table_name) {
+Result<TableCompactionStatus> YBClient::GetCompactionStatus(
+    const YBTableName& table_name, bool show_tablets) {
   return data_->GetCompactionStatus(
-      table_name, CoarseMonoClock::Now() + default_admin_operation_timeout());
+      table_name, show_tablets, CoarseMonoClock::Now() + default_admin_operation_timeout());
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {

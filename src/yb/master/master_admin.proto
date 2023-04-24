@@ -70,16 +70,33 @@ message CompactSysCatalogResponsePB{
 
 message GetCompactionStatusRequestPB {
   optional TableIdentifierPB table = 1;
+  optional bool show_tablets = 2;
+}
+
+message TabletReplicaFullCompactionStatus {
+  optional bytes ts_id = 1;
+  optional bytes tablet_id = 2;
+  // Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_time = 3;
+  optional tablet.FullCompactionState full_compaction_state = 4;
 }
 
 message GetCompactionStatusResponsePB {
   optional MasterErrorPB error = 1;
 
-  // Time when a full compaction was last requested by the user.
+  // Time when an admin compaction was last requested by the user.a
+  // Raw representation of a HybridTime.
   optional fixed64 last_request_time = 2;
 
-  // Overall full admin-triggered compaction state of the table.
-  optional tablet.FullCompactionState full_compaction_state = 3;
+  // Time when the most recent full compaction was completed.
+  // Raw representation of a HybridTime.
+  optional fixed64 last_full_compaction_time = 3;
+
+  // Overall full compaction state of the table.
+  optional tablet.FullCompactionState full_compaction_state = 4;
+
+  // Full compaction statuses of all tablet replicas.
+  repeated TabletReplicaFullCompactionStatus replica_statuses = 5;
 }
 
 message IsInitDbDoneRequestPB {

@@ -12724,18 +12724,27 @@ void CatalogManager::ProcessTabletReplicaFullCompactionStatus(
   const TabletId& tablet_id = full_compaction_status.tablet_id();
 
   if (!full_compaction_status.has_full_compaction_state()) {
-    VLOG(1) << Format(
+    LOG(WARNING) << Format(
         "Full compaction status not reported for tablet $0 on tserver $1", tablet_id, ts_uuid);
+    return;
+  }
+
+  if (!full_compaction_status.has_last_full_compaction_time()) {
+    LOG(WARNING) << Format(
+        "Last full compaction time not reported for tablet $0 on tserver $1", tablet_id, ts_uuid);
     return;
   }
 
   const auto result = GetTabletInfo(tablet_id);
   if (!result.ok()) {
+    LOG_WITH_FUNC(WARNING) << result;
     return;
   }
 
-  (*result)->UpdateReplicaFullCompactionState(
-      ts_uuid, full_compaction_status.full_compaction_state());
+  (*result)->UpdateReplicaFullCompactionStatus(
+      ts_uuid, FullCompactionStatus{
+                   full_compaction_status.full_compaction_state(),
+                   HybridTime(full_compaction_status.last_full_compaction_time())});
 }
 
 void CatalogManager::CheckTableDeleted(const TableInfoPtr& table) {
@@ -13145,9 +13154,9 @@ void CatalogManager::SysCatalogLoaded(int64_t term, const SysCatalogLoadingState
 
 Status CatalogManager::UpdateLastFullCompactionRequestTime(const TableId& table_id) {
   auto table_info = VERIFY_RESULT(FindTableById(table_id));
-  const auto request_time = CoarseMonoClock::now().time_since_epoch().count();
+  const auto request_time = master_->clock()->Now().ToUint64();
   auto lock = table_info->LockForWrite();
-  lock.mutable_data()->pb.set_last_full_compaction_time(request_time);
+  lock.mutable_data()->pb.set_last_full_compaction_request_time(request_time);
   RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), table_info));
   lock.Commit();
   return Status::OK();
@@ -13156,27 +13165,70 @@ Status CatalogManager::UpdateLastFullCompactionRequestTime(const TableId& table_
 Status CatalogManager::GetCompactionStatus(
     const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) {
   auto table_info = VERIFY_RESULT(FindTableById(req->table().table_id()));
+  HybridTime last_request_time;
+  HybridTime table_last_full_compaction_time;
   tablet::FullCompactionState table_compaction_state = tablet::IDLE;
+
   {
     auto lock = table_info->LockForRead();
-    resp->set_last_request_time(lock->pb.last_full_compaction_time());
-    const auto tablets = table_info->GetTablets();
-    if (tablets.empty()) {
-      table_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+    last_request_time = HybridTime(lock->pb.last_full_compaction_request_time());
+  }
+
+  const auto tablets = table_info->GetTablets();
+  // Find the compaction state of the table. If any one tablet is UNKNOWN, then the table is
+  // UNKNOWN. Else if any one tablet is COMPACTING, then the table is COMPACTING.
+  if (tablets.empty()) {
+    table_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+  }
+
+  for (const auto& tablet_info : tablets) {
+    const auto replica_locations = tablet_info->GetReplicaLocations();
+    if (table_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN) {
+      break;
     }
-    for (const auto& tablet_info : tablets) {
-      const auto replica_locations = tablet_info->GetReplicaLocations();
-      for (const auto& replica : *replica_locations) {
-        if (replica.second.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN) {
-          table_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
-          break;
-        } else if (replica.second.full_compaction_state == tablet::COMPACTING) {
-          table_compaction_state = tablet::COMPACTING;
-        }
+
+    for (const auto& [_, replica] : *replica_locations) {
+      const auto state = replica.full_compaction_status.full_compaction_state;
+      const auto last_compact_time = replica.full_compaction_status.last_full_compaction_time;
+
+      if (state == tablet::FULL_COMPACTION_STATE_UNKNOWN) {
+        table_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+        break;
+      }
+
+      if (state == tablet::COMPACTING) {
+        table_compaction_state = tablet::COMPACTING;
+      }
+
+      if (table_last_full_compaction_time.ToUint64() == 0) {
+        table_last_full_compaction_time = last_compact_time;
+      } else {
+        // The table's last full compaction time is the time of the earliest replica to finish.
+        table_last_full_compaction_time =
+            std::min(table_last_full_compaction_time, last_compact_time);
       }
     }
   }
+
+  resp->set_last_request_time(last_request_time.ToUint64());
+  resp->set_last_full_compaction_time(table_last_full_compaction_time.ToUint64());
   resp->set_full_compaction_state(table_compaction_state);
+
+  if (req->show_tablets()) {
+    for (const auto& tablet_info : tablets) {
+      const auto replica_locations = tablet_info->GetReplicaLocations();
+      for (const auto& [ts_id, replica] : *replica_locations) {
+        const auto state = replica.full_compaction_status.full_compaction_state;
+        const auto last_compact_time = replica.full_compaction_status.last_full_compaction_time;
+
+        auto* replica_status = resp->add_replica_statuses();
+        replica_status->set_ts_id(ts_id);
+        replica_status->set_tablet_id(tablet_info->id());
+        replica_status->set_full_compaction_state(state);
+        replica_status->set_last_full_compaction_time(last_compact_time.ToUint64());
+      }
+    }
+  }
 
   return Status::OK();
 }

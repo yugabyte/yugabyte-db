@@ -1759,8 +1759,38 @@ Status ClusterAdminClient::FlushTablesById(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name) {
-  const auto compaction_status = VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name));
+Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name, bool show_tablets) {
+  const auto compaction_status =
+      VERIFY_RESULT(yb_client_->GetCompactionStatus(table_name, show_tablets));
+
+  const auto ShowTablets = [&compaction_status]() {
+    std::map<TabletServerId, std::vector<client::TabletReplicaFullCompactionStatus>>
+        replica_statuses;
+    for (const auto& replica_status : compaction_status.replica_statuses) {
+      replica_statuses[replica_status.ts_id].push_back(replica_status);
+    }
+
+    for (const auto& [ts_id, statuses] : replica_statuses) {
+      cout << "tserver uuid: " << ts_id << endl
+           << " tablet id | full compaction state | last full compaction completion time" << endl
+           << endl;
+      for (const auto& status : statuses) {
+        cout << " " << status.tablet_id << " ";
+        if (status.full_compaction_state == tablet::FULL_COMPACTION_STATE_UNKNOWN) {
+          cout << "UNKNOWN" << endl;
+          continue;
+        }
+        cout << tablet::FullCompactionState_Name(status.full_compaction_state) << " ";
+        if (status.last_full_compaction_time.ToUint64() == 0) {
+          cout << "never been full compacted" << endl;
+        } else {
+          cout << HybridTimeToString(status.last_full_compaction_time) << endl;
+        }
+      }
+      cout << endl;
+    }
+  };
+
   switch (compaction_status.full_compaction_state) {
     case tablet::FULL_COMPACTION_STATE_UNKNOWN:
       cout << "Compaction status unavailable. Waiting for heartbeats" << endl;
@@ -1772,8 +1802,28 @@ Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name) {
       cout << "No full compaction taking place" << endl;
       break;
   }
-  cout << "Last admin full compaction request time: "
-       << compaction_status.last_request_time.ToUint64() << endl;
+
+  if (show_tablets) {
+    cout << endl;
+    ShowTablets();
+  }
+
+  if (compaction_status.full_compaction_state == tablet::COMPACTING ||
+      compaction_status.full_compaction_state == tablet::IDLE) {
+    if (compaction_status.last_full_compaction_time.ToUint64() == 0) {
+      cout << "A full compaction has never been completed" << endl;
+    } else {
+      cout << "Last full compaction completion time: "
+           << HybridTimeToString(compaction_status.last_full_compaction_time) << endl;
+    }
+  }
+
+  if (compaction_status.last_request_time.ToUint64() == 0) {
+    cout << "An admin compaction has never been requested" << endl;
+  } else {
+    cout << "Last admin compaction request time: "
+         << HybridTimeToString(compaction_status.last_request_time) << endl;
+  }
   return Status::OK();
 }
 

@@ -904,13 +904,33 @@ void ClusterAdminCli::RegisterCommandHandlers(ClusterAdminClient* client) {
         return Status::OK();
       });
 
-  Register("compaction_status", " <table>", [client](const CLIArguments& args) -> Status {
-    const auto table_name = VERIFY_RESULT(ResolveSingleTableName(client, args.begin(), args.end()));
-    RETURN_NOT_OK_PREPEND(
-        client->CompactionStatus(table_name),
-        Substitute("Unable to get compaction status of table $0", table_name.ToString()));
-    return Status::OK();
-  });
+  Register(
+      "compaction_status", " <table> [show_tablets] (default false)",
+      [client](const CLIArguments& args) -> Status {
+        if (args.empty()) {
+          return ClusterAdminCli::kInvalidArguments;
+        }
+
+        bool show_tablets = false;
+
+        const auto table_name = VERIFY_RESULT(ResolveSingleTableName(
+            client, args.begin(), args.end(), [&show_tablets](auto i, const auto& end) -> Status {
+              if (i == end) {
+                return Status::OK();
+              }
+
+              if (*i != "show_tablets" || i + 1 != end) {
+                return ClusterAdminCli::kInvalidArguments;
+              }
+              show_tablets = true;
+              return Status::OK();
+            }));
+
+        RETURN_NOT_OK_PREPEND(
+            client->CompactionStatus(table_name, show_tablets),
+            Substitute("Unable to get compaction status of table $0", table_name.ToString()));
+        return Status::OK();
+      });
 
   Register(
       "list_all_tablet_servers", "",

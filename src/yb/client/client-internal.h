@@ -237,7 +237,7 @@ class YBClient::Data {
                                    const CoarseTimePoint deadline);
 
   Result<TableCompactionStatus> GetCompactionStatus(
-      const YBTableName& table_name, const CoarseTimePoint deadline);
+      const YBTableName& table_name, bool show_tablets, const CoarseTimePoint deadline);
 
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,
