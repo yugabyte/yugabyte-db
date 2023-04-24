@@ -44,7 +44,6 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.perf_advisor.configs.PerfAdvisorScriptConfig;
 import org.yb.perf_advisor.configs.UniverseConfig;
-import org.yb.perf_advisor.configs.UniverseNodeConfigInterface;
 import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationType;
 import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 
@@ -163,7 +162,7 @@ public class PerfAdvisorScheduler {
       }
     }
 
-    List<UniverseNodeConfigInterface> universeNodeConfigList = new ArrayList<>();
+    List<PlatformUniverseNodeConfig> universeNodeConfigList = new ArrayList<>();
     for (NodeDetails details : universe.getNodes()) {
       if (!details.isTserver) {
         continue;
@@ -220,7 +219,7 @@ public class PerfAdvisorScheduler {
       Customer customer,
       Universe universe,
       Config universeConfig,
-      List<UniverseNodeConfigInterface> universeNodeConfigList,
+      List<PlatformUniverseNodeConfig> universeNodeConfigList,
       UniversePerfAdvisorRun run) {
     try {
       run.setStartTime(new Date()).setState(State.RUNNING).save();
@@ -245,7 +244,6 @@ public class PerfAdvisorScheduler {
               UUID.fromString(
                   universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
       NodeDetails tserverNode = CommonUtils.getServerToRunYsqlQuery(universe);
-      String databaseHost = tserverNode.cloudInfo.private_ip;
       boolean ysqlAuth =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth;
       boolean tlsClient =
