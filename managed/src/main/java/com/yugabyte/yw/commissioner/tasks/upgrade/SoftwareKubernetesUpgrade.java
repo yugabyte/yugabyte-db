@@ -65,7 +65,9 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                 Collections.singleton(taskParams().getUniverseUUID()),
                 Collections.singleton(taskParams().getUniverseUUID()),
                 xClusterUniverseService,
-                new HashSet<>());
+                new HashSet<>(),
+                getUniverse(),
+                taskParams().ybSoftwareVersion);
           }
 
           if (taskParams().isEnableYbc()) {
