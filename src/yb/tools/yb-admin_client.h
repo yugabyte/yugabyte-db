@@ -246,7 +246,7 @@ class ClusterAdminClient {
                          int timeout_secs,
                          bool is_compaction);
 
-  Status CompactionStatus(const client::YBTableName& table_name);
+  Status CompactionStatus(const client::YBTableName& table_name, bool show_tablets);
 
   Status FlushSysCatalog();
 

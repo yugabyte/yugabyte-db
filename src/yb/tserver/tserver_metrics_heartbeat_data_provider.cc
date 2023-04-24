@@ -118,9 +118,9 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
             full_compaction_status->set_full_compaction_state(tablet::COMPACTING);
           } else {
             full_compaction_status->set_full_compaction_state(tablet::IDLE);
-            full_compaction_status->set_last_full_compaction_time(
-                tablet->metadata()->last_full_compaction_time());
           }
+          full_compaction_status->set_last_full_compaction_time(
+              tablet->metadata()->last_full_compaction_time());
         }
       }
     }

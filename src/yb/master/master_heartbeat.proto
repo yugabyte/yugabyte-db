@@ -120,6 +120,7 @@ message FullCompactionStatusPB {
   optional tablet.FullCompactionState full_compaction_state = 2;
 
    // Time of completion of the last fully completed full compaction.
+   // Raw representation of a HybridTime.
   optional fixed64 last_full_compaction_time = 3;
 }
 
