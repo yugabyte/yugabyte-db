@@ -1348,31 +1348,6 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testK8sProviderConfigEditAtRegionLevel() {
-    JsonNode k8sRequestBody = getK8sRequestBody();
-
-    Result result = createProvider(k8sRequestBody);
-    assertOk(result);
-    YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);
-    assertNotNull(ybpTask.resourceUUID);
-
-    Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-2");
-
-    result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
-    assertOk(result);
-    Result providerRes = getProvider(p.getUuid());
-    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
-    p = Json.fromJson(bodyJson, Provider.class);
-
-    assertNull(
-        p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes().getKubeConfigName());
-
-    assertNotNull(
-        p.getRegions().get(0).getDetails().getCloudInfo().getKubernetes().getKubeConfig());
-  }
-
-  @Test
   public void testK8sProviderConfigEditAtProviderLevel() {
     JsonNode k8sRequestBody = getK8sRequestBody();
 
@@ -1382,12 +1357,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     assertNotNull(ybpTask.resourceUUID);
 
     Provider p = Provider.getOrBadRequest(ybpTask.resourceUUID);
-    p.getDetails().getCloudInfo().getKubernetes().setKubeConfigName("Test-2");
+    KubernetesRegionInfo azConfig = CloudInfoInterface.get(p.getRegions().get(0).getZones().get(0));
+    assertEquals("", azConfig.getKubeConfig());
+    p.getDetails().getCloudInfo().getKubernetes().setKubernetesStorageClass("Test-2");
 
     result = editProvider(Json.toJson(p), ybpTask.resourceUUID);
     assertOk(result);
     p.refresh();
-    assertNotNull(p.getDetails().getCloudInfo().getKubernetes().getKubeConfig());
+    assertNotNull(p.getDetails().getCloudInfo().getKubernetes().getKubernetesStorageClass());
   }
 
   private void assertBadRequestValidationResult(Result result, String errorCause, String errrMsg) {
