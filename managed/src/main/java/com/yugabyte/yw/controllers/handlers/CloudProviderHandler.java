@@ -1131,12 +1131,14 @@ public class CloudProviderHandler {
         az.setDetails(zone.getDetails());
       }
       boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, edit);
-      if (!(isConfigInProvider || isConfigInRegion || isConfigInZone) && !edit) {
+      boolean useInClusterServiceAccount =
+          !(isConfigInProvider || isConfigInRegion || isConfigInZone) && !edit;
+      if (useInClusterServiceAccount) {
         // Use in-cluster ServiceAccount credentials
         KubernetesInfo k8sMetadata = CloudInfoInterface.get(az);
         k8sMetadata.setKubeConfig("");
       }
-      if (zoneUpdateNeeded || isConfigInZone) {
+      if (zoneUpdateNeeded || isConfigInZone || useInClusterServiceAccount) {
         az.save();
       }
     }
