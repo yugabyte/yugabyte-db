@@ -2334,10 +2334,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
           // Restore the data.
           RestoreBackupParams restoreDataParams =
               new RestoreBackupParams(
-                  restoreBackupParams,
-                  backupStorageInfo,
-                  RestoreBackupParams.ActionType.RESTORE,
-                  currentYbcTaskId);
+                  restoreBackupParams, backupStorageInfo, RestoreBackupParams.ActionType.RESTORE);
           createRestoreBackupYbcTask(restoreDataParams, idx).setSubTaskGroupType(subTaskGroupType);
         }
         idx++;
@@ -2452,9 +2449,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     SubTaskGroup subTaskGroup = createSubTaskGroup("RestoreBackupYbc");
     RestoreBackupYbc task = createTask(RestoreBackupYbc.class);
     RestoreBackupYbc.Params restoreParams = new RestoreBackupYbc.Params(taskParams);
-    // Giving node-ip as subtask param, so that leader changes does not
-    // affect polling.
-    restoreParams.nodeIp = restoreParams.nodeIp;
+    restoreParams.index = index;
     task.initialize(restoreParams);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);

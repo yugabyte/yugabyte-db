@@ -6997,6 +6997,24 @@
       "required" : [ "level", "maxHistory", "rolloverPattern" ],
       "type" : "object"
     },
+    "PresetThrottleValues" : {
+      "properties" : {
+        "defaultValue" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "maxValue" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "minValue" : {
+          "format" : "int32",
+          "type" : "integer"
+        }
+      },
+      "required" : [ "defaultValue", "maxValue", "minValue" ],
+      "type" : "object"
+    },
     "Provider" : {
       "properties" : {
         "active" : {
@@ -9711,6 +9729,19 @@
       "required" : [ "clusters", "creatingUser", "forceAll", "kubernetesUpgradeSupported", "platformUrl", "platformVersion", "sleepAfterMasterRestartMillis", "sleepAfterTServerRestartMillis", "upgradeOption" ],
       "type" : "object"
     },
+    "ThrottleParamValue" : {
+      "properties" : {
+        "currentValue" : {
+          "format" : "int32",
+          "type" : "integer"
+        },
+        "presetValues" : {
+          "$ref" : "#/definitions/PresetThrottleValues"
+        }
+      },
+      "required" : [ "currentValue", "presetValues" ],
+      "type" : "object"
+    },
     "TlsToggleParams" : {
       "properties" : {
         "allowInsecure" : {
@@ -12001,6 +12032,19 @@
         "resetDefaults" : {
           "description" : "Unset Throttle parameters in YB-Controller",
           "type" : "boolean"
+        }
+      },
+      "type" : "object"
+    },
+    "YbcThrottleParametersResponse" : {
+      "description" : "YB-Controller throttle parameters response",
+      "properties" : {
+        "throttleParamsMap" : {
+          "additionalProperties" : {
+            "$ref" : "#/definitions/ThrottleParamValue"
+          },
+          "description" : "Map of YBC throttle parameters",
+          "type" : "object"
         }
       },
       "type" : "object"
@@ -20035,10 +20079,7 @@
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "additionalProperties" : {
-                "type" : "object"
-              },
-              "type" : "object"
+              "$ref" : "#/definitions/YbcThrottleParametersResponse"
             }
           }
         },

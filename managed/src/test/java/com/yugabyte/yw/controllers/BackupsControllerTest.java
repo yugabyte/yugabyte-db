@@ -42,6 +42,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
@@ -1609,12 +1610,10 @@ public class BackupsControllerTest extends FakeDBApplication {
     details.ybcInstalled = true;
     universe.setUniverseDetails(details);
     universe.save();
-    Map<String, String> tP = new HashMap<>();
-    tP.put("foo", "bar");
-    when(mockYbcManager.getThrottleParams(any())).thenReturn(tP);
-    Result result = getThrottleParams(universe.universeUUID);
+    YbcThrottleParametersResponse response = new YbcThrottleParametersResponse();
+    when(mockYbcManager.getThrottleParams(any())).thenReturn(response);
+    Result result = getThrottleParams(universe.getUniverseUUID());
     assertOk(result);
-    assertValues(Json.toJson(contentAsString(result)), "foo", ImmutableList.of("bar"));
   }
 
   @Test
