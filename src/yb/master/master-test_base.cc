@@ -41,7 +41,6 @@
 
 #include "yb/gutil/strings/substitute.h"
 
-#include "yb/master/master-test-util.h"
 #include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"
 #include "yb/master/master_cluster.proxy.h"

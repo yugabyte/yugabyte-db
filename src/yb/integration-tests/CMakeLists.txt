@@ -82,6 +82,7 @@ target_link_libraries(integration-tests
   yb_test_util
   yb-redis
   yb_pgwrapper
+  master_test_common
   master_proto
   cdc_test_util
   test_echo_service_proto)
@@ -106,7 +107,6 @@ target_link_libraries(tablet-split-itest-base integration-tests ql-dml-test-base
 set(YB_TEST_LINK_LIBS
     cql_test_util
     integration-tests
-    master_test_common
     ql-dml-test-base
     rpc_test_util
     tablet-split-itest-base
