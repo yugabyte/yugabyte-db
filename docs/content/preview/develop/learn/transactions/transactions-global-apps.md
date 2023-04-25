@@ -58,7 +58,7 @@ If you are running applications from multiple regions, you can use identity inde
 - Create different tablespaces with preferred leaders set to each region.
 - Create identity indexes and attach them to each of the tablespaces.
 
-This results in tables having multiple leaders, one in each region. Although this affects write latencies, as each update has to reach multiple indexes, read latencies are much lower because the reads go to the local identity index of the table.
+This results in immediately consistent multiple identity indexes with local leaders, one in each region. Now applications running in a region do not have to go cross-region to the table leader in another region. Although this affects write latencies, as each update has to reach multiple indexes, read latencies are much lower because the reads go to the local identity index of the table.
 
 ## Learn more
 
