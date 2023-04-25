@@ -299,7 +299,7 @@
           "ScanBtn": "Scan",
           "ReScanBtn": "Re-Scan",
           "Hurray": "Hurray",
-          "ScanTime": "Current Scan",
+          "ScanTime": "Last Scanned",
           "DBScanFailed": "Failed to scan the database. Try again later."
         },
         "typeTag": {
