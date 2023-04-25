@@ -1269,6 +1269,7 @@ public class NodeManager extends DevopsBase {
     if (accessKeys.isEmpty()) {
       throw new RuntimeException("No access keys for provider: " + provider.getUuid());
     }
+    Map<String, String> redactedVals = new HashMap<>();
     AccessKey accessKey = accessKeys.get(0);
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
@@ -1291,7 +1292,7 @@ public class NodeManager extends DevopsBase {
               nodeAgent -> {
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs);
+                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
     commandArgs.add(nodeTaskParam.getNodeName());
@@ -1307,6 +1308,7 @@ public class NodeManager extends DevopsBase {
             .command(type.toString().toLowerCase())
             .commandArgs(commandArgs)
             .cloudArgs(cloudArgs)
+            .redactedVals(redactedVals)
             .build());
   }
 
@@ -1383,7 +1385,7 @@ public class NodeManager extends DevopsBase {
       Universe universe,
       NodeTaskParams nodeTaskParam,
       List<String> commandArgs,
-      Map<String, String> sensitiveArgs) {
+      Map<String, String> redactedVals) {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
@@ -1410,7 +1412,7 @@ public class NodeManager extends DevopsBase {
                     .isAnsibleOffloadingEnabled(provider, nodeAgent.getVersion())) {
                   commandArgs.add("--offload_ansible");
                 }
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs);
+                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
   }
@@ -1421,6 +1423,7 @@ public class NodeManager extends DevopsBase {
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
     Path bootScriptFile = null;
+    Map<String, String> redactedVals = new HashMap<>();
     Map<String, String> sensitiveData = new HashMap<>();
     switch (type) {
       case Replace_Root_Volume:
@@ -2086,7 +2089,7 @@ public class NodeManager extends DevopsBase {
       default:
         break;
     }
-    addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, sensitiveData);
+    addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       return execCommand(
@@ -2096,6 +2099,7 @@ public class NodeManager extends DevopsBase {
               .commandArgs(commandArgs)
               .cloudArgs(getCloudArgs(nodeTaskParam))
               .envVars(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
+              .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)
               .build());
     } finally {
