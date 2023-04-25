@@ -336,10 +336,9 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersion)) {
 
   WaitForCatalogVersionToPropagate();
   // The row for 'new_db_oid' should be deleted.
-  // We should have only incremented the row for 'yugabyte_db_oid' because the drop database
-  // was performed from 'conn_yugabyte'.
+  // We should not have incremented a row for any database because the drop database
+  // statement does not change the catalog version in per-database catalog version mode.
   expected_versions.erase(new_db_oid);
-  expected_versions[yugabyte_db_oid] = {2, 1};
   ASSERT_OK(CheckMatch(expected_versions,
                        ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte))));
   ASSERT_OK(CheckMatch(expected_versions,
