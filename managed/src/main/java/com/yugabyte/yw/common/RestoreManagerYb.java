@@ -141,12 +141,6 @@ public class RestoreManagerYb extends DevopsBase {
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
     ActionType actionType = restoreBackupParams.actionType;
     if (actionType.equals(ActionType.RESTORE)) {
-      if (backupStorageInfo.tableNameList != null) {
-        for (String tableName : backupStorageInfo.tableNameList) {
-          commandArgs.add("--table");
-          commandArgs.add(tableName);
-        }
-      }
       if (backupStorageInfo.keyspace != null) {
         commandArgs.add("--keyspace");
         commandArgs.add(backupStorageInfo.keyspace);
