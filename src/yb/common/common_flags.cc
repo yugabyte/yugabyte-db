@@ -13,25 +13,21 @@
 
 #include "yb/common/common_flags.h"
 
-#include <thread>
-
-#include "yb/util/atomic.h"
+#include "yb/util/flags.h"
 #include "yb/util/flag_tags.h"
-#include "yb/util/tsan_util.h"
-#include "yb/gutil/sysinfo.h"
 
 // Note that this is used by the client or master only, not by tserver.
 DEFINE_int32(yb_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per table per tablet server when a table is created. If the "
-    "value is -1, the system sets the number of shards per tserver to 1 if "
-    "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
-    "appropriate value based on number of CPU cores.");
+    "value is -1, the system automatically determines an appropriate value based on the number of "
+    "CPU cores; it is determined to 1 if enable_automatic_tablet_splitting is set to true.");
+TAG_FLAG(yb_num_shards_per_tserver, runtime);
 
 DEFINE_int32(ysql_num_shards_per_tserver, kAutoDetectNumShardsPerTServer,
     "The default number of shards per YSQL table per tablet server when a table is created. If the "
-    "value is -1, the system sets the number of shards per tserver to 1 if "
-    "enable_automatic_tablet_splitting is true, and otherwise automatically determines an "
-    "appropriate value based on number of CPU cores.");
+    "value is -1, the system automatically determines an appropriate value based on the number of "
+    "CPU cores; it is determined to 1 if enable_automatic_tablet_splitting is set to true.");
+TAG_FLAG(ysql_num_shards_per_tserver, runtime);
 
 DEFINE_bool(ysql_disable_index_backfill, false,
     "A kill switch to disable multi-stage backfill for YSQL indexes.");
@@ -51,45 +47,9 @@ TAG_FLAG(log_ysql_catalog_versions, hidden);
 
 namespace yb {
 
-static int GetYCQLNumShardsPerTServer() {
-  if (GetAtomicFlag(&FLAGS_enable_automatic_tablet_splitting)) {
-    return 1;
-  }
-  int value = 8;
-  if (IsTsan()) {
-    value = 2;
-  } else if (base::NumCPUs() <= 2) {
-    value = 4;
-  }
-  return value;
-}
-
-static int GetYSQLNumShardsPerTServer() {
-  if (GetAtomicFlag(&FLAGS_enable_automatic_tablet_splitting)) {
-    return 1;
-  }
-  int value = 8;
-  if (IsTsan()) {
-    value = 2;
-  } else if (base::NumCPUs() <= 2) {
-    value = 2;
-  } else if (base::NumCPUs() <= 4) {
-    value = 4;
-  }
-  return value;
-}
-
 void InitCommonFlags() {
-  if (GetAtomicFlag(&FLAGS_yb_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
-    int value = GetYCQLNumShardsPerTServer();
-    VLOG(1) << "Auto setting FLAGS_yb_num_shards_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_yb_num_shards_per_tserver);
-  }
-  if (GetAtomicFlag(&FLAGS_ysql_num_shards_per_tserver) == kAutoDetectNumShardsPerTServer) {
-    int value = GetYSQLNumShardsPerTServer();
-    VLOG(1) << "Auto setting FLAGS_ysql_num_shards_per_tserver to " << value;
-    SetAtomicFlag(value, &FLAGS_ysql_num_shards_per_tserver);
-  }
+  // Note! Autoflags are in non-promoted state (are set to the initial value) during execution of
+  // this function. Be very careful in manipulations with such flags.
 }
 
 } // namespace yb
