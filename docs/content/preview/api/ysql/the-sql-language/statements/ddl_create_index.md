@@ -227,26 +227,45 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 
 If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
 
-**If online `CREATE INDEX` fails**, it likely failed in the backfill step.
+**If online `CREATE INDEX` fails**, an invalid index may be left behind.
+The invalid index will still do internal operations, so it should be dropped.
 
-In that case, the index exists but is not usable.
-Drop the index and try again.
+```plpgsql
+yugabyte=# CREATE TABLE uniqueerror (i int);
+CREATE TABLE
+yugabyte=# INSERT INTO uniqueerror VALUES (1), (1);
+INSERT 0 2
+yugabyte=# CREATE UNIQUE INDEX ON uniqueerror (i);
+ERROR:  ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"
+yugabyte=# \d uniqueerror
+            Table "public.uniqueerror"
+ Column |  Type   | Collation | Nullable | Default
+--------+---------+-----------+----------+---------
+ i      | integer |           |          |
+Indexes:
+    "uniqueerror_i_idx" UNIQUE, lsm (i HASH) INVALID
 
-If it still doesn't work, here are some troubleshooting steps:
+yugabyte=# DROP INDEX uniqueerror_i_idx;
+DROP INDEX
+```
 
-- **Did it time out?** Try increasing timeout flags:
-  - master `ysql_index_backfill_rpc_timeout_ms`
-  - tserver `backfill_index_client_rpc_timeout_ms`
-- **Did you get a "backfill failed to connect to DB" error?** You may be hitting an issue with authentication. If you're on a stable version prior to 2.4 or a latest (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
+Here is a list of errors and remedies:
+
+- `ERROR:  ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"`
+  - When creating a unique index, a unique constraint violation was found. The conflicting row(s) should be resolved.
+- `ERROR:  Backfilling indexes { timeoutmaster_i_idx } for tablet 42e3857759f54733a47e3bb817636f60 from key '' in state kFailed`
+  - Increase master flag `ysql_index_backfill_rpc_timeout_ms` to, for example, 300000 (five minutes).
+- `ERROR:  BackfillIndex RPC (request call id 123) to 127.0.0.1:9100 timed out after 86400.000s`
+  - Increase tserver flag `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
+- `ERROR:  backfill failed to connect to DB`
+  - You may be hitting an issue with authentication. If you're on a stable version prior to 2.4 or a latest (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
   - For version 2.5.1, you can use `CREATE INDEX NONCONCURRENTLY` as a workaround.
   - If the version is at least 2.3, you can set `ysql_disable_index_backfill=false` as a workaround.
   - In all supported versions, you can disable authentication (for example, by using `ysql_enable_auth`, `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
-- **Did you get a "duplicate key value" error?**
-  Then, you have a unique constraint violation.
 
-**To prioritize keeping other transactions alive** during the index backfill, bump up the following:
+**To prioritize keeping other transactions alive** during the index backfill, set each of the following to be longer than the longest transaction anticipated:
 
-- master flag `index_backfill_wait_for_old_txns_ms`
+- Master flag `index_backfill_wait_for_old_txns_ms`
 - YSQL parameter `yb_index_state_flags_update_delay`
 
 **To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.
