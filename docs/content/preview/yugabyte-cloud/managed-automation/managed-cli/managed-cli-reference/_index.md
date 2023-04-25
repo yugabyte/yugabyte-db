@@ -51,6 +51,12 @@ For example, to print the command-line help for the cluster `create` command, ru
 ybm cluster create -h
 ```
 
+Print the version of ybm CLI:
+
+```sh
+ybm --version
+```
+
 ## Commands
 
 You can manage the following resources using ybm:
@@ -58,7 +64,7 @@ You can manage the following resources using ybm:
 | Resource | Commands |
 | :--- | :--- |
 | [backup](managed-cli-backup/) | create, delete, list, restore |
-| [cluster](managed-cli-cluster/) | create, delete, list, describe, update, pause, resume, cert download |
+| [cluster](managed-cli-cluster/) | create, delete, list, describe, update, pause, resume, cert download, encryption list, encryption update |
 | [cluster network](managed-cli-network/) | allow-list assign, allow-list unassign, endpoint list,</br>endpoint describe, endpoint create, endpoint update, endpoint delete |
 | [cluster read-replica](managed-cli-read-replica/) | create, delete, list, update |
 | [network-allow-list](managed-cli-network-allow-list/) | create, delete, list |
@@ -103,6 +109,9 @@ The following flags can be passed in with any command. These flags can also be a
 
 -o, --output string
 : Specify the desired output format. `table` (default), `json`, or `pretty`.
+
+--timeout duration
+: Wait command timeout. For example, 5m, 1h. Default is 168h0m0s.
 
 --wait
 : For long-running commands such as creating or deleting a cluster, you can use the `--wait` flag to display progress in the shell. `true` or `false` (default). For example:
