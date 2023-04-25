@@ -336,6 +336,8 @@ class CatalogManager : public yb::master::CatalogManager, SnapshotCoordinatorCon
   Status ProcessTabletReplicationStatus(
       const TabletReplicationStatusPB& replication_state) override EXCLUDES(mutex_);
 
+  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) override;
+
  private:
   friend class SnapshotLoader;
   friend class yb::master::ClusterLoadBalancer;

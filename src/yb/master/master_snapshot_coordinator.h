@@ -129,6 +129,8 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
 
+  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
+
   void SysCatalogLoaded(int64_t term);
 
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(

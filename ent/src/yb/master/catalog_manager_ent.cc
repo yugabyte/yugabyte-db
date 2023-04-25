@@ -8355,6 +8355,10 @@ Status CatalogManager::ProcessTabletReplicationStatus(
   return Status::OK();
 }
 
+HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
+}
+
 }  // namespace enterprise
 }  // namespace master
 }  // namespace yb

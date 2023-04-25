@@ -1005,6 +1005,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
 
+  virtual HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+    return HybridTime();
+  }
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
