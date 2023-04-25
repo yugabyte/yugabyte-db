@@ -3,6 +3,7 @@ title: Encryption at rest
 linkTitle: Encryption at rest
 description: YugabyteDB Managed cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
+beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
 menu:
   preview_yugabyte-cloud:
     identifier: managed-ear
@@ -15,20 +16,23 @@ YugabyteDB Managed uses volume encryption for all data at rest, including your a
 
 In addition to cloud provider volume encryption, you can enable YugabyteDB encryption at rest (EAR) for clusters. When enabled, your cluster (including backups) is encrypted using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). (Currently, only AWS KMS is supported.) You can grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
-You enable YugabyteDB EAR for a cluster when you create it.
+You enable YugabyteDB EAR for a cluster when you create it. See [Create your cluster](../../cloud-basics/create-clusters/).
 
 <!-- You can enable YugabyteDB EAR for a cluster as follows:
 
 - On the **Security** page of the **Create Cluster** wizard when you create a cluster.
 - On the cluster **Settings** tab under **Encryption at rest**.
 -->
-You must be signed in as an Admin user to enable cluster EAR.
+You must be signed in as an [Admin user](../../cloud-admin/manage-access/) to enable cluster EAR.
 
 ## Limitations
 
-- Currently, EAR is only supported for AWS KMS.
+- Currently, EAR is only supported for [AWS KMS](https://docs.aws.amazon.com/kms/).
+- Currently, you cannot enable cluster EAR for existing clusters.
 - You cannot remove encryption from clusters that have EAR enabled.
 - After EAR is enabled for a cluster, you cannot change keys.
+
+Enabling encryption at rest can impact cluster performance. You should monitor your workload after enabling this feature.
 
 ## Prerequisites
 
