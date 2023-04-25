@@ -53,7 +53,12 @@ Follower reads only affect reads. All writes are still handled by the leader.
 
 Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as an identity index.
 
-In a multi-region cluster, you can create different tablespaces with preferred leaders set to each region and create multiple identity indexes and attach them to each of the [tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/). This will have the effect of having multiple leaders for the same table one in each region. Although this will affect write latencies, as each update has to reach multiple indexes, it will hugely improve the read latencies when you have applications running in different regions as the reads will go to the local identity index of the table.
+If you are running applications from multiple regions, you can use identity indexes in conjunction with [tablespaces](../../../../explore/ysql-language-features/going-beyond-sql/tablespaces/) in a multi-region cluster to greatly improve read latencies, as follows:
+
+- Create different tablespaces with preferred leaders set to each region.
+- Create identity indexes and attach them to each of the tablespaces.
+
+This results in tables having multiple leaders, one in each region. Although this affects write latencies, as each update has to reach multiple indexes, read latencies are much lower because the reads go to the local identity index of the table.
 
 ## Learn more
 
