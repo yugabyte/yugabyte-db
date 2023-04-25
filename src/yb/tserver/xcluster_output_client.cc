@@ -568,6 +568,14 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
     cached_schema_versions = &schema_versions_;
   }
 
+  if (PREDICT_FALSE(VLOG_IS_ON(3))) {
+    for (const auto& [producer_schema_version, consumer_schema_version] : *cached_schema_versions) {
+        VLOG_WITH_PREFIX_UNLOCKED(3) << Format(
+            "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2",
+            colocationId, producer_schema_version, consumer_schema_version);
+    }
+  }
+
   return *cached_schema_versions;
 }
 
@@ -904,10 +912,17 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
         response.DebugString(), req.schema().DebugString(), producer_tablet_info_.tablet_id);
     DCHECK(schema_version_map);
     auto resp_schema_versions = response.schema_versions();
-    (*schema_version_map)[resp_schema_versions.current_producer_schema_version()]
-        = resp_schema_versions.current_consumer_schema_version();
-    (*schema_version_map)[resp_schema_versions.old_producer_schema_version()]
-        =  resp_schema_versions.old_consumer_schema_version();
+    (*schema_version_map)[resp_schema_versions.current_producer_schema_version()] =
+        resp_schema_versions.current_consumer_schema_version();
+
+    // Update the old producer schema version, only if it is not the same as
+    // current producer schema version.
+    if (resp_schema_versions.old_producer_schema_version() !=
+        resp_schema_versions.current_producer_schema_version()) {
+      (*schema_version_map)[resp_schema_versions.old_producer_schema_version()] =
+          resp_schema_versions.old_consumer_schema_version();
+    }
+
     IncProcessedRecordCount();
   }
 
