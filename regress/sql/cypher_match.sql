@@ -276,16 +276,22 @@ SELECT * FROM cypher('cypher_match', $$
 	MATCH (a)-[]-()-[]-(a:v1) RETURN a
 $$) AS (a agtype);
 SELECT * FROM cypher('cypher_match', $$
-        MATCH (a)-[]-(a:v2)-[]-(a) RETURN a
+	MATCH (a)-[]-(a:v2)-[]-(a) RETURN a
 $$) AS (a agtype);
 SELECT * FROM cypher('cypher_match', $$
-        MATCH (a)-[]-(a:v1) RETURN a
+	MATCH (a)-[]-(a:v1) RETURN a
 $$) AS (a agtype);
 SELECT * FROM cypher('cypher_match', $$
-        MATCH (a)-[]-(a)-[]-(a:v1) RETURN a
+	MATCH (a)-[]-(a)-[]-(a:v1) RETURN a
 $$) AS (a agtype);
 SELECT * FROM cypher('cypher_match', $$
-        MATCH (a)-[]-(a)-[]-(a:invalid_label) RETURN a
+	MATCH (a)-[]-(a)-[]-(a:invalid_label) RETURN a
+$$) AS (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (a) MATCH (a:v1) RETURN a
+$$) AS (a agtype);
+SELECT * FROM cypher('cypher_match', $$
+	MATCH (a) MATCH (a:invalid_label) RETURN a
 $$) AS (a agtype);
 
 --Valid variable reuse, although why would you want to do it this way?

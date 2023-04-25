@@ -4501,11 +4501,6 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
         /* also search for the variable from a previous transforms */
         expr = colNameToVar(pstate, node->name, false, node->location);
 
-        if (expr != NULL)
-        {
-            return (Expr*)expr;
-        }
-
         if (te != NULL)
         {
             transform_entity *entity = find_variable(cpstate, node->name);
@@ -4527,8 +4522,6 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
             {
                 cypher_node *cnode = (cypher_node *)entity->entity.node;
 
-
-
                 if (!node->label ||
                     (cnode != NULL &&
                     node != NULL &&
@@ -4545,6 +4538,10 @@ static Expr *transform_cypher_node(cypher_parsestate *cpstate,
             }
 
             return te->expr;
+        }
+        else if (expr != NULL)
+        {
+            return (Expr*)expr;
         }
     }
     else
