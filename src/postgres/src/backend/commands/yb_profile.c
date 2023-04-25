@@ -38,7 +38,6 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
-#include "utils/syscache.h"
 
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
