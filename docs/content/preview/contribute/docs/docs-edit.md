@@ -78,7 +78,7 @@ Optionally, you can tag the Netlify bot in the PR description to tell the bot wh
 
 When your reviewer opens the build preview, it will automatically land on the page you specified.
 
-### Run a link checker
+### Run a link checker (Optional)
 
 <https://linkchecker.github.io/linkchecker/>
 
