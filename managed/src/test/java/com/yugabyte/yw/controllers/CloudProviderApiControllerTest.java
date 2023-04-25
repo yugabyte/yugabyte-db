@@ -25,11 +25,15 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -750,6 +754,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     ProviderDetails providerDetails = new ProviderDetails();
     Provider provider =
         Provider.create(customer.getUuid(), Common.CloudType.aws, "test", providerDetails);
+    AccessKey accessKey =
+        AccessKey.create(
+            provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     Region region = Region.create(provider, "us-west-1", "us-west-1", "foo");
     region.setVnetName("vpc-foo");
     region.setSecurityGroupId("sg-foo");
@@ -765,6 +772,11 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "\"secondarySubnet\":\"subnet-foo\",\"subnet\":\"subnet-foo\"}]}],"
                 + "\"version\": %d}",
             provider.getVersion());
+    JsonNode providerJson = Json.parse(jsonString);
+    ArrayNode allAccessKeys = Json.newArray();
+    allAccessKeys.add(Json.toJson(accessKey));
+    ((ObjectNode) providerJson).set("allAccessKeys", allAccessKeys);
+
     Image image = new Image();
     image.setArchitecture("x86_64");
     image.setRootDeviceType("ebs");
@@ -773,7 +785,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     when(mockAWSCloudImpl.describeSecurityGroupsOrBadRequest(any(), any()))
         .thenReturn(getTestSecurityGroup(21, 24, "vpc-foo"));
     Result result =
-        assertPlatformException(() -> editProvider(Json.parse(jsonString), provider.getUuid()));
+        assertPlatformException(() -> editProvider(providerJson, provider.getUuid(), false));
     assertBadRequest(result, "No changes to be made for provider type: aws");
   }
 
@@ -1569,6 +1581,92 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
             .get("error")
             .get("data.REGION.us-west-1.SECURITY_GROUP"));
     assertEquals(Provider.UsabilityState.READY, provider.getUsabilityState());
+  }
+
+  @Test
+  public void testAddYBAManagedAccessKeysProviderEdit() {
+    Provider p = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
+    Region r = Region.create(p, "us-west-2", "us-west-2", "yb-image");
+    when(mockAccessManager.addKey(
+            any(),
+            anyString(),
+            nullable(File.class),
+            anyString(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            anyList(),
+            anyBoolean()))
+        .thenReturn(AccessKey.create(p.getUuid(), "key-code-1", new AccessKey.KeyInfo()));
+    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
+
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    Provider provider = Json.fromJson(bodyJson, Provider.class);
+
+    provider.setAllAccessKeys(null);
+    Result result = editProvider(Json.toJson(provider), provider.getUuid(), false, true);
+    assertOk(result);
+
+    provider = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(2, provider.getAllAccessKeys().size());
+    provider
+        .getAllAccessKeys()
+        .forEach(
+            key -> {
+              if (!(key.getKeyCode().equals("key-code-1")
+                  || key.getKeyCode().equals("access-key-code"))) {
+                fail();
+              }
+            });
+  }
+
+  @Test
+  public void testAddSelfManagedAccessKeysProviderEdit() {
+    Provider p = Provider.create(customer.getUuid(), Common.CloudType.aws, "test");
+    Region r = Region.create(p, "us-west-2", "us-west-2", "yb-image");
+    when(mockAccessManager.saveAndAddKey(
+            any(),
+            anyString(),
+            anyString(),
+            any(),
+            anyString(),
+            anyInt(),
+            anyBoolean(),
+            anyBoolean(),
+            anyBoolean(),
+            anyList(),
+            anyBoolean(),
+            anyBoolean()))
+        .thenReturn(AccessKey.create(p.getUuid(), "my-key", new AccessKey.KeyInfo()));
+
+    Result providerRes = getProvider(p.getUuid());
+    JsonNode bodyJson = Json.parse(contentAsString(providerRes));
+    Provider provider = Json.fromJson(bodyJson, Provider.class);
+
+    ArrayNode accessKeyList = Json.newArray();
+    ObjectNode key = Json.newObject();
+    ObjectNode keyInfo = Json.newObject();
+    keyInfo.put("keyPairName", "my-key");
+    keyInfo.put("sshPrivateKeyContent", "Test key content");
+    key.set("keyInfo", keyInfo);
+    accessKeyList.add(key);
+
+    ((ObjectNode) bodyJson).set("allAccessKeys", accessKeyList);
+    Result result = editProvider(bodyJson, provider.getUuid(), false, true);
+    assertOk(result);
+
+    p = Provider.getOrBadRequest(p.getUuid());
+    assertEquals(1, p.getAllAccessKeys().size());
+    provider
+        .getAllAccessKeys()
+        .forEach(
+            aKey -> {
+              if (!(aKey.getKeyCode().equals("my-key"))) {
+                fail();
+              }
+            });
   }
 
   private SecurityGroup getTestSecurityGroup(int fromPort, int toPort, String vpcId) {
