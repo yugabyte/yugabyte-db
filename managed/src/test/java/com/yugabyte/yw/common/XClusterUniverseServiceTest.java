@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Arrays;
@@ -33,15 +34,21 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
 
   private Universe defaultUniverse;
   private XClusterUniverseService xClusterUniverseService;
+  @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
+  @Mock private YBClientService ybService;
 
   @Mock RuntimeConfGetter mockConfGetter;
 
   @Before
   public void setup() {
+    when(ybService.getClient(any(), any())).thenReturn(mockYBClient);
+
     ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse("univ-1");
     TestHelper.updateUniverseVersion(defaultUniverse, "2.17.0.0-b1");
-    xClusterUniverseService = new XClusterUniverseService(mockGFlagsValidation, mockConfGetter);
+    xClusterUniverseService =
+        new XClusterUniverseService(
+            mockGFlagsValidation, mockConfGetter, ybService, mockPlatformExecutorFactory);
   }
 
   @Test

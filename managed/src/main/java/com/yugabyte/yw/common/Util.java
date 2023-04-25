@@ -941,4 +941,15 @@ public class Util {
     }
     return false;
   }
+
+  public static long getExponentialBackoffDelayMs(
+      long initialDelayMs, long maxDelayMs, int iterationNumber) {
+    double multiplier = 2.0;
+    long delay =
+        (long) (initialDelayMs * Math.pow(multiplier, iterationNumber) + Math.random() * 1000);
+    if (delay > maxDelayMs) {
+      delay = maxDelayMs;
+    }
+    return delay;
+  }
 }
