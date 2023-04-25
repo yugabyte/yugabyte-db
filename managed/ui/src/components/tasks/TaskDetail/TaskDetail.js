@@ -110,14 +110,13 @@ class TaskDetail extends Component {
             {displayMessage}
           </div>
           {/* TODO use API response to check retryable. */}
-          {isNonEmptyString(currentTaskData.title) &&
-            currentTaskData.retryable && (
+          {isNonEmptyString(currentTaskData.title) && currentTaskData.retryable && (
             <div
               className="btn btn-orange text-center pull-right task-detail-button"
               onClick={() => self.retryTaskClicked(taskUUID)}
             >
               <i className="fa fa-refresh"></i>
-                Retry Task
+              Retry Task
             </div>
           )}
         </div>
@@ -141,7 +140,7 @@ class TaskDetail extends Component {
         // Show retry only for the last failed task.
         if (subTask.subTaskState === 'Failure' || subTask.subTaskState === 'Aborted') {
           if (subTask.errorString === 'null') {
-            subTask.errorString = "Task failed";
+            subTask.errorString = 'Task failed';
           }
           errorString = getErrorMessageDisplay(subTask.errorString, taskUUID);
         }
@@ -179,7 +178,7 @@ class TaskDetail extends Component {
           <Link to="/tasks/">Tasks</Link>
           <span>
             <i className="fa fa-chevron-right"></i>
-            {(currentTaskData?.title) || 'Task Details'}
+            {currentTaskData?.title || 'Task Details'}
           </span>
         </h2>
       );
@@ -195,10 +194,7 @@ class TaskDetail extends Component {
               kind="Target universe"
               size={currentTaskData.title?.split(' : ')[1]}
             />
-            <YBResourceCount
-              kind="Task name"
-              size={currentTaskData.title?.split(' : ')[0]}
-            />
+            <YBResourceCount kind="Task name" size={currentTaskData.title?.split(' : ')[0]} />
             {taskTopLevelData}
           </div>
           <div className="task-step-bar-container">{taskProgressBarData}</div>
@@ -208,11 +204,10 @@ class TaskDetail extends Component {
           header={
             <h2>
               {currentTaskData.correlationId ? (
-                <Link to={`/logs/?queryRegex=${currentTaskData.correlationId}`}>
-                  Task details
-                </Link>
-              ) :
-                ('Task details')}
+                <Link to={`/logs/?queryRegex=${currentTaskData.correlationId}`}>Task details</Link>
+              ) : (
+                'Task details'
+              )}
             </h2>
           }
           body={
