@@ -1726,9 +1726,9 @@ Status PgApiImpl::ExitSeparateDdlTxnMode() {
   return Status::OK();
 }
 
-void PgApiImpl::ClearSeparateDdlTxnMode() {
+Status PgApiImpl::ClearSeparateDdlTxnMode() {
   pg_session_->DropBufferedOperations();
-  CHECK_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse));
+  return pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse);
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {

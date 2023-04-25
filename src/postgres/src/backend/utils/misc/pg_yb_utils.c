@@ -1047,7 +1047,7 @@ YBResetDdlState()
 {
 	ddl_nesting_level = 0;
 	YBResetEnableNonBreakingDDLMode();
-	YBCPgClearSeparateDdlTxnMode();
+	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 }
 
 int
