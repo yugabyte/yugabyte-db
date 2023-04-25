@@ -274,7 +274,8 @@
         "confirmPassword": "Passwords should match",
         "fieldRequired": "This field is required",
         "passwordStrength": "Password must be 8 characters minimum and must contain at least 1 digit, 1 uppercase, 1 lowercase and one of the !@#$%^&* (special) characters.",
-        "required": "{{field}} is required"
+        "required": "{{field}} is required",
+        "universeNameValidation": "{{cloudType}} Universe name cannot contain capital letters or special characters except dashes"
       }
     },
     "clusterDetail": {
