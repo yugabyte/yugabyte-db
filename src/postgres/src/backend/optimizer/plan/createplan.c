@@ -1140,7 +1140,13 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path)
 
 			List	   *prmquals = best_path->path.param_info->ppi_clauses;
 
-			prmquals = extract_actual_clauses(prmquals, false);
+			prmquals =
+				!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled()
+					? yb_get_actual_batched_clauses(root,
+															  prmquals,
+															  (Path *) best_path)
+          : get_actual_clauses(prmquals);
+			
 			prmquals = (List *) replace_nestloop_params(root,
 														(Node *) prmquals);
 
@@ -3486,9 +3492,9 @@ create_indexscan_plan(PlannerInfo *root,
 	 */
 	stripped_indexquals =
 		!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled()
-		? yb_get_actual_batched_clauses(root,
-										indexquals,
-										best_path)
+			? yb_get_actual_batched_clauses(root,
+													  indexquals,
+													  (Path *) best_path)
 		: get_actual_clauses(indexquals);
 
 	/*
