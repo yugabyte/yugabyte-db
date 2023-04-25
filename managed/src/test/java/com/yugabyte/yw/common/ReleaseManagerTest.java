@@ -721,12 +721,6 @@ public class ReleaseManagerTest extends FakeDBApplication {
     when(appConfig.getString("yb.releases.path"))
         .thenReturn(TMP_STORAGE_PATH)
         .thenReturn(TMP_REPLACE_STORAGE_PATH);
-    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbReleasePathRegex))
-        .thenReturn("[^.]+yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz");
-    when(confGetter.getGlobalConf(GlobalConfKeys.ybdbHelmReleasePathRegex))
-        .thenReturn("[^.]+yugabyte-(.*)-helm.tar.gz");
-    when(confGetter.getGlobalConf(GlobalConfKeys.allowDbVersionMoreThanYbaVersion))
-        .thenReturn(false);
     releaseManager.importLocalReleases();
 
     // Create new release files for 0.0.0.2-b1.

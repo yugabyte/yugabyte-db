@@ -35,13 +35,10 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.runners.MockitoJUnitRunner;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import play.Application;
 
 @RunWith(MockitoJUnitRunner.class)
 public class FileDataServiceTest extends FakeDBApplication {
-  protected static final Logger LOG = LoggerFactory.getLogger(FileDataServiceTest.class);
   final String TMP_STORAGE_PATH = "/tmp/yugaware_tests/" + getClass().getSimpleName();
   final String TMP_REPLACE_STORAGE_PATH =
       "/tmp/yugaware_replace_tests/" + getClass().getSimpleName();
