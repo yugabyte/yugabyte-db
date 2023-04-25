@@ -166,8 +166,6 @@ class YBTableCreator {
   // returned.
   Status Create();
 
-  Result<int> NumTabletsForUserTable();
-
  private:
   friend class YBClient;
 
