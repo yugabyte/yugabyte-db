@@ -1202,8 +1202,8 @@ YBCStatus YBCPgExitSeparateDdlTxnMode() {
   return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
 }
 
-void YBCPgClearSeparateDdlTxnMode() {
-  pgapi->ClearSeparateDdlTxnMode();
+YBCStatus YBCPgClearSeparateDdlTxnMode() {
+  return ToYBCStatus(pgapi->ClearSeparateDdlTxnMode());
 }
 
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id) {

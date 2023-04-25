@@ -517,7 +517,7 @@ YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
 YBCStatus YBCPgExitSeparateDdlTxnMode();
-void YBCPgClearSeparateDdlTxnMode();
+YBCStatus YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id);
 double YBCGetTransactionPriority();

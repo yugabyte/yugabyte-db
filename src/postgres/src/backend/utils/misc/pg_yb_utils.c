@@ -1156,7 +1156,7 @@ YBResetDdlState()
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableNonBreakingDDLMode();
-	YBCPgClearSeparateDdlTxnMode();
+	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
 
