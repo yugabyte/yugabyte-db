@@ -49,7 +49,7 @@ SET yb_follower_read_staleness_ms = 10000; -- 10s
 Follower reads only affect reads. All writes are still handled by the leader.
 {{</note>}}
 
-## Identity index
+## Use identity indexes
 
 Adding indexes is a common technique for speeding up queries. By adding all the columns needed in a query to create a [covering index](../../../../explore/indexes-constraints/covering-index-ysql/), you can perform index-only scans, where you don't need to scan the table, only the index. When the schema of your covering index is the same as the table, then it is known as an identity index.
 
