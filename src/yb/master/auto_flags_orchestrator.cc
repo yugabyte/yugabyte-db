@@ -15,27 +15,30 @@
 #include <string>
 
 #include "yb/client/auto_flags_manager.h"
+
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
+
 #include "yb/consensus/consensus.pb.h"
+
 #include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/catalog_manager.h"
+
 #include "yb/tablet/operations/change_auto_flags_config_operation.h"
 #include "yb/tablet/operations/operation.h"
+
 #include "yb/util/countdown_latch.h"
 #include "yb/util/flags/auto_flags_util.h"
 #include "yb/util/flags.h"
 
-using std::string;
-using std::vector;
-
-DEFINE_UNKNOWN_int32(
-    limit_auto_flag_promote_for_new_universe, yb::to_underlying(yb::AutoFlagClass::kExternal),
+DEFINE_NON_RUNTIME_int32(limit_auto_flag_promote_for_new_universe,
+    yb::to_underlying(yb::AutoFlagClass::kNewInstallsOnly),
     "The maximum class value up to which AutoFlags are promoted during new cluster creation. "
-    "Value should be in the range [0-3]. Will not promote any AutoFlags if set to 0.");
+    "Value should be in the range [0-4]. Will not promote any AutoFlags if set to 0.");
 TAG_FLAG(limit_auto_flag_promote_for_new_universe, stable);
 
 namespace {
+
 bool ValidateAutoFlagClass(const char* flag_name, int32_t value) {
   if (value == 0) {
     return true;
@@ -57,16 +60,17 @@ DEFINE_validator(limit_auto_flag_promote_for_new_universe, &ValidateAutoFlagClas
 
 DECLARE_bool(disable_auto_flags_management);
 
-namespace yb {
+namespace yb::master {
+
 using OK = Status::OK;
 
-namespace master {
-
 namespace {
+
 // Add the flags to the config if it is not already present. Bumps up the config version and returns
 // true if any new flags were added. Config with version 0 is always bumped to 1.
 bool InsertFlagsToConfig(
-    const std::map<std::string, vector<AutoFlagInfo>>& eligible_flags, AutoFlagsConfigPB* config,
+    const std::map<std::string,
+    std::vector<AutoFlagInfo>>& eligible_flags, AutoFlagsConfigPB* config,
     bool* non_runtime_flags_added) {
   *non_runtime_flags_added = false;
   bool config_changed = false;
@@ -78,7 +82,7 @@ bool InsertFlagsToConfig(
   for (const auto& per_process_flags : eligible_flags) {
     if (!per_process_flags.second.empty()) {
       const auto& process_name = per_process_flags.first;
-      google::protobuf::RepeatedPtrField<string>* process_flags_pb = nullptr;
+      google::protobuf::RepeatedPtrField<std::string>* process_flags_pb = nullptr;
       for (auto& promoted_flags : *config->mutable_promoted_flags()) {
         if (promoted_flags.process_name() == process_name) {
           process_flags_pb = promoted_flags.mutable_flags();
@@ -207,5 +211,5 @@ Status PromoteAutoFlags(
 
   return OK();
 }
-}  // namespace master
-}  // namespace yb
+
+}  // namespace yb::master

@@ -212,8 +212,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         new ArrayList<>(
             Arrays.asList(
                 TaskType.InstanceActions, TaskType.InstanceActions, TaskType.InstanceActions)),
-        instanceActions
-            .stream()
+        instanceActions.stream()
             .map(t -> t.getTaskType())
             .collect(Collectors.toCollection(ArrayList::new)));
     JsonNode details = instanceActions.get(0).getDetails();
@@ -223,8 +222,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     List<TaskInfo> updateUniverseTagsTask = subTasksByPosition.get(1);
     assertEquals(
         new ArrayList<>(Collections.singletonList(TaskType.UpdateUniverseTags)),
-        updateUniverseTagsTask
-            .stream()
+        updateUniverseTagsTask.stream()
             .map(t -> t.getTaskType())
             .collect(Collectors.toCollection(ArrayList::new)));
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());

@@ -495,8 +495,7 @@ public class CommonUtils {
       if (CollectionUtils.isEmpty(removedBeans)) {
         return null;
       }
-      return removedBeans
-          .stream()
+      return removedBeans.stream()
           .filter(e -> equalityCheck.apply(e, entry))
           .findFirst()
           .orElse(null);
@@ -592,9 +591,7 @@ public class CommonUtils {
             .flatMap(map -> map.entrySet().stream())
             .map(entry -> new Pair<>(entry.getKey(), entry.getValue()))
             .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
-    return pairCount
-        .entrySet()
-        .stream()
+    return pairCount.entrySet().stream()
         .filter(entry -> entry.getValue() == mapsCount)
         .map(Map.Entry::getKey)
         .collect(Collectors.toMap(Pair::getFirst, Pair::getSecond));
@@ -693,10 +690,7 @@ public class CommonUtils {
     UniverseDefinitionTaskParams.Cluster primaryCluster =
         universe.getUniverseDetails().getPrimaryCluster();
     List<NodeDetails> tserverLiveNodes =
-        universe
-            .getUniverseDetails()
-            .getNodesInCluster(primaryCluster.uuid)
-            .stream()
+        universe.getUniverseDetails().getNodesInCluster(primaryCluster.uuid).stream()
             .filter(nodeDetails -> nodeDetails.isTserver)
             .filter(nodeDetails -> nodeDetails.state == NodeState.Live)
             .collect(Collectors.toList());
@@ -774,5 +768,12 @@ public class CommonUtils {
 
   public static boolean isAutoFlagSupported(String dbVersion) {
     return isReleaseEqualOrAfter(MIN_PROMOTE_AUTO_FLAG_RELEASE, dbVersion);
+  }
+
+  // Only replace path at the beginning.
+  public static String replaceBeginningPath(
+      String pathToModify, String initialRoot, String finalRoot) {
+    String regex = "^" + Pattern.quote(initialRoot);
+    return pathToModify.replaceAll(regex, finalRoot);
   }
 }

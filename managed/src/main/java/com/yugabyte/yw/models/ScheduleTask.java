@@ -69,13 +69,8 @@ public class ScheduleTask extends Model {
   }
 
   public static Optional<ScheduleTask> getLastSuccessfulTask(UUID scheduleUUID) {
-    return find.query()
-        .where()
-        .eq("scheduleUUID", scheduleUUID)
-        .orderBy()
-        .desc("scheduledTime")
-        .findList()
-        .stream()
+    return find.query().where().eq("scheduleUUID", scheduleUUID).orderBy().desc("scheduledTime")
+        .findList().stream()
         .filter(
             (task) ->
                 TaskInfo.getOrBadRequest(task.getTaskUUID()).getTaskState().equals(State.Success))

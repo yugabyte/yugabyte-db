@@ -63,7 +63,7 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   @Override
-  public void onFailure(TaskInfo taskInfo, Throwable cause) {
+  public boolean onFailure(TaskInfo taskInfo, Throwable cause) {
     if (cause instanceof RecoverableException) {
       NodeTaskParams params = taskParams();
 
@@ -79,6 +79,9 @@ public abstract class NodeTaskBase extends UniverseDefinitionTaskBase {
       task.initialize(rebootParams);
       task.setUserTaskUUID(userTaskUUID);
       task.run();
+      return true;
     }
+
+    return false;
   }
 }

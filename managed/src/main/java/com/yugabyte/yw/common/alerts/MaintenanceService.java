@@ -59,8 +59,7 @@ public class MaintenanceService {
 
     List<MaintenanceWindow> beforeWindows = Collections.emptyList();
     Set<UUID> windowUuids =
-        maintenanceWindows
-            .stream()
+        maintenanceWindows.stream()
             .filter(alert -> !alert.isNew())
             .map(MaintenanceWindow::getUuid)
             .collect(Collectors.toSet());
@@ -69,13 +68,11 @@ public class MaintenanceService {
       beforeWindows = list(filter);
     }
     Map<UUID, MaintenanceWindow> beforeWindowsMap =
-        beforeWindows
-            .stream()
+        beforeWindows.stream()
             .collect(Collectors.toMap(MaintenanceWindow::getUuid, Function.identity()));
 
     Map<EntityOperation, List<MaintenanceWindow>> toCreateAndUpdate =
-        maintenanceWindows
-            .stream()
+        maintenanceWindows.stream()
             .map(window -> prepareForSave(window, beforeWindowsMap.get(window.getUuid())))
             .filter(window -> filterForSave(window, beforeWindowsMap.get(window.getUuid())))
             .peek(window -> validate(window, beforeWindowsMap.get(window.getUuid())))
@@ -107,8 +104,7 @@ public class MaintenanceService {
     if (uuid == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't get maintenance window by null uuid");
     }
-    return list(MaintenanceWindowFilter.builder().uuid(uuid).build())
-        .stream()
+    return list(MaintenanceWindowFilter.builder().uuid(uuid).build()).stream()
         .findFirst()
         .orElse(null);
   }

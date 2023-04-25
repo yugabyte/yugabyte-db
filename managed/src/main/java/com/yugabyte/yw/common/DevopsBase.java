@@ -129,7 +129,11 @@ public abstract class DevopsBase {
     String command;
     List<String> commandArgs;
     @Builder.Default List<String> cloudArgs = Collections.emptyList();
+    // Env vars for this command.
     Map<String, String> envVars;
+    // Args that are in the cmd, but need to be redacted.
+    Map<String, String> redactedVals;
+    // Args that will be added to the cmd but will be redacted in logs.
     Map<String, String> sensitiveData;
   }
 }

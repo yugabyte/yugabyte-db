@@ -11,14 +11,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -31,6 +29,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -50,24 +49,28 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetAutoFlagsConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
-import org.yb.master.CatalogEntityInfo;
-import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
-import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
-import play.libs.Json;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.PromoteAutoFlagsResponse;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
+import org.yb.master.MasterClusterOuterClass.GetAutoFlagsConfigResponsePB;
+import org.yb.master.MasterClusterOuterClass.PromoteAutoFlagsResponsePB;
 
+@Slf4j
 public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
   public enum UpgradeType {
@@ -126,7 +129,8 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
           TaskType.UniverseUpdateSucceeded,
           TaskType.WaitForMasterLeader,
           TaskType.ModifyBlackList,
-          TaskType.WaitForLeaderBlacklistCompletion);
+          TaskType.WaitForLeaderBlacklistCompletion,
+          TaskType.UpdateClusterUserIntent);
 
   @Override
   @Before
@@ -175,13 +179,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
     PlacementInfo placementInfo = createPlacementInfo();
     userIntent.numNodes =
-        placementInfo
-            .cloudList
-            .get(0)
-            .regionList
-            .get(0)
-            .azList
-            .stream()
+        placementInfo.cloudList.get(0).regionList.get(0).azList.stream()
             .mapToInt(p -> p.numNodesInAZ)
             .sum();
 
@@ -229,6 +227,12 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
       lenient()
           .when(mockClient.getLeaderBlacklistCompletion())
           .thenReturn(mockGetLoadMovePercentResponse);
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = new ArrayList<>();
+      lenient()
+          .when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
     } catch (Exception ignored) {
       fail();
     }
@@ -337,8 +341,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
 
   protected void assertNodeSubTask(List<TaskInfo> subTasks, Map<String, Object> assertValues) {
     List<String> nodeNames =
-        subTasks
-            .stream()
+        subTasks.stream()
             .map(t -> t.getDetails().get("nodeName").textValue())
             .collect(Collectors.toList());
     int nodeCount = (int) assertValues.getOrDefault("nodeCount", 1);
@@ -355,8 +358,7 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
         (expectedKey, expectedValue) -> {
           if (!ImmutableList.of("nodeName", "nodeNames", "nodeCount").contains(expectedKey)) {
             List<Object> values =
-                subTaskDetails
-                    .stream()
+                subTaskDetails.stream()
                     .map(
                         t -> {
                           JsonNode data =
@@ -374,6 +376,105 @@ public abstract class UpgradeTaskTest extends CommissionerBaseTest {
                         "Unexpected value for key " + expectedKey, expectedValue, actualValue));
           }
         });
+  }
+
+  protected void assertTasksSequence(
+      final int startPosition,
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      List<TaskType> expectedTaskTypes,
+      Map<Integer, Map<String, Object>> expectedParams,
+      boolean wholeSequence) {
+    int position = startPosition;
+    try {
+      for (TaskType expectedTaskType : expectedTaskTypes) {
+        List<TaskInfo> tasks = subTasksByPosition.get(position);
+        TaskType taskType = tasks.get(0).getTaskType();
+        assertEquals(1, tasks.size());
+        assertEquals(expectedTaskType, taskType);
+        Map<String, Object> expectedParamsForType =
+            expectedParams.getOrDefault(position - startPosition, Collections.emptyMap());
+        try {
+          if (expectedParamsForType != null && expectedParamsForType.size() > 0) {
+            assertNodeSubTask(tasks, expectedParamsForType);
+          }
+        } catch (RuntimeException e) {
+          log.error("", e);
+          assertTrue("Failed to compare params: " + e.getMessage(), false);
+        }
+        position++;
+      }
+      if (wholeSequence) {
+        assertNull("No more tasks", subTasksByPosition.get(position));
+      }
+    } catch (AssertionError err) {
+      try {
+        printTaskSequence(
+            startPosition, subTasksByPosition, expectedTaskTypes, expectedParams, position);
+      } catch (RuntimeException re) {
+      }
+      throw err;
+    }
+  }
+
+  private void printTaskSequence(
+      int startPosition,
+      Map<Integer, List<TaskInfo>> subTasksByPosition,
+      List<TaskType> expectedTaskTypes,
+      Map<Integer, Map<String, Object>> expectedParams,
+      int failedPosition) {
+    log.debug("Expected:");
+    for (int i = 0; i < expectedTaskTypes.size(); i++) {
+      log.debug(
+          "#"
+              + i
+              + " "
+              + expectedTaskTypes.get(i)
+              + " "
+              + expectedParams.getOrDefault(i, Collections.emptyMap()));
+    }
+    log.debug("Actual:");
+    int maxPosition = subTasksByPosition.keySet().stream().max(Integer::compare).get();
+    for (int i = 0; i < maxPosition - startPosition; i++) {
+      int position = startPosition + i;
+      String suff = "";
+      if (position == failedPosition) {
+        suff = "Failed!! ->";
+      }
+      String task;
+      String taskParams;
+      List<TaskInfo> taskInfos = subTasksByPosition.get(position);
+      Set<String> keySet = expectedParams.getOrDefault(i, Collections.emptyMap()).keySet();
+      if (taskInfos != null) {
+        TaskInfo taskInfo = taskInfos.get(0);
+        task = taskInfo.getTaskType().toString();
+        taskParams = extractParams(taskInfo, keySet).toString();
+      } else {
+        task = "-";
+        taskParams = "";
+      }
+      log.debug(suff + "#" + i + " " + task + " " + taskParams);
+    }
+    log.debug("------");
+  }
+
+  protected Map<String, Object> extractParams(TaskInfo task, Set<String> keys) {
+    Map<String, Object> result = new HashMap<>();
+    for (String key : keys) {
+      if (key.equals("nodeNames") || key.equals("nodeCount")) {
+        result.put(key, "?");
+      } else {
+        JsonNode details = task.getDetails();
+        JsonNode data =
+            PROPERTY_KEYS.contains(key) ? details.get("properties").get(key) : details.get(key);
+        Object dataObj = null;
+        if (data != null) {
+          dataObj =
+              data.isObject() ? data : (data.isBoolean() ? data.booleanValue() : data.textValue());
+        }
+        result.put(key, dataObj);
+      }
+    }
+    return result;
   }
 
   protected void assertCommonTasks(

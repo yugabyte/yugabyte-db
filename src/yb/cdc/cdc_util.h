@@ -16,15 +16,22 @@
 #include <stdlib.h>
 #include <string>
 #include <unordered_map>
+
 #include <boost/functional/hash.hpp>
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/common_types.fwd.h"
 #include "yb/common/entity_ids_types.h"
+
 #include "yb/cdc/cdc_consumer.pb.h"
-#include "yb/util/format.h"
+
+#include "yb/client/client_fwd.h"
+
 #include "yb/gutil/strings/stringpiece.h"
+
+#include "yb/util/format.h"
+#include "yb/util/result.h"
 
 namespace yb {
 namespace cdc {
@@ -120,6 +127,14 @@ inline std::string GetOriginalReplicationUniverseId(const std::string& universe_
   }
   return clean_universe_id.ToString();
 }
+
+Result<std::optional<QLRow>> FetchOptionalCdcStreamInfo(
+    client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
+    const CDCStreamId& stream_id, const std::vector<std::string>& columns);
+
+Result<QLRow> FetchCdcStreamInfo(
+    client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
+    const CDCStreamId& stream_id, const std::vector<std::string>& columns);
 
 } // namespace cdc
 } // namespace yb

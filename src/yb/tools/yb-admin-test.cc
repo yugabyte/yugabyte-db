@@ -1192,6 +1192,15 @@ TEST_F(AdminCliTest, PromoteAutoFlags) {
 
   result = ASSERT_RESULT(CallAdmin("promote_auto_flags", "kLocalVolatile", "false", "force"));
   ASSERT_NE(result.find("New AutoFlags were promoted. Config version"), std::string::npos);
+
+  {
+    const auto status = CallAdmin("promote_auto_flags", "kNewInstallsOnly", "true", "force");
+    ASSERT_NOK(status);
+    ASSERT_NE(
+        status.ToString().find(
+            "It is not allowed to promote with max_class set to kNewInstallsOnly."),
+        std::string::npos);
+  }
 }
 
 TEST_F(AdminCliTest, TestListNamespaces) {
@@ -1251,18 +1260,30 @@ TEST_F(AdminCliTest, PrintArgumentExpressions) {
   ASSERT_EQ(status.ToString().find(index_expression), std::string::npos);
 }
 
-TEST_F(AdminCliTest, TestCompactionStatus) {
+TEST_F(AdminCliTest, TestCompactionStatusAfterCompactionFinishes) {
   BuildAndStart();
   const string master_address = ToString(cluster_->master()->bound_rpc_addr());
   auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
 
   ASSERT_OK(CallAdmin("compact_table", kTableName.namespace_name(), kTableName.table_name()));
 
-  const auto output = ASSERT_RESULT(
-      CallAdmin("compaction_status", kTableName.namespace_name(), kTableName.table_name()));
-
+  string output;
   std::smatch match;
-  const std::regex regex("Last full compaction request time: *([0-9]+)");
+  ASSERT_OK(WaitFor(
+      [&]() {
+        const auto result =
+            CallAdmin("compaction_status", kTableName.namespace_name(), kTableName.table_name());
+        if (!result.ok()) {
+          return false;
+        }
+        output = *result;
+        const std::regex regex("No full compaction taking place");
+        std::regex_search(output, match, regex);
+        return !match.empty();
+      },
+      30s /* timeout */, "Wait for compaction status to report no compaction"));
+
+  const std::regex regex("Last admin full compaction request time: *([0-9]+)");
   std::regex_search(output, match, regex);
   ASSERT_FALSE(match.empty());
   const int64 last_request_time = stol(match[1].str());

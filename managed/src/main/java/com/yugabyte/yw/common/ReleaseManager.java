@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
 import com.yugabyte.yw.models.Region;
@@ -53,10 +54,10 @@ import javax.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang3.StringUtils;
+import play.Environment;
 import play.data.validation.Constraints;
 import play.libs.Json;
 import play.mvc.Http.Status;
-import play.Environment;
 
 @Slf4j
 @Singleton
@@ -66,8 +67,12 @@ public class ReleaseManager {
       "yb.releases.download_helm_chart_http_timeout";
   public static final ConfigHelper.ConfigType CONFIG_TYPE =
       ConfigHelper.ConfigType.SoftwareReleases;
+  public static final ConfigHelper.ConfigType YBC_CONFIG_TYPE =
+      ConfigHelper.ConfigType.YbcSoftwareReleases;
   private static final String YB_PACKAGE_REGEX =
       "yugabyte-(?:ee-)?(.*)-(alma|centos|linux|el8|darwin)(.*).tar.gz";
+  private static final String YB_RELEASES_PATH = "yb.releases.path";
+  private static final String YBC_RELEASES_PATH = "ybc.releases.path";
 
   private final ConfigHelper configHelper;
   private final Config appConfig;
@@ -299,10 +304,14 @@ public class ReleaseManager {
       return matched.size() > 0;
     }
 
+    // Returns true if the metadata contains at least one local release.
     @ApiModelProperty(value = "local release", hidden = true)
     @JsonIgnore
-    public boolean isLocalRelease() {
-      return !(s3 != null || gcs != null || http != null);
+    public boolean hasLocalRelease() {
+      if (packages == null || packages.isEmpty()) {
+        return !(s3 != null || gcs != null || http != null);
+      }
+      return packages.stream().anyMatch(p -> p.path.startsWith("/"));
     }
   }
 
@@ -325,6 +334,10 @@ public class ReleaseManager {
 
   static final Pattern ybVersionPattern =
       Pattern.compile("(.*)(\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
+
+  // Similar to above but only matches local release /<releasesPath>/<version>/*
+  static final Pattern ybLocalPattern =
+      Pattern.compile("(/.*?)(/\\d+.\\d+.\\d+(.\\d+)?)(-(b(\\d+)|(\\w+)))?(.*)");
 
   private static final Pattern ybcPackagePattern =
       Pattern.compile("[^.]+ybc-(?:ee-)?(.*)-(linux|el8)(.*).tar.gz");
@@ -522,11 +535,9 @@ public class ReleaseManager {
 
   public void downloadYbHelmChart(String version, ReleaseMetadata metadata) {
     try {
+      String ybReleasesPath = appConfig.getString(YB_RELEASES_PATH);
       Path chartPath =
-          Paths.get(
-              appConfig.getString("yb.releases.path"),
-              version,
-              String.format("yugabyte-%s-helm.tar.gz", version));
+          Paths.get(ybReleasesPath, version, String.format("yugabyte-%s-helm.tar.gz", version));
       String checksum = null;
       // Helm chart can be downloaded only from one path.
       if (metadata.s3 != null && metadata.s3.paths.helmChart != null) {
@@ -598,7 +609,6 @@ public class ReleaseManager {
 
   public synchronized void removeRelease(String version) {
     Map<String, Object> currentReleases = getReleaseMetadata();
-    String ybReleasesPath = appConfig.getString("yb.releases.path");
     if (currentReleases.containsKey(version)) {
       log.info("Removing release version {}", version);
       currentReleases.remove(version);
@@ -606,14 +616,14 @@ public class ReleaseManager {
     }
 
     // delete specific release's directory recursively.
-    File releaseDirectory = new File(ybReleasesPath, version);
+    File releaseDirectory = new File(appConfig.getString(YB_RELEASES_PATH), version);
     FileUtils.deleteDirectory(releaseDirectory);
   }
 
   public synchronized void importLocalReleases() {
-    String ybReleasesPath = appConfig.getString("yb.releases.path");
     String ybReleasePath = appConfig.getString("yb.docker.release");
     String ybHelmChartPath = appConfig.getString("yb.helm.packagePath");
+    String ybReleasesPath = appConfig.getString(YB_RELEASES_PATH);
     log.debug("yb releases: " + ybReleasesPath);
     log.debug("yb release: " + ybReleasePath);
     if (ybReleasesPath != null && !ybReleasesPath.isEmpty()) {
@@ -755,13 +765,12 @@ public class ReleaseManager {
     }
 
     log.info("Starting ybc local releases");
-    String ybcReleasesPath = appConfig.getString("ybc.releases.path");
     String ybcReleasePath = appConfig.getString("ybc.docker.release");
+    String ybcReleasesPath = appConfig.getString(YBC_RELEASES_PATH);
     log.info("ybcReleasesPath: " + ybcReleasesPath);
     log.info("ybcReleasePath: " + ybcReleasePath);
     if (ybcReleasesPath != null && !ybcReleasesPath.isEmpty()) {
-      Map<String, Object> currentYbcReleases =
-          getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases);
+      Map<String, Object> currentYbcReleases = getReleaseMetadata(YBC_CONFIG_TYPE);
       File ybcReleasePathFile = new File(ybcReleasePath);
       File ybcReleasesPathFile = new File(ybcReleasesPath);
       if (ybcReleasePathFile.exists() && ybcReleasesPathFile.exists()) {
@@ -774,8 +783,7 @@ public class ReleaseManager {
         if (!localYbcReleases.isEmpty()) {
           log.info("Importing local releases: [ {} ]", Json.toJson(localYbcReleases));
           currentYbcReleases.putAll(localYbcReleases);
-          configHelper.loadConfigToDB(
-              ConfigHelper.ConfigType.YbcSoftwareReleases, currentYbcReleases);
+          configHelper.loadConfigToDB(YBC_CONFIG_TYPE, currentYbcReleases);
         }
       } else {
         log.warn(
@@ -818,8 +826,7 @@ public class ReleaseManager {
             Status.BAD_REQUEST, "Could not find versions in response JSON.");
       }
       JsonNode latestRelease =
-          releases
-              .stream()
+          releases.stream()
               .filter(r -> Util.isYbVersionFormatValid(r.get("name").asText()))
               .filter(r -> Util.compareYbVersions(currentVersion, r.get("name").asText()) >= 0)
               .sorted(releaseNameComparator)
@@ -867,7 +874,75 @@ public class ReleaseManager {
     updateReleaseMetadata(version, rm);
   }
 
-  /** Idempotent method to update all releases with packages if possible. */
+  // Idempotent method to replace all Software and Ybc filepaths with the new config paths.
+  public synchronized void fixFilePaths() {
+    // Fix SoftwareReleases.
+    String ybReleasesPath = appConfig.getString(YB_RELEASES_PATH);
+    Map<String, Object> softwareReleases = getReleaseMetadata(CONFIG_TYPE);
+    Map<String, Object> updatedReleases = new HashMap<>();
+    softwareReleases.forEach(
+        (version, object) -> {
+          ReleaseMetadata rm = metadataFromObject(object);
+          // Only fix up non remote paths
+          if (rm.hasLocalRelease()) {
+            try {
+              rm.filePath =
+                  FileDataService.fixFilePath(ybLocalPattern, rm.filePath, ybReleasesPath);
+            } catch (Exception e) {
+              log.warn("Error replacing release {}. Skipping.", rm.filePath);
+            }
+
+            // Fix up packages list.
+            if (rm.packages != null && !rm.packages.isEmpty()) {
+              rm.packages.forEach(
+                  p -> {
+                    try {
+                      p.path = FileDataService.fixFilePath(ybLocalPattern, p.path, ybReleasesPath);
+                    } catch (Exception e) {
+                      log.warn("Error replacing packages release {}. Skipping.", p.path);
+                    }
+                  });
+            }
+          }
+          // Fix up chart path.
+          try {
+            rm.chartPath =
+                FileDataService.fixFilePath(ybLocalPattern, rm.chartPath, ybReleasesPath);
+          } catch (Exception e) {
+            log.warn("Error replacing chart {}. Skipping.", rm.chartPath);
+          }
+          updatedReleases.put(version, rm);
+        });
+    configHelper.loadConfigToDB(CONFIG_TYPE, updatedReleases);
+
+    // Fix YbcReleases.
+    String ybcReleasesPath = appConfig.getString(YBC_RELEASES_PATH);
+    Map<String, Object> ybcReleases = getReleaseMetadata(YBC_CONFIG_TYPE);
+    Map<String, Object> updatedYbcReleases = new HashMap<>();
+    ybcReleases.forEach(
+        (version, object) -> {
+          ReleaseMetadata rm = metadataFromObject(object);
+          try {
+            rm.filePath = FileDataService.fixFilePath(ybLocalPattern, rm.filePath, ybcReleasesPath);
+          } catch (Exception e) {
+            log.warn("Error replacing ybc release {}. Skipping.", rm.filePath);
+          }
+          if (rm.packages != null && !rm.packages.isEmpty()) {
+            rm.packages.forEach(
+                p -> {
+                  try {
+                    p.path = FileDataService.fixFilePath(ybLocalPattern, p.path, ybcReleasesPath);
+                  } catch (Exception e) {
+                    log.warn("Error replacing packages ybc release {}. Skipping.", p.path);
+                  }
+                });
+          }
+          updatedYbcReleases.put(version, rm);
+        });
+    configHelper.loadConfigToDB(YBC_CONFIG_TYPE, updatedYbcReleases);
+  }
+
+  // Idempotent method to update all software releases with packages if possible.
   public synchronized void updateCurrentReleases() {
     Map<String, Object> currentReleases = getReleaseMetadata();
     Map<String, Object> updatedReleases = new HashMap<>();
@@ -898,7 +973,7 @@ public class ReleaseManager {
           }
           updatedReleases.put(version, rm);
         });
-    configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, updatedReleases);
+    configHelper.loadConfigToDB(CONFIG_TYPE, updatedReleases);
   }
 
   public void addGFlagsMetadataFiles(String version, ReleaseMetadata releaseMetadata) {
@@ -906,7 +981,7 @@ public class ReleaseManager {
       List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
       if (missingGFlagsFilesList.size() != 0) {
         String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
-        if (releaseMetadata.isLocalRelease()) {
+        if (releaseMetadata.hasLocalRelease()) {
           try (InputStream inputStream = getTarGZipDBPackageInputStream(version, releaseMetadata)) {
             gFlagsValidation.fetchGFlagFilesFromTarGZipInputStream(
                 inputStream, version, missingGFlagsFilesList, releasesPath);
@@ -1023,7 +1098,7 @@ public class ReleaseManager {
 
   public ReleaseMetadata getYbcReleaseByVersion(String version, String osType, String archType) {
     version = String.format("ybc-%s-%s-%s", version, osType, archType);
-    Object metadata = getReleaseMetadata(ConfigHelper.ConfigType.YbcSoftwareReleases).get(version);
+    Object metadata = getReleaseMetadata(YBC_CONFIG_TYPE).get(version);
     if (metadata == null) {
       log.error(String.format("ybc version %s not found", version));
       return null;

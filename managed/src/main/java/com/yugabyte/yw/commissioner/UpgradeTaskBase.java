@@ -9,10 +9,10 @@ import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -49,7 +49,6 @@ import org.apache.commons.lang3.tuple.Pair;
 @Slf4j
 public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
-  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
   private List<ServerType> canBeIgnoredServerTypes = Arrays.asList(ServerType.CONTROLLER);
 
   protected static final UpgradeContext DEFAULT_CONTEXT =
@@ -67,8 +66,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
   // Variable to mark if the loadbalancer state was changed.
   protected boolean isLoadBalancerOn = true;
-  protected boolean isBlacklistLeaders;
-  protected int leaderBacklistWaitTimeMs;
   protected boolean hasRollingUpgrade = false;
 
   protected UpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -89,11 +86,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
     try {
-      isBlacklistLeaders =
-          confGetter.getConfForScope(getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaders);
-      leaderBacklistWaitTimeMs =
-          confGetter.getConfForScope(
-              getUniverse(), UniverseConfKeys.ybUpgradeBlacklistLeaderWaitTimeMs);
       checkUniverseVersion();
       // Update the universe DB with the update to be performed and set the
       // 'updateInProgress' flag to prevent other updates from happening.
@@ -119,26 +111,22 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
 
-      // This clears all the previously added subtasks.
-      getRunnableTask().reset();
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
       if (!isLoadBalancerOn) {
-        createLoadBalancerStateChangeTask(true)
-            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        setTaskQueueAndRun(
+            () -> {
+              createLoadBalancerStateChangeTask(true)
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            });
       }
-      getRunnableTask().runSubTasks();
 
       throw t;
     } finally {
       try {
-        if (isBlacklistLeaders && hasRollingUpgrade) {
-          // This clears all the previously added subtasks.
-          getRunnableTask().reset();
-          List<NodeDetails> tServerNodes = fetchTServerNodes(taskParams().upgradeOption);
-          createModifyBlackListTask(tServerNodes, false /* isAdd */, true /* isLeaderBlacklist */)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          getRunnableTask().runSubTasks();
+        if (hasRollingUpgrade) {
+          setTaskQueueAndRun(
+              () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
         }
       } finally {
         try {
@@ -215,21 +203,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       UpgradeContext context,
       boolean isYbcPresent) {
     createRollingUpgradeTaskFlow(
-        lambda,
-        nodeSet,
-        nodeDetails -> {
-          Set<ServerType> result = new LinkedHashSet<>();
-          if (nodeDetails.isMaster) {
-            result.add(ServerType.MASTER);
-          }
-          if (nodeDetails.isTserver) {
-            result.add(ServerType.TSERVER);
-          }
-          return result;
-        },
-        context,
-        true,
-        isYbcPresent);
+        lambda, nodeSet, NodeDetails::getAllProcesses, context, true, isYbcPresent);
   }
 
   private void createRollingUpgradeTaskFlow(
@@ -273,13 +247,16 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     NodeState nodeState = getNodeState();
 
-    // Need load balancer on to perform leader blacklist.
     if (hasTServer) {
-      if (!isBlacklistLeaders) {
+      if (!isBlacklistLeaders()) {
+        // Need load balancer on to perform leader blacklist.
         createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subGroupType);
         isLoadBalancerOn = false;
       } else {
-        createModifyBlackListTask(nodes, false /* isAdd */, true /* isLeaderBlacklist */)
+        createModifyBlackListTask(
+                Collections.emptyList() /* addNodes */,
+                nodes /* removeNodes */,
+                true /* isLeaderBlacklist */)
             .setSubTaskGroupType(subGroupType);
       }
     }
@@ -287,40 +264,27 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     for (NodeDetails node : nodes) {
       Set<ServerType> processTypes = typesByNode.get(node);
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
-      boolean isLeaderBlacklistValidRF = isLeaderBlacklistValidRF(node.nodeName);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
       if (context.runBeforeStopping) {
         rollingUpgradeLambda.run(singletonNodeList, processTypes);
       }
-      // set leader blacklist and poll
-      if (processTypes.contains(ServerType.TSERVER)
-          && isBlacklistLeaders
-          && isLeaderBlacklistValidRF) {
-        createModifyBlackListTask(
-                Collections.singletonList(node), true /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(subGroupType);
-        createWaitForLeaderBlacklistCompletionTask(leaderBacklistWaitTimeMs)
-            .setSubTaskGroupType(subGroupType);
-      }
-      for (ServerType processType : processTypes) {
-        createServerControlTask(node, processType, "stop").setSubTaskGroupType(subGroupType);
-        if (processType == ServerType.MASTER && context.reconfigureMaster && activeRole) {
-          createWaitForMasterLeaderTask().setSubTaskGroupType(subGroupType);
-          createChangeConfigTask(node, false /* isAdd */, subGroupType);
-        }
-      }
+
+      stopProcessesOnNode(
+          node, processTypes, false, context.reconfigureMaster && activeRole, subGroupType);
+
       if (!context.runBeforeStopping) {
         rollingUpgradeLambda.run(singletonNodeList, processTypes);
       }
+
       if (activeRole) {
         for (ServerType processType : processTypes) {
           if (!context.skipStartingProcesses) {
             createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
           }
           if (processType == ServerType.CONTROLLER) {
-            createWaitForYbcServerTask(new HashSet<NodeDetails>(singletonNodeList))
+            createWaitForYbcServerTask(new HashSet<>(singletonNodeList))
                 .setSubTaskGroupType(subGroupType);
           } else {
             createWaitForServersTasks(singletonNodeList, processType)
@@ -341,17 +305,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           }
         }
         createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
-      }
-
-      // remove leader blacklist
-      if (processTypes.contains(ServerType.TSERVER)
-          && isBlacklistLeaders
-          && isLeaderBlacklistValidRF) {
-        createModifyBlackListTask(
-                Collections.singletonList(node), false /* isAdd */, true /* isLeaderBlacklist */)
-            .setSubTaskGroupType(subGroupType);
-      }
-      if (activeRole) {
+        // remove leader blacklist
+        if (processTypes.contains(ServerType.TSERVER)) {
+          removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
+        }
         for (ServerType processType : processTypes) {
           if (processType != ServerType.CONTROLLER) {
             createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
@@ -414,8 +371,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Universe universe = getUniverse();
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     return tServerNodes != null
-        ? tServerNodes
-            .stream()
+        ? tServerNodes.stream()
             .filter(node -> node.placementUuid.equals(primaryClusterUuid))
             .filter(node -> masterNodes == null || !masterNodes.contains(node))
             .collect(Collectors.toList())
@@ -561,6 +517,23 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return subTaskGroup;
   }
 
+  protected SubTaskGroup createClusterUserIntentUpdateTask(UUID clutserUUID, UUID imageBundleUUID) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UpdateClusterUserIntent");
+    UpdateClusterUserIntent.Params updateClusterUserIntentParams =
+        new UpdateClusterUserIntent.Params();
+    updateClusterUserIntentParams.setUniverseUUID(taskParams().getUniverseUUID());
+    updateClusterUserIntentParams.clusterUUID = clutserUUID;
+    updateClusterUserIntentParams.imageBundleUUID = imageBundleUUID;
+
+    UpdateClusterUserIntent updateClusterUserIntentTask = createTask(UpdateClusterUserIntent.class);
+    updateClusterUserIntentTask.initialize(updateClusterUserIntentParams);
+    updateClusterUserIntentTask.setUserTaskUUID(userTaskUUID);
+    subTaskGroup.addSubTask(updateClusterUserIntentTask);
+
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
   protected void createServerConfFileUpdateTasks(
       UserIntent userIntent,
       List<NodeDetails> nodes,
@@ -652,8 +625,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   private List<NodeDetails> filterForClusters(List<NodeDetails> nodes) {
     Set<UUID> clusterUUIDs =
         taskParams().clusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
-    return nodes
-        .stream()
+    return nodes.stream()
         .filter(n -> clusterUUIDs.contains(n.placementUuid))
         .collect(Collectors.toList());
   }
@@ -698,13 +670,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   // Find the master leader and move it to the end of the list.
-  private List<NodeDetails> sortMastersInRestartOrder(
+  public static List<NodeDetails> sortMastersInRestartOrder(
       String leaderMasterAddress, List<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
       return nodes;
     }
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(node -> node.state == NodeState.Live)
                 .thenComparing(node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
@@ -713,7 +684,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   // Find the master leader and move it to the end of the list.
-  private List<NodeDetails> sortTServersInRestartOrder(Universe universe, List<NodeDetails> nodes) {
+  public static List<NodeDetails> sortTServersInRestartOrder(
+      Universe universe, List<NodeDetails> nodes) {
     if (nodes.isEmpty()) {
       return nodes;
     }
@@ -721,8 +693,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Map<UUID, Map<UUID, PlacementAZ>> placementAZMapPerCluster =
         PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(
                     // Fully upgrade primary cluster first

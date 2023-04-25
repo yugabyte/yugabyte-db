@@ -19,6 +19,7 @@ option java_package = "org.yb.master";
 import "yb/master/catalog_entity_info.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/service.proto";
+import "yb/tablet/tablet_types.proto";
 
 // TODO: rename to FlushOrCompact TablesRequestPB
 // https://github.com/YugaByte/yugabyte-db/issues/729
@@ -76,6 +77,9 @@ message GetCompactionStatusResponsePB {
 
   // Time when a full compaction was last requested by the user.
   optional fixed64 last_request_time = 2;
+
+  // Overall full admin-triggered compaction state of the table.
+  optional tablet.FullCompactionState full_compaction_state = 3;
 }
 
 message IsInitDbDoneRequestPB {

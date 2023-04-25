@@ -95,6 +95,11 @@ Result<std::string> DocDBValueToDebugStrInternal(
   if (key_type == KeyType::kIntentKey) {
     auto txn_id_res = VERIFY_RESULT(dockv::DecodeTransactionIdFromIntentValue(&value_slice));
     prefix = Format("TransactionId($0) ", txn_id_res);
+    if (value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kSubTransactionId)) {
+      SubTransactionId subtransaction_id = Load<SubTransactionId, BigEndian>(value_slice.data());
+      value_slice.remove_prefix(sizeof(SubTransactionId));
+      prefix += Format("SubTransactionId($0) ", subtransaction_id);
+    }
     if (!value_slice.empty()) {
       RETURN_NOT_OK(value_slice.consume_byte(dockv::ValueEntryTypeAsChar::kWriteId));
       if (value_slice.size() < sizeof(IntraTxnWriteId)) {

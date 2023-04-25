@@ -120,6 +120,11 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
     }
   }
 
+  @Override
+  public void validate(AvailabilityZone zone) {
+    // pass
+  }
+
   private void dryRun(Provider provider, Region region) {
     String fieldDetails = "REGION." + region.getCode() + ".DRY_RUN";
     try {
@@ -271,9 +276,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private AvailabilityZone getAzBySubnetFromRegion(Region region, String subnet) {
-    return region
-        .getZones()
-        .stream()
+    return region.getZones().stream()
         .filter(zone -> zone.getSubnet().equals(subnet))
         .findFirst()
         .orElseThrow(

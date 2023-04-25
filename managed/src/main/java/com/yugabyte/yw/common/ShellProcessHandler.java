@@ -45,7 +45,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Marker;
 import org.slf4j.MarkerFactory;
 import play.libs.Json;
-import com.typesafe.config.Config;
 
 @Singleton
 @Slf4j

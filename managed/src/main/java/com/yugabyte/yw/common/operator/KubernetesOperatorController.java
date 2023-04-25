@@ -12,19 +12,18 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
-import io.fabric8.kubernetes.client.informers.cache.Cache;
-import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
-import java.util.ArrayList;
+import io.fabric8.kubernetes.client.informers.cache.Cache;
+import io.fabric8.kubernetes.client.informers.cache.Lister;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -32,7 +31,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.yb.util.Pair;
 import play.Logger;
@@ -142,9 +140,7 @@ public class KubernetesOperatorController {
         Logger.info(ybUniverse.getMetadata().getName());
 
         UUID universeUUID =
-            universeCRUDHandler
-                .findByName(cust, ybUniverse.getMetadata().getName())
-                .stream()
+            universeCRUDHandler.findByName(cust, ybUniverse.getMetadata().getName()).stream()
                 .findFirst()
                 .orElse(null)
                 .universeUUID;
@@ -198,9 +194,7 @@ public class KubernetesOperatorController {
                 Cluster primaryCluster = taskParams.getPrimaryCluster();
                 primaryCluster.userIntent = incomingIntent;
                 taskParams.clusters =
-                    taskParams
-                        .clusters
-                        .stream()
+                    taskParams.clusters.stream()
                         .filter(c -> !c.clusterType.equals(ClusterType.PRIMARY))
                         .collect(Collectors.toList());
                 taskParams.clusters.add(primaryCluster);
@@ -240,9 +234,7 @@ public class KubernetesOperatorController {
 
     Logger.info("Done configuring CRUDHandler");
 
-    if (taskParams
-        .clusters
-        .stream()
+    if (taskParams.clusters.stream()
         .anyMatch(cluster -> cluster.clusterType == ClusterType.ASYNC)) {
       taskParams.currentClusterType = ClusterType.ASYNC;
       universeCRUDHandler.configure(customer, taskParams);
@@ -271,8 +263,7 @@ public class KubernetesOperatorController {
 
     // TODO: Create provider from info of existing Kubernetes setup
     Provider provider =
-        Provider.getAll(customerUUID)
-            .stream()
+        Provider.getAll(customerUUID).stream()
             .filter(p -> p.getCloudCode() == CloudType.kubernetes)
             .collect(Collectors.toList())
             .get(0);

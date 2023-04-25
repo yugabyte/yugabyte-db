@@ -32,10 +32,11 @@ static constexpr int kDefaultTestNumIter = 20000;
 static constexpr int kDefaultSnapshotVerificationTestNumIter = 15000;
 #endif
 
-DEFINE_UNKNOWN_int32(snapshot_verification_test_num_iter, kDefaultSnapshotVerificationTestNumIter,
+DEFINE_NON_RUNTIME_int32(snapshot_verification_test_num_iter,
+             kDefaultSnapshotVerificationTestNumIter,
              "Number iterations for randomized history cleanup DocDB tests.");
 
-DEFINE_UNKNOWN_int32(test_num_iter, kDefaultTestNumIter,
+DEFINE_NON_RUNTIME_int32(test_num_iter, kDefaultTestNumIter,
              "Number iterations for randomized DocDB tests, except those involving logical DocDB "
              "snapshots.");
 

@@ -104,9 +104,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     Path baseTargetDir = Paths.get("/tmp", "node-agent-" + System.currentTimeMillis());
     InstallerFiles installerFiles = nodeAgentManager.getInstallerFiles(nodeAgent, baseTargetDir);
     Set<String> dirs =
-        installerFiles
-            .getCreateDirs()
-            .stream()
+        installerFiles.getCreateDirs().stream()
             .map(dir -> dir.toString())
             .collect(Collectors.toSet());
     StringBuilder sb = new StringBuilder();
@@ -122,9 +120,7 @@ public class InstallNodeAgent extends AbstractTaskBase {
     command = ImmutableList.<String>builder().add("mkdir", "-p").addAll(dirs).build();
     log.info("Creating directories {} for node agent {}", dirs, nodeAgent.getUuid());
     nodeUniverseManager.runCommand(node, universe, command, shellContext).processErrors();
-    installerFiles
-        .getCopyFileInfos()
-        .stream()
+    installerFiles.getCopyFileInfos().stream()
         .forEach(
             f -> {
               log.info(

@@ -22,6 +22,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.client.util.Strings;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
@@ -68,7 +69,6 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
-
 import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
@@ -83,6 +83,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -131,6 +132,7 @@ public class CloudProviderHandler {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private AvailabilityZoneHandler availabilityZoneHandler;
   @Inject private RegionHandler regionHandler;
+  @Inject private AccessKeyHandler accessKeyHandler;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
@@ -160,7 +162,8 @@ public class CloudProviderHandler {
       Common.CloudType providerCode,
       String providerName,
       Provider reqProvider,
-      boolean validate) {
+      boolean validate,
+      boolean ignoreValidationErrors) {
     Provider existentProvider = Provider.get(customer.getUuid(), providerName, providerCode);
     if (existentProvider != null) {
       throw new PlatformServiceException(
@@ -178,8 +181,19 @@ public class CloudProviderHandler {
           BAD_REQUEST,
           String.format("Invalid %s Credentials.", providerCode.toString().toUpperCase()));
     }
+    JsonNode errors = null;
     if (validate) {
-      providerValidator.validate(reqProvider);
+      try {
+        providerValidator.validate(reqProvider);
+      } catch (PlatformServiceException e) {
+        LOG.error(
+            "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
+        if (!ignoreValidationErrors) {
+          throw e;
+        } else {
+          errors = e.getContentJson();
+        }
+      }
     }
     Provider provider =
         Provider.create(customer.getUuid(), providerCode, providerName, reqProvider.getDetails());
@@ -199,6 +213,11 @@ public class CloudProviderHandler {
         maybeUpdateCloudProviderConfig(provider, providerConfig);
       }
     }
+    provider.setUsabilityState(
+        providerCode.isRequiresBootstrap()
+            ? Provider.UsabilityState.UPDATING
+            : Provider.UsabilityState.READY);
+    provider.setLastValidationErrors(errors);
     provider.save();
 
     return provider;
@@ -781,14 +800,10 @@ public class CloudProviderHandler {
     if (provider.getCloudCode().canAddRegions()) {
       if (editProviderReq.getRegions() != null && !editProviderReq.getRegions().isEmpty()) {
         Map<String, Region> newRegions =
-            editProviderReq
-                .getRegions()
-                .stream()
+            editProviderReq.getRegions().stream()
                 .collect(Collectors.toMap(r -> r.getCode(), r -> r));
         Set<String> existingRegionCodes =
-            provider
-                .getRegions()
-                .stream()
+            provider.getRegions().stream()
                 .map(region -> region.getCode())
                 .collect(Collectors.toSet());
         newRegions.keySet().removeAll(existingRegionCodes);
@@ -830,39 +845,87 @@ public class CloudProviderHandler {
     return result;
   }
 
+  private boolean updateAccessKeys(Provider editProviderReq, Provider provider) {
+    /*
+     * For the access key edits, user can
+     * 1. Switch from YBA Managed <-> Self Managed, & vice-versa.
+     * 2. Update the key Contents for the Self Managed Key.
+     * In case no access key is specified we will create YBA managed access key.
+     * In case sshPrivateKeyContent is specified we will create a Self Managed access key
+     * with the content provider.
+     * In case, keys are specified, that will be treated as no-op from access keys POV.
+     */
+    boolean result = false;
+    List<AccessKey> accessKeys = editProviderReq.getAllAccessKeys();
+    if (accessKeys.size() == 0) {
+      // This is the case for adding YBA managed accessKey to the provider.
+      result = true;
+      accessKeyHandler.doEdit(provider, null, null);
+    }
+
+    for (AccessKey accessKey : accessKeys) {
+      if (!Strings.isNullOrEmpty(accessKey.getKeyInfo().sshPrivateKeyContent)
+          && accessKey.getIdKey() == null) {
+        /*
+         * If the user has provided the accessKey content, this will be the case of
+         * Self Managed Keys, create a new Key, & append with other keys.
+         */
+        result = true;
+        accessKeyHandler.doEdit(provider, accessKey, null);
+      }
+    }
+
+    return result;
+  }
+
   public UUID editProvider(
-      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      boolean validate,
+      boolean ignoreValidationErrors) {
     return providerEditRestrictionManager.tryEditProvider(
-        provider.getUuid(), () -> doEditProvider(customer, provider, editProviderReq, validate));
+        provider.getUuid(),
+        () ->
+            doEditProvider(customer, provider, editProviderReq, validate, ignoreValidationErrors));
   }
 
   private UUID doEditProvider(
-      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      boolean validate,
+      boolean ignoreValidationErrors) {
     provider.setVersion(editProviderReq.getVersion());
     // We cannot change the provider type for the given provider.
     if (!provider.getCloudCode().equals(editProviderReq.getCloudCode())) {
       throw new PlatformServiceException(BAD_REQUEST, "Changing provider type is not supported!");
     }
     CloudInfoInterface.mergeSensitiveFields(provider, editProviderReq);
+
     // Check if region edit mode.
     Set<Region> regionsToAdd = checkIfRegionsToAdd(editProviderReq, provider);
     UUID taskUUID = null;
-    boolean providerModified = false;
+    boolean providerModified =
+        updateProviderData(customer, provider, editProviderReq, validate, ignoreValidationErrors);
     if (provider.getCloudCode().equals(CloudType.kubernetes)) {
       // Edit the kubernetes provider
       LOG.debug("Trying to add regions to kubernetes provider");
       // Updating the flag based on if we have regions to add or not.
-      providerModified = editKubernetesProvider(provider, editProviderReq, regionsToAdd);
+      providerModified =
+          providerModified | editKubernetesProvider(provider, editProviderReq, regionsToAdd);
     }
     if (!regionsToAdd.isEmpty() && !provider.getCloudCode().equals(CloudType.kubernetes)) {
       // TODO: PLAT-7258 allow adding region for auto-creating VPC case
       taskUUID = addRegions(customer, provider, regionsToAdd, true);
     }
+    // TODO: SHUBHAM (PLAT-8114), allow imageBundle CRUD via provider PUT.
+    // Will make the changes post Yury's changes to move the provider edit to async task.
     providerModified =
         providerModified
             | addOrRemoveAZs(editProviderReq, provider)
             | removeAndUpdateRegions(editProviderReq, provider)
-            | updateProviderData(customer, provider, editProviderReq, validate);
+            | updateAccessKeys(editProviderReq, provider);
 
     if (!providerModified && taskUUID == null) {
       throw new PlatformServiceException(
@@ -873,7 +936,11 @@ public class CloudProviderHandler {
 
   @Transactional
   private boolean updateProviderData(
-      Customer customer, Provider provider, Provider editProviderReq, boolean validate) {
+      Customer customer,
+      Provider provider,
+      Provider editProviderReq,
+      boolean validate,
+      boolean ignoreValidationErrors) {
     Map<String, String> providerConfig = CloudInfoInterface.fetchEnvVars(editProviderReq);
     boolean updatedProviderDetails = false;
     boolean updatedProviderConfig = false;
@@ -884,9 +951,31 @@ public class CloudProviderHandler {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid %s Credentials.", provider.getCode().toUpperCase()));
     }
+    JsonNode newErrors = null;
+    Provider.UsabilityState state = Provider.UsabilityState.READY;
+
     if (validate) {
-      providerValidator.validate(editProviderReq);
+      try {
+        providerValidator.validate(editProviderReq);
+      } catch (PlatformServiceException e) {
+        LOG.error(
+            "Received validation error,  ignoreValidationErrors=" + ignoreValidationErrors, e);
+        newErrors = e.getContentJson();
+        if (!ignoreValidationErrors) {
+          provider.setLastValidationErrors(newErrors);
+          provider.save();
+          throw e;
+        }
+      }
     }
+    boolean validationStateChanged = false;
+    if (!Objects.equals(provider.getLastValidationErrors(), newErrors)
+        || provider.getUsabilityState() != state) {
+      provider.setLastValidationErrors(newErrors);
+      provider.setUsabilityState(state);
+      validationStateChanged = true;
+    }
+
     if (!provider.getName().equals(editProviderReq.getName())) {
       updatedProviderDetails = true;
       List<Provider> providers =
@@ -913,7 +1002,7 @@ public class CloudProviderHandler {
       updatedProviderConfig = true;
     }
     boolean providerDataUpdated = updatedProviderConfig || updatedProviderDetails;
-    if (providerDataUpdated) {
+    if (providerDataUpdated || validationStateChanged) {
       // Should not increment the version number in case of no change.
       provider.save();
     }
@@ -974,8 +1063,7 @@ public class CloudProviderHandler {
     List<Region> allRegions = new ArrayList<>(provider.getRegions());
     allRegions.addAll(regionsToAdd);
     taskParams.perRegionMetadata =
-        allRegions
-            .stream()
+        allRegions.stream()
             .collect(
                 Collectors.toMap(
                     region -> region.getCode(),
@@ -1073,12 +1161,14 @@ public class CloudProviderHandler {
         az.setDetails(zone.getDetails());
       }
       boolean isConfigInZone = updateKubeConfigForZone(provider, region, az, zoneConfig, edit);
-      if (!(isConfigInProvider || isConfigInRegion || isConfigInZone) && !edit) {
+      boolean useInClusterServiceAccount =
+          !(isConfigInProvider || isConfigInRegion || isConfigInZone) && !edit;
+      if (useInClusterServiceAccount) {
         // Use in-cluster ServiceAccount credentials
         KubernetesInfo k8sMetadata = CloudInfoInterface.get(az);
         k8sMetadata.setKubeConfig("");
       }
-      if (zoneUpdateNeeded || isConfigInZone) {
+      if (zoneUpdateNeeded || isConfigInZone || useInClusterServiceAccount) {
         az.save();
       }
     }
@@ -1102,9 +1192,7 @@ public class CloudProviderHandler {
       Region currentState = currentRegionMap.get(region.getCode());
       if (currentState != null) {
         Map<String, AvailabilityZone> currentAZs =
-            currentState
-                .getZones()
-                .stream()
+            currentState.getZones().stream()
                 .collect(Collectors.toMap(az -> az.getCode(), az -> az));
         for (AvailabilityZone zone : region.getZones()) {
           AvailabilityZone currentAZ = currentAZs.get(zone.getCode());

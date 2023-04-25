@@ -131,8 +131,7 @@ public class QueryAlerts {
     metricService.setMetric(
         buildMetricTemplate(PlatformMetrics.ALERT_QUERY_TOTAL_ALERTS), alerts.size());
     List<AlertData> validAlerts =
-        alerts
-            .stream()
+        alerts.stream()
             .filter(alertData -> getCustomerUuid(alertData) != null)
             .filter(alertData -> getConfigurationUuid(alertData) != null)
             .filter(alertData -> getDefinitionUuid(alertData) != null)
@@ -148,8 +147,7 @@ public class QueryAlerts {
         alerts.size() - validAlerts.size());
 
     List<AlertData> activeAlerts =
-        validAlerts
-            .stream()
+        validAlerts.stream()
             .filter(alertData -> alertData.getState() != AlertState.pending)
             .collect(Collectors.toList());
     metricService.setMetric(
@@ -158,8 +156,7 @@ public class QueryAlerts {
 
     List<AlertData> deduplicatedAlerts =
         new ArrayList<>(
-            activeAlerts
-                .stream()
+            activeAlerts.stream()
                 .collect(
                     Collectors.toMap(
                         this::getAlertKey,
@@ -172,8 +169,7 @@ public class QueryAlerts {
     List<UUID> activeAlertUuids = new ArrayList<>();
     for (List<AlertData> batch : Lists.partition(deduplicatedAlerts, ALERTS_BATCH)) {
       Set<UUID> definitionUuids =
-          batch
-              .stream()
+          batch.stream()
               .map(this::getDefinitionUuid)
               .map(UUID::fromString)
               .collect(Collectors.toSet());
@@ -184,36 +180,27 @@ public class QueryAlerts {
               .states(State.getFiringStates())
               .build();
       Map<AlertKey, Alert> existingAlertsByKey =
-          alertService
-              .list(alertFilter)
-              .stream()
+          alertService.list(alertFilter).stream()
               .collect(Collectors.toMap(this::getAlertKey, Function.identity()));
 
       AlertDefinitionFilter definitionFilter =
           AlertDefinitionFilter.builder().uuids(definitionUuids).build();
       Map<UUID, AlertDefinition> existingDefinitionsByUuid =
-          alertDefinitionService
-              .list(definitionFilter)
-              .stream()
+          alertDefinitionService.list(definitionFilter).stream()
               .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()));
 
       Set<UUID> configurationUuids =
-          existingDefinitionsByUuid
-              .values()
-              .stream()
+          existingDefinitionsByUuid.values().stream()
               .map(AlertDefinition::getConfigurationUUID)
               .collect(Collectors.toSet());
       AlertConfigurationFilter configurationFilter =
           AlertConfigurationFilter.builder().uuids(configurationUuids).build();
       Map<UUID, AlertConfiguration> existingConfigsByUuid =
-          alertConfigurationService
-              .list(configurationFilter)
-              .stream()
+          alertConfigurationService.list(configurationFilter).stream()
               .collect(Collectors.toMap(AlertConfiguration::getUuid, Function.identity()));
 
       List<Alert> toSave =
-          batch
-              .stream()
+          batch.stream()
               .map(
                   data ->
                       processAlert(
@@ -371,10 +358,7 @@ public class QueryAlerts {
     String message = alertData.getAnnotations().get(SUMMARY_ANNOTATION_NAME);
 
     List<AlertLabel> labels =
-        alertData
-            .getLabels()
-            .entrySet()
-            .stream()
+        alertData.getLabels().entrySet().stream()
             .map(e -> new AlertLabel(e.getKey(), e.getValue()))
             .sorted(Comparator.comparing(AlertLabel::getName))
             .collect(Collectors.toList());

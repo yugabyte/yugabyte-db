@@ -60,7 +60,6 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
-
 import io.fabric8.kubernetes.api.model.Node;
 import io.fabric8.kubernetes.api.model.NodeList;
 import io.fabric8.kubernetes.api.model.Pod;
@@ -75,7 +74,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -850,6 +848,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
     r.setActiveFlag(false);
     r.update();
+    AccessKey.create(p.getUuid(), AccessKey.getDefaultKeyCode(p), new AccessKey.KeyInfo());
     Result providerRes = getProvider(p.getUuid());
     ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     ArrayNode regions = (ArrayNode) bodyJson.get("regions");
@@ -876,6 +875,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   @Test
   public void testEditProviderWithEmptyHostedZoneId() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
+    AccessKey.create(p.getUuid(), AccessKey.getDefaultKeyCode(p), new AccessKey.KeyInfo());
     Result providerRes = getProvider(p.getUuid());
     ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
     bodyJson.put("hostedZoneId", "");
@@ -1006,6 +1006,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     details.cloudInfo.aws.awsAccessKeyID = "Test AWS Access Key ID";
     details.cloudInfo.aws.awsAccessKeySecret = "Test AWS Access Key Secret";
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.aws, details);
+    AccessKey.create(
+        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
     JsonNode providerJson = Json.parse(contentAsString(getProvider(provider.getUuid())));
     Result result = assertPlatformException(() -> editProvider(providerJson, provider.getUuid()));
     assertBadRequest(result, "No changes to be made for provider type: aws");
@@ -1032,6 +1034,9 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     details.cloudInfo.aws.awsAccessKeyID = "Test AWS Access Key ID";
     details.cloudInfo.aws.awsAccessKeySecret = "Test AWS Access Key Secret";
     Provider provider = ModelFactory.newProvider(customer, Common.CloudType.aws, details);
+    AccessKey.create(
+        provider.getUuid(), AccessKey.getDefaultKeyCode(provider), new AccessKey.KeyInfo());
+    provider.refresh();
     JsonNode providerJson = Json.toJson(provider);
     Result result = assertPlatformException(() -> editProvider(providerJson, provider.getUuid()));
     assertBadRequest(result, "No changes to be made for provider type: aws");

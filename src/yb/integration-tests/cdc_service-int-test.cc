@@ -236,25 +236,14 @@ void VerifyCdcStateMatches(client::YBClient* client,
   client::YBTableName cdc_state_table(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
   ASSERT_OK(table.Open(cdc_state_table, client));
-  const auto op = table.NewReadOp();
-  auto* const req = op->mutable_request();
-  QLAddStringHashValue(req, tablet_id);
-  auto cond = req->mutable_where_expr()->mutable_condition();
-  cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
-      stream_id);
-  table.AddColumns({master::kCdcCheckpoint}, req);
-
   auto session = client->NewSession();
-  ASSERT_OK(session->TEST_ApplyAndFlush(op));
+  auto row = ASSERT_RESULT(FetchCdcStreamInfo(
+      &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
 
   LOG(INFO) << strings::Substitute("Verifying tablet: $0, stream: $1, op_id: $2",
       tablet_id, stream_id, OpId(term, index).ToString());
 
-  auto row_block = ql::RowsResult(op.get()).GetRowBlock();
-  ASSERT_EQ(row_block->row_count(), 1);
-
-  string checkpoint = row_block->row(0).column(0).string_value();
+  string checkpoint = row.column(0).string_value();
   auto result = OpId::FromString(checkpoint);
   ASSERT_OK(result);
   OpId op_id = *result;
@@ -271,28 +260,14 @@ void VerifyStreamDeletedFromCdcState(client::YBClient* client,
   const client::YBTableName cdc_state_table(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, master::kCdcStateTableName);
   ASSERT_OK(table.Open(cdc_state_table, client));
-
-  const auto op = table.NewReadOp();
-  auto* const req = op->mutable_request();
-  QLAddStringHashValue(req, tablet_id);
-
-  auto cond = req->mutable_where_expr()->mutable_condition();
-  cond->set_op(QLOperator::QL_OP_AND);
-  QLAddStringCondition(cond, Schema::first_column_id() + master::kCdcStreamIdIdx, QL_OP_EQUAL,
-      stream_id);
-
-  table.AddColumns({master::kCdcCheckpoint}, req);
   auto session = client->NewSession();
 
   // The deletion of cdc_state rows for the specified stream happen in an asynchronous thread,
   // so even if the request has returned, it doesn't mean that the rows have been deleted yet.
-  ASSERT_OK(WaitFor([&](){
-    EXPECT_OK(session->TEST_ApplyAndFlush(op));
-    auto row_block = ql::RowsResult(op.get()).GetRowBlock();
-    if (row_block->row_count() == 0) {
-      return true;
-    }
-    return false;
+  ASSERT_OK(WaitFor([&]() -> Result<bool> {
+    auto row = VERIFY_RESULT(FetchOptionalCdcStreamInfo(
+        &table, session.get(), tablet_id, stream_id, {master::kCdcCheckpoint}));
+    return !row;
   }, MonoDelta::FromSeconds(timeout_secs) * kTimeMultiplier,
       "Stream rows in cdc_state have been deleted."));
 }

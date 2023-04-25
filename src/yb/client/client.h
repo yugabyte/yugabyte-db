@@ -54,6 +54,7 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
+#include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 
 #include "yb/dockv/dockv_fwd.h"
@@ -121,6 +122,10 @@ struct TransactionStatusTablets {
   std::vector<TabletId> placement_local_tablets;
 };
 
+struct TableCompactionStatus {
+  tablet::FullCompactionState full_compaction_state;
+  MonoTime last_request_time;
+};
 
 // Creates a new YBClient with the desired options.
 //
@@ -301,7 +306,7 @@ class YBClient {
                      int timeout_secs,
                      bool is_compaction);
 
-  Result<MonoTime> GetCompactionStatus(const YBTableName& table_name);
+  Result<TableCompactionStatus> GetCompactionStatus(const YBTableName& table_name);
 
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const YBTableName& table_name);
   std::unique_ptr<YBTableAlterer> NewTableAlterer(const std::string id);
@@ -562,6 +567,17 @@ class YBClient {
 
   Result<bool> IsBootstrapRequired(const std::vector<TableId>& table_ids,
                                    const boost::optional<CDCStreamId>& stream_id = boost::none);
+
+  // Bootstrap the given list of tables. Returns the corresponding list of table ids, bootstrap ids
+  // and the bootstrap time.
+  Status BootstrapProducer(
+      const YQLDatabase& db_type,
+      const NamespaceName& namespace_name,
+      const std::vector<PgSchemaName> pg_schema_names,
+      const std::vector<TableName>& table_name,
+      std::vector<TableId>* producer_table_ids,
+      std::vector<std::string>* bootstrap_ids,
+      HybridTime* bootstrap_time);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(const std::string& producer_id,

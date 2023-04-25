@@ -77,6 +77,7 @@ export const PerfAdvisor: FC = () => {
   const [suggestionType, setSuggestionType] = useState(RecommendationType.ALL);
   const [isPerfCallFail, setIsPerfCallFail] = useState<Boolean>(false);
   const [scanStatus, setScanStatus] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Initialize the query client and translation
   const queryClient = useQueryClient();
@@ -87,7 +88,7 @@ export const PerfAdvisor: FC = () => {
   const universeUUID = currentUniverse?.data?.universeUUID;
   const isUniversePaused: boolean = currentUniverse?.data?.universeDetails?.universePaused;
 
-  const { isSuccess: isLastRunSuccess, data: lastRunData, refetch: lastRunRefetch } = useQuery(
+  const { isFetched: isLastRunFetched, data: lastRunData, refetch: lastRunRefetch } = useQuery(
     QUERY_KEY.fetchPerfLastRun,
     () => performanceRecommendationApi.fetchPerfLastRun(universeUUID),
     {
@@ -106,6 +107,7 @@ export const PerfAdvisor: FC = () => {
           setIsLoading(false);
         }
         setIsLastRunNotFound(false);
+        setLastScanTime(data?.endTime);
       },
       onError: (error: any) => {
         // If lastRun API returns 404, ensure to update state for lastRunNotFound
@@ -129,16 +131,12 @@ export const PerfAdvisor: FC = () => {
     limit: 50
   };
 
-  const {
-    isError: isPerfRecommendationError,
-    data: perfRecommendationsData,
-    refetch: perfRecommendationsRefetch
-  } = useQuery(
+  const { isError: isPerfRecommendationError, refetch: perfRecommendationsRefetch } = useQuery(
     QUERY_KEY.fetchPerfRecommendations,
     () => performanceRecommendationApi.fetchPerfRecommendationsList(queryParams),
     {
-      enabled: !isLastRunSuccess && !isLastRunNotFound,
-      onSuccess: () => {
+      enabled: isLastRunFetched && !isLastRunNotFound,
+      onSuccess: (perfRecommendationsData) => {
         updatePerfRecommendations(perfRecommendationsData, lastRunData!, isPerfRecommendationError);
       },
       onError: () => {
@@ -167,7 +165,9 @@ export const PerfAdvisor: FC = () => {
     isPerfError: boolean
   ) => {
     setIsPerfCallFail(isPerfError);
-    setIsLoading(false);
+    scanStatus === LastRunStatus.RUNNING || scanStatus === LastRunStatus.PENDING
+      ? setIsLoading(true)
+      : setIsLoading(false);
     const perfRecommendations = formatPerfRecommendationsData(perfData);
     const newRecommendations = processRecommendationData(perfRecommendations);
     setRecommendations(newRecommendations);
@@ -253,9 +253,12 @@ export const PerfAdvisor: FC = () => {
     setIsLoading(true);
     try {
       await performanceRecommendationApi.startPefRunManually(universeUUID);
-    } catch (e) {
+      // If start_manually fails initially, we need to reset the error message between re-renders
+      // to ensure we have no error message when it passes successfully
+      setErrorMessage('');
+    } catch (e: any) {
+      setErrorMessage(e?.response?.data?.error);
       setIsLastRunCompleted(false);
-      console.error('Failed to trigger manual perf run', e);
     }
     await lastRunRefetch();
   };
@@ -266,7 +269,6 @@ export const PerfAdvisor: FC = () => {
       const previousScanResult = previousScanResultJSON && JSON.parse(previousScanResultJSON);
       // Scanning time is based on browser session storage
       if (previousScanResult?.data && previousScanResult?.lastUpdated) {
-        console.warn('previousScanResult?.lastUpdated', previousScanResult?.lastUpdated);
         setRecommendations(previousScanResult?.data);
         checkDatabasesInRecommendations(previousScanResult?.data);
         if (previousScanResult?.lastUpdated) {
@@ -276,12 +278,6 @@ export const PerfAdvisor: FC = () => {
     };
     void checkForPreviousScanData();
   }, [universeUUID]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    return () => {
-      localStorage.setItem(universeUUID, '');
-    };
-  }, [universeUUID]);
 
   const handleResolve = (id: string, isResolved: boolean) => {
     const copyRecommendations = [...recommendations];
@@ -332,7 +328,7 @@ export const PerfAdvisor: FC = () => {
   return (
     // This dialog is shown is when the last run API fails with 404
     <div className="parentPerfAdvisor">
-      {(isLastRunNotFound || isEmptyString(lastScanTime)) && !recommendations.length && (
+      {isLastRunNotFound && (!recommendations.length || isEmptyString(lastScanTime)) && (
         <YBPanelItem
           header={
             <div className="perfAdvisor">
@@ -384,7 +380,9 @@ export const PerfAdvisor: FC = () => {
                   <img src={EmptyTrayIcon} alt="more" />
                   <h4 className="primaryDescription">
                     {isPerfCallFail || scanStatus === LastRunStatus.FAILED
-                      ? t('common.wrong')
+                      ? isNonEmptyString(errorMessage)
+                        ? errorMessage
+                        : t('common.wrong')
                       : t('clusterDetail.performance.advisor.Hurray')}
                   </h4>
                   <p className="secondaryDescription">
@@ -412,11 +410,13 @@ export const PerfAdvisor: FC = () => {
       {/* // This dialog is shown when there are recommendation results */}
       {isNonEmptyString(lastScanTime) && displayedRecomendations.length > 0 && !isLastRunNotFound && (
         <div>
-          {scanStatus === LastRunStatus.FAILED && (
+          {(scanStatus === LastRunStatus.FAILED || errorMessage) && (
             <div className="scanFailureContainer">
               <img src={WarningIcon} alt="warning" className="warningIcon" />
               <span className="scanFailureMessage">
-                {t('clusterDetail.performance.advisor.DBScanFailed')}
+                {isNonEmptyString(errorMessage)
+                  ? t('clusterDetail.performance.advisor.DBScanFailed') + ':' + errorMessage
+                  : t('clusterDetail.performance.advisor.DBScanFailed')}
               </span>
             </div>
           )}

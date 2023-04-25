@@ -188,7 +188,6 @@ class BootstrapTest : public LogTestBase {
       .tablet_data_state = TABLET_DATA_READY,
       .snapshot_schedules = {},
       .hosted_services = {},
-      .last_change_metadata_op_id = OpId::Min(),
     }));
     RETURN_NOT_OK(result->Flush());
     return result;
@@ -228,6 +227,7 @@ class BootstrapTest : public LogTestBase {
       .allowed_history_cutoff_provider = {},
       .transaction_manager_provider = nullptr,
       .full_compaction_pool = nullptr,
+      .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr
     };
     BootstrapTabletData data = {

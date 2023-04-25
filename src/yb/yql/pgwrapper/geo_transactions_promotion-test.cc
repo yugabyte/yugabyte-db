@@ -16,6 +16,8 @@
 
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
+#include "yb/util/countdown_latch.h"
+#include "yb/util/test_thread_holder.h"
 
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
@@ -283,29 +285,6 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
         "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kOtherRegion);
     ASSERT_TRUE(!insert_status.ok() || !conn1.CommitTransaction().ok());
   }
-
-  void DeadlockDetectionSetUp(std::shared_ptr<pgwrapper::PGConn>* conn1,
-                             std::shared_ptr<pgwrapper::PGConn>* conn2,
-                             int* conn1_key,
-                             int* conn2_key,
-                             const int conn1_region = kLocalRegion,
-                             const int conn2_region  = kLocalRegion) {
-    *conn1 = std::make_shared<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
-    *conn2 = std::make_shared<pgwrapper::PGConn>(ASSERT_RESULT(Connect()));
-    *conn1_key = 1;
-    *conn2_key = 2;
-    ASSERT_OK((*conn1)->StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-    ASSERT_OK((*conn1)->Execute("SET force_global_transaction = false"));
-    ASSERT_OK((*conn1)->ExecuteFormat(
-        "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2", kTablePrefix,
-        conn1_region, *conn1_key));
-
-    ASSERT_OK((*conn2)->StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
-    ASSERT_OK((*conn2)->Execute("SET force_global_transaction = false"));
-    ASSERT_OK((*conn2)->ExecuteFormat(
-          "UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2", kTablePrefix,
-          conn2_region, *conn2_key));
-  }
 };
 
 class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
@@ -344,9 +323,9 @@ class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
   }
 };
 
-class DeadlockDetectionWithTxnPromotionTest : public GeoTransactionsPromotionTest {
+class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
  protected:
-  // Disabling query statement timeout for DeadlockDetectionWithTxnPromotionTest tests
+  // Disabling query statement timeout for GeoPartitionedDeadlockTest tests
   static constexpr int kClientStatementTimeoutSeconds = 0;
 
   void SetUp() override {
@@ -354,11 +333,71 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoTransactionsPromotionTes
         "statement_timeout=$0", kClientStatementTimeoutSeconds);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
+
+    GeoTransactionsPromotionTest::SetUp();
+  }
+
+  // Create a partitioned table such that ith partition contains keys
+  // [(i-1) * num_keys_per_region, i * num_keys_per_region). For a table with table_name T,
+  // ${ NumRegions() } partitions are created with names T1, T2, T3...
+  void SetupPartitionedTable(std::string table_name, size_t num_keys_per_region) {
+    auto conn = ASSERT_RESULT(Connect());
+    auto current_version = GetCurrentVersion();
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(key INT PRIMARY KEY, value INT) PARTITION BY RANGE(key)",
+        table_name));
+    for (size_t i = 1; i <= NumRegions(); ++i) {
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0$1 PARTITION OF $0 FOR VALUES FROM ($2) TO ($3) TABLESPACE tablespace$1",
+          table_name,
+          i,
+          (i - 1) * num_keys_per_region,
+          i * num_keys_per_region));
+
+      if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
+        WaitForStatusTabletsVersion(current_version + 1);
+        ++current_version;
+      }
+    }
+
+    for (size_t i = 0 ; i < NumRegions() * num_keys_per_region; i++) {
+      ASSERT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0(key, value) VALUES ($1, $1)", table_name, i));
+    }
+  }
+
+  Result<std::future<Status>> ExpectBlockedAsync(
+      std::shared_ptr<pgwrapper::PGConn> conn, const std::string& query) {
+    auto status = std::async(std::launch::async, [&conn, query]() {
+      return conn->Execute(query);
+    });
+
+    RETURN_NOT_OK(WaitFor([&conn] () {
+      return conn->IsBusy();
+    }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+    return status;
+  }
+};
+
+class DeadlockDetectionWithTxnPromotionTest : public GeoPartitionedDeadlockTest {
+ protected:
+  struct ConnectionInfo {
+    std::shared_ptr<pgwrapper::PGConn> conn;
+    int key;
+    int region;
+  };
+
+  struct BlockerWaiterConnsInfo {
+    std::shared_ptr<ConnectionInfo> blocker;
+    std::shared_ptr<ConnectionInfo> waiter;
+  };
+
+  void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
     // Disable re-running conflict resolution for waiter txn(s) due to timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = 0;
-    GeoTransactionsPromotionTest::SetUp();
+    GeoPartitionedDeadlockTest::SetUp();
 
     auto conn = ASSERT_RESULT(Connect());
     for (size_t i = 1; i <= NumRegions(); ++i) {
@@ -375,16 +414,27 @@ class DeadlockDetectionWithTxnPromotionTest : public GeoTransactionsPromotionTes
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
   }
 
-  Result<std::future<Status>> ExpectBlockedAsync(
-      std::shared_ptr<pgwrapper::PGConn> conn, const std::string& query) {
-    auto status = std::async(std::launch::async, [&conn, query]() {
-      return conn->Execute(query);
-    });
+  Result<std::shared_ptr<ConnectionInfo>> InitConnectionAndAcquireLock(
+      const int key, const int region) {
+    auto conn_info = std::make_shared<ConnectionInfo>(ConnectionInfo {
+      .conn = std::make_shared<pgwrapper::PGConn>(VERIFY_RESULT(Connect())),
+      .key = key,
+      .region = region});
+    auto& conn = conn_info->conn;
+    RETURN_NOT_OK(conn->StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    RETURN_NOT_OK(conn->Execute("SET force_global_transaction = false"));
+    RETURN_NOT_OK(conn->ExecuteFormat(
+        "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2", kTablePrefix,
+        conn_info->region, conn_info->key));
+    return conn_info;
+  }
 
-    RETURN_NOT_OK(WaitFor([&conn] () {
-      return conn->IsBusy();
-    }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
-    return status;
+  Result<std::shared_ptr<BlockerWaiterConnsInfo>> CreateBlockerWaiterConnsSetup(
+      const int conn1_region = kLocalRegion, const int conn2_region  = kLocalRegion) {
+    return std::make_shared<BlockerWaiterConnsInfo>(BlockerWaiterConnsInfo {
+      .blocker = VERIFY_RESULT(InitConnectionAndAcquireLock(1, conn1_region)),
+      .waiter = VERIFY_RESULT(InitConnectionAndAcquireLock(2, conn2_region))
+    });
   }
 };
 
@@ -579,39 +629,41 @@ TEST_F(GeoTransactionsPromotionRF1Test,
 TEST_F(DeadlockDetectionWithTxnPromotionTest,
        YB_DISABLE_TEST_IN_TSAN(TestBlockerPromotionWithDeadlock)) {
   // txn2 waits on txn1. txn1 is then promoted and waits on txn2, which introduces a deadlock.
-  std::shared_ptr<pgwrapper::PGConn> blocker_conn, waiter_conn;
-  int blocker_key, waiter_key;
-  DeadlockDetectionSetUp(&blocker_conn, &waiter_conn, &blocker_key, &waiter_key);
+  auto conns_info = ASSERT_RESULT(CreateBlockerWaiterConnsSetup());
+  auto& blocker_conn = conns_info->blocker->conn;
+  auto& waiter_conn = conns_info->waiter->conn;
 
-  auto status_future = ASSERT_RESULT(ExpectBlockedAsync(
+  auto waiter_status_future = ASSERT_RESULT(ExpectBlockedAsync(
       waiter_conn,
       Format("UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2",
-             kTablePrefix, kLocalRegion, blocker_key)));
+             kTablePrefix, conns_info->blocker->region, conns_info->blocker->key)));
 
   ASSERT_OK(blocker_conn->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-      kTablePrefix, kOtherRegion, blocker_key));
-  // Introduce a deadlock, should lead to txn1 being aborted. Additionally, txn2 could be aborted.
-  ASSERT_NOK(blocker_conn->ExecuteFormat(
+      kTablePrefix, kOtherRegion, conns_info->blocker->key));
+  // Introduce a deadlock, should lead to either of txn1 or txn2 or both being aborted.
+  auto blocker_status = blocker_conn->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-      kTablePrefix, kLocalRegion, waiter_key));
+      kTablePrefix, conns_info->waiter->region, conns_info->waiter->key);
+  ASSERT_FALSE(blocker_status.ok() && waiter_status_future.get().ok());
 }
 
 TEST_F(DeadlockDetectionWithTxnPromotionTest,
        YB_DISABLE_TEST_IN_TSAN(TestBlockerPromotionWithoutDeadlock)) {
   // txn2 waits on txn1. txn1 is then promoted. verify that txn2 is unblocked only after txn1
   // commits.
-  std::shared_ptr<pgwrapper::PGConn> blocker_conn, waiter_conn;
-  int blocker_key, waiter_key;
-  DeadlockDetectionSetUp(&blocker_conn, &waiter_conn, &blocker_key, &waiter_key);
+  auto conns_info = ASSERT_RESULT(CreateBlockerWaiterConnsSetup());
+  auto& blocker_conn = conns_info->blocker->conn;
+  auto& waiter_conn = conns_info->waiter->conn;
 
   auto status_future = ASSERT_RESULT(ExpectBlockedAsync(
       waiter_conn,
-      Format("UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=1",
-             kTablePrefix, kLocalRegion)));
+      Format("UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2",
+             kTablePrefix, conns_info->waiter->region, conns_info->blocker->key)));
 
   ASSERT_OK(blocker_conn->ExecuteFormat(
-      "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=1", kTablePrefix, kOtherRegion));
+      "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
+      kTablePrefix, kOtherRegion, conns_info->blocker->key));
 
   SleepFor(MonoDelta::FromSeconds(2));
   ASSERT_TRUE(waiter_conn->IsBusy());
@@ -622,53 +674,56 @@ TEST_F(DeadlockDetectionWithTxnPromotionTest,
 
 TEST_F(DeadlockDetectionWithTxnPromotionTest,
        YB_DISABLE_TEST_IN_TSAN(TestDeadlockAmongstGlobalTransactions)) {
-  // Initially both txn1 and txn2 are local, and do an update operation of different keys.
+  // Initially both txn1 and txn2 are local, and both do an update operation of different keys.
   // txn1 is then promoted and blocks on txn2. txn2 is then promoted and blocks on txn1,
   // introducing a deadlock.
-  std::shared_ptr<pgwrapper::PGConn> conn1, conn2;
-  int key_1, key_2;
-  DeadlockDetectionSetUp(&conn1, &conn2, &key_1, &key_2);
+  auto conns_info = ASSERT_RESULT(CreateBlockerWaiterConnsSetup());
+  auto& conn1_info = conns_info->blocker;
+  auto& conn2_info = conns_info->waiter;
+  auto& conn1 = conn1_info->conn;
+  auto& conn2 = conn2_info->conn;
 
   // txn1 promotes and blocks.
   ASSERT_OK(conn1->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-      kTablePrefix, kOtherRegion, key_1));
+      kTablePrefix, kOtherRegion, conn1_info->key));
   auto status_future = ASSERT_RESULT(ExpectBlockedAsync(
       conn1,
       Format("UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2",
-             kTablePrefix, kLocalRegion, key_2)));
+             kTablePrefix, conn2_info->region, conn2_info->key)));
 
   // txn2 promotes and introduces a deadlock.
   ASSERT_OK(conn2->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-      kTablePrefix, kOtherRegion, key_2));
+      kTablePrefix, kOtherRegion, conn2_info->key));
   SleepFor(MonoDelta::FromSeconds(2));
 
-  ASSERT_NOK(conn2->ExecuteFormat(
+  auto status = conn2->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-      kTablePrefix, kLocalRegion, key_1));
+      kTablePrefix, conn1_info->region, conn1_info->key);
+  ASSERT_FALSE(status.ok() && status_future.get().ok());
 }
 
 TEST_F(DeadlockDetectionWithTxnPromotionTest,
        YB_DISABLE_TEST_IN_TSAN(TestWaiterPromotionWithoutDeadlock)) {
-  // Initially both txn1 and txn2 are local, and do an update operation of different keys.
+  // Initially txn1 is local, and txn2 is a global transaction and both do an update each.
   // txn1 gets blocked in the process of promotion, and blocks on txn2. Verify that txn1
   // is unblocked only after txn2 commits.
-  std::shared_ptr<pgwrapper::PGConn> waiter_conn, blocker_conn;
-  int waiter_key, blocker_key;
-  DeadlockDetectionSetUp(
-    &blocker_conn, &waiter_conn, &blocker_key, &waiter_key, kOtherRegion, kLocalRegion);
+  auto conns_info = ASSERT_RESULT(CreateBlockerWaiterConnsSetup(
+      kOtherRegion /* blocker txn acquires lock on a key in this region */,
+      kLocalRegion /* waiter txn acquires lock on a key in this region */));
+  auto& blocker_conn = conns_info->blocker->conn;
+  auto& waiter_conn = conns_info->waiter->conn;
 
   // txn1 gets blocked amidst promotion.
   auto status_future = ASSERT_RESULT(ExpectBlockedAsync(
       waiter_conn,
       Format("UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-             kTablePrefix, kOtherRegion, blocker_key)));
+             kTablePrefix, conns_info->blocker->region, conns_info->blocker->key)));
 
-  // promote txn2.
   ASSERT_OK(blocker_conn->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2",
-      kTablePrefix, kLocalRegion, blocker_key));
+      kTablePrefix, kLocalRegion, conns_info->blocker->key));
   SleepFor(MonoDelta::FromSeconds(2));
 
   ASSERT_TRUE(waiter_conn->IsBusy());
@@ -679,23 +734,25 @@ TEST_F(DeadlockDetectionWithTxnPromotionTest,
 
 TEST_F(DeadlockDetectionWithTxnPromotionTest,
        YB_DISABLE_TEST_IN_TSAN(TestWaiterPromotionWithDeadlock)) {
-  // Initially txn1 is local, and txn2 is a global transaction and do an update each.
+  // Initially txn1 is local, and txn2 is a global transaction and both do an update each.
   // txn1 gets blocked in the process of promotion, and blocks on txn2. txn2 now blocks on
   // txn1 causing a deadlock.
-  std::shared_ptr<pgwrapper::PGConn> waiter_conn, blocker_conn;
-  int waiter_key, blocker_key;
-  DeadlockDetectionSetUp(&waiter_conn, &blocker_conn, &waiter_key, &blocker_key, kLocalRegion,
-                        kOtherRegion);
+  auto conns_info = ASSERT_RESULT(CreateBlockerWaiterConnsSetup(
+      kOtherRegion /* blocker txn acquires lock on a key in this region */,
+      kLocalRegion /* waiter txn acquires lock on a key in this region */));
+  auto& blocker_conn = conns_info->blocker->conn;
+  auto& waiter_conn = conns_info->waiter->conn;
 
   // txn1 gets blocked amidst promotion.
-  auto status_future = ASSERT_RESULT(ExpectBlockedAsync(
+  auto waiter_status_future = ASSERT_RESULT(ExpectBlockedAsync(
       waiter_conn,
       Format("UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-             kTablePrefix, kOtherRegion, blocker_key)));
+             kTablePrefix, conns_info->blocker->region, conns_info->blocker->key)));
 
-  ASSERT_NOK(blocker_conn->ExecuteFormat(
+  auto blocker_status = blocker_conn->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2",
-      kTablePrefix, kLocalRegion, waiter_key));
+      kTablePrefix, conns_info->waiter->region, conns_info->waiter->key);
+  ASSERT_FALSE(blocker_status.ok() && waiter_status_future.get().ok());
 }
 
 TEST_F(DeadlockDetectionWithTxnPromotionTest,
@@ -703,25 +760,61 @@ TEST_F(DeadlockDetectionWithTxnPromotionTest,
   // Tests a scenario where a waiter txn is about to enter the wait queue, and the blocker gets
   // promoted in the interim. The waiter transaction should enter the wait queue with the
   // latest blocker status tablet.
-  std::shared_ptr<pgwrapper::PGConn> waiter_conn, blocker_conn;
-  int waiter_key, blocker_key;
-  DeadlockDetectionSetUp(&waiter_conn, &blocker_conn, &waiter_key, &blocker_key, kLocalRegion,
-                        kLocalRegion);
+  auto conns_info = ASSERT_RESULT(CreateBlockerWaiterConnsSetup());
+  auto& blocker_conn = conns_info->blocker->conn;
+  auto& waiter_conn = conns_info->waiter->conn;
 
   // txn1 gets blocked.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_sleep_before_entering_wait_queue_ms) = 500;
-  auto status_future = ASSERT_RESULT(ExpectBlockedAsync(
+  auto waiter_status_future = ASSERT_RESULT(ExpectBlockedAsync(
       waiter_conn,
       Format("UPDATE $0$1_1 SET other_value=other_value+10 WHERE value=$2",
-             kTablePrefix, kLocalRegion, blocker_key)));
+             kTablePrefix, conns_info->blocker->region, conns_info->blocker->key)));
 
   // promote txn2.
   ASSERT_OK(blocker_conn->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2",
-      kTablePrefix, kOtherRegion, blocker_key));
-  ASSERT_NOK(blocker_conn->ExecuteFormat(
+      kTablePrefix, kOtherRegion, conns_info->blocker->key));
+  auto blocker_status = blocker_conn->ExecuteFormat(
       "UPDATE $0$1_1 SET other_value=other_value+100 WHERE value=$2",
-      kTablePrefix, kLocalRegion, waiter_key));
+      kTablePrefix, conns_info->waiter->region, conns_info->waiter->key);
+  ASSERT_FALSE(blocker_status.ok() && waiter_status_future.get().ok());
+}
+
+// Tests whether we detect deadlock that spans across partitions of a geo-partitioned table.
+TEST_F(GeoPartitionedDeadlockTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockAcrossTablePartitions)) {
+  std::string table_name = "foo";
+  size_t num_keys_per_region = 10;
+  SetupPartitionedTable(table_name, num_keys_per_region);
+
+  TestThreadHolder thread_holder;
+  CountDownLatch num_blocker_clients(NumRegions());
+  CountDownLatch did_deadlock(1);
+  for (size_t i = 1; i <= NumRegions(); i++) {
+    thread_holder.AddThreadFunctor([this, i, &num_blocker_clients, &did_deadlock,
+        &num_keys_per_region, &table_name] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+      auto key = (i - 1) * num_keys_per_region;
+
+      // Thread i locks the 1st key in 'i'th partition.
+      ASSERT_OK(conn.FetchFormat("SELECT * FROM $0$1 WHERE key=$2 FOR UPDATE", table_name, i, key));
+      LOG(INFO) << "Thread " << i << " locked key " << key;
+      num_blocker_clients.CountDown();
+      ASSERT_TRUE(num_blocker_clients.WaitFor(10s * kTimeMultiplier));
+
+      // Thread i requests lock on the 1st key in (i+1)th partition, which leads to a deadlock.
+      key = i * num_keys_per_region;
+      auto status = conn.ExecuteFormat(
+          "UPDATE $0$1 SET value=100 WHERE key=$2", table_name, i+1, key);
+      if (!status.ok()) {
+        LOG(INFO) << "Thread " << i << " reported deadlock while requesting lock on key " << key;
+        did_deadlock.CountDown();
+      }
+      ASSERT_TRUE(did_deadlock.WaitFor(20s * kTimeMultiplier));
+    });
+  }
+  thread_holder.WaitAndStop(35s * kTimeMultiplier);
 }
 
 } // namespace client

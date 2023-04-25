@@ -148,8 +148,7 @@ public class Region extends Model {
   public long getNodeCount() {
     Set<UUID> azUUIDs = getZones().stream().map(az -> az.getUuid()).collect(Collectors.toSet());
     return Customer.get(getProvider().getCustomerUUID())
-        .getUniversesForProvider(getProvider().getUuid())
-        .stream()
+        .getUniversesForProvider(getProvider().getUuid()).stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> azUUIDs.contains(nd.azUuid))
         .count();

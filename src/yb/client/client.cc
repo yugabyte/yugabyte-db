@@ -720,11 +720,9 @@ Status YBClient::FlushTables(const std::vector<YBTableName>& table_names,
                             is_compaction);
 }
 
-Result<MonoTime> YBClient::GetCompactionStatus(const YBTableName& table_name) {
-  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
-  MonoTime last_request_time;
-  RETURN_NOT_OK(data_->GetCompactionStatus(table_name, deadline, &last_request_time));
-  return last_request_time;
+Result<TableCompactionStatus> YBClient::GetCompactionStatus(const YBTableName& table_name) {
+  return data_->GetCompactionStatus(
+      table_name, CoarseMonoClock::Now() + default_admin_operation_timeout());
 }
 
 std::unique_ptr<YBTableAlterer> YBClient::NewTableAlterer(const YBTableName& name) {
@@ -1583,6 +1581,71 @@ Result<bool> YBClient::IsBootstrapRequired(const std::vector<TableId>& table_ids
   }
 
   return resp.results(0).bootstrap_required();
+}
+
+Status YBClient::BootstrapProducer(
+    const YQLDatabase& db_type,
+    const NamespaceName& namespace_name,
+    const std::vector<PgSchemaName>
+        pg_schema_names,
+    const std::vector<TableName>& table_names,
+    std::vector<TableId>* producer_table_ids,
+    std::vector<std::string>* bootstrap_ids,
+    HybridTime* bootstrap_time) {
+  SCHECK(!namespace_name.empty(), InvalidArgument, "Table namespace name is empty");
+  SCHECK(!table_names.empty(), InvalidArgument, "Table names is empty");
+  if (db_type == YQL_DATABASE_PGSQL) {
+    SCHECK_EQ(
+        pg_schema_names.size(), table_names.size(), InvalidArgument,
+        "Number of tables and pg schemas must match");
+  } else {
+    SCHECK(pg_schema_names.empty(), InvalidArgument, "Pg Schema only applies to pg databases");
+  }
+
+  master::BootstrapProducerRequestPB req;
+  master::BootstrapProducerResponsePB resp;
+  req.set_db_type(db_type);
+  req.set_namespace_name(namespace_name);
+  for (size_t i = 0; i < table_names.size(); i++) {
+    SCHECK(!table_names[i].empty(), InvalidArgument, "Table name is empty");
+    req.add_table_name(table_names[i]);
+    if (db_type == YQL_DATABASE_PGSQL) {
+      SCHECK(!pg_schema_names[i].empty(), InvalidArgument, "Table schema name is empty");
+      req.add_pg_schema_name(pg_schema_names[i]);
+    }
+  }
+
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, BootstrapProducer);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  SCHECK_EQ(
+      resp.table_ids_size(), narrow_cast<int>(table_names.size()), IllegalState,
+      Format("Expected $0 results, received: $1", table_names.size(), resp.table_ids_size()));
+
+  producer_table_ids->reserve(resp.table_ids_size());
+  for (auto& bootstrapped_table_id : resp.table_ids()) {
+    producer_table_ids->push_back(bootstrapped_table_id);
+  }
+
+  SCHECK_EQ(
+      resp.bootstrap_ids_size(), narrow_cast<int>(table_names.size()), IllegalState,
+      Format("Expected $0 results, received: $1", table_names.size(), resp.bootstrap_ids_size()));
+
+  bootstrap_ids->reserve(resp.bootstrap_ids_size());
+  for (auto& bootstrap_id : resp.bootstrap_ids()) {
+    bootstrap_ids->push_back(bootstrap_id);
+  }
+
+  if (resp.has_bootstrap_time()) {
+    *bootstrap_time = HybridTime(resp.bootstrap_time());
+  } else {
+    *bootstrap_time = HybridTime::kInvalid;
+  }
+
+  return Status::OK();
 }
 
 Status YBClient::UpdateConsumerOnProducerSplit(

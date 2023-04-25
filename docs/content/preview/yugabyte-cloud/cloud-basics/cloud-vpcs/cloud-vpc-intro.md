@@ -1,8 +1,8 @@
 ---
-title: Overview
-headerTitle:
+title: VPCs in YugabyteDB Managed
+headerTitle: VPC network overview
 linkTitle: Overview
-description: Requirements and considerations for setting up a VPC network.
+description: Requirements and considerations for setting up a VPC network in YugabyteDB Managed.
 headcontent: What you need to know before creating VPCs
 menu:
   preview_yugabyte-cloud:

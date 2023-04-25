@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniversePerfAdvisorRun;
@@ -43,7 +44,6 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.perf_advisor.configs.PerfAdvisorScriptConfig;
 import org.yb.perf_advisor.configs.UniverseConfig;
-import org.yb.perf_advisor.configs.UniverseNodeConfigInterface;
 import org.yb.perf_advisor.models.PerformanceRecommendation.RecommendationType;
 import org.yb.perf_advisor.services.generation.PlatformPerfAdvisor;
 
@@ -94,14 +94,17 @@ public class PerfAdvisorScheduler {
   }
 
   void scheduleRunner() {
+    if (HighAvailabilityConfig.isFollower()) {
+      log.debug("Skipping perf advisor scheduler for follower platform");
+      return;
+    }
     log.info("Running Perf Advisor Scheduler");
     int defaultUniBatchSize =
         configFactory.staticApplicationConf().getInt("yb.perf_advisor.universe_batch_size");
 
     try {
       Map<Long, Customer> customerMap =
-          Customer.getAll()
-              .stream()
+          Customer.getAll().stream()
               .collect(Collectors.toMap(Customer::getId, Function.identity()));
       Set<UUID> uuidList = Universe.getAllUUIDs();
       for (List<UUID> batch : Iterables.partition(uuidList, defaultUniBatchSize)) {
@@ -120,8 +123,10 @@ public class PerfAdvisorScheduler {
 
   private RunResult run(Customer customer, Universe universe, boolean scheduled) {
     // Check status of universe
-    if (universe.getUniverseDetails().updateInProgress) {
-      return RunResult.builder().failureReason("Universe update in progress").build();
+    if (universe.getUniverseDetails().isUniverseBusyByTask()) {
+      return RunResult.builder()
+          .failureReason("Universe task, which may affect performance, is in progress")
+          .build();
     }
     if (universesLock.containsKey(universe.getUniverseUUID())) {
       UniversePerfAdvisorRun currentRun =
@@ -156,8 +161,11 @@ public class PerfAdvisorScheduler {
       }
     }
 
-    List<UniverseNodeConfigInterface> universeNodeConfigList = new ArrayList<>();
+    List<PlatformUniverseNodeConfig> universeNodeConfigList = new ArrayList<>();
     for (NodeDetails details : universe.getNodes()) {
+      if (!details.isTserver) {
+        continue;
+      }
       if (details.state.equals(NodeDetails.NodeState.Live)) {
         PlatformUniverseNodeConfig nodeConfig =
             new PlatformUniverseNodeConfig(details, universe, ShellProcessContext.DEFAULT);
@@ -168,7 +176,8 @@ public class PerfAdvisorScheduler {
     if (universeNodeConfigList.isEmpty()) {
       log.warn(
           String.format(
-              "Universe %s node config list is empty! Skipping..", universe.getUniverseUUID()));
+              "Universe %s node config list has no TServers! Skipping..",
+              universe.getUniverseUUID()));
       return RunResult.builder().failureReason("No Live nodes found").build();
     }
 
@@ -209,7 +218,7 @@ public class PerfAdvisorScheduler {
       Customer customer,
       Universe universe,
       Config universeConfig,
-      List<UniverseNodeConfigInterface> universeNodeConfigList,
+      List<PlatformUniverseNodeConfig> universeNodeConfigList,
       UniversePerfAdvisorRun run) {
     try {
       run.setStartTime(new Date()).setState(State.RUNNING).save();
@@ -234,7 +243,6 @@ public class PerfAdvisorScheduler {
               UUID.fromString(
                   universe.getUniverseDetails().getPrimaryCluster().userIntent.provider));
       NodeDetails tserverNode = CommonUtils.getServerToRunYsqlQuery(universe);
-      String databaseHost = tserverNode.cloudInfo.private_ip;
       boolean ysqlAuth =
           universe.getUniverseDetails().getPrimaryCluster().userIntent.enableYSQLAuth;
       boolean tlsClient =

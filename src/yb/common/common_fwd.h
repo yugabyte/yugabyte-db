@@ -55,7 +55,6 @@ class QLType;
 class QLValue;
 
 struct DeletedColumn;
-struct DocKeyOffsets;
 struct IndexColumn;
 struct OpId;
 struct PgObjectId;

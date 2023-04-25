@@ -1,9 +1,10 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
-	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/ybactl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/components/yugaware"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/preflight"
@@ -28,12 +29,20 @@ var upgradeCmd = &cobra.Command{
 		// chose the correct workflow.
 		common.SetWorkflowUpgrade()
 
-		yugawareVersion, err := yugaware.InstalledVersionFromMetadata()
-		if err != nil {
-			log.Fatal("Cannot upgrade: " + err.Error())
+		if common.RunFromInstalled() {
+			log.Fatal("Upgrade must be executed from the target yba bundle, not the existing install")
 		}
-		if !common.LessVersions(yugawareVersion, ybactl.Version) {
-			log.Fatal("yba-ctl version must be greater then the installed YugabyteDB Anywhere version")
+
+		if !skipVersionChecks {
+			installedVersion, err := yugaware.InstalledVersionFromMetadata()
+			if err != nil {
+				log.Fatal("Cannot upgrade: " + err.Error())
+			}
+			targetVersion := common.GetVersion()
+			if !common.LessVersions(installedVersion, targetVersion) {
+				log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
+					"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
+			}
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {

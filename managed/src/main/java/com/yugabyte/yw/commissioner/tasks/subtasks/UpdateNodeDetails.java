@@ -56,10 +56,7 @@ public class UpdateNodeDetails extends NodeTaskBase {
             ImmutableMap.of(
                 Universe.USE_CUSTOM_IMAGE,
                 Boolean.toString(
-                    getUniverse()
-                        .getUniverseDetails()
-                        .nodeDetailsSet
-                        .stream()
+                    getUniverse().getUniverseDetails().nodeDetailsSet.stream()
                         .allMatch(n -> n.ybPrebuiltAmi))));
         universe.save();
       }

@@ -1242,7 +1242,9 @@ public class TaskExecutor {
           }
 
           log.warn("Task {} attempt {} has failed", task, currentAttempt);
-          task.onFailure(taskInfo, e);
+          if (!task.onFailure(taskInfo, e)) {
+            throw e;
+          }
         }
 
         currentAttempt++;

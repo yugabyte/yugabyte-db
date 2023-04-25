@@ -110,6 +110,18 @@ void TServerMetricsHeartbeatDataProvider::DoAddData(
             }
           }
         }
+
+        if (no_full_tablet_report) {
+          auto full_compaction_status = req->add_full_compaction_statuses();
+          full_compaction_status->set_tablet_id(tablet->tablet_id());
+          if (tablet->HasActiveFullCompaction()) {
+            full_compaction_status->set_full_compaction_state(tablet::COMPACTING);
+          } else {
+            full_compaction_status->set_full_compaction_state(tablet::IDLE);
+            full_compaction_status->set_last_full_compaction_time(
+                tablet->metadata()->last_full_compaction_time());
+          }
+        }
       }
     }
 

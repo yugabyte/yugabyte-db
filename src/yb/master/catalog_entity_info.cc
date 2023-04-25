@@ -75,13 +75,14 @@ namespace master {
 string TabletReplica::ToString() const {
   return Format("{ ts_desc: $0, state: $1, role: $2, member_type: $3, "
                 "should_disable_lb_move: $4, fs_data_dir: $5, "
-                "total_space_used: $6, time since update: $7ms }",
+                "total_space_used: $6, full_compaction_state: $7, time since update: $8ms }",
                 ts_desc->permanent_uuid(),
                 tablet::RaftGroupStatePB_Name(state),
                 PeerRole_Name(role),
                 consensus::PeerMemberType_Name(member_type),
                 should_disable_lb_move, fs_data_dir,
                 drive_info.sst_files_size + drive_info.wal_files_size,
+                tablet::FullCompactionState_Name(full_compaction_state),
                 MonoTime::Now().GetDeltaSince(time_updated).ToMilliseconds());
 }
 
@@ -91,6 +92,7 @@ void TabletReplica::UpdateFrom(const TabletReplica& source) {
   member_type = source.member_type;
   should_disable_lb_move = source.should_disable_lb_move;
   fs_data_dir = source.fs_data_dir;
+  full_compaction_state = source.full_compaction_state;
   time_updated = MonoTime::Now();
 }
 
@@ -352,6 +354,19 @@ void TabletInfo::GetLeaderStepDownFailureTimes(MonoTime forget_failures_before,
     }
   }
   *dest = leader_stepdown_failure_times_;
+}
+
+void TabletInfo::UpdateReplicaFullCompactionState(
+    const std::string& ts_uuid, const tablet::FullCompactionState full_compaction_state) {
+  std::lock_guard<simple_spinlock> l(lock_);
+  // Make a new shared_ptr, copying the data, to ensure we don't race against access to data from
+  // clients that already have the old shared_ptr.
+  replica_locations_ = std::make_shared<TabletReplicaMap>(*replica_locations_);
+  auto it = replica_locations_->find(ts_uuid);
+  if (it == replica_locations_->end()) {
+    return;
+  }
+  it->second.full_compaction_state = full_compaction_state;
 }
 
 void PersistentTabletInfo::set_state(SysTabletsEntryPB::State state, const string& msg) {
@@ -764,6 +779,7 @@ Status TableInfo::SetIsBackfilling() {
 }
 
 void TableInfo::SetCreateTableErrorStatus(const Status& status) {
+  VLOG_WITH_FUNC(1) << status;
   std::lock_guard<decltype(lock_)> l(lock_);
   create_table_error_ = status;
 }

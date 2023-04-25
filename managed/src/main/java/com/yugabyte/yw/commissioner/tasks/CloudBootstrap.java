@@ -13,16 +13,18 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeySetup;
+import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudInitializer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudRegionSetup;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudSetup;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -37,9 +39,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import play.libs.Json;
 
+@Slf4j
 public class CloudBootstrap extends CloudTaskBase {
   @Inject
   protected CloudBootstrap(BaseTaskDependencies baseTaskDependencies) {
@@ -97,9 +101,9 @@ public class CloudBootstrap extends CloudTaskBase {
       taskParams.showSetUpChrony = provider.getDetails().showSetUpChrony;
       taskParams.skipProvisioning = provider.getDetails().skipProvisioning;
       taskParams.perRegionMetadata =
-          regions
-              .stream()
+          regions.stream()
               .collect(Collectors.toMap(region -> region.getCode(), PerRegionMetadata::fromRegion));
+      taskParams.imageBundles = reqProvider.getImageBundles();
       return taskParams;
     }
 
@@ -180,16 +184,12 @@ public class CloudBootstrap extends CloudTaskBase {
           perRegionMetadata.azToSubnetIds = new HashMap<>();
         } else {
           perRegionMetadata.azToSubnetIds =
-              region
-                  .getZones()
-                  .stream()
+              region.getZones().stream()
                   .filter(zone -> zone.getName() != null && zone.getSubnet() != null)
                   .collect(Collectors.toMap(zone -> zone.getName(), zone -> zone.getSubnet()));
           // Check if the zones have a secondary subnet
           perRegionMetadata.azToSecondarySubnetIds =
-              region
-                  .getZones()
-                  .stream()
+              region.getZones().stream()
                   .filter(zone -> zone.getName() != null && zone.getSecondarySubnet() != null)
                   .collect(
                       Collectors.toMap(zone -> zone.getName(), zone -> zone.getSecondarySubnet()));
@@ -258,6 +258,8 @@ public class CloudBootstrap extends CloudTaskBase {
     // Whether or not task is a pure region add.
     public Set<String> addedRegionCodes = null;
 
+    public List<ImageBundle> imageBundles;
+
     // used for onprem nodes for the cases when manual provision is set.
     public boolean skipProvisioning = false;
   }
@@ -269,38 +271,52 @@ public class CloudBootstrap extends CloudTaskBase {
 
   @Override
   public void run() {
-    Provider p = Provider.get(taskParams().providerUUID);
+    Provider p = Provider.getOrBadRequest(taskParams().providerUUID);
+    p.setUsabilityState(Provider.UsabilityState.UPDATING);
+    p.save();
     Common.CloudType cloudType = Common.CloudType.valueOf(p.getCode());
-    if (cloudType.isRequiresBootstrap()
-        && cloudType != Common.CloudType.onprem
-        && !taskParams().skipBootstrapRegion) {
-      createCloudSetupTask()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
-    }
-    Map<String, Params.PerRegionMetadata> regionsToInit =
-        new HashMap<>(taskParams().perRegionMetadata);
-    if (!CollectionUtils.isEmpty(taskParams().addedRegionCodes)) {
-      regionsToInit.keySet().retainAll(taskParams().addedRegionCodes);
-    }
+    try {
+      if (cloudType.isRequiresBootstrap()
+          && cloudType != CloudType.onprem
+          && !taskParams().skipBootstrapRegion) {
+        createCloudSetupTask()
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingCloud);
+      }
+      Map<String, Params.PerRegionMetadata> regionsToInit =
+          new HashMap<>(taskParams().perRegionMetadata);
+      if (!CollectionUtils.isEmpty(taskParams().addedRegionCodes)) {
+        regionsToInit.keySet().retainAll(taskParams().addedRegionCodes);
+      }
 
-    regionsToInit.forEach(
-        (regionCode, metadata) -> {
-          createRegionSetupTask(regionCode, metadata)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
-        });
-    regionsToInit.forEach(
-        (regionCode, metadata) -> {
-          createAccessKeySetupTask(regionCode)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
-        });
+      regionsToInit.forEach(
+          (regionCode, metadata) -> {
+            createRegionSetupTask(regionCode, metadata)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
+          });
+      regionsToInit.forEach(
+          (regionCode, metadata) -> {
+            createAccessKeySetupTask(regionCode)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
+          });
 
-    // Need not to init CloudInitializer task for onprem provider.
-    if (!p.getCloudCode().equals(Common.CloudType.onprem)) {
-      createInitializerTask()
-          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+      // Need not to init CloudInitializer task for onprem provider.
+      if (!p.getCloudCode().equals(CloudType.onprem)) {
+        createCloudImageBundleSetupTask();
+        createInitializerTask()
+            .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InitializeCloudMetadata);
+      }
+
+      getRunnableTask().runSubTasks();
+      p = Provider.getOrBadRequest(taskParams().providerUUID);
+      p.setUsabilityState(Provider.UsabilityState.READY);
+      p.save();
+    } catch (RuntimeException e) {
+      log.error("Received exception during bootstrap", e);
+      p = Provider.getOrBadRequest(taskParams().providerUUID);
+      p.setUsabilityState(Provider.UsabilityState.ERROR);
+      p.save();
+      throw e;
     }
-
-    getRunnableTask().runSubTasks();
   }
 
   public SubTaskGroup createCloudSetupTask() {
@@ -308,6 +324,18 @@ public class CloudBootstrap extends CloudTaskBase {
     CloudBootstrap.Params params =
         Json.fromJson(Json.toJson(taskParams()), CloudBootstrap.Params.class);
     CloudSetup task = createTask(CloudSetup.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  public SubTaskGroup createCloudImageBundleSetupTask() {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("Create Image bundle setup task");
+    CloudImageBundleSetup.Params params = new CloudImageBundleSetup.Params();
+    params.providerUUID = taskParams().providerUUID;
+    params.imageBundles = taskParams().imageBundles;
+    CloudImageBundleSetup task = createTask(CloudImageBundleSetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

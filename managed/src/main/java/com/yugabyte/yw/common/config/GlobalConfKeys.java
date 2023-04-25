@@ -591,7 +591,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> allowDbVersionMoreThanYbaVersion =
       new ConfKeyInfo<>(
           "yb.allow_db_version_more_than_yba_version",
@@ -643,4 +643,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Regex pattern used to find Yugabyte DB helm .tar.gz files",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
+      new ConfKeyInfo<>(
+          "yb.fixPaths",
+          ScopeType.GLOBAL,
+          "Whether YBA should fix paths on startup",
+          "When enabled YBA will try to replace all filepaths in the database with updated values "
+              + "for the configurable part of the path (like storage or releases path)",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

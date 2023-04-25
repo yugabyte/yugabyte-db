@@ -75,6 +75,8 @@ class XClusterTestBase : public YBTest {
   };
 
   void SetUp() override {
+    HybridTime::TEST_SetPrettyToString(true);
+
     YBTest::SetUp();
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     FLAGS_cdc_read_rpc_timeout_ms = (kRpcTimeout / 2) * 1000;
@@ -245,6 +247,8 @@ class XClusterTestBase : public YBTest {
     }
     return result;
   }
+
+  Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
   void VerifyReplicationError(
       const std::string& consumer_table_id,

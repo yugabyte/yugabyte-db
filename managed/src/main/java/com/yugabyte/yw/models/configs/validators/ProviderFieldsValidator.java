@@ -8,6 +8,7 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.helpers.BaseBeanValidator;
 import java.util.List;
@@ -15,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.lang3.StringUtils;
 
 public abstract class ProviderFieldsValidator extends BaseBeanValidator {
+
+  private static final long PROCESS_WAIT_TIMEOUT_MILLIS = 1000L;
 
   private final RuntimeConfGetter runtimeConfGetter;
 
@@ -36,7 +39,7 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
         String ntpServer = ntpServers.get(i);
         if (!StringUtils.isEmpty(ntpServer)) {
           Process process = Runtime.getRuntime().exec("ping -c 1 " + ntpServer);
-          process.waitFor(1000L, TimeUnit.MILLISECONDS);
+          process.waitFor(PROCESS_WAIT_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
           if (process.exitValue() != 0) {
             throw new PlatformServiceException(
                 BAD_REQUEST, "Could not reach ntp server:  " + ntpServer);
@@ -50,4 +53,6 @@ public abstract class ProviderFieldsValidator extends BaseBeanValidator {
   }
 
   public abstract void validate(Provider provider);
+
+  public abstract void validate(AvailabilityZone zone);
 }

@@ -2,14 +2,12 @@
 
 package com.yugabyte.yw.forms;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.NoArgsConstructor;
 
 @ApiModel(description = "YB-Controller throttle parameters")

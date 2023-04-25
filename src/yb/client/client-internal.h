@@ -53,6 +53,7 @@
 #include "yb/server/server_base_options.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
@@ -130,10 +131,13 @@ class YBClient::Data {
                                  bool *create_in_progress);
 
   // Take one of table id or name.
-  Status WaitForCreateTableToFinish(YBClient* client,
-                                    const YBTableName& table_name,
-                                    const std::string& table_id,
-                                    CoarseTimePoint deadline);
+  Status WaitForCreateTableToFinish(
+      YBClient* client,
+      const YBTableName& table_name,
+      const std::string& table_id,
+      CoarseTimePoint deadline,
+      const uint32_t max_jitter_ms = CoarseBackoffWaiter::kDefaultMaxJitterMs,
+      const uint32_t init_exponent = CoarseBackoffWaiter::kDefaultInitExponent);
 
   // Take one of table id or name.
   Status DeleteTable(YBClient* client,
@@ -232,8 +236,8 @@ class YBClient::Data {
                                    const FlushRequestId& flush_id,
                                    const CoarseTimePoint deadline);
 
-  Status GetCompactionStatus(
-      const YBTableName& table_name, const CoarseTimePoint deadline, MonoTime* last_request_time);
+  Result<TableCompactionStatus> GetCompactionStatus(
+      const YBTableName& table_name, const CoarseTimePoint deadline);
 
   Status GetTableSchema(YBClient* client,
                         const YBTableName& table_name,

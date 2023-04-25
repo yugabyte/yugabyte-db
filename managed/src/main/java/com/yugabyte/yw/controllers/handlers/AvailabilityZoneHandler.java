@@ -10,6 +10,8 @@ import com.yugabyte.yw.common.ProviderEditRestrictionManager;
 import com.yugabyte.yw.forms.AvailabilityZoneData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
+import io.ebean.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -21,13 +23,16 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 public class AvailabilityZoneHandler {
   @Inject private ProviderEditRestrictionManager providerEditRestrictionManager;
+  @Inject private ProviderValidator providerValidator;
 
+  @Transactional
   public List<AvailabilityZone> createZones(Region region, List<AvailabilityZoneData> azDataList) {
     List<AvailabilityZone> result = new ArrayList<>();
     for (AvailabilityZoneData azData : azDataList) {
       AvailabilityZone az =
           AvailabilityZone.createOrThrow(
               region, azData.code, azData.name, azData.subnet, azData.secondarySubnet);
+      providerValidator.validate(az, region.getProvider().getCode());
       result.add(az);
     }
     return result;
@@ -36,6 +41,8 @@ public class AvailabilityZoneHandler {
   public AvailabilityZone editZone(
       UUID zoneUUID, UUID regionUUID, Consumer<AvailabilityZone> mutator) {
     AvailabilityZone az = AvailabilityZone.getByRegionOrBadRequest(zoneUUID, regionUUID);
+    Region region = Region.getOrBadRequest(regionUUID);
+    providerValidator.validate(az, region.getProvider().getCode());
     return providerEditRestrictionManager.tryEditProvider(
         az.getProvider().getUuid(),
         () -> {

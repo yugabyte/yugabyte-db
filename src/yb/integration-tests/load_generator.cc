@@ -59,20 +59,20 @@ using yb::client::YBNoOp;
 using yb::client::YBSession;
 using yb::redisserver::RedisReply;
 
-DEFINE_UNKNOWN_bool(load_gen_verbose,
+DEFINE_NON_RUNTIME_bool(load_gen_verbose,
             false,
             "Custom verbose log messages for debugging the load test tool");
 
-DEFINE_UNKNOWN_int32(load_gen_insertion_tracker_delay_ms,
+DEFINE_NON_RUNTIME_int32(load_gen_insertion_tracker_delay_ms,
              50,
              "The interval (ms) at which the load generator's \"insertion tracker thread\" "
              "wakes in up ");
 
-DEFINE_UNKNOWN_int32(load_gen_scanner_open_retries,
+DEFINE_NON_RUNTIME_int32(load_gen_scanner_open_retries,
              10,
              "Number of times to re-try when opening a scanner");
 
-DEFINE_UNKNOWN_int32(load_gen_wait_time_increment_step_ms,
+DEFINE_NON_RUNTIME_int32(load_gen_wait_time_increment_step_ms,
              100,
              "In retry loops used in the load test we increment the wait time by this number of "
              "milliseconds after every attempt.");

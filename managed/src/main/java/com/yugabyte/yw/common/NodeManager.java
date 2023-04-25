@@ -45,10 +45,10 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.utils.Pair;
@@ -64,6 +64,7 @@ import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
@@ -137,6 +138,8 @@ public class NodeManager extends DevopsBase {
   @Inject RuntimeConfGetter confGetter;
 
   @Inject ReleaseManager releaseManager;
+
+  @Inject ImageBundleUtil imageBundleUtil;
 
   @Override
   protected String getCommandType() {
@@ -240,16 +243,31 @@ public class NodeManager extends DevopsBase {
       String sshUser = null;
       // Currently we only need this for provision node operation.
       // All others use yugabyte user.
-      if (type == NodeCommandType.Provision) {
+      if (type == NodeCommandType.Provision
+          || type == NodeCommandType.Create
+          || type == NodeCommandType.Wait_For_Connection) {
+        // in case of sshUserOverride in ImageBundle.
         if (StringUtils.isNotBlank(params.sshUserOverride)) {
           sshUser = params.sshUserOverride;
         }
       }
 
+      Integer sshPort = null;
+      if (params.sshPortOverride != null) {
+        sshPort = params.sshPortOverride;
+      }
+
       LOG.info("node.sshUserOverride {}, sshuser used {}", params.sshUserOverride, sshUser);
+      LOG.info("node.sshPortOverride {}, sshPort used {}", params.sshPortOverride, sshPort);
       subCommand.addAll(
           getAccessKeySpecificCommand(
-              params, type, keyInfo, userIntent.providerType, userIntent.accessKeyCode, sshUser));
+              params,
+              type,
+              keyInfo,
+              userIntent.providerType,
+              userIntent.accessKeyCode,
+              sshUser,
+              sshPort));
     }
 
     return subCommand;
@@ -261,7 +279,8 @@ public class NodeManager extends DevopsBase {
       AccessKey.KeyInfo keyInfo,
       Common.CloudType providerType,
       String accessKeyCode,
-      String sshUser) {
+      String sshUser,
+      Integer sshPort) {
     List<String> subCommand = new ArrayList<>();
 
     if (keyInfo.vaultFile != null) {
@@ -310,8 +329,11 @@ public class NodeManager extends DevopsBase {
     }
 
     ProviderDetails providerDetails = params.getProvider().getDetails();
+    if (sshPort == null) {
+      sshPort = providerDetails.getSshPort();
+    }
     subCommand.add("--custom_ssh_port");
-    subCommand.add(providerDetails.sshPort.toString());
+    subCommand.add(sshPort.toString());
 
     // TODO make this global and remove this conditional check
     // to avoid bugs.
@@ -1286,11 +1308,18 @@ public class NodeManager extends DevopsBase {
     if (accessKeys.isEmpty()) {
       throw new RuntimeException("No access keys for provider: " + provider.getUuid());
     }
+    Map<String, String> redactedVals = new HashMap<>();
     AccessKey accessKey = accessKeys.get(0);
     AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
     commandArgs.addAll(
         getAccessKeySpecificCommand(
-            nodeTaskParam, type, keyInfo, Common.CloudType.onprem, accessKey.getKeyCode(), null));
+            nodeTaskParam,
+            type,
+            keyInfo,
+            Common.CloudType.onprem,
+            accessKey.getKeyCode(),
+            null,
+            null));
     commandArgs.addAll(
         getCommunicationPortsParams(
             new UserIntent(), accessKey, new UniverseTaskParams.CommunicationPorts()));
@@ -1308,7 +1337,7 @@ public class NodeManager extends DevopsBase {
               nodeAgent -> {
                 commandArgs.add("--connection_type");
                 commandArgs.add("node_agent_rpc");
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs);
+                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
     commandArgs.add(nodeTaskParam.getNodeName());
@@ -1324,6 +1353,7 @@ public class NodeManager extends DevopsBase {
             .command(type.toString().toLowerCase())
             .commandArgs(commandArgs)
             .cloudArgs(cloudArgs)
+            .redactedVals(redactedVals)
             .build());
   }
 
@@ -1400,7 +1430,7 @@ public class NodeManager extends DevopsBase {
       Universe universe,
       NodeTaskParams nodeTaskParam,
       List<String> commandArgs,
-      Map<String, String> sensitiveArgs) {
+      Map<String, String> redactedVals) {
     String nodeIp = null;
     UserIntent userIntent = getUserIntentFromParams(universe, nodeTaskParam);
     if (userIntent.providerType.equals(Common.CloudType.onprem)) {
@@ -1427,7 +1457,7 @@ public class NodeManager extends DevopsBase {
                     .isAnsibleOffloadingEnabled(provider, nodeAgent.getVersion())) {
                   commandArgs.add("--offload_ansible");
                 }
-                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, sensitiveArgs);
+                NodeAgentClient.addNodeAgentClientParams(nodeAgent, commandArgs, redactedVals);
               });
     }
   }
@@ -1437,7 +1467,18 @@ public class NodeManager extends DevopsBase {
     populateNodeUuidFromUniverse(universe, nodeTaskParam);
     List<String> commandArgs = new ArrayList<>();
     UserIntent userIntent = getUserIntentFromParams(nodeTaskParam);
+    if (nodeTaskParam.sshPortOverride == null) {
+      UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+      if (imageBundleUUID != null) {
+        Region region = nodeTaskParam.getRegion();
+        ImageBundle.NodeProperties toOverwriteNodeProperties =
+            imageBundleUtil.getNodePropertiesOrFail(
+                imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+        nodeTaskParam.sshPortOverride = toOverwriteNodeProperties.getSshPort();
+      }
+    }
     Path bootScriptFile = null;
+    Map<String, String> redactedVals = new HashMap<>();
     Map<String, String> sensitiveData = new HashMap<>();
     switch (type) {
       case Replace_Root_Volume:
@@ -1520,9 +1561,21 @@ public class NodeManager extends DevopsBase {
             // For now we wouldn't add machine image for aws and fallback on the default
             // one devops gives us, we need to transition to having this use versioning
             // like base_image_version [ENG-1859]
+            String imageBundleDefaultImage = "";
+            UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+            if (imageBundleUUID != null && StringUtils.isBlank(taskParam.getMachineImage())) {
+              Region region = taskParam.getRegion();
+              ImageBundle.NodeProperties toOverwriteNodeProperties =
+                  imageBundleUtil.getNodePropertiesOrFail(
+                      imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+              taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+              imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
+            } else {
+              // Backward compatiblity.
+              imageBundleDefaultImage = taskParam.getRegion().getYbImage();
+            }
             String ybImage =
-                Optional.ofNullable(taskParam.getMachineImage())
-                    .orElse(taskParam.getRegion().getYbImage());
+                Optional.ofNullable(taskParam.getMachineImage()).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -1604,11 +1657,22 @@ public class NodeManager extends DevopsBase {
             commandArgs.add(taskParam.instanceType);
           }
 
+          String imageBundleDefaultImage = "";
+          UUID imageBundleUUID = getImageBundleUUID(userIntent, nodeTaskParam);
+          if (imageBundleUUID != null && StringUtils.isBlank(taskParam.machineImage)) {
+            Region region = taskParam.getRegion();
+            ImageBundle.NodeProperties toOverwriteNodeProperties =
+                imageBundleUtil.getNodePropertiesOrFail(
+                    imageBundleUUID, region.getCode(), userIntent.providerType.toString());
+            taskParam.sshUserOverride = toOverwriteNodeProperties.getSshUser();
+            imageBundleDefaultImage = toOverwriteNodeProperties.getMachineImage();
+          } else {
+            imageBundleDefaultImage = taskParam.getRegion().getYbImage();
+          }
           // gcp uses machine_image for ansible preprovision.yml
           if (cloudType.equals(Common.CloudType.gcp)) {
             String ybImage =
-                Optional.ofNullable(taskParam.machineImage)
-                    .orElse(taskParam.getRegion().getYbImage());
+                Optional.ofNullable(taskParam.machineImage).orElse(imageBundleDefaultImage);
             if (ybImage != null && !ybImage.isEmpty()) {
               commandArgs.add("--machine_image");
               commandArgs.add(ybImage);
@@ -2093,7 +2157,7 @@ public class NodeManager extends DevopsBase {
       default:
         break;
     }
-    addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, sensitiveData);
+    addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       return execCommand(
@@ -2103,6 +2167,7 @@ public class NodeManager extends DevopsBase {
               .commandArgs(commandArgs)
               .cloudArgs(getCloudArgs(nodeTaskParam))
               .envVars(getAnsibleEnvVars(nodeTaskParam.getUniverseUUID()))
+              .redactedVals(redactedVals)
               .sensitiveData(sensitiveData)
               .build());
     } finally {
@@ -2334,5 +2399,19 @@ public class NodeManager extends DevopsBase {
       }
     }
     return ybServerPackage;
+  }
+
+  public UUID getImageBundleUUID(UserIntent userIntent, NodeTaskParams nodeTaskParam) {
+    UUID imageBundleUUID = null;
+    if (userIntent.imageBundleUUID != null) {
+      imageBundleUUID = userIntent.imageBundleUUID;
+    } else if (nodeTaskParam.getProvider().getUuid() != null) {
+      ImageBundle bundle = ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
+      if (bundle != null) {
+        imageBundleUUID = bundle.getUuid();
+      }
+    }
+
+    return imageBundleUUID;
   }
 }

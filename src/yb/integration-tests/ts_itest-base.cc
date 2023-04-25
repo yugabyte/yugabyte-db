@@ -37,11 +37,11 @@
 
 using std::pair;
 
-DEFINE_UNKNOWN_string(ts_flags, "", "Flags to pass through to tablet servers");
-DEFINE_UNKNOWN_string(master_flags, "", "Flags to pass through to masters");
+DEFINE_NON_RUNTIME_string(ts_flags, "", "Flags to pass through to tablet servers");
+DEFINE_NON_RUNTIME_string(master_flags, "", "Flags to pass through to masters");
 
-DEFINE_UNKNOWN_int32(num_tablet_servers, 3, "Number of tablet servers to start");
-DEFINE_UNKNOWN_int32(num_replicas, 3, "Number of replicas per tablet server");
+DEFINE_NON_RUNTIME_int32(num_tablet_servers, 3, "Number of tablet servers to start");
+DEFINE_NON_RUNTIME_int32(num_replicas, 3, "Number of replicas per tablet server");
 
 namespace yb {
 namespace tserver {

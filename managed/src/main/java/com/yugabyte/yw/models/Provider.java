@@ -9,6 +9,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -104,6 +105,10 @@ public class Provider extends Model {
   @OneToMany(cascade = CascadeType.ALL)
   @JsonManagedReference(value = "provider-regions")
   private List<Region> regions;
+
+  @OneToMany(cascade = CascadeType.ALL)
+  @JsonManagedReference(value = "provider-image-bundles")
+  private List<ImageBundle> imageBundles;
 
   @ApiModelProperty(required = false)
   @OneToMany(cascade = CascadeType.ALL)
@@ -313,6 +318,37 @@ public class Provider extends Model {
     return ybHomeDir;
   }
 
+  @ApiModelProperty(value = "Last validation errors json", accessMode = READ_ONLY)
+  @Column(columnDefinition = "TEXT")
+  @DbJson
+  private JsonNode lastValidationErrors;
+
+  public JsonNode getLastValidationErrors() {
+    return lastValidationErrors;
+  }
+
+  public void setLastValidationErrors(JsonNode lastValidationErrors) {
+    this.lastValidationErrors = lastValidationErrors;
+  }
+
+  @Column
+  @ApiModelProperty(value = "Current usability state", accessMode = READ_ONLY)
+  private UsabilityState usabilityState = UsabilityState.READY;
+
+  public UsabilityState getUsabilityState() {
+    return usabilityState;
+  }
+
+  public void setUsabilityState(UsabilityState usabilityState) {
+    this.usabilityState = usabilityState;
+  }
+
+  public enum UsabilityState {
+    READY,
+    UPDATING,
+    ERROR
+  }
+
   /** Query Helper for Provider with uuid */
   public static final Finder<UUID, Provider> find = new Finder<UUID, Provider>(Provider.class) {};
 
@@ -409,6 +445,10 @@ public class Provider extends Model {
       throw new PlatformServiceException(BAD_REQUEST, "Invalid Provider UUID: " + providerUUID);
     }
     return provider;
+  }
+
+  public static List<Provider> getAll() {
+    return find.query().where().findList();
   }
 
   /**
@@ -551,9 +591,7 @@ public class Provider extends Model {
 
   @JsonIgnore
   public long getUniverseCount() {
-    return Customer.get(this.getCustomerUUID())
-        .getUniversesForProvider(this.getUuid())
-        .stream()
+    return Customer.get(this.getCustomerUUID()).getUniversesForProvider(this.getUuid()).stream()
         .count();
   }
 }

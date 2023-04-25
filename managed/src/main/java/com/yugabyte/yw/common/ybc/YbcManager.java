@@ -34,7 +34,6 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
-
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -360,9 +359,7 @@ public class YbcManager {
       Universe universe = Universe.getOrBadRequest(universeUUID);
       Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
       String certFile = universe.getCertificateNodetoNode();
-      universe
-          .getNodes()
-          .stream()
+      universe.getNodes().stream()
           .forEach(
               (n) -> {
                 YbcClient client = null;
@@ -416,9 +413,7 @@ public class YbcManager {
   public Map<String, String> getThrottleParams(UUID universeUUID) {
     try {
       Map<String, String> throttleParamMap =
-          getThrottleParamsAsFieldDescriptor(universeUUID)
-              .entrySet()
-              .stream()
+          getThrottleParamsAsFieldDescriptor(universeUUID).entrySet().stream()
               .collect(Collectors.toMap(k -> k.getKey().getName(), v -> v.getValue().toString()));
       return throttleParamMap;
     } catch (Exception e) {

@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -11,6 +12,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -43,6 +45,8 @@ public class NodeUniverseManager extends DevopsBase {
   public static final String NODE_UTILS_SCRIPT = "bin/node_utils.sh";
 
   private final KeyLock<UUID> universeLock = new KeyLock<>();
+
+  @Inject ImageBundleUtil imageBundleUtil;
 
   @Override
   protected String getCommandType() {
@@ -292,7 +296,11 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   private void addConnectionParams(
-      Universe universe, NodeDetails node, ShellProcessContext context, List<String> commandArgs) {
+      Universe universe,
+      NodeDetails node,
+      List<String> commandArgs,
+      Map<String, String> redactedVals,
+      ShellProcessContext context) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     CloudType cloudType = universe.getNodeDeploymentMode(node);
@@ -316,12 +324,29 @@ public class NodeUniverseManager extends DevopsBase {
           AccessKey.getOrBadRequest(providerUUID, cluster.userIntent.accessKeyCode);
       Optional<NodeAgent> optional =
           getNodeAgentClient().maybeGetNodeAgent(node.cloudInfo.private_ip, provider);
+      String sshPort = providerDetails.sshPort.toString();
+      String sshUser = providerDetails.sshUser;
+      UUID imageBundleUUID = null;
+      if (cluster.userIntent.imageBundleUUID != null) {
+        imageBundleUUID = cluster.userIntent.imageBundleUUID;
+      } else {
+        ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
+      }
+      if (imageBundleUUID != null) {
+        ImageBundle.NodeProperties toOverwriteNodeProperties =
+            imageBundleUtil.getNodePropertiesOrFail(
+                imageBundleUUID, node.cloudInfo.region, cluster.userIntent.providerType.toString());
+        sshPort = toOverwriteNodeProperties.getSshPort().toString();
+        sshUser = toOverwriteNodeProperties.getSshUser();
+      }
       if (optional.isPresent()) {
         commandArgs.add("rpc");
-        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
+        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs, redactedVals);
       } else {
         commandArgs.add("ssh");
-        String sshPort = String.valueOf(providerDetails.sshPort);
         // Default SSH port can be the custom port for custom images.
         if (context.isDefaultSshPort() && Util.isAddressReachable(node.cloudInfo.private_ip, 22)) {
           sshPort = "22";
@@ -339,10 +364,7 @@ public class NodeUniverseManager extends DevopsBase {
       if (context.isCustomUser()) {
         // It is for backward compatibility after a platform upgrade as custom user is null in prior
         // versions.
-        String user =
-            StringUtils.isNotBlank(providerDetails.sshUser)
-                ? providerDetails.sshUser
-                : cloudType.getSshUser();
+        String user = StringUtils.isNotBlank(sshUser) ? sshUser : cloudType.getSshUser();
         if (StringUtils.isNotBlank(user)) {
           commandArgs.add("--user");
           commandArgs.add(user);
@@ -358,7 +380,7 @@ public class NodeUniverseManager extends DevopsBase {
       List<String> actionArgs,
       ShellProcessContext context) {
     List<String> commandArgs = new ArrayList<>();
-
+    Map<String, String> redactedVals = new HashMap<>();
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(NODE_ACTION_SSH_SCRIPT);
     if (node.isMaster) {
@@ -366,9 +388,13 @@ public class NodeUniverseManager extends DevopsBase {
     }
     commandArgs.add("--node_name");
     commandArgs.add(node.nodeName);
-    addConnectionParams(universe, node, context, commandArgs);
+    addConnectionParams(universe, node, commandArgs, redactedVals, context);
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
+    if (MapUtils.isNotEmpty(redactedVals)) {
+      // Create a new context as a context is immutable.
+      context = context.toBuilder().redactedVals(redactedVals).build();
+    }
     return shellProcessHandler.run(commandArgs, context);
   }
 

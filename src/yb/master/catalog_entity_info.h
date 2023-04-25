@@ -110,6 +110,8 @@ struct TabletReplica {
 
   TabletLeaderLeaseInfo leader_lease_info;
 
+  tablet::FullCompactionState full_compaction_state = tablet::FULL_COMPACTION_STATE_UNKNOWN;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
@@ -306,6 +308,9 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
     bool expected = false;
     return initiated_election_.compare_exchange_strong(expected, true);
   }
+
+  void UpdateReplicaFullCompactionState(
+      const std::string& ts_uuid, const tablet::FullCompactionState full_compaction_state);
 
   // The next five methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's
@@ -716,6 +721,14 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
 
   bool AttachedYCQLIndexDeletionInProgress(const TableId& index_table_id) const;
 
+  bool SetBootstrappingXClusterReplication(bool val) {
+    return bootstrapping_xcluster_replication_.exchange(val, std::memory_order_acq_rel);
+  }
+
+  bool GetBootstrappingXClusterReplication() const {
+    return bootstrapping_xcluster_replication_.load(std::memory_order_acquire);
+  }
+
  private:
   friend class RefCountedThreadSafe<TableInfo>;
   ~TableInfo();
@@ -772,6 +785,10 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // from PG catalog tables because the user may have used Alter Table to change
   // the table's tablespace.
   TablespaceId tablespace_id_for_table_creation_;
+
+  // This field denotes the table is under xcluster bootstrapping. This is used to prevent create
+  // table from completing. Not needed once D23712 lands.
+  std::atomic_bool bootstrapping_xcluster_replication_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(TableInfo);
 };

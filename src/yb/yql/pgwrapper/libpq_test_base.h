@@ -39,5 +39,7 @@ class LibPqTestBase : public PgWrapperTestBase {
   static bool TransactionalFailure(const Status& status);
 };
 
+Result<PgOid> GetDatabaseOid(PGConn* conn, const std::string& db_name);
+
 } // namespace pgwrapper
 } // namespace yb
