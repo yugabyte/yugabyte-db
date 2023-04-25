@@ -12,7 +12,7 @@ menu:
   preview:
     parent: explore-change-data-capture
     identifier: debezium-connector-yugabytedb
-    weight: 580
+    weight: 20
 type: docs
 rightNav:
   hideH4: true
@@ -36,6 +36,8 @@ The first time it connects to a YugabyteDB cluster or universe, the connector ta
 The Debezium connector for YugabyteDB reads the changes produced by YugabyteDB. It uses the CDC service APIs implemented on the server side to get the changes.
 
 The connector produces a change event for every row-level insert, update, and delete operation that was captured, and sends change event records for each table in separate Kafka topics. Client applications read the Kafka topics corresponding to database tables of interest, and can react to every row-level event they receive from those topics.
+
+![CDC Pipeline with Debezium and Kafka](/images/architecture/cdc-2dc/cdc-pipeline.png)
 
 YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the YugabyteDB connector first connects to a particular YugabyteDB database, it starts by taking a snapshot of each of the database schemas. After the connector completes the snapshot, it continues streaming changes from the exact point at which the snapshot was made. This way, the connector starts with a consistent view of all of the data, and does not omit any changes that were made while the snapshot was being taken.
 
