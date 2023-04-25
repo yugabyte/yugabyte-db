@@ -3158,5 +3158,9 @@ void CatalogManager::PrepareRestore() {
   is_catalog_loaded_ = false;
 }
 
+HybridTime CatalogManager::AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata) {
+  return snapshot_coordinator_.AllowedHistoryCutoffProvider(metadata);
+}
+
 }  // namespace master
 }  // namespace yb

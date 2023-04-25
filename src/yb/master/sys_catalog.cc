@@ -74,6 +74,7 @@
 
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_writer.h"
@@ -586,7 +587,9 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
       .tablet_splitter = nullptr,
-      .allowed_history_cutoff_provider = nullptr,
+      .allowed_history_cutoff_provider = std::bind(
+          &CatalogManager::AllowedHistoryCutoffProvider,
+          master_->catalog_manager_impl(), std::placeholders::_1),
       .transaction_manager_provider = nullptr,
       .auto_flags_manager = master_->auto_flags_manager(),
       // We won't be doing full compactions on the catalog tablet.
