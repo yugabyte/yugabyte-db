@@ -2597,7 +2597,7 @@ TEST_F(TabletSplitRemoteBootstrapEnabledTest, TestSplitAfterFailedRbsCreatesDire
   const auto healthy_follower = cluster_->tablet_server(healthy_follower_idx);
   const auto faulted_follower_idx = (leader_idx + 2) % 3;
   const auto faulted_follower = cluster_->tablet_server(faulted_follower_idx);
-
+  // TODO: Wait for the tablet to be replicated before we send a split request.
   // Make one node fail on tablet split, and ensure the leader does not remote bootstrap to it at
   // first.
   ASSERT_OK(cluster_->SetFlag(
