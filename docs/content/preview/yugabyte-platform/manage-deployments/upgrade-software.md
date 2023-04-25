@@ -27,7 +27,7 @@ Before starting the upgrade:
 
   - Specify the release version to import.
 
-    {{< note title="YugabyteDB upgrades for version 2.16 and later" >}}
+    {{< note title="Manually-provisioned on-premises universe upgrades" >}}
 
   YB Controller does not get installed during a YugabyteDB software upgrade for an [on-prem](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) manually provisioned universe for versions 2.16 and later.
 
