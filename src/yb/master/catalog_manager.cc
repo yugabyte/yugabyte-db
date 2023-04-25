@@ -78,6 +78,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
 #include "yb/common/constants.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/partial_row.h"
@@ -300,8 +301,6 @@ DEFINE_test_flag(bool, pause_before_send_hinted_election, false,
 // cluster_uuid to disk. So changing this at runtime is meaningless.
 DEFINE_NON_RUNTIME_string(cluster_uuid, "", "Cluster UUID to be used by this cluster");
 TAG_FLAG(cluster_uuid, hidden);
-
-DECLARE_int32(yb_num_shards_per_tserver);
 
 DEFINE_RUNTIME_int32(transaction_table_num_tablets, 0,
     "Number of tablets to use when creating the transaction status table."
@@ -11519,7 +11518,7 @@ Status CatalogManager::MaybeCreateLocalTransactionTable(
   return Status::OK();
 }
 
-int CatalogManager::CalculateNumTabletsForTableCreation(
+Result<int> CatalogManager::CalculateNumTabletsForTableCreation(
     const CreateTableRequestPB& request, const Schema& schema,
     const PlacementInfoPB& placement_info) {
   // Calculate number of tablets to be used. Priorities:
@@ -11543,11 +11542,9 @@ int CatalogManager::CalculateNumTabletsForTableCreation(
   if (num_tablets <= 0) {
     // Use default as client could have gotten the value before any tserver had heartbeated
     // to (a new) master leader.
+    // TODO: should we check num_live_tservers is greater than 0 and return IllegalState if not?
     const auto num_live_tservers = GetNumLiveTServersForPlacement(placement_info.placement_uuid());
-    num_tablets = narrow_cast<int>(
-        num_live_tservers * (request.table_type() == PGSQL_TABLE_TYPE
-                                 ? FLAGS_ysql_num_shards_per_tserver
-                                 : FLAGS_yb_num_shards_per_tserver));
+    num_tablets = GetInitialNumTabletsPerTable(request.table_type(), num_live_tservers);
     LOG(INFO) << "Setting default tablets to " << num_tablets << " with " << num_live_tservers
               << " primary servers";
   }
@@ -11557,7 +11554,8 @@ int CatalogManager::CalculateNumTabletsForTableCreation(
 Result<std::pair<PartitionSchema, std::vector<Partition>>> CatalogManager::CreatePartitions(
     const Schema& schema, const PlacementInfoPB& placement_info, bool colocated,
     CreateTableRequestPB* request, CreateTableResponsePB* resp) {
-  int num_tablets = CalculateNumTabletsForTableCreation(*request, schema, placement_info);
+  int num_tablets = VERIFY_RESULT(CalculateNumTabletsForTableCreation(
+      *request, schema, placement_info));
   PartitionSchema partition_schema;
   vector<Partition> partitions;
   if (colocated) {

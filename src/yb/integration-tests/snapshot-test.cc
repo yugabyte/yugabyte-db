@@ -32,7 +32,6 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_types.pb.h"
 #include "yb/master/mini_master.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"

@@ -67,7 +67,6 @@
 #include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_util.h"
 #include "yb/master/master_replication.proxy.h"
-#include "yb/master/master-test-util.h"
 
 #include "yb/rpc/rpc_controller.h"
 #include "yb/tablet/tablet.h"

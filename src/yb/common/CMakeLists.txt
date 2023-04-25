@@ -78,6 +78,7 @@ set(COMMON_SRCS
   colocated_util.cc
   common_flags.cc
   common_types_util.cc
+  common_util.cc
   consistent_read_point.cc
   entity_ids.cc
   hybrid_time.cc

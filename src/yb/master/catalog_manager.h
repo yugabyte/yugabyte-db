@@ -2288,7 +2288,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status MaybeCreateLocalTransactionTable(
       const CreateTableRequestPB& request, rpc::RpcContext* rpc);
 
-  int CalculateNumTabletsForTableCreation(
+  Result<int> CalculateNumTabletsForTableCreation(
       const CreateTableRequestPB& request, const Schema& schema,
       const PlacementInfoPB& placement_info);
 
