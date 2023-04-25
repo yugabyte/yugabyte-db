@@ -246,7 +246,7 @@ public class YbcUpgrade {
     Builder builder =
         UpgradeRequest.newBuilder()
             .setYbcVersion(ybcVersion)
-            .setHomeDir(Util.getNodeHomeDir(universe.universeUUID, node.nodeName));
+            .setHomeDir(Util.getNodeHomeDir(universe.universeUUID, node));
     if (localPackage) {
       String location = ybcManager.getYbcPackageTmpLocation(universe, node, ybcVersion);
       builder.setLocation(location);
