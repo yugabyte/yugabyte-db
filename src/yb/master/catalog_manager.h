@@ -1370,6 +1370,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
 
+  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
+      const TablespaceId& tablespace_id);
+
   // Promote the table from a PREPARING state to a RUNNING state, and persist in sys_catalog.
   Status PromoteTableToRunningState(TableInfoPtr table_info) override;
 
@@ -1792,9 +1795,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   void StartTablespaceBgTaskIfStopped();
 
   std::shared_ptr<YsqlTablespaceManager> GetTablespaceManager() const;
-
-  Result<boost::optional<ReplicationInfoPB>> GetTablespaceReplicationInfoWithRetry(
-      const TablespaceId& tablespace_id);
 
   // Report metrics.
   void ReportMetrics();
