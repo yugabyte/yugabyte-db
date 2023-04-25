@@ -573,13 +573,11 @@ public class YbcManager {
    * @return pair of string containing osType and archType of ybc-server-package
    */
   public Pair<String, String> getYbcPackageDetailsForNode(Universe universe, NodeDetails node) {
-    Cluster nodeCluster = Universe.getCluster(universe, node.nodeName);
+    Cluster nodeCluster = universe.getCluster(node.placementUuid);
     String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
     String ybServerPackage =
         nodeManager.getYbServerPackageName(
-            ybSoftwareVersion,
-            getFirstRegion(
-                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
+            ybSoftwareVersion, getFirstRegion(universe, Objects.requireNonNull(nodeCluster)));
     return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
   }
 
@@ -610,7 +608,7 @@ public class YbcManager {
     String ybcServerPackage =
         releaseMetadata.getFilePath(
             getFirstRegion(
-                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
+                universe, Objects.requireNonNull(universe.getCluster(node.placementUuid))));
     if (StringUtils.isBlank(ybcServerPackage)) {
       throw new RuntimeException("Ybc package cannot be empty.");
     }
