@@ -77,7 +77,7 @@ To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Servic
 
 You configure the TKG credentials as follows:
 
-- Navigate to **Configs > Infrastructure > VMware Tanzu**, as per the following illustration:<br>
+- Navigate to **Configs > Infrastructure > VMware Tanzu**, as per the following illustration:
 
   ![Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-1.png)
 

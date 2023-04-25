@@ -75,35 +75,28 @@ To run YugabyteDB nodes on AWS, you need to supply your cloud provider credentia
 
 ## Configure AWS
 
-You configure AWS by completing the fields of the page shown in the following illustration:
+To configure AWS providers, navigate to **Configs > Infrastructure > Amazon Web Services**.
 
-![AWS Empty Provider](/images/ee/aws-setup/aws_provider_empty.png)
+This lists all currently configured providers.
 
-### Provider name
+To create an AWS provider, click **Create Config** to open the **Create AWS Provider Configuration** page.
 
-Provider name is an internal tag used for organizing cloud providers.
+### Provider settings
 
-### Credentials
+Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-In order to deploy YugabyteDB nodes in your AWS account, YugabyteDB Anywhere requires access to a set of cloud credentials which can be provided in one of the following ways:
+Provider settings are organized in the following sections.
+
+#### Cloud Info
+
+To deploy YugabyteDB nodes in your AWS account, YugabyteDB Anywhere requires access to a set of cloud credentials which can be provided in one of the following ways:
 
 - Directly provide your [AWS Access Key ID and Secret Key](http://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html).
 - Attach an [IAM role](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/iam-roles-for-amazon-ec2.html) to the YugabyteDB Anywhere VM in the **EC2** tab. For more information, see [Deploy the YugabyteDB universe using an IAM role](../../../install-yugabyte-platform/prepare-environment/aws/#deploy-the-yugabytedb-universe-using-an-iam-role).
 
-### SSH key pairs
-
-In order to be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
-
-- Enable YugabyteDB Anywhere to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
-- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
-
-If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
-
-### Hosted zones
-
 Integrating with hosted zones can make YugabyteDB universes easily discoverable. YugabyteDB Anywhere can integrate with [Amazon Route53](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html) to provide managed Canonical Name (CNAME) entries for your YugabyteDB universes, which will be updated as you change the set of nodes to include all relevant ones for each of your universes.
 
-### VPC setup
+#### Regions
 
 You can customize your network, including the virtual network, as follows:
 
@@ -112,17 +105,28 @@ You can customize your network, including the virtual network, as follows:
   - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
   - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
-### NTP setup
+For information on configuring your regions, see [Global deployment](#global-deployment).
+
+#### SSH Key Pairs
+
+To be able to provision Amazon Elastic Compute Cloud (EC2) instances with YugabyteDB, YugabyteDB Anywhere requires SSH access. The following are two ways to provide SSH access:
+
+- Enable YugabyteDB Anywhere to create and manage [Key Pairs](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html). In this mode, YugabyteDB Anywhere creates SSH Key Pairs across all the regions you choose to set up and stores the relevant private key part of these locally in order to SSH into future EC2 instances.
+- Use your own existing Key Pairs. To do this, provide the name of the Key Pair, as well as the private key content and the corresponding SSH user. This information must be the same across all the regions you provision.
+
+If you use YugabyteDB Anywhere to manage SSH Key Pairs for you and you deploy multiple YugabyteDB Anywhere instances across your environment, then the AWS provider name should be unique for each instance of YugabyteDB Anywhere integrating with a given AWS account.
+
+#### Advanced
 
 You can customize the Network Time Protocol server, as follows:
 
-- Select **Use provider’s NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
-- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-- Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+- Select **Use AWS's NTP server** to enable cluster nodes to connect to the AWS internal time servers. For more information, consult the AWS documentation such as [Keeping time with Amazon time sync service](https://aws.amazon.com/blogs/aws/keeping-time-with-amazon-time-sync-service/).
+- Select **Specify Custom NTP Server(s)** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Select **Assume NTP server configured in machine image** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ## Global deployment
 
-For deployment, YugabyteDB Anywhere aims to provide you with easy access to the many regions that AWS makes available globally. To that end, YugabyteDB Anywhere allows you to select which regions to which you wish to deploy and supports two different ways of configuring your setup, based on your environment: YugabyteDB Anywhere-managed configuration and self-managed configuration.
+For deployment, YugabyteDB Anywhere aims to provide you with access to the many regions that AWS makes available globally. To that end, YugabyteDB Anywhere allows you to select which regions to which you wish to deploy and supports two different ways of configuring your setup, based on your environment: YugabyteDB Anywhere-managed configuration and self-managed configuration.
 
 ### YugabyteDB Anywhere-managed configuration
 
@@ -148,8 +152,8 @@ You can use your own custom VPCs. This allows you the highest level of customiza
 
 - A VPC ID to use for each region.
 - A Security Group ID to use for each region. This is attached to all YugabyteDB nodes and must allow traffic from all other YugabyteDB nodes, even across regions, if you deploy across multiple regions.
-- A mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
 - A custom AMI ID to use in each region. For a non-exhaustive list of options, see [Ubuntu 18 and Oracle Linux 8 support](#ubuntu-18-and-oracle-linux-8-support). If you do not provide any values, a recent [AWS Marketplace CentOS AMI](https://wiki.centos.org/Cloud/AWS) is used.
+- A mapping of what Subnet IDs to use for each Availability Zone in which you wish to be able to deploy. This is required to ensure that YugabyteDB Anywhere can deploy nodes in the correct network isolation that you desire in your environment.
 
 ![Custom Region Modal](/images/ee/aws-setup/aws_custom_region.png)
 

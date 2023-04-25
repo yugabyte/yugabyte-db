@@ -74,47 +74,54 @@ To run YugabyteDB nodes on GCP, all you need to provide on the YugabyteDB Anywhe
 
 ## Configure GCP
 
-You can configure GCP as follows:
+To configure GCP providers, navigate to **Configs > Infrastructure > Google Cloud Platform**.
 
-- Navigate to **Configs > Google Cloud Platform**.
+This lists all currently configured providers.
 
-- Click **Add Configuration** to open the **Cloud Provider Configuration** page shown in the following illustration:
+To create a GCP provider, click **Create Config** to open the **Create GCP Provider Configuration** page.
 
-  ![GCP Configuration empty](/images/ee/gcp-setup/gcp-configure-empty.png)
+### Provider settings
 
-- Complete the fields, keeping in mind the following guidelines:
-  - Supply a descriptive name that preferably contains Google or GCP, which is especially important if you are planning to configure other providers.
+Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-  - If your YugabyteDB Anywhere instance is not running inside GCP, you need to supply YugabyteDB Anywhere with credentials to the desired GCP project by uploading a configuration file. To do this, select **Upload Service Account config** in the **Credential Type** field and proceed to upload the JSON file that you obtained when you created your service account, as described in [Prepare the Google Cloud Platform (GCP) environment](../../../install-yugabyte-platform/prepare-environment/gcp).
+Provider settings are organized in the following sections.
 
-    If your YugabyteDB Anywhere instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running YugabyteDB Anywhere and then configure YugabyteDB Anywhere to use the instance's service account. To do this, select **Use Service Account on instance** in the **Credential Type** field.
+#### Cloud Info
 
-  - If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the YugabyteDB Anywhere host machine can connect to your Google Cloud account where this new VPC will be created.
+If your YugabyteDB Anywhere instance is not running inside GCP, you need to supply YugabyteDB Anywhere with credentials to the desired GCP project by uploading a configuration file. To do this, set **Credential Type** to **Upload Service Account config** and proceed to upload the JSON file that you obtained when you created your service account, as described in [Prepare the Google Cloud Platform (GCP) environment](../../../install-yugabyte-platform/prepare-environment/gcp).
 
-    Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following:
+If your YugabyteDB Anywhere instance is running inside GCP, the preferred method for authentication to the GCP APIs is to add a service account role to the GCP instance running YugabyteDB Anywhere and then configure YugabyteDB Anywhere to use the instance's service account. To do this, set **Credential Type** to **Use service account from this YBA host's instance**.
 
-    - A region name.
-    - A subnet ID.
-    - Optionally, a custom machine image. YugabyteDB Anywhere allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
+#### VPC Setup
 
-    The third option that is available only when your YugabyteDB Anywhere host machine is also running on Google Cloud, is to use the same VPC on which the YugabyteDB Anywhere host machine runs. Note that choosing to use the same VPC as YugabyteDB Anywhere is an advanced option, which assumes that you are in complete control over this VPC and will be responsible for setting up the networking, SSH access, and firewall rules for it.
+If this is a new deployment, it is recommended that you use the **VPC Setup** field to create a new VPC specifically for YugabyteDB nodes. You have to ensure that the YugabyteDB Anywhere host machine can connect to your Google Cloud account where this new VPC will be created.
 
-    Also note that creating a new VPC using YugabyteDB Anywhere is considered beta and, therefore, not recommended for production use cases. If there are any classless inter-domain routing (CIDR) conflicts, using this option can result in a silent failure. For example, the following will fail:
+Alternatively, you may choose to specify an existing VPC for YugabyteDB nodes, in which case you would need to map regions by providing the following:
 
-    - Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
-    - Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
+- A region name.
+- A subnet ID.
+- Optionally, a custom machine image. YugabyteDB Anywhere allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
 
-  - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+The third option that is available only when your YugabyteDB Anywhere host machine is also running on Google Cloud, is to use the same VPC on which the YugabyteDB Anywhere host machine runs. Note that choosing to use the same VPC as YugabyteDB Anywhere is an advanced option, which assumes that you are in complete control over this VPC and will be responsible for setting up the networking, SSH access, and firewall rules for it.
 
-    - Select **Use provider’s NTP server** to enable cluster nodes to connect to the GCP internal time servers. For more information, consult the GCP documentation such as [Configure NTP on a VM](https://cloud.google.com/compute/docs/instances/configure-ntp).
+Also note that creating a new VPC using YugabyteDB Anywhere is considered beta and, therefore, not recommended for production use cases. If there are any classless inter-domain routing (CIDR) conflicts, using this option can result in a silent failure. For example, the following will fail:
 
-  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Configure more than one AWS cloud provider with different CIDR block prefixes and selecting the **Create a new VPC** option.
+- Creating a new VPC with an CIDR block that overlaps with any of the existing subnets.
 
-    - Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+#### Advanced
 
-- Click **Save** and wait for the configuration to complete.
+**NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 
-  This process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
+- Select **Use provider’s NTP server** to enable cluster nodes to connect to the GCP internal time servers. For more information, consult the GCP documentation such as [Configure NTP on a VM](https://cloud.google.com/compute/docs/instances/configure-ntp).
+- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+
+## Create the configuration
+
+After you have entered the settings, click **Create Provider Configuration** and wait for the configuration to complete.
+
+This process includes generating a new VPC, a network, subnetworks in all available regions, as well as a new firewall rule, VPC peering for network connectivity, and a custom SSH key pair for YugabyteDB Anywhere-to-YugabyteDB connectivity.
 
 Upon completion, you should see the configuration similar to the following:
 
