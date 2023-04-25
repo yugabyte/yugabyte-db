@@ -720,9 +720,9 @@ public class Util {
     return dirPath;
   }
 
-  public static String getNodeHomeDir(UUID universeUUID, String nodeName) {
+  public static String getNodeHomeDir(UUID universeUUID, NodeDetails node) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
-    String providerUUID = Universe.getCluster(universe, nodeName).userIntent.provider;
+    String providerUUID = universe.getCluster(node.placementUuid).userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     return provider.getYbHome();
   }
