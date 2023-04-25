@@ -76,6 +76,7 @@ target_link_libraries(integration-tests
   yb_test_util
   yb-redis
   yb_pgwrapper
+  master_test_common
   ${INTEGRATION_TESTS_LIB_EXTENSIONS})
 
 add_dependencies(integration-tests
@@ -101,7 +102,6 @@ set(YB_TEST_LINK_LIBS
     yb_tools_util
     ql-dml-test-base
     rpc_test_util
-    master_test_common
     yb_common_test_util
     tablet-split-itest-base
     cql_test_util

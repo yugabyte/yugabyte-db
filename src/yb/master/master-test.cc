@@ -50,7 +50,6 @@
 #include "yb/server/call_home-test-util.h"
 #include "yb/server/call_home.h"
 #include "yb/master/catalog_manager.h"
-#include "yb/master/master-test-util.h"
 #include "yb/master/master-test_base.h"
 #include "yb/master/master.h"
 #include "yb/master/master_client.proxy.h"

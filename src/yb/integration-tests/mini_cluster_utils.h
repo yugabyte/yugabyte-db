@@ -14,7 +14,10 @@
 #ifndef YB_INTEGRATION_TESTS_MINI_CLUSTER_UTILS_H
 #define YB_INTEGRATION_TESTS_MINI_CLUSTER_UTILS_H
 
-#include <stddef.h>
+#include <cstddef>
+
+#include "yb/client/client_fwd.h"
+#include "yb/util/status_fwd.h"
 
 namespace yb {
 
@@ -24,6 +27,12 @@ size_t CountRunningTransactions(MiniCluster* cluster);
 void AssertNoRunningTransactions(MiniCluster* cluster);
 void AssertRunningTransactionsCountLessOrEqualTo(
     MiniCluster* cluster, size_t max_remaining_txns_per_tablet);
+
+void CreateTabletForTesting(MiniCluster* cluster,
+                            const client::YBTableName& table_name,
+                            const Schema& schema,
+                            std::string* tablet_id,
+                            std::string* table_id = nullptr);
 
 } // namespace yb
 

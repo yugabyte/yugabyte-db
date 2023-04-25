@@ -69,6 +69,7 @@ set(COMMON_SRCS
   clock.cc
   common_flags.cc
   common_types_util.cc
+  common_util.cc
   column_id.cc
   consistent_read_point.cc
   entity_ids.cc
