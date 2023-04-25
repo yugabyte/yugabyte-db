@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.KubernetesManager;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
@@ -40,8 +41,9 @@ public class ReplicateNamespaces extends XClusterConfigTaskBase {
   @Inject
   protected ReplicateNamespaces(
       BaseTaskDependencies baseTaskDependencies,
-      KubernetesManagerFactory kubernetesManagerFactory) {
-    super(baseTaskDependencies);
+      KubernetesManagerFactory kubernetesManagerFactory,
+      XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
     this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
