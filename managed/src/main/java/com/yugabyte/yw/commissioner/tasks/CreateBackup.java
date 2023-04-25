@@ -44,6 +44,7 @@ import com.yugabyte.yw.models.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -317,7 +318,7 @@ public class CreateBackup extends UniverseTaskBase {
         tableBackupParams.useTablespaces = params().useTablespaces;
         log.info("Task id {} for the backup {}", backup.taskUUID, backup.backupUUID);
 
-        for (BackupTableParams backupParams : backupParamsList) {
+        for (BackupTableParams backupParams : tableBackupParams.backupList) {
           createEncryptedUniverseKeyBackupTask(backupParams)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreatingTableBackup);
         }
@@ -345,7 +346,12 @@ public class CreateBackup extends UniverseTaskBase {
       } catch (CancellationException ce) {
         log.error("Aborting backups for task: {}", userTaskUUID);
         Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
-            .forEach((backup) -> backup.transitionState(BackupState.Stopped));
+            .forEach(
+                backup -> {
+                  backup.transitionState(BackupState.Stopped);
+                  backup.setCompletionTime(new Date());
+                  backup.save();
+                });
         throw ce;
       } catch (Throwable t) {
         if (params().alterLoadBalancer) {
@@ -364,6 +370,15 @@ public class CreateBackup extends UniverseTaskBase {
     } catch (Throwable t) {
       try {
         log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
+        Backup.fetchAllBackupsByTaskUUID(userTaskUUID)
+            .forEach(
+                backup -> {
+                  if (backup.state.equals(BackupState.InProgress)) {
+                    backup.transitionState(BackupState.Failed);
+                    backup.setCompletionTime(new Date());
+                    backup.save();
+                  }
+                });
         BACKUP_FAILURE_COUNTER.labels(metricLabelsBuilder.getPrometheusValues()).inc();
         metricService.setFailureStatusMetric(
             buildMetricTemplate(PlatformMetrics.CREATE_BACKUP_STATUS, universe));
