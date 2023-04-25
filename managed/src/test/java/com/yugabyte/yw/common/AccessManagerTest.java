@@ -15,9 +15,9 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.anyList;
-import static org.mockito.Matchers.anyMap;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
@@ -71,7 +71,7 @@ public class AccessManagerTest extends FakeDBApplication {
   private Region defaultRegion;
   private Customer defaultCustomer;
   ArgumentCaptor<List<String>> command;
-  ArgumentCaptor<Map<String, String>> cloudCredentials;
+  ArgumentCaptor<ShellProcessContext> shellProcessContext;
 
   static final String TMP_STORAGE_PATH = "/tmp/yugaware_tests/amt";
   static final String TMP_KEYS_PATH = TMP_STORAGE_PATH + "/keys";
@@ -90,7 +90,7 @@ public class AccessManagerTest extends FakeDBApplication {
     when(mockConfig.getString("yb.storage.path")).thenReturn(TMP_STORAGE_PATH);
     when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
     command = ArgumentCaptor.forClass(List.class);
-    cloudCredentials = ArgumentCaptor.forClass(Map.class);
+    shellProcessContext = ArgumentCaptor.forClass(ShellProcessContext.class);
   }
 
   @After
@@ -139,7 +139,7 @@ public class AccessManagerTest extends FakeDBApplication {
               + "\"vault_password\": \""
               + tmpVaultPassword
               + "\"}";
-      when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+      when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
       String tmpFile = createTempFile("SOME DATA");
       return Json.toJson(
           accessManager.uploadKeyFile(
@@ -175,7 +175,7 @@ public class AccessManagerTest extends FakeDBApplication {
     if (mimicError) {
       response.message = "Unknown error occurred";
       response.code = 99;
-      when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+      when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class))).thenReturn(response);
     } else {
       response.code = 0;
       if (commandType.equals("add-key")) {
@@ -209,7 +209,7 @@ public class AccessManagerTest extends FakeDBApplication {
                 + "\"vault_password\": \""
                 + tmpVaultPassword
                 + "\"}";
-        when(shellProcessHandler.run(anyList(), anyMap(), anyString()))
+        when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
             .thenReturn(response)
             .thenReturn(response2);
       } else {
@@ -224,7 +224,8 @@ public class AccessManagerTest extends FakeDBApplication {
         } else {
           response.message = "{\"foo\": \"bar\"}";
         }
-        when(shellProcessHandler.run(anyList(), anyMap(), anyString())).thenReturn(response);
+        when(shellProcessHandler.run(anyList(), any(ShellProcessContext.class)))
+            .thenReturn(response);
       }
     }
 
@@ -257,7 +258,7 @@ public class AccessManagerTest extends FakeDBApplication {
   public void testManageAddKeyCommandWithoutProviderConfig() {
     JsonNode json = runCommand(defaultRegion.getUuid(), "add-key", false);
     Mockito.verify(shellProcessHandler, times(2))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), shellProcessContext.capture());
 
     List<String> expectedCommands = new ArrayList<>();
     expectedCommands.add(
@@ -279,8 +280,8 @@ public class AccessManagerTest extends FakeDBApplication {
       String executedCommand = String.join(" ", executedCommands.get(idx));
       assertThat(expectedCommands.get(idx), allOf(notNullValue(), equalTo(executedCommand)));
     }
-    cloudCredentials
-        .getAllValues()
+    shellProcessContext.getAllValues().stream()
+        .map(ShellProcessContext::getExtraEnvVars)
         .forEach((cloudCredential) -> assertTrue(cloudCredential.isEmpty()));
     assertValidAccessKey(json);
     List<FileData> fd = FileData.getAll();
@@ -299,7 +300,7 @@ public class AccessManagerTest extends FakeDBApplication {
 
     JsonNode json = runCommand(defaultRegion.getUuid(), "add-key", false);
     Mockito.verify(shellProcessHandler, times(2))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), shellProcessContext.capture());
     List<String> expectedCommands = new ArrayList<>();
     expectedCommands.add(
         getBaseCommand(defaultRegion, "add-key")
@@ -322,8 +323,8 @@ public class AccessManagerTest extends FakeDBApplication {
       assertThat(expectedCommands.get(idx), allOf(notNullValue(), equalTo(executedCommand)));
     }
 
-    cloudCredentials
-        .getAllValues()
+    shellProcessContext.getAllValues().stream()
+        .map(ShellProcessContext::getExtraEnvVars)
         .forEach((cloudCredential) -> assertEquals(config, cloudCredential));
     assertValidAccessKey(json);
 
@@ -345,7 +346,7 @@ public class AccessManagerTest extends FakeDBApplication {
                       + " YBCloud command access (add-key) failed to execute."
                       + " Unknown error occurred")));
     }
-    Mockito.verify(shellProcessHandler, times(1)).run(anyList(), anyMap(), anyString());
+    Mockito.verify(shellProcessHandler, times(1)).run(anyList(), any(ShellProcessContext.class));
   }
 
   @Test
@@ -355,7 +356,7 @@ public class AccessManagerTest extends FakeDBApplication {
     AccessKey.create(defaultProvider.getUuid(), "foo", keyInfo);
     runCommand(defaultRegion.getUuid(), "add-key", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), shellProcessContext.capture());
     String expectedCommand =
         getBaseCommand(defaultRegion, "add-key")
             + " --key_pair_name foo --key_file_path "
@@ -398,19 +399,20 @@ public class AccessManagerTest extends FakeDBApplication {
   public void testManageListKeysCommand() {
     JsonNode result = runCommand(defaultRegion.getUuid(), "list-keys", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), shellProcessContext.capture());
 
     String commandStr = String.join(" ", command.getValue());
     String expectedCmd = getBaseCommand(defaultRegion, "list-keys");
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertTrue(cloudCredentials.getValue().isEmpty());
+    assertTrue(shellProcessContext.getValue().getExtraEnvVars().isEmpty());
     assertValue(result, "foo", "bar");
   }
 
   @Test
   public void testManageListKeysCommandWithErrorResponse() {
     JsonNode result = runCommand(defaultRegion.getUuid(), "list-keys", true);
-    Mockito.verify(shellProcessHandler, times(1)).run(command.capture(), anyMap(), anyString());
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), any(ShellProcessContext.class));
 
     String commandStr = String.join(" ", command.getValue());
     String expectedCmd = getBaseCommand(defaultRegion, "list-keys");
@@ -544,7 +546,7 @@ public class AccessManagerTest extends FakeDBApplication {
         "TEST");
     JsonNode result = runCommand(defaultRegion.getUuid(), "create-vault", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), shellProcessContext.capture());
 
     String commandStr = String.join(" ", command.getValue());
     String expectedCmd =
@@ -555,7 +557,7 @@ public class AccessManagerTest extends FakeDBApplication {
             + defaultProvider.getUuid()
             + "/private.key";
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertTrue(cloudCredentials.getValue().isEmpty());
+    assertTrue(shellProcessContext.getValue().getExtraEnvVars().isEmpty());
     assertValue(result, "vault_file", tmpVaultFile);
     assertValue(result, "vault_password", tmpVaultPassword);
   }
@@ -597,7 +599,7 @@ public class AccessManagerTest extends FakeDBApplication {
   public void testDeleteKeyWithValidRegion() {
     JsonNode result = runCommand(defaultRegion.getUuid(), "delete-key", false);
     Mockito.verify(shellProcessHandler, times(1))
-        .run(command.capture(), cloudCredentials.capture(), anyString());
+        .run(command.capture(), shellProcessContext.capture());
     String expectedCmd =
         getBaseCommand(defaultRegion, "delete-key")
             + " --key_pair_name foo --key_file_path "
@@ -608,7 +610,7 @@ public class AccessManagerTest extends FakeDBApplication {
             + " --ignore_auth_failure";
     String commandStr = String.join(" ", command.getValue());
     assertThat(commandStr, allOf(notNullValue(), equalTo(expectedCmd)));
-    assertTrue(cloudCredentials.getValue().isEmpty());
+    assertTrue(shellProcessContext.getValue().getExtraEnvVars().isEmpty());
     assertValue(result, "foo", "bar");
   }
 
@@ -617,8 +619,8 @@ public class AccessManagerTest extends FakeDBApplication {
     Provider testProvider = ModelFactory.gcpProvider(defaultCustomer);
     Region testRegion = Region.create(testProvider, "us-west-2", "US West 2", "yb-image");
     runCommand(testRegion.getUuid(), "delete-key", false);
-    Mockito.verify(shellProcessHandler, times(0))
-        .run(command.capture(), cloudCredentials.capture());
+    Mockito.verify(shellProcessHandler, times(1))
+        .run(command.capture(), shellProcessContext.capture());
   }
 
   @Test
