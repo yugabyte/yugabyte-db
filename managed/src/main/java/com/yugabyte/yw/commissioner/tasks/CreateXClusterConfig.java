@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -44,8 +45,9 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   public static final long TIME_BEFORE_DELETE_BACKUP_MS = TimeUnit.DAYS.toMillis(1);
 
   @Inject
-  protected CreateXClusterConfig(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected CreateXClusterConfig(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   public List<Restore> restoreList = new ArrayList<>();
