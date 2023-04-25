@@ -22,6 +22,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.client.util.Strings;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
@@ -132,6 +133,7 @@ public class CloudProviderHandler {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private AvailabilityZoneHandler availabilityZoneHandler;
   @Inject private RegionHandler regionHandler;
+  @Inject private AccessKeyHandler accessKeyHandler;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
@@ -848,6 +850,39 @@ public class CloudProviderHandler {
     return result;
   }
 
+  private boolean updateAccessKeys(Provider editProviderReq, Provider provider) {
+    /*
+     * For the access key edits, user can
+     * 1. Switch from YBA Managed <-> Self Managed, & vice-versa.
+     * 2. Update the key Contents for the Self Managed Key.
+     * In case no access key is specified we will create YBA managed access key.
+     * In case sshPrivateKeyContent is specified we will create a Self Managed access key
+     * with the content provider.
+     * In case, keys are specified, that will be treated as no-op from access keys POV.
+     */
+    boolean result = false;
+    List<AccessKey> accessKeys = editProviderReq.getAllAccessKeys();
+    if (accessKeys.size() == 0) {
+      // This is the case for adding YBA managed accessKey to the provider.
+      result = true;
+      accessKeyHandler.doEdit(provider, null, null);
+    }
+
+    for (AccessKey accessKey : accessKeys) {
+      if (!Strings.isNullOrEmpty(accessKey.getKeyInfo().sshPrivateKeyContent)
+          && accessKey.getIdKey() == null) {
+        /*
+         * If the user has provided the accessKey content, this will be the case of
+         * Self Managed Keys, create a new Key, & append with other keys.
+         */
+        result = true;
+        accessKeyHandler.doEdit(provider, accessKey, null);
+      }
+    }
+
+    return result;
+  }
+
   public UUID editProvider(
       Customer customer,
       Provider provider,
@@ -894,7 +929,8 @@ public class CloudProviderHandler {
     providerModified =
         providerModified
             | addOrRemoveAZs(editProviderReq, provider)
-            | removeAndUpdateRegions(editProviderReq, provider);
+            | removeAndUpdateRegions(editProviderReq, provider)
+            | updateAccessKeys(editProviderReq, provider);
 
     if (!providerModified && taskUUID == null) {
       throw new PlatformServiceException(
