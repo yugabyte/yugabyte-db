@@ -12,15 +12,15 @@ type: docs
 
 [Mirantis Kubernetes Engine (MKE)](https://docs.mirantis.com/mke/3.5/overview.html) is a container orchestration platform for developing and running modern applications at scale, on private clouds, public clouds, and on bare metal.
 
-MKE as a container orchestration platform is specially useful in the following scenarios:
+MKE as a container orchestration platform is specially beneficial in the following scenarios:
 
-- More than one container orchestrator
+- Orchestrating more than one container
 - Robust and scalable applications deployment
 - Multi-tenant software offerings
 
 The following sections describe how to deploy a single node YugabyteDB cluster on Mirantis MKE using [kubectl](https://kubernetes.io/docs/reference/kubectl/) and [helm](https://helm.sh/).
 
-Note that for a multi node cluster deployment, you require more than one machine/VM, so for the purpose of simplicity, this page describes the steps for a single node cluster.
+This page describes the steps for a single node cluster for the purpose of simplicity, as you require more than one machine/VM for a multi node cluster deployment.
 
 ## Prerequisite
 
@@ -48,7 +48,7 @@ Before installing a single node YugabyteDB cluster using Mirantis, ensure that y
     docker container run --rm -it --name ucp \
           -v /var/run/docker.sock:/var/run/docker.sock \
           mirantis/ucp:3.5.8 install \
-          --host-address <node-ip-address> \ // Replace <node-ip-address> with the IP address of your machine.
+          --host-address <node-ip> \ // Replace <node-ip> with the IP address of your machine.
           --interactive
     ```
 
@@ -56,7 +56,7 @@ Before installing a single node YugabyteDB cluster using Mirantis, ensure that y
 
 1. Install and configure kubectl with MKE, and install Helm using the instructions in [MKE documentation](https://docs.mirantis.com/mke/3.5/ops/access-cluster/configure-kubectl.html?highlight=kubectl).
 
-1. Create a new storage class.
+1. Create a new storage class using the following steps:
 
     1. ​​Copy the following content to a file named `storage.yaml`:
 
@@ -94,7 +94,7 @@ Before installing a single node YugabyteDB cluster using Mirantis, ensure that y
 
 1. Create four [PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/) using the following steps:
 
-    1. Copy the following to a file `volume.yaml`:
+    1. Copy the following PersistentVolume configuration to a file `volume.yaml`:
 
         ```conf
         apiVersion: v1
@@ -119,8 +119,7 @@ Before installing a single node YugabyteDB cluster using Mirantis, ensure that y
         kubectl apply -f volume.yaml
         ```
 
-    1. Repeat the preceding steps to create the remaining PersistentVolumes(PV) : `task-pv-volume2`, `task-pv-volume3`, and `task-pv-volume4`(change the metadata name in `volume.yaml` for each).
-
+    1. Repeat the preceding two steps to create the remaining PersistentVolumes (PV) : `task-pv-volume2`, `task-pv-volume3`, and `task-pv-volume4` by changing the metadata name in `volume.yaml` for each volume.
 
 1. Verify PersistentVolumes are created using the following command:
 
@@ -154,7 +153,7 @@ To download and start YugabyteDB Helm chart, perform the following:
     helm repo update
     ```
 
-1. Validate the chart version, as follows:
+1. Validate the chart version as follows:
 
     ```sh
     helm search repo yugabytedb/yugabyte --version 2.17.2
@@ -180,7 +179,7 @@ helm install yb-demo yugabytedb/yugabyte \
 
 ### Check cluster status with `kubectl`
 
-Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (yb-master-0) and one YB-Tserver pod (yb-tserver-0).
+Run the following command to verify that you have two services with one running pod in each: one YB-Master pod (yb-master-0) and one YB-Tserver pod (yb-tserver-0):
 
 ```sh
 kubectl --namespace yb-demo get pods
