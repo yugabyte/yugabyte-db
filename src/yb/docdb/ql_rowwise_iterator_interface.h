@@ -40,9 +40,9 @@ class YQLRowwiseIteratorIf {
   // Checks whether next row exists.
   Result<bool> FetchNext(
       qlexpr::QLTableRow* table_row,
-      const Schema* projection = nullptr,
+      const dockv::ReaderProjection* projection = nullptr,
       qlexpr::QLTableRow* static_row = nullptr,
-      const Schema* static_projection = nullptr) {
+      const dockv::ReaderProjection* static_projection = nullptr) {
     return DoFetchNext(table_row, projection, static_row, static_projection);
   }
 
@@ -54,9 +54,6 @@ class YQLRowwiseIteratorIf {
   virtual HybridTime TEST_MaxSeenHt();
 
   virtual std::string ToString() const = 0;
-
-  // Could be subset of actual table schema.
-  virtual const Schema& schema() const = 0;
 
   //------------------------------------------------------------------------------------------------
   // Virtual API methods.
@@ -83,10 +80,9 @@ class YQLRowwiseIteratorIf {
  protected:
   virtual Result<bool> DoFetchNext(
       qlexpr::QLTableRow* table_row,
-      const Schema* projection,
+      const dockv::ReaderProjection* projection,
       qlexpr::QLTableRow* static_row,
-      const Schema* static_projection) = 0;
-
+      const dockv::ReaderProjection* static_projection) = 0;
 };
 
 }  // namespace docdb

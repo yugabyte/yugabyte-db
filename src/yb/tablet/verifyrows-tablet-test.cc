@@ -39,6 +39,8 @@
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strings/substitute.h"
 
@@ -82,11 +84,13 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     superclass::SetUp();
 
     // Warm up code cache with all the projections we'll be using.
-    auto iter = ASSERT_RESULT(tablet()->NewRowIterator(client_schema_));
+    dockv::ReaderProjection projection(client_schema_);
+    auto iter = ASSERT_RESULT(tablet()->NewRowIterator(projection));
     ASSERT_OK(iter->FetchNext(nullptr));
     const SchemaPtr schema = tablet()->schema();
-    ColumnSchema valcol = schema->column(schema->find_column("val"));
-    valcol_projection_ = Schema({ valcol }, 0);
+    auto valcol = ASSERT_RESULT(schema->ColumnIdByName("val"));
+    valcol_projection_.Init(*schema, {valcol});
+
     iter = ASSERT_RESULT(tablet()->NewRowIterator(valcol_projection_));
     ASSERT_OK(iter->FetchNext(nullptr));
 
@@ -169,10 +173,10 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     int max_iters = kNumInsertThreads * max_rows / 10;
 
     while (running_insert_count_.count() > 0) {
-      auto iter = tablet()->NewRowIterator(client_schema_);
-      ASSERT_OK(iter);
+      dockv::ReaderProjection projection(client_schema_);
+      auto iter = ASSERT_RESULT(tablet()->NewRowIterator(projection));
 
-      for (int i = 0; i < max_iters && ASSERT_RESULT((**iter).FetchNext(&row)); i++) {
+      for (int i = 0; i < max_iters && ASSERT_RESULT(iter->FetchNext(&row)); i++) {
         if (running_insert_count_.WaitFor(MonoDelta::FromMilliseconds(1))) {
           return;
         }
@@ -275,7 +279,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
   // Projection with only an int column.
   // This is provided by both harnesses.
-  Schema valcol_projection_;
+  dockv::ReaderProjection valcol_projection_;
 
   TimeSeriesCollector ts_collector_;
 };

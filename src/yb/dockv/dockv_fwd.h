@@ -38,6 +38,8 @@ class SubDocKey;
 class YBPartialRow;
 
 struct ColumnPackingData;
+struct ProjectedColumn;
+struct ReaderProjection;
 struct ValueControlFields;
 
 using DocKeyHash = uint16_t;

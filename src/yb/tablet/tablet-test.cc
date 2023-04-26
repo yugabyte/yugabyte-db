@@ -143,7 +143,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 
   // Collect the expected rows.
   vector<string> rows;
-  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), this->client_schema_, &rows));
+  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), &rows));
   ASSERT_EQ(max_rows, rows.size());
 }
 

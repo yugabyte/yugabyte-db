@@ -52,7 +52,6 @@ class YQLRowwiseIteratorIf;
 class YQLStorageIf;
 
 struct ApplyTransactionState;
-struct CompactionSchemaPacking;
 struct DocDB;
 struct DocReadContext;
 struct IntentKeyValueForCDC;

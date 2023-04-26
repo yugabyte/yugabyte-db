@@ -226,8 +226,9 @@ Status PopulateBeforeImage(
 
   const auto log_prefix = tablet->LogPrefix();
   docdb::DocReadContext doc_read_context(log_prefix, tablet->table_type(), schema, schema_version);
+  dockv::ReaderProjection projection(schema);
   docdb::DocRowwiseIterator iter(
-      schema,
+      projection,
       colocation_id == kColocationIdNotSet
           ? *tablet->GetDocReadContext()
           : *(VERIFY_RESULT(tablet_peer->tablet_metadata()->GetTableInfo("", colocation_id))
@@ -1420,8 +1421,9 @@ Status GetChangesForCDCSDK(
       int fetched = 0;
       std::vector<qlexpr::QLTableRow> rows;
       qlexpr::QLTableRow row;
+      dockv::ReaderProjection projection(*schema_details.schema);
       auto iter = VERIFY_RESULT(tablet_ptr->CreateCDCSnapshotIterator(
-          (*schema_details.schema).CopyWithoutColumnIds(), time, nextKey, colocated_table_id));
+          projection, time, nextKey, colocated_table_id));
       while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
         RETURN_NOT_OK(PopulateCDCSDKSnapshotRecord(
             resp, &row, *schema_details.schema, table_name, time, enum_oid_label_map,

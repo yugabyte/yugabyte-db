@@ -22,6 +22,8 @@
 
 #include "yb/dockv/key_bytes.h"
 
+#include "yb/util/logging.h"
+
 namespace yb::qlexpr {
 
 using std::vector;
@@ -565,9 +567,11 @@ Status QLScanSpec::Match(const QLTableRow& table_row, bool* match) const {
   bool cond = true;
   bool if_cond = true;
   if (condition_ != nullptr) {
+    VLOG_WITH_FUNC(4) << "condition: " << AsString(*condition_);
     RETURN_NOT_OK(executor_->EvalCondition(*condition_, table_row, &cond));
   }
   if (if_condition_ != nullptr) {
+    VLOG_WITH_FUNC(4) << "if_condition: " << AsString(*if_condition_);
     RETURN_NOT_OK(executor_->EvalCondition(*if_condition_, table_row, &if_cond));
   }
   *match = cond && if_cond;

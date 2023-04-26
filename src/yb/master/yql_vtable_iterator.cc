@@ -35,9 +35,9 @@ YQLVTableIterator::YQLVTableIterator(
 
 Result<bool> YQLVTableIterator::DoFetchNext(
     qlexpr::QLTableRow* table_row,
-    const Schema* projection,
+    const dockv::ReaderProjection* projection,
     qlexpr::QLTableRow* static_row,
-    const Schema* static_projection) {
+    const dockv::ReaderProjection* static_projection) {
   if (vtable_index_ >= vtable_->row_count()) {
     return false;
   }
@@ -53,10 +53,6 @@ Result<bool> YQLVTableIterator::DoFetchNext(
 
 std::string YQLVTableIterator::ToString() const {
   return "YQLVTableIterator";
-}
-
-const Schema& YQLVTableIterator::schema() const {
-  return vtable_->schema();
 }
 
 // Advances iterator to next valid row, filtering columns using hashed_column_values_.

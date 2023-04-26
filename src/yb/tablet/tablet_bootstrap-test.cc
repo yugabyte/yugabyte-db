@@ -42,6 +42,8 @@
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/server/logical_clock.h"
 
 #include "yb/tablet/tablet-test-util.h"
@@ -268,9 +270,10 @@ class BootstrapTest : public LogTestBase {
 
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
-    auto iter = tablet->NewRowIterator(schema_);
+    dockv::ReaderProjection projection(*tablet->schema());
+    auto iter = tablet->NewRowIterator(projection);
     ASSERT_OK(iter);
-    ASSERT_OK(IterateToStringList(iter->get(), results));
+    ASSERT_OK(IterateToStringList(iter->get(), *tablet->schema(), results));
     for (const string& result : *results) {
       VLOG(1) << result;
     }
