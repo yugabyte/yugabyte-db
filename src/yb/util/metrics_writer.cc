@@ -119,10 +119,9 @@ Status PrometheusWriter::WriteSingleEntry(
   }
   case AggregationMetricLevel::kStream:
   {
-    MetricEntity::AttributeMap new_attr = attr;
-    new_attr.erase("table_id");
-    new_attr.erase("table_name");
-    AddAggregatedEntry(attr.find("stream_id")->second, new_attr, name, value, aggregation_function);
+    if (attr.find("stream_id") != attr.end()) {
+        AddAggregatedEntry(attr.find("stream_id")->second, attr, name, value, aggregation_function);
+    }
     break;
   }
   case AggregationMetricLevel::kTable:
@@ -134,7 +133,7 @@ Status PrometheusWriter::WriteSingleEntry(
 
 NMSWriter::NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics)
     : PrometheusWriter(nullptr), table_metrics_(*table_metrics),
-      server_metrics_(*server_metrics) {}
+    server_metrics_(*server_metrics) {}
 
 Status NMSWriter::FlushSingleEntry(
     const MetricEntity::AttributeMap& attr, const std::string& name, const int64_t value) {
