@@ -29,11 +29,14 @@ import java.sql.Statement;
 import org.apache.age.jdbc.base.Agtype;
 import org.apache.age.jdbc.base.AgtypeFactory;
 import org.apache.age.jdbc.base.InvalidAgtypeException;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.postgresql.jdbc.PgConnection;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestInstance.Lifecycle;
 
+@TestInstance(Lifecycle.PER_CLASS)
 /**
  * Tests the different combinations that are possible when running Statements and Prepared
  * Statements with the AgType and shows how the JDBC needs to be setup to convert values to the
@@ -43,12 +46,12 @@ class AgtypeStatementTest {
 
     BaseDockerizedTest baseDockerizedTest = new BaseDockerizedTest();
 
-    @BeforeEach
+    @BeforeAll
     public void setup() throws Exception {
         baseDockerizedTest.beforeAll();
     }
 
-    @AfterEach
+    @AfterAll
     void tearDown() throws Exception {
         baseDockerizedTest.afterAll();
     }

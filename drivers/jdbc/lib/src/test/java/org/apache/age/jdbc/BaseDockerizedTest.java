@@ -65,9 +65,13 @@ public class BaseDockerizedTest {
         String jdbcUrl = String
             .format("jdbc:postgresql://%s:%d/%s", "localhost", mappedPort, "postgres");
 
-        connection = DriverManager.getConnection(jdbcUrl, "postgres", CORRECT_DB_PASSWORDS)
-            .unwrap(PgConnection.class);
-        connection.addDataType("agtype", Agtype.class);
+        try {
+            this.connection = DriverManager.getConnection(jdbcUrl, "postgres", CORRECT_DB_PASSWORDS)
+                         .unwrap(PgConnection.class);
+            this.connection.addDataType("agtype", Agtype.class);
+        } catch (Exception e) {
+            System.out.println(e);
+        }
         try (Statement statement = connection.createStatement()) {
             statement.execute("CREATE EXTENSION IF NOT EXISTS age;");
             statement.execute("LOAD 'age'");

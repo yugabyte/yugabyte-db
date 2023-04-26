@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         go-version: [ '1.18', '1.19' ]
-        distributions: ['zulu', 'temurin', 'microsoft']
+
     defaults:
       run:
         working-directory: drivers/golang/age/
@@ -46,12 +46,6 @@ jobs:
       uses: actions/setup-go@v3
       with:
         go-version: ${{ matrix.go-version }}
-    
-    - name: Set up Java
-      uses: actions/setup-java@v3
-      with:
-        distribution: ${{ matrix.distributions }}
-        java-version: '17'
     
     - name: Generate
       run: go generate ./../...
