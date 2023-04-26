@@ -4,8 +4,12 @@ package com.yugabyte.yw.models.configs.validators;
 
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.models.BlobStorageException;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.CloudUtil;
+import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.configs.CloudClientsFactory;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
@@ -80,12 +84,15 @@ public class CustomerConfigStorageAzureValidator extends CustomerConfigStorageVa
       try {
         BlobContainerClient blobContainerClient =
             factory.createBlobContainerClient(azUrl, azSasToken, container);
-        if (!blobContainerClient.exists()) {
-          String exceptionMsg = "Blob container " + container + " doesn't exist";
-          throwBeanValidatorError(fieldName, exceptionMsg);
-        }
+        ((AZUtil) (CloudUtil.getCloudUtil(Util.AZ)))
+            .validateOnBlobContainerClient(
+                blobContainerClient,
+                ImmutableList.of(
+                    ExtraPermissionToValidate.READ,
+                    ExtraPermissionToValidate.LIST,
+                    ExtraPermissionToValidate.DELETE));
       } catch (BlobStorageException e) {
-        String exceptionMsg = "Invalid SAS token!";
+        String exceptionMsg = e.getMessage();
         throwBeanValidatorError(fieldName, exceptionMsg);
       } catch (Exception e) {
         if (e.getCause() != null && e.getCause() instanceof UnknownHostException) {
