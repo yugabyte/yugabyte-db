@@ -132,9 +132,6 @@ extern bool check_functions_in_node(Node *node, check_function_callback checker,
 
 extern bool expression_tree_walker(Node *node, bool (*walker) (),
 								   void *context);
-extern bool expression_tree_walker_min_attr(Node *node,
-									pull_varattnos_walker_ptr walker,
-								  void *context, AttrNumber min_attr);
 extern Node *expression_tree_mutator(Node *node, Node *(*mutator) (),
 									 void *context);
 
