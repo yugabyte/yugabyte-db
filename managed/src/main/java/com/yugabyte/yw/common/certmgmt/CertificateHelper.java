@@ -229,25 +229,19 @@ public class CertificateHelper {
       String clientCertPath = String.format("%s/%s", storagePath, certFileName);
       String clientKeyPath = String.format("%s/%s", storagePath, certKeyName);
 
-      writeCertFileContentToCertPath(clientCert, clientCertPath);
-      writeKeyFileContentToKeyPath(pKey, clientKeyPath);
+      /**
+       * We generate certs for two scenarios. 1. Node<->Node Encryption 2. Client<->Node Encryption
+       * For the first case, we generate the certs which are specific to node & are copied over to
+       * the node(platform doesn't store the same). For the second case, platform generate those
+       * certs with DEFAULT_CLIENT, i.e, yugabyte, that we need to store corresponding to that
+       * certificate. Therefore, we are storing only the later certs in the DB.
+       */
+      writeCertFileContentToCertPath(clientCert, clientCertPath, syncCertsToDB);
+      writeKeyFileContentToKeyPath(pKey, clientKeyPath, syncCertsToDB);
       LOG.info(
           "Dumping certificate {} at Path {}",
           clientCert.getSubjectDN().toString(),
           clientCertPath);
-
-      if (syncCertsToDB) {
-        /**
-         * We generate certs for two scenarios. 1. Node<->Node Encryption 2. Client<->Node
-         * Encryption For the first case, we generate the certs which are specific to node & are
-         * copied over to the node(platform doesn't store the same). For the second case, platform
-         * generate those certs with DEFAULT_CLIENT, i.e, yugabyte, that we need to store
-         * corresponding to that certificate. Therefore, we are storing only the later certs in the
-         * DB.
-         */
-        FileData.writeFileToDB(clientCertPath);
-        FileData.writeFileToDB(clientKeyPath);
-      }
     } else {
       // storagePath is null, converting it to string and returning it.
       certificateDetails.crt = getAsPemString(clientCert);
@@ -707,6 +701,11 @@ public class CertificateHelper {
   }
 
   public static void writeCertFileContentToCertPath(X509Certificate cert, String certPath) {
+    writeCertFileContentToCertPath(cert, certPath, true);
+  }
+
+  public static void writeCertFileContentToCertPath(
+      X509Certificate cert, String certPath, boolean syncToDB) {
     File certFile = new File(certPath);
     try (JcaPEMWriter certWriter = new JcaPEMWriter(new FileWriter(certFile))) {
       certWriter.writeObject(cert);
@@ -715,9 +714,19 @@ public class CertificateHelper {
       LOG.error(e.getMessage());
       throw new RuntimeException("Save certificate failed.");
     }
+
+    if (syncToDB) {
+      // Write the certificates in the DB.
+      FileData.writeFileToDB(certPath);
+    }
   }
 
   public static void writeKeyFileContentToKeyPath(Key keyContent, String keyPath) {
+    writeKeyFileContentToKeyPath(keyContent, keyPath, true);
+  }
+
+  public static void writeKeyFileContentToKeyPath(
+      Key keyContent, String keyPath, boolean syncToDB) {
     File keyFile = new File(keyPath);
     try (JcaPEMWriter keyWriter = new JcaPEMWriter(new FileWriter(keyFile))) {
       keyWriter.writeObject(keyContent);
@@ -726,9 +735,19 @@ public class CertificateHelper {
       LOG.error(e.getMessage());
       throw new RuntimeException("Save privateKey failed.");
     }
+
+    if (syncToDB) {
+      // Write the certificate private key in the DB.
+      FileData.writeFileToDB(keyPath);
+    }
   }
 
   public static void writeCertBundleToCertPath(List<X509Certificate> certs, String certPath) {
+    writeCertBundleToCertPath(certs, certPath, true);
+  }
+
+  public static void writeCertBundleToCertPath(
+      List<X509Certificate> certs, String certPath, boolean syncToDB) {
     File certfile = new File(certPath);
     // Create directory to store the certFile.
     certfile.getParentFile().mkdirs();
@@ -742,6 +761,11 @@ public class CertificateHelper {
     } catch (Exception e) {
       LOG.error(e.getMessage());
       throw new RuntimeException("Save certContent failed.");
+    }
+
+    if (syncToDB) {
+      // Write the certificate private key in the DB.
+      FileData.writeFileToDB(certPath);
     }
   }
 
