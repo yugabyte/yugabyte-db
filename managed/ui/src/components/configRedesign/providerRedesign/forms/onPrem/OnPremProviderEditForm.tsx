@@ -5,7 +5,7 @@ import { array, mixed, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
 
-import { NTPSetupType, ProviderCode } from '../../constants';
+import { KeyPairManagement, NTPSetupType, ProviderCode } from '../../constants';
 import { NTP_SERVER_REGEX } from '../constants';
 import {
   ConfigureOnPremRegionModal,
@@ -25,6 +25,7 @@ import { YBDropZoneField } from '../../components/YBDropZone/YBDropZoneField';
 import { YBInput, YBInputField, YBToggleField } from '../../../../../redesign/components';
 import {
   addItem,
+  constructAccessKeysPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -36,6 +37,7 @@ import {
   findExistingZone,
   getDeletedRegions,
   getDeletedZones,
+  getLatestAccessKey,
   getNtpSetupType
 } from '../../utils';
 import { VersionWarningBanner } from '../components/VersionWarningBanner';
@@ -180,6 +182,8 @@ export const OnPremProviderEditForm = ({
   );
   const currentProviderVersion = formMethods.watch('version', defaultValues.version);
   const editSSHKeypair = formMethods.watch('editSSHKeypair', defaultValues.editSSHKeypair);
+
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -255,19 +259,11 @@ export const OnPremProviderEditForm = ({
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.keyPairName} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.privateKey} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Change SSH Keypair</FieldLabel>
@@ -456,19 +452,17 @@ const constructProviderPayload = async (
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
+  const allAccessKeysPayload = constructAccessKeysPayload(
+    formValues.editSSHKeypair,
+    KeyPairManagement.SELF_MANAGED,
+    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    providerConfig.allAccessKeys
+  );
+
   return {
     code: ProviderCode.ON_PREM,
     name: formValues.providerName,
-    allAccessKeys: [
-      {
-        keyInfo: {
-          ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-          ...(formValues.sshPrivateKeyContent && {
-            sshPrivateKeyContent: sshPrivateKeyContent
-          })
-        }
-      }
-    ],
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
