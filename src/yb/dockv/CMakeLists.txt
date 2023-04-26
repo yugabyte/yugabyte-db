@@ -38,6 +38,7 @@ set(DOCKV_SRCS
     partition.cc
     primitive_value.cc
     primitive_value_util.cc
+    reader_projection.cc
     schema_packing.cc
     subdocument.cc
     value.cc

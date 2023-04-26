@@ -57,7 +57,7 @@ YQLVirtualTable::~YQLVirtualTable() = default;
 
 Status YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
-    const Schema& projection,
+    const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
@@ -81,7 +81,6 @@ Status YQLVirtualTable::BuildYQLScanSpec(
     const ReadHybridTime& read_time,
     const Schema& schema,
     const bool include_static_columns,
-    const Schema& static_projection,
     std::unique_ptr<qlexpr::QLScanSpec>* spec,
     std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const {
   // There should be no static columns in system tables so we are not handling it.

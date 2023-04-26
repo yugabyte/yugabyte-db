@@ -98,6 +98,7 @@ struct TableInfo {
   const std::shared_ptr<docdb::DocReadContext> doc_read_context;
   const std::shared_ptr<qlexpr::IndexMap> index_map;
   std::unique_ptr<qlexpr::IndexInfo> index_info;
+  std::shared_ptr<dockv::ReaderProjection> unique_index_key_projection;
   SchemaVersion schema_version = 0;
 
   // Partition schema of the table.
@@ -166,6 +167,8 @@ struct TableInfo {
 
  private:
   Status DoLoadFromPB(Primary primary, const TableInfoPB& pb);
+
+  void CompleteInit();
 };
 
 // Describes KV-store. Single KV-store is backed by one or two RocksDB instances, depending on

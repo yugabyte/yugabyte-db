@@ -50,6 +50,7 @@
 
 #include "yb/util/algorithm_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -126,50 +127,6 @@ bool ShouldYsqlPackRow(bool is_colocated) {
 
 namespace {
 
-// Compatibility: accept column references from a legacy nodes as a list of column ids only
-// Return the next index after last key column referenced.
-Result<size_t> CreateProjection(const Schema& schema,
-                        const PgsqlColumnRefsPB& column_refs,
-                        Schema* projection) {
-  // Create projection of non-primary key columns. Primary key columns are implicitly read by DocDB.
-  // It will also sort the columns before scanning.
-  vector<ColumnId> column_ids;
-  column_ids.reserve(column_refs.ids_size());
-  size_t end_referenced_key_column_index = 0;
-  for (int32_t id : column_refs.ids()) {
-    const ColumnId column_id(id);
-    if (!schema.is_key_column(column_id)) {
-      column_ids.emplace_back(column_id);
-    } else {
-      end_referenced_key_column_index = std::max<size_t>(
-          end_referenced_key_column_index, make_unsigned(schema.find_column_by_id(column_id) + 1));
-    }
-  }
-  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection));
-  return end_referenced_key_column_index;
-}
-
-// Return the next index after last key column referenced.
-Result<size_t> CreateProjection(
-    const Schema& schema,
-    const google::protobuf::RepeatedPtrField<PgsqlColRefPB> &column_refs,
-    Schema* projection) {
-  vector<ColumnId> column_ids;
-  column_ids.reserve(column_refs.size());
-  size_t end_referenced_key_column_index = 0;
-  for (const PgsqlColRefPB& column_ref : column_refs) {
-    const ColumnId column_id(column_ref.column_id());
-    if (!schema.is_key_column(column_id)) {
-      column_ids.emplace_back(column_id);
-    } else {
-      end_referenced_key_column_index = std::max<size_t>(
-          end_referenced_key_column_index, make_unsigned(schema.find_column_by_id(column_id) + 1));
-    }
-  }
-  RETURN_NOT_OK(schema.CreateProjectionByIdsIgnoreMissing(column_ids, projection));
-  return end_referenced_key_column_index;
-}
-
 void AddIntent(
     const std::string& encoded_key, boost::optional<WaitPolicy> wait_policy,
     LWKeyValueWriteBatchPB *out) {
@@ -229,14 +186,13 @@ Result<DocKey> FetchDocKey(const Schema& schema, const T& request) {
 Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     const YQLStorageIf& ql_storage,
     const PgsqlReadRequestPB& request,
-    const Schema& projection,
+    const dockv::ReaderProjection& projection,
     std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     bool is_explicit_request_read_time,
-    const DocDBStatistics* statistics,
-    boost::optional<size_t> end_referenced_key_column_index = boost::none) {
+    const DocDBStatistics* statistics) {
   VLOG_IF(2, request.is_for_backfill()) << "Creating iterator for " << yb::ToString(request);
 
   YQLRowwiseIteratorIf::UniPtr result;
@@ -280,7 +236,7 @@ Result<YQLRowwiseIteratorIf::UniPtr> CreateIterator(
     }
     RETURN_NOT_OK(ql_storage.GetIterator(
         request, projection, doc_read_context, txn_op_context, deadline, read_time,
-        start_sub_doc_key.doc_key(), &result, end_referenced_key_column_index, statistics));
+        start_sub_doc_key.doc_key(), &result, statistics));
   }
   return std::move(result);
 }
@@ -467,7 +423,8 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const DocOperationApplyData& data, ReadHybridTime read_time) {
   // Set up the iterator to read the current primary key associated with the index key.
   DocPgsqlScanSpec spec(doc_read_context_->schema, request_.stmt_id(), *doc_key_);
-  DocRowwiseIterator iterator(doc_read_context_->schema,
+  dockv::ReaderProjection projection(doc_read_context_->schema);
+  DocRowwiseIterator iterator(projection,
                               *doc_read_context_,
                               txn_op_context_,
                               data.doc_write_batch->doc_db(),
@@ -601,6 +558,8 @@ Status PgsqlWriteOperation::InsertColumn(
 }
 
 Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUpsert is_upsert) {
+  // TODO Actually if table_row is not empty, then we exit with error. So could move its definition
+  // close to the place where it is used. And adjust other places considering empty row there.
   QLTableRow table_row;
   if (!is_upsert) {
     if (request_.is_backfill()) {
@@ -614,8 +573,7 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
       // Non-backfill requests shouldn't use HasDuplicateUniqueIndexValue because
       // - they should error even if the conflicting row matches
       // - retrieving and calculating whether the conflicting row matches is a waste
-      RETURN_NOT_OK(ReadColumns(data, &table_row));
-      if (!table_row.IsEmpty()) {
+      if (VERIFY_RESULT(ReadColumns(data, &table_row))) {
         VLOG(4) << "Duplicate row: " << table_row.ToString();
         // Primary key or unique index value found.
         response_->set_status(PgsqlResponsePB::PGSQL_STATUS_DUPLICATE_KEY_ERROR);
@@ -709,8 +667,7 @@ Status PgsqlWriteOperation::UpdateColumn(
 
 Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
   QLTableRow table_row;
-  RETURN_NOT_OK(ReadColumns(data, &table_row));
-  if (table_row.IsEmpty()) {
+  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
     // Row not found.
     response_->set_skipped(true);
     return Status::OK();
@@ -831,8 +788,7 @@ Status PgsqlWriteOperation::ApplyDelete(
     const bool is_persist_needed) {
   int num_deleted = 1;
   QLTableRow table_row;
-  RETURN_NOT_OK(ReadColumns(data, &table_row));
-  if (table_row.IsEmpty()) {
+  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
     // Row not found.
     // Return early unless we still want to apply the delete for backfill purposes.  Deletes to
     // nonexistent rows are expected to get written to the index when the index has the delete
@@ -870,8 +826,7 @@ Status PgsqlWriteOperation::ApplyTruncateColocated(const DocOperationApplyData& 
 Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data) {
   QLTableRow table_row;
   DCHECK(request_.has_fetch_sequence_params()) << "Invalid input: fetch sequence without params";
-  RETURN_NOT_OK(ReadColumns(data, &table_row));
-  if (table_row.IsEmpty()) {
+  if (!VERIFY_RESULT(ReadColumns(data, &table_row))) {
     // Row not found.
     return STATUS(NotFound, "Unable to find relation for sequence");
   }
@@ -969,33 +924,38 @@ Status PgsqlWriteOperation::ApplyFetchSequence(const DocOperationApplyData& data
   return Status::OK();
 }
 
-Status PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
-                                        QLTableRow* table_row) {
+Result<bool> PgsqlWriteOperation::ReadColumns(const DocOperationApplyData& data,
+                                              QLTableRow* table_row) {
   // Filter the columns using primary key.
-  if (doc_key_) {
-    const auto& schema = doc_read_context_->schema;
-    Schema projection;
-    if (!request_.col_refs().empty()) {
-      RETURN_NOT_OK(CreateProjection(schema, request_.col_refs(), &projection));
-    } else {
-      // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
-      RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
-    }
-    DocPgsqlScanSpec spec(projection, request_.stmt_id(), *doc_key_);
-    DocRowwiseIterator iterator(projection,
-                                *doc_read_context_,
-                                txn_op_context_,
-                                data.doc_write_batch->doc_db(),
-                                data.deadline,
-                                data.read_time);
-    RETURN_NOT_OK(iterator.Init(spec));
-    if (!VERIFY_RESULT(iterator.FetchNext(table_row))) {
-      table_row->Clear();
-    }
-    data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+  if (!doc_key_) {
+    return false;
   }
 
-  return Status::OK();
+  const auto& schema = doc_read_context_->schema;
+  dockv::ReaderProjection projection;
+  if (!request_.col_refs().empty()) {
+    projection.Init(schema, request_.col_refs());
+  } else {
+    // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
+    projection.Init(schema, request_.column_refs().ids());
+  }
+  VLOG_WITH_FUNC(4)
+      << "projection: " << projection.ToString() << ", request: " << AsString(request_);
+
+  DocPgsqlScanSpec spec(schema, request_.stmt_id(), *doc_key_);
+  DocRowwiseIterator iterator(projection,
+                              *doc_read_context_,
+                              txn_op_context_,
+                              data.doc_write_batch->doc_db(),
+                              data.deadline,
+                              data.read_time);
+  RETURN_NOT_OK(iterator.Init(spec));
+  if (!VERIFY_RESULT(iterator.FetchNext(table_row))) {
+    return false;
+  }
+  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
+
+  return true;
 }
 
 Status PgsqlWriteOperation::PopulateResultSet(const QLTableRow& table_row) {
@@ -1184,8 +1144,7 @@ Result<size_t> PgsqlReadOperation::ExecuteSample(const YQLStorageIf& ql_storage,
   VLOG(2) << "Start sampling tablet with sampling_state=" << sampling_state.ShortDebugString();
 
   // Request is not supposed to contain any column refs, we just need the liveness column.
-  Schema projection;
-  RETURN_NOT_OK(CreateProjection(doc_read_context.schema, request_.column_refs(), &projection));
+  dockv::ReaderProjection projection(doc_read_context.schema, request_.column_refs().ids());
   // Request may carry paging state, CreateIterator takes care of positioning
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, projection, doc_read_context, txn_op_context_,
@@ -1304,9 +1263,9 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   // the WHERE condition. When DocRowwiseIterator::NextRow() populates the value map, it uses this
   // projection only to scan sub-documents. The query schema is used to select only referenced
   // columns and key columns.
-  Schema doc_projection;
+  dockv::ReaderProjection doc_projection;
   // The index_projection is only created in case of colocated index scan
-  Schema index_projection;
+  dockv::ReaderProjection index_projection;
   YQLRowwiseIteratorIf *iter;
   // Prepare expression executors, separate for main table and index, as they have different schemas
   // and different sets of expressions.
@@ -1317,30 +1276,27 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
   // Initialize the main executor with info from the read request
   for (const PgsqlColRefPB& column_ref : request_.col_refs()) {
     RETURN_NOT_OK(doc_expr_exec.AddColumnRef(column_ref));
-    VLOG(1) << "Added column reference to the executor";
+    VLOG(4) << "Added column reference to the executor: " << AsString(column_ref);
   }
   for (const PgsqlExpressionPB& expr : request_.where_clauses()) {
     RETURN_NOT_OK(doc_expr_exec.AddWhereExpression(expr));
-    VLOG(1) << "Added where expression to the executor";
+    VLOG(4) << "Added where expression to the executor: " << AsString(expr);
   }
 
   // Old code might send column references using the deprecated column_refs field. Values in this
   // field can not be used to evaluate expressions due to lack of type information, but can help
   // to build projection. Fortunately, old code does not know about expression pushdown, so the
   // request is expected to be executed correctly.
-  size_t end_referenced_key_column_index = 0;
   if (!request_.col_refs().empty()) {
-    end_referenced_key_column_index =
-        VERIFY_RESULT(CreateProjection(doc_schema, request_.col_refs(), &doc_projection));
+    doc_projection.Init(doc_schema, request_.col_refs());
   } else {
-    // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
-    end_referenced_key_column_index =
-        VERIFY_RESULT(CreateProjection(doc_schema, request_.column_refs(), &doc_projection));
+    doc_projection.Init(doc_schema, request_.column_refs().ids());
   }
+
   // Create iterator over the target table
   table_iter_ = VERIFY_RESULT(CreateIterator(
       ql_storage, request_, doc_projection, doc_read_context, txn_op_context_, deadline, read_time,
-      is_explicit_request_read_time, statistics, end_referenced_key_column_index));
+      is_explicit_request_read_time, statistics));
 
   ColumnId ybbasectid_id;
   std::optional<QLTableRow> index_row;
@@ -1357,20 +1313,16 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
       RETURN_NOT_OK(index_expr_exec.AddWhereExpression(expr));
       VLOG(1) << "Added where expression to the index executor";
     }
-    size_t index_iter_end_referenced_key_column_index = 0;
     if (!request_.col_refs().empty()) {
-      index_iter_end_referenced_key_column_index = VERIFY_RESULT(
-          CreateProjection(*index_schema, index_request.col_refs(), &index_projection));
+      index_projection.Init(*index_schema, index_request.col_refs());
     } else {
       // Compatibility: Either request indeed has no column refs, or it comes from a legacy node.
-      index_iter_end_referenced_key_column_index = VERIFY_RESULT(
-          CreateProjection(*index_schema, index_request.column_refs(), &index_projection));
+      index_projection.Init(*index_schema, index_request.column_refs().ids());
     }
     // Create iterator over the index
     index_iter_ = VERIFY_RESULT(CreateIterator(
         ql_storage, index_request, index_projection, *index_doc_read_context, txn_op_context_,
-        deadline, read_time, is_explicit_request_read_time, statistics,
-        index_iter_end_referenced_key_column_index));
+        deadline, read_time, is_explicit_request_read_time, statistics));
     // The index iterator is to be looped over, main table rows are to be retrieved by their ybctids
     iter = index_iter_.get();
     const auto idx = index_schema->find_column("ybidxbasectid");
@@ -1381,9 +1333,6 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(const YQLStorageIf& ql_storage,
     // Loop over the main table iterator
     iter = table_iter_.get();
   }
-
-  VLOG(1) << "Started iterator - EndReferenceKeyColumnIndex: "
-          << end_referenced_key_column_index;
 
   // Set scan end time. We want to iterate as long as we can, but stop before client timeout.
   // The more rows we do per request, the less RPCs will be needed, but if client times out,
@@ -1488,8 +1437,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(const YQLStorageIf& ql_sto
                                                       HybridTime* restart_read_ht,
                                                       const DocDBStatistics* statistics) {
   const auto& schema = doc_read_context.schema;
-  Schema projection;
-  RETURN_NOT_OK(CreateProjection(schema, request_.column_refs(), &projection));
+  dockv::ReaderProjection projection(schema, request_.column_refs().ids());
 
   QLTableRow row;
   size_t row_count = 0;

@@ -1246,7 +1246,7 @@ void TestBackfillIndexTable(
 
   IndexPermissions perm = ASSERT_RESULT(test->client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE, kMaxWait));
-  ASSERT_TRUE(perm == IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+  ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
 
   auto main_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "key_value"));
   auto index_table_size = ASSERT_RESULT(GetTableSize(&test->session_, "index_by_value"));

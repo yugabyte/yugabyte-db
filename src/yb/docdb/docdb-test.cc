@@ -20,7 +20,6 @@
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/consensus_frontier.h"
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_reader.h"
 #include "yb/docdb/doc_reader_redis.h"
 #include "yb/docdb/docdb-internal.h"
@@ -30,7 +29,10 @@
 #include "yb/docdb/docdb_test_base.h"
 #include "yb/docdb/docdb_test_util.h"
 #include "yb/docdb/in_mem_docdb.h"
+
+#include "yb/dockv/doc_key.h"
 #include "yb/dockv/primitive_value.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stringprintf.h"
@@ -439,7 +441,7 @@ SubDocKey(DocKey([], ["mydockey", 123456]), ["subkey_b", "subkey_d"; HT{ physica
 void GetSubDocQl(
       const DocDB& doc_db, const KeyBytes& subdoc_key, SubDocument* result, bool* found_result,
       const TransactionOperationContext& txn_op_context, const ReadHybridTime& read_time,
-      const ReaderProjection* projection = nullptr) {
+      const dockv::ReaderProjection* projection = nullptr) {
   auto doc_from_rocksdb_opt = ASSERT_RESULT(TEST_GetSubDocument(
     subdoc_key, doc_db, rocksdb::kDefaultQueryId, txn_op_context,
     CoarseTimePoint::max() /* deadline */, read_time, projection));
@@ -670,9 +672,10 @@ TEST_F(DocDBTestQl, LastProjectionIsNull) {
   auto encoded_subdoc_key = subdoc_key.EncodeWithoutHt();
   SubDocument doc_from_rocksdb;
   bool subdoc_found_in_rocksdb = false;
-  const ReaderProjection projection = {
-      { KeyEntryValue("p1"), nullptr },
-      { KeyEntryValue("p2"), nullptr }
+  dockv::ReaderProjection projection;
+  projection.columns = {
+    { .id = ColumnId(1), .subkey = KeyEntryValue("p1"), .type = nullptr },
+    { .id = ColumnId(2), .subkey = KeyEntryValue("p2"), .type = nullptr },
   };
 
   GetSubDocQl(

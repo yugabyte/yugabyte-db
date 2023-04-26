@@ -34,14 +34,14 @@ class QLWriteOperation :
                    SchemaVersion schema_version,
                    DocReadContextPtr doc_read_context,
                    std::shared_ptr<qlexpr::IndexMap> index_map,
-                   const Schema* unique_index_key_schema,
+                   const std::shared_ptr<dockv::ReaderProjection>& unique_index_key_projection,
                    const TransactionOperationContext& txn_op_context);
 
   QLWriteOperation(std::reference_wrapper<const QLWriteRequestPB> request,
                    SchemaVersion schema_version,
                    DocReadContextPtr doc_read_context,
                    std::reference_wrapper<const qlexpr::IndexMap> index_map,
-                   const Schema* unique_index_key_schema,
+                   const std::shared_ptr<dockv::ReaderProjection>& unique_index_key_projection,
                    const TransactionOperationContext& txn_op_context);
 
   ~QLWriteOperation();
@@ -103,15 +103,15 @@ class QLWriteOperation :
   Status InitializeKeys(bool hashed_key, bool primary_key);
 
   Status ReadColumns(const DocOperationApplyData& data,
-                     Schema *static_projection,
-                     Schema *non_static_projection,
+                     dockv::ReaderProjection *static_projection,
+                     dockv::ReaderProjection *non_static_projection,
                      qlexpr::QLTableRow* table_row);
 
   Status PopulateConditionalDmlRow(const DocOperationApplyData& data,
                                    bool should_apply,
                                    const qlexpr::QLTableRow& table_row,
-                                   Schema static_projection,
-                                   Schema non_static_projection,
+                                   const dockv::ReaderProjection& static_projection,
+                                   const dockv::ReaderProjection& non_static_projection,
                                    std::unique_ptr<qlexpr::QLRowBlock>* rowblock);
 
   Status PopulateStatusRow(const DocOperationApplyData& data,
@@ -164,7 +164,7 @@ class QLWriteOperation :
   const docdb::DocReadContextPtr doc_read_context_;
   const std::shared_ptr<qlexpr::IndexMap> index_map_holder_;
   const qlexpr::IndexMap& index_map_;
-  const Schema* const unique_index_key_schema_ = nullptr;
+  const std::shared_ptr<dockv::ReaderProjection> unique_index_key_projection_;
 
   // Doc key and encoded Doc key for hashed key (i.e. without range columns). Present when there is
   // a static column being written.
@@ -223,7 +223,6 @@ class QLReadOperation : public DocExprExecutor {
                  CoarseTimePoint deadline,
                  const ReadHybridTime& read_time,
                  const DocReadContext& doc_read_context,
-                 const Schema& projection,
                  qlexpr::QLResultSet* result_set,
                  HybridTime* restart_read_ht);
 

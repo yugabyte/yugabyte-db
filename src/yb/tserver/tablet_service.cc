@@ -55,6 +55,8 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
@@ -2545,8 +2547,8 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) 
   RETURN_NOT_OK(scoped_read_operation);
 
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
-  auto client_schema = schema->CopyWithoutColumnIds();
-  auto iter = tablet->NewRowIterator(client_schema, {}, "", deadline);
+  dockv::ReaderProjection projection(*schema);
+  auto iter = tablet->NewRowIterator(projection, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
   qlexpr::QLTableRow value_map;
