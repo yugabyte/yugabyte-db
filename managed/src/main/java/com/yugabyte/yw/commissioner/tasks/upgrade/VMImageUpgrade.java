@@ -77,7 +77,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          Set<NodeDetails> nodeSet = fetchAllNodes(taskParams().upgradeOption);
+          Set<NodeDetails> nodeSet = fetchNodesForCluster();
+
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
 
