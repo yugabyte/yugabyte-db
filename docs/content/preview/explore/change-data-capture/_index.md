@@ -18,7 +18,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-overview/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/architecture/concepts.png" aria-hidden="true" />
         <div class="title">Overview</div>
       </div>
       <div class="body">
@@ -30,11 +30,11 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="debezium-connector-yugabytedb/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/json_documents.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/develop/ecosystem/debezium.png" aria-hidden="true" />
         <div class="title">Debezium connector</div>
       </div>
       <div class="body">
-        Open-source distributed platform used to capture the changes in a database.
+        Open-source distributed platform for capturing changes in a database.
       </div>
     </a>
   </div>
@@ -42,7 +42,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-get-started/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/index/quick_start.png" aria-hidden="true" />
         <div class="title">Get started</div>
       </div>
       <div class="body">
@@ -54,7 +54,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-tutorials/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/sample_apps.png" aria-hidden="true" />
         <div class="title">Tutorials</div>
       </div>
       <div class="body">
@@ -66,7 +66,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-configuration/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/deploy/enterprise/administer.png" aria-hidden="true" />
         <div class="title">Advanced configuration</div>
       </div>
       <div class="body">
@@ -78,7 +78,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-monitor/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
         <div class="title">Monitor</div>
       </div>
       <div class="body">
@@ -90,7 +90,7 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-reference/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/export_import.png" aria-hidden="true" />
         <div class="title">Reference</div>
       </div>
       <div class="body">
@@ -98,6 +98,5 @@ type: indexpage
       </div>
     </a>
   </div>
-
 
 </div>

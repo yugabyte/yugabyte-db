@@ -17,6 +17,6 @@ type: docs
 
 ## Important configuration settings
 
-## TServer configuration
+## YB-TServer configuration
 
-There are several GFlags you can use to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the yb-tserver reference page.
+There are several flags you can use to fine-tune YugabyteDB's CDC behavior. These flags are documented in the [Change data capture flags](../../../reference/configuration/yb-tserver/#change-data-capture-cdc-flags) section of the yb-tserver reference page.
