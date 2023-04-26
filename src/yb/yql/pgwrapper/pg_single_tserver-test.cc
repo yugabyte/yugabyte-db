@@ -11,6 +11,8 @@
 // under the License.
 //
 
+#include "yb/common/ybc_util.h"
+
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
@@ -18,12 +20,13 @@
 #include "yb/util/range.h"
 #include "yb/util/stopwatch.h"
 
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+
 
 DECLARE_bool(rocksdb_use_logging_iterator);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(ysql_enable_packed_row_for_colocated_table);
-DECLARE_uint64(ysql_prefetch_limit);
 
 namespace yb::pgwrapper {
 
@@ -105,7 +108,7 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ManyRowsInsert)) {
 class PgMiniBigPrefetchTest : public PgSingleTServerTest {
  public:
   void SetUp() override {
-    FLAGS_ysql_prefetch_limit = 20000000;
+    yb_fetch_row_limit = 20000000;
     PgSingleTServerTest::SetUp();
   }
 
@@ -227,7 +230,7 @@ TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
 class PgNoPrefetchTest : public PgSingleTServerTest {
  protected:
   void SetUp() override {
-    FLAGS_ysql_prefetch_limit = 1;
+    yb_fetch_row_limit = 1;
     PgSingleTServerTest::SetUp();
   }
 

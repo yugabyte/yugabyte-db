@@ -21,6 +21,7 @@
 
 #include "yb/client/yb_table_name.h"
 
+#include "yb/common/ybc_util.h"
 #include "yb/common/common_flags.h"
 #include "yb/common/pgsql_error.h"
 
@@ -1363,7 +1364,7 @@ class PgMiniTabletSplitTest : public PgMiniTest {
     FLAGS_heartbeat_interval_ms = 1000;
     FLAGS_tserver_heartbeat_metrics_interval_ms = 1000;
     FLAGS_TEST_inject_delay_between_prepare_ybctid_execute_batch_ybctid_ms = 4000;
-    FLAGS_ysql_prefetch_limit = 32;
+    yb_fetch_row_limit = 32;
     PgMiniTest::SetUp();
   }
 };

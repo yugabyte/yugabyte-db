@@ -29,6 +29,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
+#include "yb/common/ybc_util.h"
 
 #include "yb/gutil/casts.h"
 
@@ -235,7 +236,7 @@ void AddTargetColumn(LWPgsqlReadRequestPB* req, const PgColumn& column) {
 void SetupPaging(LWPgsqlReadRequestPB* req) {
   req->set_return_paging_state(true);
   req->set_is_forward_scan(true);
-  req->set_limit(FLAGS_ysql_prefetch_limit);
+  req->set_limit(yb_fetch_row_limit);
 }
 
 template<class PB>
