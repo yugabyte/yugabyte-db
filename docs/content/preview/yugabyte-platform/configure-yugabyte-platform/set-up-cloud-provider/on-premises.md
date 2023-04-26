@@ -65,51 +65,60 @@ type: docs
 
 </ul>
 
-You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main **Dashboard** prompts you to configure at least one cloud provider.
+You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB Anywhere. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider.
 
 ## Configure the on-premises provider
 
 Configuring the on-premises provider consists of a number of steps.
 
-### Complete the provider information
+To configure on-premises providers, navigate to **Configs > Infrastructure > On-Premises Datacenters**.
 
-You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, click either **Add Configuration** or **Edit Provider**, and then complete the fields of the **Provider Info** form shown in the following illustration:
+This lists all currently configured providers.
 
-![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-1.png)
+To create an on-premises provider, click **Create Config** to open the **OnPrem Provider Configuration** page.
 
-- In the **Provider Name** field, supply the provider name, which is an internal tag that helps with organizing your providers, so you know where you want to deploy your YugabyteDB universes.
+### Provider settings
 
-- In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
+Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-  If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
+Provider settings are organized in the following sections.
 
-- In the **SSH Port** field, provide the port number of SSH client connections.
+#### SSH Key Pairs
 
-- Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
+In the **SSH User** field, enter the name of the user that has SSH privileges on your instances. This is required because to provision on-premises nodes with YugabyteDB, YugabyteDB Anywhere needs SSH access to these nodes. Unless you plan to provision the database nodes manually, the user needs to have password-free sudo permissions to complete a few tasks.
 
-  If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
+If the SSH user requires a password for sudo access or the SSH user does not have sudo access, follow the steps described in [Manually provision nodes](#manually-provision-nodes).
 
-  - Preprovisioned `yugabyte:yugabyte` user and group.
-  - Sudo user requires a password.
-  - The SSH user is not a sudo user.
+In the **SSH Port** field, provide the port number of SSH client connections.
 
-- Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances.
+Use the **SSH Key** field to enter the full content of the private key available to the SSH user for gaining access via SSH into your instances.
 
-  Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
+Ensure that the SSH key is pasted correctly in the RSA format: you need to paste the SSH RSA PEM key entry including the RSA key header such as `-----BEGIN RSA PRIVATE KEY-----` and footer such as `-----END RSA PRIVATE KEY-----`.
 
-- Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
+#### Advanced
 
-- Optionally, you may enable **Advanced** and complete the following:
+Enable the **Manually Provision Nodes** field if you choose to manually set up your database nodes. Otherwise, YugabyteDB Anywhere will use the sudo user to set up YugabyteDB nodes. For manual provisioning, you would be prompted to run a Python script at a later stage or to run a set of commands on the database nodes.
 
-  - Use the **Desired Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
-  - Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
-  - Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
-  - The **Node Exporter User** field allows you to override the default Prometheus user. This is helpful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+If any of the following statements are applicable to your use case, you need to [provision the nodes manually](#provision-nodes-manually):
 
-- **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+- Preprovisioned `yugabyte:yugabyte` user and group.
+- Sudo user requires a password.
+- The SSH user is not a sudo user.
 
-  - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-  - Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+Use the **YB Nodes Home Directory** field to specify the home directory of the `yugabyte` user. The default value is `/home/yugabyte`.
+
+Enable **Install Node Exporter** if you want the node exporter installed. You can skip this step if you have node exporter already installed on the nodes. Ensure you have provided the correct port number for skipping the installation.
+
+The **Node Exporter User** field allows you to override the default Prometheus user. This is helpful when the user is preprovisioned on nodes (when the user creation is disabled). If overridden, the installer checks whether or not the user exists and creates the user if it does not exist.
+
+Use the **Node Exporter Port** field to specify the port number for the node exporter. The default value is 9300.
+
+**NTP Setup** lets you to customize the Network Time Protocol server, as follows:
+
+- Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
+- Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+
+Enable the **Air Gap Install** field if you want the installation to run in an air-gapped mode without expecting any internet access.
 
 ### Configure hardware for YugabyteDB nodes
 
@@ -377,13 +386,13 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
     sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
-    sudo adduser --shell /bin/bash prometheus # (also adds group “prometheus”)
+    sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
     sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
-    sudo su - prometheus (user session is now as user “prometheus”)
+    sudo su - prometheus (user session is now as user "prometheus")
     ```
 
 1. Run the following commands as user `prometheus`:
@@ -899,7 +908,7 @@ node-agent node unregister
 
 Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
 
-- `node-agent node unregister` is used for unregistersing the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
+- `node-agent node unregister` is used for un-registering the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
 - `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
 - `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
 - `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node. After the node agent and the node have been registered with YugabyteDB Anywhere, this command can be run on its own, if the result needs to be published to YugabyteDB Anywhere. For more information, see [Preflight check](#preflight-check).

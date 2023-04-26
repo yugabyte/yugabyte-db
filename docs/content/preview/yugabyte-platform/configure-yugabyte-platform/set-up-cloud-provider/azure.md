@@ -65,7 +65,7 @@ type: docs
 
 </ul>
 
-You can configure an Azure cloud provider for YugabyteDB clusters using YugabyteDB Anywhere.
+You can configure an Azure cloud provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page prompts to configure at least one provider.
 
 ## Prerequisites
 

@@ -66,7 +66,7 @@ type: docs
 
 </ul>
 
-You can configure Google Cloud Platform (GCP) for YugabyteDB clusters using YugabyteDB Anywhere. If no cloud providers are configured yet, the main Dashboard page prompts you to configure at least one cloud provider.
+You can configure Google Cloud Platform (GCP) for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured, the main Dashboard page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 

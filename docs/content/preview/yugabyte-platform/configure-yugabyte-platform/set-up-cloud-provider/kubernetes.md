@@ -66,7 +66,7 @@ type: docs
 
 </ul>
 
-This document describes how to configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured in YugabyteDB Anywhere yet, the main **Dashboard** page prompts you to configure at least one cloud provider.
+You can configure the Kubernetes provider for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured, the main Dashboard page prompts you to configure at least one cloud provider.
 
 ## Prerequisites
 
@@ -183,47 +183,55 @@ You can create a `kubeconfig` file for the previously created `yugabyte-platform
 
 3. Use this generated `kubeconfig` file as the `kubeconfig` in the YugabyteDB Anywhere Kubernetes provider configuration.
 
-## Select the Kubernetes service
+## Configure Kubernetes
 
-In the YugabyteDB Anywhere UI, navigate to **Configs > Cloud Provider Configuration > Managed Kubernetes Service** and select one of the Kubernetes service providers using the **Type** field, as per the following illustration:
+To configure Kubernetes providers, navigate to **Configs > Infrastructure > Managed Kubernetes Service**.
 
-![Kubernetes config](/images/ee/k8s-setup/k8s-configure-empty.png)
+This lists all currently configured providers.
 
-## Configure the cloud provider
+To create an Kubernetes provider, click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
 
-Continue configuring your Kubernetes provider as follows:
+### Provider settings
 
-1. Specify a meaningful name for your configuration.
-2. Choose one of the following ways to specify **Kube Config** for an availability zone:
+Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
+
+Provider settings are organized in the following sections.
+
+### Cloud Info
+
+1. Choose the **Kubernetes Provider Type**.
+1. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
+1. Use **Pull Secret** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
+1. Choose one of the following ways to specify **Kube Config** for an availability zone:
     - Specify at **provider level** in the provider form. If specified, this configuration file is used for all availability zones in all regions.
     - Specify at **zone level** in the region form. This is required for **multi-az** or **multi-region** deployments. If the zone is in a different Kubernetes cluster than YugabyteDB Anywhere, a zone-specific `kubeconfig` file needs to be passed.
-3. In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-4. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
-5. Use **Pull Secret File** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
+1. In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
 
-## Configure region and zones
+### Configure region and zones
 
-Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog shown in the following illustration: 
-
-![Add new region](/images/ee/k8s-setup/k8s-az-kubeconfig.png)
+Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog as follows:
 
 1. Use the **Region** field to select the region.
 
+1. Click **Add Zone** and complete the corresponding portion of the dialog. Notice that there are might be multiple zones.
+
 1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. `topology.kubernetes.io/zone` would place the pods in that zone.
+
+1. Use **Kube Config** to upload the configuration file. If this file is available at the provider level, you are not required to supply it. 
 
 1. Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
 
 1. Use the **Namespace** field to specify the namespace. If provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-1. Use **Kube Config** to upload the configuration file. If this file is available at the provider level, you are not required to supply it. 
-
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YugabyteDB Anywhere uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
-1. Click **Add Zone** and complete the corresponding portion of the dialog. Notice that there are might be multiple zones.
+1. Finally, click **Add Region**.
 
-1. Finally, click **Add Region**, and then click **Save** to save the configuration. If successful, you will be redirected to the table view of all configurations.
+## Create the configuration
 
-### Overrides
+Click **Create Provider Configuration** to save the configuration. If successful, you will be redirected to the table view of all configurations.
+
+## Overrides
 
 The following overrides are available:
 
@@ -477,6 +485,7 @@ If you plan to create multi-region YugabyteDB universes, you can set up [Multi-C
 The Kubernetes MCS API is currently in alpha, though there are various implementations of MCS which are [considered to be stable](https://github.com/kubernetes-sigs/mcs-api/issues/17#issuecomment-1309073682). To know more, see [API versioning](https://kubernetes.io/docs/reference/using-api/#api-versioning) in the Kubernetes documentation.
 
 MCS support in YugabyteDB Anywhere is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Keep in mind following caveats:
+
 - Universe metrics may not display correct metrics for all the pods.
 - xCluster replication needs an additional manual step to work on OpenShift MCS.
 
@@ -490,7 +499,7 @@ To enable MCS on your GKE clusters, see [Configuring multi-cluster Services](htt
 
 ### Prepare OpenShift clusters for MCS
 
-Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Kubernetes (RHACM) and its Submariner addon to enable MCS. At a very high level this involves following steps:
+Red Hat OpenShift Container Platform uses the Advanced Cluster Management for Kubernetes (RHACM) and its Submariner add-on to enable MCS. At a very high level this involves following steps:
 
 1. Create a management cluster and install RHACM on it. For details, see [Installing Red Hat Advanced Cluster Management for Kubernetes](https://access.redhat.com/documentation/en-us/red_hat_advanced_cluster_management_for_kubernetes/2.7/html/install/installing) in the Red Hat documentation.
 1. Provision the OpenShift clusters which will be connected together.  
@@ -515,14 +524,15 @@ spec:
         ISTIO_META_DNS_AUTO_ALLOCATE: "true"
   # rest of the configuration…
 ```
+
 Refer to [Multi-Region YugabyteDB Deployments on Kubernetes with Istio](https://www.yugabyte.com/blog/multi-region-yugabytedb-deployments-on-kubernetes-with-istio/) for a step-by-step guide and an explanation of the options being used.
 
 ### Configure the cloud provider for MCS
 
 Once you have the cluster set up, follow the instructions in [Configure the Kubernetes cloud provider](#), and refer to this section for region and zone configuration required for multi-region universes.
 
-
 #### Configure region and zone for GKE MCS
+
 Follow the steps in [Configure region and zones](#configure-region-and-zones) and set values for all the zones from your Kubernetes clusters connected via GKE MCS as follows:
 
 1. Specify fields such as Region, Zone, and so on as you would normally.
@@ -530,17 +540,20 @@ Follow the steps in [Configure region and zones](#configure-region-and-zones) an
 1. Upload the correct **Kube Config** of the cluster.
 1. Set the **Pod Address Template** to `{pod_name}.<cluster membership name>.{service_name}.{namespace}.svc.{cluster_domain}`, where the `<cluster membership name>` is the membership name of the Kubernetes cluster set during the fleet setup.
 1. Set the **Overrides** as follows:
+
    ```yaml
    multicluster:
      createServiceExports: true
      kubernetesClusterId: "<cluster membership name>"
      mcsApiVersion: "net.gke.io/v1"
    ```
+
 For example, if your cluster membership name is `yb-asia-south1`, then the **Add new region** screen would look as follows:
 
 ![Add new region screen of YugabyteDB Anywhere with GKE MCS](/images/ee/k8s-setup/k8s-add-region-gke-mcs.png)
 
 #### Configure region and zones for OpenShift MCS
+
 Follow the instructions in [Configure the OpenShift cloud provider](../openshift/) and [Create a provider in YugabyteDB Anywhere](../openshift/#create-a-provider-in-yugabytedb-anywhere). For all the zones from your OpenShift clusters connected via MCS (Submariner), add a region as follows:
 
 1. Specify fields such as Region, Zone, and so on as you would normally.
@@ -548,29 +561,34 @@ Follow the instructions in [Configure the OpenShift cloud provider](../openshift
 1. Upload the correct **Kube Config** of the cluster.
 1. Set the **Pod Address Template** to `{pod_name}.<cluster name>.{service_name}.{namespace}.svc.{cluster_domain}`, where the `<cluster name>` is the name of the OpenShift cluster set during the cluster set creation.
 1. Set the **Overrides** as follows:
+
    ```yaml
    multicluster:
      createServiceExports: true
      kubernetesClusterId: "<cluster name>"
    ```
+
 For example, if your cluster name is `yb-asia-south1`, then the values will be as follows:
+
 - **Pod Address Template**  
   `{pod_name}.yb-asia-south1.{service_name}.{namespace}.svc.{cluster_domain}`
 - **Overrides**
+
   ```yaml
   multicluster:
     createServiceExports: true
     kubernetesClusterId: "yb-asia-south1"
   ```
 
-
 #### Configure region and zones for Istio
+
 Follow the steps in [Configure region and zones](#configure-region-and-zones) and set values for all the zones from your Kubernetes clusters connected via Istio as follows.
 
 1. Specify fields such as Region, Zone, and so on as you would normally.
 1. Upload the correct **Kube Config** of the cluster.
 1. Set the **Pod Address Template** to `{pod_name}.{namespace}.svc.{cluster_domain}`.
 1. Set the **Overrides** as follows:
+
    ```yaml
    istioCompatibility:
      enabled: true
