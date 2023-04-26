@@ -7743,5 +7743,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSnapshotNoData)) {
   ASSERT_GT(change_resp.cdc_sdk_proto_records_size(), 1000);
 }
 
+TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestAddManyColocatedTablesOnNamesapceWithStream)) {
+  ASSERT_OK(SetUpWithParams(3 /* replication_factor */, 2 /* num_masters */, true /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+  CDCStreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+
+  for (int i = 1; i <= 400; i++) {
+    std::string table_name = "test" + std::to_string(i);
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(id1 int primary key, value_2 int, value_3 int);", table_name));
+    LOG(INFO) << "Done create table: " << table_name;
+  }
+}
+
 }  // namespace cdc
 }  // namespace yb
