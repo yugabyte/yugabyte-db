@@ -23,7 +23,7 @@ export const KMSField: FC<KMSFieldProps> = ({ disabled, label, activeKMS }) => {
   const { data: kmsConfigs = [], isLoading } = useQuery(QUERY_KEY.getKMSConfigs, api.getKMSConfigs);
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
-    setValue(KMS_FIELD_NAME, option?.metadata?.configUUID, {
+    setValue(KMS_FIELD_NAME, option?.metadata?.configUUID ?? null, {
       shouldValidate: true
     });
   };
