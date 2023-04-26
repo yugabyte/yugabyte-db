@@ -10,7 +10,7 @@ import { Cancel, Check } from '@material-ui/icons';
 
 import { NTPSetupType, NTPSetupTypeLabel, ProviderCode } from '../../constants';
 import { YBButton } from '../../../../../redesign/components';
-import { getNtpSetupType } from '../../utils';
+import { getLatestAccessKey, getNtpSetupType } from '../../utils';
 
 import { YBProvider } from '../../types';
 
@@ -31,6 +31,7 @@ export const AZUPropertiesOverview = ({
     return null;
   }
   const ntpSetupType = getNtpSetupType(providerConfig);
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   return (
     <div className={styles.providerPropertiesContainer}>
       <div className={styles.propertiesRow}>
@@ -48,9 +49,7 @@ export const AZUPropertiesOverview = ({
         </div>
         <div>
           <Typography variant="body1">SSH Key</Typography>
-          <Typography variant="body2">
-            {providerConfig.allAccessKeys?.[0]?.keyInfo.keyPairName}
-          </Typography>
+          <Typography variant="body2">{latestAccessKey?.keyInfo.keyPairName}</Typography>
         </div>
       </div>
       <div className={styles.propertiesRow}>
