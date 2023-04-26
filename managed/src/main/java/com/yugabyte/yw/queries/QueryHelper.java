@@ -42,11 +42,14 @@ import play.libs.ws.WSClient;
 @Singleton
 public class QueryHelper {
   private static final String RESET_QUERY_SQL = "SELECT pg_stat_statements_reset()";
-  private static final String SLOW_QUERY_STATS_UNLIMITED_SQL =
+  private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_1 =
       "SELECT a.rolname, t.datname, t.queryid, "
           + "t.query, t.calls, t.total_time, t.rows, t.min_time, t.max_time, t.mean_time, t.stddev_time, "
-          + "t.local_blks_hit, t.local_blks_written FROM pg_authid a JOIN (SELECT * FROM "
+          + "t.local_blks_hit, t.local_blks_written ";
+  private static final String SLOW_QUERY_STATS_UNLIMITED_SQL_2 =
+      "FROM pg_authid a JOIN (SELECT * FROM "
           + "pg_stat_statements s JOIN pg_database d ON s.dbid = d.oid) t ON a.oid = t.userid";
+  private static final String HISTOGRAM_QUERY = ", t.yb_latency_histogram ";
   public static final String QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY =
       "yb.query_stats.slow_queries.order_by";
   public static final String QUERY_STATS_SLOW_QUERIES_LIMIT_KEY =
@@ -117,6 +120,9 @@ public class QueryHelper {
       throw new PlatformServiceException(
           SERVICE_UNAVAILABLE, "Not enough room to queue the requested tasks");
     }
+    Boolean histogramSupport =
+        universe.getVersions().stream()
+            .allMatch(v -> Util.compareYbVersions(v, "2.19.1.0-b81") >= 0);
     int ysqlErrorCount = 0;
     int ycqlErrorCount = 0;
     ObjectNode responseJson = Json.newObject();
@@ -151,7 +157,7 @@ public class QueryHelper {
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
-                    ysqlQuery.query = slowQuerySqlWithLimit(config, universe);
+                    ysqlQuery.query = slowQuerySqlWithLimit(config, universe, histogramSupport);
                     ysqlQuery.db_name = "postgres";
                     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
                   };
@@ -227,7 +233,7 @@ public class QueryHelper {
             for (JsonNode queryObject : ysqlResponse) {
               String queryID = queryObject.get("queryid").asText();
               String queryStatement = queryObject.get("query").asText();
-              if (!isExcluded(queryStatement, config)) {
+              if (!isExcluded(queryStatement, config, histogramSupport)) {
                 if (queryMap.containsKey(queryID)) {
                   // Calculate new query stats
                   ObjectNode previousQueryObj = (ObjectNode) queryMap.get(queryID);
@@ -274,6 +280,7 @@ public class QueryHelper {
                           (n_a * (Math.pow(S_a, 2) + Math.pow(X_a - averageTime, 2))
                                   + n_b * (Math.pow(S_b, 2) + Math.pow(X_b - averageTime, 2)))
                               / totalCalls);
+
                   previousQueryObj.put("total_time", totalTime);
                   previousQueryObj.put("calls", totalCalls);
                   previousQueryObj.put("rows", rows);
@@ -282,11 +289,40 @@ public class QueryHelper {
                   previousQueryObj.put("mean_time", averageTime);
                   previousQueryObj.put("local_blks_written", tmpTables);
                   previousQueryObj.put("stddev_time", stdDevTime);
+
+                  if (histogramSupport) {
+                    Histogram histogram_a =
+                        new Histogram(
+                            Json.fromJson(
+                                previousQueryObj.get("yb_latency_histogram"), List.class));
+                    Histogram histogram_b =
+                        new Histogram(
+                            Json.fromJson(queryObject.get("yb_latency_histogram"), List.class));
+                    histogram_a.merge(histogram_b);
+                    previousQueryObj.set("yb_latency_histogram", histogram_a.getArrayNode());
+                  }
+
                 } else {
                   queryMap.put(queryID, queryObject);
                 }
               }
             }
+
+            if (histogramSupport) {
+              queryMap.forEach(
+                  (queryId, queryObj) -> {
+                    ObjectNode objNode = (ObjectNode) queryObj;
+                    Histogram histogram =
+                        new Histogram(
+                            Json.fromJson(objNode.get("yb_latency_histogram"), List.class));
+                    objNode.put("P25", histogram.getPercentile(25));
+                    objNode.put("P50", histogram.getPercentile(50));
+                    objNode.put("P90", histogram.getPercentile(90));
+                    objNode.put("P95", histogram.getPercentile(95));
+                    objNode.put("P99", histogram.getPercentile(99));
+                  });
+            }
+
             ArrayNode queryArr = Json.newArray();
             ysqlJson.set("queries", queryArr.addAll(queryMap.values()));
           } else {
@@ -334,7 +370,7 @@ public class QueryHelper {
   }
 
   @VisibleForTesting
-  public String slowQuerySqlWithLimit(Config config, Universe universe) {
+  public String slowQuerySqlWithLimit(Config config, Universe universe, Boolean histogramSupport) {
     String orderBy = config.getString(QUERY_STATS_SLOW_QUERIES_ORDER_BY_KEY);
     int limit = config.getInt(QUERY_STATS_SLOW_QUERIES_LIMIT_KEY);
     String setEnableNestloopOffStatementOptional =
@@ -343,7 +379,12 @@ public class QueryHelper {
             : "";
     return String.format(
         "%s%s ORDER BY t.%s DESC LIMIT %d",
-        setEnableNestloopOffStatementOptional, SLOW_QUERY_STATS_UNLIMITED_SQL, orderBy, limit);
+        setEnableNestloopOffStatementOptional,
+        SLOW_QUERY_STATS_UNLIMITED_SQL_1
+            + (histogramSupport ? HISTOGRAM_QUERY : "")
+            + SLOW_QUERY_STATS_UNLIMITED_SQL_2,
+        orderBy,
+        limit);
   }
 
   public JsonNode listDatabaseNames(Universe universe) {
@@ -354,11 +395,14 @@ public class QueryHelper {
     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, randomTServer);
   }
 
-  private boolean isExcluded(String queryStatement, Config config) {
+  private boolean isExcluded(String queryStatement, Config config, Boolean histogramSupport) {
     final List<String> excludedQueries = config.getStringList("yb.query_stats.excluded_queries");
     final List<String> excludedPerfAdvisorQueries = Utils.getScriptQueryStatements();
     return excludedQueries.contains(queryStatement)
-        || queryStatement.contains(SLOW_QUERY_STATS_UNLIMITED_SQL)
+        || queryStatement.contains(
+            SLOW_QUERY_STATS_UNLIMITED_SQL_1
+                + (histogramSupport ? HISTOGRAM_QUERY : "")
+                + SLOW_QUERY_STATS_UNLIMITED_SQL_2)
         || queryStatement.contains(LIST_USER_DATABASES_SQL)
         || excludedPerfAdvisorQueries.contains(queryStatement);
   }
