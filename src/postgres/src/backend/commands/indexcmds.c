@@ -1272,10 +1272,10 @@ DefineIndex(Oid relationId,
 				child_save_nestlevel = NewGUCNestLevel();
 
 				childidxs = RelationGetIndexList(childrel);
-				attmap =
-					convert_tuples_by_name_map(RelationGetDescr(childrel),
-											   parentDesc,
-											   gettext_noop("could not convert row type"));
+				attmap = convert_tuples_by_name_map(
+					RelationGetDescr(childrel), parentDesc,
+					gettext_noop("could not convert row type"),
+					false /* yb_ignore_type_mismatch */);
 				maplen = parentDesc->natts;
 
 

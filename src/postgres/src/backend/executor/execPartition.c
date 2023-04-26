@@ -443,10 +443,10 @@ ExecInitPartitionInfo(ModifyTableState *mtstate,
 		/*
 		 * Convert Vars in it to contain this partition's attribute numbers.
 		 */
-		part_attnos =
-			convert_tuples_by_name_map(RelationGetDescr(partrel),
-									   RelationGetDescr(firstResultRel),
-									   gettext_noop("could not convert row type"));
+		part_attnos = convert_tuples_by_name_map(
+			RelationGetDescr(partrel), RelationGetDescr(firstResultRel),
+			gettext_noop("could not convert row type"),
+			false /* yb_ignore_type_mismatch */);
 		wcoList = (List *)
 			map_variable_attnos((Node *) wcoList,
 								firstVarno, 0,
@@ -502,10 +502,10 @@ ExecInitPartitionInfo(ModifyTableState *mtstate,
 		 * Convert Vars in it to contain this partition's attribute numbers.
 		 */
 		if (part_attnos == NULL)
-			part_attnos =
-				convert_tuples_by_name_map(RelationGetDescr(partrel),
-										   RelationGetDescr(firstResultRel),
-										   gettext_noop("could not convert row type"));
+			part_attnos = convert_tuples_by_name_map(
+				RelationGetDescr(partrel), RelationGetDescr(firstResultRel),
+				gettext_noop("could not convert row type"),
+				false /* yb_ignore_type_mismatch */);
 		returningList = (List *)
 			map_variable_attnos((Node *) returningList,
 								firstVarno, 0,
@@ -617,10 +617,11 @@ ExecInitPartitionInfo(ModifyTableState *mtstate,
 				 */
 				onconflset = copyObject(node->onConflictSet);
 				if (part_attnos == NULL)
-					part_attnos =
-						convert_tuples_by_name_map(RelationGetDescr(partrel),
-												   RelationGetDescr(firstResultRel),
-												   gettext_noop("could not convert row type"));
+					part_attnos = convert_tuples_by_name_map(
+						RelationGetDescr(partrel),
+						RelationGetDescr(firstResultRel),
+						gettext_noop("could not convert row type"),
+						false /* yb_ignore_type_mismatch */);
 				onconflset = (List *)
 					map_variable_attnos((Node *) onconflset,
 										INNER_VAR, 0,
