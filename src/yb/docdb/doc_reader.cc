@@ -18,7 +18,7 @@
 
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/transaction.h"
 
@@ -908,7 +908,7 @@ class DocDBTableReader::FlatGetHelper :
   using Base = DocDBTableReader::GetHelperBase</* is_flat_doc= */ true, /* ysql= */ true>;
 
   FlatGetHelper(
-      DocDBTableReader* reader, const Slice& root_doc_key, QLTableRow* result)
+      DocDBTableReader* reader, const Slice& root_doc_key, qlexpr::QLTableRow* result)
       : Base(reader, root_doc_key), result_(result) {
     row_expiration_ = reader_.table_expiration_;
     root_key_entry_ = &row_key_;
@@ -1002,7 +1002,7 @@ class DocDBTableReader::FlatGetHelper :
   }
 
   // Owned by the DocDBTableReader::FlatGetHelper user.
-  QLTableRow* result_;
+  qlexpr::QLTableRow* result_;
 
   dockv::KeyBytes row_key_;
   LazyDocHybridTime row_write_time_;
@@ -1014,7 +1014,8 @@ Result<DocReaderResult> DocDBTableReader::Get(const Slice& root_doc_key, SubDocu
   return helper.Run();
 }
 
-Result<DocReaderResult> DocDBTableReader::GetFlat(const Slice& root_doc_key, QLTableRow* result) {
+Result<DocReaderResult> DocDBTableReader::GetFlat(
+    const Slice& root_doc_key, qlexpr::QLTableRow* result) {
   FlatGetHelper helper(this, root_doc_key, result);
   return helper.Run();
 }

@@ -15,7 +15,7 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.h"
@@ -350,7 +350,7 @@ void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValu
   ASSERT_OK(iter);
 
   int count = 0;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     ++count;
   }

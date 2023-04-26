@@ -11,12 +11,12 @@
 // under the License.
 //
 
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include <boost/algorithm/string/replace.hpp>
 
 using std::string;
 
-namespace yb {
+namespace yb::qlexpr {
 
 // Prefix for various kinds of identifiers.
 // Currently we only care about table::columns and jsonb::attributes.
@@ -50,4 +50,4 @@ string YcqlName::ReplacePattern(const string& ql_name, const string& pattern, co
   return name;
 }
 
-}  // namespace yb
+}  // namespace yb::qlexpr

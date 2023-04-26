@@ -32,7 +32,7 @@
 
 #include <vector>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
@@ -179,7 +179,8 @@ class BootstrapTest : public LogTestBase {
 
     auto table_info = std::make_shared<TableInfo>(
         "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
-        schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition.first);
+        schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+        partition.first);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,

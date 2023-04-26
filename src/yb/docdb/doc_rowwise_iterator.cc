@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
@@ -179,9 +179,9 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) co
 }
 
 Result<bool> DocRowwiseIterator::DoFetchNext(
-    QLTableRow* table_row,
+    qlexpr::QLTableRow* table_row,
     const Schema* projection,
-    QLTableRow* static_row,
+    qlexpr::QLTableRow* static_row,
     const Schema* static_projection) {
   VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", done_: "
           << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
@@ -351,7 +351,7 @@ HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
 }
 
 Status DocRowwiseIterator::FillRow(
-    QLTableRow* table_row, const Schema* projection_opt) {
+    qlexpr::QLTableRow* table_row, const Schema* projection_opt) {
   VLOG(4) << __PRETTY_FUNCTION__;
 
   // Copy required key columns to table_row.
@@ -369,7 +369,7 @@ Status DocRowwiseIterator::FillRow(
     const auto ql_type = projection.column(i).type();
     const auto* column_value = row_->GetChild(dockv::KeyEntryValue::MakeColumnId(column_id));
     if (column_value != nullptr) {
-      QLTableColumn& column = table_row->AllocColumn(column_id);
+      auto& column = table_row->AllocColumn(column_id);
       column_value->ToQLValuePB(ql_type, &column.value);
       column.ttl_seconds = column_value->GetTtl();
       if (column_value->IsWriteTimeSet()) {

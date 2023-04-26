@@ -21,7 +21,7 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/result.h"
@@ -102,7 +102,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
     const size_t prefix_length)
     : PgsqlScanSpec(
           schema, is_forward_scan, query_id,
-          condition ? std::make_unique<dockv::QLScanRange>(schema, *condition) : nullptr,
+          condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
           prefix_length, where_expr),
       hashed_components_(&hashed_components.get()),
       range_components_(&range_components.get()),
@@ -118,7 +118,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
   }
 
   if (!hashed_components_->empty() && schema.num_hash_key_columns() > 0) {
-    options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
+    options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     options_col_ids_.reserve(schema.num_dockey_components());
 
     // should come here if we are not batching hash keys as a part of IN condition
@@ -149,7 +149,7 @@ DocPgsqlScanSpec::DocPgsqlScanSpec(
       (rangebounds->has_in_range_options() || rangebounds->has_in_hash_options())) {
     DCHECK(condition);
     if (options_ == nullptr)
-      options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
+      options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     InitOptions(*condition);
   }
 

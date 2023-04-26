@@ -25,7 +25,7 @@
 #include "yb/client/yb_op.h"
 
 #include "yb/common/schema.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/wire_protocol.h"
 
@@ -739,7 +739,7 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
     const SchemaPtr schema = tablet->metadata()->schema();
     auto client_schema = schema->CopyWithoutColumnIds();
     auto iter = VERIFY_RESULT(tablet->NewRowIterator(client_schema));
-    QLTableRow row;
+    qlexpr::QLTableRow row;
     std::unordered_set<size_t> tablet_keys;
     while (VERIFY_RESULT(iter->FetchNext(&row))) {
       auto key_opt = row.GetValue(key_column_id);

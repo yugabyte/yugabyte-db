@@ -43,7 +43,7 @@
 
 #include "yb/client/table.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 

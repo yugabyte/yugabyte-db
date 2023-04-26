@@ -30,6 +30,8 @@
 
 #include "yb/gutil/strings/stringpiece.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/util/format.h"
 #include "yb/util/result.h"
 
@@ -128,11 +130,11 @@ inline std::string GetOriginalReplicationUniverseId(const std::string& universe_
   return clean_universe_id.ToString();
 }
 
-Result<std::optional<QLRow>> FetchOptionalCdcStreamInfo(
+Result<std::optional<qlexpr::QLRow>> FetchOptionalCdcStreamInfo(
     client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
     const CDCStreamId& stream_id, const std::vector<std::string>& columns);
 
-Result<QLRow> FetchCdcStreamInfo(
+Result<qlexpr::QLRow> FetchCdcStreamInfo(
     client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
     const CDCStreamId& stream_id, const std::vector<std::string>& columns);
 

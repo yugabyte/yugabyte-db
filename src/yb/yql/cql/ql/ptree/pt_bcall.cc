@@ -68,7 +68,7 @@ void PTBcall::CollectReferencedIndexColnames(MCSet<string> *col_names) const {
   }
 }
 
-string PTBcall::QLName(QLNameOption option) const {
+string PTBcall::QLName(qlexpr::QLNameOption option) const {
   // cql_cast() is displayed as "cast(<col> as <type>)".
   if (strcmp(name_->c_str(), bfql::kCqlCastFuncName) == 0) {
     CHECK_GE(args_->size(), 2);

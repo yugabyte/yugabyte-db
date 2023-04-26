@@ -206,7 +206,7 @@ class RaftConsensusITest : public TabletServerIntegrationTestBase {
     }
 
     Schema schema(client::MakeColumnSchemasFromColDesc(rsrow->rscol_descs()), 0);
-    QLRowBlock result(schema);
+    qlexpr::QLRowBlock result(schema);
     auto data_buffer = ASSERT_RESULT(rpc.ExtractSidecar(0));
     auto data = data_buffer.AsSlice();
     if (!data.empty()) {

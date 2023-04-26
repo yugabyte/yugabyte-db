@@ -75,7 +75,6 @@ set(CLIENT_SRCS
 
 set(CLIENT_LIBS
   yb_common
-  yb_ql_common
   master_proto
   master_rpc
   master_util
@@ -85,6 +84,7 @@ set(CLIENT_LIBS
   pg_auto_analyze_service_proto
   test_echo_service_proto
   tserver_util
+  yb_ql_expr
   yb_util
   gutil
   yrpc

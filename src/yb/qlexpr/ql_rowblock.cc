@@ -13,18 +13,18 @@
 //
 // This file contains the classes that represent a QL row and a row block.
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/bfql/bfql.h"
 
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_serialization.h"
+#include "yb/qlexpr/ql_serialization.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/util/status_log.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 using std::shared_ptr;
 using std::string;
@@ -217,4 +217,13 @@ RefCntBuffer QLRowBlock::ZeroRowsData(QLClient client) {
   return RefCntBuffer(pointer_cast<char*>(&zero), sizeof(zero)); // Encode 32-bit 0 length.
 }
 
-} // namespace yb
+std::unique_ptr<QLRowBlock> CreateRowBlock(QLClient client, const Schema& schema, Slice data) {
+  auto rowblock = std::make_unique<QLRowBlock>(schema);
+  if (!data.empty()) {
+    // TODO: a better way to handle errors here?
+    CHECK_OK(rowblock->Deserialize(client, &data));
+  }
+  return rowblock;
+}
+
+}  // namespace yb::qlexpr

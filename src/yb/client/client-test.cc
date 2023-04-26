@@ -2325,7 +2325,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
     auto tserver_proxy = std::make_unique<tserver::TabletServerServiceProxy>(
         &proxy_cache, HostPortFromPB(ts_info.private_rpc_addresses(0)));
 
-    std::unique_ptr<QLRowBlock> row_block;
+    std::unique_ptr<qlexpr::QLRowBlock> row_block;
     ASSERT_OK(WaitFor([&]() -> bool {
       // Setup read request.
       tserver::ReadRequestPB req;
@@ -2364,7 +2364,7 @@ TEST_F(ClientTest, TestReadFromFollower) {
 
     std::vector<bool> seen_key(row_block->row_count());
     for (size_t i = 0; i < row_block->row_count(); i++) {
-      const QLRow& row = row_block->row(i);
+      const auto& row = row_block->row(i);
       auto key = row.column(0).int32_value();
       ASSERT_LT(key, seen_key.size());
       ASSERT_FALSE(seen_key[key]);

@@ -2,17 +2,17 @@
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/common/jsonb.h"
 #include "yb/common/pgsql_protocol.messages.h"
-#include "yb/common/ql_bfunc.h"
+#include "yb/qlexpr/ql_bfunc.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/util/result.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 namespace {
 
@@ -1024,4 +1024,4 @@ std::string QLTableColumn::ToString() const {
                                                         std::to_string(write_time));
 }
 
-} // namespace yb
+} // namespace yb::qlexpr

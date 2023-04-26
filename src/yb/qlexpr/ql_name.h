@@ -17,7 +17,7 @@
 
 #include <string>
 
-namespace yb {
+namespace yb::qlexpr {
 
 enum class QLNameOption : int8_t {
   // Read names that were enterred by users.
@@ -46,4 +46,4 @@ class YcqlName {
                                     const std::string& str);
 };
 
-} // namespace yb
+}  // namespace yb::qlexpr

@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/pgsql_protocol.pb.h"
 #include "yb/common/schema.h"
 #include "yb/util/status.h"
@@ -81,8 +81,8 @@ class DocPgExprExecutor {
   // converted to DocDB values and written into the next element of the results vector. This is a
   // caller's responsibility to track target expressions added to the executor, provide sufficiently
   // long results vector and match the results.
-  Status Exec(const QLTableRow& table_row,
-              std::vector<QLExprResult>* results,
+  Status Exec(const qlexpr::QLTableRow& table_row,
+              std::vector<qlexpr::QLExprResult>* results,
               bool* match);
 
  private:

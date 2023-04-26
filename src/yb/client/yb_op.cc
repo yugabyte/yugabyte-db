@@ -39,7 +39,6 @@
 #include "yb/client/table.h"
 
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/pgsql_protocol.messages.h"
@@ -49,12 +48,15 @@
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
 
-#include "yb/dockv/doc_scanspec_util.h"
 #include "yb/dockv/primitive_value_util.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/primitive_value.h"
-#include "yb/dockv/ql_scanspec.h"
+
+#include "yb/qlexpr/doc_scanspec_util.h"
+#include "yb/qlexpr/ql_expr_util.h"
+#include "yb/qlexpr/ql_rowblock.h"
+#include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/rpc/rpc_controller.h"
 
@@ -454,12 +456,12 @@ Status DoGetRangePartitionBounds(const Schema& schema,
   const auto& condition_expr = request.condition_expr();
   if (condition_expr.has_condition() &&
       implicit_cast<size_t>(range_cols.size()) < schema.num_range_key_columns()) {
-    auto prefixed_range_components = VERIFY_RESULT(dockv::InitKeyColumnPrimitiveValues(
+    auto prefixed_range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
         range_cols, schema, schema.num_hash_key_columns()));
-    dockv::QLScanRange scan_range(schema, condition_expr.condition());
-    *lower_bound = dockv::GetRangeKeyScanSpec(
+    qlexpr::QLScanRange scan_range(schema, condition_expr.condition());
+    *lower_bound = qlexpr::GetRangeKeyScanSpec(
         schema, &prefixed_range_components, &scan_range, nullptr, true /* lower_bound */);
-    *upper_bound = dockv::GetRangeKeyScanSpec(
+    *upper_bound = qlexpr::GetRangeKeyScanSpec(
         schema, &prefixed_range_components, &scan_range, nullptr, false /* upper_bound */);
   } else if (!range_cols.empty()) {
     *lower_bound = VERIFY_RESULT(GetRangeComponents(schema, range_cols, true));
@@ -884,9 +886,9 @@ std::vector<ColumnSchema> YBqlReadOp::MakeColumnSchemasFromRequest() const {
   return MakeColumnSchemasFromColDesc(request().rsrow_desc().rscol_descs());
 }
 
-Result<QLRowBlock> YBqlReadOp::MakeRowBlock() const {
+Result<qlexpr::QLRowBlock> YBqlReadOp::MakeRowBlock() const {
   Schema schema(MakeColumnSchemasFromRequest(), 0);
-  QLRowBlock result(schema);
+  qlexpr::QLRowBlock result(schema);
   auto data = rows_data_.AsSlice();
   if (!data.empty()) {
     RETURN_NOT_OK(result.Deserialize(request().client(), &data));
