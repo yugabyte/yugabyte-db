@@ -39,7 +39,7 @@
 #include <boost/bimap.hpp>
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
@@ -633,7 +633,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   TabletInfoPtr GetColocatedUserTablet() const;
 
   // Get info of the specified index.
-  IndexInfo GetIndexInfo(const TableId& index_id) const;
+  qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
 
   // Returns true if all tablets of the table are deleted.
   bool AreAllTabletsDeleted() const;

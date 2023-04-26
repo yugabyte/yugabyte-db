@@ -21,7 +21,7 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 

@@ -27,13 +27,16 @@
 #include "yb/common/value.pb.h"
 
 #include "yb/dockv/dockv_fwd.h"
+
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/util/col_group.h"
 
 #include "yb/rocksdb/options.h"
 
-namespace yb::dockv {
+namespace yb::qlexpr {
 
-using Option = KeyEntryValue;            // an option in an IN/EQ clause
+using Option = dockv::KeyEntryValue;            // an option in an IN/EQ clause
 using OptionList = std::vector<Option>;  // all the options in an IN/EQ clause
 
 // A class to determine the lower/upper-bound range components of a QL scan from its WHERE
@@ -188,8 +191,8 @@ class YQLScanSpec {
   const QLScanRange* range_bounds() const { return range_bounds_.get(); }
 
   // Return the inclusive lower and upper bounds of the scan.
-  Result<KeyBytes> LowerBound() const;
-  Result<KeyBytes> UpperBound() const;
+  Result<dockv::KeyBytes> LowerBound() const;
+  Result<dockv::KeyBytes> UpperBound() const;
 
   // Used by distinct operator, default value is 0.
   size_t prefix_length() const { return prefix_length_; }
@@ -208,10 +211,10 @@ class YQLScanSpec {
 
  private:
   // Return inclusive lower/upper range doc key considering the start_doc_key.
-  virtual Result<KeyBytes> Bound(const bool lower_bound) const = 0;
+  virtual Result<dockv::KeyBytes> Bound(const bool lower_bound) const = 0;
 
   // Returns the lower/upper range components of the key.
-  virtual KeyEntryValues range_components(
+  virtual dockv::KeyEntryValues range_components(
       const bool lower_bound,
       std::vector<bool>* inclusivities = nullptr,
       bool use_strictness = true) const = 0;
@@ -302,4 +305,4 @@ class PgsqlScanSpec : public YQLScanSpec {
   QLExprExecutorPtr executor_;
 };
 
-}  // namespace yb::dockv
+}  // namespace yb::qlexpr

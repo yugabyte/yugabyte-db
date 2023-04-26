@@ -41,7 +41,7 @@
 
 #include "yb/common/common_net.pb.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/transaction.h"
 
 #include "yb/master/master_fwd.h"

@@ -32,7 +32,9 @@
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids_types.h"
 
-namespace yb {
+#include "yb/qlexpr/qlexpr_fwd.h"
+
+namespace yb::qlexpr {
 
 // A class to maintain the information of an index.
 class IndexInfo {
@@ -174,4 +176,4 @@ class IndexMap : public std::unordered_map<TableId, IndexInfo> {
   static bool TEST_Equals(const IndexMap& lhs, const IndexMap& rhs);
 };
 
-}  // namespace yb
+}  // namespace yb::qlexpr

@@ -122,7 +122,7 @@ class BulkLoadTask : public Runnable {
   Status InsertRow(const string &row,
                    const Schema &schema,
                    uint32_t schema_version,
-                   const IndexMap& index_map,
+                   const qlexpr::IndexMap& index_map,
                    BulkLoadDocDBUtil *const db_fixture,
                    docdb::DocWriteBatch *const doc_write_batch,
                    YBPartitionGenerator *const partition_generator);
@@ -260,7 +260,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
                                uint32_t schema_version,
-                               const IndexMap& index_map,
+                               const qlexpr::IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
                                YBPartitionGenerator *const partition_generator) {

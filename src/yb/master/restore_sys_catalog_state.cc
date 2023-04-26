@@ -15,11 +15,11 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/pg_types.h"
 
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/docdb/consensus_frontier.h"
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
@@ -63,7 +63,7 @@ Status ApplyWriteRequest(
       kLogPrefix, TableType::YQL_TABLE_TYPE, schema, write_request.schema_version());
   docdb::DocOperationApplyData apply_data{
       .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
-  IndexMap index_map;
+  qlexpr::IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, write_request.schema_version(), doc_read_context, index_map, nullptr,
       TransactionOperationContext());

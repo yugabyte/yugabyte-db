@@ -11,7 +11,7 @@
 // under the License.
 //
 #include "yb/dockv/partition.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/master/catalog_manager_util.h"
 

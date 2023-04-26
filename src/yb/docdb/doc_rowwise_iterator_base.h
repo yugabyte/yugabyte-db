@@ -22,7 +22,7 @@
 #include "yb/docdb/docdb_rocksdb_util.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
@@ -80,7 +80,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
-  Status Init(const dockv::YQLScanSpec& spec);
+  Status Init(const qlexpr::YQLScanSpec& spec);
 
   const Schema& schema() const override {
     // Note: this is the schema only for the columns in the projection, not all columns.
@@ -100,7 +100,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void SeekTuple(const Slice& tuple_id) override;
 
   // Returns true if tuple was fetched, false otherwise.
-  Result<bool> FetchTuple(const Slice& tuple_id, QLTableRow* row) override;
+  Result<bool> FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
@@ -127,7 +127,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status InitIterKey(const Slice& key, bool full_row);
 
   // Parse the row_key_ and copy key required key columns to row.
-  Status CopyKeyColumnsToQLTableRow(QLTableRow* row);
+  Status CopyKeyColumnsToQLTableRow(qlexpr::QLTableRow* row);
 
   Result<DocHybridTime> GetTableTombstoneTime(const Slice& root_doc_key) const {
     return docdb::GetTableTombstoneTime(

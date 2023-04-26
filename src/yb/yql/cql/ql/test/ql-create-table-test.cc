@@ -384,7 +384,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
 
     std::unordered_set<std::string> t;
     for (size_t i = 0; i < row_block->row_count(); i++) {
-      QLRow &row = row_block->row(i);
+      auto& row = row_block->row(i);
       t.insert(row.column(0).string_value());
     }
 
@@ -403,7 +403,7 @@ TEST_F(TestQLCreateTable, TestMetrics) {
 
     std::unordered_set<std::string> t;
     for (size_t i = 0; i < row_block->row_count(); i++) {
-      QLRow &row = row_block->row(i);
+      auto& row = row_block->row(i);
       t.insert(row.column(0).string_value());
     }
 

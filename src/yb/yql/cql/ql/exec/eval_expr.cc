@@ -60,7 +60,7 @@ Status Executor::PTExprToPB(const PTExpr::SharedPtr& expr, QLExpressionPB *expr_
         // Example: "List<BLOB>" with function calls.
         //   [ TextAsBlob('a'), IntAsBlob(1) ]
         RETURN_NOT_OK(PTExprToPB(static_cast<const PTCollectionExpr*>(expr.get()), expr_pb));
-        return EvalExpr(expr_pb, QLTableRow::empty_row());
+        return EvalExpr(expr_pb, qlexpr::QLTableRow::empty_row());
       }
       return Status::OK();
     }

@@ -22,7 +22,7 @@
 #include "yb/rocksdb/db.h"
 
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
@@ -98,9 +98,9 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
       std::shared_ptr<rocksdb::ReadFileFilter> file_filter = nullptr) override;
 
   Result<bool> DoFetchNext(
-      QLTableRow* table_row,
+      qlexpr::QLTableRow* table_row,
       const Schema* projection,
-      QLTableRow* static_row,
+      qlexpr::QLTableRow* static_row,
       const Schema* static_projection) override;
 
   void Seek(const Slice& key) override;
@@ -117,7 +117,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   Status AdvanceIteratorToNextDesiredRow(bool row_finished) const;
 
   // Read next row into a value map using the specified projection.
-  Status FillRow(QLTableRow* table_row, const Schema* projection);
+  Status FillRow(qlexpr::QLTableRow* table_row, const Schema* projection);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
 

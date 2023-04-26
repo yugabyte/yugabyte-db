@@ -15,7 +15,7 @@
 #include <string>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/transaction-test-util.h"
@@ -371,7 +371,7 @@ void DocRowwiseIteratorTest::InsertPackedRow(
 }
 
 Result<std::string> QLTableRowToString(
-    const Schema &schema, const QLTableRow &row, const Schema *projection) {
+    const Schema &schema, const qlexpr::QLTableRow &row, const Schema *projection) {
   QLValue value;
   std::stringstream buffer;
   buffer << "{";
@@ -396,7 +396,7 @@ Result<std::string> ConvertIteratorRowsToString(
     const Schema &schema,
     const Schema *projection = nullptr) {
   std::stringstream buffer;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     buffer << VERIFY_RESULT(QLTableRowToString(schema, row, projection));
     buffer << "\n";
@@ -1101,7 +1101,7 @@ SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 2800 }]) -> 
         projection, doc_read_context(), kNonTransactionalOperationContext, doc_db(),
         CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(2800)));
 
-    QLTableRow row;
+    qlexpr::QLTableRow row;
     QLValue value;
 
     ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));
@@ -1200,8 +1200,7 @@ void DocRowwiseIteratorTest::TestDocRowwiseIteratorMultipleDeletes() {
 
   MonoDelta ttl = MonoDelta::FromMilliseconds(1);
   MonoDelta ttl_expiry = MonoDelta::FromMilliseconds(2);
-  auto read_time = ReadHybridTime::SingleTime(server::HybridClock::AddPhysicalTimeToHybridTime(
-      HybridTime::FromMicros(2800), ttl_expiry));
+  auto read_time = ReadHybridTime::SingleTime(HybridTime::FromMicros(2800).AddDelta(ttl_expiry));
 
   ASSERT_OK(dwb.SetPrimitive(DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(30_ColId)),
                              ValueRef(QLValue::Primitive("row1_c"))));
@@ -1869,7 +1868,7 @@ void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
         doc_db(), CoarseTimePoint::max(), ReadHybridTime::FromMicros(1000),
         /*pending_op_counter = */ nullptr, /* liveness_column_expected = */ false, key_index));
 
-    QLTableRow row;
+    qlexpr::QLTableRow row;
     ASSERT_TRUE(ASSERT_RESULT(iter->FetchNext(&row)));
     // Expected count is non-key column (1) + num of key columns.
     ASSERT_EQ(key_index + 1, row.ColumnCount());

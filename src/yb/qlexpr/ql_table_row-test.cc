@@ -14,11 +14,11 @@
 #include <boost/functional/hash.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/util/random_util.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 TEST(QLTableRowTest, Simple) {
   const ColumnIdRep column1 = kFirstColumnId.rep();
@@ -75,4 +75,4 @@ TEST(QLTableRowTest, Random) {
   }
 }
 
-} // namespace yb
+} // namespace yb::qlexpr

@@ -18,8 +18,8 @@
 #include "yb/client/yb_table_name.h"
 
 #include "yb/common/colocated_util.h"
-#include "yb/common/ql_expr.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus.messages.h"
 
@@ -66,7 +66,6 @@ using consensus::ReplicateMsgPtr;
 using consensus::ReplicateMsgs;
 using dockv::PrimitiveValue;
 using dockv::SchemaPackingStorage;
-using yb::QLTableRow;
 
 YB_DEFINE_ENUM(OpType, (INSERT)(UPDATE)(DELETE));
 
@@ -239,7 +238,7 @@ Status PopulateBeforeImage(
   docdb::DocQLScanSpec spec(schema, doc_key, rocksdb::kDefaultQueryId);
   RETURN_NOT_OK(iter.Init(spec));
 
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   QLValue ql_value;
   // If CDC is failed to get the before image row, skip adding before image columns.
   auto result = VERIFY_RESULT(iter.FetchNext(&row));
@@ -1230,7 +1229,7 @@ Status ProcessIntents(
 
 Status PopulateCDCSDKSnapshotRecord(
     GetChangesResponsePB* resp,
-    const QLTableRow* row,
+    const qlexpr::QLTableRow* row,
     const Schema& schema,
     const TableName& table_name,
     ReadHybridTime time,
@@ -1419,8 +1418,8 @@ Status GetChangesForCDCSDK(
 
       int limit = FLAGS_cdc_snapshot_batch_size;
       int fetched = 0;
-      std::vector<QLTableRow> rows;
-      QLTableRow row;
+      std::vector<qlexpr::QLTableRow> rows;
+      qlexpr::QLTableRow row;
       auto iter = VERIFY_RESULT(tablet_ptr->CreateCDCSnapshotIterator(
           (*schema_details.schema).CopyWithoutColumnIds(), time, nextKey, colocated_table_id));
       while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {

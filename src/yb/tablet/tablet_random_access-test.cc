@@ -41,7 +41,7 @@
 
 #include "yb/dockv/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -229,7 +229,8 @@ class TestRandomAccess : public YBTabletTest {
 
     EXPECT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status());
 
-    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
+    auto row_block = qlexpr::CreateRowBlock(
+        QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
     if (row_block->row_count() == 0) {
       return VALUE_NOT_FOUND;
     }

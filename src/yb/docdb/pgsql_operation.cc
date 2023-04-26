@@ -22,13 +22,11 @@
 #include <boost/optional/optional_io.hpp>
 
 #include "yb/common/common.pb.h"
-#include "yb/dockv/partition.h"
-#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/row_mark.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/ql_value.h"
+#include "yb/common/row_mark.h"
 
-#include "yb/dockv/doc_path.h"
 #include "yb/docdb/doc_pg_expr.h"
 #include "yb/docdb/doc_pgsql_scanspec.h"
 #include "yb/docdb/doc_read_context.h"
@@ -39,9 +37,14 @@
 #include "yb/docdb/docdb_pgapi.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/intent_aware_iterator.h"
-#include "yb/dockv/packed_row.h"
-#include "yb/dockv/primitive_value_util.h"
 #include "yb/docdb/ql_storage_interface.h"
+
+#include "yb/dockv/doc_path.h"
+#include "yb/dockv/packed_row.h"
+#include "yb/dockv/partition.h"
+#include "yb/dockv/primitive_value_util.h"
+
+#include "yb/qlexpr/ql_expr_util.h"
 
 #include "yb/rpc/sidecars.h"
 
@@ -113,6 +116,8 @@ using dockv::DocKey;
 using dockv::DocPath;
 using dockv::KeyEntryValue;
 using dockv::SubDocKey;
+using qlexpr::QLExprResult;
+using qlexpr::QLTableRow;
 
 bool ShouldYsqlPackRow(bool is_colocated) {
   return FLAGS_ysql_enable_packed_row &&
@@ -198,9 +203,9 @@ Result<R> FetchDocKeyImpl(const Schema& schema,
     SCHECK(!ybctid.empty(), InternalError, "empty ybctid");
     return edk_processor(ybctid);
   } else {
-    auto hashed_components = VERIFY_RESULT(dockv::InitKeyColumnPrimitiveValues(
+    auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
         req.partition_column_values(), schema, 0 /* start_idx */));
-    auto range_components = VERIFY_RESULT(dockv::InitKeyColumnPrimitiveValues(
+    auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
         req.range_column_values(), schema, schema.num_hash_key_columns()));
     return dk_processor(hashed_components.empty()
         ? DocKey(schema, std::move(range_components))
@@ -316,7 +321,7 @@ struct RowPackerData {
 };
 
 bool IsExpression(const PgsqlColumnValuePB& column_value) {
-  return GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall;
+  return qlexpr::GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kPgEvalExprCall;
 }
 
 class ExpressionHelper {
@@ -486,7 +491,7 @@ Result<bool> PgsqlWriteOperation::HasDuplicateUniqueIndexValue(
     const ColumnId column_id(column_value.column_id());
 
     // Check column-write operator.
-    CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+    CHECK(qlexpr::GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
       << "Illegal write instruction";
 
     // Evaluate column value.
@@ -573,7 +578,7 @@ Status PgsqlWriteOperation::InsertColumn(
   // Get the column.
   SCHECK(column_value.has_column_id(), InternalError, "Column id missing: $0", column_value);
   // Check column-write operator.
-  auto write_instruction = GetTSWriteInstruction(column_value.expr());
+  auto write_instruction = qlexpr::GetTSWriteInstruction(column_value.expr());
   SCHECK_EQ(write_instruction, bfpg::TSOpcode::kScalarInsert, InternalError,
             "Illegal write instruction");
 
@@ -677,7 +682,7 @@ Status PgsqlWriteOperation::UpdateColumn(
   QLExprResult result_holder;
   if (!result) {
     // Check column-write operator.
-    SCHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
+    SCHECK(qlexpr::GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert,
            InternalError,
            "Unsupported DocDB Expression");
 
@@ -788,7 +793,7 @@ Status PgsqlWriteOperation::ApplyUpdate(const DocOperationApplyData& data) {
             doc_read_context_->schema.column_by_id(column_id));
 
         // Check column-write operator.
-        CHECK(GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
+        CHECK(qlexpr::GetTSWriteInstruction(column_value.expr()) == bfpg::TSOpcode::kScalarInsert)
         << "Illegal write instruction";
 
         // Evaluate column value.

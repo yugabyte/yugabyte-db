@@ -24,7 +24,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 // TODO(neil)
 // - This should be maping directly from "int32_t" to QLValue.
@@ -387,4 +387,4 @@ Status EvalOperands(
 yb::bfql::TSOpcode GetTSWriteInstruction(const QLExpressionPB& ql_expr);
 bfpg::TSOpcode GetTSWriteInstruction(const PgsqlExpressionPB& ql_expr);
 
-} // namespace yb
+} // namespace yb::qlexpr

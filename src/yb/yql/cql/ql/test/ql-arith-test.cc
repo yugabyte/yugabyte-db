@@ -48,9 +48,9 @@ TEST_F(TestQLArith, TestQLArithVarint) {
 
   // Checking Row
   CHECK_VALID_STMT("SELECT * FROM test_varint WHERE h1 = 1");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row = row_block->row(0);
+  const auto& row = row_block->row(0);
   CHECK_EQ(row.column(0).int32_value(), 1);
   CHECK_EQ(row.column(1).varint_value(), util::VarInt(70000000000007));
   CHECK(row.column(2).IsNull());
@@ -63,7 +63,7 @@ TEST_F(TestQLArith, TestQLArithVarint) {
   CHECK_VALID_STMT("SELECT * FROM test_varint WHERE h1 = 1");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& new_row = row_block->row(0);
+  const auto& new_row = row_block->row(0);
   CHECK_EQ(new_row.column(0).int32_value(), 1);
   CHECK_EQ(new_row.column(1).varint_value(), util::VarInt(70000000000027));
   CHECK_EQ(new_row.column(2).varint_value(), util::VarInt(140000000000014));
@@ -87,9 +87,9 @@ TEST_F(TestQLArith, TestQLArithBigInt) {
 
   // Select counter.
   CHECK_VALID_STMT("SELECT * FROM test_bigint WHERE h1 = 1");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row = row_block->row(0);
+  const auto& row = row_block->row(0);
   CHECK_EQ(row.column(0).int32_value(), 1);
   CHECK_EQ(row.column(1).int64_value(), 77);
   CHECK(row.column(2).IsNull());
@@ -102,7 +102,7 @@ TEST_F(TestQLArith, TestQLArithBigInt) {
   CHECK_VALID_STMT("SELECT * FROM test_bigint WHERE h1 = 1");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& new_row = row_block->row(0);
+  const auto& new_row = row_block->row(0);
   CHECK_EQ(new_row.column(0).int32_value(), 1);
   CHECK_EQ(new_row.column(1).int64_value(), 97);
   CHECK_EQ(new_row.column(2).int64_value(), 154);
@@ -126,9 +126,9 @@ TEST_F(TestQLArith, TestQLArithInt) {
 
   // Select counter.
   CHECK_VALID_STMT("SELECT * FROM test_int WHERE h1 = 1");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row = row_block->row(0);
+  const auto& row = row_block->row(0);
   CHECK_EQ(row.column(0).int32_value(), 1);
   CHECK_EQ(row.column(1).int32_value(), 77);
   CHECK(row.column(2).IsNull());
@@ -143,7 +143,7 @@ TEST_F(TestQLArith, TestQLArithInt) {
   CHECK_VALID_STMT("SELECT * FROM test_int WHERE h1 = 1");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& new_row = row_block->row(0);
+  const auto& new_row = row_block->row(0);
   CHECK_EQ(new_row.column(0).int32_value(), 1);
   CHECK_EQ(new_row.column(1).int32_value(), 97);
   CHECK_EQ(new_row.column(2).int32_value(), 154);
@@ -168,9 +168,9 @@ TEST_F(TestQLArith, TestQLArithCounter) {
 
   // Select counter.
   CHECK_VALID_STMT("SELECT * FROM test_counter WHERE h1 = 1");
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& row = row_block->row(0);
+  const auto& row = row_block->row(0);
   CHECK_EQ(row.column(0).int32_value(), 1);
   CHECK_EQ(row.column(1).int64_value(), 77);
 
@@ -181,7 +181,7 @@ TEST_F(TestQLArith, TestQLArithCounter) {
   CHECK_VALID_STMT("SELECT * FROM test_counter WHERE h1 = 1");
   row_block = processor->row_block();
   CHECK_EQ(row_block->row_count(), 1);
-  const QLRow& new_row = row_block->row(0);
+  const auto& new_row = row_block->row(0);
   CHECK_EQ(new_row.column(0).int32_value(), 1);
   CHECK_EQ(new_row.column(1).int64_value(), 87);
 }
@@ -244,7 +244,7 @@ TEST_F(TestQLArith, TestSimpleArithExpr) {
   // Test Select: SELECT and WHERE clauses.
 
   // Test various selects.
-  std::shared_ptr<QLRowBlock> row_block;
+  std::shared_ptr<qlexpr::QLRowBlock> row_block;
 
   // Selecting expressions.
   CHECK_VALID_STMT("SELECT 1 + 2, h, 2 + 3 FROM test_expr WHERE h = 2");

@@ -28,10 +28,6 @@
 
 namespace yb {
 
-class QLRowBlock;
-class Schema;
-class WriteBuffer;
-
 #define QL_PROTOCOL_TYPES \
     ((Int8, int8, int8_t)) \
     ((Int16, int16, int16_t)) \
@@ -87,8 +83,6 @@ QLValuePB* QLPrepareCondition(QLConditionPB* condition, int column_id, QLOperato
 
 void QLAddColumns(const Schema& schema, const std::vector<ColumnId>& columns,
                   QLReadRequestPB* req);
-
-std::unique_ptr<QLRowBlock> CreateRowBlock(QLClient client, const Schema& schema, Slice data);
 
 // Does this write request require reading existing data for evaluating expressions before writing?
 bool RequireReadForExpressions(const QLWriteRequestPB& request);

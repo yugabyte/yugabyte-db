@@ -14,10 +14,10 @@
 #include <thread>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_resultset.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_resultset.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/transaction-test-util.h"
 
@@ -62,6 +62,7 @@ using dockv::DocPath;
 using dockv::KeyEntryValue;
 using dockv::KeyEntryValues;
 using dockv::ValueEntryType;
+using qlexpr::QLRowBlock;
 
 namespace {
 
@@ -185,7 +186,7 @@ class DocOperationTest : public DocDBTestBase {
                const HybridTime& hybrid_time = HybridTime::kMax,
                const TransactionOperationContext& txn_op_context =
                    kNonTransactionalOperationContext) {
-    IndexMap index_map;
+    qlexpr::IndexMap index_map;
     QLWriteOperation ql_write_op(
         ql_writereq_pb, ql_writereq_pb.schema_version(),
         std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema)), index_map,
@@ -322,7 +323,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     QLRowBlock row_block(schema, vector<ColumnId> ({ColumnId(0), ColumnId(1), ColumnId(2),
                                                         ColumnId(3)}));
     const Schema& projection = row_block.schema();
-    QLRSRowDescPB *rsrow_desc_pb = ql_read_req.mutable_rsrow_desc();
+    auto *rsrow_desc_pb = ql_read_req.mutable_rsrow_desc();
     for (int32_t i = 0; i <= 3 ; i++) {
       ql_read_req.add_selected_exprs()->set_column_id(i);
       ql_read_req.mutable_column_refs()->add_ids(i);
@@ -336,9 +337,9 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
 
     QLReadOperation read_op(ql_read_req, kNonTransactionalOperationContext);
     QLRocksDBStorage ql_storage(doc_db());
-    const QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
+    const qlexpr::QLRSRowDesc rsrow_desc(*rsrow_desc_pb);
     WriteBuffer rows_data(1024);
-    QLResultSet resultset(&rsrow_desc, &rows_data);
+    qlexpr::QLResultSet resultset(&rsrow_desc, &rows_data);
     HybridTime read_restart_ht;
     auto doc_read_context = DocReadContext::TEST_Create(schema);
     EXPECT_OK(read_op.Execute(
@@ -465,7 +466,7 @@ TEST_F(DocOperationTest, TestQLReadWriteSimple) {
   // Define the schema.
   Schema schema = CreateSchema();
   WriteQLRow(QLWriteRequestPB_QLStmtType_QL_STMT_INSERT, schema, vector<int>({1, 1, 2, 3}),
-           1000, HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0));
+           1000, HybridTime::FromMicrosecondsAndLogicalValue(1000, 0));
 
   AssertDocDbDebugDumpStrEq(R"#(
 SubDocKey(DocKey(0x0000, [1], []), [SystemColumnId(0); HT{ physical: 1000 }]) -> null; ttl: 1.000s
@@ -480,7 +481,7 @@ SubDocKey(DocKey(0x0000, [1], []), [HT{ physical: 1000 }]) -> \
 
   // Now read the value.
   QLRowBlock row_block = ReadQLRow(schema, 1,
-                                  HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(2000, 0));
+                                  HybridTime::FromMicrosecondsAndLogicalValue(2000, 0));
   ASSERT_EQ(1, row_block.row_count());
   EXPECT_EQ(1, row_block.row(0).column(0).int32_value());
   EXPECT_EQ(1, row_block.row(0).column(1).int32_value());
@@ -508,7 +509,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
         QLWriteRequestPB_QLStmtType_QL_STMT_INSERT,
         schema,
         vector<int>({1, row_num, 0, row_num}),
-        HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0));
+        HybridTime::FromMicrosecondsAndLogicalValue(1000, 0));
   }
   auto get_num_rocksdb_iter_moves = [&]() {
     auto num_next = regular_db_options().statistics->getTickerCount(
@@ -533,7 +534,7 @@ TEST_F(DocOperationTest, TestQLRangeDeleteWithStaticColumnAvoidsFullPartitionKey
   ql_writereq_pb.set_hash_code(0);
 
   WriteQL(ql_writereq_pb, schema, &ql_writeresp_pb,
-          HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(2000, 0),
+          HybridTime::FromMicrosecondsAndLogicalValue(2000, 0),
           kNonTransactionalOperationContext);
 
   // During deletion, we expect to move the RocksDB iterator *at most* once per docdb row in range,
@@ -630,7 +631,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
-  QLTableRow value_map;
+  qlexpr::QLTableRow value_map;
   ASSERT_TRUE(ASSERT_RESULT(ql_iter.FetchNext(&value_map)));
   ASSERT_EQ(4, value_map.ColumnCount());
   EXPECT_EQ(100, value_map.TestValue(0).value.int32_value());
@@ -677,7 +678,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
-  QLTableRow value_map_system;
+  qlexpr::QLTableRow value_map_system;
   ASSERT_TRUE(ASSERT_RESULT(ql_iter_system.FetchNext(&value_map_system)));
   ASSERT_EQ(4, value_map_system.ColumnCount());
   EXPECT_EQ(101, value_map_system.TestValue(0).value.int32_value());
@@ -832,7 +833,7 @@ class DocOperationScanTest : public DocOperationTest {
       int32_t r_key = NewInt(&rng_, &used_ints);
       for (size_t j = 0; j < num_rows_per_key; ++j) {
         RowData row_data = {h_key_, r_key, NewInt(&rng_, &used_ints)};
-        auto ht = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(
+        auto ht = HybridTime::FromMicrosecondsAndLogicalValue(
             NewInt(&rng_, &used_ints, kMinTime, kMaxTime), 0);
         RowDataWithHt row = {row_data, ht};
         rows_.push_back(row);
@@ -934,7 +935,7 @@ class DocOperationScanTest : public DocOperationTest {
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << AsString(expected_rows);
           it = expected_rows.begin();
-          QLTableRow value_map;
+          qlexpr::QLTableRow value_map;
           while (ASSERT_RESULT(ql_iter.FetchNext(&value_map))) {
             ASSERT_EQ(3, value_map.ColumnCount());
 
@@ -1068,9 +1069,9 @@ TEST_F(DocOperationTest, TestQLCompactions) {
   yb::QLWriteRequestPB ql_writereq_pb;
   yb::QLResponsePB ql_writeresp_pb;
 
-  HybridTime t0 = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 0);
-  HybridTime t0prime = HybridClock::HybridTimeFromMicrosecondsAndLogicalValue(1000, 1);
-  HybridTime t1 = HybridClock::AddPhysicalTimeToHybridTime(t0, MonoDelta::FromMilliseconds(1001));
+  HybridTime t0 = HybridTime::FromMicrosecondsAndLogicalValue(1000, 0);
+  HybridTime t0prime = HybridTime::FromMicrosecondsAndLogicalValue(1000, 1);
+  HybridTime t1 = t0.AddMilliseconds(1001);
 
   // Define the schema.
   Schema schema = CreateSchema();

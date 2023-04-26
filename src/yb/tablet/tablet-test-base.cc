@@ -158,7 +158,7 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
   std::vector<bool> seen_rows;
   seen_rows.resize(expected_count);
 
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   QLValue value;
   while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     if (VLOG_IS_ON(2)) {

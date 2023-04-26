@@ -22,6 +22,8 @@
 #include "yb/docdb/doc_ql_scanspec.h"
 #include "yb/dockv/primitive_value_util.h"
 
+#include "yb/qlexpr/ql_expr_util.h"
+
 #include "yb/util/result.h"
 
 using std::vector;
@@ -44,7 +46,7 @@ Status QLRocksDBStorage::GetIterator(
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const dockv::QLScanSpec& spec,
+    const qlexpr::QLScanSpec& spec,
     std::unique_ptr<YQLRowwiseIteratorIf> *iter) const {
   auto doc_iter = std::make_unique<DocRowwiseIterator>(
       projection, doc_read_context, txn_op_context, doc_db_, deadline, read_time);
@@ -59,8 +61,8 @@ Status QLRocksDBStorage::BuildYQLScanSpec(
     const Schema& schema,
     const bool include_static_columns,
     const Schema& static_projection,
-    std::unique_ptr<dockv::QLScanSpec>* spec,
-    std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const {
+    std::unique_ptr<qlexpr::QLScanSpec>* spec,
+    std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const {
   // Populate dockey from QL key columns.
   auto hash_code = request.has_hash_code() ?
       boost::make_optional<int32_t>(request.hash_code()) : boost::none;
@@ -185,10 +187,10 @@ Status QLRocksDBStorage::GetIterator(
     const docdb::DocDBStatistics* statistics) const {
   const auto& schema = doc_read_context.get().schema;
   // Populate dockey from QL key columns.
-  auto hashed_components = VERIFY_RESULT(dockv::InitKeyColumnPrimitiveValues(
+  auto hashed_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
       request.partition_column_values(), schema, 0 /* start_idx */));
 
-  auto range_components = VERIFY_RESULT(dockv::InitKeyColumnPrimitiveValues(
+  auto range_components = VERIFY_RESULT(qlexpr::InitKeyColumnPrimitiveValues(
       request.range_column_values(), schema, schema.num_hash_key_columns()));
 
   auto doc_iter = std::make_unique<DocRowwiseIterator>(

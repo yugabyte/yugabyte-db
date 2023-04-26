@@ -25,6 +25,8 @@
 
 #include "yb/gutil/callback_forward.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/util/ref_cnt_buffer.h"
 
 namespace yb {
@@ -155,7 +157,7 @@ class RowsResult : public ExecutedResult {
 
   // Parse the rows data and return it as a row block. It is the caller's responsibility to free
   // the row block after use.
-  std::unique_ptr<QLRowBlock> GetRowBlock() const;
+  std::unique_ptr<qlexpr::QLRowBlock> GetRowBlock() const;
 
  private:
   const client::YBTableName table_name_;

@@ -15,8 +15,8 @@
 
 #include "yb/client/transaction_rpc.h"
 
-#include "yb/common/ql_expr.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -91,7 +91,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id,
         "oid", entry_oid, std::move(col_names), &projection));
 
   // If no rows found, the entry does not exist.
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (!VERIFY_RESULT(iter->FetchNext(&row))) {
     return false;
   }
@@ -273,7 +273,7 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   }
   // Table not found in pg_class. This can only happen in two cases: Table creation failed,
   // or a table deletion went through successfully.
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (!VERIFY_RESULT(iter->FetchNext(&row))) {
     if (l->is_being_deleted_by_ysql_ddl_txn()) {
       return true;
@@ -400,7 +400,7 @@ YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
   const auto attnum_col_id = VERIFY_RESULT(projection.ColumnIdByName("attnum")).rep();
 
   vector<PgColumnFields> pg_cols;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attname_col = row.GetValue(attname_col_id);
     const auto& atttypid_col = row.GetValue(atttypid_col_id);

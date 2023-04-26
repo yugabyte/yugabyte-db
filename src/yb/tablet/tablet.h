@@ -49,6 +49,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
@@ -164,7 +166,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
   Status BackfillIndexesForYsql(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -175,7 +177,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& start_key,
       const int num_rows,
       const CoarseTimePoint deadline,
@@ -204,7 +206,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::string* verified_until);
 
   Status VerifyTableInBatches(
-      const QLTableRow& row,
+      const qlexpr::QLTableRow& row,
       const std::vector<TableId>& table_ids,
       const HybridTime read_time,
       const CoarseTimePoint deadline,
@@ -239,7 +241,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // <failed_indexes> will be updated with the collection of index-ids for which any errors
   //    were encountered.
   Status BackfillIndexes(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -248,8 +250,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::unordered_set<TableId>* failed_indexes);
 
   Status UpdateIndexInBatches(
-      const QLTableRow& row,
-      const std::vector<IndexInfo>& indexes,
+      const qlexpr::QLTableRow& row,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
       docdb::IndexRequests* index_requests,
@@ -838,7 +840,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status OpenKeyValueTablet();
   virtual Status CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
-  std::vector<yb::ColumnSchema> GetColumnSchemasForIndex(const std::vector<IndexInfo>& indexes);
+  std::vector<yb::ColumnSchema> GetColumnSchemasForIndex(
+      const std::vector<qlexpr::IndexInfo>& indexes);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
 

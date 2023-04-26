@@ -13,15 +13,26 @@
 
 #pragma once
 
-#include "yb/common/common_fwd.h"
-#include "yb/common/common_types.pb.h"
+#include <memory>
 
-namespace yb {
+namespace yb::qlexpr {
 
-class WriteBuffer;
+class IndexInfo;
+class IndexMap;
+class PgsqlScanSpec;
+class QLExprExecutor;
+class QLTableRow;
+class QLResultSet;
+class QLRow;
+class QLRowBlock;
+class QLScanSpec;
+class YQLScanSpec;
 
-void SerializeValue(
-    const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
-    WriteBuffer* buffer);
+struct IndexColumn;
+struct QLTableColumn;
 
-}  // namespace yb
+using QLExprExecutorPtr = std::shared_ptr<QLExprExecutor>;
+
+enum class QLNameOption : int8_t;
+
+}  // namespace yb::qlexpr
