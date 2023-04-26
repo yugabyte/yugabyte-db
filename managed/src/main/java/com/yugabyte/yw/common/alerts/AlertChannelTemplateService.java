@@ -16,6 +16,7 @@ import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.AlertChannelTemplatesExt;
+import com.yugabyte.yw.forms.AlertTemplateSystemVariable;
 import com.yugabyte.yw.models.AlertChannel.ChannelType;
 import com.yugabyte.yw.models.AlertChannelTemplates;
 import com.yugabyte.yw.models.AlertTemplateVariable;
@@ -37,6 +38,12 @@ import play.libs.Json;
 @Singleton
 @Slf4j
 public class AlertChannelTemplateService {
+
+  private static final Set<String> JSON_OBJECT_VARIABLE_PATTERNS =
+      Arrays.stream(AlertTemplateSystemVariable.values())
+          .filter(AlertTemplateSystemVariable::isJsonObject)
+          .map(variable -> "\\{\\{\\s*" + variable.getName() + "\\s*\\}\\}")
+          .collect(Collectors.toSet());
 
   private final BeanValidator beanValidator;
 
@@ -146,8 +153,12 @@ public class AlertChannelTemplateService {
             });
     if (templates.getType() == ChannelType.WebHook) {
       if (!StringUtils.isEmpty(templates.getTextTemplate())) {
+        String jsonizedTemplate = templates.getTextTemplate();
+        for (String jsonVariablePattern : JSON_OBJECT_VARIABLE_PATTERNS) {
+          jsonizedTemplate = jsonizedTemplate.replaceAll(jsonVariablePattern, "{}");
+        }
         try {
-          Json.parse(templates.getTextTemplate());
+          Json.parse(jsonizedTemplate);
         } catch (Exception e) {
           beanValidator
               .error()
