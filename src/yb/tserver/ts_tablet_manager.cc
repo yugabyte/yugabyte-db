@@ -250,7 +250,13 @@ DEFINE_test_flag(int32, sleep_after_tombstoning_tablet_secs, 0,
 DEFINE_UNKNOWN_bool(enable_restart_transaction_status_tablets_first, true,
             "Set to true to prioritize bootstrapping transaction status tablets first.");
 
+DEFINE_RUNTIME_int32(bg_superblock_flush_interval_secs, 60,
+    "The interval at which tablet superblocks are flushed to disk (if dirty) by a background "
+    "thread. Applicable only when lazily_flush_superblock is enabled. 0 indicates that the "
+    "background task is fully disabled.");
+
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
@@ -583,6 +589,15 @@ Status TSTabletManager::Init() {
         "tablet manager", "scheduled full compactions",
         MonoDelta::FromMinutes(compaction_check_interval_min).ToChronoMilliseconds()));
     RETURN_NOT_OK(scheduled_full_compaction_bg_task_->Init());
+  }
+
+  const int32_t bg_superblock_flush_interval_secs = FLAGS_bg_superblock_flush_interval_secs;
+  if (FLAGS_lazily_flush_superblock && bg_superblock_flush_interval_secs > 0) {
+    superblock_flush_bg_task_.reset(new BackgroundTask(
+        std::function<void()>([this]() { FlushDirtySuperblocks(); }), "tablet manager",
+        "bg superblock flush",
+        MonoDelta::FromSeconds(bg_superblock_flush_interval_secs).ToChronoMilliseconds()));
+    RETURN_NOT_OK(superblock_flush_bg_task_->Init());
   }
 
   {
@@ -2756,6 +2771,18 @@ HybridTime TSTabletManager::AllowedHistoryCutoff(tablet::RaftGroupMetadata* meta
   VLOG(1) << "Setting the allowed historycutoff: " << result
           << " for tablet: " << metadata->raft_group_id();
   return result;
+}
+
+void TSTabletManager::FlushDirtySuperblocks() {
+  for (const auto& peer : GetTabletPeers()) {
+    if (peer->state() == RUNNING && peer->tablet_metadata()->IsLazySuperblockFlushEnabled()) {
+      auto s = peer->tablet_metadata()->Flush(tablet::OnlyIfDirty::kTrue);
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed flushing superblock for tablet " << peer->tablet_id()
+                     << " from background thread: " << s;
+      }
+    }
+  }
 }
 
 Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
