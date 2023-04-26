@@ -13,7 +13,7 @@
 
 #include "yb/tablet/abstract_tablet.h"
 
-#include "yb/common/ql_resultset.h"
+#include "yb/qlexpr/ql_resultset.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -62,8 +62,8 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
   RETURN_NOT_OK(doc_read_context->schema.CreateProjectionByIdsIgnoreMissing(
       column_refs, &projection));
 
-  const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
-  QLResultSet resultset(&rsrow_desc, rows_data);
+  const qlexpr::QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
+  qlexpr::QLResultSet resultset(&rsrow_desc, rows_data);
 
   TRACE("Start Execute");
   const Status s = doc_op.Execute(

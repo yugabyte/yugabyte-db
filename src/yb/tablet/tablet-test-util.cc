@@ -13,7 +13,7 @@
 
 #include "yb/tablet/tablet-test-util.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
@@ -85,7 +85,7 @@ Status IterateToStringList(
   Schema schema = iter->schema();
   int fetched = 0;
   std::vector<std::pair<QLValue, std::string>> temp;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row)) && fetched < limit) {
     QLValue key;
     RETURN_NOT_OK(row.GetValue(schema.column_id(0), &key));

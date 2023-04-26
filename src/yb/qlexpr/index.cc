@@ -14,13 +14,14 @@
 // Classes that implement secondary index.
 //--------------------------------------------------------------------------------------------------
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/common/common.pb.h"
-#include "yb/common/index_column.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
+
+#include "yb/qlexpr/index_column.h"
 
 #include "yb/util/compare_util.h"
 #include "yb/util/result.h"
@@ -32,7 +33,7 @@ using google::protobuf::RepeatedField;
 using google::protobuf::RepeatedPtrField;
 using google::protobuf::uint32;
 
-namespace yb {
+namespace yb::qlexpr {
 
 // When DocDB receive messages from older clients, those messages won't have "column_name" and
 // "colexpr" attributes.
@@ -295,4 +296,4 @@ bool IndexMap::TEST_Equals(const IndexMap& lhs, const IndexMap& rhs) {
                          &IndexInfo::TEST_Equals);
 }
 
-}  // namespace yb
+}  // namespace yb::qlexpr

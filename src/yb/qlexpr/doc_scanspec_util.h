@@ -15,16 +15,16 @@
 
 #pragma once
 
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/dockv/dockv_fwd.h"
 #include "yb/util/status_fwd.h"
 
-namespace yb::dockv {
+namespace yb::qlexpr {
 
 // Get the scanspec for range key components.
-KeyEntryValues GetRangeKeyScanSpec(
+dockv::KeyEntryValues GetRangeKeyScanSpec(
     const Schema& schema,
-    const KeyEntryValues* prefixed_range_components,
+    const dockv::KeyEntryValues* prefixed_range_components,
     const QLScanRange* scan_range,
     std::vector<bool> *inclusivities,
     bool lower_bound,
@@ -32,9 +32,9 @@ KeyEntryValues GetRangeKeyScanSpec(
     bool use_strictness = true);
 
 // Gets the lower/upper bound value of the given range
-KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
-                                    SortingType sorting_type,
-                                    bool lower_bound);
+dockv::KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+                                           SortingType sorting_type,
+                                           bool lower_bound);
 
 const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
     const QLScanRange::QLRange& ql_range,
@@ -47,4 +47,4 @@ bool GetQLRangeBoundIsInclusive(
     SortingType sorting_type,
     bool lower_bound);
 
-}  // namespace yb::dockv
+}  // namespace yb::qlexpr

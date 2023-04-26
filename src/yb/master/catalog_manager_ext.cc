@@ -24,10 +24,10 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"

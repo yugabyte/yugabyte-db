@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/common/ql_serialization.h"
+#include "yb/qlexpr/ql_serialization.h"
 
 #include "yb/common/jsonb.h"
 #include "yb/common/ql_protocol_util.h"
@@ -23,7 +23,7 @@
 #include "yb/util/date_time.h"
 #include "yb/util/decimal.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 void SerializeValue(
     const std::shared_ptr<QLType>& ql_type, const QLClient& client, const QLValuePB& pb,
@@ -244,4 +244,4 @@ void SerializeValue(
   LOG(FATAL) << "Internal error: unsupported type " << ql_type->ToString();
 }
 
-}  // namespace yb
+}  // namespace yb::qlexpr

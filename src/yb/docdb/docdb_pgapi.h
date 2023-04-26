@@ -32,6 +32,8 @@
 
 #include "yb/master/master_replication.pb.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/util/status_fwd.h"
 #include "yb/util/decimal.h"
 
@@ -87,7 +89,7 @@ Status DocPgAddVarRef(const ColumnId& column_id,
 Status DocPgCreateExprCtx(const std::map<int, const DocPgVarRef>& var_map,
                           YbgExprContext *expr_ctx);
 
-Status DocPgPrepareExprCtx(const QLTableRow& table_row,
+Status DocPgPrepareExprCtx(const qlexpr::QLTableRow& table_row,
                            const std::map<int, const DocPgVarRef>& var_map,
                            YbgExprContext expr_ctx);
 

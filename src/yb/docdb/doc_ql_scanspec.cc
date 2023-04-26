@@ -20,7 +20,7 @@
 #include "yb/docdb/doc_expr.h"
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_ql_filefilter.h"
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/result.h"
@@ -56,7 +56,7 @@ DocQLScanSpec::DocQLScanSpec(
     const rocksdb::QueryId query_id,
     const bool is_forward_scan,
     const size_t prefix_length)
-    : dockv::QLScanSpec(
+    : qlexpr::QLScanSpec(
           schema, is_forward_scan, query_id, /* range_bounds = */ nullptr, prefix_length,
           std::make_shared<DocExprExecutor>()),
       hashed_components_(nullptr),
@@ -79,9 +79,9 @@ DocQLScanSpec::DocQLScanSpec(
     const bool include_static_columns,
     const dockv::DocKey& start_doc_key,
     const size_t prefix_length)
-    : dockv::QLScanSpec(
+    : qlexpr::QLScanSpec(
           schema, is_forward_scan, query_id,
-          condition ? std::make_unique<dockv::QLScanRange>(schema, *condition) : nullptr,
+          condition ? std::make_unique<qlexpr::QLScanRange>(schema, *condition) : nullptr,
           prefix_length,
           condition, if_condition, std::make_shared<DocExprExecutor>()),
       hash_code_(hash_code),
@@ -93,7 +93,7 @@ DocQLScanSpec::DocQLScanSpec(
       lower_doc_key_(bound_key(true)),
       upper_doc_key_(bound_key(false)) {
   if (!hashed_components_->empty() && schema.num_hash_key_columns()) {
-    options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
+    options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     // should come here if we are not batching hash keys as a part of IN condition
     options_groups_.BeginNewGroup();
     options_groups_.AddToLatestGroup(0);
@@ -117,7 +117,7 @@ DocQLScanSpec::DocQLScanSpec(
       rangebounds->has_in_range_options()) {
     DCHECK(condition);
     if (!options_) {
-      options_ = std::make_shared<std::vector<dockv::OptionList>>(schema.num_dockey_components());
+      options_ = std::make_shared<std::vector<qlexpr::OptionList>>(schema.num_dockey_components());
     }
     InitOptions(*condition);
   }

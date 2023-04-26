@@ -1,18 +1,19 @@
 //--------------------------------------------------------------------------------------------------
 // Copyright (c) YugaByte, Inc.
 //--------------------------------------------------------------------------------------------------
-#include "yb/common/ql_resultset.h"
+#include "yb/qlexpr/ql_resultset.h"
 
 #include "yb/common/ql_protocol.pb.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_serialization.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/qlexpr/ql_serialization.h"
+
 #include "yb/util/write_buffer.h"
 
-namespace yb {
+namespace yb::qlexpr {
 // TODO(neil) All QL classes in "yb/common" needs to be group under a namespace. Doing that would
 // result in a number of code changes, so I'll leave this till next diff.
 // namespace yqlapi
@@ -61,4 +62,4 @@ void QLResultSet::Complete() {
   CHECK_OK(rows_data_->Write(count_position_, buffer, sizeof(buffer)));
 }
 
-} // namespace yb
+}  // namespace yb::qlexpr

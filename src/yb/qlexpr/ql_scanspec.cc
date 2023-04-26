@@ -13,16 +13,16 @@
 //
 // This file contains QLScanSpec that implements a QL scan specification.
 
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/common/pgsql_protocol.messages.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/key_bytes.h"
 
-namespace yb::dockv {
+namespace yb::qlexpr {
 
 using std::vector;
 
@@ -525,9 +525,9 @@ QLScanRange& QLScanRange::operator=(QLScanRange&& other) {
 }
 
 //-------------------------------------- YQL scan spec ---------------------------------------
-Result<KeyBytes> YQLScanSpec::LowerBound() const { return Bound(/* lower_bound = */ true); }
+Result<dockv::KeyBytes> YQLScanSpec::LowerBound() const { return Bound(/* lower_bound = */ true); }
 
-Result<KeyBytes> YQLScanSpec::UpperBound() const { return Bound(/* lower_bound = */ false); }
+Result<dockv::KeyBytes> YQLScanSpec::UpperBound() const { return Bound(/* lower_bound = */ false); }
 
 //-------------------------------------- QL scan spec ---------------------------------------
 
@@ -598,4 +598,4 @@ PgsqlScanSpec::PgsqlScanSpec(
 PgsqlScanSpec::~PgsqlScanSpec() {
 }
 
-}  // namespace yb::dockv
+}  // namespace yb::qlexpr

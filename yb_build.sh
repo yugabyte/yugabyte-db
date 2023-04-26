@@ -1770,6 +1770,8 @@ fi
 
 if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
+elif [[ -n ${YB_TCMALLOC_ENABLED:-} ]]; then
+  cmake_opts+=( "-DYB_TCMALLOC_ENABLED=$YB_TCMALLOC_ENABLED" )
 fi
 
 if [[ ${use_google_tcmalloc} == "true" ]]; then

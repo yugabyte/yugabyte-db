@@ -31,7 +31,6 @@ class KeyEntryValue;
 class Partition;
 class PartitionSchema;
 class PrimitiveValue;
-class QLScanSpec;
 class RowPacker;
 class SchemaPacking;
 class SchemaPackingStorage;

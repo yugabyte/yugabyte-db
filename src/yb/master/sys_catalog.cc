@@ -42,13 +42,13 @@
 #include "yb/client/client.h"
 
 #include "yb/common/colocated_util.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -342,7 +342,8 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
-      schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+      schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+      partition_schema);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
@@ -775,7 +776,7 @@ Status SysCatalogTable::GetTableSchema(
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   bool table_schema_found = false;
-  QLTableRow value_map;
+  qlexpr::QLTableRow value_map;
   while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
     QLValue found_entry_type, entry_id, metadata;
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
@@ -927,7 +928,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     }
   }
 
-  QLTableRow source_row;
+  qlexpr::QLTableRow source_row;
   ColumnId db_oid_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName));
   ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName(kCurrentVersionColumnName));
   ColumnId last_breaking_version_col_id =
@@ -1005,7 +1006,7 @@ Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTabl
   auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
                                                    {} /* read_hybrid_time */,
                                                    kPgTablespaceTableId));
-  QLTableRow source_row;
+  qlexpr::QLTableRow source_row;
   ColumnId oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid"));
   ColumnId options_id =
       VERIFY_RESULT(schema.ColumnIdByName("spcoptions"));
@@ -1122,7 +1123,7 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("grptablespace")).rep();
 
-  QLTableRow source_row;
+  qlexpr::QLTableRow source_row;
 
   // Loop through the pg_yb_tablegroup catalog table. Each row in this table represents
   // a tablegroup. Populate 'table_tablespace_map' with the tablegroup id and corresponding
@@ -1216,7 +1217,7 @@ Status SysCatalogTable::ReadPgClassInfo(
     RETURN_NOT_OK(iter->Init(spec));
   }
 
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   // pg_class table contains a row for every database object (tables/indexes/
   // composite types etc). Each such row contains a lot of information about the
   // database object itself. But here, we are trying to fetch table->tablespace
@@ -1340,7 +1341,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
   // database object itself. But here, we are trying to fetch table->relnamespace
   // information only.
   uint32 oid = kInvalidOid;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& result_oid_col = row.GetValue(result_col_id);
@@ -1385,7 +1386,7 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
   }
 
   string name;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& nspname_col = row.GetValue(nspname_col_id);
@@ -1438,7 +1439,7 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
   }
 
   std::unordered_map<string, uint32_t> type_oid_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attnum_col = row.GetValue(attnum_col_id);
 
@@ -1508,7 +1509,7 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
   }
 
   std::unordered_map<uint32_t, string> enumlabel_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& enumtypid_col = row.GetValue(enumtypid_col_id);
@@ -1568,7 +1569,7 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
   }
 
   std::unordered_map<uint32_t, PgTypeInfo> type_oid_info_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& typtype_col = row.GetValue(typtype_col_id);
@@ -1620,7 +1621,7 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
   const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
   const auto grpname_col_id = VERIFY_RESULT(projection.ColumnIdByName("grpname")).rep();
 
-  QLTableRow source_row;
+  qlexpr::QLTableRow source_row;
 
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     // Fetch the tablegroup grpname.
@@ -1670,7 +1671,7 @@ Status SysCatalogTable::CopyPgsqlTables(
     const Schema source_projection = source_table_info->schema().CopyWithoutColumnIds();
     std::unique_ptr<docdb::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, {}, source_table_id));
-    QLTableRow source_row;
+    qlexpr::QLTableRow source_row;
 
     while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
       RETURN_NOT_OK(writer->InsertPgsqlTableRow(
@@ -1794,7 +1795,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
   }
 
   RelIdToAttributesMap relid_attribute_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attrelid_col = row.GetValue(attrelid_col_id);
     const auto& attname_col = row.GetValue(attname_col_id);
@@ -1909,7 +1910,7 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
   }
 
   RelTypeOIDMap reltype_oid_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& reltype_col = row.GetValue(reltype_col_id);

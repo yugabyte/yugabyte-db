@@ -26,8 +26,11 @@
 
 namespace yb {
 
-class Slice;
 class WriteBuffer;
+
+}
+
+namespace yb::qlexpr {
 
 //------------------------------------------ QL row ----------------------------------------
 // A QL row. It uses QLValue to store the column values.
@@ -138,4 +141,6 @@ class QLRowBlock {
   std::vector<QLRow> rows_;
 };
 
-} // namespace yb
+std::unique_ptr<QLRowBlock> CreateRowBlock(QLClient client, const Schema& schema, Slice data);
+
+}  // namespace yb::qlexpr

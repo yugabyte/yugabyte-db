@@ -14,7 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/client/table.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/yql/cql/ql/ptree/column_desc.h"
 #include "yb/yql/cql/ql/ptree/pt_column_definition.h"
 #include "yb/yql/cql/ql/ptree/pt_dml.h"
@@ -157,7 +157,7 @@ bool SemState::is_partial_index_select() const {
   if (select_stmt->index_id().empty()) return false;
 
   std::shared_ptr<client::YBTable> table = select_stmt->table();
-  const IndexInfo& idx_info = table->index_info();
+  const auto& idx_info = table->index_info();
   return idx_info.where_predicate_spec() != nullptr;
 }
 

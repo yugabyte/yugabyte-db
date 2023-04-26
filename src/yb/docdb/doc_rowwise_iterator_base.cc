@@ -19,11 +19,11 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/dockv/expiration.h"
 #include "yb/docdb/scan_choices.h"
@@ -217,7 +217,7 @@ Status DocRowwiseIteratorBase::DoInit(const T& doc_spec) {
   return Status::OK();
 }
 
-Status DocRowwiseIteratorBase::Init(const dockv::YQLScanSpec& spec) {
+Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& spec) {
   table_type_ = spec.client_type() == YQL_CLIENT_CQL ? TableType::YQL_TABLE_TYPE
                                                      : TableType::PGSQL_TABLE_TYPE;
   ignore_ttl_ = (table_type_ == TableType::PGSQL_TABLE_TYPE);
@@ -323,7 +323,7 @@ void DocRowwiseIteratorBase::SeekTuple(const Slice& tuple_id) {
   iter_key_.Clear();
 }
 
-Result<bool> DocRowwiseIteratorBase::FetchTuple(const Slice& tuple_id, QLTableRow* row) {
+Result<bool> DocRowwiseIteratorBase::FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row) {
   return VERIFY_RESULT(FetchNext(row)) && VERIFY_RESULT(GetTupleId()) == tuple_id;
 }
 
@@ -388,7 +388,7 @@ Status SetQLPrimaryKeyColumnValues(
     const char* column_type,
     const size_t end_referenced_key_column_index,
     dockv::DocKeyDecoder* decoder,
-    QLTableRow* table_row) {
+    qlexpr::QLTableRow* table_row) {
   const auto end_group_index = begin_index + column_count;
   SCHECK_LE(
       end_group_index, schema.num_columns(), InvalidArgument,
@@ -405,7 +405,7 @@ Status SetQLPrimaryKeyColumnValues(
   size_t col_idx = begin_index;
   for (; col_idx < std::min(end_group_index, end_referenced_key_column_index); ++col_idx) {
     const auto ql_type = schema.column(col_idx).type();
-    QLTableColumn& column = table_row->AllocColumn(schema.column_id(col_idx));
+    auto& column = table_row->AllocColumn(schema.column_id(col_idx));
     RETURN_NOT_OK(decoder->DecodeKeyEntryValue(&key_entry_value));
     key_entry_value.ToQLValuePB(ql_type, &column.value);
   }
@@ -415,7 +415,7 @@ Status SetQLPrimaryKeyColumnValues(
 
 }  // namespace
 
-Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(QLTableRow* row) {
+Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(qlexpr::QLTableRow* row) {
   if (end_referenced_key_column_index_ == 0) return Status::OK();
 
   dockv::DocKeyDecoder decoder(row_key_);

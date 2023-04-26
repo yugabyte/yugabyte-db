@@ -28,7 +28,7 @@
 
 #include "yb/common/pg_types.h"
 #include "yb/common/placement_info.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/row_mark.h"

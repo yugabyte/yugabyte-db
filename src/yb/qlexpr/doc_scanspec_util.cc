@@ -11,25 +11,25 @@
 // under the License.
 //
 
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
-namespace yb::dockv {
+namespace yb::qlexpr {
 
-KeyEntryValues GetRangeKeyScanSpec(
+dockv::KeyEntryValues GetRangeKeyScanSpec(
     const Schema& schema,
-    const KeyEntryValues* prefixed_hash_components,
+    const dockv::KeyEntryValues* prefixed_hash_components,
     const QLScanRange* scan_range,
     std::vector<bool> *inclusivities,
     bool lower_bound,
     bool include_static_columns,
     bool use_strictness) {
-  KeyEntryValues range_components;
+  dockv::KeyEntryValues range_components;
   range_components.reserve(schema.num_range_key_columns());
   if (prefixed_hash_components) {
     range_components.insert(range_components.begin(),
@@ -61,8 +61,8 @@ KeyEntryValues GetRangeKeyScanSpec(
       // after and stop to fit the given bound
       if (use_strictness
           && !GetQLRangeBoundIsInclusive(range, column.sorting_type(), lower_bound)) {
-        range_components.push_back(lower_bound ? KeyEntryValue(KeyEntryType::kHighest)
-                                               : KeyEntryValue(KeyEntryType::kLowest));
+        range_components.push_back(dockv::KeyEntryValue(
+            lower_bound ? dockv::KeyEntryType::kHighest : dockv::KeyEntryType::kLowest));
         if (inclusivities) {
           inclusivities->push_back(true);
         }
@@ -74,7 +74,7 @@ KeyEntryValues GetRangeKeyScanSpec(
   if (!lower_bound) {
     // We add +inf as an extra component to make sure this is greater than all keys in range.
     // For lower bound, this is true already, because dockey + suffix is > dockey
-    range_components.emplace_back(KeyEntryType::kHighest);
+    range_components.emplace_back(dockv::KeyEntryType::kHighest);
     if (inclusivities) {
       inclusivities->push_back(true);
     }
@@ -83,7 +83,7 @@ KeyEntryValues GetRangeKeyScanSpec(
     // We use kMinPrimitiveValueType instead of kLowest because it compares as higher than
     // kHybridTime in RocksDB.
     range_components.emplace_back(
-        static_cast<KeyEntryType>(to_underlying(KeyEntryType::kHybridTime) + 1));
+        static_cast<dockv::KeyEntryType>(to_underlying(dockv::KeyEntryType::kHybridTime) + 1));
     if (inclusivities) {
       inclusivities->push_back(true);
     }
@@ -95,7 +95,7 @@ const boost::optional<QLScanRange::QLBound> &GetQLRangeBound(
     const QLScanRange::QLRange& ql_range,
     SortingType sorting_type,
     bool lower_bound) {
-  const auto sort_order = SortOrderFromColumnSchemaSortingType(sorting_type);
+  const auto sort_order = dockv::SortOrderFromColumnSchemaSortingType(sorting_type);
 
   // lower bound for ASC column and upper bound for DESC column -> min value
   // otherwise -> max value
@@ -117,27 +117,29 @@ bool GetQLRangeBoundIsInclusive(const QLScanRange::QLRange& ql_range,
   return false;
 }
 
-KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
+dockv::KeyEntryValue GetQLRangeBoundAsPVal(const QLScanRange::QLRange& ql_range,
                                     SortingType sorting_type,
                                     bool lower_bound) {
   const auto &ql_bound = GetQLRangeBound(ql_range, sorting_type, lower_bound);
   if (ql_bound) {
     // Special case for nulls because FromQLValuePB will turn them into kTombstone instead.
     if (IsNull(ql_bound->GetValue())) {
-      return KeyEntryValue::NullValue(sorting_type);
+      return dockv::KeyEntryValue::NullValue(sorting_type);
     }
-    return KeyEntryValue::FromQLValuePB(ql_bound->GetValue(), sorting_type);
+    return dockv::KeyEntryValue::FromQLValuePB(ql_bound->GetValue(), sorting_type);
   }
 
   // If there is any constraint on this range then NULL's should not be included
   // in this range. Note that GetQLRangeBoundIsInclusive defaults to false in
   // the absence of a range.
   if (ql_range.min_bound || ql_range.max_bound) {
-    return KeyEntryValue(lower_bound ? KeyEntryType::kNullLow : KeyEntryType::kNullHigh);
+    return dockv::KeyEntryValue(
+        lower_bound ? dockv::KeyEntryType::kNullLow : dockv::KeyEntryType::kNullHigh);
   }
 
   // For unset use kLowest/kHighest to ensure we cover entire scanned range.
-  return KeyEntryValue(lower_bound ? KeyEntryType::kLowest : KeyEntryType::kHighest);
+  return dockv::KeyEntryValue(
+      lower_bound ? dockv::KeyEntryType::kLowest : dockv::KeyEntryType::kHighest);
 }
 
-}  // namespace yb::dockv
+}  // namespace yb::qlexpr

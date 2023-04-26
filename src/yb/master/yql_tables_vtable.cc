@@ -31,9 +31,8 @@ YQLTablesVTable::YQLTablesVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+Result<VTableDataPtr> YQLTablesVTable::RetrieveData(const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
 
   auto tables = catalog_manager().GetTables(GetTablesMode::kVisibleToClient);
   for (const auto& table : tables) {
@@ -51,7 +50,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLTablesVTable::RetrieveData(
     auto ns_info = VERIFY_RESULT(catalog_manager().FindNamespaceById(table->namespace_id()));
 
     // Create appropriate row for the table;
-    QLRow& row = vtable->Extend();
+    auto& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 

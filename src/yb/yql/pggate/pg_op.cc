@@ -22,7 +22,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
-#include "yb/dockv/doc_scanspec_util.h"
+#include "yb/qlexpr/doc_scanspec_util.h"
 #include "yb/dockv/primitive_value_util.h"
 
 #include "yb/yql/pggate/pg_tabledesc.h"

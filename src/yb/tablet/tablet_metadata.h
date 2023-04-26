@@ -96,8 +96,8 @@ struct TableInfo {
   std::string log_prefix;
   // The table schema, secondary index map, index info (for index table only) and schema version.
   const std::shared_ptr<docdb::DocReadContext> doc_read_context;
-  const std::shared_ptr<IndexMap> index_map;
-  std::unique_ptr<IndexInfo> index_info;
+  const std::shared_ptr<qlexpr::IndexMap> index_map;
+  std::unique_ptr<qlexpr::IndexInfo> index_info;
   SchemaVersion schema_version = 0;
 
   // Partition schema of the table.
@@ -121,13 +121,13 @@ struct TableInfo {
             std::string table_name,
             TableType table_type,
             const Schema& schema,
-            const IndexMap& index_map,
-            const boost::optional<IndexInfo>& index_info,
+            const qlexpr::IndexMap& index_map,
+            const boost::optional<qlexpr::IndexInfo>& index_info,
             SchemaVersion schema_version,
             dockv::PartitionSchema partition_schema);
   TableInfo(const TableInfo& other,
             const Schema& schema,
-            const IndexMap& index_map,
+            const qlexpr::IndexMap& index_map,
             const std::vector<DeletedColumn>& deleted_cols,
             SchemaVersion schema_version);
   TableInfo(const TableInfo& other, SchemaVersion min_schema_version);
@@ -318,7 +318,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
   yb::SchemaPtr schema(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
 
-  std::shared_ptr<IndexMap> index_map(const TableId& table_id = "") const;
+  std::shared_ptr<qlexpr::IndexMap> index_map(const TableId& table_id = "") const;
 
   SchemaVersion schema_version(
       const TableId& table_id = "", const ColocationId& colocation_id = kColocationIdNotSet) const;
@@ -429,14 +429,14 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   // Set table_id for altering the schema of a colocated user table.
   void SetSchema(const Schema& schema,
-                 const IndexMap& index_map,
+                 const qlexpr::IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
                  const OpId& op_id,
                  const TableId& table_id = "");
 
   void SetSchemaUnlocked(const Schema& schema,
-                 const IndexMap& index_map,
+                 const qlexpr::IndexMap& index_map,
                  const std::vector<DeletedColumn>& deleted_cols,
                  const SchemaVersion version,
                  const OpId& op_id,
@@ -453,7 +453,7 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
       const OpId& op_id, const TableId& table_id = "") REQUIRES(data_mutex_);
 
   void SetSchemaAndTableName(
-      const Schema& schema, const IndexMap& index_map,
+      const Schema& schema, const qlexpr::IndexMap& index_map,
       const std::vector<DeletedColumn>& deleted_cols,
       const SchemaVersion version, const std::string& namespace_name,
       const std::string& table_name, const OpId& op_id, const TableId& table_id = "");
@@ -463,9 +463,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
                 const std::string& table_name,
                 const TableType table_type,
                 const Schema& schema,
-                const IndexMap& index_map,
+                const qlexpr::IndexMap& index_map,
                 const dockv::PartitionSchema& partition_schema,
-                const boost::optional<IndexInfo>& index_info,
+                const boost::optional<qlexpr::IndexInfo>& index_info,
                 const SchemaVersion schema_version,
                 const OpId& op_id);
 

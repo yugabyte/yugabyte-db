@@ -46,7 +46,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/client/client_fwd.h"

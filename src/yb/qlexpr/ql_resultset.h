@@ -23,7 +23,7 @@
 
 #include "yb/util/write_buffer.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 //--------------------------------------------------------------------------------------------------
 // A rsrow descriptor represents the metadata of a row in the resultset.
@@ -90,4 +90,4 @@ class QLResultSet {
   size_t rsrow_count_ = 0;
 };
 
-} // namespace yb
+}  // namespace yb::qlexpr

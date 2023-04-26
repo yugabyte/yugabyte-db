@@ -13,24 +13,17 @@
 
 #pragma once
 
-#include "yb/common/column_id.h"
-#include "yb/common/common.pb.h"
+#include "yb/dockv/key_entry_value.h"
 
-namespace yb {
+#include "yb/util/memory/arena_list.h"
 
-// Index column mapping.
-struct IndexColumn {
-  ColumnId column_id;         // Column id in the index table.
-  std::string column_name;    // Column name in the index table - colexpr.MangledName().
-  ColumnId indexed_column_id; // Corresponding column id in indexed table.
-  QLExpressionPB colexpr;     // Index expression.
+namespace yb::qlexpr {
 
-  explicit IndexColumn(const IndexInfoPB::IndexColumnPB& pb);
-  IndexColumn() {}
+Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnPrimitiveValues(
+    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
+    const Schema &schema, size_t start_idx);
 
-  void ToPB(IndexInfoPB::IndexColumnPB* pb) const;
+Result<std::vector<dockv::KeyEntryValue>> InitKeyColumnPrimitiveValues(
+    const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx);
 
-  std::string ToString() const;
-};
-
-} // namespace yb
+}  // namespace yb::qlexpr

@@ -41,7 +41,7 @@
 
 #include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"
@@ -104,6 +104,8 @@ namespace tablet {
 using dockv::Partition;
 using util::DereferencedEqual;
 using util::MapsEqual;
+using qlexpr::IndexInfo;
+using qlexpr::IndexMap;
 
 namespace {
 

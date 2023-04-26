@@ -11,12 +11,12 @@
 // under the License.
 //
 
-#include "yb/common/ql_bfunc.h"
+#include "yb/qlexpr/ql_bfunc.h"
 
 #include "yb/bfpg/bfpg.h"
 #include "yb/bfql/bfql.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 //--------------------------------------------------------------------------------------------------
 // CQL support
@@ -30,4 +30,4 @@ Result<bfpg::BFRetValue> ExecBfunc(bfpg::BFOpcode opcode, const bfpg::BFParams& 
   return bfpg::BFExecApi::ExecPgsqlOpcode(opcode, params);
 }
 
-} // namespace yb
+}  // namespace yb::qlexpr

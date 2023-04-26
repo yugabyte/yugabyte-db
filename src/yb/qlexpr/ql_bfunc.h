@@ -41,7 +41,7 @@
 
 #include "yb/util/status_fwd.h"
 
-namespace yb {
+namespace yb::qlexpr {
 
 //--------------------------------------------------------------------------------------------------
 // CQL support
@@ -57,4 +57,4 @@ Result<bfql::BFRetValue> ExecBfunc(bfql::BFOpcode opcode, const bfql::BFParams& 
 // PGSQL support
 Result<bfpg::BFRetValue> ExecBfunc(bfpg::BFOpcode opcode, const bfpg::BFParams& params);
 
-} // namespace yb
+}  // namespace yb::qlexpr

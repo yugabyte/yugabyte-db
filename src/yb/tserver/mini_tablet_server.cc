@@ -39,7 +39,7 @@
 
 #include <glog/logging.h>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
@@ -314,7 +314,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
 
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
-      table_id, ns_id, table_id, table_type, schema_with_ids, IndexMap(),
+      table_id, ns_id, table_id, table_type, schema_with_ids, qlexpr::IndexMap(),
       boost::none /* index_info */, 0 /* schema_version */, partition.first);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(
