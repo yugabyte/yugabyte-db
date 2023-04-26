@@ -272,7 +272,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(false);
     ExecutorService executor = Executors.newFixedThreadPool(1);
     QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
         "SELECT a.rolname, t.datname, t.queryid, t.query, t.calls, t.total_time, t.rows,"
             + " t.min_time, t.max_time, t.mean_time, t.stddev_time, t.local_blks_hit,"
@@ -299,7 +299,7 @@ public class UniverseInfoControllerTest extends UniverseControllerTestBase {
     when(mockRuntimeConfig.getBoolean(QueryHelper.SET_ENABLE_NESTLOOP_OFF_KEY)).thenReturn(true);
     ExecutorService executor = Executors.newFixedThreadPool(1);
     QueryHelper queryHelper = new QueryHelper(mockRuntimeConfigFactory, executor, mockWsClient);
-    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe);
+    String actualSql = queryHelper.slowQuerySqlWithLimit(mockRuntimeConfig, universe, false);
     assertEquals(
         "/*+Set(enable_nestloop off)*/SELECT a.rolname, t.datname, t.queryid, t.query, "
             + "t.calls, t.total_time, t.rows,"
