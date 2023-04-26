@@ -385,6 +385,11 @@ Status PgAlterTable::IncrementSchemaVersion() {
   return Status::OK();
 }
 
+Status PgAlterTable::SetTableId(const PgObjectId& table_id) {
+  table_id.ToPB(req_.mutable_table_id());
+  return Status::OK();
+}
+
 Status PgAlterTable::Exec() {
   RETURN_NOT_OK(pg_session_->pg_client().AlterTable(&req_, DdlDeadline()));
   pg_session_->InvalidateTableCache(
