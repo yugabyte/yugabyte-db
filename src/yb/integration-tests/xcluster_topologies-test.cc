@@ -18,7 +18,6 @@
 #include <chrono>
 #include <boost/assign.hpp>
 #include "yb/util/flags.h"
-// #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
@@ -54,15 +53,21 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
+#include "yb/util/thread.h"
 
 using std::string;
 
 using namespace std::literals;
 
 DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_int32(log_min_seconds_to_retain);
+DECLARE_int32(log_min_segments_to_retain);
+DECLARE_uint64(log_segment_size_bytes);
 
 namespace yb {
 
@@ -90,6 +95,13 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   // consumer tables in consumer_tables_ are assumed to be in the same order as their corresponding
   // clusters in consumer_clusters_.
   YBTables consumer_tables_;
+
+  void SetUp() override {
+    FLAGS_enable_ysql = false;
+    FLAGS_transaction_table_num_tablets = 1;
+    FLAGS_yb_num_shards_per_tserver = 1;
+    XClusterYcqlTestBase::SetUp();
+  }
 
   Status BuildSchemaAndCreateTables(
       const std::vector<uint32_t>& num_consumer_tablets,
@@ -135,10 +147,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       uint32_t num_tablets_per_table = 1,
       uint32_t num_masters = 1,
       uint32_t num_tservers = 1) {
-    FLAGS_enable_ysql = false;
-    FLAGS_transaction_table_num_tablets = 1;
-    XClusterYcqlTestBase::SetUp();
-    FLAGS_yb_num_shards_per_tserver = 1;
+    SetUp();
     num_tservers = std::max(num_tservers, replication_factor);
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_tservers;
@@ -190,8 +199,13 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     return Status::OK();
   }
 
+  // expected_fail_consumer_clusters is for running clusters that are not supposed to have
+  // successfully written records and we expect DoVerifyWrittenRecords to fail on them.
+  // skip_clusters is for clusters that are not running where it would result in an error trying to
+  // verify that records were written to them.
   Status VerifyWrittenRecords(
-      const std::unordered_set<XClusterTestBase::Cluster*>& expected_fail_consumer_clusters,
+      const std::unordered_set<XClusterTestBase::Cluster*>& expected_fail_consumer_clusters = {},
+      const std::unordered_set<XClusterTestBase::Cluster*>& skip_clusters = {},
       int timeout_secs = kRpcTimeout, Cluster* producer_cluster = nullptr) {
     if (!producer_cluster) {
       producer_cluster = &producer_cluster_;
@@ -201,6 +215,9 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
 
     for (size_t i = 0; i < consumer_clusters_.size(); ++i) {
       for (size_t j = 0; j < producer_tables_[cluster_id].size(); ++j) {
+        if (skip_clusters.contains(consumer_clusters_[i])) {
+          continue;
+        }
         const auto& producer_table = producer_tables_[cluster_id][j];
         const auto& consumer_table =
             consumer_tables_[j + (i * producer_tables_[cluster_id].size())];
@@ -239,34 +256,43 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     return Status::OK();
   }
 
-  void WriteWorkloadAndVerifyWrittenRows(
-      const std::shared_ptr<client::YBTable>& producer_table,
-      const std::unordered_set<Cluster*>& expected_fail_consumer_clusters, uint32_t start,
-      uint32_t end, int timeout = kRpcTimeout) {
-    LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-    WriteWorkload(start, end, producer_client(), producer_table->name());
-    ASSERT_OK(VerifyWrittenRecords(expected_fail_consumer_clusters, timeout));
+  Status WriteWorkloadAndVerifyWrittenRows(
+      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables, uint32_t start,
+      uint32_t end, const std::unordered_set<Cluster*>& expected_fail_consumer_clusters = {},
+      const std::unordered_set<XClusterTestBase::Cluster*>& skip_clusters = {},
+      int timeout = kRpcTimeout) {
+    for (size_t i = 0; i < producer_tables.size(); ++i) {
+      const auto& producer_table = producer_tables[i];
+      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+      WriteWorkload(start, end, producer_client(), producer_table->name());
+    }
+    RETURN_NOT_OK(VerifyWrittenRecords(expected_fail_consumer_clusters, skip_clusters, timeout));
+    return Status::OK();
   }
 
   // Empty stream_ids will pause all streams.
-  void SetPauseAndVerifyWrittenRows(
+  Status SetPauseAndVerifyWrittenRows(
       const std::vector<std::string>& stream_ids, const YBTables& producer_tables,
-      const std::unordered_set<Cluster*>& expected_fail_consumer_clusters, uint32_t start,
+      const std::unordered_set<Cluster*>& expected_fail_consumer_clusters,
+      const std::unordered_set<XClusterTestBase::Cluster*>& skip_clusters, uint32_t start,
       uint32_t end, bool pause = true) {
-    ASSERT_OK(PauseResumeXClusterProducerStreams(stream_ids, pause));
+    RETURN_NOT_OK(PauseResumeXClusterProducerStreams(stream_ids, pause));
     // Needs to sleep to wait for heartbeat to propogate.
     SleepFor(3s * kTimeMultiplier);
+
+    // Reduce the timeout time when we don't expect replication to be successful.
+    int timeout = pause ? 10 : kRpcTimeout;
 
     // If stream_ids is empty, then write and test replication on all streams, otherwise write and
     // test on only those selected in stream_ids.
     size_t size = stream_ids.size() ? stream_ids.size() : producer_tables.size();
     for (size_t i = 0; i < size; i++) {
       const auto& producer_table = producer_tables[i];
-      // Reduce the timeout time when we don't expect replication to be successful.
-      int timeout = pause ? 10 : kRpcTimeout;
-      WriteWorkloadAndVerifyWrittenRows(
-          producer_table, expected_fail_consumer_clusters, start, end, timeout);
+      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
+      WriteWorkload(start, end, producer_client(), producer_table->name());
     }
+    RETURN_NOT_OK(VerifyWrittenRecords(expected_fail_consumer_clusters, skip_clusters, timeout));
+    return Status::OK();
   }
 
   Status WaitForLoadBalancersToStabilizeOnAllClusters() {
@@ -297,7 +323,8 @@ TEST_F(XClusterTopologiesTest, TestBasicBroadcastTopology) {
     LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
     WriteWorkload(0, 10, producer_client(), producer_table->name());
   }
-  ASSERT_OK(VerifyWrittenRecords({}));
+
+  ASSERT_OK(VerifyWrittenRecords());
 }
 
 // Testing that a 2:1 replication setup fails.
@@ -327,6 +354,75 @@ TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
       ASSERT_NOK(VerifyUniverseReplication(universe_id, &verify_resp));
     }
   }
+}
+
+class XClusterTopologiesTestClusterFailure : public XClusterTopologiesTest {
+  void SetUp() override {
+    FLAGS_cdc_wal_retention_time_secs = 1;
+    FLAGS_log_min_segments_to_retain = 1;
+    FLAGS_log_min_seconds_to_retain = 1;
+    FLAGS_enable_log_retention_by_op_idx = true;
+    FLAGS_log_segment_size_bytes = 100;
+    XClusterTopologiesTest::SetUp();
+  }
+};
+
+// Testing that 1:N replication still works even when a consumer drops.
+TEST_F(XClusterTopologiesTestClusterFailure, TestBroadcastWithConsumerFailure) {
+  constexpr int kNTabletsPerTable = 3;
+  constexpr int kNumTables = 3;
+  uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
+  std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
+  auto additional_consumer_clusters = ASSERT_RESULT(SetUpWithParams(
+      tables_vector, tables_vector, kReplicationFactor, 2 /* num additional consumers */,
+      kNTabletsPerTable));
+  ASSERT_OK(SetupAllUniverseReplication());
+
+  const auto& producer_tables = producer_tables_[producer_cluster()->GetClusterId()];
+  ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 0, 10));
+  Cluster* down_cluster = consumer_clusters_[0];
+  {
+    // Bring down the first consumer cluster.
+    TEST_SetThreadPrefixScoped prefix_se("C");
+    down_cluster->mini_cluster_.get()->StopSync();
+
+    // Write some records to ensure that replication is still ongoing for the remaining clusters.
+    ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 10, 100, {}, {down_cluster}));
+    SleepFor(MonoDelta::FromSeconds(5));
+
+    // Bring the consumer cluster back up and verify that its replication catches up.
+    ASSERT_OK(down_cluster->mini_cluster_.get()->StartSync());
+  }
+  ASSERT_OK(VerifyWrittenRecords());
+
+  ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 100, 110));
+}
+
+// Testing that 1:N replication still works even when a producer drops.
+TEST_F(XClusterTopologiesTestClusterFailure, TestBroadcastWithProducerFailure) {
+  constexpr int kNTabletsPerTable = 3;
+  constexpr int kNumTables = 3;
+  uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
+  std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
+  auto additional_consumer_clusters = ASSERT_RESULT(SetUpWithParams(
+      tables_vector, tables_vector, kReplicationFactor, 2 /* num additional consumers */,
+      kNTabletsPerTable));
+  ASSERT_OK(SetupAllUniverseReplication());
+
+  const auto& producer_tables = producer_tables_[producer_cluster()->GetClusterId()];
+  ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 0, 10));
+  {
+    // Stop the producer cluster and sleep.
+    TEST_SetThreadPrefixScoped prefix_se("P");
+    producer_cluster()->StopSync();
+    SleepFor(MonoDelta::FromSeconds(5));
+
+    // Bring the producer back up.
+    ASSERT_OK(producer_cluster()->StartSync());
+  }
+
+  // Verify that replication is still working.
+  ASSERT_OK(WriteWorkloadAndVerifyWrittenRows(producer_tables, 10, 100));
 }
 
 }  // namespace yb
