@@ -67,32 +67,38 @@ type: docs
 
 </ul>
 
-You can configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere.
+You can configure VMware Tanzu Kubernetes Grid (TKG) for a YugabyteDB universe using YugabyteDB Anywhere. If no cloud providers are configured, the main Dashboard prompts you to configure at least one cloud provider.
+
+## Prerequisites
 
 Before you start, ensure that you have the `kubeconfig` file generated during [YugabyteDB Anywhere Installation](/preview/yugabyte-platform/install-yugabyte-platform/install-software/kubernetes/#create-a-kubeconfig-file-for-a-kubernetes-cluster) so YugabyteDB Anywhere can use the provided credentials to automatically provision and deprovision Kubernetes pods that run the YugabyteDB universe.
 
-To start configuring any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), open the YugabyteDB Anywhere UI, navigate to **Dashboard**, and click **Configure a Provider**.
+## Configure TKG
 
-## Configure TKG credentials
+To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TKG-Multicloud), navigate to **Configs > Infrastructure > VMware Tanzu**.
 
-You configure the TKG credentials as follows:
+This lists all currently configured providers.
 
-- Navigate to **Configs > Infrastructure > VMware Tanzu**, as per the following illustration:
+To create a TKG provider, click **Create Config** to open the **TKG Provider Configuration** page.
 
-  ![Tanzu Configuration](/images/deploy/pivotal-cloud-foundry/tanzu-config-1.png)
+### Provider settings
 
-- Use the **Name** field to provide a meaningful name for your configuration.
+Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
-- Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
+Provider settings are organized in the following sections.
 
-  - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
-  - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
+#### Cloud Info
 
-- Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
+ Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
 
-- Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
+- At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
+- At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
 
-- The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
+Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
+
+Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
+
+The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
 
 ## Configure region and zones
 

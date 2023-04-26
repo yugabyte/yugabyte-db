@@ -69,8 +69,6 @@ You can configure the on-premises cloud provider for YugabyteDB using YugabyteDB
 
 ## Configure the on-premises provider
 
-Configuring the on-premises provider consists of a number of steps.
-
 To configure on-premises providers, navigate to **Configs > Infrastructure > On-Premises Datacenters**.
 
 This lists all currently configured providers.
