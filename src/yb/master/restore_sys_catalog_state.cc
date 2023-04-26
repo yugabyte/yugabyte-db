@@ -741,11 +741,12 @@ Status RestoreSysCatalogState::IterateSysCatalog(
     const docdb::DocReadContext& doc_read_context, const docdb::DocDB& doc_db,
     HybridTime read_time, std::unordered_map<std::string, PB>* map,
     std::unordered_map<std::string, PB>* sequences_data_map) {
-  auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
+  dockv::ReaderProjection projection(doc_read_context.schema);
+  docdb::DocRowwiseIterator iter(
+      projection, doc_read_context, TransactionOperationContext(), doc_db,
       CoarseTimePoint::max(), ReadHybridTime::SingleTime(read_time), nullptr);
   return EnumerateSysCatalog(
-      iter.get(), doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
+      &iter, doc_read_context.schema, GetEntryType<PB>::value, [map, sequences_data_map](
           const Slice& id, const Slice& data) -> Status {
     auto pb = VERIFY_RESULT(pb_util::ParseFromSlice<PB>(data));
     if (!ShouldLoadObject(pb)) {
@@ -897,12 +898,13 @@ Status RestoreSysCatalogState::IncrementLegacyCatalogVersion(
     docdb::DocWriteBatch* write_batch) {
   std::string config_type;
   SysConfigEntryPB catalog_meta;
-  auto iter = std::make_unique<docdb::DocRowwiseIterator>(
-      doc_read_context.schema, doc_read_context, TransactionOperationContext(), doc_db,
+  dockv::ReaderProjection projection(doc_read_context.schema);
+  docdb::DocRowwiseIterator iter(
+      projection, doc_read_context, TransactionOperationContext(), doc_db,
       CoarseTimePoint::max(), ReadHybridTime::Max(), nullptr);
 
   RETURN_NOT_OK(EnumerateSysCatalog(
-      iter.get(), doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
+      &iter, doc_read_context.schema, SysRowEntryType::SYS_CONFIG,
       [&](const Slice& id, const Slice& data) -> Status {
         if (id.ToBuffer() != kYsqlCatalogConfigType) {
           return Status::OK();

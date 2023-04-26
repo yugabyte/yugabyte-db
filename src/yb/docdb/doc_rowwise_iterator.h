@@ -48,34 +48,22 @@ struct FetchKeyResult;
 // An SQL-mapped-to-document-DB iterator.
 class DocRowwiseIterator : public DocRowwiseIteratorBase {
  public:
-  DocRowwiseIterator(const Schema &projection,
+  DocRowwiseIterator(const dockv::ReaderProjection &projection,
                      std::reference_wrapper<const DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
                      const DocDBStatistics* statistics = nullptr);
 
-  DocRowwiseIterator(std::unique_ptr<Schema> projection,
+  DocRowwiseIterator(const dockv::ReaderProjection& projection,
                      std::shared_ptr<DocReadContext> doc_read_context,
                      const TransactionOperationContext& txn_op_context,
                      const DocDB& doc_db,
                      CoarseTimePoint deadline,
                      const ReadHybridTime& read_time,
                      RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
-                     const DocDBStatistics* statistics = nullptr);
-
-  DocRowwiseIterator(std::unique_ptr<Schema> projection,
-                     std::reference_wrapper<const DocReadContext> doc_read_context,
-                     const TransactionOperationContext& txn_op_context,
-                     const DocDB& doc_db,
-                     CoarseTimePoint deadline,
-                     const ReadHybridTime& read_time,
-                     RWOperationCounter* pending_op_counter = nullptr,
-                     boost::optional<size_t> end_referenced_key_column_index = boost::none,
                      const DocDBStatistics* statistics = nullptr);
 
   ~DocRowwiseIterator() override;
@@ -99,9 +87,9 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
 
   Result<bool> DoFetchNext(
       qlexpr::QLTableRow* table_row,
-      const Schema* projection,
+      const dockv::ReaderProjection* projection,
       qlexpr::QLTableRow* static_row,
-      const Schema* static_projection) override;
+      const dockv::ReaderProjection* static_projection) override;
 
   void Seek(const Slice& key) override;
   void PrevDocKey(const Slice& key) override;
@@ -117,7 +105,7 @@ class DocRowwiseIterator : public DocRowwiseIteratorBase {
   Status AdvanceIteratorToNextDesiredRow(bool row_finished) const;
 
   // Read next row into a value map using the specified projection.
-  Status FillRow(qlexpr::QLTableRow* table_row, const Schema* projection);
+  Status FillRow(qlexpr::QLTableRow* table_row, const dockv::ReaderProjection* projection);
 
   std::unique_ptr<IntentAwareIterator> db_iter_;
 

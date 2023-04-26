@@ -185,8 +185,9 @@ Status FillSysCatalogWriteRequest(
 Status EnumerateSysCatalog(
     tablet::Tablet* tablet, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback) {
+  dockv::ReaderProjection projection(schema);
   auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      schema.CopyWithoutColumnIds(), ReadHybridTime::Max(), /* table_id= */ "",
+      projection, ReadHybridTime::Max(), /* table_id= */ "",
       CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
 
   return EnumerateSysCatalog(iter.get(), schema, entry_type, callback);

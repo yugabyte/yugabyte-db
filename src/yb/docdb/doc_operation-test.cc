@@ -190,7 +190,7 @@ class DocOperationTest : public DocDBTestBase {
     QLWriteOperation ql_write_op(
         ql_writereq_pb, ql_writereq_pb.schema_version(),
         std::make_shared<DocReadContext>(DocReadContext::TEST_Create(schema)), index_map,
-        nullptr /* unique_index_key_schema */, txn_op_context);
+        /* unique_index_key_projection= */ nullptr, txn_op_context);
     ASSERT_OK(ql_write_op.Init(ql_writeresp_pb));
     auto doc_write_batch = MakeDocWriteBatch();
     HybridTime restart_read_ht;
@@ -344,7 +344,7 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ <max> w: 2 }]) -> 4
     auto doc_read_context = DocReadContext::TEST_Create(schema);
     EXPECT_OK(read_op.Execute(
         ql_storage, CoarseTimePoint::max() /* deadline */, ReadHybridTime::SingleTime(read_time),
-        doc_read_context, projection, &resultset, &read_restart_ht));
+        doc_read_context, &resultset, &read_restart_ht));
     EXPECT_FALSE(read_restart_ht.is_valid());
 
     // Transfer the column values from result set to rowblock.
@@ -595,7 +595,8 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
 
   Schema schema = CreateSchema();
   auto doc_read_context = DocReadContext::TEST_Create(schema);
-  DocRowwiseIterator iter(schema, doc_read_context, kNonTransactionalOperationContext,
+  dockv::ReaderProjection projection(schema);
+  DocRowwiseIterator iter(projection, doc_read_context, kNonTransactionalOperationContext,
                           doc_db(), CoarseTimePoint::max() /* deadline */,
                           ReadHybridTime::FromUint64(3000));
   iter.Init(YQL_TABLE_TYPE);
@@ -628,7 +629,7 @@ SubDocKey(DocKey(0x0000, [100], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       /* req */ nullptr, /* if_req */ nullptr, rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter(
-      schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter.Init(ql_scan_spec));
   qlexpr::QLTableRow value_map;
@@ -675,7 +676,7 @@ SubDocKey(DocKey(0x0000, [101], []), [ColumnId(3); HT{ physical: 0 logical: 3000
       rocksdb::kDefaultQueryId);
 
   DocRowwiseIterator ql_iter_system(
-      schema, doc_read_context, kNonTransactionalOperationContext, doc_db(),
+      projection, doc_read_context, kNonTransactionalOperationContext, doc_db(),
       CoarseTimePoint::max() /* deadline */, ReadHybridTime::FromMicros(3000));
   ASSERT_OK(ql_iter_system.Init(ql_scan_spec_system));
   qlexpr::QLTableRow value_map_system;
@@ -929,8 +930,9 @@ class DocOperationScanTest : public DocOperationTest {
           DocQLScanSpec ql_scan_spec(
               doc_read_context().schema, kFixedHashCode, kFixedHashCode, hashed_components,
               &condition, nullptr /* if_ req */, rocksdb::kDefaultQueryId, is_forward_scan);
+          dockv::ReaderProjection projection(doc_read_context().schema);
           DocRowwiseIterator ql_iter(
-              doc_read_context().schema, doc_read_context(), txn_op_context, doc_db(),
+              projection, doc_read_context(), txn_op_context, doc_db(),
               CoarseTimePoint::max() /* deadline */, read_ht);
           ASSERT_OK(ql_iter.Init(ql_scan_spec));
           LOG(INFO) << "Expected rows: " << AsString(expected_rows);

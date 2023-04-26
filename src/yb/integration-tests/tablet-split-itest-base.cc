@@ -32,8 +32,10 @@
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus_util.h"
 
-#include "yb/dockv/doc_key.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/doc_key.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/test_workload.h"
@@ -737,8 +739,8 @@ Status TabletSplitITest::CheckPostSplitTabletReplicasData(
 
     const auto tablet = VERIFY_RESULT(peer->shared_tablet_safe());
     const SchemaPtr schema = tablet->metadata()->schema();
-    auto client_schema = schema->CopyWithoutColumnIds();
-    auto iter = VERIFY_RESULT(tablet->NewRowIterator(client_schema));
+    dockv::ReaderProjection projection(*schema);
+    auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection));
     qlexpr::QLTableRow row;
     std::unordered_set<size_t> tablet_keys;
     while (VERIFY_RESULT(iter->FetchNext(&row))) {

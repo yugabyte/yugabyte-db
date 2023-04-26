@@ -90,7 +90,8 @@ class PgsqlWriteOperation :
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   // Reading current row before operating on it.
-  Status ReadColumns(const DocOperationApplyData& data, qlexpr::QLTableRow* table_row);
+  // Returns true if row was present.
+  Result<bool> ReadColumns(const DocOperationApplyData& data, qlexpr::QLTableRow* table_row);
 
   Status PopulateResultSet(const qlexpr::QLTableRow& table_row);
 

@@ -32,13 +32,11 @@ class YQLVTableIterator : public docdb::YQLRowwiseIteratorIf {
 
   Result<bool> DoFetchNext(
       qlexpr::QLTableRow* table_row,
-      const Schema* projection,
+      const dockv::ReaderProjection* projection,
       qlexpr::QLTableRow* static_row,
-      const Schema* static_projection) override;
+      const dockv::ReaderProjection* static_projection) override;
 
   std::string ToString() const override;
-
-  const Schema &schema() const override;
 
   Result<HybridTime> RestartReadHt() override;
 
