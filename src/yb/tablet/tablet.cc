@@ -251,6 +251,11 @@ DEFINE_RUNTIME_bool(tablet_exclusive_post_split_compaction, false,
        "unscheduled compactions are run before post-split compaction and no other compaction "
        "will get scheduled during post-split compaction.");
 
+DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
+       "Enables exclusive mode for any non-post-split full compaction for a tablet: all "
+       "scheduled and unscheduled compactions are run before the full compaction and no other "
+       "compactions will get scheduled during a full compaction.");
+
 // FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
 // FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
 // we're writing a mixture of SST files with and without UserFrontiers, to ensure that we're
@@ -3435,9 +3440,9 @@ Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reas
   rocksdb::CompactRangeOptions options;
   options.skip_flush = skip_flush;
   options.compaction_reason = compaction_reason;
-  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
-    options.exclusive_manual_compaction = FLAGS_tablet_exclusive_post_split_compaction;
-  }
+  options.exclusive_manual_compaction =
+      (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) ?
+      FLAGS_tablet_exclusive_post_split_compaction : FLAGS_tablet_exclusive_full_compaction;
 
   if (regular_db_) {
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), options));
