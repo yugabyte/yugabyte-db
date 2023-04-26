@@ -16,21 +16,36 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNA
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.models.BlobItem;
+import com.azure.storage.blob.models.BlobStorageException;
+import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.common.AZUtil;
 import com.yugabyte.yw.common.BeanValidator;
+import com.yugabyte.yw.common.CloudUtil;
+import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
 import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
@@ -38,8 +53,10 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.mockito.stubbing.Answer;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -340,23 +357,173 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     }
   }
 
+  private CustomerConfig createAzureConfig() {
+    String containerUrl = "https://storagetestazure.windows.net/container";
+    String sasToken = "fakeToken";
+    ObjectNode data = Json.newObject();
+    data.put(BACKUP_LOCATION_FIELDNAME, containerUrl);
+    data.put(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME, sasToken);
+    CustomerConfig config = createConfig(ConfigType.STORAGE, NAME_AZURE, data);
+    return config;
+  }
+
+  private void setupAzureReadValidation(
+      BlobContainerClient blobContainerClient,
+      BlobClient blobClient,
+      BlobInputStream blobIs,
+      boolean shouldReadValidateFail,
+      String incorrectData)
+      throws IOException {
+    when(blobContainerClient.getBlobClient(any())).thenReturn(blobClient);
+    doCallRealMethod()
+        .when(mockAZUtil)
+        .validateOnBlobContainerClient(
+            blobContainerClient,
+            ImmutableList.of(
+                ExtraPermissionToValidate.READ,
+                ExtraPermissionToValidate.LIST,
+                ExtraPermissionToValidate.DELETE));
+
+    when(blobClient.openInputStream()).thenReturn(blobIs);
+
+    doAnswer(
+            new Answer() {
+              @Override
+              public Object answer(InvocationOnMock invocation) {
+                Object[] args = invocation.getArguments();
+                byte[] data = (byte[]) args[0];
+                byte[] content =
+                    shouldReadValidateFail
+                        ? incorrectData.getBytes()
+                        : CloudUtil.DUMMY_DATA.getBytes();
+                System.arraycopy(content, 0, data, 0, content.length);
+                return null;
+              }
+            })
+        .when(blobIs)
+        .read(any());
+  }
+
+  private Stream genListStream(BlobItem mockBlobItem) {
+    List<BlobItem> list = new ArrayList<>();
+    list.add(mockBlobItem);
+    return list.stream();
+  }
+
+  private void setupAzureListAndDeleteValidation(
+      BlobClient blobClient, boolean shouldListValidateFail, boolean shouldDeleteValidateFail) {
+    if (shouldListValidateFail) {
+      when(blobClient.exists()).thenReturn(false);
+    } else if (shouldDeleteValidateFail) {
+      when(blobClient.exists()).thenReturn(true).thenReturn(true);
+    } else {
+      when(blobClient.exists()).thenReturn(true).thenReturn(false);
+    }
+  }
+
+  private void assertAzureReadFailure(
+      String incorrectData, String fileName, CustomerConfig config) {
+    byte[] tmp = new byte[CloudUtil.DUMMY_DATA.getBytes().length];
+    byte[] content = incorrectData.getBytes();
+    System.arraycopy(content, 0, tmp, 0, content.length);
+    assertThat(
+        () -> customerConfigValidator.validateConfig(config),
+        thrown(
+            PlatformServiceException.class,
+            "Error reading test blob "
+                + fileName
+                + ", expected: \""
+                + CloudUtil.DUMMY_DATA
+                + "\", got: \""
+                + new String(tmp)
+                + "\""));
+  }
+
+  public void testValidateDataContent_Storage_AZPreflightCheckValidatorCRUDUnsupportedPermission() {
+    BlobContainerClient bcc = mock(BlobContainerClient.class);
+    doCallRealMethod()
+        .when(mockAZUtil)
+        .validateOnBlobContainerClient(bcc, ImmutableList.of(ExtraPermissionToValidate.NULL));
+    assertThat(
+        () ->
+            mockAZUtil.validateOnBlobContainerClient(
+                bcc, ImmutableList.of(ExtraPermissionToValidate.NULL)),
+        thrown(
+            PlatformServiceException.class,
+            "Unsupported permission "
+                + ExtraPermissionToValidate.NULL.toString()
+                + " validation is not supported!"));
+  }
+
   @Parameters({
-    "https://stoe.ws.net/container, fakeToken, null, false, true",
-    "https://stoe.ws.net, fakeToken, Invalid azUriPath format: https://stoe.ws.net, false, true",
-    "http://stoe.ws.net, fakeToken, Invalid field value 'http://stoe.ws.net', false, true",
-    "https://storagetestazure.windows.net/container, tttt, Invalid SAS token!, true, true",
-    "https://stoe.ws.net/container1, tttt, Blob container container1 doesn't exist, false, false",
+    "0", "1", "2", "3", "4",
+  })
+  @Test
+  public void testValidateDataContent_Storage_AZPreflightCheckValidatorCRUD(
+      int validationStepToFail) throws IOException {
+    boolean shouldCreateValidateFail = validationStepToFail >= 1;
+    boolean shouldReadValidateFail = validationStepToFail >= 2;
+    boolean shouldListValidateFail = validationStepToFail >= 3;
+    boolean shouldDeleteValidateFail = validationStepToFail >= 4;
+
+    UUID myUUID = UUID.randomUUID();
+    String fileName = myUUID.toString() + ".txt";
+    when(mockAZUtil.getRandomUUID()).thenReturn(myUUID);
+
+    CustomerConfig config = createAzureConfig();
+    BlobClient blobClient = mock(BlobClient.class);
+    BlobInputStream blobIs = mock(BlobInputStream.class);
+    BlobContainerClient blobContainerClient =
+        ((StubbedCustomerConfigValidator) customerConfigValidator).blobContainerClient;
+
+    if (shouldCreateValidateFail) {
+      doThrow(new BlobStorageException("Upload failed", null, null)).when(blobClient).upload(any());
+    }
+
+    String incorrectData = "notdummy";
+    setupAzureReadValidation(
+        blobContainerClient, blobClient, blobIs, shouldReadValidateFail, incorrectData);
+
+    setupAzureListAndDeleteValidation(blobClient, shouldListValidateFail, shouldDeleteValidateFail);
+
+    if (shouldCreateValidateFail) {
+      assertThat(
+          () -> customerConfigValidator.validateConfig(config),
+          thrown(PlatformServiceException.class));
+    } else if (shouldReadValidateFail) {
+      assertAzureReadFailure(incorrectData, fileName, config);
+    } else if (shouldListValidateFail) {
+      assertThat(
+          () -> customerConfigValidator.validateConfig(config),
+          thrown(
+              PlatformServiceException.class,
+              "Created blob with name \"" + fileName + "\" not found in list."));
+    } else if (shouldDeleteValidateFail) {
+      assertThat(
+          () -> customerConfigValidator.validateConfig(config),
+          thrown(
+              PlatformServiceException.class,
+              "Deleted blob \"" + fileName + "\" is still in the container"));
+    } else {
+      customerConfigValidator.validateConfig(config);
+    }
+  }
+
+  @Parameters({
+    "https://stoe.ws.net/container, fakeToken, null, false",
+    "https://stoe.ws.net, fakeToken, Invalid azUriPath format: https://stoe.ws.net, false",
+    "http://stoe.ws.net, fakeToken, Invalid field value 'http://stoe.ws.net', false",
+    "https://storagetestazure.windows.net/container, tttt, Invalid SAS token!, true"
   })
   @Test
   public void testValidateDataContent_Storage_AZPreflightCheckValidator(
       String containerUrl,
       String sasToken,
       @Nullable String expectedMessage,
-      boolean refuseCredentials,
-      boolean isContainerExist) {
+      boolean refuseCredentials)
+      throws IOException {
     ((StubbedCustomerConfigValidator) customerConfigValidator).setRefuseKeys(refuseCredentials);
-    when(((StubbedCustomerConfigValidator) customerConfigValidator).blobContainerClient.exists())
-        .thenReturn(isContainerExist);
+
     ObjectNode data = Json.newObject();
     data.put(BACKUP_LOCATION_FIELDNAME, containerUrl);
     data.put(AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME, sasToken);
