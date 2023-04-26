@@ -35,7 +35,6 @@ from typing import List, Dict, Optional, Any, Set, Callable
 from yugabyte_pycommon import (  # type: ignore
     run_program,
     WorkDirContext,
-    mkdir_p,
     quote_for_bash,
     is_verbose_mode
 )
@@ -54,9 +53,10 @@ from yb.common_util import (
 )
 from yb.json_util import write_json_file, read_json_file
 from yb import compile_commands
-from yb.compile_commands import (
-    create_compile_commands_symlink, CompileCommandProcessor, get_compile_commands_file_path)
+from yb.compile_commands import create_compile_commands_symlink, get_compile_commands_file_path
+from yb.compile_commands_processor import CompileCommandProcessor
 from yb.cmake_cache import CMakeCache, load_cmake_cache
+from yb.file_util import mkdir_p
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -79,6 +79,7 @@ TRANSIENT_BUILD_ERRORS = ['missing separator.  Stop.']
 TRANSIENT_BUILD_RETRIES = 3
 
 COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES = ['CFLAGS', 'CXXFLAGS', 'LDFLAGS', 'LDFLAGS_EX']
+
 # CPPFLAGS are preprocessor flags.
 ALL_FLAG_ENV_VAR_NAMES = COMPILER_AND_LINKER_FLAG_ENV_VAR_NAMES + ['CPPFLAGS']
 
@@ -871,11 +872,14 @@ class PostgresBuilder(YbBuildToolBase):
 
         # Write similar files with postprocessed compilation commands.
         compile_command_processor = CompileCommandProcessor(
-            self.build_root,
-            extra_args=[
-                f'-DDLSUFFIX="{self.shared_library_suffix}"'
-            ],
-            add_original_dir_to_path_for_files=set(FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR))
+            build_root=self.build_root,
+            add_original_dir_to_path_for_files=set(FILES_INCLUDING_GENERATED_FILES_FROM_SAME_DIR),
+            resolved_c_compiler=self.cmake_cache.get('YB_RESOLVED_C_COMPILER'),
+            resolved_cxx_compiler=self.cmake_cache.get('YB_RESOLVED_CXX_COMPILER'))
+
+        # -----------------------------------------------------------------------------------------
+        # Non-Postgres commands
+        # -----------------------------------------------------------------------------------------
 
         yb_postprocessed_compile_commands = [
             compile_command_processor.postprocess_compile_command(item)
@@ -885,6 +889,26 @@ class PostgresBuilder(YbBuildToolBase):
             yb_postprocessed_compile_commands,
             compile_commands.YB_POSTPROCESSED_DIR_NAME)
 
+        # -----------------------------------------------------------------------------------------
+        # Postgres postprocessed commands
+        # -----------------------------------------------------------------------------------------
+
+        # Infer the value of the -DDLSUFFIX compiler flag from the raw Postgres compilation
+        # commands. We will apply the same value of the flag to all Postgres compilation commands,
+        # because some of them depend on it. This comes from the error clangd-indexer reported on
+        # the following files:
+        #   src/postgres/src/backend/jit/jit.c
+        #   src/postgres/src/backend/utils/fmgr/dfmgr.c
+        compile_command_processor.infer_preprocessor_definition('DLSUFFIX', pg_raw_compile_commands)
+
+        # Also make sure YB_SO_MAJOR_VERSION is set consistently for all Postgres compilation
+        # commands. We get multiple compilation commands for files such as
+        # src/postgres/src/timezone/localtime.c and src/postgres/src/timezone/pgtz.c,
+        # where the only difference between command lines is presence of absence of
+        # YB_SO_MAJOR_VERSION.
+        compile_command_processor.infer_preprocessor_definition(
+            'YB_SO_MAJOR_VERSION', pg_raw_compile_commands)
+
         pg_postprocessed_compile_commands = [
             compile_command_processor.postprocess_compile_command(item)
             for item in pg_raw_compile_commands
@@ -893,10 +917,15 @@ class PostgresBuilder(YbBuildToolBase):
             pg_postprocessed_compile_commands,
             compile_commands.PG_POSTPROCESSED_DIR_NAME)
 
+        # -----------------------------------------------------------------------------------------
+        # Combined postprocessed commands
+        # -----------------------------------------------------------------------------------------
+
         combined_postprocessed_compile_commands = (
             yb_postprocessed_compile_commands + pg_postprocessed_compile_commands)
+
         combined_postprocessed_compile_commands_path = self.write_compile_commands_file(
-            combined_postprocessed_compile_commands,
+            compile_command_processor.deduplicate_commands(combined_postprocessed_compile_commands),
             compile_commands.COMBINED_POSTPROCESSED_DIR_NAME)
 
         create_compile_commands_symlink(combined_postprocessed_compile_commands_path)
