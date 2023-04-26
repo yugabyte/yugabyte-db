@@ -2276,7 +2276,7 @@ activate_virtualenv() {
         actual_python_arch=$(
           "${virtualenv_dir}/bin/python3" -c "import platform; print(platform.machine())"
         )
-        if [[ $actual_python_arch != $YB_TARGET_ARCH ]]; then
+        if [[ $actual_python_arch != "$YB_TARGET_ARCH" ]]; then
           fatal "Failed to create virtualenv for $YB_TARGET_ARCH, got $actual_python_arch instead" \
                 "for virtualenv at $virtualenv_dir"
         fi
