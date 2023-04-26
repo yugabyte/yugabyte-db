@@ -89,7 +89,7 @@ Provider settings are organized in the following sections.
 
 #### Cloud Info
 
- Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
+Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
 
 - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
 - At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.

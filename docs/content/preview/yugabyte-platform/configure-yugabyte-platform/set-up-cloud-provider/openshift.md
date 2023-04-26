@@ -65,13 +65,13 @@ type: docs
 
 </ul>
 
-You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main **Dashboard** page prompts to configure at least one provider.
+You can configure OpenShift for YugabyteDB universes using YugabyteDB Anywhere. If no cloud providers are configured via YugabyteDB Anywhere, the main Dashboard prompts you to configure at least one provider.
 
-To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider in the YugabyteDB Anywhere.
+## Prerequisites
 
-## Create RBAC and kubeconfig
+To create a YugabyteDB universe using the deployed YugabyteDB Anywhere, you start by creating the required role-based access control (RBAC) and adding the provider.
 
-kubeconfig is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
+### Create RBAC
 
 Set the `YBA_NAMESPACE` environment variable to the project where your YugabyteDB Anywhere is installed, as follows:
 
@@ -124,6 +124,10 @@ The next step is to create a kubeconfig for this service account. You download a
 wget https://raw.githubusercontent.com/YugaByte/charts/master/stable/yugabyte/generate_kubeconfig.py
 ```
 
+### Create kubeconfig
+
+kubeconfig is used by YugabyteDB Anywhere to create universes in the OpenShift Container Platform (OCP) cluster.
+
 To generate the kubeconfig file, execute the following:
 
 ```shell
@@ -142,7 +146,7 @@ Generated the kubeconfig file: /tmp/yugabyte-platform-universe-management.conf
 
 The kubeconfig needs to be generated for each OpenShift cluster if you are doing a multi-cluster setup.
 
-## Create a provider in YugabyteDB Anywhere
+## Configure OpenShift
 
 Because YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
