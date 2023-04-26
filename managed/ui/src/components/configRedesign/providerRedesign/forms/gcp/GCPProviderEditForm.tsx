@@ -33,6 +33,7 @@ import {
 import { FieldGroup } from '../components/FieldGroup';
 import {
   addItem,
+  constructAccessKeysPayload,
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
@@ -45,7 +46,13 @@ import { FieldLabel } from '../components/FieldLabel';
 import { GCP_REGIONS } from '../../providerRegionsData';
 import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
 import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
-import { findExistingRegion, getDeletedRegions, getNtpSetupType, getYBAHost } from '../../utils';
+import {
+  findExistingRegion,
+  getDeletedRegions,
+  getLatestAccessKey,
+  getNtpSetupType,
+  getYBAHost
+} from '../../utils';
 import { YBAHost } from '../../../../../redesign/helpers/constants';
 import { RegionOperation } from '../configureRegion/constants';
 import { toast } from 'react-toastify';
@@ -264,6 +271,7 @@ export const GCPProviderEditForm = ({
     'editCloudCredentials',
     defaultValues.editCloudCredentials
   );
+  const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const isFormDisabled =
     isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
   return (
@@ -434,19 +442,11 @@ export const GCPProviderEditForm = ({
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Keypair Name</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.keyPairName}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.keyPairName} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Current SSH Private Key</FieldLabel>
-                <YBInput
-                  value={providerConfig.allAccessKeys[0]?.keyInfo?.privateKey}
-                  disabled={true}
-                  fullWidth
-                />
+                <YBInput value={latestAccessKey?.keyInfo?.privateKey} disabled={true} fullWidth />
               </FormField>
               <FormField>
                 <FieldLabel>Change SSH Keypair</FieldLabel>
@@ -596,7 +596,7 @@ const constructDefaultFormValues = (
       })
     )
   })),
-  sshKeypairManagement: providerConfig.allAccessKeys?.[0]?.keyInfo.managementState,
+  sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
   sshPort: providerConfig.details.sshPort ?? '',
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
@@ -668,16 +668,17 @@ const constructProviderPayload = async (
         }
       : assertUnreachableCase(formValues.providerCredentialType);
 
+  const allAccessKeysPayload = constructAccessKeysPayload(
+    formValues.editSSHKeypair,
+    formValues.sshKeypairManagement,
+    { sshKeypairName: formValues.sshKeypairName, sshPrivateKeyContent: sshPrivateKeyContent },
+    providerConfig.allAccessKeys
+  );
+
   return {
     code: ProviderCode.GCP,
     name: formValues.providerName,
-    ...(formValues.editSSHKeypair &&
-      formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: sshPrivateKeyContent
-        })
-      }),
+    ...allAccessKeysPayload,
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
