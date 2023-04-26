@@ -230,8 +230,6 @@ void Batcher::FlushAsync(
   // expected by transaction.
   if (transaction && !is_within_transaction_retry) {
     transaction->batcher_if().ExpectOperations(operations_count);
-    // Set subtxn metadata for the current batch of ops.
-    ops_info_.metadata.subtransaction_pb = transaction->GetSubTransactionMetadataPB();
   }
 
   ops_queue_.reserve(ops_.size());
