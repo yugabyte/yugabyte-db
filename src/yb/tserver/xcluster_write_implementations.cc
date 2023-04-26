@@ -63,7 +63,8 @@ Status UpdatePackedRow(const Slice& key,
     const cdc::XClusterSchemaVersionMap& schema_versions_map,
     ValueBuffer *out) {
   CHECK(out != nullptr);
-  VLOG(3) << "Original value with producer schema version=" << value.ToDebugHexString();
+  VLOG(3) << Format("Original kv with producer schema version $0=$1",
+      key.ToDebugHexString(), value.ToDebugHexString());
 
   Slice value_slice = value;
   auto control_fields = VERIFY_RESULT(docdb::ValueControlFields::Decode(&value_slice));
@@ -84,7 +85,8 @@ Status UpdatePackedRow(const Slice& key,
       value_slice, control_fields, schema_versions_map, out);
 
   if (status.ok()) {
-    VLOG(3) << "Updated value with consumer schema version=" << out->AsSlice().ToDebugHexString();
+    VLOG(3) << Format("Updated kv with producer schema version $0=$1",
+        key.ToDebugHexString(), out->AsSlice().ToDebugHexString());
   }
 
   return status;
