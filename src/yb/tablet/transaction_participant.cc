@@ -1516,7 +1516,12 @@ class TransactionParticipant::Impl
       operation->CompleteWithStatus(Status::OK());
       return;
     }
-    participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    auto operation_state = operation->ToString();
+    Status submit_status = participant_context_.SubmitUpdateTransaction(std::move(operation), term);
+    if (!submit_status.ok()) {
+      LOG_WITH_PREFIX(WARNING) << "Could not submit transaction status update operation: "
+                               << operation_state << ", status: " << submit_status;
+    }
   }
 
   void HandleCleanup(

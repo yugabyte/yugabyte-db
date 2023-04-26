@@ -216,7 +216,7 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
   std::unique_ptr<UpdateTxnOperation> CreateUpdateTransaction(
       TransactionStatePB* request) override;
 
-  void SubmitUpdateTransaction(
+  Status SubmitUpdateTransaction(
       std::unique_ptr<UpdateTxnOperation> operation, int64_t term) override;
 
   HybridTime SafeTimeForTransactionParticipant() override;

@@ -711,14 +711,22 @@ void TabletPeer::Submit(std::unique_ptr<Operation> operation, int64_t term) {
   }
 }
 
-void TabletPeer::SubmitUpdateTransaction(
+Status TabletPeer::SubmitUpdateTransaction(
     std::unique_ptr<UpdateTxnOperation> operation, int64_t term) {
   // TODO: safely handle the case when tablet is not set.
   // https://github.com/yugabyte/yugabyte-db/issues/14597
   if (!operation->tablet()) {
-    operation->SetTablet(CHECK_RESULT(shared_tablet_safe()).get());
+    operation->SetTablet(VERIFY_RESULT(shared_tablet_safe()).get());
+  }
+  auto scoped_read_operation =
+      operation->tablet()->CreateNonAbortableScopedRWOperation();
+  if (!scoped_read_operation.ok()) {
+    auto status = MoveStatus(scoped_read_operation);
+    operation->CompleteWithStatus(status);
+    return status;
   }
   Submit(std::move(operation), term);
+  return Status::OK();
 }
 
 HybridTime TabletPeer::SafeTimeForTransactionParticipant() {
