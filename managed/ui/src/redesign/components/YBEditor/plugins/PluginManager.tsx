@@ -21,7 +21,6 @@ import {
 import { useSingleLinePlugin } from './SingleLinePlugin';
 import { useJSONPlugin } from './json/JSONPlugin';
 import { useDefaultPlugin } from './default/DefaultPlugin';
-import { useHighlightAlertVariablePlugin } from './alert/HighlightAlertVariablePlugin';
 
 export type LoadPlugins = {
   basic?: boolean;
@@ -29,7 +28,6 @@ export type LoadPlugins = {
   singleLine?: boolean;
   jsonPlugin?: boolean;
   defaultPlugin?: boolean;
-  highlightAlertVariablePlugin?: boolean;
 };
 
 /**
@@ -45,7 +43,6 @@ export function useEditorPlugin(editor: IYBEditor, loadPlugins: LoadPlugins) {
     useAlertVariablesPlugin({ editor, enabled: loadPlugins.alertVariablesPlugin }),
     useSingleLinePlugin({ editor, enabled: loadPlugins.singleLine }),
     useJSONPlugin({ editor, enabled: loadPlugins.jsonPlugin }),
-    useHighlightAlertVariablePlugin({ editor, enabled: loadPlugins.highlightAlertVariablePlugin }),
     useDefaultPlugin({ editor, enabled: loadPlugins.defaultPlugin ?? true })
   ];
 
@@ -92,7 +89,10 @@ export function useEditorPlugin(editor: IYBEditor, loadPlugins: LoadPlugins) {
   }
 
   function getDecorators(node: NodeEntry<CustomText>) {
-    return pluginsList.map((p) => p.decorator?.(node)).flat().filter(Boolean);
+    return pluginsList
+      .map((p) => p.decorator?.(node))
+      .flat()
+      .filter(Boolean);
   }
 
   return { renderElement, onKeyDown, renderLeaf, getDefaultComponents, getDecorators };

@@ -11,7 +11,14 @@ import ReactDOM from 'react-dom';
 import { head } from 'lodash';
 import { Editor, Transforms, Element as SlateElement, Range, Element, Node } from 'slate';
 import { ReactEditor } from 'slate-react';
-import { CustomElement, CustomText, IYBEditor, JSONCodeBlock, Paragraph, TextDecorators } from './custom-types';
+import {
+  CustomElement,
+  CustomText,
+  IYBEditor,
+  JSONCodeBlock,
+  Paragraph,
+  TextDecorators
+} from './custom-types';
 import {
   IYBSlatePluginReturnProps,
   SlateRenderElementProps,
@@ -30,6 +37,8 @@ export const DefaultJSONElement: JSONCodeBlock = {
 };
 
 export const ALERT_VARIABLE_REGEX = /{{\s*\w+\s*}}/g;
+export const MATCH_ALL_BETWEEN_BRACKET_REGEX = /{{(.*?)}}/g;
+
 /**
  * common function which can be used to return for non enabled plugins.
  */
@@ -90,15 +99,10 @@ export const toggleBlock = (editor: IYBEditor, block: string) => {
     };
   } else {
     newProperties = {
-      type: (isActive ? 'paragraph' : block) as any
+      align: block
     };
   }
   Transforms.setNodes<SlateElement>(editor, newProperties);
-
-  if (!isActive) {
-    const b = { type: block, children: [] };
-    Transforms.wrapNodes(editor, b as any);
-  }
 };
 
 export const toggleMark = (editor: IYBEditor, mark: TextDecorators) => {
@@ -177,15 +181,15 @@ export const isEmptyElement = (element: Element): boolean => {
  */
 export const isEditorEmpty = (editor: IYBEditor | null): boolean => {
   if (!editor) return false;
-  return editor.children.every(child => isEmptyElement(child as CustomElement))
-}
+  return editor.children.every((child) => isEmptyElement(child as CustomElement));
+};
 
 /**
  * extract text from the element
  */
 export const serializeToText = (node: CustomText | CustomElement) => {
-  return Node.string(node)
-}
+  return Node.string(node);
+};
 
 /**
  * reset the editor history
@@ -193,6 +197,6 @@ export const serializeToText = (node: CustomText | CustomElement) => {
 export const resetEditorHistory = (editor: IYBEditor) => {
   editor.history = {
     redos: [],
-    undos: [],
+    undos: []
   };
-} 
+};
