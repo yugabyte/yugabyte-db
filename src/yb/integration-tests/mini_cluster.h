@@ -129,6 +129,8 @@ class MiniCluster : public MiniClusterBase {
   // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
   Status RestartSync();
 
+  void StopSync();
+
   void Shutdown();
   Status FlushTablets(
       tablet::FlushMode mode = tablet::FlushMode::kSync,
