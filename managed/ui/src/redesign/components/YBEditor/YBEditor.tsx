@@ -20,7 +20,7 @@ import { DefaultElement } from './plugins/PluginUtils';
 interface YBEditorProps {
   initialValue?: Descendant[];
   setVal?: (val: Descendant[]) => void;
-  editorProps?: EditableProps;
+  editorProps?: EditableProps & {'data-testid'?: string};
   loadPlugins?: LoadPlugins;
   ref: MutableRefObject<IYBEditor>;
   editorClassname?: any,

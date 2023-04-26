@@ -8,6 +8,11 @@ export type CustomText = {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  decoration?: {
+    [key: string]: {
+      type: string;
+    };
+  };
   text: string;
 };
 
@@ -44,13 +49,18 @@ export type AlertVariableElement = {
 };
 
 export type JSONCodeBlock = {
-  type: 'jsonCode',
-  children: Descendant[]
-}
+  type: 'jsonCode';
+  children: Descendant[];
+};
 
 export type IYBEditor = BaseEditor & ReactEditor & HistoryEditor;
 
-export type CustomElement = HeadingElement | Paragraph | AlertVariableElement | ListItemElement | JSONCodeBlock;
+export type CustomElement =
+  | HeadingElement
+  | Paragraph
+  | AlertVariableElement
+  | ListItemElement
+  | JSONCodeBlock;
 
 export type DOMElement = Element;
 declare module 'slate' {

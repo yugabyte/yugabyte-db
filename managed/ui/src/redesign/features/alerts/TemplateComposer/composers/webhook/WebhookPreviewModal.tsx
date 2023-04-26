@@ -11,20 +11,22 @@ import React, { FC, useRef } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
-import { Descendant, Transforms } from 'slate';
+import { Descendant } from 'slate';
 import { Box, makeStyles, MenuItem, Typography } from '@material-ui/core';
+import { toast } from 'react-toastify';
 import { YBLoadingCircleIcon } from '../../../../../../components/common/indicators';
 import { YBModal, YBSelect } from '../../../../../components';
 import { YBEditor } from '../../../../../components/YBEditor';
-import { IYBEditor, clearEditor } from '../../../../../components/YBEditor/plugins';
+import { IYBEditor } from '../../../../../components/YBEditor/plugins';
 import {
   ALERT_TEMPLATES_QUERY_KEY,
   fetchAlertConfigList,
   previewAlertNotification
 } from '../../CustomVariablesAPI';
 import { useCommonStyles } from '../../CommonStyles';
-import { TextSerializer } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
-import { TextDeserializer } from '../../../../../components/YBEditor/serializers/Text/TextDeSerializer';
+import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
+import { fillAlertVariablesWithValue } from '../ComposerUtils';
+import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
 
 type WebhookPreviewModalProps = {
   visible: boolean;
@@ -79,18 +81,16 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
       ),
     {
       onSuccess(data) {
-        const slateNode = new TextDeserializer(
-          bodyEditorRef.current!,
-          data.data.text
-        ).deserialize();
-        clearEditor(bodyEditorRef.current!);
-        Transforms.insertNodes(bodyEditorRef.current!, slateNode);
+        fillAlertVariablesWithValue(bodyEditorRef.current!, data.data.text);
+      },
+      onError(err) {
+        toast.error(createErrorMessage(err));
       }
     }
   );
 
   const previewTemplate = (alertConfigUUID: string) => {
-    const textTemplate = new TextSerializer(bodyEditorRef.current!).serlializeElements(bodyValue);
+    const textTemplate = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
     fillTemplateWithValue.mutate({ textTemplate, alertConfigUUID });
   };
 
@@ -116,6 +116,7 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
       overrideHeight="540px"
       size="lg"
       titleSeparator
+      enableBackdropDismiss
     >
       <Box className={classes.defaultPadding}>
         <Typography variant="body2">
@@ -123,6 +124,7 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
         </Typography>
         <YBSelect
           className={classes.select}
+          data-testid="webhook-preview-select-config"
           onChange={(e) => {
             previewTemplate(e.target.value);
           }}
@@ -139,7 +141,11 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
             <em>{t('alertCustomTemplates.alertVariablesPreviewModal.selectPlaceholder')}</em>
           </MenuItem>
           {Object.keys(alertConfigurationsMap).map((alertConfigUuid) => (
-            <MenuItem key={alertConfigurationsMap[alertConfigUuid]} value={alertConfigUuid}>
+            <MenuItem
+              data-testid={`alert-config-${alertConfigurationsMap[alertConfigUuid]}`}
+              key={alertConfigurationsMap[alertConfigUuid]}
+              value={alertConfigUuid}
+            >
               {alertConfigurationsMap[alertConfigUuid]}
             </MenuItem>
           ))}
@@ -149,8 +155,12 @@ const WebhookPreviewModal: FC<WebhookPreviewModalProps> = ({ bodyValue, visible,
         <Typography variant="body1">{t('alertCustomTemplates.composer.content')}</Typography>
         <Box className={clsx(commonStyles.editorBorder, classes.bodyEditor)}>
           <YBEditor
-            editorProps={{ readOnly: true, style: { height: '260px' } }}
-            loadPlugins={{ alertVariablesPlugin: false, jsonPlugin: true }}
+            editorProps={{
+              readOnly: true,
+              style: { height: '260px' },
+              'data-testid': 'preview-webhook-subject-editor'
+            }}
+            loadPlugins={{ alertVariablesPlugin: true, jsonPlugin: true }}
             initialValue={bodyValue}
             ref={bodyEditorRef}
           />

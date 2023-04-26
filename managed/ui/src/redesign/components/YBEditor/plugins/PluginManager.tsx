@@ -89,7 +89,10 @@ export function useEditorPlugin(editor: IYBEditor, loadPlugins: LoadPlugins) {
   }
 
   function getDecorators(node: NodeEntry<CustomText>) {
-    return pluginsList.map((p) => p.decorator?.(node)).flat().filter(Boolean);
+    return pluginsList
+      .map((p) => p.decorator?.(node))
+      .flat()
+      .filter(Boolean);
   }
 
   return { renderElement, onKeyDown, renderLeaf, getDefaultComponents, getDecorators };

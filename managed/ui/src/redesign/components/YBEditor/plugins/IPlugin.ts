@@ -17,7 +17,7 @@ export interface SlateRenderElementProps extends RenderElementProps {
 }
 export interface SlateRenderLeafProps extends RenderLeafProps {
   text: CustomText;
-  leaf: CustomText & { JSON?: { decoration: Token['type'] } };
+  leaf: CustomText;
 }
 
 export type IYBSlatePluginInputProps = {
@@ -86,7 +86,7 @@ export type IYBSlatePluginReturnProps = {
    */
   isEnabled: () => boolean;
 
-  decorator?: (node: NodeEntry<CustomText>) => Partial<BaseRange>[]
+  decorator?: (node: NodeEntry<CustomText>) => Partial<BaseRange>[];
 };
 
 export type IYBSlatePlugin = (props: IYBSlatePluginInputProps) => IYBSlatePluginReturnProps;

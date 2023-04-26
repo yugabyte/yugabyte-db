@@ -194,6 +194,7 @@ export const AlertDestinationChannels = (props) => {
                         setShowModal(false);
                         setShowCustomTemplateEditor(true);
                       }}
+                      data-testid="customize_notification_template"
                     />
                   )}
 

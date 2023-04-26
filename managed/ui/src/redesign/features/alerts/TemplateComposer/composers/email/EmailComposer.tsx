@@ -14,37 +14,38 @@ import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
 import { toast } from 'react-toastify';
 import { Descendant, Transforms } from 'slate';
-import { HistoryEditor } from 'slate-history';
 import { ReactEditor } from 'slate-react';
 import { debounce, find } from 'lodash';
 import { YBLoadingCircleIcon } from '../../../../../../components/common/indicators';
 import { YBButton } from '../../../../../components';
 import { YBEditor } from '../../../../../components/YBEditor';
 import {
-  ALERT_VARIABLE_END_TAG,
-  ALERT_VARIABLE_START_TAG,
   clearEditor,
   DefaultElement,
   isBlockActive,
   isEditorDirty,
+  isEditorEmpty,
   isMarkActive,
   IYBEditor,
+  resetEditorHistory,
   TextDecorators,
   toggleBlock,
   toggleMark
 } from '../../../../../components/YBEditor/plugins';
-import { HTMLDeSerializer, HTMLSerializer } from '../../../../../components/YBEditor/serializers';
+import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
 import EmailPreviewModal from './EmailPreviewModal';
 import { useCommonStyles } from '../../CommonStyles';
 import {
   ALERT_TEMPLATES_QUERY_KEY,
   createAlertChannelTemplates,
+  fetchAlertTemplateVariables,
   getAlertChannelTemplates
 } from '../../CustomVariablesAPI';
 import { AlertPopover, GetInsertVariableButton, useComposerStyles } from '../ComposerStyles';
 import { IComposer, IComposerRef } from '../IComposer';
-import { TextSerializer } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
-import { TextDeserializer } from '../../../../../components/YBEditor/serializers/Text/TextDeSerializer';
+import RollbackToTemplateModal from '../webhook/RollbackToTemplateModal';
+import { findInvalidVariables, loadTemplateIntoEditor } from '../ComposerUtils';
+import { createErrorMessage } from '../../../../../../utils/ObjectUtils';
 
 //icons
 import { Info } from '@material-ui/icons';
@@ -54,6 +55,8 @@ import { ReactComponent as Bold } from '../icons/bold.svg';
 import { ReactComponent as Underline } from '../icons/underline.svg';
 import { ReactComponent as Strikethrough } from '../icons/strikethrough.svg';
 import { FormatAlignCenter, FormatAlignLeft, FormatAlignRight } from '@material-ui/icons';
+import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
+import { ReactComponent as ClearTemplate } from '../icons/clearTemplate.svg';
 
 const ToolbarMarkIcons: Partial<Record<TextDecorators, { icon: React.ReactChild }>> = {
   italic: {
@@ -94,6 +97,17 @@ const ToolbarBlockIcons: Record<
 const useStyles = makeStyles((theme) => ({
   composers: {
     padding: `0 ${theme.spacing(3.5)}px !important`
+  },
+  moreToolbarActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1.2)
+  },
+  rollToDefaultTemplateText: {
+    textDecoration: 'underline',
+    color: '#44518B',
+    cursor: 'pointer',
+    userSelect: 'none'
   }
 }));
 
@@ -116,6 +130,8 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
     const subjectInsertVariableButRef = useRef(null);
 
     const [showPreviewModal, setShowPreviewModal] = useState(false);
+    const [showRollbackTemplateModal, setShowRollbackTemplateModal] = useState(false);
+    const [isRollbackedToDefaultTemplate, setIsRollbackedToDefaultTemplate] = useState(false);
 
     // counter to force re-render this component, if any operations is performed on the body editor
     const [counter, setCounter] = useState(1);
@@ -128,8 +144,27 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
       getAlertChannelTemplates
     );
 
+    const { data: alertVariables, isLoading: isAlertVariablesLoading } = useQuery(
+      ALERT_TEMPLATES_QUERY_KEY.fetchAlertTemplateVariables,
+      fetchAlertTemplateVariables
+    );
+
     const createTemplate = useMutation(
-      ({ textTemplate, titleTemplate }: { textTemplate: string; titleTemplate: string }) => {
+      async ({ textTemplate, titleTemplate }: { textTemplate: string; titleTemplate: string }) => {
+        let invalidVariables = findInvalidVariables(titleTemplate, alertVariables!.data);
+        invalidVariables = [
+          ...invalidVariables,
+          ...findInvalidVariables(textTemplate, alertVariables!.data)
+        ];
+
+        if (invalidVariables.length > 0) {
+          return Promise.reject({
+            message: t('alertCustomTemplates.composer.invalidVariables', {
+              variable: invalidVariables.join(', ')
+            })
+          });
+        }
+
         return createAlertChannelTemplates({
           type: 'Email',
           textTemplate,
@@ -139,49 +174,37 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
       {
         onSuccess: () => {
           toast.success(t('alertCustomTemplates.composer.templateSavedSuccess'));
+        },
+        onError(error) {
+          toast.error(createErrorMessage(error));
         }
       }
     );
 
     useEffect(() => {
-      if (isTemplateLoading) return;
+      if (isTemplateLoading || isAlertVariablesLoading || isEditorDirty(bodyEditorRef.current))
+        return;
 
       const emailTemplate = find(channelTemplates?.data, { type: 'Email' });
+      if (!emailTemplate || !alertVariables?.data) return;
 
-      if (emailTemplate && bodyEditorRef.current && subjectEditorRef.current) {
-        try {
-          let bodyVal = new HTMLDeSerializer(
-            bodyEditorRef.current,
-            emailTemplate.textTemplate ?? emailTemplate.defaultTextTemplate ?? ''
-          ).deserialize();
-          // this is not a html template, just a plain text
-          if (bodyVal[0].text) {
-            bodyVal = [
-              {
-                ...DefaultElement,
-                children: bodyVal as any
-              }
-            ];
-          }
-          // Don't aleter the history while loading the template
-          HistoryEditor.withoutSaving(bodyEditorRef.current, () => {
-            clearEditor(bodyEditorRef.current as IYBEditor);
-            Transforms.insertNodes(bodyEditorRef.current as IYBEditor, bodyVal);
-          });
+      loadTemplateIntoEditor(
+        (emailTemplate.textTemplate
+          ? emailTemplate.textTemplate
+          : emailTemplate.defaultTextTemplate) ?? '',
+        alertVariables.data,
+        bodyEditorRef.current
+      );
 
-          const subjectVal = new TextDeserializer(
-            subjectEditorRef.current,
-            emailTemplate.titleTemplate ?? emailTemplate.defaultTitleTemplate ?? ''
-          ).deserialize();
-          HistoryEditor.withoutSaving(subjectEditorRef.current, () => {
-            clearEditor(subjectEditorRef.current as IYBEditor);
-            Transforms.insertNodes(subjectEditorRef.current as IYBEditor, subjectVal);
-          });
-        } catch (e) {
-          console.log(e);
-        }
-      }
-    }, [isTemplateLoading, channelTemplates]);
+      // subject editor is restricted only to one line
+      loadTemplateIntoEditor(
+        emailTemplate?.titleTemplate?.replace('\n', '')
+          ? emailTemplate.titleTemplate?.replace('\n', '')
+          : emailTemplate.defaultTitleTemplate?.replace('\n', ''),
+        alertVariables.data,
+        subjectEditorRef.current
+      );
+    }, [isTemplateLoading, channelTemplates, isAlertVariablesLoading, alertVariables]);
 
     useImperativeHandle(
       forwardRef,
@@ -193,6 +216,28 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
       }),
       []
     );
+
+    // rollback to default template
+    const rollbackTemplate = () => {
+      const emailTemplate = find(channelTemplates?.data, { type: 'Email' });
+      if (!emailTemplate || isAlertVariablesLoading) return;
+
+      loadTemplateIntoEditor(
+        emailTemplate.defaultTextTemplate ?? '',
+        alertVariables!.data,
+        bodyEditorRef.current
+      );
+      loadTemplateIntoEditor(
+        emailTemplate.defaultTitleTemplate ?? '',
+        alertVariables!.data,
+        subjectEditorRef.current
+      );
+
+      setIsRollbackedToDefaultTemplate(true);
+      setShowRollbackTemplateModal(false);
+      resetEditorHistory(bodyEditorRef.current!);
+      resetEditorHistory(subjectEditorRef.current!);
+    };
 
     if (isTemplateLoading) {
       return <YBLoadingCircleIcon />;
@@ -219,10 +264,13 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                   loadPlugins={{
                     singleLine: true,
                     alertVariablesPlugin: true,
-                    basic: false,
-                    defaultPlugin: true
+                    basic: true,
+                    defaultPlugin: false
                   }}
                   ref={subjectEditorRef}
+                  editorProps={{
+                    'data-testid': 'email-subject-editor'
+                  }}
                 />
               </Grid>
               <Grid item style={{ width: '20%' }}>
@@ -234,10 +282,11 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                   anchorEl={subjectInsertVariableButRef.current}
                   editor={subjectEditorRef.current as any}
                   onVariableSelect={(variable, type) => {
-                    if (!subjectEditorRef.current) return;
-                    subjectEditorRef.current.insertText(
-                      `${ALERT_VARIABLE_START_TAG}${variable.name}${ALERT_VARIABLE_END_TAG}`
-                    );
+                    if (type === 'SYSTEM') {
+                      subjectEditorRef.current!['addSystemVariable'](variable);
+                    } else {
+                      subjectEditorRef.current!['addCustomVariable'](variable);
+                    }
                   }}
                   handleClose={() => {
                     setShowSubjectAlertPopover(false);
@@ -255,6 +304,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                   {Object.keys(ToolbarMarkIcons).map((ic) =>
                     React.cloneElement(ToolbarMarkIcons[ic].icon, {
                       key: ic,
+                      'data-testid': `mark-icon-${ic}`,
                       className: clsx(
                         ToolbarMarkIcons[ic].icon.props.className,
                         isMarkActive(bodyEditorRef.current, ic as TextDecorators) ? 'active' : ''
@@ -272,6 +322,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                   {Object.keys(ToolbarBlockIcons).map((ic) =>
                     React.cloneElement(ToolbarBlockIcons[ic].icon, {
                       key: ic,
+                      'data-testid': `block-icon-${ic}`,
                       className: clsx(
                         ToolbarBlockIcons[ic].icon.props.className,
                         isBlockActive(bodyEditorRef.current, ToolbarBlockIcons[ic].align, 'align')
@@ -285,7 +336,31 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                     })
                   )}
                 </Grid>
-                <Grid item>
+                <Grid item className={classes.moreToolbarActions}>
+                  {isEditorDirty(bodyEditorRef.current) && (
+                    <Typography
+                      variant="body2"
+                      className={classes.rollToDefaultTemplateText}
+                      onClick={() => {
+                        setShowRollbackTemplateModal(true);
+                      }}
+                      data-testid="webhook-rollback-template"
+                    >
+                      {t('alertCustomTemplates.composer.webhookComposer.rollback')}
+                    </Typography>
+                  )}
+                  <YBButton
+                    className={composerStyles.insertVariableButton}
+                    variant="secondary"
+                    startIcon={<ClearTemplate />}
+                    onClick={() => {
+                      clearEditor(bodyEditorRef.current!);
+                      bodyEditorRef.current!.insertNode(DefaultElement);
+                    }}
+                    data-testid="webhook-clear-template"
+                  >
+                    {t('alertCustomTemplates.composer.webhookComposer.clearTemplate')}
+                  </YBButton>
                   <GetInsertVariableButton
                     onClick={() => setShowBodyAlertPopover(true)}
                     ref={bodyInsertVariableButRef}
@@ -309,20 +384,26 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
               </Grid>
               <YBEditor
                 setVal={setBody}
-                loadPlugins={{ alertVariablesPlugin: true }}
+                loadPlugins={{ alertVariablesPlugin: true, basic: true }}
                 ref={bodyEditorRef}
                 // on onClick and on onKeyDown , update the counter state, re-render this component,
                 // such that the marks (bold, italics) are marked
                 editorProps={{
-                  onClick: () => reRender()
+                  onClick: () => reRender(),
+                  'data-testid': 'email-body-editor'
                 }}
-                onEditorKeyDown={() => reRender()}
+                onEditorKeyDown={() => {
+                  isRollbackedToDefaultTemplate && setIsRollbackedToDefaultTemplate(false);
+                  reRender();
+                }}
               />
             </Grid>
           </Grid>
           <Grid item container alignItems="center" className={composerStyles.helpText}>
             <Info />
-            <Typography variant="body2">{t('alertCustomTemplates.composer.helpText')}</Typography>
+            <Typography variant="body2">
+              {t('alertCustomTemplates.composer.helpText', { type: 'email' })}
+            </Typography>
           </Grid>
         </Grid>
         <Grid item className={commonStyles.noPadding}>
@@ -337,6 +418,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
               onClick={() => {
                 setShowPreviewModal(true);
               }}
+              data-testid="preview-email-button"
             >
               {t('alertCustomTemplates.composer.previewTemplateButton')}
             </YBButton>
@@ -346,6 +428,7 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                 onClick={() => {
                   onClose();
                 }}
+                data-testid="cancel-email-button"
               >
                 {t('common.cancel')}
               </YBButton>
@@ -353,18 +436,20 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
                 variant="primary"
                 type="submit"
                 disabled={
-                  !isEditorDirty(subjectEditorRef.current) && !isEditorDirty(bodyEditorRef.current)
+                  !isEditorDirty(subjectEditorRef.current) &&
+                  !isEditorDirty(bodyEditorRef.current) &&
+                  !isRollbackedToDefaultTemplate
                 }
                 autoFocus
                 className={composerStyles.submitButton}
+                data-testid="save-email-button"
                 onClick={() => {
                   if (bodyEditorRef.current && subjectEditorRef.current) {
-                    const subjectHtml = new TextSerializer(subjectEditorRef.current).serialize();
+                    const subjectHtml = new HTMLSerializer(subjectEditorRef.current).serialize();
                     const bodyHtml = new HTMLSerializer(bodyEditorRef.current).serialize();
-
-                    createTemplate.mutate({
-                      textTemplate: bodyHtml,
-                      titleTemplate: subjectHtml
+                    createTemplate.mutateAsync({
+                      textTemplate: convertHTMLToText(bodyHtml) ?? '',
+                      titleTemplate: convertHTMLToText(subjectHtml) ?? ''
                     });
                   }
                 }}
@@ -379,6 +464,15 @@ const EmailComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<ICo
           subjectValue={subject}
           visible={showPreviewModal}
           onHide={() => setShowPreviewModal(false)}
+        />
+        <RollbackToTemplateModal
+          visible={showRollbackTemplateModal}
+          onHide={() => {
+            setShowRollbackTemplateModal(false);
+          }}
+          onSubmit={() => {
+            rollbackTemplate();
+          }}
         />
       </>
     );

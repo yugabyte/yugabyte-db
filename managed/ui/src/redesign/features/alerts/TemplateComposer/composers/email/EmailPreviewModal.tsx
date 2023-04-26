@@ -11,26 +11,22 @@ import React, { FC, useRef } from 'react';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
-import { Descendant, Editor, Element, Path, Transforms } from 'slate';
+import { Descendant } from 'slate';
 import { Box, makeStyles, MenuItem, Typography } from '@material-ui/core';
+import { toast } from 'react-toastify';
 import { YBLoadingCircleIcon } from '../../../../../../components/common/indicators';
 import { YBModal, YBSelect } from '../../../../../components';
 import { YBEditor } from '../../../../../components/YBEditor';
-import {
-  ALERT_VARIABLE_ELEMENT_TYPE,
-  IYBEditor,
-  clearEditor
-} from '../../../../../components/YBEditor/plugins';
-import { AlertVariableElement } from '../../../../../components/YBEditor/plugins';
+import { IYBEditor } from '../../../../../components/YBEditor/plugins';
 import {
   ALERT_TEMPLATES_QUERY_KEY,
   fetchAlertConfigList,
   previewAlertNotification
 } from '../../CustomVariablesAPI';
 import { useCommonStyles } from '../../CommonStyles';
-import { TextSerializer } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
-import { HTMLDeSerializer, HTMLSerializer } from '../../../../../components/YBEditor/serializers';
-import { TextDeserializer } from '../../../../../components/YBEditor/serializers/Text/TextDeSerializer';
+import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
+import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
+import { fillAlertVariablesWithValue } from '../ComposerUtils';
 
 type EmailPreviewModalProps = {
   visible: boolean;
@@ -112,33 +108,11 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
       ),
     {
       onSuccess(data) {
-        const bodyNodes = new HTMLDeSerializer(
-          bodyEditorRef.current!,
-          data.data.text
-        ).deserialize();
-
-        clearEditor(bodyEditorRef.current!);
-        Transforms.insertNodes(bodyEditorRef.current!, bodyNodes);
-
-        const alertElements = Array.from(
-          Editor.nodes(bodyEditorRef.current!, {
-            at: [],
-            match: (node) => Element.isElement(node) && node.type === ALERT_VARIABLE_ELEMENT_TYPE //get only ALERT_VARIABLE_ELEMENT
-          })
-        );
-
-        alertElements.forEach((next) => {
-          const [_, path] = next as [AlertVariableElement, Path];
-          //set the mode to preview such that it display the value, instead of variable name
-          Transforms.setNodes(bodyEditorRef.current!, { view: 'PREVIEW' }, { at: path });
-        });
-
-        const subjectNodes = new TextDeserializer(
-          bodyEditorRef.current!,
-          data.data.title
-        ).deserialize();
-        clearEditor(subjectEditorRef.current!);
-        Transforms.insertNodes(subjectEditorRef.current!, subjectNodes);
+        fillAlertVariablesWithValue(bodyEditorRef.current!, data.data.text);
+        fillAlertVariablesWithValue(subjectEditorRef.current!, data.data.title);
+      },
+      onError(err) {
+        toast.error(createErrorMessage(err));
       }
     }
   );
@@ -157,9 +131,10 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
 
   const previewTemplate = (alertConfigUUID: string) => {
     const textTemplate = new HTMLSerializer(bodyEditorRef.current!).serializeElement(bodyValue);
-    const titleTemplate = new TextSerializer(subjectEditorRef.current!).serlializeElements(
+    const titleTemplate = new HTMLSerializer(subjectEditorRef.current!).serializeElement(
       subjectValue
     );
+
     fillTemplateWithValue.mutate({ textTemplate, titleTemplate, alertConfigUUID });
   };
 
@@ -173,6 +148,7 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
       overrideHeight="540px"
       size="lg"
       titleSeparator
+      enableBackdropDismiss
     >
       <Box className={classes.defaultPadding}>
         <Typography variant="body2">
@@ -180,6 +156,7 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
         </Typography>
         <YBSelect
           className={classes.select}
+          data-testid="email-preview-select-config"
           onChange={(e) => {
             previewTemplate(e.target.value);
           }}
@@ -196,7 +173,11 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
             <em>{t('alertCustomTemplates.alertVariablesPreviewModal.selectPlaceholder')}</em>
           </MenuItem>
           {Object.keys(alertConfigurationsMap).map((alertConfigUuid) => (
-            <MenuItem key={alertConfigurationsMap[alertConfigUuid]} value={alertConfigUuid}>
+            <MenuItem
+              data-testid={`alert-config-${alertConfigurationsMap[alertConfigUuid]}`}
+              key={alertConfigurationsMap[alertConfigUuid]}
+              value={alertConfigUuid}
+            >
               {alertConfigurationsMap[alertConfigUuid]}
             </MenuItem>
           ))}
@@ -212,12 +193,10 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
           )}
         >
           <YBEditor
-            editorProps={{ readOnly: true }}
+            editorProps={{ readOnly: true, 'data-testid': 'preview-email-subject-editor' }}
             loadPlugins={{
-              alertVariablesPlugin: false,
-              singleLine: true,
-              defaultPlugin: true,
-              jsonPlugin: false
+              alertVariablesPlugin: true,
+              singleLine: true
             }}
             initialValue={subjectValue}
             ref={subjectEditorRef}
@@ -226,7 +205,11 @@ const EmailPreviewModal: FC<EmailPreviewModalProps> = ({
         <Typography variant="body1">{t('alertCustomTemplates.composer.content')}</Typography>
         <Box className={clsx(commonStyles.editorBorder, classes.bodyEditor)}>
           <YBEditor
-            editorProps={{ readOnly: true, style: { height: '180px' } }}
+            editorProps={{
+              readOnly: true,
+              style: { height: '180px' },
+              'data-testid': 'preview-email-body-editor'
+            }}
             loadPlugins={{ alertVariablesPlugin: true }}
             initialValue={bodyValue}
             ref={bodyEditorRef}

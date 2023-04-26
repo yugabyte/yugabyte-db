@@ -85,9 +85,10 @@ const Composer: FC<ComposerProps> = ({ onHide }) => {
               className={classes.composerSelect}
               value={composer}
               onChange={e => setComposer(e.target.value as string)}
+              data-testid="select-Composer"
             >
-              <MenuItem value={"email"} selected>{t('alertCustomTemplates.composer.emailTemplate')}</MenuItem>
-              <MenuItem value={"webhook"} selected>{t('alertCustomTemplates.composer.webhookTemplate')}</MenuItem>
+              <MenuItem value={"email"} data-testid="email-composer" selected>{t('alertCustomTemplates.composer.emailTemplate')}</MenuItem>
+              <MenuItem value={"webhook"} data-testid="webhook-composer">{t('alertCustomTemplates.composer.webhookTemplate')}</MenuItem>
             </Select>
           </Grid>
           <Divider className={classes.composerDivider} />

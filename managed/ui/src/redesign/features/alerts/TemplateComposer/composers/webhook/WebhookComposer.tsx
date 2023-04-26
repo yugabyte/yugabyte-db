@@ -14,8 +14,7 @@ import { find } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery } from 'react-query';
 import { toast } from 'react-toastify';
-import { Descendant, Transforms } from 'slate';
-import { HistoryEditor } from 'slate-history';
+import { Descendant } from 'slate';
 import { YBLoadingCircleIcon } from '../../../../../../components/common/indicators';
 import { YBButton } from '../../../../../components';
 import { YBEditor } from '../../../../../components/YBEditor';
@@ -30,16 +29,19 @@ import { useCommonStyles } from '../../CommonStyles';
 import {
   ALERT_TEMPLATES_QUERY_KEY,
   createAlertChannelTemplates,
+  fetchAlertTemplateVariables,
   getAlertChannelTemplates
 } from '../../CustomVariablesAPI';
 import { AlertPopover, GetInsertVariableButton, useComposerStyles } from '../ComposerStyles';
 import { IComposer, IComposerRef } from '../IComposer';
-import { JSONDeserializer } from '../../../../../components/YBEditor/serializers/JSON/JSONDeSerializer';
-import { TextSerializer } from '../../../../../components/YBEditor/serializers/Text/TextSerializer';
 import RollbackToTemplateModal from './RollbackToTemplateModal';
 
 import { ReactComponent as ClearTemplate } from '../icons/clearTemplate.svg';
 import WebhookPreviewModal from './WebhookPreviewModal';
+import { findInvalidVariables, loadTemplateIntoEditor } from '../ComposerUtils';
+import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
+import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
+import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
 import { Info } from '@material-ui/icons';
 
 const useStyles = makeStyles((theme) => ({
@@ -74,14 +76,30 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
 
     const [showPreviewModal, setShowPreviewModal] = useState(false);
     const [showRollbackTemplateModal, setShowRollbackTemplateModal] = useState(false);
+    const [isRollbackedToDefaultTemplate, setIsRollbackedToDefaultTemplate] = useState(false);
 
     const { data: channelTemplates, isLoading: isTemplateLoading } = useQuery(
       ALERT_TEMPLATES_QUERY_KEY.getAlertChannelTemplates,
       getAlertChannelTemplates
     );
 
+    const { data: alertVariables, isLoading: isAlertVariablesLoading } = useQuery(
+      ALERT_TEMPLATES_QUERY_KEY.fetchAlertTemplateVariables,
+      fetchAlertTemplateVariables
+    );
+
     const createTemplate = useMutation(
-      ({ textTemplate }: { textTemplate: string }) => {
+      async ({ textTemplate }: { textTemplate: string }) => {
+        let invalidVariables = findInvalidVariables(textTemplate, alertVariables!.data);
+
+        if (invalidVariables.length > 0) {
+          return Promise.reject({
+            message: t('alertCustomTemplates.composer.invalidVariables', {
+              variable: invalidVariables.join(', ')
+            })
+          });
+        }
+
         return createAlertChannelTemplates({
           type: 'WebHook',
           textTemplate
@@ -90,32 +108,28 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
       {
         onSuccess: () => {
           toast.success(t('alertCustomTemplates.composer.templateSavedSuccess'));
+        },
+        onError(error) {
+          toast.error(createErrorMessage(error));
         }
       }
     );
 
     useEffect(() => {
-      if (isTemplateLoading) return;
+      if (isTemplateLoading || isAlertVariablesLoading || isEditorDirty(bodyEditorRef.current))
+        return;
 
       const webhookTemplate = find(channelTemplates?.data, { type: 'WebHook' });
+      if (!webhookTemplate || !alertVariables) return;
 
-      if (webhookTemplate && bodyEditorRef.current) {
-        try {
-          const bodyVal = new JSONDeserializer(
-            bodyEditorRef.current,
-            webhookTemplate.textTemplate ?? webhookTemplate.defaultTextTemplate ?? ''
-          ).deserialize();
-
-          // Don't aleter the history while loading the template
-          HistoryEditor.withoutSaving(bodyEditorRef.current, () => {
-            clearEditor(bodyEditorRef.current as IYBEditor);
-            Transforms.insertNodes(bodyEditorRef.current as IYBEditor, bodyVal);
-          });
-        } catch (e) {
-          console.log(e);
-        }
-      }
-    }, [isTemplateLoading, channelTemplates]);
+      loadTemplateIntoEditor(
+        (webhookTemplate.textTemplate
+          ? webhookTemplate.textTemplate
+          : webhookTemplate.defaultTextTemplate) ?? '',
+        alertVariables.data,
+        bodyEditorRef.current
+      );
+    }, [isTemplateLoading, channelTemplates, isAlertVariablesLoading, alertVariables]);
 
     useImperativeHandle(
       forwardRef,
@@ -131,16 +145,16 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
     // rollback to default template
     const rollbackTemplate = () => {
       const webhookTemplate = find(channelTemplates?.data, { type: 'WebHook' });
-      if (webhookTemplate && bodyEditorRef.current) {
-        const bodyVal = new JSONDeserializer(
-          bodyEditorRef.current,
-          webhookTemplate.defaultTextTemplate ?? ''
-        ).deserialize();
-        clearEditor(bodyEditorRef.current as IYBEditor);
-        Transforms.insertNodes(bodyEditorRef.current as IYBEditor, bodyVal);
+      if (webhookTemplate && alertVariables?.data) {
+        loadTemplateIntoEditor(
+          webhookTemplate.defaultTextTemplate,
+          alertVariables.data,
+          bodyEditorRef.current
+        );
       }
       setShowRollbackTemplateModal(false);
       resetEditorHistory(bodyEditorRef.current!);
+      setIsRollbackedToDefaultTemplate(true);
     };
 
     if (isTemplateLoading) {
@@ -162,6 +176,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                       onClick={() => {
                         setShowRollbackTemplateModal(true);
                       }}
+                      data-testid="webhook-rollback-template"
                     >
                       {t('alertCustomTemplates.composer.webhookComposer.rollback')}
                     </Typography>
@@ -175,6 +190,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                       clearEditor(bodyEditorRef.current!);
                       bodyEditorRef.current!.insertNode(DefaultJSONElement);
                     }}
+                    data-testid="webhook-clear-template"
                   >
                     {t('alertCustomTemplates.composer.webhookComposer.clearTemplate')}
                   </YBButton>
@@ -185,8 +201,12 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                   <AlertPopover
                     anchorEl={bodyInsertVariableButRef.current}
                     editor={bodyEditorRef.current as IYBEditor}
-                    onVariableSelect={(variable) => {
-                      bodyEditorRef.current!['insertJSONVariable'](variable);
+                    onVariableSelect={(variable, type) => {
+                      if (type === 'SYSTEM') {
+                        bodyEditorRef.current!['addSystemVariable'](variable);
+                      } else {
+                        bodyEditorRef.current!['addCustomVariable'](variable);
+                      }
                     }}
                     handleClose={() => {
                       setShowBodyAlertPopover(false);
@@ -197,17 +217,22 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
               </Grid>
               <YBEditor
                 setVal={setBody}
-                loadPlugins={{ jsonPlugin: true }}
+                loadPlugins={{ jsonPlugin: true, alertVariablesPlugin: true }}
                 ref={bodyEditorRef}
                 initialValue={[DefaultJSONElement]}
                 showLineNumbers
-                editorProps={{ style: { height: '480px' } }}
+                editorProps={{ style: { height: '480px' }, 'data-testid': 'webhook-body-editor' }}
+                onEditorKeyDown={() => {
+                  isRollbackedToDefaultTemplate && setIsRollbackedToDefaultTemplate(false);
+                }}
               />
             </Grid>
           </Grid>
           <Grid item container alignItems="center" className={composerStyles.helpText}>
             <Info />
-            <Typography variant="body2">{t('alertCustomTemplates.composer.helpText')}</Typography>
+            <Typography variant="body2">
+              {t('alertCustomTemplates.composer.helpText', { type: 'webhook' })}
+            </Typography>
           </Grid>
         </Grid>
         <Grid item className={commonStyles.noPadding}>
@@ -222,6 +247,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
               onClick={() => {
                 setShowPreviewModal(true);
               }}
+              data-testid="preview-webhook-button"
             >
               {t('alertCustomTemplates.composer.previewTemplateButton')}
             </YBButton>
@@ -231,24 +257,26 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
                 onClick={() => {
                   onClose();
                 }}
+                data-testid="cancel-webhook-button"
               >
                 {t('common.cancel')}
               </YBButton>
               <YBButton
                 variant="primary"
                 type="submit"
-                disabled={!isEditorDirty(bodyEditorRef.current)}
+                disabled={!isEditorDirty(bodyEditorRef.current) && !isRollbackedToDefaultTemplate}
                 autoFocus
                 className={composerStyles.submitButton}
                 onClick={() => {
                   if (bodyEditorRef.current) {
-                    const bodyText = new TextSerializer(bodyEditorRef.current).serialize();
+                    const bodyText = new HTMLSerializer(bodyEditorRef.current).serialize();
 
                     createTemplate.mutate({
-                      textTemplate: bodyText
+                      textTemplate: convertHTMLToText(bodyText)
                     });
                   }
                 }}
+                data-testid="save-webhook-button"
               >
                 {t('common.save')}
               </YBButton>
