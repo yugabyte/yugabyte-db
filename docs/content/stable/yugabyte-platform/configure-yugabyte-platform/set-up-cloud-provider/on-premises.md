@@ -442,17 +442,17 @@ You can install the backup utility for the backup storage you plan to use, as fo
 
 - Azure Storage: Install azcopy using one of the following options:
 
-  - Download `azcopy_linux_amd64_10.13.0.tar.gz` using the following command:
+  - Download `azcopy_linux_amd64_10.17.0.tar.gz` using the following command:
 
       ```sh
-      wget https://azcopyvnext.azureedge.net/release20211027/azcopy_linux_amd64_10.13.0.tar.gz
+      wget https://azcopyvnext.azureedge.net/release20230123/azcopy_linux_amd64_10.17.0.tar.gz 
       ```
 
-  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.13.0.tar.gz` from the YugabyteDB Anywhere node, as follows:
+  - For airgapped installations, copy `/opt/third-party/azcopy_linux_amd64_10.17.0.tar.gz` from the YugabyteDB Anywhere node, as follows:
 
       ```sh
       cd /usr/local
-      sudo tar xfz path-to-azcopy_linux_amd64_10.13.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.13.0/azcopy --strip-components 1
+      sudo tar xfz path-to-azcopy_linux_amd64_10.17.0.tar.gz -C /usr/local/bin azcopy_linux_amd64_10.17.0/azcopy --strip-components 1
       ```
 
 - Google Cloud Storage: Install gsutil using one of the following options:
