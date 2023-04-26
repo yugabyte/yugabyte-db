@@ -18,6 +18,7 @@ import { YBConfirmModal } from '../../modals';
 import { TASK_SHORT_TIMEOUT } from '../../tasks/constants';
 import { DropdownButton, MenuItem } from 'react-bootstrap';
 import { YUGABYTE_TITLE } from '../../../config';
+import { getLatestAccessKey } from '../../configRedesign/providerRedesign/utils';
 
 const TIMEOUT_BEFORE_REFRESH = 2500;
 
@@ -106,12 +107,8 @@ class OnPremNodesList extends Component {
     const currentCloudRegions = currentProvider
       ? currentProvider.regions
       : supportedRegionList.data.filter((region) => region.provider.uuid === onPremProvider.uuid);
-    const currentCloudAccessKey = currentProvider
-      ? currentProvider.allAccessKeys.reduce((latestAccessKey, currentAccessKey) =>
-          new Date(latestAccessKey.creationDate) > new Date(currentAccessKey.creationDate)
-            ? latestAccessKey
-            : currentAccessKey
-        )
+    const latestAccessKey = currentProvider
+      ? getLatestAccessKey(currentProvider.allAccessKeys)
       : accessKeys.data
           .filter((accessKey) => accessKey.idKey.providerUUID === onPremProvider.uuid)
           .shift();
@@ -136,12 +133,8 @@ class OnPremNodesList extends Component {
               region: region,
               ip: val.instanceTypeIP.trim(),
               instanceType: val.machineType,
-              sshUser: isNonEmptyObject(currentCloudAccessKey)
-                ? currentCloudAccessKey.keyInfo.sshUser
-                : '',
-              sshPort: isNonEmptyObject(currentCloudAccessKey)
-                ? currentCloudAccessKey.keyInfo.sshPort
-                : null,
+              sshUser: isNonEmptyObject(latestAccessKey) ? latestAccessKey.keyInfo.sshUser : '',
+              sshPort: isNonEmptyObject(latestAccessKey) ? latestAccessKey.keyInfo.sshPort : null,
               instanceName: instanceName
             });
           }

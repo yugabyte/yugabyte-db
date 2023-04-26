@@ -611,10 +611,16 @@ const constructProviderPayload = async (
     code: ProviderCode.AWS,
     name: formValues.providerName,
     ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-      ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-      ...(formValues.sshPrivateKeyContent && {
-        sshPrivateKeyContent: sshPrivateKeyContent
-      })
+      allAccessKeys: [
+        {
+          keyInfo: {
+            ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+            ...(formValues.sshPrivateKeyContent && {
+              sshPrivateKeyContent: sshPrivateKeyContent
+            })
+          }
+        }
+      ]
     }),
     details: {
       airGapInstall: !formValues.dbNodePublicInternetAccess,
