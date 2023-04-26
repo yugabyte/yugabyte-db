@@ -4257,10 +4257,7 @@ void
 ExecAggInitGroup(AggState *aggstate, AggStatePerTrans pertrans, AggStatePerGroup pergroup,
 				 ExprContext *aggcontext)
 {
-#ifdef YB_TODO
-	/* TODO(zyu@yugabyte.com) Check if this correct code change */
-#endif
-	FunctionCallInfo fcinfo = &pertrans->transfn_fcinfo;
+	FunctionCallInfo fcinfo = pertrans->transfn_fcinfo;
 	MemoryContext oldContext;
 
 	/*
@@ -4363,10 +4360,7 @@ ExecAggPlainTransByVal(AggState *aggstate, AggStatePerTrans pertrans,
 					   AggStatePerGroup pergroup,
 					   ExprContext *aggcontext, int setno)
 {
-#ifdef YB_TODO
-	/* TODO(zyu@yugabyte.com) Check if this correct code change */
-#endif
-	FunctionCallInfo fcinfo = &pertrans->transfn_fcinfo;
+	FunctionCallInfo fcinfo = pertrans->transfn_fcinfo;
 	MemoryContext oldContext;
 	Datum		newVal;
 
@@ -4398,10 +4392,7 @@ ExecAggPlainTransByRef(AggState *aggstate, AggStatePerTrans pertrans,
 					   AggStatePerGroup pergroup,
 					   ExprContext *aggcontext, int setno)
 {
-#ifdef YB_TODO
-	/* TODO(zyu@yugabyte.com) Check if this correct code change */
-#endif
-	FunctionCallInfo fcinfo = &pertrans->transfn_fcinfo;
+	FunctionCallInfo fcinfo = pertrans->transfn_fcinfo;
 	MemoryContext oldContext;
 	Datum		newVal;
 

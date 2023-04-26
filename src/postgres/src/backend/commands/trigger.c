@@ -2365,7 +2365,7 @@ ExecCallTriggerFunc(TriggerData *trigdata,
 					Instrumentation *instr,
 					MemoryContext per_tuple_context)
 {
-	FunctionCallInfoData fcinfo;
+	FunctionCallInfoBaseData fcinfo;
 	PgStat_FunctionCallUsage fcusage;
 	Datum		result;
 	MemoryContext oldContext;

@@ -1950,6 +1950,7 @@ ldelete:;
 static bool
 YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
 {
+	LOCAL_FCINFO(locfcinfo, 2);
 	TypeCacheEntry *typentry = lookup_type_cache(atttypid, TYPECACHE_CMP_PROC_FINFO);
 	if (!OidIsValid(typentry->cmp_proc_finfo.fn_oid))
 		ereport(ERROR,
@@ -1957,13 +1958,14 @@ YBEqualDatums(Datum lhs, Datum rhs, Oid atttypid, Oid collation)
 		         errmsg("could not identify a comparison function for type %s",
 		                format_type_be(typentry->type_id))));
 
-	FunctionCallInfoData locfcinfo;
-	InitFunctionCallInfoData(locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
-	locfcinfo.arg[0] = lhs;
-	locfcinfo.arg[1] = rhs;
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	return DatumGetInt32(FunctionCallInvoke(&locfcinfo)) == 0;
+	/* YB_TODOneil) Need to verify if this code works. FuncCallInfo now uses Pg15 structure */
+	InitFunctionCallInfoData(*locfcinfo, &typentry->cmp_proc_finfo, 2, collation, NULL, NULL);
+	locfcinfo->args[0].value = lhs;
+	locfcinfo->args[0].isnull = false;
+	locfcinfo->args[1].value = rhs;
+	locfcinfo->args[1].isnull = false;
+	locfcinfo->isnull = false;
+	return DatumGetInt32(FunctionCallInvoke(locfcinfo)) == 0;
 }
 
 /* ----------------------------------------------------------------

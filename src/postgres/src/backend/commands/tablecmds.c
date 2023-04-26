@@ -13229,7 +13229,7 @@ validateForeignKeyConstraint(char *conname,
 	 */
 	while (YbFKTriggerScanGetNext(fk_scan) != NULL)
 	{
-		FunctionCallInfoData fcinfo;
+		FunctionCallInfoBaseData fcinfo;
 		TriggerData trigdata = {0};
 
 		CHECK_FOR_INTERRUPTS();
