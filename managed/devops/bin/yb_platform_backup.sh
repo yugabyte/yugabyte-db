@@ -473,6 +473,7 @@ restore_backup() {
 
   db_backup_path="${destination}/${PLATFORM_DUMP_FNAME}"
   trap 'delete_postgres_backup ${db_backup_path}' RETURN
+  tar_cmd="tar -xzf"
   if [[ "${verbose}" = true ]]; then
     tar_cmd="tar -xzvf"
   fi
