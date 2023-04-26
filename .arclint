@@ -20,7 +20,8 @@
      "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
      "(^managed/devops/replicated[.]yml$)",
      "(^python/yb/py[.]typed$)",
-     "(^managed/RUNTIME-FLAGS[.]md$)"
+     "(^managed/RUNTIME-FLAGS[.]md$)",
+     "(^[.]clang-tidy)"
   ],
   "linters": {
     "go-files": {

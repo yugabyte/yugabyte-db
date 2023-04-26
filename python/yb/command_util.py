@@ -23,9 +23,10 @@ import shutil
 import subprocess
 import logging
 
-from typing import Union, List, Optional
+from typing import Union, List, Optional, IO
 
 from yb.common_util import shlex_join
+from yb.file_util import mkdir_p
 
 
 class ProgramResult:
@@ -33,7 +34,10 @@ class ProgramResult:
     returncode: int
     stdout: str
     stderr: str
+
+    # Error message that would have been raised if error_ok was False.
     error_msg: Optional[str]
+
     program_path: str
 
     def __init__(
@@ -107,9 +111,8 @@ def run_program(
     program_stdout, program_stderr = program_subprocess.communicate()
     error_msg = None
     if program_subprocess.returncode != 0:
-        from pipes import quote
         error_msg = "Non-zero exit code {} from: {} ; stdout: '{}' stderr: '{}'".format(
-                program_subprocess.returncode, ' '.join([quote(arg) for arg in args]),
+                program_subprocess.returncode, shlex_join(args),
                 trim_output(program_stdout.strip(), max_error_lines),
                 trim_output(program_stderr.strip(), max_error_lines))
         if not error_ok:
@@ -122,21 +125,6 @@ def run_program(
         error_msg=error_msg,
         program_path=os.path.realpath(args[0])
     )
-
-
-def mkdir_p(d: str) -> None:
-    """
-    Similar to the "mkdir -p ..." shell command. Creates the given directory and all enclosing
-    directories. No-op if the directory already exists.
-    """
-    if os.path.isdir(d):
-        return
-    try:
-        os.makedirs(d)
-    except OSError as e:
-        if os.path.isdir(d):
-            return
-        raise e
 
 
 def copy_deep(src: str, dst: str, create_dst_dir: bool = False) -> None:
@@ -171,3 +159,17 @@ def copy_deep(src: str, dst: str, create_dst_dir: bool = False) -> None:
         logging.debug("Copying file {} to {}".format(src, dst))
         # Preserve the file attributes.
         shutil.copy2(src, dst)
+
+
+def decode_cmd_output(output: Optional[Union[str, bytes, IO[bytes]]]) -> str:
+    """
+    Decode the output of a command obtained from subprocess.Popen to a string.
+    """
+    if output is None:
+        return ''
+    if isinstance(output, str):
+        return output
+    if isinstance(output, bytes):
+        return output.decode('utf-8')
+    # This is a file-like object, but we can't check for that using isinstance.
+    return output.read().decode('utf-8')

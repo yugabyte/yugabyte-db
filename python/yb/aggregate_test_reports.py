@@ -150,7 +150,7 @@ def compute_percentage(n: int, total: int) -> float:
     return n * 100.0 / total
 
 
-def postprocess_stats(stats: Dict[str, Any]):
+def postprocess_stats(stats: Dict[str, Any]) -> None:
     num_errors = stats.get('errors', 0)
     num_failures = stats.get('failures', 0)
     num_run = stats.get('run', 0)
