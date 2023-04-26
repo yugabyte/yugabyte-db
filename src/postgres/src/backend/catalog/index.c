@@ -4399,9 +4399,10 @@ reindex_relation(Oid relid, int flags, int options)
 				 */
 
 				Relation new_rel = heap_open(YbGetStorageRelid(rel), AccessExclusiveLock);
-				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(RelationGetDescr(new_rel),
-											  	RelationGetDescr(rel),
-											  	gettext_noop("could not convert row type"));
+				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(
+					RelationGetDescr(new_rel), RelationGetDescr(rel),
+					gettext_noop("could not convert row type"),
+					false /* yb_ignore_type_mismatch */);
 				heap_close(new_rel, AccessExclusiveLock);
 				YbDropAndRecreateIndex(indexOid, relid, rel, new_to_old_attmap);
 				RemoveReindexPending(indexOid);

@@ -171,11 +171,11 @@ SELECT * FROM itestv11 ORDER BY a;
 -- CREATE TABLE itest5 (a serial, b text);
 -- ALTER TABLE itest5 ALTER COLUMN a ADD GENERATED ALWAYS AS IDENTITY;
 
--- ALTER TABLE itest3 ALTER COLUMN a TYPE int;
--- SELECT seqtypid::regtype FROM pg_sequence WHERE seqrelid = 'itest3_a_seq'::regclass;
--- \d itest3
+ALTER TABLE itest3 ALTER COLUMN a TYPE int;
+SELECT seqtypid::regtype FROM pg_sequence WHERE seqrelid = 'itest3_a_seq'::regclass;
+\d itest3
 
--- ALTER TABLE itest3 ALTER COLUMN a TYPE text;  -- error
+ALTER TABLE itest3 ALTER COLUMN a TYPE text;  -- error
 
 
 -- ALTER COLUMN ... SET
