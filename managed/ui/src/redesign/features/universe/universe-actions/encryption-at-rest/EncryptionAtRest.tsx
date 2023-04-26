@@ -77,6 +77,17 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
   const rotateMasterKey = encryptionAtRestEnabled && currentKmsConfigUUID !== kmsConfigUUID; //Master Key is rotated
   const rotationInfo = getLastRotationDetails(kmsHistory ?? [], kmsConfigs);
 
+  //Enable Form
+  const isFormValid = () => {
+    if (!encryptionAtRestEnabled && !earToggleEnabled) return false;
+
+    return (
+      rotateUniverseKey ||
+      encryptionAtRestEnabled != earToggleEnabled ||
+      currentKmsConfigUUID != kmsConfigUUID
+    );
+  };
+
   //methods
   const setKMSConfig = useMutation(
     (values: EncryptionAtRestConfig) => {
@@ -139,6 +150,11 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
       onSubmit={handleFormSubmit}
       submitTestId="EncryptionAtRest-Submit"
       cancelTestId="EncryptionAtRest-Close"
+      buttonProps={{
+        primary: {
+          disabled: !isFormValid()
+        }
+      }}
     >
       <FormProvider {...formMethods}>
         <Box
@@ -178,7 +194,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
             )}
 
             {/* Enabling EAR for the first time */}
-            {kmsHistory.length <= 1 && earToggleEnabled && (
+            {kmsHistory.length < 1 && earToggleEnabled && (
               <Box mt={2}>
                 <KMSField
                   disabled={rotateUniverseKey}
@@ -192,7 +208,7 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
           {/* ------------------------------------------------------------------------------- */}
 
           {/* Rotating universe or master key */}
-          {kmsHistory.length > 1 && earToggleEnabled && (
+          {kmsHistory.length >= 1 && earToggleEnabled && (
             <Box mt={4} display="flex" flexDirection="column" className={classes.container}>
               <Box className={classes.subContainer}>
                 <Box>
@@ -210,7 +226,11 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
                     <div>
                       <KMSField
                         disabled={rotateUniverseKey}
-                        label={t('universeActions.encryptionAtRest.rotateKMSConfig')}
+                        label={
+                          encryptionAtRestEnabled
+                            ? t('universeActions.encryptionAtRest.rotateKMSConfig')
+                            : t('universeActions.encryptionAtRest.selectKMSConfig')
+                        }
                         activeKMS={encryptionAtRestEnabled ? kmsConfigUUID : ''}
                       />
                     </div>
@@ -222,36 +242,40 @@ export const EncryptionAtRest: FC<EncryptionAtRestProps> = ({ open, onClose, uni
                 </Box>
               </Box>
 
-              <Divider />
+              {encryptionAtRestEnabled && (
+                <>
+                  <Divider />
 
-              <Box className={classes.subContainer}>
-                <Box>
-                  <Typography variant="h6">
-                    {t('universeActions.encryptionAtRest.universeKey')}
-                  </Typography>
-                </Box>
-                <Box mt={1} className={clsx(classes.container, classes.universeKeyContainer)}>
-                  <YBTooltip
-                    title={clsx(
-                      rotateMasterKey && t('universeActions.encryptionAtRest.rotateBothWarning')
-                    )}
-                    placement="top"
-                  >
-                    <div>
-                      <YBCheckboxField
-                        name={UNIVERSE_KEY_FIELD_NAME}
-                        label={t('universeActions.encryptionAtRest.rotateUniverseKey')}
-                        control={control}
-                        inputProps={{
-                          'data-testid': 'RotateUniverseKey-Checkbox'
-                        }}
-                        disabled={rotateMasterKey || !encryptionAtRestEnabled}
-                      />
-                    </div>
-                  </YBTooltip>
-                </Box>
-                <RotationHistory rotationInfo={rotationInfo.universeKey} />
-              </Box>
+                  <Box className={classes.subContainer}>
+                    <Box>
+                      <Typography variant="h6">
+                        {t('universeActions.encryptionAtRest.universeKey')}
+                      </Typography>
+                    </Box>
+                    <Box mt={1} className={clsx(classes.container, classes.universeKeyContainer)}>
+                      <YBTooltip
+                        title={clsx(
+                          rotateMasterKey && t('universeActions.encryptionAtRest.rotateBothWarning')
+                        )}
+                        placement="top"
+                      >
+                        <div>
+                          <YBCheckboxField
+                            name={UNIVERSE_KEY_FIELD_NAME}
+                            label={t('universeActions.encryptionAtRest.rotateUniverseKey')}
+                            control={control}
+                            inputProps={{
+                              'data-testid': 'RotateUniverseKey-Checkbox'
+                            }}
+                            disabled={rotateMasterKey}
+                          />
+                        </div>
+                      </YBTooltip>
+                    </Box>
+                    <RotationHistory rotationInfo={rotationInfo.universeKey} />
+                  </Box>
+                </>
+              )}
             </Box>
           )}
           {/* Rotating universe key or master key */}
