@@ -540,6 +540,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void PollWaitingTxnRegistry();
 
+  void FlushDirtySuperblocks();
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -671,6 +673,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Background task for periodically scheduling major compactions.
   std::unique_ptr<BackgroundTask> scheduled_full_compaction_bg_task_;
+
+  // Background task for periodically flushing the superblocks.
+  std::unique_ptr<BackgroundTask> superblock_flush_bg_task_;
 
   std::unique_ptr<FullCompactionManager> full_compaction_manager_;
 
