@@ -744,6 +744,18 @@ elseif(NOT APPLE)
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
 endif()
 
+if (NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
+  if(APPLE)
+    message(FATAL_ERROR "Valgrind cannot be used in macOS.")
+  endif()
+
+  if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1")
+    message(FATAL_ERROR "Valgrind cannot be used while TCMalloc is enabled. "
+            "Build with --no-tcmalloc to use Valgrind.")
+  endif()
+  ADD_CXX_FLAGS("-DYB_VALGRIND_PATH=$ENV{YB_VALGRIND_PATH}")
+endif()
+
 ############################################################
 # Linker setup
 ############################################################

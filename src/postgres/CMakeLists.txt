@@ -105,6 +105,22 @@ if(APPLE AND NOT "${MACOS_SDK_INCLUDE_DIR}" STREQUAL "")
          " -isystem ${MACOS_SDK_INCLUDE_DIR}")
 endif()
 
+if(NOT "$ENV{YB_VALGRIND_PATH}" STREQUAL "")
+
+  string(APPEND POSTGRES_EXTRA_PREPROCESSOR_FLAGS " -DUSE_VALGRIND")
+
+  find_path(VALGRIND_INCLUDE_PATH "valgrind/valgrind.h"
+            "/usr/include"
+            "/usr/local/include"
+            $ENV{CPATH})
+
+  if (${VALGRIND_INCLUDE_PATH} STREQUAL "VALGRIND_INCLUDE_PATH-NOTFOUND")
+    message(FATAL_ERROR "Compiling with Valgrind support, but could not find Valgrind's header"
+      " files. If you have Valgrind installed in an atypical location, add the include directory"
+      " to CPATH and retry.")
+  endif()
+endif()
+
 set(PG_INCLUDE_DIRS "${YB_PREFIX_COMMON}/include")
 set(PG_LIB_DIRS "${YB_PREFIX_COMMON}/lib")
 if(APPLE AND NOT IS_APPLE_CLANG)

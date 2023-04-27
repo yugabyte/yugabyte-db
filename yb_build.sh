@@ -1308,6 +1308,15 @@ while [[ $# -gt 0 ]]; do
     --sanitizers-enable-coredump)
       export YB_SANITIZERS_ENABLE_COREDUMP=1
     ;;
+    --valgrind-path)
+      ensure_option_has_arg "$@"
+      valgrind_path=$(realpath "$2")
+      shift
+      if [[ ! -f $valgrind_path ]]; then
+        fatal "Valgrind file doesn't exist: $valgrind_path"
+      fi
+      export YB_VALGRIND_PATH=$valgrind_path
+    ;;
     --extra-daemon-flags|--extra-daemon-args)
       ensure_option_has_arg "$@"
       log "Setting YB_EXTRA_DAEMON_FLAGS to: $2"
