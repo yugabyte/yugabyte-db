@@ -177,7 +177,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     return status_manager_.PrepareMetadata(pb);
   }
 
-  void FillPriorities(
+  Status FillPriorities(
       boost::container::small_vector_base<std::pair<TransactionId, uint64_t>>* inout) {
     return status_manager_.FillPriorities(inout);
   }
@@ -283,7 +283,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       intent_iter_.Next();
     }
 
-    return Status::OK();
+    return intent_iter_.status();
   }
 
   void EnsureIntentIteratorCreated() {
@@ -716,7 +716,7 @@ class StrongConflictChecker {
       ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
     }
 
-    return Status::OK();
+    return value_iter_.status();
   }
 
  private:
@@ -775,7 +775,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
       for (const auto& transaction : transactions) {
         ids_and_priorities.emplace_back(transaction.id, 0);
       }
-      resolver->FillPriorities(&ids_and_priorities);
+      RETURN_NOT_OK(resolver->FillPriorities(&ids_and_priorities));
       for (size_t i = 0; i != transactions.size(); ++i) {
         transactions[i].priority = ids_and_priorities[i].second;
       }

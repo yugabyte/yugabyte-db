@@ -51,6 +51,7 @@ class DocumentDBTest : public RocksDBTest {
       got.push_back(cursor->document()["_id"].GetInt64());
       cursor->Next();
     }
+    ASSERT_OK(cursor->status());
     std::sort(expected.begin(), expected.end());
     std::sort(got.begin(), got.end());
     ASSERT_TRUE(got == expected);

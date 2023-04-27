@@ -298,7 +298,7 @@ class TtlTest : public RocksDBTest {
 
     dbiter->Seek(kv_it_->first);
     if (!check) {
-      if (dbiter->Valid()) {
+      if (ASSERT_RESULT(dbiter->CheckedValid())) {
         ASSERT_NE(dbiter->value().compare(kv_it_->second), 0);
       }
     } else {  // dbiter should have found out kvmap_[st_pos]

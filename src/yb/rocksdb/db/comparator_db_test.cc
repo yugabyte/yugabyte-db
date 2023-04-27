@@ -77,8 +77,10 @@ class KVIter : public Iterator {
 };
 
 void AssertItersEqual(Iterator* iter1, Iterator* iter2) {
-  ASSERT_EQ(iter1->Valid(), iter2->Valid());
-  if (iter1->Valid()) {
+  const auto iter1_valid = ASSERT_RESULT(iter1->CheckedValid());
+  const auto iter2_valid = ASSERT_RESULT(iter2->CheckedValid());
+  ASSERT_EQ(iter1_valid, iter2_valid);
+  if (iter1_valid) {
     auto key1 = iter1->key().ToBuffer();
     auto key2 = iter2->key().ToBuffer();
     auto value1 = iter1->value().ToBuffer();
@@ -130,6 +132,7 @@ void DoRandomIteraratorTest(DB* db, std::vector<std::string> source_strings,
     // same key and value
     int type = rnd->Uniform(6);
     ASSERT_OK(iter->status());
+    ASSERT_OK(result_iter->status());
     switch (type) {
       case 0:
         // Seek to First
@@ -182,7 +185,7 @@ void DoRandomIteraratorTest(DB* db, std::vector<std::string> source_strings,
       }
     }
     AssertItersEqual(iter.get(), result_iter.get());
-    is_valid = iter->Valid();
+    is_valid = ASSERT_RESULT(iter->CheckedValid());
   }
 }
 

@@ -128,7 +128,7 @@ void InMemDocDbState::CaptureAt(const DocDB& doc_db, HybridTime hybrid_time,
       boost::none /* user_key_for_filter */, query_id);
   rocksdb_iter.SeekToFirst();
   KeyBytes prev_key;
-  while (rocksdb_iter.Valid()) {
+  while (CHECK_RESULT(rocksdb_iter.CheckedValid())) {
     const auto key = rocksdb_iter.key();
     CHECK_NE(0, prev_key.CompareTo(key)) << "Infinite loop detected on key " << prev_key.ToString();
     prev_key = KeyBytes(key);

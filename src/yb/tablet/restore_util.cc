@@ -51,7 +51,7 @@ bool FetchState::IsDeletedSinceInsertion() {
 }
 
 Status FetchState::Update() {
-  if (!iterator_->valid()) {
+  if (iterator_->IsOutOfRecords()) {
     finished_ = true;
     return Status::OK();
   }

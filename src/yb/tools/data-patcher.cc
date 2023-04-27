@@ -510,6 +510,7 @@ Status AddDeltaToSstFile(
           delta_data.AddEarlyTime(doc_ht_result->hybrid_time());
         }
       }
+      RETURN_NOT_OK(iterator->status());
 
       if (is_final_pass) {
         done = true;

@@ -121,6 +121,8 @@ Status GeoDBImpl::GetById(const Slice& id, GeoObject* object) {
     if (iter->key().compare(key2) == 0) {
       quadkey = iter->value().ToString();
     }
+  } else {
+    RETURN_NOT_OK(iter->status());
   }
   if (quadkey.size() == 0) {
     delete iter;
@@ -268,6 +270,9 @@ GeoIterator* GeoDBImpl::SearchRadial(const GeoPosition& pos,
       } else {
         break;
       }
+    }
+    if (!iter->status().ok()) {
+      return new GeoErrorIterator(iter->status());
     }
   }
   delete iter;

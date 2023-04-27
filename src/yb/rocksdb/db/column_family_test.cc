@@ -1716,7 +1716,7 @@ std::string IterStatus(Iterator* iter) {
   if (iter->Valid()) {
     result = iter->key().ToString() + "->" + iter->value().ToString();
   } else {
-    result = "(invalid)";
+    result = "(invalid) " + iter->status().ToString();
   }
   return result;
 }
@@ -1750,10 +1750,10 @@ TEST_F(ColumnFamilyTest, NewIteratorsTest) {
       it->Next();
     }
 
-    ASSERT_EQ(IterStatus(iterators[0]), "(invalid)");
+    ASSERT_EQ(IterStatus(iterators[0]), "(invalid) OK");
     if (iter == 0) {
       // no tailing
-      ASSERT_EQ(IterStatus(iterators[1]), "(invalid)");
+      ASSERT_EQ(IterStatus(iterators[1]), "(invalid) OK");
     } else {
       // tailing
       ASSERT_EQ(IterStatus(iterators[1]), "x->x");
@@ -1800,9 +1800,9 @@ TEST_F(ColumnFamilyTest, ReadOnlyDBTest) {
     for (auto it : iterators) {
       it->Next();
     }
-    ASSERT_EQ(IterStatus(iterators[0]), "(invalid)");
-    ASSERT_EQ(IterStatus(iterators[1]), "(invalid)");
-    ASSERT_EQ(IterStatus(iterators[2]), "(invalid)");
+    ASSERT_EQ(IterStatus(iterators[0]), "(invalid) OK");
+    ASSERT_EQ(IterStatus(iterators[1]), "(invalid) OK");
+    ASSERT_EQ(IterStatus(iterators[2]), "(invalid) OK");
 
     for (auto it : iterators) {
       delete it;
@@ -1969,11 +1969,9 @@ TEST_F(ColumnFamilyTest, ReadDroppedColumnFamily) {
       }
       // Make sure iterator created can still be used.
       int count = 0;
-      for (; iterator->Valid(); iterator->Next()) {
-        ASSERT_OK(iterator->status());
+      for (; ASSERT_RESULT(iterator->CheckedValid()); iterator->Next()) {
         ++count;
       }
-      ASSERT_OK(iterator->status());
       ASSERT_EQ(count, kKeysNum);
     }
 
@@ -1991,11 +1989,9 @@ TEST_F(ColumnFamilyTest, ReadDroppedColumnFamily) {
       std::unique_ptr<Iterator> iterator(
           db_->NewIterator(ReadOptions(), handles_[i]));
       int count = 0;
-      for (iterator->SeekToFirst(); iterator->Valid(); iterator->Next()) {
-        ASSERT_OK(iterator->status());
+      for (iterator->SeekToFirst(); ASSERT_RESULT(iterator->CheckedValid()); iterator->Next()) {
         ++count;
       }
-      ASSERT_OK(iterator->status());
       ASSERT_EQ(count, kKeysNum * ((i == 2) ? 1 : 2));
     }
 
@@ -2051,11 +2047,9 @@ TEST_F(ColumnFamilyTest, FlushAndDropRaceCondition) {
     std::unique_ptr<Iterator> iterator(
         db_->NewIterator(ReadOptions(), handles_[1]));
     int count = 0;
-    for (iterator->SeekToFirst(); iterator->Valid(); iterator->Next()) {
-      ASSERT_OK(iterator->status());
+    for (iterator->SeekToFirst(); ASSERT_RESULT(iterator->CheckedValid()); iterator->Next()) {
       ++count;
     }
-    ASSERT_OK(iterator->status());
     ASSERT_EQ(count, kKeysNum);
   }
   for (auto& t : threads) {

@@ -269,7 +269,7 @@ Result<std::unique_ptr<DocDbRowData>> DocDbRowData::CurrentRow(
     const KeyBytes* packed_row_key) {
   std::unique_ptr<DocDbRowData> result;
 
-  if (iter->valid()) {
+  if (!iter->IsOutOfRecords()) {
     auto key_data = VERIFY_RESULT(iter->FetchKey());
     DCHECK(key_data.same_transaction ||
         iter->read_time().global_limit >= key_data.write_time.hybrid_time())
@@ -573,7 +573,7 @@ Result<ScopedDocDbRowContextWithData*> ScopedDocDbCollectionContext::GetNextChil
       // Reset current child to eliminate the IntentAwareIteratorPrefixScope it was holding.
       current_child_.reset();
     }
-    if (parent_->iter_->valid()) {
+    if (!parent_->iter_->IsOutOfRecords()) {
       SetNextChild(VERIFY_RESULT(DocDbRowData::CurrentRow(
           parent_->iter_, PackedColumnData(), nullptr)));
     }
@@ -672,7 +672,7 @@ SubDocumentReader::SubDocumentReader(
 
 Status SubDocumentReader::Get(SubDocument* result, const PackedColumnData& packed_column_data) {
   IntentAwareIteratorPrefixScope target_scope(target_subdocument_key_, iter_);
-  if (!iter_->valid() && !packed_column_data) {
+  if (iter_->IsOutOfRecords() && !packed_column_data) {
     *result = SubDocument(ValueEntryType::kInvalid);
     return Status::OK();
   }
@@ -741,7 +741,7 @@ Status SubDocumentReaderBuilder::UpdateWithParentWriteInfo(
   DocHybridTime doc_ht = parent_obsolescence_tracker_.GetHighWriteTime();
   RETURN_NOT_OK(iter_->FindLatestRecord(parent_key_without_ht, &doc_ht, &value));
 
-  if (!iter_->valid()) {
+  if (iter_->IsOutOfRecords()) {
     return Status::OK();
   }
   auto control_fields = VERIFY_RESULT(ValueControlFields::Decode(&value));

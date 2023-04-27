@@ -35,7 +35,14 @@ class InternalIterator : public Cleanable {
 
   // An iterator is either positioned at a key/value pair, or
   // not valid.  This method returns true iff the iterator is valid.
+  // It is mandatory to check status() to distinguish between absence of entry vs read error.
   virtual bool Valid() const = 0;
+
+  // Same as Valid(), but returns error if there was a read error.
+  // For hot paths consider using Valid() in a loop and checking status after the loop.
+  yb::Result<bool> CheckedValid() const {
+    return Valid() ? true : (status().ok() ? yb::Result<bool>(false) : status());
+  }
 
   // Position at the first key in the source.  The iterator is Valid()
   // after this call iff the source is not empty.

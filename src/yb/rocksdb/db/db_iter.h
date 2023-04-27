@@ -70,20 +70,22 @@ class ArenaWrappedDBIter : public Iterator {
   // Set the internal iterator wrapped inside the DB Iterator. Usually it is
   // a merging iterator.
   virtual void SetIterUnderDBIter(InternalIterator* iter);
-  virtual bool Valid() const override;
-  virtual void SeekToFirst() override;
-  virtual void SeekToLast() override;
-  virtual void Seek(const Slice& target) override;
-  virtual void Next() override;
-  virtual void Prev() override;
-  virtual Slice key() const override;
-  virtual Slice value() const override;
-  virtual Status status() const override;
+
+  bool Valid() const override;
+  void SeekToFirst() override;
+  void SeekToLast() override;
+  void Seek(const Slice& target) override;
+  void Next() override;
+  void Prev() override;
+  Slice key() const override;
+  Slice value() const override;
+  Status status() const override;
 
   void RegisterCleanup(CleanupFunction function, void* arg1, void* arg2);
   virtual Status PinData();
   virtual Status ReleasePinnedData();
-  virtual Status GetProperty(std::string prop_name, std::string* prop) override;
+
+  Status GetProperty(std::string prop_name, std::string* prop) override;
 
   void RevalidateAfterUpperBoundChange() override;
 

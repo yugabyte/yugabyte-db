@@ -38,19 +38,19 @@ void DocDBTestBase::TearDown() {
   YBTest::TearDown();
 }
 
-void DocDBTestBase::CaptureLogicalSnapshot() {
+Status DocDBTestBase::CaptureLogicalSnapshot() {
   logical_snapshots_.emplace_back();
-  logical_snapshots_.back().Capture(rocksdb());
+  return logical_snapshots_.back().Capture(rocksdb());
 }
 
 void DocDBTestBase::ClearLogicalSnapshots() {
   logical_snapshots_.clear();
 }
 
-void DocDBTestBase::RestoreToRocksDBLogicalSnapshot(size_t snapshot_index) {
+Status DocDBTestBase::RestoreToRocksDBLogicalSnapshot(size_t snapshot_index) {
   CHECK_LE(0, snapshot_index);
   CHECK_LT(snapshot_index, logical_snapshots_.size());
-  logical_snapshots_[snapshot_index].RestoreTo(rocksdb());
+  return logical_snapshots_[snapshot_index].RestoreTo(rocksdb());
 }
 
 }  // namespace docdb
