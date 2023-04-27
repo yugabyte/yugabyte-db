@@ -253,7 +253,9 @@ export const useVolumeControls = (isEditMode: boolean) => {
         setNumVolumesDisable(true);
         setVolumeSizeDisable(true);
         setUserTagsDisable(true);
-      } else {
+      } else if (
+        !_.isEqual(initialCombination.current.deviceInfo.volumeSize, deviceInfo.volumeSize)
+      ) {
         //Smart Resize/Resize disk
         setMinVolumeSize(initialCombination.current.deviceInfo.volumeSize);
         setNumVolumesDisable(true);
