@@ -2,18 +2,18 @@
 title: Java ORM example application that uses YSQL
 headerTitle: Java ORM example application
 linkTitle: Java
-description: Java ORM example application with Hibernate ORM and use the YSQL API to connect to and interact with YugabyteDB.
+description: Java ORM example application with MyBatis persistence framework and use the YSQL API to connect to and interact with YugabyteDB.
 menu:
   preview:
-    identifier: java-hibernate
+    identifier: java-mybatis
     parent: orm-tutorials
-    weight: 620
+    weight: 660
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
-    <a href="../ysql-hibernate/" class="nav-link active">
+    <a href="../ysql-hibernate/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       Hibernate ORM
     </a>
@@ -31,16 +31,16 @@ type: docs
     </a>
   </li>
   <li>
-    <a href="../ysql-mybatis/" class="nav-link">
+    <a href="../ysql-mybatis/" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       MyBatis
     </a>
   </li>
 </ul>
 
-The following tutorial implements a REST API server using the [Hibernate ORM](https://hibernate.org/orm/). The scenario is that of an e-commerce application. Database access in this application is managed through Hibernate ORM.
+The following tutorial implements a REST API server using the [MyBatis persistence framework](https://mybatis.org/mybatis-3/index.html). The scenario is that of an e-commerce application. Database access in this application is managed through MyBatis .
 
-The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/yugabyte/orm-examples/tree/master/java/hibernate) repository.
+The source for this application can be found in the [Using ORMs with YugabyteDB](https://github.com/YugabyteDB-Samples/orm-examples/tree/master/java/mybatis) repository.
 
 ## Prerequisites
 
@@ -56,24 +56,31 @@ This tutorial assumes that you have:
 $ git clone https://github.com/YugabyteDB-Samples/orm-examples.git
 ```
 
-There are a number of options that can be customized in the properties file located at `src/main/resources/hibernate.cfg.xml`. Given YSQL's compatibility with the PostgreSQL language, the `hibernate.dialect` property is set to `org.hibernate.dialect.PostgreSQLDialect` and the `hibernate.connection.url` is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
+There are a number of options that can be customized in the properties file located at `src/main/resources/mybatis/config/mybatis-config.xml`. Given YSQL's compatibility with the PostgreSQL language, the datasource `driver` property is set to `org.postgresql.Driver` and the `url` property is set to the YSQL JDBC URL: `jdbc:postgresql://localhost:5433/yugabyte`.
 
 ## Build the application
 
 ```sh
-$ cd orm-examples/java/hibernate
+$ cd orm-examples/java/mybatis
 ```
 
 ```sh
-$ mvn -DskipTests package
+$ mvn -DskipTests clean package
+```
+
+## Load the tables
+
+```sh
+$ cd java/mybatis
+$ ysqlsh -f src/main/resources/db-scripts/schema-create-db.sql
 ```
 
 ## Run the application
 
-Start the Hibernate application's REST API server at `http://localhost:8080`.
+Start the MyBatis application's REST API server at `http://localhost:8080`.
 
 ```sh
-$ mvn exec:java -Dexec.mainClass=com.yugabyte.hibernatedemo.server.BasicHttpServer
+$ mvn exec:java -Dexec.mainClass=com.yugabyte.mybatis.server.BasicHttpServer
 ```
 
 ## Send requests to the application

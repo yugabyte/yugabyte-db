@@ -27,6 +27,12 @@ type: docs
     </a>
   </li>
 
+  <li >
+    <a href="../mybatis/" class="nav-link ">
+      MyBatis
+    </a>
+  </li>
+
 </ul>
 
 [Ebean ORM](https://ebean.io/) is an Object Relational Mapping (ORM) tool for Java applications. The Ebean API uses a session-less design, which eliminates the concepts of detached/attached beans, as well as the difficulties related with flushing and clearing.
