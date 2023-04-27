@@ -79,6 +79,8 @@ To configure AWS providers, navigate to **Configs > Infrastructure > Amazon Web 
 
 This lists all currently configured providers.
 
+To view a provider, select it in the list to display the **Overview**. To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
+
 To create an AWS provider, click **Create Config** to open the **Create AWS Provider Configuration** page.
 
 ### Provider settings

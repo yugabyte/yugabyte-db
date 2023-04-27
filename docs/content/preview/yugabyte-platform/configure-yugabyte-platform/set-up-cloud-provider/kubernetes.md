@@ -189,6 +189,8 @@ To configure Kubernetes providers, navigate to **Configs > Infrastructure > Mana
 
 This lists all currently configured providers.
 
+To view a provider, select it in the list to display the **Overview**. To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
+
 To create an Kubernetes provider, click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
 
 ### Provider settings
