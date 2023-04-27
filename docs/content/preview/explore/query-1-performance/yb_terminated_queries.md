@@ -4,6 +4,7 @@ linkTitle: View terminated queries
 description: View terminated queries for all SQL statements executed by a server.
 headerTitle: View terminated queries with yb_terminated_queries
 headcontent: See why a query failed
+aliases: /preview/explore/query-1-performance/yb-pg-stat-get-queries/
 menu:
   preview:
     identifier: yb_terminated_queries
@@ -14,17 +15,15 @@ type: docs
 
 Use the YugabyteDB `yb_terminated_queries` view to see terminated queries and the reason for their termination.
 
-When a query quits for unexpected reasons, information about the query and the responsible backend is stored. You can access this information by using `yb_terminated_queries` view. Earlier, terminated queries could be listed using the function `yb_pg_stat_get_queries`, which still works. This view is built on top of this function. The view returns queries using the following criteria:
+When a query quits for unexpected reasons, information about the query and the responsible backend is stored. You can access this information by using `yb_terminated_queries` view which is built on top of the `yb_pg_stat_get_queries` function. The view returns queries using the following criteria:
 
 - Temporary file size exceeds `temp_file_limit`.
 - Terminated by SIGSEGV - the query terminated due to a crash in the PostgreSQL process.
 - Terminated by SIGKILL - the query was killed by the system's out of memory killer because the node is running out of memory.
 
-
 {{% explore-setup-single %}}
 
 ## Supported fields
-
 
 At a `ysqlsh` prompt, run the following meta-commands to return the fields supported by `yb_terminated_queries`:
 
@@ -205,14 +204,14 @@ new_db=# SELECT query_text FROM yb_terminated_queries;
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
  SELECT 'db2' FROM generate_series(1, 123456789);
 (2 rows)
 ```
 
-When you query `yb_terminated_queries` with the database name of the current database, you only see the entries for that database.
+When you query `yb_terminated_queries` with the name of the current database, you only see the entries for that database.
 
 Use the database name to get the terminated queries from the `yugabyte` database as follows:
 
@@ -221,7 +220,7 @@ new_db=# SELECT query_text FROM yb_terminated_queries WHERE databasename='yugaby
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db1' FROM generate_series(1, 123456789);
 (1 row)
@@ -234,7 +233,7 @@ new_db=# SELECT query_text FROM yb_terminated_queries WHERE databasename='new_db
 ```
 
 ```output
-                    query_text 
+                    query_text
 --------------------------------------------------
  SELECT 'db2' FROM generate_series(1, 123456789);
 (1 row)
