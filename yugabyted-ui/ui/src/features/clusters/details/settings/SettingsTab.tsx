@@ -25,6 +25,7 @@ export const SettingsTab: FC<SettingsTabProps> = () => {
     <Box className={classes.sectionContainer}>
       <GeneralOverview />
       <RegionOverview />
+      <RegionOverview readReplica />
       <GFlagsOverview showDrift={showDrift} 
         toggleDrift={() => setShowDrift(s => !s)} />
       {showDrift && <GFlagsDrift />}

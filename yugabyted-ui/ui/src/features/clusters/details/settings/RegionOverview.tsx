@@ -13,9 +13,24 @@ const useStyles = makeStyles((theme) => ({
     border: `1px solid ${theme.palette.grey[200]}`,
     width: '100%'
   },
-  heading: {
-    marginBottom: theme.spacing(5),
+  summaryContainer: {
+    display: 'flex',
+    gap: '10px',
+    margin: theme.spacing(3, 0, 2, 0),
+    justifyContent: 'space-between',
+    padding: theme.spacing(2, 6, 2, 3),
+    borderRadius: theme.shape.borderRadius,
+    border: '1px solid',
+    borderColor: theme.palette.grey[100],
   },
+  summaryItem: {
+    display: 'flex',
+  },
+  summaryTitle: {
+    marginRight: theme.spacing(4),
+    textTransform: 'uppercase',
+    color: theme.palette.grey[600],
+  }
 }));
 
 const RegionNameComponent = () => ({ name, code }: { name: string, code?: string }) => {
@@ -27,9 +42,10 @@ const RegionNameComponent = () => ({ name, code }: { name: string, code?: string
 }
 
 interface RegionOverviewProps {
+  readReplica?: boolean,
 }
 
-export const RegionOverview: FC<RegionOverviewProps> = () => {
+export const RegionOverview: FC<RegionOverviewProps> = ({ readReplica }) => {
   const classes = useStyles();
   const { t } = useTranslation();
 
@@ -60,7 +76,8 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
 
   const regionData = useMemo(() => {
     const set = new Set<string>();
-    nodesResponse?.data.forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
+    nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
+      .forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
     return Array.from(set).map(regionZone => {
       const [region, zone] = regionZone.split('#');
       return {
@@ -75,7 +92,27 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
         diskPerNode: getDiskSizeText(totalDiskSize / (nodesResponse?.data.length ?? 1)),
       }
     })
-  }, [nodesResponse, totalCores, totalRamUsageGb, totalDiskSize])
+  }, [nodesResponse, totalCores, totalRamUsageGb, totalDiskSize, readReplica])
+
+  const summaryData = useMemo(() => [
+    {
+      title: t('clusterDetail.settings.regions.totalNodes'),
+      value: nodesResponse?.data.filter(node => (readReplica && node.is_read_replica) || (!readReplica && !node.is_read_replica))
+        .length.toString(),
+    },
+    {
+      title: t('clusterDetail.settings.regions.totalvCPU'),
+      value: totalCores.toString(),
+    },
+    {
+      title: t('clusterDetail.settings.regions.totalMemory'),
+      value: getRamUsageText(totalRamUsageGb),
+    },
+    {
+      title: t('clusterDetail.settings.regions.totalDiskSize'),
+      value: getDiskSizeText(totalDiskSize),
+    }
+  ], [nodesResponse, totalCores, totalRamUsageGb, totalDiskSize])
 
   const regionColumns = [
     {
@@ -134,11 +171,23 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
     },
   ];
 
+  if (regionData.length === 0) {
+    return null;
+  }
+
   return (
     <Paper className={classes.paperContainer}>
-      <Typography variant="h4" className={classes.heading}>
-        {isZone ? t('clusterDetail.settings.regions.zonesTitle') : t('clusterDetail.settings.regions.title')}
+      <Typography variant="h4">
+        {readReplica ? t('clusterDetail.settings.regions.readReplica') : t('clusterDetail.settings.regions.title')}
       </Typography>
+      <Box className={classes.summaryContainer}>
+        {summaryData.map(summaryItem => (
+          <Box key={summaryItem.title} className={classes.summaryItem}>
+            <Typography variant='body2' className={classes.summaryTitle}>{summaryItem.title}</Typography>
+            <Typography variant='body2'>{summaryItem.value}</Typography>
+          </Box>
+        ))}
+      </Box>
       <YBTable
         data={regionData}
         columns={regionColumns}

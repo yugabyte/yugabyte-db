@@ -1214,11 +1214,15 @@
           "ycql_port": "YCQL Port"
         },
         "regions": {
-          "title": "Regions",
-          "zonesTitle": "Zones",
+          "title": "Primary Cluster",
+          "readReplica": "Read Replica",
           "region": "Region",
           "zone": "Zone",
           "nodes": "Nodes",
+          "totalNodes": "Total Nodes",
+          "totalvCPU": "Total vCPU",
+          "totalMemory": "Total Memory",
+          "totalDiskSize": "Total Disk Size",
           "vCPU_per_node": "vCPU / Node",
           "ram_per_node": "RAM / Node",
           "disk_per_node": "Disk / Node",
