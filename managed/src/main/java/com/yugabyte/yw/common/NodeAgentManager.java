@@ -35,7 +35,6 @@ import java.security.PublicKey;
 import java.security.cert.X509Certificate;
 import java.time.Instant;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -139,7 +138,7 @@ public class NodeAgentManager {
   // Certs are created in each directory <base-cert-dir>/<index>/.
   // The index keeps increasing.
   private Path getOrCreateNextCertDirectory(NodeAgent nodeAgent) {
-    String certDirPath = nodeAgent.getConfig().get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    String certDirPath = nodeAgent.getConfig().getCertPath();
     if (StringUtils.isBlank(certDirPath)) {
       return getOrCreateCertDirectory(nodeAgent, "0");
     }
@@ -433,23 +432,20 @@ public class NodeAgentManager {
    * @return the updated node agent record along with cert and key in the config.
    */
   public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
-    nodeAgent.setConfig(new HashMap<>());
+    nodeAgent.setConfig(new NodeAgent.Config());
     nodeAgent.setState(State.REGISTERING);
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
     Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
     nodeAgent.updateCertDirPath(certDirPath);
-    ImmutableMap.Builder<String, String> builder =
-        ImmutableMap.<String, String>builder().putAll(nodeAgent.getConfig());
     if (includeCertContents) {
       X509Certificate serverCert = serverPair.getLeft();
       KeyPair serverKeyPair = serverPair.getRight();
-      builder.put(NodeAgent.SERVER_CERT_PROPERTY, CertificateHelper.getAsPemString(serverCert));
-      builder.put(
-          NodeAgent.SERVER_KEY_PROPERTY,
-          CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
+      nodeAgent.getConfig().setServerCert(CertificateHelper.getAsPemString(serverCert));
+      nodeAgent
+          .getConfig()
+          .setServerKey(CertificateHelper.getAsPemString(serverKeyPair.getPrivate()));
     }
-    nodeAgent.setConfig(builder.build());
     return nodeAgent;
   }
 

@@ -18,6 +18,7 @@ service NodeAgent {
 message ServerInfo {
     string version = 1;
     bool restartNeeded = 2;
+    bool offloadable = 3;
 }
 
 message PingRequest {

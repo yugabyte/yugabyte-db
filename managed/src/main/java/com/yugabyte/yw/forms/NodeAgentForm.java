@@ -5,7 +5,6 @@ package com.yugabyte.yw.forms;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
-import java.util.HashMap;
 import java.util.UUID;
 import play.data.validation.Constraints;
 
@@ -31,7 +30,7 @@ public class NodeAgentForm {
     nodeAgent.setHome(home);
     nodeAgent.setArchType(ArchType.parse(archType));
     nodeAgent.setOsType(OSType.parse(osType));
-    nodeAgent.setConfig(new HashMap<>());
+    nodeAgent.setConfig(new NodeAgent.Config());
     return nodeAgent;
   }
 }

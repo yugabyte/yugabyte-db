@@ -24,10 +24,12 @@ import (
 )
 
 var (
-	server     *RPCServer
-	clientCtx  context.Context
-	dialOpts   []grpc.DialOption
-	serverAddr = "localhost:0"
+	server            *RPCServer
+	clientCtx         context.Context
+	dialOpts          []grpc.DialOption
+	serverAddr        = "localhost:0"
+	enableTLS         = false
+	disableMetricsTLS = false
 )
 
 func init() {

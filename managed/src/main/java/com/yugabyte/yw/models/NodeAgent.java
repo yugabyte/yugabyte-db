@@ -30,7 +30,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -146,12 +145,18 @@ public class NodeAgent extends Model {
     }
   }
 
+  @Getter
+  @Setter
+  public static class Config {
+    private String certPath;
+    private String serverCert;
+    private String serverKey;
+    private boolean offloadable;
+  }
+
   public static final Finder<UUID, NodeAgent> finder =
       new Finder<UUID, NodeAgent>(NodeAgent.class) {};
 
-  public static final String CERT_DIR_PATH_PROPERTY = "certPath";
-  public static final String SERVER_CERT_PROPERTY = "serverCert";
-  public static final String SERVER_KEY_PROPERTY = "serverKey";
   public static final String ROOT_CA_CERT_NAME = "ca.root.crt";
   public static final String ROOT_CA_KEY_NAME = "ca.key.pem";
   public static final String SERVER_CERT_NAME = "server.crt";
@@ -190,7 +195,7 @@ public class NodeAgent extends Model {
   @ApiModelProperty(accessMode = READ_ONLY)
   @Column(nullable = false)
   @DbJson
-  private Map<String, String> config;
+  private Config config;
 
   @Enumerated(EnumType.STRING)
   @ApiModelProperty(accessMode = READ_ONLY)
@@ -346,36 +351,42 @@ public class NodeAgent extends Model {
 
   @JsonIgnore
   public Path getCertDirPath() {
-    String certDirPath = getConfig().get(NodeAgent.CERT_DIR_PATH_PROPERTY);
+    String certDirPath = getConfig().getCertPath();
     if (StringUtils.isBlank(certDirPath)) {
-      throw new IllegalArgumentException(
-          "Missing config key - " + NodeAgent.CERT_DIR_PATH_PROPERTY);
+      throw new IllegalArgumentException("Missing cert path");
     }
     return Paths.get(certDirPath);
   }
 
   @JsonIgnore
   public Path getCaCertFilePath() {
-    return getCertDirPath().resolve(NodeAgent.ROOT_CA_CERT_NAME);
+    return getCertDirPath().resolve(ROOT_CA_CERT_NAME);
   }
 
   @JsonIgnore
   public Path getMergedCaCertFilePath() {
-    return getCertDirPath().resolve(NodeAgent.MERGED_ROOT_CA_CERT_NAME);
+    return getCertDirPath().resolve(MERGED_ROOT_CA_CERT_NAME);
   }
 
   @JsonIgnore
   public Path getServerCertFilePath() {
-    return getCertDirPath().resolve(NodeAgent.SERVER_CERT_NAME);
+    return getCertDirPath().resolve(SERVER_CERT_NAME);
   }
 
   @JsonIgnore
   public Path getServerKeyFilePath() {
-    return getCertDirPath().resolve(NodeAgent.SERVER_KEY_NAME);
+    return getCertDirPath().resolve(SERVER_KEY_NAME);
   }
 
   public void updateCertDirPath(Path certDirPath) {
-    getConfig().put(NodeAgent.CERT_DIR_PATH_PROPERTY, certDirPath.toString());
+    getConfig().setCertPath(certDirPath.toString());
     save();
+  }
+
+  public void updateOffloadable(boolean offloadable) {
+    if (getConfig().isOffloadable() != offloadable) {
+      getConfig().setOffloadable(offloadable);
+      save();
+    }
   }
 }
