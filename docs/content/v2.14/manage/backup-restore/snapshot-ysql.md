@@ -95,16 +95,18 @@ To mitigate these issues, consider storing backups outside of the cluster, in ch
 
 To move a snapshot to external storage, gather all the relevant files from all the nodes and copy them along with the additional metadata required for restoring on a different cluster, as follows:
 
-1. Obtain the current YSQL schema catalog version by running the [`ysql_catalog_version`](../../../admin/yb-admin/#ysql-catalog-version) command, as follows:
+1. Obtain the current YSQL schema catalog version by running the following query in [ysqlsh](../../../admin/ysqlsh/) cli:
 
-    ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
+    ```sql
+    SELECT yb_catalog_version();
     ```
 
     The following is a sample output:
 
     ```output
-    Version: 1
+     yb_catalog_version 
+    --------------------
+                    13
     ```
 
 1. [Create an in-cluster snapshot](#create-a-snapshot).
@@ -117,8 +119,8 @@ To move a snapshot to external storage, gather all the relevant files from all t
 
 1. Verify that the catalog version is the same as it was prior to creating the snapshot, as follows:
 
-    ```sh
-    ./bin/yb-admin -master_addresses <ip1:7100,ip2:7100,ip3:7100> ysql_catalog_version
+    ```sql
+    SELECT yb_catalog_version();
     ```
 
     If the catalog version is not the same, you are not guaranteed to get a consistent restorable snapshot and you should restart the process.
