@@ -15,19 +15,6 @@ type: docs
 
 Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications, or other databases.
 
-## Prerequisites
-
-* The database and its tables must be created using YugabyteDB version 2.13 or later.
-* CDC supports YSQL tables only. (See [Limitations](#limitations).)
-
-Be aware that you can't stream data out of system tables.
-
-{{< note title="Note" >}}
-
-The current YugabyteDB CDC implementation supports only Debezium and Kafka.
-
-{{< /note >}}
-
 ## Process architecture
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
