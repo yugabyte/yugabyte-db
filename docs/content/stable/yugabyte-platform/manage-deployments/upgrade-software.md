@@ -31,7 +31,7 @@ Before starting the upgrade:
 
   For v2.16.3, YB Controller does not get installed during a YugabyteDB software upgrade of a manually provisioned [on-premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) cron-managed universe.
 
-  The workaround is to explicitly install the YB Controller by calling the following API after the software upgrade:
+  The workaround is to explicitly install YB Controller by calling the following API after the software upgrade:
 
   ```sh
   curl --location --request PUT '<YBA-url>/api/v1/customers/<customerUUID>/universes/<universeUUID>/ybc/install' \
