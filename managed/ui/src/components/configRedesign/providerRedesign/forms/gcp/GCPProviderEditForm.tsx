@@ -37,6 +37,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { FormContainer } from '../components/FormContainer';
@@ -275,8 +276,7 @@ export const GCPProviderEditForm = ({
   );
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(providerConfig, isProviderInUse, formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
