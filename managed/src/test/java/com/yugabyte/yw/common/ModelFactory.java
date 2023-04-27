@@ -239,6 +239,7 @@ public class ModelFactory {
     userIntent.universeName = universeName;
     userIntent.provider = p.getUuid().toString();
     userIntent.providerType = cloudType;
+    userIntent.ybSoftwareVersion = "2.17.0.0-b1";
     UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
     params.setUniverseUUID(universeUUID);
     params.nodeDetailsSet = new HashSet<>();
@@ -256,7 +257,6 @@ public class ModelFactory {
       NodeDetails node2 = node.clone();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
-      userIntent.ybSoftwareVersion = "2.15.0.0-b1";
     }
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);

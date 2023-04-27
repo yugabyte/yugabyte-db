@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -27,20 +28,22 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
 
-  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
+  private final XClusterUniverseService xClusterUniverseService;
 
   @Inject
-  public DestroyUniverse(BaseTaskDependencies baseTaskDependencies) {
+  public DestroyUniverse(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies);
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   public static class Params extends UniverseTaskParams {
@@ -69,6 +72,14 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
+
+      // Promote auto flags on all universes which were blocked due to the xCluster config.
+      // No need to send excludeXClusterConfigSet as they are updated with status DeletedUniverse.
+      createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+          lockedXClusterUniversesUuidSet,
+          Stream.of(universe.getUniverseUUID()).collect(Collectors.toSet()),
+          xClusterUniverseService,
+          new HashSet<>() /* excludeXClusterConfigSet */);
 
       if (params().isDeleteBackups) {
         List<Backup> backupList =
@@ -248,7 +259,7 @@ public class DestroyUniverse extends UniverseTaskBase {
 
     // Put all the universes in the locked list. The unlock operation is a no-op if the universe
     // does not get locked by this task.
-    lockedXClusterUniversesUuidSet = otherUniverseUuidToXClusterConfigsMap.keySet();
+    lockedXClusterUniversesUuidSet = new HashSet<>(otherUniverseUuidToXClusterConfigsMap.keySet());
 
     // Create the subtasks to delete the xCluster configs.
     otherUniverseUuidToXClusterConfigsMap.forEach(

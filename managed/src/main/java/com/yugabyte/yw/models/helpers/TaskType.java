@@ -343,6 +343,9 @@ public enum TaskType {
   XClusterInfoPersist(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterInfoPersist.class),
 
+  CheckXUniverseAutoFlags(
+      com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckXUniverseAutoFlags.class),
+
   // Tasks belonging to subtasks.cloud classpath
   CloudAccessKeyCleanup(
       com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudAccessKeyCleanup.class),

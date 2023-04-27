@@ -13,21 +13,31 @@ import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +47,10 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.runners.MockitoJUnitRunner;
+import org.yb.client.DeleteUniverseReplicationResponse;
+import org.yb.client.PromoteAutoFlagsResponse;
+import org.yb.client.YBClient;
+import org.yb.master.MasterClusterOuterClass;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -49,6 +63,8 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
   private Map<String, String> config = new HashMap<>();
 
   private AvailabilityZone az1, az2, az3;
+
+  private YBClient mockClient;
 
   private void setupUniverse(boolean updateInProgress) {
     config.put("KUBECONFIG", "test");
@@ -206,6 +222,60 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, 1);
+    assertEquals(Success, taskInfo.getTaskState());
+    assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
+  }
+
+  @Test
+  public void testDestroyKubernetesUniverseSuccessAndPromoteAutoFlagsOnOthers() {
+    setupUniverse(false);
+    mockClient = mock(YBClient.class);
+    when(mockYBClient.getClient(
+            defaultUniverse.getMasterAddresses(), defaultUniverse.getCertificateNodetoNode()))
+        .thenReturn(mockClient);
+    try {
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = new ArrayList<>();
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
+      lenient()
+          .when(mockClient.promoteAutoFlags(anyString(), anyBoolean(), anyBoolean()))
+          .thenReturn(
+              new PromoteAutoFlagsResponse(
+                  0,
+                  "uuid",
+                  MasterClusterOuterClass.PromoteAutoFlagsResponsePB.getDefaultInstance()));
+      DeleteUniverseReplicationResponse mockDeleteResponse =
+          new DeleteUniverseReplicationResponse(0, "", null, null);
+      when(mockClient.deleteUniverseReplication(anyString(), anyBoolean()))
+          .thenReturn(mockDeleteResponse);
+    } catch (Exception ignored) {
+      fail();
+    }
+    defaultUniverse.updateConfig(
+        ImmutableMap.of(Universe.HELM2_LEGACY, Universe.HelmLegacy.V3.toString()));
+    defaultUniverse.save();
+    Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
+    XClusterConfig.create(
+        "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
+    Universe xClusterUniv2 = ModelFactory.createUniverse("univ-3");
+    XClusterConfig.create(
+        "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
+    DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
+    taskParams.isForceDelete = false;
+    taskParams.customerUUID = defaultCustomer.getUuid();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    TaskInfo taskInfo = submitTask(taskParams);
+    verify(mockKubernetesManager, times(1)).helmDelete(config, NODE_PREFIX, NODE_PREFIX);
+    verify(mockKubernetesManager, times(1)).deleteStorage(config, NODE_PREFIX, NODE_PREFIX);
+    verify(mockKubernetesManager, times(1)).deleteNamespace(config, NODE_PREFIX);
+    List<TaskInfo> subTasks = taskInfo.getSubTasks();
+    assertEquals(
+        2,
+        subTasks.stream()
+            .filter(task -> task.getTaskType().equals(TaskType.PromoteAutoFlags))
+            .count());
     assertEquals(Success, taskInfo.getTaskState());
     assertFalse(defaultCustomer.getUniverseUUIDs().contains(defaultUniverse.getUniverseUUID()));
   }

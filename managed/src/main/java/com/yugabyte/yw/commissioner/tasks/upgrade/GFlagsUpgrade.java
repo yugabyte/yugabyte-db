@@ -6,11 +6,14 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.Collection;
@@ -26,9 +29,17 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class GFlagsUpgrade extends UpgradeTaskBase {
 
+  private final GFlagsValidation gFlagsValidation;
+  private final XClusterUniverseService xClusterUniverseService;
+
   @Inject
-  protected GFlagsUpgrade(BaseTaskDependencies baseTaskDependencies) {
+  protected GFlagsUpgrade(
+      BaseTaskDependencies baseTaskDependencies,
+      GFlagsValidation gFlagsValidation,
+      XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies);
+    this.gFlagsValidation = gFlagsValidation;
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   @Override
@@ -53,7 +64,13 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
           Universe universe = getUniverse();
           // Verify the request params and fail if invalid
           taskParams().verifyParams(universe);
-
+          String softwareVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+          if (CommonUtils.isAutoFlagSupported(softwareVersion)) {
+            // Verify auto flags compatibility.
+            taskParams()
+                .checkXClusterAutoFlags(universe, gFlagsValidation, xClusterUniverseService);
+          }
           boolean checkForbiddenToOverride =
               !config.getBoolean("yb.cloud.enabled")
                   && !confGetter.getConfForScope(

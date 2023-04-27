@@ -94,7 +94,11 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
           getRunnableTask().runSubTasks();
         }
       } finally {
-        unlockUniverseForUpdate();
+        try {
+          unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
+        } finally {
+          unlockUniverseForUpdate();
+        }
       }
     }
 

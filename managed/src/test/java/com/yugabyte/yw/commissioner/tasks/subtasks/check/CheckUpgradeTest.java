@@ -16,10 +16,9 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.TestHelper;
 import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagsPerServer;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import java.io.IOException;
 import java.util.Arrays;
@@ -45,7 +44,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     super.setUp();
     defaultCustomer = ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse();
-    updateUniverseVersion(defaultUniverse, "new-version");
+    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
     mockClient = mock(YBClient.class);
     try {
       when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
@@ -56,7 +55,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
 
   @Test
   public void testAutoFlagCheckForUpgradeAmongNonCompatibleVersion() {
-    updateUniverseVersion(defaultUniverse, "2.14.0.0");
+    TestHelper.updateUniverseVersion(defaultUniverse, "2.14.0.0");
     CheckUpgrade.Params params = new CheckUpgrade.Params();
     params.setUniverseUUID(defaultUniverse.getUniverseUUID());
     params.ybSoftwareVersion = "2.16.0.0";
@@ -121,7 +120,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     PromotedFlagsPerProcessPB tserverFlagPB =
         PromotedFlagsPerProcessPB.newBuilder()
             .addFlags("FLAG_1")
-            .setProcessName("yb-master")
+            .setProcessName("yb-tserver")
             .build();
     AutoFlagsConfigPB config =
         GetAutoFlagsConfigResponsePB.newBuilder()
@@ -138,8 +137,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     flag.name = "FLAG_2";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
     flagsPerServer.autoFlagDetails = Arrays.asList(flag);
-    System.out.println(flagsPerServer);
-    when(mockGFlagsValidation.extractAutoFlags(any(), any(), any())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.extractAutoFlags(any(), any())).thenReturn(flagsPerServer);
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     PlatformServiceException exception =
@@ -162,7 +160,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     PromotedFlagsPerProcessPB tserverFlagPB =
         PromotedFlagsPerProcessPB.newBuilder()
             .addFlags("FLAG_1")
-            .setProcessName("yb-master")
+            .setProcessName("yb-tserver")
             .build();
     AutoFlagsConfigPB config =
         GetAutoFlagsConfigResponsePB.newBuilder()
@@ -179,19 +177,9 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     flag.name = "FLAG_1";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
     flagsPerServer.autoFlagDetails = Arrays.asList(flag);
-    System.out.println(flagsPerServer);
-    when(mockGFlagsValidation.extractAutoFlags(any(), any(), any())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.extractAutoFlags(any(), any())).thenReturn(flagsPerServer);
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     task.run();
-  }
-
-  private void updateUniverseVersion(Universe universe, String version) {
-    UniverseDefinitionTaskParams details = defaultUniverse.getUniverseDetails();
-    UserIntent userIntent = details.getPrimaryCluster().userIntent;
-    userIntent.ybSoftwareVersion = version;
-    details.upsertPrimaryCluster(userIntent, null);
-    universe.setUniverseDetails(details);
-    universe.save();
   }
 }

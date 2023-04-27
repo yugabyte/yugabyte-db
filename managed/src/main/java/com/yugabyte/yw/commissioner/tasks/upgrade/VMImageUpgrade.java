@@ -9,13 +9,13 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -40,12 +40,16 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   private final Map<UUID, List<String>> replacementRootVolumes = new ConcurrentHashMap<>();
 
   private final RuntimeConfGetter confGetter;
+  private final XClusterUniverseService xClusterUniverseService;
 
   @Inject
   protected VMImageUpgrade(
-      BaseTaskDependencies baseTaskDependencies, RuntimeConfGetter confGetter) {
+      BaseTaskDependencies baseTaskDependencies,
+      RuntimeConfGetter confGetter,
+      XClusterUniverseService xClusterUniverseService) {
     super(baseTaskDependencies);
     this.confGetter = confGetter;
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   @Override
@@ -82,11 +86,16 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           if (taskParams().isSoftwareUpdateViaVm) {
             // Promote Auto flags on compatible versions.
             if (confGetter.getConfForScope(getUniverse(), UniverseConfKeys.promoteAutoFlag)
-                && CommonUtils.isAutoFlagSupported(newVersion)
-                && !XClusterConfig.isUniverseXClusterParticipant(taskParams().getUniverseUUID())) {
+                && CommonUtils.isAutoFlagSupported(newVersion)) {
               createCheckSoftwareVersionTask(nodeSet, newVersion)
                   .setSubTaskGroupType(getTaskSubGroupType());
-              createPromoteAutoFlagTask().setSubTaskGroupType(getTaskSubGroupType());
+              createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+                  Collections.singleton(taskParams().getUniverseUUID()),
+                  Collections.singleton(taskParams().getUniverseUUID()),
+                  xClusterUniverseService,
+                  new HashSet<>(),
+                  getUniverse(),
+                  newVersion);
             }
 
             // Update software version in the universe metadata.

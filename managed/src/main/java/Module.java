@@ -36,6 +36,7 @@ import com.yugabyte.yw.common.ShellProcessHandler;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.SwamperHelper;
 import com.yugabyte.yw.common.TemplateManager;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.YBALifeCycle;
 import com.yugabyte.yw.common.YamlWrapper;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -181,6 +182,7 @@ public class Module extends AbstractModule {
       bind(PlatformReplicationManager.class).asEagerSingleton();
       bind(PlatformReplicationHelper.class).asEagerSingleton();
       bind(GFlagsValidation.class).asEagerSingleton();
+      bind(XClusterUniverseService.class).asEagerSingleton();
       bind(TaskExecutor.class).asEagerSingleton();
       bind(ShellKubernetesManager.class).asEagerSingleton();
       bind(NativeKubernetesManager.class).asEagerSingleton();

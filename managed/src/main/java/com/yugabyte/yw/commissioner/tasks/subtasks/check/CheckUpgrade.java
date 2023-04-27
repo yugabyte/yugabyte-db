@@ -102,13 +102,13 @@ public class CheckUpgrade extends ServerSubTaskBase {
         ProtocolStringList oldTserverAutoFlags = autoFlagConfig.getPromotedFlags(1).getFlagsList();
         if (CollectionUtils.isNotEmpty(oldMasterAutoFlags)) {
           AutoFlagsPerServer newMasterAutoFlags =
-              gFlagsValidation.extractAutoFlags(releasePath, newVersion, "yb-master");
+              gFlagsValidation.extractAutoFlags(newVersion, "yb-master");
           checkAutoFlagsAvailability(oldMasterAutoFlags, newMasterAutoFlags, newVersion);
         }
 
         if (!CollectionUtils.isNotEmpty(oldTserverAutoFlags)) {
           AutoFlagsPerServer newTserverAutoFlags =
-              gFlagsValidation.extractAutoFlags(releasePath, newVersion, "yb-tserver");
+              gFlagsValidation.extractAutoFlags(newVersion, "yb-tserver");
           checkAutoFlagsAvailability(oldTserverAutoFlags, newTserverAutoFlags, newVersion);
         }
       }
@@ -123,10 +123,7 @@ public class CheckUpgrade extends ServerSubTaskBase {
   private void checkAutoFlagsAvailability(
       ProtocolStringList oldFlags, AutoFlagsPerServer newFlags, String version) {
     for (String oldFlag : oldFlags) {
-      if (!newFlags.autoFlagDetails.stream()
-          .filter((flag -> flag.name.equals(oldFlag)))
-          .findAny()
-          .isPresent()) {
+      if (newFlags.autoFlagDetails.stream().noneMatch((flag -> flag.name.equals(oldFlag)))) {
         throw new PlatformServiceException(
             BAD_REQUEST, oldFlag + " is not present in the requested db version " + version);
       }

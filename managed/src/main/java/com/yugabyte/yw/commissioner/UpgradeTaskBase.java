@@ -49,7 +49,6 @@ import org.apache.commons.lang3.tuple.Pair;
 @Slf4j
 public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
-  protected Set<UUID> lockedXClusterUniversesUuidSet = null;
   private List<ServerType> canBeIgnoredServerTypes = Arrays.asList(ServerType.CONTROLLER);
 
   protected static final UpgradeContext DEFAULT_CONTEXT =
