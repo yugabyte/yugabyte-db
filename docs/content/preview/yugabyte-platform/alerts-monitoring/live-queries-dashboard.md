@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     parent: alerts-monitoring
     identifier: live-queries-dashboard
-    weight: 10
+    weight: 20
 type: docs
 ---
 
