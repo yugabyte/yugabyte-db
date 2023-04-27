@@ -5,11 +5,12 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import { AxiosError } from 'axios';
+import { FieldValues, FormState } from 'react-hook-form';
 
 import { YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
 import { isYBPBeanValidationError, isYBPError } from '../../../../utils/errorHandlingUtils';
-import { KeyPairManagement } from '../constants';
-import { AccessKey } from '../types';
+import { KeyPairManagement, ProviderStatus } from '../constants';
+import { AccessKey, YBProvider } from '../types';
 
 export const readFileAsText = (sshKeyFile: File) => {
   const reader = new FileReader();
@@ -119,3 +120,13 @@ export const constructAccessKeysPayload = (
       : currentAccessKeys
   };
 };
+
+export const getIsFormDisabled = <TFieldValues extends FieldValues>(
+  providerConfig: YBProvider,
+  isProviderInUse: boolean,
+  formState: FormState<TFieldValues>
+) =>
+  providerConfig.usabilityState === ProviderStatus.UPDATING ||
+  isProviderInUse ||
+  formState.isValidating ||
+  formState.isSubmitting;

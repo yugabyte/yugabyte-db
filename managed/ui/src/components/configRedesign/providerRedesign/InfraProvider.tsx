@@ -44,6 +44,7 @@ export type CreateInfraProvider = (
   values: YBProviderMutation,
   options?: {
     shouldValidate?: boolean;
+    ignoreValidationErrors?: boolean;
     mutateOptions?: MutateOptions<
       YBPTask,
       Error | AxiosError<YBPBeanValidationError | YBPError>,
@@ -99,9 +100,13 @@ export const InfraProvider = (props: InfraProviderProps) => {
   }
 
   const createInfraProvider: CreateInfraProvider = async (values, options) => {
-    const { shouldValidate = false, mutateOptions } = options ?? {};
+    const { shouldValidate = false, ignoreValidationErrors = false, mutateOptions } = options ?? {};
     return createProviderMutation.mutateAsync(
-      { values: values, shouldValidate: shouldValidate },
+      {
+        values: values,
+        shouldValidate: shouldValidate,
+        ignoreValidationErrors: ignoreValidationErrors
+      },
       {
         ...mutateOptions,
         onSuccess: (response, variables, context) => {

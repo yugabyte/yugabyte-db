@@ -218,7 +218,8 @@ export const AWSProviderCreateForm = ({
   };
   const onFormSubmit = async (
     formValues: AWSProviderCreateFormFieldValues,
-    shouldValidate = true
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
   ) => {
     clearErrors();
 
@@ -234,6 +235,7 @@ export const AWSProviderCreateForm = ({
       try {
         await createInfraProvider(providerPayload, {
           shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
           mutateOptions: { onError: handleFormSubmitServerError }
         });
       } catch (_) {
@@ -247,7 +249,7 @@ export const AWSProviderCreateForm = ({
     formValues
   ) => await onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation);
   const onFormForceSubmit: SubmitHandler<AWSProviderCreateFormFieldValues> = async (formValues) =>
-    await onFormSubmit(formValues, false);
+    await onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation, true);
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
@@ -268,7 +270,7 @@ export const AWSProviderCreateForm = ({
     setIsRegionFormModalOpen(false);
   };
   const skipValidationAndSubmit = () => {
-    formMethods.handleSubmit(onFormForceSubmit);
+    onFormForceSubmit(formMethods.getValues());
   };
 
   const regions = formMethods.watch('regions', defaultValues.regions);

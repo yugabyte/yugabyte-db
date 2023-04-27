@@ -9,6 +9,7 @@ import {
   KeyPairManagement,
   KubernetesProvider,
   ProviderCode,
+  ProviderStatus,
   VPCSetupType
 } from './constants';
 
@@ -104,6 +105,7 @@ interface Provider extends ProviderBase {
   hostVpcRegion: string;
   keyPairName: string;
   sshPrivateKeyContent: string;
+  usabilityState: ProviderStatus;
   uuid: string;
   version: number;
 }
