@@ -41,6 +41,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { EditProvider } from '../ProviderEditView';
@@ -229,8 +230,7 @@ export const K8sProviderEditForm = ({
     ...KUBERNETES_PROVIDER_OPTIONS.k8sDeprecated
   ] as const;
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(providerConfig, isProviderInUse, formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>

@@ -46,14 +46,15 @@ export const useDeepCompareUpdateEffect: typeof useDeepCompareEffect = (effect, 
 export type UseCreateProviderParams = {
   values: YBProviderMutation;
   shouldValidate: boolean;
+  ignoreValidationErrors: boolean;
 };
 export const useCreateProvider = (
   queryClient: QueryClient,
   mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, UseCreateProviderParams>
 ) =>
   useMutation(
-    ({ values, shouldValidate }: UseCreateProviderParams) =>
-      api.createProvider(values, shouldValidate),
+    ({ values, shouldValidate, ignoreValidationErrors }: UseCreateProviderParams) =>
+      api.createProvider(values, shouldValidate, ignoreValidationErrors),
     {
       ...mutationOptions,
       onSuccess: (response, variables, context) => {
@@ -74,14 +75,15 @@ export type UseEditProviderParams = {
   providerUUID: string;
   values: YBProviderMutation;
   shouldValidate: boolean;
+  ignoreValidationErrors: boolean;
 };
 export const useEditProvider = (
   queryClient: QueryClient,
   mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, UseEditProviderParams>
 ) =>
   useMutation(
-    ({ providerUUID, values, shouldValidate }: UseEditProviderParams) =>
-      api.editProvider(providerUUID, values, shouldValidate),
+    ({ providerUUID, values, shouldValidate, ignoreValidationErrors }: UseEditProviderParams) =>
+      api.editProvider(providerUUID, values, shouldValidate, ignoreValidationErrors),
     {
       ...mutationOptions,
       onSuccess: (response, variables, context) => {
