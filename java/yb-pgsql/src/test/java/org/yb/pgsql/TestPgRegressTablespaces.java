@@ -78,6 +78,69 @@ public class TestPgRegressTablespaces extends BasePgSQLTest {
   }
 
   @Test
+  public void testYBTablespaceLeaderPreference() throws Exception {
+    // Test that leader preference is a cost component when calculating
+    // the cost of identical indexes on different tablespaces. In particular,
+    // this test checks that connecting to different nodes will result in
+    // different indexes being chosen; it's otherwise very basic. More
+    // tests for leader preference can be found in the postgres regression
+    // tests for tablespaces.
+
+    try (Connection connection1 = getConnectionBuilder().withTServer(0).connect();
+         Statement statement1 = connection1.createStatement()) {
+
+      assertOneRow(statement1, "SELECT yb_server_region()", "region1");
+      assertOneRow(statement1, "SELECT yb_server_cloud()", "cloud1");
+      assertOneRow(statement1, "SELECT yb_server_zone()", "zone1");
+
+      // Create tablespaces, with the same placements but different leader preferences.
+      statement1.execute("CREATE TABLESPACE localtablespace " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.execute("CREATE TABLESPACE remotetablespace " +
+          "  WITH (replica_placement=" +
+          "'{\"num_replicas\":2, \"placement_blocks\":" +
+          "[{\"cloud\":\"cloud2\",\"region\":\"region2\",\"zone\":\"zone2\"," +
+          "\"min_num_replicas\":1, \"leader_preference\":1}," +
+          "{\"cloud\":\"cloud1\",\"region\":\"region1\",\"zone\":\"zone1\"," +
+          "\"min_num_replicas\":1}]}')");
+
+      statement1.executeUpdate("CREATE TABLE foo(x int, y int)");
+      // Create identical indexes, one in each tablespace.
+      statement1.executeUpdate(
+        "CREATE UNIQUE INDEX localind ON foo(x) INCLUDE (y) TABLESPACE localtablespace");
+      statement1.executeUpdate(
+        "CREATE UNIQUE INDEX remoteind ON foo(x) INCLUDE (y) TABLESPACE remotetablespace");
+
+      String query = "EXPLAIN (FORMAT json, ANALYZE true) " +
+        "SELECT * FROM foo WHERE x = 5";
+
+      String resultJson = getRowList(statement1, query).get(0).get(0).toString();
+      assert(resultJson.contains("localind"));
+    }
+
+    // Try connecting to a different node, which should change the chosen index.
+    try (Connection connection2 = getConnectionBuilder().withTServer(1).connect();
+         Statement statement2 = connection2.createStatement()) {
+
+      assertOneRow(statement2, "SELECT yb_server_region()", "region2");
+      assertOneRow(statement2, "SELECT yb_server_cloud()", "cloud2");
+      assertOneRow(statement2, "SELECT yb_server_zone()", "zone2");
+
+      String query = "EXPLAIN (FORMAT json, ANALYZE true) " +
+        "SELECT * FROM foo WHERE x = 5";
+
+      String resultJson = getRowList(statement2, query).get(0).get(0).toString();
+      assert(resultJson.contains("remoteind"));
+    }
+  }
+
+  @Test
   public void testYBLocalTableViews() throws Exception {
     // Create a view using the yb_is_local_table function. Selecting rows from the
     // view must give different results depending on the location of the node we
