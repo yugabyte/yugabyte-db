@@ -12,54 +12,37 @@ menu:
     weight: 10
 type: docs
 ---
+## What is change data capture?
 
-Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications, or other databases.
+In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. YugabyteDB CDC captures changes made to data in the database and stream those changes to external processes, applications, or other databases.
+
+## Process architecture
+Change Data Capture (CDC) allows you to track and propagate changes in a YugabyteDB database to downstream consumers based on its Write-Ahead Log (WAL).
+YugabyteDB CDC uses Debezium to capture row-level changes resulting from INSERT, UPDATE and DELETE operations in the upstream database and publishes them as events to Kafka using Kafka Connect-compatible connectors.
 
 ![What is CDC](/images/explore/cdc-overview-what.png)
 
-![How does CDC work](/images/explore/cdc-overview-work.png)
+## How does CDC work?
+
+YugabyteDB automatically splits user tables into multiple shards, called tablets, using either a hash or range based strategy. The primary key for each row in the table uniquely identifies the location of the tablet in the row. 
+
+Each Tablet has its own Write Ahead Log(WAL) file. WAL is NOT in-memory but it’s disk persisted. Each WAL preserves the order in which transactions (or changes) happened.Hybrid TS, Operation id, and additional metadata about the transaction is also preserved.
 
 ![How does CDC work](/images/explore/cdc-overview-work2.png)
 
-![How does CDC work](/images/explore/cdc-overview-work3.png)
+The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database. The first time it connects to a YugabyteDB cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a PostgreSQL database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
 
-## Process architecture
+![How does CDC work](/images/explore/cdc-overview-work.png)
+
+The connector produces a change event for every row-level insert, update, and delete operation that was captured and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
+
+YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the connector first connects to a particular PostgreSQL database, it starts by performing a consistent snapshot of each of the database schemas. 
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-```goat
-                        .-------------------------------------------.
-                        |  Node 1                                   |
-                        |  '----------------' '------------------'  |
-                        |  |    YB-Master   | |    YB-TServer    |  |  CDC Service is stateless
-   CDC Streams metadata |  |  (Stores CDC   | |  '-------------' |  |           |
-  replicated with Raft  |  |   metadata)    | |  | CDC Service | |  |           |
-           .----------> |  |                | |  .-------------. |  | <---------'
-           |            |  .----------------. .------------------.  |
-           |            '-------------------------------------------'
-           |
-           |
-           |_______________________________________________
-           |                                               |
-           v                                               v
-.-------------------------------------------.    .-------------------------------------------.
-|  Node 2                                   |    |   Node 3                                  |
-|  '----------------' '------------------'  |    |  '----------------' '------------------'  |
-|  |    YB-Master   | |    YB-TServer    |  |    |  |    YB-Master   | |    YB-TServer    |  |
-|  |  (Stores CDC   | |  '-------------' |  |    |  |  (Stores CDC   | |  '-------------' |  |
-|  |   metadata)    | |  | CDC Service | |  |    |  |   metadata)    | |  | CDC Service | |  |
-|  |                | |  .-------------. |  |    |  |                | |  .-------------. |  |
-|  .----------------. .------------------.  |    |  .----------------. .------------------.  |
-'-------------------------------------------'    '-------------------------------------------'
-```
+Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
 
-### CDC streams
-
-Streams are the YugabyteDB endpoints for fetching database changes by applications, processes, and systems. Streams can be enabled or disabled (on a per namespace basis). Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, which is then propagated further for consumption by applications, in this case to Debezium, and then ultimately to Kafka.
-
-### DB stream
-
-To facilitate the streaming of data, you have to create a DB Stream. This stream is created at the database level, and can access the data in all of that database's tables.
+![How does CDC work](/images/explore/cdc-overview-work3.png)
 
 ### Stream expiry
 
@@ -74,6 +57,7 @@ Once a stream has expired, you need to create a new stream ID in order to procee
 If you set `cdc_intent_retention_ms` to a high value, and the stream lags for any reason, the intents will be retained for a longer period. This may destabilize your cluster if the number of intents keeps growing.
 
 {{< /warning >}}
+
 
 ## Consistency semantics
 
@@ -137,7 +121,7 @@ If a new table is added to a namespace on which there is an active stream ID, a 
 
 CDC supports packed rows. However, if all the non-key columns of a packed row are modified, CDC emits the changes as an INSERT record rather than an UPDATE record.
 
-## Limitations
+## Known limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 * CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
@@ -151,3 +135,14 @@ In addition, CDC support for the following features will be added in upcoming re
 * Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
 * Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 * Support for schema evolution with before image is tracked in issue [15197](https://github.com/yugabyte/yugabyte-db/issues/15197).
+
+## Further reading
+* Stream CDC events to Snowflake
+* Unlocking Azure Storage Options With YugabyteDB CDC
+* Change Data Capture (CDC) From YugabyteDB to Elasticsearch
+* Snowflake CDC: Publishing Data Using Amazon S3 and YugabyteDB
+* Streaming Changes From YugabyteDB to Downstream Databases
+* Change Data Capture (CDC) from YugabyteDB CDC to ClickHouse
+* Data Capture (CDC): Run Debezium Server with Kafka as a Sink
+* Change Data Capture (CDC) Using a Spring Data Processing Pipeline
+
