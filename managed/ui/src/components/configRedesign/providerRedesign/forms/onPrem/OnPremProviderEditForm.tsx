@@ -399,6 +399,7 @@ export const OnPremProviderEditForm = ({
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
           regionSelection={regionSelection}
+          regionOperation={regionOperation}
         />
       )}
       {isDeleteRegionModalOpen && (
