@@ -534,14 +534,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable scope strictness while setting runtime keys",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-  public static final ConfKeyInfo<String> ansibleOffloadSupportedVersion =
-      new ConfKeyInfo<>(
-          "yb.node_agent.ansible_offloading.min_supported_version",
-          ScopeType.GLOBAL,
-          "Ansible Offloading Supported Version",
-          "Minimum supported version for ansible offloading",
-          ConfDataType.StringType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> nodeAgentPollerInterval =
       new ConfKeyInfo<>(
           "yb.node_agent.poller_interval",

@@ -29,7 +29,7 @@ readonly node_agent_home=$( cd "${BASH_SOURCE%/*}" && pwd )
 destination=""
 local=""
 pre_release=""
-rebuild_pex=""
+include_pex=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
@@ -43,8 +43,8 @@ while [ $# -gt 0 ]; do
     -l|--local)
       local="true"
     ;;
-    -p|--rebuild_pex)
-      rebuild_pex="--rebuild_pex"
+    -p|--include_pex)
+      include_pex="--include_pex"
     ;;
   esac
   shift
@@ -61,4 +61,4 @@ fi
 
 activate_virtualenv
 $node_agent_home/yb_release.py --source_dir $node_agent_home --destination $destination \
-                                                            $pre_release $rebuild_pex
+                                                            $pre_release $include_pex

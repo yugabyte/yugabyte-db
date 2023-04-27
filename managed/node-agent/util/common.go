@@ -26,6 +26,7 @@ const (
 	nodeAgentDir            = "/node-agent"
 	configDir               = "/config"
 	certsDir                = "/cert"
+	pexEnvDir               = "/pkg/devops/pex/pexEnv"
 	releaseDir              = "/release"
 	logsDir                 = "/logs"
 	DefaultShell            = "/bin/bash"
@@ -232,6 +233,12 @@ func CertsDir() string {
 	return MustGetHomeDirectory() + certsDir
 }
 
+// PexEnvDir returns the pexEnv path
+func PexEnvDir() string {
+	return MustGetHomeDirectory() + pexEnvDir
+}
+
+// ReleaseDir returns the release dir path.
 func ReleaseDir() string {
 	return MustGetHomeDirectory() + releaseDir
 }
@@ -335,4 +342,13 @@ func ScanDir(dir string, callback func(os.FileInfo) (bool, error)) error {
 		}
 	}
 	return nil
+}
+
+// IsPexEnvAvailable returns true if pexEnv directory exists or there is no error.
+func IsPexEnvAvailable() bool {
+	fInfo, err := os.Stat(PexEnvDir())
+	if err != nil {
+		return false
+	}
+	return fInfo.IsDir()
 }
