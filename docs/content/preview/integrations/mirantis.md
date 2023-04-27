@@ -12,19 +12,19 @@ type: docs
 
 [Mirantis Kubernetes Engine (MKE)](https://docs.mirantis.com/mke/3.5/overview.html) is a container orchestration platform for developing and running modern applications at scale, on private clouds, public clouds, and on bare metal.
 
-MKE as a container orchestration platform is specially beneficial in the following scenarios:
+MKE as a container orchestration platform is especially beneficial in the following scenarios:
 
 - Orchestrating more than one container
 - Robust and scalable applications deployment
 - Multi-tenant software offerings
 
-The following sections describe how to deploy a single node YugabyteDB cluster on Mirantis MKE using [kubectl](https://kubernetes.io/docs/reference/kubectl/) and [helm](https://helm.sh/).
+The following sections describe how to deploy a single-node YugabyteDB cluster on Mirantis MKE using [kubectl](https://kubernetes.io/docs/reference/kubectl/) and [helm](https://helm.sh/).
 
-This page describes the steps for a single node cluster for the purpose of simplicity, as you require more than one machine/VM for a multi node cluster deployment.
+This page describes the steps for a single-node cluster for the purpose of simplicity, as you require more than one machine/VM for a multi-node cluster deployment.
 
 ## Prerequisite
 
-Before installing a single node YugabyteDB cluster, ensure that you have the Docker runtime installed on the host on which you are installing MKE. To download and install Docker, select one of the following environments:
+Before installing a single-node YugabyteDB cluster, ensure that you have the Docker runtime installed on the host on which you are installing MKE. To download and install Docker, select one of the following environments:
 
 <i class="fa-brands fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
 
@@ -50,7 +50,7 @@ Before installing a single node YugabyteDB cluster, ensure that you have the Doc
           --interactive
     ```
 
-    When prompted, enter the `username` and `password` that you want to set which will be used to access MKE web UI.
+    When prompted, enter the `username` and `password` that you want to set; these are used to access the MKE web UI.
 
 1. Install and configure kubectl with MKE, and install Helm using the instructions in [MKE documentation](https://docs.mirantis.com/mke/3.5/ops/access-cluster/configure-kubectl.html?highlight=kubectl).
 
@@ -90,7 +90,7 @@ Before installing a single node YugabyteDB cluster, ensure that you have the Doc
     yb-storage(default)  kubernetes.io/no-provisioner  Delete          WaitForFirstConsumer   false                  23s
     ```
 
-1. Create four [PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/) using the following steps:
+1. Create four [PersistentVolumes](https://kubernetes.io/docs/concepts/storage/persistent-volumes/)(PVs) using the following steps:
 
     1. Copy the following PersistentVolume configuration to a file `volume.yaml`:
 
@@ -117,7 +117,7 @@ Before installing a single node YugabyteDB cluster, ensure that you have the Doc
         kubectl apply -f volume.yaml
         ```
 
-    1. Repeat the preceding two steps to create the remaining PersistentVolumes (PV) : `task-pv-volume2`, `task-pv-volume3`, and `task-pv-volume4` by changing the metadata name in `volume.yaml` for each volume.
+    1. Repeat the preceding two steps to create the remaining PVs : `task-pv-volume2`, `task-pv-volume3`, and `task-pv-volume4` by changing the metadata name in `volume.yaml` for each volume.
 
 1. Verify PersistentVolumes are created using the following command:
 
@@ -164,7 +164,7 @@ To download and start YugabyteDB Helm chart, perform the following:
 
 ### Create a cluster
 
-Create a single node YugabyteDB cluster using the following command:
+Create a single-node YugabyteDB cluster using the following command:
 
 ```sh
 kubectl create namespace yb-demo
