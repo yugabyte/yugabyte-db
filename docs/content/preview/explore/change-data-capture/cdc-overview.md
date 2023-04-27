@@ -12,38 +12,15 @@ menu:
     weight: 10
 type: docs
 ---
+## What is change data capture?
 
-Change data capture (CDC) is a process to capture changes made to data in the database and stream those changes to external processes, applications, or other databases.
+In databases, change data capture (CDC) is a set of software design patterns used to determine and track the data that has changed so that action can be taken using the changed data. YugabyteDB CDC captures changes made to data in the database and stream those changes to external processes, applications, or other databases
 
-## Process architecture
+
+## How does CDC work?
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
-```goat
-                        .-------------------------------------------.
-                        |  Node 1                                   |
-                        |  '----------------' '------------------'  |
-                        |  |    YB-Master   | |    YB-TServer    |  |  CDC Service is stateless
-   CDC Streams metadata |  |  (Stores CDC   | |  '-------------' |  |           |
-  replicated with Raft  |  |   metadata)    | |  | CDC Service | |  |           |
-           .----------> |  |                | |  .-------------. |  | <---------'
-           |            |  .----------------. .------------------.  |
-           |            '-------------------------------------------'
-           |
-           |
-           |_______________________________________________
-           |                                               |
-           v                                               v
-.-------------------------------------------.    .-------------------------------------------.
-|  Node 2                                   |    |   Node 3                                  |
-|  '----------------' '------------------'  |    |  '----------------' '------------------'  |
-|  |    YB-Master   | |    YB-TServer    |  |    |  |    YB-Master   | |    YB-TServer    |  |
-|  |  (Stores CDC   | |  '-------------' |  |    |  |  (Stores CDC   | |  '-------------' |  |
-|  |   metadata)    | |  | CDC Service | |  |    |  |   metadata)    | |  | CDC Service | |  |
-|  |                | |  .-------------. |  |    |  |                | |  .-------------. |  |
-|  .----------------. .------------------.  |    |  .----------------. .------------------.  |
-'-------------------------------------------'    '-------------------------------------------'
-```
 
 ### CDC streams
 
@@ -129,7 +106,7 @@ If a new table is added to a namespace on which there is an active stream ID, a 
 
 CDC supports packed rows. However, if all the non-key columns of a packed row are modified, CDC emits the changes as an INSERT record rather than an UPDATE record.
 
-## Limitations
+## Known limitations
 
 * YCQL tables aren't currently supported. Issue [11320](https://github.com/yugabyte/yugabyte-db/issues/11320).
 * CDC behaviour is undefined on downgrading from a CDC supported version (2.13 and newer) to an unsupported version (2.12 and older) and upgrading it back. Issue [12800](https://github.com/yugabyte/yugabyte-db/issues/12800)
