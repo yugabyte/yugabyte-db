@@ -200,7 +200,7 @@ The free allowance for same region transfers is 1000 GB per month for every 1 vC
 
 ### Cross region
 
-This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC peering](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions.
+This accounts for all of the traffic coming out of the cluster to a different region. This happens if a client is using [VPC networking](../../cloud-basics/cloud-vpcs/) but is in different region than the cluster deployments. Different rate cards apply for clusters deployed in Asia-Pacific (APAC) vs other regions.
 
 {{< tip title="Rate card" >}}
 
@@ -214,7 +214,7 @@ The free allowance for cross region transfers is 10 GB per month for every 1 vCP
 
 ### Data out (Internet)
 
-This accounts for all of the traffic coming out of the cluster to the internet. This happens when a client is not using VPC peering and connecting to the cluster over the internet.
+This accounts for all of the traffic coming out of the cluster to the internet. This happens when a client is not using VPC networking and connecting to the cluster over the internet.
 
 {{< tip title="Rate card" >}}
 
@@ -228,9 +228,9 @@ The free allowance for data out transfers is 10GB per month for every 1 vCPU per
 
 - Ensure that queries originate from the same cloud region and provider as your database deployment whenever possible.
 
-  - Avoid data out internet costs by using [VPC peering](../../cloud-basics/cloud-vpcs/) and not allowing any client applications to connect over the public internet.
+  - Avoid data out internet costs by using [VPC networking](../../cloud-basics/cloud-vpcs/) and not allowing any client applications to connect over the public internet.
 
-  - Minimize data out cross region costs by making sure your client application and database cluster are deployed in the same cloud and region and connected using VPC Peering.
+  - Minimize data out cross region costs by making sure your client application and database cluster are deployed in the same cloud and region and connected using VPC networking.
 
 - Ensure that queries do not:
 

@@ -57,6 +57,7 @@ The **Create Cluster** wizard has the following pages:
 1. [General Settings](#general-settings)
 1. [Cluster Setup](#cluster-setup)
 1. [Network Access](#network-access)
+1. [Security](#security)
 1. [DB Credentials](#database-credentials)
 
 {{% includeMarkdown "include-general-settings.md" %}}
@@ -98,6 +99,8 @@ Partiton-by-region clusters support both horizontal and vertical scaling; you ca
 Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../../cloud-admin/cloud-billing-costs/).
 
 {{% includeMarkdown "network-access.md" %}}
+
+{{% includeMarkdown "include-security-settings.md" %}}
 
 ### Database Credentials
 
