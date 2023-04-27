@@ -57,6 +57,7 @@ import {
   deleteItem,
   editItem,
   generateLowerCaseAlphanumericId,
+  getIsFormDisabled,
   readFileAsText
 } from '../utils';
 import { YBButton as YBRedesignedButton } from '../../../../../redesign/components';
@@ -227,10 +228,10 @@ export const AWSProviderEditForm = ({
   };
   const onFormSubmit = async (
     formValues: AWSProviderEditFormFieldValues,
-    shouldValidate = true
+    shouldValidate: boolean,
+    ignoreValidationErrors = false
   ) => {
     clearErrors();
-
     if (formValues.ntpSetupType === NTPSetupType.SPECIFIED && !formValues.ntpServers.length) {
       formMethods.setError('ntpServers', {
         type: 'min',
@@ -244,6 +245,7 @@ export const AWSProviderEditForm = ({
       try {
         await editProvider(providerPayload, {
           shouldValidate: shouldValidate,
+          ignoreValidationErrors: ignoreValidationErrors,
           mutateOptions: { onError: handleFormSubmitServerError }
         });
       } catch (_) {
@@ -257,7 +259,7 @@ export const AWSProviderEditForm = ({
     formValues
   ) => onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation);
   const onFormForceSubmit: SubmitHandler<AWSProviderEditFormFieldValues> = async (formValues) =>
-    onFormSubmit(formValues, false);
+    onFormSubmit(formValues, !!featureFlags.test.enableAWSProviderValidation, true);
 
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
@@ -315,8 +317,7 @@ export const AWSProviderEditForm = ({
   const ybImageType = formMethods.watch('ybImageType');
   const latestAccessKey = getLatestAccessKey(providerConfig.allAccessKeys);
   const existingRegions = providerConfig.regions.map((region) => region.code);
-  const isFormDisabled =
-    isProviderInUse || formMethods.formState.isValidating || formMethods.formState.isSubmitting;
+  const isFormDisabled = getIsFormDisabled(providerConfig, isProviderInUse, formMethods.formState);
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
