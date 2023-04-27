@@ -57,7 +57,7 @@ You can enable encryption at rest on an existing universe as follows:
 
 1. Open the YugabyteDB Anywhere UI and click **Universes**.
 
-1. Select the universe for which to enable encryption.
+1. Select the universe for which you want to enable encryption.
 
 1. Select **Actions > Edit Security > Encryption-at-Rest**.
 
@@ -65,7 +65,7 @@ You can enable encryption at rest on an existing universe as follows:
 
    When the encryption is enabled, the **Key Management Service Config** option appears.
 
-1. Select your KSM configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/).
+1. Select your KMS configuration from the **Key Management Service Config** list. The list displays only preconfigured KMS configurations. If you need to create one, see [Create a KMS configuration](../create-kms-config/).
 
 1. Click **Apply**.
 
@@ -77,7 +77,7 @@ When you back up and restore universe data with encryption at rest enabled, Yuga
 
 When restoring an encrypted backup to a universe, Yugabyte Anywhere detects the correct KMS configuration used to encrypt the backup. The KMS configuration must be available in the YugabyteDB Anywhere account.
 
-When restoring your universe data, YugabyteDB Anywhere uses the selected KMS configuration to consume the master key ID and then retrieve the master key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
+When restoring your universe data, YugabyteDB Anywhere uses the selected KMS configuration to consume the master key ID and then retrieves the master key value for each key ID in the metadata file. Each of these keys are then sent to the destination universe to augment or build the universe key registry there.
 
 ## Rotate the master keys
 
@@ -96,7 +96,7 @@ Note that you can choose to rotate the master key/KMS configuration or rotate th
 
 {{< warning title="Deleting KMS configurations" >}}
 
-When you delete a KMS configuration, you will no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Before deleting a configuration, make sure that you no longer need the KMS configuration, master key, or any of the key versions before you destroy it. Retain all KMS configurations used to encrypt data in backups and snapshots.
+When you delete a KMS configuration, you will no longer be able to decrypt universe keys that were encrypted using the master key in the KMS configuration. Before deleting a configuration, make sure that you no longer need the KMS configuration, master key, or any of the key versions. Retain all KMS configurations used to encrypt data in backups and snapshots.
 
 {{< /warning >}}
 
@@ -114,7 +114,7 @@ The cluster configuration change does the following:
 - Updates the cluster configuration with the new latest key ID.
 - Encrypts the registry with the master key.
 
-Once encryption is enabled with a new universe key, only new data is encrypted with this new key. Old data remains unencrypted, or encrypted with an older key, until compaction churn triggers a re-encryption with the new key.
+Once encryption is enabled with a new universe key, only new data is encrypted with this new key. Old data remains unencrypted, or encrypted with an older universe key, until compaction churn triggers a re-encryption with the new key.
 
 To rotate the universe keys, perform the following:
 
