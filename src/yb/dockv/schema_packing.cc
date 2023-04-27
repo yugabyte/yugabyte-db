@@ -14,7 +14,7 @@
 #include "yb/dockv/schema_packing.h"
 
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/dockv.pb.h"

@@ -45,7 +45,7 @@ TEST_F(TestQLUpdateTable, TestQLUpdateToJson) {
 
   // Get a processor.
   TestQLProcessor *processor = GetQLProcessor();
-  std::shared_ptr<QLRowBlock> row_block;
+  std::shared_ptr<qlexpr::QLRowBlock> row_block;
 
   auto to_json_str = [](const QLValue& value) -> string {
     common::Jsonb jsonb(value.jsonb_value());
@@ -110,7 +110,7 @@ TEST_F(TestQLUpdateTable, TestQLUpdateTableSimple) {
 
   // Testing UPDATE one row.
   string select_stmt;
-  std::shared_ptr<QLRowBlock> row_block = processor->row_block();
+  auto row_block = processor->row_block();
   for (int idx = 0; idx < kNumRows; idx++) {
     // SELECT an entry to make sure it's there.
     select_stmt = Substitute("SELECT * FROM test_table"
@@ -129,7 +129,7 @@ TEST_F(TestQLUpdateTable, TestQLUpdateTableSimple) {
     CHECK_VALID_STMT(select_stmt);
     row_block = processor->row_block();
     CHECK_EQ(row_block->row_count(), 1);
-    const QLRow& row = row_block->row(0);
+    const auto& row = row_block->row(0);
     CHECK_EQ(row.column(0).int32_value(), idx);
     CHECK_EQ(row.column(1).string_value(), Substitute("h$0", idx));
     CHECK_EQ(row.column(2).int32_value(), idx + 100);

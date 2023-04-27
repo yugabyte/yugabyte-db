@@ -34,7 +34,7 @@
 
 #include <gtest/gtest.h>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_protocol_util.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
@@ -127,7 +127,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
 
     dockv::YBPartialRow row(&client_schema_);
 
-    QLTableRow value_map;
+    qlexpr::QLTableRow value_map;
 
     while (running_insert_count_.count() > 0) {
       auto iter = tablet()->NewRowIterator(client_schema_);
@@ -161,7 +161,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
   // This is meant to test that outstanding iterators don't end up
   // trying to reference already-freed memory.
   void SlowReaderThread(int tid) {
-    QLTableRow row;
+    qlexpr::QLTableRow row;
 
     auto max_rows = this->ClampRowCount(FLAGS_inserts_per_thread * kNumInsertThreads)
             / kNumInsertThreads;
@@ -196,7 +196,7 @@ class VerifyRowsTabletTest : public TabletTestBase<SETUP> {
     auto iter = tablet()->NewRowIterator(valcol_projection_);
     CHECK_OK(iter);
 
-    QLTableRow row;
+    qlexpr::QLTableRow row;
     while (CHECK_RESULT((**iter).FetchNext(&row))) {
       QLValue value;
       CHECK_OK(row.GetValue(schema_.column_id(2), &value));

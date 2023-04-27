@@ -32,9 +32,9 @@ QLTypesVTable::QLTypesVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> QLTypesVTable::RetrieveData(
+Result<VTableDataPtr> QLTypesVTable::RetrieveData(
     const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   std::vector<scoped_refptr<UDTypeInfo> > types;
   catalog_manager().GetAllUDTypes(&types);
 
@@ -43,7 +43,7 @@ Result<std::shared_ptr<QLRowBlock>> QLTypesVTable::RetrieveData(
     auto ns_info = VERIFY_RESULT(catalog_manager().FindNamespaceById(type->namespace_id()));
 
     // Create appropriate row for the table;
-    QLRow& row = vtable->Extend();
+    auto& row = vtable->Extend();
     RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
     RETURN_NOT_OK(SetColumnValue(kTypeName, type->name(), &row));
 

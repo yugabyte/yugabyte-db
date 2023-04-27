@@ -44,14 +44,14 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -251,6 +251,11 @@ DEFINE_RUNTIME_bool(tablet_exclusive_post_split_compaction, false,
        "unscheduled compactions are run before post-split compaction and no other compaction "
        "will get scheduled during post-split compaction.");
 
+DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
+       "Enables exclusive mode for any non-post-split full compaction for a tablet: all "
+       "scheduled and unscheduled compactions are run before the full compaction and no other "
+       "compactions will get scheduled during a full compaction.");
+
 // FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
 // FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
 // we're writing a mixture of SST files with and without UserFrontiers, to ensure that we're
@@ -302,6 +307,8 @@ using dockv::DocKey;
 using docdb::DocRowwiseIterator;
 using dockv::SubDocKey;
 using docdb::StorageDbType;
+using qlexpr::IndexInfo;
+using qlexpr::QLTableRow;
 
 const std::hash<std::string> hash_for_data_root_dir;
 
@@ -2056,7 +2063,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
-      table_info.table_type(), schema, IndexMap(), partition_schema, boost::none,
+      table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, boost::none,
       table_info.schema_version(), op_id);
 
   return Status::OK();
@@ -2621,7 +2628,7 @@ Status Tablet::UpdateIndexInBatches(
     docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
-  QLExprExecutor expr_executor;
+  qlexpr::QLExprExecutor expr_executor;
 
   for (const IndexInfo& index : indexes) {
     QLWriteRequestPB* const index_request = VERIFY_RESULT(
@@ -3433,9 +3440,9 @@ Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reas
   rocksdb::CompactRangeOptions options;
   options.skip_flush = skip_flush;
   options.compaction_reason = compaction_reason;
-  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
-    options.exclusive_manual_compaction = FLAGS_tablet_exclusive_post_split_compaction;
-  }
+  options.exclusive_manual_compaction =
+      (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) ?
+      FLAGS_tablet_exclusive_post_split_compaction : FLAGS_tablet_exclusive_full_compaction;
 
   if (regular_db_) {
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), options));

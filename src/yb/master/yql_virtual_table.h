@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/docdb/ql_storage_interface.h"
 
@@ -24,6 +24,8 @@
 
 namespace yb {
 namespace master {
+
+using VTableDataPtr = std::shared_ptr<qlexpr::QLRowBlock>;
 
 // A YQL virtual table which is based on in memory data.
 class YQLVirtualTable : public docdb::YQLStorageIf {
@@ -45,8 +47,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
 
   // Retrieves all the data for the yql virtual table in form of a QLRowBlock. This data is then
   // used by the iterator.
-  virtual Result<std::shared_ptr<QLRowBlock>> RetrieveData(
-      const QLReadRequestPB& request) const = 0;
+  virtual Result<VTableDataPtr> RetrieveData(const QLReadRequestPB& request) const = 0;
 
   Status GetIterator(
       const QLReadRequestPB& request,
@@ -55,7 +56,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const dockv::QLScanSpec& spec,
+      const qlexpr::QLScanSpec& spec,
       std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const override;
 
   Status BuildYQLScanSpec(
@@ -64,8 +65,8 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
       const Schema& schema,
       bool include_static_columns,
       const Schema& static_projection,
-      std::unique_ptr<dockv::QLScanSpec>* spec,
-      std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const override;
+      std::unique_ptr<qlexpr::QLScanSpec>* spec,
+      std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const override;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
@@ -125,7 +126,7 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
   // Finds the given column name in the schema and updates the specified column in the given row
   // with the provided value.
   template<class T>
-  Status SetColumnValue(const std::string& col_name, const T& value, QLRow* row) const {
+  Status SetColumnValue(const std::string& col_name, const T& value, qlexpr::QLRow* row) const {
     auto p = VERIFY_RESULT(ColumnIndexAndType(col_name));
     row->SetColumn(p.first, util::GetValue(value, p.second));
     return Status::OK();

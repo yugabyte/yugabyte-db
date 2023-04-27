@@ -19,13 +19,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DeleteXClusterConfig extends XClusterConfigTaskBase {
 
-  private final XClusterUniverseService xClusterUniverseService;
-
   @Inject
   protected DeleteXClusterConfig(
       BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
-    super(baseTaskDependencies);
-    this.xClusterUniverseService = xClusterUniverseService;
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   @Override

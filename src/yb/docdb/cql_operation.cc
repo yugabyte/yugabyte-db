@@ -22,13 +22,13 @@
 
 #include "yb/bfpg/tserver_opcodes.h"
 
-#include "yb/common/index.h"
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/jsonb.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_resultset.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_resultset.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 
 #include "yb/dockv/doc_path.h"
@@ -90,6 +90,11 @@ using std::vector;
 using dockv::DocPath;
 using dockv::KeyEntryValue;
 using dockv::ValueControlFields;
+
+using qlexpr::QLExprResult;
+using qlexpr::QLResultSet;
+using qlexpr::QLRow;
+using qlexpr::QLTableRow;
 
 namespace {
 
@@ -280,7 +285,7 @@ QLWriteOperation::QLWriteOperation(
     std::reference_wrapper<const QLWriteRequestPB> request,
     SchemaVersion schema_version,
     DocReadContextPtr doc_read_context,
-    std::shared_ptr<IndexMap> index_map,
+    std::shared_ptr<qlexpr::IndexMap> index_map,
     const Schema* unique_index_key_schema,
     const TransactionOperationContext& txn_op_context)
     : DocOperationBase(request),
@@ -296,7 +301,7 @@ QLWriteOperation::QLWriteOperation(
     std::reference_wrapper<const QLWriteRequestPB> request,
     SchemaVersion schema_version,
     DocReadContextPtr doc_read_context,
-    std::reference_wrapper<const IndexMap> index_map,
+    std::reference_wrapper<const qlexpr::IndexMap> index_map,
     const Schema* unique_index_key_schema,
     const TransactionOperationContext& txn_op_context)
     : DocOperationBase(request),
@@ -497,7 +502,7 @@ Status QLWriteOperation::PopulateConditionalDmlRow(const DocOperationApplyData& 
                                                    const QLTableRow& table_row,
                                                    Schema static_projection,
                                                    Schema non_static_projection,
-                                                   std::unique_ptr<QLRowBlock>* rowblock) {
+                                                   std::unique_ptr<qlexpr::QLRowBlock>* rowblock) {
   // Populate the result set to return the "applied" status, and optionally the hash / primary key
   // and the present column values if the condition is not satisfied and the row does exist
   // (value_map is not empty).
@@ -515,7 +520,7 @@ Status QLWriteOperation::PopulateConditionalDmlRow(const DocOperationApplyData& 
     columns.insert(columns.end(), non_static_projection.columns().begin(),
                    non_static_projection.columns().end());
   }
-  rowblock->reset(new QLRowBlock(Schema(columns, 0)));
+  rowblock->reset(new qlexpr::QLRowBlock(Schema(columns, 0)));
   QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(should_apply);
   size_t col_idx = 1;
@@ -532,7 +537,7 @@ Status QLWriteOperation::PopulateConditionalDmlRow(const DocOperationApplyData& 
 Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
                                            const bool should_apply,
                                            const QLTableRow& table_row,
-                                           std::unique_ptr<QLRowBlock>* rowblock) {
+                                           std::unique_ptr<qlexpr::QLRowBlock>* rowblock) {
   std::vector<ColumnSchema> columns;
   columns.emplace_back(ColumnSchema("[applied]", BOOL));
   columns.emplace_back(ColumnSchema("[message]", STRING));
@@ -540,7 +545,7 @@ Status QLWriteOperation::PopulateStatusRow(const DocOperationApplyData& data,
       columns.end(), doc_read_context_->schema.columns().begin(),
       doc_read_context_->schema.columns().end());
 
-  rowblock->reset(new QLRowBlock(Schema(columns, 0)));
+  rowblock->reset(new qlexpr::QLRowBlock(Schema(columns, 0)));
   QLRow& row = rowblock->get()->Extend();
   row.mutable_column(0)->set_bool_value(should_apply);
   // No message unless there is an error (then message will be set in executor).
@@ -697,7 +702,7 @@ Status QLWriteOperation::ApplyForJsonOperators(
           return STATUS_SUBSTITUTE(QLError, "JSON path depth should be 1 for upsert",
             column_value.ShortDebugString());
         }
-        QLTableColumn& column = existing_row->AllocColumn(column_value.column_id());
+        auto& column = existing_row->AllocColumn(column_value.column_id());
         column.value.set_jsonb_value(common::Jsonb::kSerializedJsonbEmpty);
 
         Jsonb jsonb(column.value.jsonb_value());
@@ -789,7 +794,8 @@ Status QLWriteOperation::ApplyForSubscriptArgs(const QLColumnValuePB& column_val
   QLExprResult expr_result;
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
   ValueRef value(
-      expr_result.Value(), column.sorting_type(), GetTSWriteInstruction(column_value.expr()));
+      expr_result.Value(), column.sorting_type(),
+      qlexpr::GetTSWriteInstruction(column_value.expr()));
   RETURN_NOT_OK(CheckUserTimestampForCollections(context.control_fields.timestamp));
 
   // Setting the value for a sub-column
@@ -839,7 +845,7 @@ Status QLWriteOperation::ApplyForRegularColumns(const QLColumnValuePB& column_va
   // Typical case, setting a columns value
   QLExprResult expr_result;
   RETURN_NOT_OK(EvalExpr(column_value.expr(), existing_row, expr_result.Writer()));
-  auto write_instruction = GetTSWriteInstruction(column_value.expr());
+  auto write_instruction = qlexpr::GetTSWriteInstruction(column_value.expr());
   ValueRef value(expr_result.Value(), column.sorting_type(), write_instruction);
   switch (write_instruction) {
     case TSOpcode::kToJson: FALLTHROUGH_INTENDED;
@@ -1353,14 +1359,15 @@ MonoDelta QLWriteOperation::request_ttl() const {
 
 namespace {
 
-QLExpressionPB* NewKeyColumn(QLWriteRequestPB* request, const IndexInfo& index, const size_t idx) {
+QLExpressionPB* NewKeyColumn(
+    QLWriteRequestPB* request, const qlexpr::IndexInfo& index, const size_t idx) {
   return (idx < index.hash_column_count()
           ? request->add_hashed_column_values()
           : request->add_range_column_values());
 }
 
 QLWriteRequestPB* NewIndexRequest(
-    const IndexInfo& index,
+    const qlexpr::IndexInfo& index,
     QLWriteRequestPB::QLStmtType type,
     IndexRequests* index_requests) {
   index_requests->emplace_back(&index, QLWriteRequestPB());
@@ -1378,7 +1385,7 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
   const auto& index_ids = request_.update_index_ids();
   index_requests_.reserve(index_ids.size() * 2);
   for (const TableId& index_id : index_ids) {
-    const IndexInfo* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
+    const auto* index = VERIFY_RESULT(index_map_.FindIndex(index_id));
     bool index_key_changed = false;
     bool index_pred_existing_row = true;
     bool index_pred_new_row = true;
@@ -1464,11 +1471,11 @@ Status QLWriteOperation::UpdateIndexes(const QLTableRow& existing_row, const QLT
 }
 
 Result<QLWriteRequestPB*> CreateAndSetupIndexInsertRequest(
-    QLExprExecutor* expr_executor,
+    qlexpr::QLExprExecutor* expr_executor,
     bool index_has_write_permission,
     const QLTableRow& existing_row,
     const QLTableRow& new_row,
-    const IndexInfo* index,
+    const qlexpr::IndexInfo* index,
     IndexRequests* index_requests,
     bool* has_index_key_changed,
     bool* index_pred_new_row,
@@ -1677,7 +1684,7 @@ Status QLReadOperation::Execute(const YQLStorageIf& ql_storage,
   const bool read_distinct_columns = request_.distinct();
 
   std::unique_ptr<YQLRowwiseIteratorIf> iter;
-  std::unique_ptr<dockv::QLScanSpec> spec, static_row_spec;
+  std::unique_ptr<qlexpr::QLScanSpec> spec, static_row_spec;
   RETURN_NOT_OK(ql_storage.BuildYQLScanSpec(
       request_, read_time, schema, read_static_columns, static_projection, &spec,
       &static_row_spec));
@@ -1865,7 +1872,7 @@ Status QLReadOperation::GetIntents(const Schema& schema, LWKeyValueWriteBatchPB*
   return Status::OK();
 }
 
-Status QLReadOperation::PopulateResultSet(const std::unique_ptr<dockv::QLScanSpec>& spec,
+Status QLReadOperation::PopulateResultSet(const std::unique_ptr<qlexpr::QLScanSpec>& spec,
                                           const QLTableRow& table_row,
                                           QLResultSet *resultset) {
   resultset->AllocateRow();
@@ -1902,7 +1909,7 @@ Status QLReadOperation::PopulateAggregate(const QLTableRow& table_row, QLResultS
   return Status::OK();
 }
 
-Status QLReadOperation::AddRowToResult(const std::unique_ptr<dockv::QLScanSpec>& spec,
+Status QLReadOperation::AddRowToResult(const std::unique_ptr<qlexpr::QLScanSpec>& spec,
                                        const QLTableRow& row,
                                        const size_t row_count_limit,
                                        const size_t offset,

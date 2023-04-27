@@ -1,16 +1,16 @@
 .jsonStyles {
-    &.punctuation {
-        color: #24292d
-    }
+  &.punctuation {
+    color: #24292d;
+  }
 
-    &.property,
-    &.null {
-        color: #005cc5;
-    }
+  &.property,
+  &.null {
+    color: #005cc5;
+  }
 
-    &.variable {
-        color: #30307F;
-        background: #F1F1F7;
-        border-radius: 4px;
-    }
+  &.variable {
+    color: #30307f;
+    background: #f1f1f7;
+    border-radius: 4px;
+  }
 }

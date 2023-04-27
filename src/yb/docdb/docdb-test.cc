@@ -1298,8 +1298,8 @@ TEST_P(DocDBTestWrapper, ExpiredValueCompactionTest) {
   const MonoDelta one_ms = 1ms;
   const MonoDelta two_ms = 2ms;
   const HybridTime t0 = 1000_usec_ht;
-  HybridTime t1 = server::HybridClock::AddPhysicalTimeToHybridTime(t0, two_ms);
-  HybridTime t2 = server::HybridClock::AddPhysicalTimeToHybridTime(t1, two_ms);
+  HybridTime t1 = t0.AddDelta(two_ms);
+  HybridTime t2 = t1.AddDelta(two_ms);
   KeyBytes encoded_doc_key(doc_key.Encode());
   ASSERT_OK(SetPrimitive(
       DocPath(encoded_doc_key, KeyEntryValue("s1")),
@@ -1404,7 +1404,7 @@ TEST_P(DocDBTestWrapper, RedisCollectionTTLCompactionTest) {
   vector<HybridTime> t(n_times);
   t[0] = 1000_usec_ht;
   for (int i = 1; i < n_times; ++i) {
-    t[i] = server::HybridClock::AddPhysicalTimeToHybridTime(t[i-1], one_ms);
+    t[i] = t[i-1].AddDelta(one_ms);
   }
 
   std::set<std::pair<string, string>> docdb_dump;
@@ -2006,7 +2006,7 @@ TEST_P(DocDBTestWrapper, RedisTTLCompactionTest) {
   vector<HybridTime> t(n_times);
   t[0] = 1000_usec_ht;
   for (int i = 1; i < n_times; ++i) {
-    t[i] = server::HybridClock::AddPhysicalTimeToHybridTime(t[i-1], one_ms);
+    t[i] = t[i-1].AddDelta(one_ms);
   }
   // Compact at t10
   ASSERT_OK(SetPrimitive(MakeDocKey(key_string).Encode(), // k0
@@ -2214,10 +2214,10 @@ TEST_P(DocDBTestWrapper, TTLCompactionTest) {
   const auto doc_key = MakeDocKey("k1");
   const MonoDelta one_ms = 1ms;
   const HybridTime t0 = 1000_usec_ht;
-  HybridTime t1 = server::HybridClock::AddPhysicalTimeToHybridTime(t0, one_ms);
-  HybridTime t2 = server::HybridClock::AddPhysicalTimeToHybridTime(t1, one_ms);
-  HybridTime t3 = server::HybridClock::AddPhysicalTimeToHybridTime(t2, one_ms);
-  HybridTime t4 = server::HybridClock::AddPhysicalTimeToHybridTime(t3, one_ms);
+  HybridTime t1 = t0.AddDelta(one_ms);
+  HybridTime t2 = t1.AddDelta(one_ms);
+  HybridTime t3 = t2.AddDelta(one_ms);
+  HybridTime t4 = t3.AddDelta(one_ms);
   KeyBytes encoded_doc_key(doc_key.Encode());
   // First row.
   ASSERT_OK(SetPrimitive(DocPath(encoded_doc_key, KeyEntryValue::kLivenessColumn),
@@ -2387,7 +2387,7 @@ void DocDBTestQl::TestTableTombstoneCompaction(T id) {
         DocPath(doc_key.Encode(), KeyEntryValue::kLivenessColumn),
         ValueRef(ValueEntryType::kNullLow),
         t));
-    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+    t = t.AddDelta(1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
@@ -2405,7 +2405,7 @@ SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> 
         DocPath(doc_key.Encode()),
         ValueRef(ValueEntryType::kTombstone),
         t));
-    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+    t = t.AddDelta(1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
@@ -2429,7 +2429,7 @@ SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> 
         DocPath(doc_key.Encode(), KeyEntryValue::kLivenessColumn),
         ValueRef(ValueEntryType::kNullLow),
         t));
-    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+    t = t.AddDelta(1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
@@ -2455,7 +2455,7 @@ SubDocKey(DocKey($0, [], ["r3"]), [SystemColumnId(0); HT{ physical: 3000 }]) -> 
         DocPath(doc_key.Encode()),
         ValueRef(ValueEntryType::kTombstone),
         t));
-    t = server::HybridClock::AddPhysicalTimeToHybridTime(t, 1ms);
+    t = t.AddDelta(1ms);
   }
   ASSERT_OK(FlushRocksDbAndWait());
   ASSERT_DOC_DB_DEBUG_DUMP_STR_EQ(Format(R"#(
@@ -3292,8 +3292,8 @@ TEST_P(DocDBTestWrapper, StaticColumnCompaction) {
   const MonoDelta one_ms = 1ms;
   const MonoDelta two_ms = 2ms;
   const HybridTime t0 = 1000_usec_ht;
-  const HybridTime t1 = server::HybridClock::AddPhysicalTimeToHybridTime(t0, two_ms);
-  const HybridTime t2 = server::HybridClock::AddPhysicalTimeToHybridTime(t1, two_ms);
+  const HybridTime t1 = t0.AddDelta(two_ms);
+  const HybridTime t2 = t1.AddDelta(two_ms);
 
   // Add some static columns: s1 and s2 with TTL, s3 and s4 without.
   ASSERT_OK(SetPrimitive(

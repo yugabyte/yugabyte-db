@@ -38,14 +38,14 @@ from datetime import datetime
 from yb.common_util import (
     init_logging,
     YB_SRC_ROOT,
-    read_file,
     load_yaml_file,
     write_yaml_file,
     to_yaml_str,
     arg_str_to_bool,
-    write_file,
     make_parent_dir,
-    )
+)
+from yb.file_util import read_file, write_file
+
 from sys_detection import local_sys_conf, SHORT_OS_NAME_REGEX_STR, is_macos
 
 from collections import defaultdict
@@ -798,7 +798,8 @@ def main() -> None:
         logging.info(f"Download URL for the third-party dependencies: {thirdparty_url}")
         if args.save_thirdparty_url_to_file:
             make_parent_dir(args.save_thirdparty_url_to_file)
-            write_file(thirdparty_url, args.save_thirdparty_url_to_file)
+            write_file(content=thirdparty_url,
+                       output_file_path=args.save_thirdparty_url_to_file)
 
 
 if __name__ == '__main__':

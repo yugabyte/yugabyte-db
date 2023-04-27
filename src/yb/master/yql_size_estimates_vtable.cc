@@ -34,9 +34,8 @@ YQLSizeEstimatesVTable::YQLSizeEstimatesVTable(const TableName& table_name,
     : YQLVirtualTable(table_name, namespace_name, master, CreateSchema()) {
 }
 
-Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
-    const QLReadRequestPB& request) const {
-  auto vtable = std::make_shared<QLRowBlock>(schema());
+Result<VTableDataPtr> YQLSizeEstimatesVTable::RetrieveData(const QLReadRequestPB& request) const {
+  auto vtable = std::make_shared<qlexpr::QLRowBlock>(schema());
   auto* catalog_manager = &this->catalog_manager();
 
   auto tables = catalog_manager->GetTables(GetTablesMode::kVisibleToClient);
@@ -62,7 +61,7 @@ Result<std::shared_ptr<QLRowBlock>> YQLSizeEstimatesVTable::RetrieveData(
         continue;
       }
 
-      QLRow &row = vtable->Extend();
+      auto &row = vtable->Extend();
       RETURN_NOT_OK(SetColumnValue(kKeyspaceName, ns_info->name(), &row));
       RETURN_NOT_OK(SetColumnValue(kTableName, table->name(), &row));
 

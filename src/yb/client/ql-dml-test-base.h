@@ -22,7 +22,7 @@
 #include "yb/client/callbacks.h"
 #include "yb/client/table_handle.h"
 #include "yb/common/ql_protocol.pb.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/server/server_fwd.h"
 

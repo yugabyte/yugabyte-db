@@ -186,7 +186,7 @@ Result<bool> GetPgIndexStatus(
   }
 
   // Expecting one row at most.
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     return row.GetColumn(status_col_id)->bool_value();
   }

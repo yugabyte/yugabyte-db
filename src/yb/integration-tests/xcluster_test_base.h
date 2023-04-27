@@ -190,6 +190,10 @@ class XClusterTestBase : public YBTest {
       MiniCluster* producer_cluster, YBClient* producer_client,
       const std::vector<std::shared_ptr<yb::client::YBTable>>& tables);
 
+  Result<std::vector<CDCStreamId>> BootstrapProducer(
+      MiniCluster* producer_cluster, YBClient* producer_client,
+      const std::vector<std::string>& table_ids);
+
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(
       const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,

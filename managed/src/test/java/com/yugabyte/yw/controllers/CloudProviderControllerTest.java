@@ -843,22 +843,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testEditProviderTryUnDeleteRegion() {
-    Provider p = ModelFactory.newProvider(customer, Common.CloudType.aws);
-    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
-    r.setActiveFlag(false);
-    r.update();
-    AccessKey.create(p.getUuid(), AccessKey.getDefaultKeyCode(p), new AccessKey.KeyInfo());
-    Result providerRes = getProvider(p.getUuid());
-    ObjectNode bodyJson = (ObjectNode) Json.parse(contentAsString(providerRes));
-    ArrayNode regions = (ArrayNode) bodyJson.get("regions");
-    ObjectNode regionNode = (ObjectNode) regions.get(0);
-    regionNode.put("active", true);
-    Result result = assertPlatformException(() -> editProvider(bodyJson, p.getUuid()));
-    assertBadRequest(result, "No changes to be made for provider type: aws");
-  }
-
-  @Test
   public void testEditProviderWithInvalidProviderType() {
     Provider p = ModelFactory.newProvider(customer, Common.CloudType.onprem);
     Result providerRes = getProvider(p.getUuid());
