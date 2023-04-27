@@ -117,7 +117,7 @@ Before installing a single-node YugabyteDB cluster, ensure that you have the Doc
         kubectl apply -f volume.yaml
         ```
 
-    1. Repeat the preceding two steps to create the remaining PVs : `task-pv-volume2`, `task-pv-volume3`, and `task-pv-volume4` by changing the metadata name in `volume.yaml` for each volume.
+    1. Repeat the preceding two steps to create the remaining PVs : `task-pv-volume2`, `task-pv-volume3`, and `task-pv-volume4` by changing the metadata name in `volume.yaml` for each volume and re-running the `kubectl apply` command on the same file.
 
 1. Verify PersistentVolumes are created using the following command:
 
