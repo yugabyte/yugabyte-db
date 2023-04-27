@@ -375,7 +375,7 @@ export const AWSProviderEditForm = ({
                     />
                   </FormField>
                   <FormField>
-                    <FieldLabel>Change Access Key</FieldLabel>
+                    <FieldLabel>Change AWS Credentials</FieldLabel>
                     <YBToggleField
                       name="editAccessKey"
                       control={formMethods.control}

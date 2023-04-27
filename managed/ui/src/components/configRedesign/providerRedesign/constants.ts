@@ -1,4 +1,5 @@
 import { OptionProps } from '../../../redesign/components';
+import { RegionOperation } from './forms/configureRegion/constants';
 
 export const CONFIG_ROUTE_PREFIX = 'config';
 
@@ -183,6 +184,12 @@ export const KubernetesProviderTypeLabel = {
   [KubernetesProviderType.OPEN_SHIFT]: 'Red Hat OpenShift',
   [KubernetesProviderType.TANZU]: 'VMWare Tanzu'
 } as const;
+
+export const RegionOperationLabel = {
+  [RegionOperation.ADD]: 'Add',
+  [RegionOperation.EDIT_EXISTING]: 'Edit',
+  [RegionOperation.EDIT_NEW]: 'Edit'
+};
 
 export const InstanceTypeOperationLabel = {
   [InstanceTypeOperation.ADD]: 'Add',
