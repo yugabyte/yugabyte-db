@@ -49,7 +49,7 @@ You can verify that encryption at rest has been successfully configured as follo
     }
     ```
 
-If your configuration includes AWS KMS, the following occurs: after the universe has been created with encryption at rest enabled, YugabyteDB Anywhere persists the ciphertext of the master key (because AWS does not persist any CMK-generated data keys themselves) and requests the plaintext of the master key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes. For more information, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/).
+If your configuration includes AWS KMS, the following occurs: after the universe has been created with encryption at rest enabled, YugabyteDB Anywhere persists the universe key (because AWS does not persist any CMK-generated data keys themselves) and requests the plaintext of the master key from AWS KMS using the KMS configuration whenever it needs to provide the universe key to the master nodes. For more information, see [Create a KMS configuration using AWS KMS](../create-kms-config/aws-kms/).
 
 ## Enable encryption at rest on an existing universe
 
