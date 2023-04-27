@@ -13,17 +13,19 @@ import { array, object, string } from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
 
 import { YBInputField, YBModal, YBModalProps } from '../../../../../redesign/components';
-import { OnPremRegionFieldLabel } from './constants';
+import { OnPremRegionFieldLabel, RegionOperation } from './constants';
 import { ConfigureOnPremAvailabilityZoneField } from './ConfigureOnPremAvailabilityZoneField';
 import { generateLowerCaseAlphanumericId } from '../utils';
 import { ACCEPTABLE_CHARS } from '../../../../config/constants';
 import { YBReactSelectField } from '../../components/YBReactSelect/YBReactSelectField';
 import { ON_PREM_LOCATIONS } from '../../providerRegionsData';
+import { RegionOperationLabel } from '../../constants';
 
 interface ConfigureOnPremRegionModalProps extends YBModalProps {
   configuredRegions: ConfigureOnPremRegionFormValues[];
   onRegionSubmit: (region: ConfigureOnPremRegionFormValues) => void;
   onClose: () => void;
+  regionOperation: RegionOperation;
 
   regionSelection?: ConfigureOnPremRegionFormValues;
 }
@@ -66,6 +68,7 @@ export const ConfigureOnPremRegionModal = ({
   onRegionSubmit,
   onClose,
   regionSelection,
+  regionOperation,
   ...modalProps
 }: ConfigureOnPremRegionModalProps) => {
   const configuredRegionCodes = configuredRegions.map((configuredRegion) => configuredRegion.code);
@@ -119,12 +122,14 @@ export const ConfigureOnPremRegionModal = ({
   return (
     <FormProvider {...formMethods}>
       <YBModal
-        title="Add Region"
+        title={`${RegionOperationLabel[regionOperation]} Region`}
         titleIcon={<i className={clsx('fa fa-plus', classes.titleIcon)} />}
-        submitLabel="Add Region"
+        submitLabel={`${RegionOperationLabel[regionOperation]} Region`}
         cancelLabel="Cancel"
         onSubmit={formMethods.handleSubmit(onSubmit)}
         onClose={onClose}
+        submitTestId="ConfigureRegionModal-SubmitButton"
+        cancelTestId="ConfigureRegionModal-CancelButton"
         {...modalProps}
       >
         <div className={classes.formField}>
