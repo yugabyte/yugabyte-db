@@ -19,8 +19,16 @@ In databases, change data capture (CDC) is a set of software design patterns use
 Change Data Capture (CDC) allows you to track and propagate changes in a YugabyteDB database to downstream consumers based on its Write-Ahead Log (WAL).
 YugabyteDB CDC uses Debezium to capture row-level changes resulting from INSERT, UPDATE and DELETE operations in the upstream database and publishes them as events to Kafka using Kafka Connect-compatible connectors.
 
+Diagram #1 
 
 ## How does CDC work?
+
+YugabyteDB automatically splits user tables into multiple shards, called tablets, using either a hash or range based strategy. The primary key for each row in the table uniquely identifies the location of the tablet in the row. 
+
+Each Tablet has its own Write Ahead Log(WAL) file. WAL is NOT in-memory but it’s disk persisted. Each WAL preserves the order in which transactions (or changes) happened.Hybrid TS, Operation id, and additional metadata about the transaction is also preserved.
+
+Diagram #2 
+
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
@@ -46,6 +54,9 @@ Once a stream has expired, you need to create a new stream ID in order to procee
 If you set `cdc_intent_retention_ms` to a high value, and the stream lags for any reason, the intents will be retained for a longer period. This may destabilize your cluster if the number of intents keeps growing.
 
 {{< /warning >}}
+
+## Debezium deployement
+Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a Postgres connector configuration and then start the connector by adding it to Kafka Connect.
 
 ## Consistency semantics
 
@@ -123,3 +134,14 @@ In addition, CDC support for the following features will be added in upcoming re
 * Support for transaction savepoints is tracked in issue [10936](https://github.com/yugabyte/yugabyte-db/issues/10936).
 * Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 * Support for schema evolution with before image is tracked in issue [15197](https://github.com/yugabyte/yugabyte-db/issues/15197).
+
+## Further reading
+* Stream CDC events to Snowflake
+* Unlocking Azure Storage Options With YugabyteDB CDC
+* Change Data Capture (CDC) From YugabyteDB to Elasticsearch
+* Snowflake CDC: Publishing Data Using Amazon S3 and YugabyteDB
+* Streaming Changes From YugabyteDB to Downstream Databases
+* Change Data Capture (CDC) from YugabyteDB CDC to ClickHouse
+* Data Capture (CDC): Run Debezium Server with Kafka as a Sink
+* Change Data Capture (CDC) Using a Spring Data Processing Pipeline
+
