@@ -10,7 +10,6 @@ import com.google.inject.Inject;
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.NodeAgent;
@@ -111,6 +110,7 @@ public class NodeAgentClient {
             .removalListener(
                 n -> {
                   ManagedChannel channel = (ManagedChannel) n.getValue();
+                  log.debug("Channel for {} expired", n.getKey());
                   if (!channel.isShutdown() && !channel.isTerminated()) {
                     channel.shutdown();
                   }
@@ -388,12 +388,14 @@ public class NodeAgentClient {
     return confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
   }
 
-  public boolean isAnsibleOffloadingEnabled(Provider provider, String nodeAgentVersion) {
-    String supportedVersion =
-        confGetter.getGlobalConf(GlobalConfKeys.ansibleOffloadSupportedVersion);
-    return isClientEnabled(provider)
-        && confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)
-        && Util.compareYbVersions(nodeAgentVersion, supportedVersion) >= 0;
+  public boolean isAnsibleOffloadingEnabled(NodeAgent nodeAgent, Provider provider) {
+    if (!isClientEnabled(provider)) {
+      return false;
+    }
+    if (!confGetter.getConfForScope(provider, ProviderConfKeys.enableAnsibleOffloading)) {
+      return false;
+    }
+    return nodeAgent.getConfig().isOffloadable();
   }
 
   private ManagedChannel getManagedChannel(NodeAgent nodeAgent, boolean enableTls) {
@@ -442,7 +444,9 @@ public class NodeAgentClient {
     Stopwatch stopwatch = Stopwatch.createStarted();
     while (true) {
       try {
-        return ping(nodeAgent);
+        PingResponse response = ping(nodeAgent);
+        nodeAgent.updateOffloadable(response.getServerInfo().getOffloadable());
+        return response;
       } catch (RuntimeException e) {
         log.warn(
             "Error in validating connection to node agent {} - {}",
@@ -452,7 +456,7 @@ public class NodeAgentClient {
           throw e;
         }
         try {
-          Thread.sleep(2000);
+          Thread.sleep(1000);
         } catch (InterruptedException ex) {
           throw new RuntimeException(ex);
         }
