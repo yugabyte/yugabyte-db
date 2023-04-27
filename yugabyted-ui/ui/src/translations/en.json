@@ -623,6 +623,8 @@
       "tabActivity": "Activity",
       "tabMaintenance": "Maintenance",
       "tabSettings": "Settings",
+      "primaryCluster": "Primary Cluster",
+      "readReplicas": "Read Replicas", 
       "loadingAlertCopy": "This information will be available once your cluster is ready.",
       "clusterReadyAlert": "Your cluster is ready for use",
       "editIpAllowList": "Edit IP Allow List",
@@ -871,7 +873,10 @@
           "options": "Edit Options"
         },
         "metrics": {
+          "primaryCluster": "Primary Cluster",
+          "readReplicas": "Read Replicas",
           "allNodes": "All Nodes",
+          "allRegions": "All Regions",
           "metricsOptions": "Metrics Options",
           "displayMetrics": "DISPLAY THE FOLLOWING METRICS:",
           "region": "region",

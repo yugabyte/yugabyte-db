@@ -1,7 +1,7 @@
 import React, { FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, makeStyles, Paper, Typography } from '@material-ui/core';
-import { countryToFlag, roundDecimal } from '@app/helpers';
+import { countryToFlag, getRegionCode, roundDecimal } from '@app/helpers';
 import { YBTable } from '@app/components';
 import type { MUISortOptions } from 'mui-datatables';
 import { ClusterFaultTolerance, useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
@@ -17,30 +17,6 @@ const useStyles = makeStyles((theme) => ({
     marginBottom: theme.spacing(5),
   },
 }));
-
-const regionCountryCodes: { [k: string]: string } = {
-  'us-east-2':      'us',
-  'us-east-1':      'us',
-  'us-west-1':      'us',
-  'us-west-2':      'us',
-  'af-south-1':     'za',
-  'ap-south-1':     'in',
-  'ap-northeast-3': 'jp',
-  'ap-southeast-1': 'sg',
-  'ap-southeast-2': 'au',
-  'ap-northeast-1': 'jp',
-  'ca-central-1':   'ca',
-  'eu-central-1':   'de',
-  'eu-west-1':      'ie',
-  'eu-west-2':      'gb',
-  'eu-south-1':     'it',
-  'eu-west-3':      'fr',
-  'eu-north-1':     'se',
-  'me-south-1':     'bh',
-  'sa-east-1':      'br',
-  'us-gov-east-1':  'us',
-  'us-gov-west-1':  'us',
-}
 
 const RegionNameComponent = () => ({ name, code }: { name: string, code?: string }) => {
   return (
@@ -90,7 +66,7 @@ export const RegionOverview: FC<RegionOverviewProps> = () => {
       return {
         region: {
           name: `${region} (${zone})`,
-          code: Object.entries(regionCountryCodes).find(([key]) => zone.startsWith(key) || key.startsWith(region))?.[1],
+          code: getRegionCode({ region, zone }),
         },
         nodeCount: nodesResponse?.data.filter(node => 
           node.cloud_info.region === region && node.cloud_info.zone === zone).length,
