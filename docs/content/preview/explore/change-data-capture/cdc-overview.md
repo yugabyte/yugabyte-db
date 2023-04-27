@@ -58,7 +58,6 @@ If you set `cdc_intent_retention_ms` to a high value, and the stream lags for an
 
 {{< /warning >}}
 
-
 ## Consistency semantics
 
 ### Per-tablet ordered delivery guarantee
