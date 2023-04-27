@@ -567,6 +567,7 @@ restore_backup() {
   modify_service yb-platform stop
 
   db_backup_path="${destination}/${PLATFORM_DUMP_FNAME}"
+  yugabackup="${destination}"/"${YUGABUNDLE_BACKUP_DIR}"
   trap 'delete_db_backup ${db_backup_path}' RETURN
   tar_cmd="tar -xzf"
   if [[ "${verbose}" = true ]]; then
@@ -574,7 +575,6 @@ restore_backup() {
   fi
   if [[ "${yugabundle}" = true ]]; then
     # Copy over yugabundle backup data into the correct yba-installer paths
-    yugabackup="${destination}"/"${YUGABUNDLE_BACKUP_DIR}"
     db_backup_path="${yugabackup}"/"${PLATFORM_DUMP_FNAME}"
     rm -rf "${yugabackup}"
     mkdir -p "${yugabackup}"
@@ -615,11 +615,15 @@ restore_backup() {
     modify_service prometheus stop
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
     if [[ "${yba_installer}" = true ]] && [[ "${yugabundle}" = true ]]; then
-      run_sudo_cmd "mv ${destination}/${YUGABUNDLE_BACKUP_DIR}/${PROMETHEUS_SNAPSHOT_DIR}/*/* \
+      run_sudo_cmd "mv ${yugabackup}/${PROMETHEUS_SNAPSHOT_DIR}/*/* \
       ${PROMETHEUS_DATA_DIR}"
+      backup_targets=$(find "${yugabackup}" -name swamper_targets -type d)
+      run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
+      run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
     elif [[ "${yba_installer}" = true ]]; then
       run_sudo_cmd "mv ${destination}/${PROMETHEUS_SNAPSHOT_DIR}/*/* ${PROMETHEUS_DATA_DIR}"
       run_sudo_cmd "rm -rf ${destination}/${PROMETHEUS_SNAPSHOT_DIR}"
+      run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
     else
       run_sudo_cmd "mv ${destination}/${PROMETHEUS_SNAPSHOT_DIR}/* ${PROMETHEUS_DATA_DIR}"
     fi
