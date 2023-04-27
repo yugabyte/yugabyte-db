@@ -177,6 +177,7 @@ Optionally, use the `--ask_password` flag if the sudo user requires password aut
     Executing provision now for instance with IP 10.9.116.65...
     SUDO password:
     ```
+Note: in the example above, you may need to replace...
 
 1. Wait for the script to finish successfully.
 
