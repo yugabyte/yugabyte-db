@@ -514,6 +514,10 @@ SELECT * FROM cypher('type_coercion', $$
 	RETURN '1'
 $$) AS (i bigint);
 
+SELECT * FROM cypher('type_coercion', $$
+	RETURN true
+$$) AS (i bigint);
+
 --Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
@@ -529,9 +533,6 @@ SELECT * FROM cypher('type_coercion', $$
 $$) AS (i int);
 
 --Invalid types
-SELECT * FROM cypher('type_coercion', $$
-	RETURN true
-$$) AS (i bigint);
 
 SELECT * FROM cypher('type_coercion', $$
 	RETURN {key: 1}
@@ -2345,6 +2346,9 @@ SELECT * FROM cypher('opt_forms', $$MATCH (u) CREATE (u)-[:edge]->() RETURN *$$)
 SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN *$$) AS (col1 agtype, col2 agtype);
 
 -- Added typecasts ::pg_bigint and ::pg_float8
+SELECT * FROM cypher('expr', $$
+RETURN true::pg_bigint
+$$) AS (result agtype);
 SELECT * from cypher('expr', $$
 RETURN pg_catalog.sqrt(pg_catalog.sqrt(pg_catalog.sqrt(256::pg_bigint)))
 $$) as (result agtype);

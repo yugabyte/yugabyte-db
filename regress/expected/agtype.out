@@ -2124,6 +2124,21 @@ SELECT bool_to_agtype(true) <> bool_to_agtype(false);
 (1 row)
 
 --
+-- Test boolean to pg_bigint cast
+--
+SELECT agtype_to_int8(agtype_in('true'));
+ agtype_to_int8 
+----------------
+              1
+(1 row)
+
+SELECT agtype_to_int8(agtype_in('false'));
+ agtype_to_int8 
+----------------
+              0
+(1 row)
+
+--
 -- Test agtype to int[]
 --
 SELECT agtype_to_int4_array(agtype_in('[1,2,3]'));

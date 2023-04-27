@@ -1139,6 +1139,14 @@ $$) AS (i bigint);
  1
 (1 row)
 
+SELECT * FROM cypher('type_coercion', $$
+	RETURN true
+$$) AS (i bigint);
+ i 
+---
+ 1
+(1 row)
+
 --Invalid String Format
 SELECT * FROM cypher('type_coercion', $$
 	RETURN '1.0'
@@ -1154,10 +1162,6 @@ SELECT * FROM cypher('type_coercion', $$
 $$) AS (i int);
 ERROR:  integer out of range
 --Invalid types
-SELECT * FROM cypher('type_coercion', $$
-	RETURN true
-$$) AS (i bigint);
-ERROR:  cannot cast agtype boolean to type int
 SELECT * FROM cypher('type_coercion', $$
 	RETURN {key: 1}
 $$) AS (i bigint);
@@ -5816,6 +5820,14 @@ SELECT * FROM cypher('opt_forms', $$MATCH (u)-->()<--(v) RETURN *$$) AS (col1 ag
 (2 rows)
 
 -- Added typecasts ::pg_bigint and ::pg_float8
+SELECT * FROM cypher('expr', $$
+RETURN true::pg_bigint
+$$) AS (result agtype);
+ result 
+--------
+ 1
+(1 row)
+
 SELECT * from cypher('expr', $$
 RETURN pg_catalog.sqrt(pg_catalog.sqrt(pg_catalog.sqrt(256::pg_bigint)))
 $$) as (result agtype);

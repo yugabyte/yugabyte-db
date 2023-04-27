@@ -2605,7 +2605,8 @@ Datum agtype_to_int8(PG_FUNCTION_ARGS)
         (agtv.type != AGTV_FLOAT &&
          agtv.type != AGTV_INTEGER &&
          agtv.type != AGTV_NUMERIC &&
-         agtv.type != AGTV_STRING))
+         agtv.type != AGTV_STRING &&
+         agtv.type != AGTV_BOOL))
         cannot_cast_agtype_value(agtv.type, "int");
 
     PG_FREE_IF_COPY(agtype_in, 0);
@@ -2621,6 +2622,9 @@ Datum agtype_to_int8(PG_FUNCTION_ARGS)
     else if (agtv.type == AGTV_STRING)
         result = DatumGetInt64(DirectFunctionCall1(int8in,
                            CStringGetDatum(agtv.val.string.val)));
+    else if(agtv.type == AGTV_BOOL)
+        result = DatumGetInt64(DirectFunctionCall1(bool_int4, 
+                      BoolGetDatum(agtv.val.boolean)));
     else
         elog(ERROR, "invalid agtype type: %d", (int)agtv.type);
 
