@@ -24,7 +24,7 @@ This page describes the steps for a single node cluster for the purpose of simpl
 
 ## Prerequisite
 
-Before installing a single node YugabyteDB cluster using Mirantis, ensure that you have the Docker runtime installed on your localhost. To download and install Docker, select one of the following environments:
+Before installing a single node YugabyteDB cluster, ensure that you have the Docker runtime installed on the host on which you are installing MKE. To download and install Docker, select one of the following environments:
 
 <i class="fa-brands fa-apple" aria-hidden="true"></i> [Docker for Mac](https://store.docker.com/editions/community/docker-ce-desktop-mac)
 
@@ -33,8 +33,6 @@ Before installing a single node YugabyteDB cluster using Mirantis, ensure that y
 <i class="fa-brands fa-ubuntu"></i> [Docker for Ubuntu](https://store.docker.com/editions/community/docker-ce-server-ubuntu)
 
 <i class="icon-debian"></i> [Docker for Debian](https://store.docker.com/editions/community/docker-ce-server-debian)
-
-<i class="fa-brands fa-windows" aria-hidden="true"></i> [Docker for Windows](https://store.docker.com/editions/community/docker-ce-desktop-windows)
 
 ## Install and configure Mirantis
 

@@ -127,7 +127,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
    <li>
     <a href="mirantis/">
       <img src="/images/section_icons/develop/ecosystem/mirantis.png">
-      Mirantis
+      Mirantis MKE
     </a>
   </li>
   <li>
