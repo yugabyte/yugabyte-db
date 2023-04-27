@@ -35,7 +35,7 @@
 #include <mutex>
 #include <string>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/consensus/log_fwd.h"
 
@@ -75,7 +75,7 @@ class ChangeMetadataOperation
 
   void SetIndexes(const google::protobuf::RepeatedPtrField<IndexInfoPB>& indexes);
 
-  IndexMap& index_map() {
+  qlexpr::IndexMap& index_map() {
     return index_map_;
   }
 
@@ -135,7 +135,7 @@ class ChangeMetadataOperation
   std::unique_ptr<Schema> schema_holder_;
 
   // Lookup map for the associated indexes.
-  IndexMap index_map_;
+  qlexpr::IndexMap index_map_;
 };
 
 Status SyncReplicateChangeMetadataOperation(

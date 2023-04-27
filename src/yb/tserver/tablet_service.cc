@@ -43,9 +43,8 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
 
-#include "yb/common/ql_rowblock.h"
 #include "yb/common/ql_value.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/consensus/leader_lease.h"
@@ -56,11 +55,16 @@
 #include "yb/docdb/cql_operation.h"
 #include "yb/docdb/pgsql_operation.h"
 
+#include "yb/dockv/reader_projection.h"
+
 #include "yb/gutil/bind.h"
 #include "yb/gutil/casts.h"
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/escaping.h"
+
+#include "yb/qlexpr/index.h"
+#include "yb/qlexpr/ql_rowblock.h"
 
 #include "yb/rpc/sidecars.h"
 #include "yb/rpc/thread_pool.h"
@@ -368,7 +372,7 @@ class WriteQueryCompletionCallback {
     for (const auto& ql_write_op : *query_->ql_write_ops()) {
       const auto& ql_write_req = ql_write_op->request();
       auto* ql_write_resp = ql_write_op->response();
-      const QLRowBlock* rowblock = ql_write_op->rowblock();
+      const auto* rowblock = ql_write_op->rowblock();
       SchemaToColumnPBs(rowblock->schema(), ql_write_resp->mutable_column_schemas());
       rowblock->Serialize(ql_write_req.client(), &context_->sidecars().Start());
       ql_write_resp->set_rows_data_sidecar(
@@ -402,7 +406,7 @@ class ScanResultChecksummer {
  public:
   ScanResultChecksummer() {}
 
-  void HandleRow(const Schema& schema, const QLTableRow& row) {
+  void HandleRow(const Schema& schema, const qlexpr::QLTableRow& row) {
     QLValue value;
     buffer_.clear();
     for (uint32_t col_index = 0; col_index != schema.num_columns(); ++col_index) {
@@ -641,14 +645,13 @@ void TabletServiceAdminImpl::BackfillIndex(
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
-  const shared_ptr<IndexMap> index_map = tablet.peer->tablet_metadata()->index_map(
-    req->indexed_table_id());
-  std::vector<IndexInfo> indexes_to_backfill;
+  const auto index_map = tablet.peer->tablet_metadata()->index_map(req->indexed_table_id());
+  std::vector<qlexpr::IndexInfo> indexes_to_backfill;
   std::vector<TableId> index_ids;
   for (const auto& idx : req->indexes()) {
     auto result = index_map->FindIndex(idx.table_id());
     if (result) {
-      const IndexInfo* index_info = *result;
+      const auto* index_info = *result;
       indexes_to_backfill.push_back(*index_info);
       index_ids.push_back(index_info->table_id());
 
@@ -678,7 +681,7 @@ void TabletServiceAdminImpl::BackfillIndex(
       // Change this to see if for all indexes: IndexPermission > DO_BACKFILL.
       LOG(WARNING) << "Received BackfillIndex RPC: " << req->DebugString()
                    << " after all indexes have moved past DO_BACKFILL. IndexMap is "
-                   << ToString(index_map);
+                   << AsString(index_map);
       // This is possible if this tablet completed the backfill. But the master failed over before
       // other tablets could complete.
       // The new master is redoing the backfill. We are safe to ignore this request.
@@ -695,7 +698,7 @@ void TabletServiceAdminImpl::BackfillIndex(
             InvalidArgument,
             "Tablet has a different schema $0 vs $1. "
             "Requested index is not ready to backfill. IndexMap: $2",
-            our_schema_version, their_schema_version, ToString(index_map)),
+            our_schema_version, their_schema_version, AsString(index_map)),
         TabletServerErrorPB::MISMATCHED_SCHEMA, &context);
     return;
   }
@@ -987,9 +990,9 @@ void TabletServiceImpl::VerifyTableRowRange(
 
     (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
   } else {
-    const IndexMap index_map =
+    const auto& index_map =
         *peer_tablet->tablet_peer->tablet_metadata()->primary_table_info()->index_map;
-    vector<IndexInfo> indexes;
+    vector<qlexpr::IndexInfo> indexes;
     vector<TableId> index_ids;
     if (req->index_ids().empty()) {
       for (auto it = index_map.begin(); it != index_map.end(); it++) {
@@ -999,7 +1002,7 @@ void TabletServiceImpl::VerifyTableRowRange(
       for (const auto& idx : req->index_ids()) {
         auto result = index_map.FindIndex(idx);
         if (result) {
-          const IndexInfo* index_info = *result;
+          const auto* index_info = *result;
           indexes.push_back(*index_info);
           index_ids.push_back(index_info->table_id());
         } else {
@@ -1016,7 +1019,7 @@ void TabletServiceImpl::VerifyTableRowRange(
       return;
     }
 
-    for (const IndexInfo& index : indexes) {
+    for (const auto& index : indexes) {
       const auto& table_id = index.table_id();
       (*resp->mutable_consistency_stats())[table_id] = consistency_stats[table_id];
     }
@@ -1445,8 +1448,8 @@ Status TabletServiceAdminImpl::DoCreateTablet(const CreateTabletRequestPB* req,
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(req->tablet_id(), server_->permanent_uuid()),
       tablet::Primary::kTrue, req->table_id(), req->namespace_name(), req->table_name(),
-      req->table_type(), schema, IndexMap(),
-      req->has_index_info() ? boost::optional<IndexInfo>(req->index_info()) : boost::none,
+      req->table_type(), schema, qlexpr::IndexMap(),
+      req->has_index_info() ? boost::optional<qlexpr::IndexInfo>(req->index_info()) : boost::none,
       0 /* schema_version */, partition_schema);
   std::vector<SnapshotScheduleId> snapshot_schedules;
   snapshot_schedules.reserve(req->snapshot_schedules().size());
@@ -2544,11 +2547,11 @@ Result<uint64_t> CalcChecksum(tablet::Tablet* tablet, CoarseTimePoint deadline) 
   RETURN_NOT_OK(scoped_read_operation);
 
   const shared_ptr<Schema> schema = tablet->metadata()->schema();
-  auto client_schema = schema->CopyWithoutColumnIds();
-  auto iter = tablet->NewRowIterator(client_schema, {}, "", deadline);
+  dockv::ReaderProjection projection(*schema);
+  auto iter = tablet->NewRowIterator(projection, {}, "", deadline);
   RETURN_NOT_OK(iter);
 
-  QLTableRow value_map;
+  qlexpr::QLTableRow value_map;
   ScanResultChecksummer collector;
 
   while (VERIFY_RESULT((**iter).FetchNext(&value_map))) {

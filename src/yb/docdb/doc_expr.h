@@ -6,12 +6,12 @@
 
 #pragma once
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 namespace yb {
 namespace docdb {
 
-class DocExprExecutor : public QLExprExecutor {
+class DocExprExecutor : public qlexpr::QLExprExecutor {
  public:
   // Public types.
   typedef std::shared_ptr<DocExprExecutor> SharedPtr;
@@ -24,17 +24,17 @@ class DocExprExecutor : public QLExprExecutor {
 
   // Evaluate column reference.
   Status EvalColumnRef(ColumnIdRep col_id,
-                       const QLTableRow* table_row,
-                       QLExprResultWriter result_writer) override;
+                       const qlexpr::QLTableRow* table_row,
+                       qlexpr::QLExprResultWriter result_writer) override;
 
   // Evaluate call to tablet-server builtin operator.
   Status EvalTSCall(const QLBCallPB& ql_expr,
-                    const QLTableRow& table_row,
+                    const qlexpr::QLTableRow& table_row,
                     QLValuePB *result,
                     const Schema *schema = nullptr) override;
 
   Status EvalTSCall(const PgsqlBCallPB& ql_expr,
-                    const QLTableRow& table_row,
+                    const qlexpr::QLTableRow& table_row,
                     QLValuePB *result,
                     const Schema *schema) override;
 
@@ -48,11 +48,12 @@ class DocExprExecutor : public QLExprExecutor {
 
   template <class Expr, class Val, class Extractor>
   Status EvalSumInt(
-      const Expr& expr, const QLTableRow& table_row, Val *aggr_sum, const Extractor& extractor);
+      const Expr& expr, const qlexpr::QLTableRow& table_row, Val *aggr_sum,
+      const Extractor& extractor);
 
   template <class Expr, class Val, class Extractor, class Setter>
   Status EvalSumReal(
-      const Expr& expr, const QLTableRow& table_row, Val *aggr_sum,
+      const Expr& expr, const qlexpr::QLTableRow& table_row, Val *aggr_sum,
       const Extractor& extractor, const Setter& setter);
 
   template <class Val>
@@ -65,11 +66,11 @@ class DocExprExecutor : public QLExprExecutor {
   Status EvalAvg(const Val& val, Val *aggr_avg);
 
   Result<QLValuePB> EvalParametricToJson(const QLExpressionPB& operand,
-                                         const QLTableRow& table_row,
+                                         const qlexpr::QLTableRow& table_row,
                                          const Schema *schema);
 
   virtual Status GetTupleId(QLValuePB *result) const;
-  std::vector<QLExprResult> aggr_result_;
+  std::vector<qlexpr::QLExprResult> aggr_result_;
 };
 
 } // namespace docdb

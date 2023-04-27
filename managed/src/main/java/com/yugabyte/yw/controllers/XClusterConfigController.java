@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.BackupUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -80,6 +81,7 @@ public class XClusterConfigController extends AuthenticatedController {
   private final CustomerConfigService customerConfigService;
   private final YBClientService ybService;
   private final RuntimeConfGetter confGetter;
+  private final XClusterUniverseService xClusterUniverseService;
 
   @Inject
   public XClusterConfigController(
@@ -88,13 +90,15 @@ public class XClusterConfigController extends AuthenticatedController {
       BackupUtil backupUtil,
       CustomerConfigService customerConfigService,
       YBClientService ybService,
-      RuntimeConfGetter confGetter) {
+      RuntimeConfGetter confGetter,
+      XClusterUniverseService xClusterUniverseService) {
     this.commissioner = commissioner;
     this.metricQueryHelper = metricQueryHelper;
     this.backupUtil = backupUtil;
     this.customerConfigService = customerConfigService;
     this.ybService = ybService;
     this.confGetter = confGetter;
+    this.xClusterUniverseService = xClusterUniverseService;
   }
 
   /**
@@ -368,37 +372,50 @@ public class XClusterConfigController extends AuthenticatedController {
         xClusterConfig.getTableIdsInStatus(
             xClusterConfig.getTableIds(true /* includeTxnTableIfExists */),
             XClusterTableConfig.Status.Running);
-    Map<String, Boolean> isBootstrapRequiredMap = null;
     try {
-      isBootstrapRequiredMap =
-          XClusterConfigTaskBase.isBootstrapRequired(
-              this.ybService, tableIdsInRunningStatus, xClusterConfig);
+      Map<String, Boolean> isBootstrapRequiredMap =
+          this.xClusterUniverseService.isBootstrapRequired(
+              tableIdsInRunningStatus,
+              xClusterConfig,
+              xClusterConfig.getSourceUniverseUUID(),
+              true /* ignoreErrors */);
+
+      // If IsBootstrapRequired API returns null, set the statuses to UnableToFetch.
+      if (Objects.isNull(isBootstrapRequiredMap)) {
+        // We do not update the xCluster config object in the DB intentionally because
+        // `UnableToFetch` is only a user facing status.
+        xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
+            .filter(tableConfig -> tableIdsInRunningStatus.contains(tableConfig.getTableId()))
+            .forEach(
+                tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
+      } else {
+        boolean isTxnTableInErrorStatus =
+            xClusterConfig.getType().equals(ConfigType.Txn)
+                && (Objects.isNull(
+                        isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()))
+                    || isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()));
+        Set<String> tableIdsInErrorStatus =
+            isBootstrapRequiredMap.entrySet().stream()
+                .filter(e -> e.getValue() || isTxnTableInErrorStatus)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toSet());
+        // We do not update the xCluster config object in the DB intentionally because `Error` is
+        // only a user facing status.
+        xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
+            .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.getTableId()))
+            .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.Error));
+
+        // Set the status for the rest of tables where isBootstrapRequired RPC failed.
+        xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
+            .filter(
+                tableConfig ->
+                    tableIdsInRunningStatus.contains(tableConfig.getTableId())
+                        && !isBootstrapRequiredMap.containsKey(tableConfig.getTableId()))
+            .forEach(
+                tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
+      }
     } catch (Exception e) {
       log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());
-    }
-    // If IsBootstrapRequired API hits error, set the statuses to UnableToFetch.
-    if (Objects.isNull(isBootstrapRequiredMap)) {
-      // We do not update the xCluster config object in the DB intentionally because `UnableToFetch`
-      // is only a user facing status.
-      xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
-          .filter(tableConfig -> tableIdsInRunningStatus.contains(tableConfig.getTableId()))
-          .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.UnableToFetch));
-    } else {
-      boolean isTxnTableInErrorStatus =
-          xClusterConfig.getType().equals(ConfigType.Txn)
-              && (Objects.isNull(
-                      isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()))
-                  || isBootstrapRequiredMap.get(xClusterConfig.getTxnTableConfig().getTableId()));
-      Set<String> tableIdsInErrorStatus =
-          isBootstrapRequiredMap.entrySet().stream()
-              .filter(e -> e.getValue() || isTxnTableInErrorStatus)
-              .map(Map.Entry::getKey)
-              .collect(Collectors.toSet());
-      // We do not update the xCluster config object in the DB intentionally because `Error` is
-      // only a user facing status.
-      xClusterConfig.getTableDetails(true /* includeTxnTableIfExists */).stream()
-          .filter(tableConfig -> tableIdsInErrorStatus.contains(tableConfig.getTableId()))
-          .forEach(tableConfig -> tableConfig.setStatus(XClusterTableConfig.Status.Error));
     }
 
     // Wrap XClusterConfig with lag metric data.
@@ -851,8 +868,8 @@ public class XClusterConfigController extends AuthenticatedController {
                 .collect(Collectors.toMap(tableId -> tableId, tableId -> true));
       } else {
         isBootstrapRequiredMap =
-            XClusterConfigTaskBase.isBootstrapRequired(
-                ybService, needBootstrapFormData.tables, sourceUniverseUuid);
+            this.xClusterUniverseService.isBootstrapRequired(
+                needBootstrapFormData.tables, null /* xClusterConfig */, sourceUniverseUuid);
       }
       return PlatformResults.withData(isBootstrapRequiredMap);
     } catch (Exception e) {
@@ -899,8 +916,8 @@ public class XClusterConfigController extends AuthenticatedController {
 
     try {
       Map<String, Boolean> isBootstrapRequiredMap =
-          XClusterConfigTaskBase.isBootstrapRequired(
-              ybService, needBootstrapFormData.tables, xClusterConfig);
+          this.xClusterUniverseService.isBootstrapRequired(
+              needBootstrapFormData.tables, xClusterConfig, xClusterConfig.getSourceUniverseUUID());
       return PlatformResults.withData(isBootstrapRequiredMap);
     } catch (Exception e) {
       log.error("XClusterConfigTaskBase.isBootstrapRequired hit error : {}", e.getMessage());

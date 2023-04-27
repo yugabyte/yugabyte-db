@@ -18,7 +18,6 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultAccessor;
 import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.FileData;
 import io.ebean.annotation.EnumValue;
 import java.security.KeyPair;
 import java.security.PrivateKey;
@@ -236,7 +235,6 @@ public class VaultPKI extends CertificateProviderBase {
       String certPath = CertificateHelper.getCACertPath(storagePath, customerUUID, caCertUUIDParam);
       LOG.info("Dumping CA certs @{}", certPath);
       CertificateHelper.writeCertBundleToCertPath(list, certPath);
-      FileData.writeFileToDB(certPath);
       return new ImmutablePair<>(certPath, "");
     } catch (Exception e) {
       throw new Exception("Hashicorp: Failed to dump CA Certificate:" + e.getMessage());

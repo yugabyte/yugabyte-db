@@ -6,6 +6,7 @@ import java.io.InputStream;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.CustomClassLoaderConstructor;
+import org.yaml.snakeyaml.inspector.TrustedTagInspector;
 
 @Singleton
 public class YamlWrapper {
@@ -30,6 +31,7 @@ public class YamlWrapper {
    */
   public <T> T load(InputStream is, ClassLoader classloader) {
     LoaderOptions loaderOptions = new LoaderOptions();
+    loaderOptions.setTagInspector(new TrustedTagInspector());
     Yaml yaml = new Yaml(new CustomClassLoaderConstructor(classloader, loaderOptions));
     return yaml.load(is);
   }

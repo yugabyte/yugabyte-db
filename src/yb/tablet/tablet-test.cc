@@ -43,7 +43,7 @@
 
 #include "yb/client/table.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
 
@@ -143,7 +143,7 @@ TYPED_TEST(TestTablet, TestRowIteratorComplex) {
 
   // Collect the expected rows.
   vector<string> rows;
-  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), this->client_schema_, &rows));
+  ASSERT_OK(yb::tablet::DumpTablet(*this->tablet(), &rows));
   ASSERT_EQ(max_rows, rows.size());
 }
 

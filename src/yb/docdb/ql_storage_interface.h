@@ -40,12 +40,12 @@ class YQLStorageIf {
   // CQL Support.
   virtual Status GetIterator(
       const QLReadRequestPB& request,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      const dockv::QLScanSpec& spec,
+      const qlexpr::QLScanSpec& spec,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter) const = 0;
 
   virtual Status BuildYQLScanSpec(
@@ -53,9 +53,8 @@ class YQLStorageIf {
       const ReadHybridTime& read_time,
       const Schema& schema,
       bool include_static_columns,
-      const Schema& static_projection,
-      std::unique_ptr<dockv::QLScanSpec>* spec,
-      std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const = 0;
+      std::unique_ptr<qlexpr::QLScanSpec>* spec,
+      std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const = 0;
 
   //------------------------------------------------------------------------------------------------
   // PGSQL Support.
@@ -70,7 +69,7 @@ class YQLStorageIf {
   //   different execution.
   // - Doc_key needs to be changed to allow reusing iterator.
   virtual Status CreateIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
@@ -87,20 +86,19 @@ class YQLStorageIf {
   // Create iterator for querying by partition and range key.
   virtual Status GetIterator(
       const PgsqlReadRequestPB& request,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
       const dockv::DocKey& start_doc_key,
       std::unique_ptr<YQLRowwiseIteratorIf>* iter,
-      boost::optional<size_t> end_referenced_key_column_index = boost::none,
       const DocDBStatistics* statistics = nullptr) const = 0;
 
   // Create iterator for querying by ybctid.
   virtual Status GetIterator(
       uint64 stmt_id,
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       CoarseTimePoint deadline,

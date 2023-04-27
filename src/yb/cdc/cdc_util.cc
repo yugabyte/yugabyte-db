@@ -17,7 +17,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/casts.h"
@@ -28,7 +28,7 @@
 
 namespace yb::cdc {
 
-Result<std::optional<QLRow>> FetchOptionalCdcStreamInfo(
+Result<std::optional<qlexpr::QLRow>> FetchOptionalCdcStreamInfo(
     client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
     const CDCStreamId& stream_id, const std::vector<std::string>& columns) {
   const auto kCdcStreamIdColumnId = narrow_cast<ColumnIdRep>(
@@ -49,7 +49,7 @@ Result<std::optional<QLRow>> FetchOptionalCdcStreamInfo(
   return std::move(row_block->row(0));
 }
 
-Result<QLRow> FetchCdcStreamInfo(
+Result<qlexpr::QLRow> FetchCdcStreamInfo(
     client::TableHandle* table, client::YBSession* session, const TabletId& tablet_id,
     const CDCStreamId& stream_id, const std::vector<std::string>& columns) {
   auto result = VERIFY_RESULT(FetchOptionalCdcStreamInfo(

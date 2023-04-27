@@ -12,6 +12,21 @@ from yb.common_util import set_env_vars_from_build_root, init_logging
 from overrides import overrides, EnforceOverrides
 
 
+class UserFriendlyToolError(Exception):
+    """
+    An exception that is thrown by a command-line tool to indicate an error. We do not print a stack
+    trace when reporting this error.
+    """
+    def __init__(self, message: str, exit_code: int = 1) -> None:
+        """
+        :param message: The error message.
+        :param exit_code: The exit code to use when exiting the tool.
+        """
+        super().__init__(message)
+        assert exit_code != 0, "Exit code 0 is reserved for success. Exception message: " + message
+        self.exit_code = exit_code
+
+
 class YbBuildToolBase(EnforceOverrides):
     """
     A base class for command-line tools that are part of YugabyteDB build.
@@ -44,13 +59,26 @@ class YbBuildToolBase(EnforceOverrides):
         self.create_arg_parser()
         self.parse_args()
         self.validate_and_process_args()
-        self.run_impl()
+        try:
+            self.run_impl()
+        except UserFriendlyToolError as ex:
+            # We don't use logging.exception here to provide a more user-friendly error message.
+            # It should not look like a unexpected crash with a stack trace, but like a properly
+            # handled error.
+            logging.error(str(ex))
+            sys.exit(ex.exit_code)
 
     def parse_args(self) -> None:
         self.args = self.arg_parser.parse_args()
         init_logging(verbose=self.args.verbose)
 
     def get_default_build_root(self) -> Optional[str]:
+        """
+        Returns the default build root directory, or None if it cannot be determined or if the tool
+        does not define a notion of default build root. Different tools may have different ways of
+        determining the default build root. E.g. some tools might only work with build roots that
+        provide a compilation database file.
+        """
         return None
 
     def validate_and_process_args(self) -> None:

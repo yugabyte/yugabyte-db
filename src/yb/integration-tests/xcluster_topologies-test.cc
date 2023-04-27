@@ -77,11 +77,17 @@ using SessionTransactionPair = std::pair<client::YBSessionPtr, client::YBTransac
 using YBTables = std::vector<std::shared_ptr<client::YBTable>>;
 using YBClusters = std::vector<XClusterTestBase::Cluster*>;
 
+struct AdditionalClusters {
+  std::vector<std::unique_ptr<XClusterTestBase::Cluster>> additional_producer_clusters_;
+  std::vector<std::unique_ptr<XClusterTestBase::Cluster>> additional_consumer_clusters_;
+};
+
 class XClusterTopologiesTest : public XClusterYcqlTestBase {
  public:
   YBClusters producer_clusters_;
   YBClusters consumer_clusters_;
-  YBTables producer_tables_;
+  // Maps cluster ID to a vector of producer tables.
+  std::map<std::string, YBTables> producer_tables_;
   // consumer tables in consumer_tables_ are assumed to be in the same order as their corresponding
   // clusters in consumer_clusters_.
   YBTables consumer_tables_;
@@ -110,7 +116,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
 
       std::shared_ptr<client::YBTable> producer_table;
       RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
-      producer_tables_.push_back(producer_table);
+      producer_tables_[producer_cluster()->GetClusterId()].push_back(producer_table);
 
       RETURN_NOT_OK(
           CreateTable(i, num_consumer_tablets[i], consumer_client(), consumer_schema, &tables));
@@ -121,11 +127,12 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     return Status::OK();
   }
 
-  Result<std::vector<std::unique_ptr<Cluster>>> SetUpWithParams(
+  Result<AdditionalClusters> SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,
       const std::vector<uint32_t>& num_producer_tablets,
       uint32_t replication_factor,
       uint32_t num_additional_consumers = 0,
+      uint32_t num_additional_producers = 0,
       uint32_t num_tablets_per_table = 1,
       uint32_t num_masters = 1,
       uint32_t num_tservers = 1) {
@@ -147,17 +154,27 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
 
     RETURN_NOT_OK(BuildSchemaAndCreateTables(num_consumer_tablets, num_producer_tablets));
 
-    std::vector<std::unique_ptr<Cluster>> additional_consumer_clusters;
-    for (uint32_t i = 0; i < num_additional_consumers; ++i) {
-      std::unique_ptr<Cluster> additional_consumer_cluster =
-          VERIFY_RESULT(AddConsumerClusterWithTables(
-              &consumer_clusters_, &consumer_tables_, Format("additional_consumer_$0", i),
-              num_consumer_tablets.size(), num_tablets_per_table, num_tservers));
-      additional_consumer_clusters.push_back(std::move(additional_consumer_cluster));
+    AdditionalClusters additional_clusters;
+    for (uint32_t i = 0; i < num_additional_producers; ++i) {
+      std::string cluster_id = Format("additional_producer_$0", i);
+      std::unique_ptr<Cluster> additional_producer_cluster = VERIFY_RESULT(AddClusterWithTables(
+          &producer_clusters_, &(producer_tables_[cluster_id]), cluster_id,
+          num_producer_tablets.size(), num_tablets_per_table, num_tservers));
+      additional_clusters.additional_producer_clusters_.push_back(
+          std::move(additional_producer_cluster));
     }
+
+    for (uint32_t i = 0; i < num_additional_consumers; ++i) {
+      std::unique_ptr<Cluster> additional_consumer_cluster = VERIFY_RESULT(AddClusterWithTables(
+          &consumer_clusters_, &consumer_tables_, Format("additional_consumer_$0", i),
+          num_consumer_tablets.size(), num_tablets_per_table, num_tservers));
+      additional_clusters.additional_consumer_clusters_.push_back(
+          std::move(additional_consumer_cluster));
+    }
+
     RETURN_NOT_OK(WaitForLoadBalancersToStabilizeOnAllClusters());
 
-    return additional_consumer_clusters;
+    return additional_clusters;
   }
 
   Status SetupAllUniverseReplication() {
@@ -167,7 +184,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       master::IsSetupUniverseReplicationDoneResponsePB resp;
       RETURN_NOT_OK(SetupUniverseReplication(
           producer_cluster(), consumer_cluster_mini_cluster, consumer_cluster_client, kUniverseId,
-          producer_tables_));
+          producer_tables_[producer_cluster()->GetClusterId()]));
       RETURN_NOT_OK(WaitForSetupUniverseReplication(
           consumer_cluster_mini_cluster, consumer_cluster_client, kUniverseId, &resp));
     }
@@ -176,19 +193,21 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
 
   Status VerifyWrittenRecords(
       const std::unordered_set<XClusterTestBase::Cluster*>& expected_fail_consumer_clusters,
-      int timeout_secs = kRpcTimeout,
-      YBClient* prod_client = nullptr) {
-    if (!prod_client) {
-      prod_client = producer_client();
+      int timeout_secs = kRpcTimeout, Cluster* producer_cluster = nullptr) {
+    if (!producer_cluster) {
+      producer_cluster = &producer_cluster_;
     }
+    std::string cluster_id = producer_cluster->mini_cluster_.get()->GetClusterId();
+    YBClient* producer_client = producer_cluster->client_.get();
 
     for (size_t i = 0; i < consumer_clusters_.size(); ++i) {
-      for (size_t j = 0; j < producer_tables_.size(); ++j) {
-        const auto& producer_table = producer_tables_[j];
-        const auto& consumer_table = consumer_tables_[j + (i * producer_tables_.size())];
+      for (size_t j = 0; j < producer_tables_[cluster_id].size(); ++j) {
+        const auto& producer_table = producer_tables_[cluster_id][j];
+        const auto& consumer_table =
+            consumer_tables_[j + (i * producer_tables_[cluster_id].size())];
         YBClient* client = consumer_clusters_[i]->client_.get();
         Status s = DoVerifyWrittenRecords(
-            producer_table->name(), consumer_table->name(), prod_client, client);
+            producer_table->name(), consumer_table->name(), producer_client, client);
         if (!expected_fail_consumer_clusters.contains(consumer_clusters_[i]) && !s.ok()) {
           return s;
         } else if (expected_fail_consumer_clusters.contains(consumer_clusters_[i]) && s.ok()) {
@@ -204,8 +223,9 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       const std::unordered_set<XClusterTestBase::Cluster*>& expected_fail_clusters,
       size_t expected_size) {
     for (size_t i = 0; i < consumer_clusters_.size(); ++i) {
-      for (size_t j = 0; j < producer_tables_.size(); ++j) {
-        const auto& table = consumer_tables_[j + (i * producer_tables_.size())];
+      for (size_t j = 0; j < producer_tables_[producer_cluster()->GetClusterId()].size(); ++j) {
+        const auto& table =
+            consumer_tables_[j + (i * producer_tables_[producer_cluster()->GetClusterId()].size())];
         YBClient* client = consumer_clusters_[i]->client_.get();
         Status s = DoVerifyNumRecords(table->name(), client, expected_size);
         if (!expected_fail_clusters.contains(consumer_clusters_[i]) && !s.ok()) {
@@ -269,17 +289,45 @@ TEST_F(XClusterTopologiesTest, TestBasicBroadcastTopology) {
   constexpr int kNumTables = 3;
   uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
   std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
-  auto additional_consumer_clusters = ASSERT_RESULT(SetUpWithParams(
+  auto additional_clusters = ASSERT_RESULT(SetUpWithParams(
       tables_vector, tables_vector, kReplicationFactor, 2 /* num additional consumers */,
       kNTabletsPerTable));
   ASSERT_OK(SetupAllUniverseReplication());
   for (int i = 0; i < kNumTables; ++i) {
-    const auto& producer_table = producer_tables_[i];
+    const auto& producer_table = producer_tables_[producer_cluster()->GetClusterId()][i];
     LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
     WriteWorkload(0, 10, producer_client(), producer_table->name());
   }
-
   ASSERT_OK(VerifyWrittenRecords({}));
+}
+
+// Testing that a 2:1 replication setup fails.
+TEST_F(XClusterTopologiesTest, TestNToOneReplicationFails) {
+  constexpr int kNTabletsPerTable = 3;
+  constexpr int kNumTables = 3;
+  uint32_t kReplicationFactor = NonTsanVsTsan(3, 1);
+  std::vector<uint32_t> tables_vector(kNumTables, kNTabletsPerTable);
+  auto additional_clusters = ASSERT_RESULT(SetUpWithParams(
+      tables_vector, tables_vector, kReplicationFactor, 0 /* num additional consumers */,
+      1 /* num additional producers */, kNTabletsPerTable));
+
+  for (size_t i = 0; i < producer_clusters_.size(); ++i) {
+    MiniCluster* producer_cluster_mini_cluster = producer_clusters_[i]->mini_cluster_.get();
+    const std::string universe_id = Format("$0$1", kUniverseId, i);
+    master::IsSetupUniverseReplicationDoneResponsePB setup_resp;
+    master::GetUniverseReplicationResponsePB verify_resp;
+    ASSERT_OK(SetupUniverseReplication(
+        producer_cluster_mini_cluster, consumer_cluster(), consumer_client(), universe_id,
+        producer_tables_[producer_cluster_mini_cluster->GetClusterId()]));
+    ASSERT_OK(WaitForSetupUniverseReplication(
+        consumer_cluster(), consumer_client(), universe_id, &setup_resp));
+    // Only the first setup should pass, all others should fail.
+    if (i == 0) {
+      ASSERT_OK(VerifyUniverseReplication(universe_id, &verify_resp));
+    } else {
+      ASSERT_NOK(VerifyUniverseReplication(universe_id, &verify_resp));
+    }
+  }
 }
 
 }  // namespace yb

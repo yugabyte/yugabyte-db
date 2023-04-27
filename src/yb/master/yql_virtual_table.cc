@@ -57,12 +57,12 @@ YQLVirtualTable::~YQLVirtualTable() = default;
 
 Status YQLVirtualTable::GetIterator(
     const QLReadRequestPB& request,
-    const Schema& projection,
+    const dockv::ReaderProjection& projection,
       std::reference_wrapper<const docdb::DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
-    const dockv::QLScanSpec& spec,
+    const qlexpr::QLScanSpec& spec,
     std::unique_ptr<docdb::YQLRowwiseIteratorIf>* iter) const {
   // Acquire shared lock on catalog manager to verify it is still the leader and metadata will
   // not change.
@@ -81,9 +81,8 @@ Status YQLVirtualTable::BuildYQLScanSpec(
     const ReadHybridTime& read_time,
     const Schema& schema,
     const bool include_static_columns,
-    const Schema& static_projection,
-    std::unique_ptr<dockv::QLScanSpec>* spec,
-    std::unique_ptr<dockv::QLScanSpec>* static_row_spec) const {
+    std::unique_ptr<qlexpr::QLScanSpec>* spec,
+    std::unique_ptr<qlexpr::QLScanSpec>* static_row_spec) const {
   // There should be no static columns in system tables so we are not handling it.
   if (include_static_columns) {
     return STATUS(IllegalState, "system table contains no static columns");

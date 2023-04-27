@@ -738,7 +738,7 @@ if ("${YB_TCMALLOC_ENABLED}" STREQUAL "1" OR
     set(TCMALLOC_STATIC_LIB_LD_FLAGS
         "-Wl,--whole-archive ${TCMALLOC_STATIC_LIB} -Wl,--no-whole-archive")
   endif()
-else()
+elseif(NOT APPLE)
   message("Not allowing any undefined symbols "
           "(tcmalloc is disabled and build type is ${YB_BUILD_TYPE})")
   ADD_LINKER_FLAGS("-Wl,--no-undefined -Wl,--no-allow-shlib-undefined")
@@ -833,6 +833,7 @@ set(YB_SUBDIR_NAMES
     gutil
     integration-tests
     master
+    qlexpr
     rocksdb
     rocksutil
     rpc

@@ -562,8 +562,6 @@ class PgClientServiceImpl::Impl {
   }
 
   Status DoPerform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context) {
-    // GetSession ensures that there is at most one thread running PgClientSession::Perform, for a
-    // given session. Refer PgClientSessionLocker for details.
     return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 

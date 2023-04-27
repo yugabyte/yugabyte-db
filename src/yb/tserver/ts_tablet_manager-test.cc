@@ -38,7 +38,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/common/common.pb.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/schema.h"
 
@@ -170,8 +170,8 @@ class TsTabletManagerTest : public YBTest {
 
     auto table_info = std::make_shared<tablet::TableInfo>(
         "TEST: ", tablet::Primary::kTrue, table_id, tablet_id, tablet_id,
-        TableType::DEFAULT_TABLE_TYPE, full_schema, IndexMap(), boost::none /* index_info */,
-        0 /* schema_version */, partition.first);
+        TableType::DEFAULT_TABLE_TYPE, full_schema, qlexpr::IndexMap(),
+        boost::none /* index_info */, 0 /* schema_version */, partition.first);
     auto tablet_peer = VERIFY_RESULT(tablet_manager_->CreateNewTablet(
         table_info, tablet_id, partition.second, config_));
     if (out_tablet_peer) {

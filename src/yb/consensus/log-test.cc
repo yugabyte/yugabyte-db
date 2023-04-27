@@ -40,7 +40,7 @@
 
 #include <glog/stl_logging.h>
 
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/log.messages.h"

@@ -150,6 +150,8 @@
         "modalTitle": "Delete Read Replica of {{universeName}}"
       },
       "gFlags": {
+        "edit": "Edit",
+        "preview": "Preview",
         "addFlag": "Add Flag",
         "addGflags": "Add Flags",
         "addJson": "Add as JSON",
@@ -170,7 +172,14 @@
         "selectedDBVersion": "Selected DB Version : ",
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
-        "validationError": "Fix all the errors shown below to proceed"
+        "addRow": "Add Row",
+        "validationError": "Fix all the errors shown below to proceed",
+        "hbaLDAPConflocal": "local database user auth-method [auth-options]",
+        "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
+        "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
+        "LDAPMissingAttributeValue": "Missing value for the attribute",
+        "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
+        "nonASCIIDetected": "Non-ASCII value detected"
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -299,7 +308,7 @@
           "ScanBtn": "Scan",
           "ReScanBtn": "Re-Scan",
           "Hurray": "Hurray",
-          "ScanTime": "Current Scan",
+          "ScanTime": "Last Scanned",
           "DBScanFailed": "Failed to scan the database. Try again later."
         },
         "typeTag": {
@@ -381,7 +390,8 @@
           "values": "Values",
           "default": "Default",
           "addValuesButton": "Add Values",
-          "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy."
+          "valuesHelpText": "Define the possible values for the variable. Set one of the values as the <bold>default</bold> to use for all alerts that use the notification template. You can choose a value when configuring the alert policy.",
+          "nameError":"Name should contain only alphanumeric and _(underscore)"
         },
         "assignCustomVariableValueModal": {
           "title": "Assign Variable Value to Alert Policies",
@@ -403,7 +413,8 @@
         "webhookComposer": {
           "rollback": "Rollback to Default Template",
           "clearTemplate": "Clear Template"
-        }
+        },
+        "invalidVariables": "Variables {{variable}} not found"
       },
       "customVariablesPlugin": {
         "sysOrCusVariable": "{{variable_type}} VAR",

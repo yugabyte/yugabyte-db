@@ -17,7 +17,7 @@
 
 #include "yb/rocksdb/options.h"
 
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/docdb/docdb_fwd.h"
 #include "yb/dockv/key_bytes.h"
@@ -28,7 +28,7 @@ namespace yb {
 namespace docdb {
 
 // DocDB variant of QL scanspec.
-class DocQLScanSpec : public dockv::QLScanSpec {
+class DocQLScanSpec : public qlexpr::QLScanSpec {
  public:
 
   // Scan for the specified doc_key. If the doc_key specify a full primary key, the scan spec will
@@ -58,7 +58,7 @@ class DocQLScanSpec : public dockv::QLScanSpec {
   // Create file filter based on range components.
   std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter() const override;
 
-  const std::shared_ptr<std::vector<dockv::OptionList>>& options() const override {
+  const std::shared_ptr<std::vector<qlexpr::OptionList>>& options() const override {
     return options_;
   }
 
@@ -102,7 +102,7 @@ class DocQLScanSpec : public dockv::QLScanSpec {
   const dockv::KeyEntryValues* hashed_components_;
 
   // The range/hash value options if set (possibly more than one due to IN conditions).
-  std::shared_ptr<std::vector<dockv::OptionList>> options_;
+  std::shared_ptr<std::vector<qlexpr::OptionList>> options_;
 
   // Ids of key columns that have filters such as h1 IN (1, 5, 6, 9) or r1 IN (5, 6, 7)
   std::vector<ColumnId> options_col_ids_;

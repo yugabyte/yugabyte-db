@@ -13,7 +13,7 @@
 
 #include "yb/tablet/abstract_tablet.h"
 
-#include "yb/common/ql_resultset.h"
+#include "yb/qlexpr/ql_resultset.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
@@ -50,25 +50,13 @@ Status AbstractTablet::HandleQLReadRequest(CoarseTimePoint deadline,
 
   // Form a schema of columns that are referenced by this query.
   const auto doc_read_context = GetDocReadContext();
-  Schema projection;
-  const QLReferencedColumnsPB& column_pbs = ql_read_request.column_refs();
-  vector<ColumnId> column_refs;
-  for (int32_t id : column_pbs.static_ids()) {
-    column_refs.emplace_back(id);
-  }
-  for (int32_t id : column_pbs.ids()) {
-    column_refs.emplace_back(id);
-  }
-  RETURN_NOT_OK(doc_read_context->schema.CreateProjectionByIdsIgnoreMissing(
-      column_refs, &projection));
 
-  const QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
-  QLResultSet resultset(&rsrow_desc, rows_data);
+  const qlexpr::QLRSRowDesc rsrow_desc(ql_read_request.rsrow_desc());
+  qlexpr::QLResultSet resultset(&rsrow_desc, rows_data);
 
   TRACE("Start Execute");
   const Status s = doc_op.Execute(
-      QLStorage(), deadline, read_time, *doc_read_context, projection, &resultset,
-      &result->restart_read_ht);
+      QLStorage(), deadline, read_time, *doc_read_context, &resultset, &result->restart_read_ht);
   TRACE("Done Execute");
   if (!s.ok()) {
     if (s.IsQLError()) {

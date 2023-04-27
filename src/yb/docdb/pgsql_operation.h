@@ -25,9 +25,6 @@
 #include "yb/util/write_buffer.h"
 
 namespace yb {
-
-class IndexInfo;
-
 namespace docdb {
 
 YB_STRONGLY_TYPED_BOOL(IsUpsert);
@@ -93,9 +90,10 @@ class PgsqlWriteOperation :
                    const ReadHybridTime& read_ht, CoarseTimePoint deadline);
 
   // Reading current row before operating on it.
-  Status ReadColumns(const DocOperationApplyData& data, QLTableRow* table_row);
+  // Returns true if row was present.
+  Result<bool> ReadColumns(const DocOperationApplyData& data, qlexpr::QLTableRow* table_row);
 
-  Status PopulateResultSet(const QLTableRow& table_row);
+  Status PopulateResultSet(const qlexpr::QLTableRow& table_row);
 
   // Reading path to operate on.
   Status GetDocPaths(GetDocPathsMode mode,
@@ -105,13 +103,13 @@ class PgsqlWriteOperation :
   class RowPackContext;
 
   Status InsertColumn(
-      const DocOperationApplyData& data, const QLTableRow& table_row,
+      const DocOperationApplyData& data, const qlexpr::QLTableRow& table_row,
       const PgsqlColumnValuePB& column_value, RowPackContext* pack_context);
 
   Status UpdateColumn(
-      const DocOperationApplyData& data, const QLTableRow& table_row,
-      const PgsqlColumnValuePB& column_value, QLTableRow* returning_table_row,
-      QLExprResult* result, RowPackContext* pack_context);
+      const DocOperationApplyData& data, const qlexpr::QLTableRow& table_row,
+      const PgsqlColumnValuePB& column_value, qlexpr::QLTableRow* returning_table_row,
+      qlexpr::QLExprResult* result, RowPackContext* pack_context);
 
   //------------------------------------------------------------------------------------------------
   // Context.
@@ -204,10 +202,10 @@ class PgsqlReadOperation : public DocExprExecutor {
                                bool* has_paging_state,
                                const DocDBStatistics* statistics);
 
-  Status PopulateResultSet(const QLTableRow& table_row,
+  Status PopulateResultSet(const qlexpr::QLTableRow& table_row,
                            WriteBuffer *result_buffer);
 
-  Status EvalAggregate(const QLTableRow& table_row);
+  Status EvalAggregate(const qlexpr::QLTableRow& table_row);
 
   Status PopulateAggregate(WriteBuffer *result_buffer);
 

@@ -37,7 +37,7 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/doc_hybrid_time.h"
 #include "yb/dockv/partition.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/master/cdc_rpc_tasks.h"
@@ -998,14 +998,14 @@ TabletInfoPtr TableInfo::GetColocatedUserTablet() const {
   return nullptr;
 }
 
-IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
+qlexpr::IndexInfo TableInfo::GetIndexInfo(const TableId& index_id) const {
   auto l = LockForRead();
   for (const auto& index_info_pb : l->pb.indexes()) {
     if (index_info_pb.table_id() == index_id) {
-      return IndexInfo(index_info_pb);
+      return qlexpr::IndexInfo(index_info_pb);
     }
   }
-  return IndexInfo();
+  return qlexpr::IndexInfo();
 }
 
 bool TableInfo::UsesTablespacesForPlacement() const {

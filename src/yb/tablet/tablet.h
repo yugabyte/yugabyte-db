@@ -49,6 +49,8 @@
 
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/qlexpr/qlexpr_fwd.h"
+
 #include "yb/rocksdb/rocksdb_fwd.h"
 #include "yb/rocksdb/options.h"
 #include "yb/rocksdb/table.h"
@@ -164,7 +166,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   //    next API call can resume from where the backfill was left off.
   //    Note that <backfilled_until> only applies to the non-failing indexes.
   Status BackfillIndexesForYsql(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -175,7 +177,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::string* backfilled_until);
 
   Status VerifyIndexTableConsistencyForCQL(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& start_key,
       const int num_rows,
       const CoarseTimePoint deadline,
@@ -194,7 +196,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   Status VerifyTableConsistencyForCQL(
       const std::vector<TableId>& table_ids,
-      const std::vector<yb::ColumnSchema>& columns,
+      const std::vector<ColumnId>& columns,
       const std::string& start_key,
       const int num_rows,
       const CoarseTimePoint deadline,
@@ -204,7 +206,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::string* verified_until);
 
   Status VerifyTableInBatches(
-      const QLTableRow& row,
+      const qlexpr::QLTableRow& row,
       const std::vector<TableId>& table_ids,
       const HybridTime read_time,
       const CoarseTimePoint deadline,
@@ -239,7 +241,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // <failed_indexes> will be updated with the collection of index-ids for which any errors
   //    were encountered.
   Status BackfillIndexes(
-      const std::vector<IndexInfo>& indexes,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const std::string& backfill_from,
       const CoarseTimePoint deadline,
       const HybridTime read_time,
@@ -248,8 +250,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       std::unordered_set<TableId>* failed_indexes);
 
   Status UpdateIndexInBatches(
-      const QLTableRow& row,
-      const std::vector<IndexInfo>& indexes,
+      const qlexpr::QLTableRow& row,
+      const std::vector<qlexpr::IndexInfo>& indexes,
       const HybridTime write_time,
       const CoarseTimePoint deadline,
       docdb::IndexRequests* index_requests,
@@ -394,7 +396,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // state of this tablet.
   // The returned iterator is not initialized and should be initialized by the caller before usage.
   Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedDocRowIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max(),
@@ -402,7 +404,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
 
   // The following functions create new row iterator that is already initialized.
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewRowIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       const ReadHybridTime& read_hybrid_time = {},
       const TableId& table_id = "",
       CoarseTimePoint deadline = CoarseTimePoint::max()) const;
@@ -411,7 +413,7 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       const TableId& table_id) const;
 
   Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> CreateCDCSnapshotIterator(
-      const Schema& projection,
+      const dockv::ReaderProjection& projection,
       const ReadHybridTime& time,
       const std::string& next_key,
       const TableId& table_id = "");
@@ -806,10 +808,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
       bool is_ysql_catalog_table,
       const SubTransactionMetadataPB* subtransaction_metadata = nullptr) const;
 
-  const Schema* unique_index_key_schema() const {
-    return unique_index_key_schema_.get();
-  }
-
   bool XClusterReplicationCaughtUpToTime(HybridTime txn_commit_ht);
 
   // Store the new AutoFlags config to disk and then applies it. Error Status is returned only for
@@ -838,7 +836,8 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   Status OpenKeyValueTablet();
   virtual Status CreateTabletDirectories(const std::string& db_dir, FsManager* fs);
 
-  std::vector<yb::ColumnSchema> GetColumnSchemasForIndex(const std::vector<IndexInfo>& indexes);
+  std::vector<ColumnId> GetColumnSchemasForIndex(
+      const std::vector<qlexpr::IndexInfo>& indexes);
 
   void DocDBDebugDump(std::vector<std::string> *lines);
 
@@ -1047,9 +1046,6 @@ class Tablet : public AbstractTablet, public TransactionIntentApplier {
   // Use methods YBMetaDataCache, CreateNewYBMetaDataCache, and ResetYBMetaDataCache to read it
   // and modify it.
   std::shared_ptr<client::YBMetaDataCache> metadata_cache_;
-
-  // Created only if it is a unique index tablet.
-  std::unique_ptr<Schema> unique_index_key_schema_;
 
   std::atomic<int64_t> last_committed_write_index_{0};
 

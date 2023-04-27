@@ -13,6 +13,8 @@
 
 #include "yb/tablet/tablet-test-base.h"
 
+#include "yb/dockv/reader_projection.h"
+
 using std::string;
 using std::vector;
 
@@ -144,7 +146,8 @@ Status TabletTestPreBase::DeleteTestRow(LocalTabletWriter* writer, int32_t key_i
 }
 
 void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count) {
-  auto iter = tablet()->NewRowIterator(client_schema_);
+  dockv::ReaderProjection projection(schema_);
+  auto iter = tablet()->NewRowIterator(projection);
   ASSERT_OK(iter);
 
   if (expected_count > INT_MAX) {
@@ -158,7 +161,7 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
   std::vector<bool> seen_rows;
   seen_rows.resize(expected_count);
 
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   QLValue value;
   while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     if (VLOG_IS_ON(2)) {
@@ -186,9 +189,9 @@ void TabletTestPreBase::VerifyTestRows(int32_t first_row, int32_t expected_count
 
 Status TabletTestPreBase::IterateToStringList(vector<string> *out) {
   // TODO(dtxn) pass correct transaction ID if needed
-  auto iter = this->tablet()->NewRowIterator(this->client_schema_);
-  RETURN_NOT_OK(iter);
-  return yb::tablet::IterateToStringList(iter->get(), out);
+  dockv::ReaderProjection projection(schema_);
+  auto iter = VERIFY_RESULT(tablet()->NewRowIterator(projection));
+  return tablet::IterateToStringList(iter.get(), schema_, out);
 }
 
 uint32_t TabletTestPreBase::ClampRowCount(uint32_t proposal) const {

@@ -104,11 +104,11 @@ class YBTabletTest : public YBTest {
 };
 
 Status IterateToStringList(
-    docdb::YQLRowwiseIteratorIf* iter, std::vector<std::string>* out, int limit = INT_MAX);
+    docdb::YQLRowwiseIteratorIf* iter, const Schema& schema, std::vector<std::string>* out,
+    int limit = INT_MAX);
 
 // Dump all of the rows of the tablet into the given vector.
-Status DumpTablet(
-    const Tablet& tablet, const Schema& projection, std::vector<std::string>* out);
+Status DumpTablet(const Tablet& tablet, std::vector<std::string>* out);
 
 } // namespace tablet
 } // namespace yb

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.models.Customer;
@@ -34,8 +35,9 @@ import org.yb.master.MasterDdlOuterClass;
 public class XClusterConfigSync extends XClusterConfigTaskBase {
 
   @Inject
-  protected XClusterConfigSync(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected XClusterConfigSync(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   @Override

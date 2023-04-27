@@ -27,7 +27,7 @@
 #include "yb/util/flags.h"
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/gutil/integral_types.h"

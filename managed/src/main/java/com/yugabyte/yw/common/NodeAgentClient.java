@@ -35,6 +35,7 @@ import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
+import io.grpc.ConnectivityState;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -416,7 +417,12 @@ public class NodeAgentClient {
       builder.certPath(certPath);
     }
     try {
-      return cachedChannels.get(builder.build());
+      ManagedChannel channel = cachedChannels.get(builder.build());
+      if (channel.getState(true) == ConnectivityState.TRANSIENT_FAILURE) {
+        // Short-circuit the backoff timer and make it reconnect immediately.
+        channel.resetConnectBackoff();
+      }
+      return channel;
     } catch (ExecutionException e) {
       throw new RuntimeException(e.getCause());
     }

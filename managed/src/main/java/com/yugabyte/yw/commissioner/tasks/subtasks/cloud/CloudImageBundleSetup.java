@@ -15,6 +15,9 @@ import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,16 +76,32 @@ public class CloudImageBundleSetup extends CloudTaskBase {
       if (cloudType.equals(CloudType.aws)) {
         Map<String, ImageBundleDetails.BundleInfo> regionsImageInfo = new HashMap<>();
         for (Region r : regions) {
+          AWSRegionCloudInfo awsRegionCloudInfo = r.getDetails().getCloudInfo().getAws();
           ImageBundleDetails.BundleInfo bundleInfo = new ImageBundleDetails.BundleInfo();
-          String defaultImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
-          bundleInfo.setYbImage(defaultImage);
-          bundleInfo.setSshUserOverride(cloudType.getSshUser());
+          String ybImage = awsRegionCloudInfo.getYbImage();
+          if (ybImage == null) {
+            ybImage = cloudQueryHelper.getDefaultImage(r, arch.toString());
+          }
+          bundleInfo.setYbImage(ybImage);
+          bundleInfo.setSshUserOverride(provider.getDetails().getSshUser());
           regionsImageInfo.put(r.getCode(), bundleInfo);
         }
         details.setRegions(regionsImageInfo);
       } else {
-        String defaultImage = cloudQueryHelper.getDefaultImage(regions.get(0), arch.toString());
-        details.setGlobalYbImage(defaultImage);
+        Region region = regions.get(0);
+        String ybImage = null;
+        if (provider.getCloudCode().equals(CloudType.gcp)) {
+          GCPRegionCloudInfo gcpRegionCloudInfo = region.getDetails().getCloudInfo().getGcp();
+          ybImage = gcpRegionCloudInfo.getYbImage();
+        } else if (provider.getCloudCode().equals(CloudType.azu)) {
+          AzureRegionCloudInfo azuRegionCloudInfo = region.getDetails().getCloudInfo().getAzu();
+          ybImage = azuRegionCloudInfo.getYbImage();
+        }
+
+        if (ybImage == null) {
+          ybImage = cloudQueryHelper.getDefaultImage(region, arch.toString());
+        }
+        details.setGlobalYbImage(ybImage);
       }
       ImageBundle.create(
           provider, String.format("for_provider-%s", provider.getName()), details, true);

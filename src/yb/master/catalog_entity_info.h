@@ -39,7 +39,7 @@
 #include <boost/bimap.hpp>
 
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
@@ -633,7 +633,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   TabletInfoPtr GetColocatedUserTablet() const;
 
   // Get info of the specified index.
-  IndexInfo GetIndexInfo(const TableId& index_id) const;
+  qlexpr::IndexInfo GetIndexInfo(const TableId& index_id) const;
 
   // Returns true if all tablets of the table are deleted.
   bool AreAllTabletsDeleted() const;
@@ -1183,11 +1183,6 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const NamespaceId namespace_id() const;
 
   std::string ToString() const override;
-
-  //  Set of table_ids which have been created after the CDCSDK stream has been created. This will
-  //  not be persisted in sys_catalog. Typically you should use the 'LockForRead'/'LockForRead' on
-  //  this object before accessing this member.
-  std::unordered_set<TableId> cdcsdk_unprocessed_tables;
 
  private:
   friend class RefCountedThreadSafe<CDCStreamInfo>;

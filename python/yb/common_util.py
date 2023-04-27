@@ -274,11 +274,6 @@ def is_macos() -> bool:
     return platform.system() == 'Darwin'
 
 
-def read_file(file_path: str) -> str:
-    with open(file_path) as input_file:
-        return input_file.read()
-
-
 def get_absolute_path_aliases(path: str) -> List[str]:
     """
     Returns a list of different variants (just an absolute path vs. all symlinks resolved) for the
@@ -399,11 +394,6 @@ def write_yaml_file(content: Any, output_file_path: str) -> None:
     yaml = get_ruamel_yaml_instance()
     with open(output_file_path, 'w') as output_file:
         yaml.dump(content, output_file)
-
-
-def write_file(content: str, output_file_path: str) -> None:
-    with open(output_file_path, 'w') as output_file:
-        output_file.write(content)
 
 
 def make_parent_dir(path: str) -> None:
@@ -651,3 +641,17 @@ def are_files_equal(path1: str, path2: str) -> bool:
                 return False
             if len(chunk1) == 0 and len(chunk2) == 0:
                 return True
+
+
+def join_paths_if_needed(base_path: str, abs_or_rel_path: str) -> str:
+    """
+    If the given path is absolute, return it. Otherwise, join it with the given base path and return
+    the result.
+    >>> join_paths_if_needed('/a/b', '/c/d')
+    '/c/d'
+    >>> join_paths_if_needed('/a/b', 'c/d')
+    '/a/b/c/d'
+    """
+    if os.path.isabs(abs_or_rel_path):
+        return abs_or_rel_path
+    return os.path.join(base_path, abs_or_rel_path)
