@@ -27,9 +27,9 @@ Before starting the upgrade:
 
   - Specify the release version to import.
 
-    {{< note title="YugabyteDB upgrades for version 2.16.3" >}}
+   {{< note title="Manually-provisioned on-premises universe upgrades" >}}
 
-  YB Controller does not get installed during a YugabyteDB software upgrade for an [on-prem](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) manually provisioned cron managed universe for version 2.16.3.
+  For v2.16.3, YB Controller does not get installed during a YugabyteDB software upgrade of a manually provisioned [on-premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) cron managed universe.
 
   The workaround is to explicitly install the YB Controller by calling the following API after the software upgrade:
 
