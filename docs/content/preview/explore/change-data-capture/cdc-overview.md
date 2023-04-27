@@ -19,7 +19,7 @@ In databases, change data capture (CDC) is a set of software design patterns use
 Change Data Capture (CDC) allows you to track and propagate changes in a YugabyteDB database to downstream consumers based on its Write-Ahead Log (WAL).
 YugabyteDB CDC uses Debezium to capture row-level changes resulting from INSERT, UPDATE and DELETE operations in the upstream database and publishes them as events to Kafka using Kafka Connect-compatible connectors.
 
-Diagram #1 
+Diagram 1 
 
 ## How does CDC work?
 
@@ -27,19 +27,21 @@ YugabyteDB automatically splits user tables into multiple shards, called tablets
 
 Each Tablet has its own Write Ahead Log(WAL) file. WAL is NOT in-memory but it’s disk persisted. Each WAL preserves the order in which transactions (or changes) happened.Hybrid TS, Operation id, and additional metadata about the transaction is also preserved.
 
-Diagram #2 
+Diagram 2 
 
+The Debezium YugabyteDB connector captures row-level changes in the schemas of a YugabyteDB database. The first time it connects to a YugabyteDB cluster, the connector takes a consistent snapshot of all schemas. After that snapshot is complete, the connector continuously captures row-level changes that insert, update, and delete database content and that were committed to a PostgreSQL database. The connector generates data change event records and streams them to Kafka topics. For each table, the default behavior is that the connector streams all generated events to a separate Kafka topic for that table. Applications and services consume data change event records from that topic.
+
+Diagram 3
+
+The connector produces a change event for every row-level insert, update, and delete operation that was captured and sends change event records for each table in a separate Kafka topic. Client applications read the Kafka topics that correspond to the database tables of interest, and can react to every row-level event they receive from those topics.
+
+YugabyteDB normally purges write-ahead log (WAL) segments after some period of time. This means that the connector does not have the complete history of all changes that have been made to the database. Therefore, when the connector first connects to a particular PostgreSQL database, it starts by performing a consistent snapshot of each of the database schemas. 
 
 The core primitive of CDC is the _stream_. Streams can be enabled and disabled on databases. Every change to a watched database table is emitted as a record in a configurable format to a configurable sink. Streams scale to any YugabyteDB cluster independent of its size and are designed to impact production traffic as little as possible.
 
+Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a YugabyteDB connector configuration and then start the connector by adding it to Kafka Connect.
 
-### CDC streams
-
-Streams are the YugabyteDB endpoints for fetching database changes by applications, processes, and systems. Streams can be enabled or disabled (on a per namespace basis). Every change to a database table (for which the data is being streamed) is emitted as a record to the stream, which is then propagated further for consumption by applications, in this case to Debezium, and then ultimately to Kafka.
-
-### DB stream
-
-To facilitate the streaming of data, you have to create a DB Stream. This stream is created at the database level, and can access the data in all of that database's tables.
+Diagram 4 
 
 ### Stream expiry
 
@@ -55,8 +57,6 @@ If you set `cdc_intent_retention_ms` to a high value, and the stream lags for an
 
 {{< /warning >}}
 
-## Debezium deployement
-Debezium is deployed as a set of Kafka Connect-compatible connectors, so you first need to define a Postgres connector configuration and then start the connector by adding it to Kafka Connect.
 
 ## Consistency semantics
 
