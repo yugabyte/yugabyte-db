@@ -199,6 +199,10 @@ Provider settings are organized in the following sections.
 
 ### Cloud Info
 
+To fill these values using the configuration of the same Kubernetes cluster that your instance of YugabyteDB Anywhere is installed on, click **Autofill local cluster config**.
+
+Otherwise, enter the following information:
+
 1. Choose the **Kubernetes Provider Type**.
 1. In the **Image Registry** field, specify from where to pull the YugabyteDB image. Accept the default setting, unless you are hosting the registry, in which case refer to steps described in [Pull and push YugabyteDB Docker images to private container registry](../../../install-yugabyte-platform/prepare-environment/kubernetes/#pull-and-push-yugabytedb-docker-images-to-private-container-registry).
 1. Use **Pull Secret** to upload the pull secret to download the image of the Enterprise YugabyteDB that is in a private repository. Your Yugabyte sales representative should have provided this secret.
@@ -217,7 +221,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. `topology.kubernetes.io/zone` would place the pods in that zone.
 
-1. Use **Kube Config** to upload the configuration file. If this file is available at the provider level, you are not required to supply it. 
+1. Use **Kube Config** to upload the configuration file. If this file is available at the provider level, you are not required to supply it.
 
 1. Optionally, use the **Storage Class** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
 
@@ -225,7 +229,7 @@ Continue configuring your Kubernetes provider by clicking **Add region** and com
 
 1. Complete the **Overrides** field using one of the provided [options](#overrides). If you do not specify anything, YugabyteDB Anywhere uses defaults specified inside the Helm chart. For additional information, see [Open source Kubernetes](../../../../deploy/kubernetes/single-zone/oss/helm-chart/).
 
-1. Finally, click **Add Region**.
+1. Click **Add Region**.
 
 ## Create the configuration
 

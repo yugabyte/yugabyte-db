@@ -79,7 +79,7 @@ To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TK
 
 This lists all currently configured providers.
 
-To create a TKG provider, click **Create Config** to open the **TKG Provider Configuration** page.
+To create a TKG provider, click **Create Kubernetes Config** to open the **Create Kubernetes Provider Configuration** page.
 
 ### Provider settings
 
@@ -89,6 +89,12 @@ Provider settings are organized in the following sections.
 
 #### Cloud Info
 
+Set the **Kubernetes Provider Type** to VMWare Tanzu.
+
+Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
+
+The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
+
 Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
 
 - At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
@@ -96,15 +102,11 @@ Use the **Kube Config** field to specify the kube config for an availability zon
 
 Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
-Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
-
-The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
-
 ## Configure region and zones
 
 You configure region and zones as follows:
 
-- On the **Create VMware Tanzu Configuration** page, click **Add region** to open the **Add new region** dialog.
+- On the **Create Kubernetes Provider Configuration** page, click **Add region** to open the **Add Region** dialog.
 
 - Use the **Region** field to select the region.
 
@@ -114,13 +116,13 @@ You configure region and zones as follows:
 
   - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
 
+  - Use the **Kube Config** field to upload the kube config file.
+
   - In the **Storage Class** field, provide the storage class that exists in your Kubernetes cluster and matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is `TKG - Multi Cloud: standard-sc`, `TKG - Service: tkg-vsan-storage-policy`.
 
-  - In the **Namespace** field, specify an existing namespace into which pods in this zone will be deployed.
+  - In the **Kube Namespace** field, specify an existing namespace into which pods in this zone will be deployed.
 
   - In the **Cluster DNS Domain** field, provide the DNS domain name used in the Kubernetes cluster.
-
-  - Use the **Kube Config** field to upload the kube config file.
 
   - Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
 
@@ -171,9 +173,9 @@ You configure region and zones as follows:
 
   - Click **Add Region**.
 
-  - Click **Save**.
+## Create the configuration
 
-  If your configuration is successful, you are redirected to **VMware Tanzu configs**.
+Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you are redirected to **VMware Tanzu configs**.
 
 ## Appendix: VMware Tanzu application service
 

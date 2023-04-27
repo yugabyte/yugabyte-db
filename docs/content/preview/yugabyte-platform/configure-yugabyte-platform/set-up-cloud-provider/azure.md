@@ -83,7 +83,7 @@ When the configuration is completed, you can see all the resources managed by Yu
 
 ## Configure Azure
 
-To configure AWS providers, navigate to **Configs > Infrastructure > Microsoft Azure**.
+To configure Azure providers, navigate to **Configs > Infrastructure > Microsoft Azure**.
 
 This lists all currently configured providers.
 
