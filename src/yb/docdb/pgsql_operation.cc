@@ -84,14 +84,8 @@ DEFINE_UNKNOWN_bool(pgsql_consistent_transactional_paging, true,
 DEFINE_test_flag(int32, slowdown_pgsql_aggregate_read_ms, 0,
                  "If set > 0, slows down the response to pgsql aggregate read by this amount.");
 
-#ifdef NDEBUG
-constexpr bool kYsqlPackedRowEnabled = false;
-#else
-constexpr bool kYsqlPackedRowEnabled = true;
-#endif
-
-DEFINE_RUNTIME_bool(ysql_enable_packed_row, kYsqlPackedRowEnabled,
-                    "Whether packed row is enabled for YSQL.");
+DEFINE_RUNTIME_AUTO_bool(ysql_enable_packed_row, kNewInstallsOnly, false, true,
+                         "Whether packed row is enabled for YSQL.");
 
 DEFINE_UNKNOWN_bool(ysql_enable_packed_row_for_colocated_table, true,
                     "Whether to enable packed row for colocated tables.");
