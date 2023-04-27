@@ -354,6 +354,7 @@ export const OnPremProviderCreateForm = ({
           onRegionSubmit={onRegionFormSubmit}
           open={isRegionFormModalOpen}
           regionSelection={regionSelection}
+          regionOperation={regionOperation}
         />
       )}
       {isDeleteRegionModalOpen && (
