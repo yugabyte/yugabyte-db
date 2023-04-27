@@ -31,7 +31,7 @@ var (
 	clientCtx         context.Context
 	dialOpts          []grpc.DialOption
 	serverAddr        = "localhost:0"
-	enableTLS         = true
+	enableTLS         = false
 	disableMetricsTLS = false
 )
 
