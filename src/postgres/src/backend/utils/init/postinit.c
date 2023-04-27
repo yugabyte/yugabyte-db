@@ -692,6 +692,7 @@ BaseInit(void)
  */
 /* YB_TODO(neil) Double check the merged in this file.
  * Both Postgres and Yb refactor code, so merging mistakes are possible.
+ * NOTE: Latest change in master might not be merged. Check "YB::master" code again for new changes.
  */
 void
 InitPostgres(const char *in_dbname, Oid dboid,
@@ -817,11 +818,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	/* Initialize status reporting */
 	pgstat_beinit();
 
-#ifdef YB_TODO
-	/* YB_TODO(neil) Move these code "pgstat_beinit();" ?
-	 * NOTE: Latest change has not been moved. Check "YB::master" code again for new changes.
-	 */
-
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
 		YBInitPostgresBackend("postgres", "", username);
@@ -830,7 +826,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
-		HandleYBStatus(YBCPgTableExists(TemplateDbOid,
+		HandleYBStatus(YBCPgTableExists(Template1DbOid,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
@@ -864,7 +860,6 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 		 */
 		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
 	}
-#endif
 
 	/*
 	 * Load relcache entries for the shared system catalogs.  This must create
