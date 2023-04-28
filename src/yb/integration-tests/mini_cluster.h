@@ -226,6 +226,8 @@ class MiniCluster : public MiniClusterBase {
     return port_picker_.AllocateFreePort();
   }
 
+  std::string GetClusterId() { return options_.cluster_id; }
+
  private:
 
   void ConfigureClientBuilder(client::YBClientBuilder* builder) override;

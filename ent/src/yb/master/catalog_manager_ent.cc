@@ -4826,6 +4826,13 @@ Status CatalogManager::ValidateTableSchema(
     }
   }
 
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(table->table_id())) {
+      return STATUS(IllegalState, "N:1 replication topology not supported");
+    }
+  }
+
   return Status::OK();
 }
 
@@ -5112,11 +5119,22 @@ void CatalogManager::GetTablegroupSchemaCallback(
                << producer_tablegroup_id << ": " << status;
   }
 
+  const auto consumer_parent_table_id = GetTablegroupParentTableId(consumer_tablegroup_id);
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(consumer_parent_table_id)) {
+      std::string message = "N:1 replication topology not supported";
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
+  }
+
   status = AddValidatedTableAndCreateCdcStreams(
       universe,
       table_bootstrap_ids,
       GetTablegroupParentTableId(producer_tablegroup_id),
-      GetTablegroupParentTableId(consumer_tablegroup_id));
+      consumer_parent_table_id);
   if (!status.ok()) {
     LOG(ERROR) << "Found error while adding validated table to system catalog: "
                << producer_tablegroup_id << ": " << status;
@@ -5216,6 +5234,16 @@ void CatalogManager::GetColocatedTabletSchemaCallback(
     MarkUniverseReplicationFailed(universe, status);
     LOG(ERROR) << "Found error while checking if bootstrap is required for table "
                << *producer_parent_table_ids.begin() << ": " << status;
+  }
+
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(*consumer_parent_table_ids.begin())) {
+      std::string message = "N:1 replication topology not supported";
+      MarkUniverseReplicationFailed(universe, STATUS(IllegalState, message));
+      LOG(ERROR) << message;
+      return;
+    }
   }
 
   status = AddValidatedTableAndCreateCdcStreams(universe,
