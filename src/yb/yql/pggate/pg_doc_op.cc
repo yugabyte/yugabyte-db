@@ -762,7 +762,7 @@ Result<bool> PgDocReadOp::BindNextBatchToRequest(LWPgsqlReadRequestPB* read_req)
 
 bool PgDocReadOp::IsHashBatchingEnabled() {
   if (PREDICT_FALSE(!is_hash_batched_.has_value())) {
-    is_hash_batched_ = pg_session_->IsHashBatchingEnabled();
+    is_hash_batched_ = pg_session_->IsHashBatchingEnabled() && total_permutation_count_ > 1;
   }
   return *is_hash_batched_;
 }
