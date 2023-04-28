@@ -70,6 +70,11 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
             reqProvider,
             false,
             false);
+    if (provider.getCloudCode() == Common.CloudType.onprem) {
+      // UI was not calling bootstrap for onprem in old workflow, so need to mark provider as READY.
+      provider.setUsabilityState(Provider.UsabilityState.READY);
+      provider.save();
+    }
     CloudInfoInterface.mayBeMassageResponse(provider);
     auditService()
         .createAuditEntryWithReqBody(
