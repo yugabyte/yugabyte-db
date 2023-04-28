@@ -37,8 +37,8 @@
 PG_MODULE_MAGIC;
 
 void        _PG_init(void);
-void        pg_partman_bgw_main(Datum);
-void        pg_partman_bgw_run_maint(Datum);
+PGDLLEXPORT void pg_partman_bgw_main(Datum);
+PGDLLEXPORT void pg_partman_bgw_run_maint(Datum);
 
 /* flags set by signal handlers */
 static volatile sig_atomic_t got_sighup = false;
