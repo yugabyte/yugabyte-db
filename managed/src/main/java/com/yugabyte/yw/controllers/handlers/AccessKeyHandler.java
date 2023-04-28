@@ -196,7 +196,7 @@ public class AccessKeyHandler {
     if (accessKey != null) {
       AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
       keyPairName = keyInfo.keyPairName;
-      sshPrivateKeyContent = keyInfo.getUnMaskedSshPrivateKeyContent();
+      sshPrivateKeyContent = keyInfo.sshPrivateKeyContent;
       try {
         AccessKey.getOrBadRequest(provider.getUuid(), keyPairName);
         keyPairName = AccessKey.getNewKeyCode(keyPairName);
