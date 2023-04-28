@@ -12,8 +12,6 @@ package com.yugabyte.yw.common.kms.services;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.amazonaws.services.kms.AWSKMS;
-import com.amazonaws.services.kms.model.DescribeKeyResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -220,14 +218,14 @@ public class AwsEARService extends EncryptionAtRestService<AwsAlgorithm> {
     if (!authConfig.has(AwsKmsAuthConfigField.CMK_ID.fieldName)) {
       throw new RuntimeException(
           String.format(
-              "Field '{}' is missing in AWS KMS config '%s'.",
+              "Field '%s' is missing in AWS KMS config '%s'.",
               AwsKmsAuthConfigField.CMK_ID.fieldName, configUUID));
     }
     // Test if you can get KMS client.
     String cmkId = authConfig.get(AwsKmsAuthConfigField.CMK_ID.fieldName).asText();
-    AWSKMS kmsClient = AwsEARServiceUtil.getKMSClient(null, authConfig);
+    AwsEARServiceUtil.getKMSClient(null, authConfig);
     // Test if key exists.
-    DescribeKeyResult describeKeyResult = AwsEARServiceUtil.describeKey(authConfig, cmkId);
+    AwsEARServiceUtil.describeKey(authConfig, cmkId);
     // Test if GenerateDataKeyWithoutPlaintext permission exists.
     byte[] randomEncryptedBytes =
         AwsEARServiceUtil.generateDataKey(null, authConfig, cmkId, "AES", 256);
