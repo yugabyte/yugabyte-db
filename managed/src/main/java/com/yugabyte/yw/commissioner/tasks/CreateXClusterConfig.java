@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModify
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
@@ -51,6 +52,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
   }
 
   public List<Restore> restoreList = new ArrayList<>();
+
+  public List<Backup> backupList = new ArrayList<>();
 
   @Override
   public void run() {
@@ -98,10 +101,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
+      // Set xCluster config status to failed.
       setXClusterConfigStatus(XClusterConfigStatusType.Failed);
-      for (Restore restore : restoreList) {
-        restore.update(taskUUID, Restore.State.Failed);
-      }
       // Set tables in updating status to failed.
       Set<String> tablesInPendingStatus =
           xClusterConfig.getTableIdsInStatus(
@@ -109,6 +110,15 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
               X_CLUSTER_TABLE_CONFIG_PENDING_STATUS_LIST);
       xClusterConfig.updateStatusForTables(
           tablesInPendingStatus, XClusterTableConfig.Status.Failed);
+      // Set backup and restore status to failed and alter load balanced.
+      boolean isLoadBalancerAltered = false;
+      for (Backup backup : backupList) {
+        if (backup.getBackupInfo().alterLoadBalancer) {
+          isLoadBalancerAltered = true;
+        }
+      }
+      handleFailedBackupAndRestore(
+          backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
@@ -216,12 +226,19 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       createBootstrapProducerTask(tableIdsNeedBootstrap)
           .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingProducer);
 
+      boolean useYbc =
+          sourceUniverse.isYbcEnabled()
+              && targetUniverse.isYbcEnabled()
+              && confGetter.getGlobalConf(GlobalConfKeys.enableYbcForXCluster);
+
       // Backup from the source universe.
       BackupRequestParams backupRequestParams =
           getBackupRequestParams(sourceUniverse, bootstrapParams, tablesInfoListNeedBootstrap);
       Backup backup =
           createAllBackupSubtasks(
-              backupRequestParams, UserTaskDetails.SubTaskGroupType.CreatingBackup);
+              backupRequestParams, UserTaskDetails.SubTaskGroupType.CreatingBackup, useYbc);
+
+      backupList.add(backup);
 
       // Assign the created backup UUID for the tables in the DB.
       xClusterConfig.updateBackupForTables(tableIdsNeedBootstrap, backup);
