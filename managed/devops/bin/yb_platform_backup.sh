@@ -225,8 +225,8 @@ create_ybdb_backup() {
     backup_cmd="${ysql_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} -v \
      --clean ${PLATFORM_DB_NAME}"
   else
-    backup_cmd="${pg_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} --clean \
-      ${PLATFORM_DB_NAME}"
+    backup_cmd="${ysql_dump} -h ${db_host} -p ${db_port} -U ${db_username} -f ${backup_path} \
+     --clean ${PLATFORM_DB_NAME}"
   fi
   # Run ysql_dump.
   echo "Creating YBDB Platform DB backup ${backup_path}..."
@@ -970,7 +970,7 @@ case $command in
           ;;
         --ysqlsh_path)
           ysqlsh_path=$2
-          shift
+          shift 2
           ;;
         --yugabundle)
           yugabundle=true

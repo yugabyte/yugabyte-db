@@ -146,8 +146,13 @@ func (ybdb Ybdb) Uninstall(removeData bool) error {
 
 	if removeData {
 		// Remove ybdb data directory
-		if err := common.RemoveAll(ybdb.dataDir); err != nil {
+		if err := common.RemoveAll(ybdb.BaseDir); err != nil {
 			log.Info(fmt.Sprintf("Error %s removing ybdb data dir %s.", err.Error(), ybdb.dataDir))
+			return err
+		}
+
+		if err := common.RemoveAll(ybdb.ybdbInstallDir); err != nil {
+			log.Info(fmt.Sprintf("Error %s removing ybdb data dir %s.", err.Error(), ybdb.ybdbInstallDir))
 			return err
 		}
 	}
@@ -237,18 +242,8 @@ func (ybdb Ybdb) Install() error {
 	config.GenerateTemplate(ybdb)
 	ybdb.extractYbdbPackage()
 	ybdb.Start()
-	//Wait for ysql to come up.
-	statusCheckRetryCount := 5
-	for statusCheckRetryCount > 0 && !ybdb.checkYbdbStatus() {
-		statusCheckRetryCount--
-		if statusCheckRetryCount == 0 {
-			log.Fatal("Unable to check ybdb status.")
-		}
-		time.Sleep(1)
-	}
-	if viper.GetBool("ybdb.install.enabled") {
-		ybdb.createYugawareDatabase()
-	}
+	ybdb.WaitForYbdbReadyOrFatal(5)
+	ybdb.createYugawareDatabase()
 	if !common.HasSudoAccess() {
 		ybdb.CreateCronJob()
 	}
@@ -301,6 +296,18 @@ func (ybdb Ybdb) extractYbdbPackage() {
 	common.Chown(ybdb.ybdbInstallDir, userName, userName, true)
 }
 
+func (ybdb Ybdb) WaitForYbdbReadyOrFatal(retryCount int) {
+	//Wait for ysql to come up.
+	for retryCount > 0 {
+		retryCount--
+		if ybdb.checkYbdbStatus() {
+			return
+		}
+		time.Sleep(1)
+	}
+	log.Fatal("Unable to check ybdb status.")
+}
+
 func (ybdb Ybdb) checkYbdbStatus() bool {
 	status, err := ybdb.queryYsql("select version();")
 	if err != nil {
@@ -340,4 +347,73 @@ func (ybdb Ybdb) queryYsql(query string) (string, error) {
 func (ybdb Ybdb) CreateCronJob() {
 	// TODO: Handle non-sudo case
 	log.Fatal("Cannot create cron job for YBDB.")
+	return
+}
+
+func (ybdb Ybdb) CreateBackup(backupPath ...string) {
+	ysql_dump := filepath.Join(common.GetActiveSymlink(), "/ybdb/postgres/bin/ysql_dump")
+	var outFile string
+	if len(backupPath) > 0 {
+		outFile = backupPath[0]
+	} else {
+		outFile = filepath.Join(common.GetBaseInstall(), "data", "ybdb_backup")
+	}
+	ybdb.createBackup(ysql_dump, outFile)
+}
+
+func (ybdb Ybdb) CreateBackupUsingPgDump(pgDumpPath string, backupPath string) {
+	ybdb.createBackup(pgDumpPath, backupPath)
+}
+
+func (ybdb Ybdb) createBackup(dumpPath string, outFile string) {
+	log.Debug("starting ybdb backup")
+
+	// Remove existing backup
+	if _, err := os.Stat(outFile); !errors.Is(err, os.ErrNotExist) {
+		os.Remove(outFile)
+	}
+	file, err := os.Create(outFile)
+	if err != nil {
+		log.Fatal("failed to open file " + outFile + ": " + err.Error())
+	}
+	defer file.Close()
+
+	// We want the active install directory even during the upgrade workflow.
+
+	args := []string{
+		"-p", "5433",
+		"-h", "localhost",
+		"-U", ybdb.getYbdbUsername(),
+		"-f", outFile,
+		"--clean",
+		"yugaware",
+	}
+	out := shell.Run(dumpPath, args...)
+	if !out.SucceededOrLog() {
+		log.Fatal("ybdb backup failed: " + out.Error.Error())
+	}
+	log.Debug("ybdb backup comlete")
+}
+
+func (ybdb Ybdb) RestoreBackup(backupFile string) {
+	log.Debug("ybdb starting restore from backup")
+	inFile := backupFile
+	if _, err := os.Stat(inFile); errors.Is(err, os.ErrNotExist) {
+		log.Fatal("backup file does not exist")
+	}
+
+	args := []string{
+		"-d", "yugaware",
+		"-f", inFile,
+		"-h", "localhost",
+		"-p", viper.GetString("ybdb.install.port"),
+		"-U", viper.GetString("service_username"),
+		"-q",
+	}
+
+	out := shell.Run(ybdb.ysqlBin, args...)
+	if !out.SucceededOrLog() {
+		log.Fatal("ybdb restore from backup failed: " + out.Error.Error())
+	}
+	log.Debug("ybdb restore from backup complete")
 }
