@@ -40,12 +40,12 @@ CREATE TABLE tenk2 (
 INSERT INTO tenk2 SELECT * FROM tenk1;
 
 --
--- create_index
+-- yb_pg_create_index
 -- (With modification to make them all nonconcurrent for performance.)
 --
 
-CREATE INDEX NONCONCURRENTLY tenk2_unique1 ON tenk2 USING btree(unique1 int4_ops);
+CREATE INDEX NONCONCURRENTLY tenk2_unique1 ON tenk2 USING btree(unique1 int4_ops ASC);
 
-CREATE INDEX NONCONCURRENTLY tenk2_unique2 ON tenk2 USING btree(unique2 int4_ops);
+CREATE INDEX NONCONCURRENTLY tenk2_unique2 ON tenk2 USING btree(unique2 int4_ops ASC);
 
-CREATE INDEX NONCONCURRENTLY tenk2_hundred ON tenk2 USING btree(hundred int4_ops);
+CREATE INDEX NONCONCURRENTLY tenk2_hundred ON tenk2 USING btree(hundred int4_ops ASC);
