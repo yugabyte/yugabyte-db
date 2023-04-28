@@ -95,7 +95,7 @@ To mitigate these issues, consider storing backups outside of the cluster, in ch
 
 To move a snapshot to external storage, gather all the relevant files from all the nodes and copy them along with the additional metadata required for restoring on a different cluster, as follows:
 
-1. Obtain the current YSQL schema catalog version by running the following query in [ysqlsh](../../../admin/ysqlsh/) cli:
+1. Obtain the current YSQL schema catalog version by running the following query in [ysqlsh](../../../admin/ysqlsh/):
 
     ```sql
     SELECT yb_catalog_version();
@@ -117,7 +117,7 @@ To move a snapshot to external storage, gather all the relevant files from all t
     ./postgres/bin/ysql_dump -h <ip> --include-yb-metadata --serializable-deferrable --create --schema-only --dbname <database_name> --file <database_name>_schema.sql
     ```
 
-1. Verify that the catalog version is the same as it was prior to creating the snapshot, as follows:
+1. Using ysqlsh, verify that the catalog version is the same as it was prior to creating the snapshot, as follows:
 
     ```sql
     SELECT yb_catalog_version();
