@@ -34,9 +34,13 @@ Before starting the upgrade:
   The workaround is to explicitly install the YB Controller by calling the following API after the software upgrade:
 
   ```sh
-  curl --location --request PUT '<YBA-url>/api/v1/customers/<customerUUID>/universes/<universeUUID>/ybc/install' \
+  curl --location --request PUT '<YBA-url>/api/v1/customers/<customerID>/universes/<UniverseID>/ybc/install' \
        --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
   ```
+
+  To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
+
+  You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<node-ip>/universes/<universeID>`).
 
     {{< /note >}}
 

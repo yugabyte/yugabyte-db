@@ -27,7 +27,7 @@ Before starting the upgrade:
 
   - Specify the release version to import.
 
-   {{< note title="Manually-provisioned on-premises universe upgrades" >}}
+    {{< note title="Manually-provisioned on-premises universe upgrades" >}}
 
   For v2.16.3, YB Controller does not get installed during a YugabyteDB software upgrade of a manually provisioned [on-premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) cron-managed universe.
 
@@ -38,7 +38,11 @@ Before starting the upgrade:
        --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
   ```
 
-    {{< /note >}}
+  To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
+
+  You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<node-ip>/universes/<universeID>`).
+
+     {{< /note >}}
 
   - Select the storage or URL that contains the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify the checksum value of the download.
 
