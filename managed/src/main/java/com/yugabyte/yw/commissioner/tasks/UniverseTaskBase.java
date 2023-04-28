@@ -94,6 +94,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForServerReady;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForTServerHeartBeats;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForYbcServer;
+import com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckMemory;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckSoftwareVersion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade;
@@ -138,6 +139,7 @@ import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.NodeAgent;
@@ -167,6 +169,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -2317,16 +2320,53 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     return flatParamsList;
   }
 
+  protected void handleFailedBackupAndRestore(
+      List<Backup> backupList,
+      List<Restore> restoreList,
+      boolean isAbort,
+      boolean isLoadBalancerAltered) {
+    if (backupList != null && CollectionUtils.isEmpty(backupList)) {
+      for (Backup backup : backupList) {
+        if (!isAbort && backup.getState().equals(BackupState.InProgress)) {
+          backup.transitionState(BackupState.Failed);
+          backup.setCompletionTime(new Date());
+          backup.save();
+        }
+      }
+    }
+    if (restoreList != null && !CollectionUtils.isEmpty(restoreList)) {
+      for (Restore restore : restoreList) {
+        if (!isAbort && restore.getState().equals(Restore.State.InProgress)) {
+          restore.update(restore.getTaskUUID(), Restore.State.Failed);
+        }
+      }
+    }
+    if (isLoadBalancerAltered) {
+      setTaskQueueAndRun(
+          () ->
+              createLoadBalancerStateChangeTask(true)
+                  .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse));
+    }
+  }
+
   protected Backup createAllBackupSubtasks(
       BackupRequestParams backupRequestParams, SubTaskGroupType subTaskGroupType) {
-    return createAllBackupSubtasks(backupRequestParams, subTaskGroupType, null, false);
+    return createAllBackupSubtasks(backupRequestParams, subTaskGroupType, false /* ybcBackup */);
   }
 
   protected Backup createAllBackupSubtasks(
       BackupRequestParams backupRequestParams,
       SubTaskGroupType subTaskGroupType,
-      Set<String> tablesToBackup,
       boolean ybcBackup) {
+    return createAllBackupSubtasks(
+        backupRequestParams, subTaskGroupType, ybcBackup, null /* tablesToBackup */);
+  }
+
+  protected Backup createAllBackupSubtasks(
+      BackupRequestParams backupRequestParams,
+      SubTaskGroupType subTaskGroupType,
+      boolean ybcBackup,
+      @Nullable Set<String> tablesToBackup) {
     ObjectMapper mapper = new ObjectMapper();
     BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
     Universe universe = Universe.getOrBadRequest(backupRequestParams.getUniverseUUID());
@@ -2396,6 +2436,11 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
     if (backupRequestParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(true).setSubTaskGroupType(subTaskGroupType);
+    }
+
+    if (ybcBackup) {
+      createMarkYBCBackupSucceeded(backup.getCustomerUUID(), backup.getBackupUUID())
+          .setSubTaskGroupType(subTaskGroupType);
     }
 
     return backup;
@@ -3505,6 +3550,19 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     params.setUniverseUUID(taskParams().getUniverseUUID());
     params.enable = enable;
     LoadBalancerStateChange task = createTask(LoadBalancerStateChange.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  /** Mark YBC backup state as completed and updates its expiry time. */
+  public SubTaskGroup createMarkYBCBackupSucceeded(UUID customerUUID, UUID backupUUID) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("MarkYBCBackupSucceed");
+    YBCBackupSucceeded.Params params = new YBCBackupSucceeded.Params();
+    params.customerUUID = customerUUID;
+    params.backupUUID = backupUUID;
+    YBCBackupSucceeded task = createTask(YBCBackupSucceeded.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
