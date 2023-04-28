@@ -132,7 +132,7 @@ Rejected connections can be caused by:
 
 **Fix the problem**
 
-Review your YSQL clients configuration to see, if connection pooling is configured and pool sizes are correct. If you need more connections, review YB-TServer memory usage. If enough free memory is present, increase the number of `ysql-max-connections`. Otherwise increase the number of YB-TServers to spread connections across them.
+Review your YSQL client's configuration to see if connection pooling is configured and pool sizes are correct. If you need more connections, review YB-TServer memory usage. If enough free memory is present, increase the number of `ysql-max-connections`. Otherwise increase the number of YB-TServers to spread connections across them.
 
 ### Hot shard
 
