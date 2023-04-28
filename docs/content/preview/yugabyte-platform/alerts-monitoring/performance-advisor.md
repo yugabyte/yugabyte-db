@@ -101,7 +101,7 @@ Queries should be distributed equally across all nodes in the cluster. Query loa
 
 **Fix the problem**
 
-If you see query load skew, contact {{% support-general %}}.
+If you see query load skew, contact {{% support-platform %}}.
 
 ### CPU skew and CPU usage
 
