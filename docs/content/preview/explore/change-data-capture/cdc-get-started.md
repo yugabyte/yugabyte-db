@@ -1,4 +1,4 @@
----
+<!---
 title: Get started with CDC in YugabyteDB
 headerTitle: Get started
 linkTitle: Get started
@@ -24,3 +24,5 @@ type: docs
 ## Transformations
 
 ## Content-based routing
+
+-->

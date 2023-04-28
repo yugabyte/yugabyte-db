@@ -1,4 +1,4 @@
----
+<!---
 title: CDC tutorials in YugabyteDB
 headerTitle: Tutorials
 linkTitle: Tutorials
@@ -24,3 +24,5 @@ type: docs
 ## Google Pub/Sub
 
 ## CDC examples
+
+-->

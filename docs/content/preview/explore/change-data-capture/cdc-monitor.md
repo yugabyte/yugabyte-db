@@ -1,4 +1,4 @@
----
+<!---
 title: CDC monitoring and debugging in YugabyteDB
 headerTitle: Monitor and debug
 linkTitle: Monitor
@@ -14,3 +14,5 @@ type: docs
 ---
 
 ## CDC metrics
+
+-->

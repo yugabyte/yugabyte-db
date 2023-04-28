@@ -38,7 +38,7 @@ type: indexpage
       </div>
     </a>
   </div>
-
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-get-started/">
       <div class="head">
@@ -49,8 +49,8 @@ type: indexpage
         Get started with Change data capture in YugabyteDB.
       </div>
     </a>
-  </div>
-
+  </div> -->
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-tutorials/">
       <div class="head">
@@ -61,8 +61,8 @@ type: indexpage
         Change data capture tutorials and examples.
       </div>
     </a>
-  </div>
-
+  </div> -->
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-configuration/">
       <div class="head">
@@ -73,8 +73,8 @@ type: indexpage
         Change data capture in YugabyteDB.
       </div>
     </a>
-  </div>
-
+  </div> -->
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-monitor/">
       <div class="head">
@@ -85,8 +85,8 @@ type: indexpage
         View CDC metrics.
       </div>
     </a>
-  </div>
-
+  </div> -->
+<!--
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="cdc-reference/">
       <div class="head">
@@ -97,6 +97,6 @@ type: indexpage
         Change data capture command reference.
       </div>
     </a>
-  </div>
+  </div> -->
 
 </div>
