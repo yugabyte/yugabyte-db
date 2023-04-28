@@ -4252,6 +4252,9 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
     RETURN_NOT_OK(CheckStatus(sys_catalog_->Upsert(leader_ready_term(), cluster_config.get()),
         "Updating cluster config in sys-catalog"));
     l.Commit();
+  } else {
+    // Make sure to release this lock, especially since we grab mutex_ again later.
+    l.Unlock();
   }
 
   // Set the values for the response.
