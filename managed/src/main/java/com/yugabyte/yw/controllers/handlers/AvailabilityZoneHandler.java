@@ -11,9 +11,7 @@ import com.yugabyte.yw.forms.AvailabilityZoneData;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
-
 import io.ebean.annotation.Transactional;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -67,7 +65,7 @@ public class AvailabilityZoneHandler {
           if (nodeCount > 0) {
             failDueToAZInUse(nodeCount, "delete");
           }
-          az.setActiveFlag(false);
+          az.setActive(false);
           az.update();
           return az;
         });

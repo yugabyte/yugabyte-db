@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.collect.ImmutableMap;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import io.fabric8.kubernetes.api.model.DeletionPropagation;
 import io.fabric8.kubernetes.api.model.Namespace;
 import io.fabric8.kubernetes.api.model.NamespaceBuilder;
@@ -24,26 +26,20 @@ import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.RollableScalableResource;
 import io.fabric8.kubernetes.client.dsl.base.PatchContext;
 import io.fabric8.kubernetes.client.dsl.base.PatchType;
-import lombok.extern.slf4j.Slf4j;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
-import java.util.concurrent.CompletableFuture;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import javax.annotation.Nullable;
 import javax.inject.Singleton;
-import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.Response;
-
-import com.google.common.collect.ImmutableMap;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 
 @Singleton
 @Slf4j

@@ -44,14 +44,14 @@
 #include "yb/client/transaction_manager.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/index_column.h"
+#include "yb/qlexpr/index_column.h"
 #include "yb/common/pgsql_error.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/transaction_error.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/log_anchor_registry.h"
@@ -251,6 +251,11 @@ DEFINE_RUNTIME_bool(tablet_exclusive_post_split_compaction, false,
        "unscheduled compactions are run before post-split compaction and no other compaction "
        "will get scheduled during post-split compaction.");
 
+DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
+       "Enables exclusive mode for any non-post-split full compaction for a tablet: all "
+       "scheduled and unscheduled compactions are run before the full compaction and no other "
+       "compactions will get scheduled during a full compaction.");
+
 // FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
 // FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
 // we're writing a mixture of SST files with and without UserFrontiers, to ensure that we're
@@ -302,6 +307,8 @@ using dockv::DocKey;
 using docdb::DocRowwiseIterator;
 using dockv::SubDocKey;
 using docdb::StorageDbType;
+using qlexpr::IndexInfo;
+using qlexpr::QLTableRow;
 
 const std::hash<std::string> hash_for_data_root_dir;
 
@@ -516,14 +523,6 @@ Tablet::Tablet(const TabletInitData& data)
   // Create index table metadata cache for secondary index update.
   if (has_index) {
     CreateNewYBMetaDataCache();
-  }
-
-  // If this is a unique index tablet, set up the index primary key schema.
-  if (table_info->index_info && table_info->index_info->is_unique()) {
-    unique_index_key_schema_ = std::make_unique<Schema>();
-    const auto ids = table_info->index_info->index_key_column_ids();
-    CHECK_OK(table_info->schema().CreateProjectionByIdsIgnoreMissing(
-        ids, unique_index_key_schema_.get()));
   }
 
   if (data.transaction_coordinator_context &&
@@ -1186,7 +1185,7 @@ Status Tablet::DeleteRocksDBs(const std::vector<std::string>& db_paths) {
 }
 
 Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRowIterator(
-    const Schema &projection,
+    const dockv::ReaderProjection& projection,
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline,
@@ -1204,25 +1203,22 @@ Result<std::unique_ptr<docdb::DocRowwiseIterator>> Tablet::NewUninitializedDocRo
 
   VLOG_WITH_PREFIX(2) << "Created new Iterator reading at " << read_hybrid_time.ToString();
 
-  const std::shared_ptr<tablet::TableInfo> table_info =
-      VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  const Schema& schema = table_info->schema();
-  auto mapped_projection = std::make_unique<Schema>();
-  RETURN_NOT_OK(schema.GetMappedReadProjection(projection, mapped_projection.get()));
+  const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(table_id));
 
   auto txn_op_ctx = VERIFY_RESULT(CreateTransactionOperationContext(
       /* transaction_id */ boost::none,
-      schema.table_properties().is_ysql_catalog_table()));
+      table_info->schema().table_properties().is_ysql_catalog_table()));
   const auto read_time = read_hybrid_time
       ? read_hybrid_time
       : ReadHybridTime::SingleTime(VERIFY_RESULT(SafeTime(RequireLease::kFalse)));
   return std::make_unique<DocRowwiseIterator>(
-      std::move(mapped_projection), table_info->doc_read_context, txn_op_ctx,
+      projection, table_info->doc_read_context, txn_op_ctx,
       doc_db(), deadline, read_time, &pending_non_abortable_op_counter_);
+  return nullptr;
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
-    const Schema &projection,
+    const dockv::ReaderProjection& projection,
     const ReadHybridTime& read_hybrid_time,
     const TableId& table_id,
     CoarseTimePoint deadline) const {
@@ -1236,7 +1232,9 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::NewRowIterator(
     const TableId& table_id) const {
   const std::shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  return NewRowIterator(table_info->schema(), {}, table_id);
+  CHECK(false);
+  dockv::ReaderProjection projection(table_info->schema());
+  return NewRowIterator(projection, {}, table_id);
 }
 
 Status Tablet::ApplyRowOperations(
@@ -2001,7 +1999,7 @@ HybridTime Tablet::ApplierSafeTime(HybridTime min_allowed, CoarseTimePoint deadl
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIterator(
-    const Schema& projection, const ReadHybridTime& time, const string& next_key,
+    const dockv::ReaderProjection& projection, const ReadHybridTime& time, const string& next_key,
     const TableId& table_id) {
   VLOG_WITH_PREFIX(2) << "The nextKey is " << next_key;
 
@@ -2056,7 +2054,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
 
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
-      table_info.table_type(), schema, IndexMap(), partition_schema, boost::none,
+      table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, boost::none,
       table_info.schema_version(), op_id);
 
   return Status::OK();
@@ -2417,48 +2415,28 @@ Status Tablet::BackfillIndexesForYsql(
   return Status::OK();
 }
 
-std::vector<yb::ColumnSchema> Tablet::GetColumnSchemasForIndex(
+std::vector<ColumnId> Tablet::GetColumnSchemasForIndex(
     const std::vector<IndexInfo>& indexes) {
-  std::unordered_set<yb::ColumnId> col_ids_set;
-  std::vector<yb::ColumnSchema> columns;
+  std::unordered_set<ColumnId> col_ids_set;
+  std::vector<ColumnId> columns;
 
-  for (auto idx : schema()->column_ids()) {
-    if (schema()->is_key_column(idx)) {
-      col_ids_set.insert(idx);
-      auto res = schema()->column_by_id(idx);
-      if (res) {
-        columns.push_back(*res);
-      } else {
-        LOG(DFATAL) << "Unexpected: cannot find the column in the main table for "
-                    << idx;
-      }
+  for (auto id : schema()->column_ids()) {
+    if (schema()->is_key_column(id)) {
+      col_ids_set.insert(id);
+      columns.push_back(id);
     }
   }
   for (const IndexInfo& idx : indexes) {
     for (const auto& idx_col : idx.columns()) {
-      if (col_ids_set.find(idx_col.indexed_column_id) == col_ids_set.end()) {
-        col_ids_set.insert(idx_col.indexed_column_id);
-        auto res = schema()->column_by_id(idx_col.indexed_column_id);
-        if (res) {
-          columns.push_back(*res);
-        } else {
-          LOG(DFATAL) << "Unexpected: cannot find the column in the main table for "
-                      << idx_col.indexed_column_id;
-        }
+      if (col_ids_set.insert(idx_col.indexed_column_id).second) {
+        columns.push_back(idx_col.indexed_column_id);
       }
     }
     if (idx.where_predicate_spec()) {
       for (const auto col_in_pred : idx.where_predicate_spec()->column_ids()) {
         ColumnId col_id_in_pred(col_in_pred);
-        if (col_ids_set.find(col_id_in_pred) == col_ids_set.end()) {
-          col_ids_set.insert(col_id_in_pred);
-          auto res = schema()->column_by_id(col_id_in_pred);
-          if (res) {
-            columns.push_back(*res);
-          } else {
-            LOG(DFATAL) << "Unexpected: cannot find the column in the main table for " <<
-              col_id_in_pred;
-          }
+        if (col_ids_set.insert(col_id_in_pred).second) {
+          columns.push_back(col_id_in_pred);
         }
       }
     }
@@ -2524,9 +2502,9 @@ Status Tablet::BackfillIndexes(
   VLOG(2) << "Begin BackfillIndexes at " << read_time << " for " << AsString(indexes);
 
   std::vector<TableId> index_ids = GetIndexIds(indexes);
-  std::vector<yb::ColumnSchema> columns = GetColumnSchemasForIndex(indexes);
+  auto columns = GetColumnSchemasForIndex(indexes);
 
-  Schema projection(columns, {}, schema()->num_key_columns());
+  dockv::ReaderProjection projection(*schema(), columns);
   // We must hold this RequestScope for the lifetime of this iterator to ensure backfill has a
   // consistent snapshot of the tablet w.r.t. transaction state.
   RequestScope scope;
@@ -2621,7 +2599,7 @@ Status Tablet::UpdateIndexInBatches(
     docdb::IndexRequests* index_requests,
     std::unordered_set<TableId>* failed_indexes) {
   const QLTableRow& kEmptyRow = QLTableRow::empty_row();
-  QLExprExecutor expr_executor;
+  qlexpr::QLExprExecutor expr_executor;
 
   for (const IndexInfo& index : indexes) {
     QLWriteRequestPB* const index_request = VERIFY_RESULT(
@@ -2779,7 +2757,7 @@ Status Tablet::VerifyIndexTableConsistencyForCQL(
     std::unordered_map<TableId, uint64>* consistency_stats,
     std::string* verified_until) {
   std::vector<TableId> index_ids = GetIndexIds(indexes);
-  std::vector<yb::ColumnSchema> columns = GetColumnSchemasForIndex(indexes);
+  auto columns = GetColumnSchemasForIndex(indexes);
   return VerifyTableConsistencyForCQL(
       index_ids, columns, start_key, num_rows, deadline, read_time, false, consistency_stats,
       verified_until);
@@ -2793,7 +2771,7 @@ Status Tablet::VerifyMainTableConsistencyForCQL(
     const HybridTime read_time,
     std::unordered_map<TableId, uint64>* consistency_stats,
     std::string* verified_until) {
-  const std::vector<yb::ColumnSchema>& columns = schema()->columns();
+  const auto& columns = schema()->column_ids();
   const std::vector<TableId>& table_ids = {main_table_id};
   return VerifyTableConsistencyForCQL(
       table_ids, columns, start_key, num_rows, deadline, read_time, true, consistency_stats,
@@ -2802,7 +2780,7 @@ Status Tablet::VerifyMainTableConsistencyForCQL(
 
 Status Tablet::VerifyTableConsistencyForCQL(
     const std::vector<TableId>& table_ids,
-    const std::vector<yb::ColumnSchema>& columns,
+    const std::vector<ColumnId>& columns,
     const std::string& start_key,
     const int num_rows,
     const CoarseTimePoint deadline,
@@ -2810,7 +2788,7 @@ Status Tablet::VerifyTableConsistencyForCQL(
     const bool is_main_table,
     std::unordered_map<TableId, uint64>* consistency_stats,
     std::string* verified_until) {
-  Schema projection(columns, {}, schema()->num_key_columns());
+  dockv::ReaderProjection projection(*schema(), columns);
   // We must hold this RequestScope for the lifetime of this iterator to ensure verification has a
   // consistent snapshot of the tablet w.r.t. transaction state.
   RequestScope scope;
@@ -3433,9 +3411,9 @@ Status Tablet::ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reas
   rocksdb::CompactRangeOptions options;
   options.skip_flush = skip_flush;
   options.compaction_reason = compaction_reason;
-  if (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) {
-    options.exclusive_manual_compaction = FLAGS_tablet_exclusive_post_split_compaction;
-  }
+  options.exclusive_manual_compaction =
+      (compaction_reason == rocksdb::CompactionReason::kPostSplitCompaction) ?
+      FLAGS_tablet_exclusive_post_split_compaction : FLAGS_tablet_exclusive_full_compaction;
 
   if (regular_db_) {
     RETURN_NOT_OK(docdb::ForceRocksDBCompact(regular_db_.get(), options));

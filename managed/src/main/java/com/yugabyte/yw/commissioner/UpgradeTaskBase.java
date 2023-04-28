@@ -239,9 +239,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     for (NodeDetails node : nodes) {
       Set<ServerType> serverTypes = processTypesFunction.apply(node);
       hasTServer = hasTServer || serverTypes.contains(ServerType.TSERVER);
-      if (hasTServer && isYbcPresent) {
-        serverTypes.add(ServerType.CONTROLLER);
-      }
       typesByNode.put(node, serverTypes);
     }
 
@@ -271,6 +268,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         rollingUpgradeLambda.run(singletonNodeList, processTypes);
       }
 
+      if (isYbcPresent) {
+        createServerControlTask(node, ServerType.CONTROLLER, "stop")
+            .setSubTaskGroupType(subGroupType);
+      }
       stopProcessesOnNode(
           node, processTypes, false, context.reconfigureMaster && activeRole, subGroupType);
 
@@ -283,26 +284,19 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           if (!context.skipStartingProcesses) {
             createServerControlTask(node, processType, "start").setSubTaskGroupType(subGroupType);
           }
-          if (processType == ServerType.CONTROLLER) {
-            createWaitForYbcServerTask(new HashSet<>(singletonNodeList))
+          createWaitForServersTasks(singletonNodeList, processType)
+              .setSubTaskGroupType(subGroupType);
+          if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
+            createWaitForServersTasks(singletonNodeList, ServerType.YSQLSERVER)
                 .setSubTaskGroupType(subGroupType);
-          } else {
-            createWaitForServersTasks(singletonNodeList, processType)
-                .setSubTaskGroupType(subGroupType);
-            if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
-              createWaitForServersTasks(singletonNodeList, ServerType.YSQLSERVER)
-                  .setSubTaskGroupType(subGroupType);
-            }
           }
 
           if (processType == ServerType.MASTER && context.reconfigureMaster) {
             // Add stopped master to the quorum.
             createChangeConfigTask(node, true /* isAdd */, subGroupType);
           }
-          if (processType != ServerType.CONTROLLER) {
-            createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
-                .setSubTaskGroupType(subGroupType);
-          }
+          createWaitForServerReady(node, processType, getSleepTimeForProcess(processType))
+              .setSubTaskGroupType(subGroupType);
         }
         createWaitForKeyInMemoryTask(node).setSubTaskGroupType(subGroupType);
         // remove leader blacklist
@@ -310,9 +304,16 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           removeFromLeaderBlackListIfAvailable(Collections.singletonList(node), subGroupType);
         }
         for (ServerType processType : processTypes) {
-          if (processType != ServerType.CONTROLLER) {
-            createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+          createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+        }
+
+        if (isYbcPresent) {
+          if (!context.skipStartingProcesses) {
+            createServerControlTask(node, ServerType.CONTROLLER, "start")
+                .setSubTaskGroupType(subGroupType);
           }
+          createWaitForYbcServerTask(new HashSet<>(singletonNodeList))
+              .setSubTaskGroupType(subGroupType);
         }
       }
 
@@ -371,8 +372,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Universe universe = getUniverse();
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
     return tServerNodes != null
-        ? tServerNodes
-            .stream()
+        ? tServerNodes.stream()
             .filter(node -> node.placementUuid.equals(primaryClusterUuid))
             .filter(node -> masterNodes == null || !masterNodes.contains(node))
             .collect(Collectors.toList())
@@ -394,40 +394,35 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     NodeState nodeState = getNodeState();
 
     createSetNodeStateTasks(nodes, nodeState).setSubTaskGroupType(subGroupType);
-    Set<ServerType> processTypes = new HashSet<>();
-    processTypes.add(processType);
-    if (processType == ServerType.TSERVER && isYbcPresent) {
-      processTypes.add(ServerType.CONTROLLER);
-    }
 
     if (context.runBeforeStopping) {
-      nonRollingUpgradeLambda.run(nodes, processTypes);
+      nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
     }
 
-    for (ServerType serverType : processTypes) {
-      createServerControlTasks(nodes, serverType, "stop").setSubTaskGroupType(subGroupType);
+    if (isYbcPresent) {
+      createServerControlTasks(nodes, ServerType.CONTROLLER, "stop")
+          .setSubTaskGroupType(subGroupType);
     }
+    createServerControlTasks(nodes, processType, "stop").setSubTaskGroupType(subGroupType);
 
     if (!context.runBeforeStopping) {
-      nonRollingUpgradeLambda.run(nodes, processTypes);
+      nonRollingUpgradeLambda.run(nodes, Collections.singleton(processType));
     }
 
     if (activeRole) {
-      for (ServerType serverType : processTypes) {
-        createServerControlTasks(nodes, serverType, "start").setSubTaskGroupType(subGroupType);
-        if (serverType == ServerType.CONTROLLER) {
-          createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes))
-              .setSubTaskGroupType(subGroupType);
-        } else {
-          createWaitForServersTasks(nodes, serverType)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-        }
+      createServerControlTasks(nodes, processType, "start").setSubTaskGroupType(subGroupType);
+      createWaitForServersTasks(nodes, processType)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      if (isYbcPresent) {
+        createServerControlTasks(nodes, ServerType.CONTROLLER, "start")
+            .setSubTaskGroupType(subGroupType);
+        createWaitForYbcServerTask(new HashSet<NodeDetails>(nodes))
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
     }
     if (context.postAction != null) {
       nodes.forEach(context.postAction);
     }
-
     createSetNodeStateTasks(nodes, NodeState.Live).setSubTaskGroupType(subGroupType);
   }
 
@@ -626,8 +621,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   private List<NodeDetails> filterForClusters(List<NodeDetails> nodes) {
     Set<UUID> clusterUUIDs =
         taskParams().clusters.stream().map(c -> c.uuid).collect(Collectors.toSet());
-    return nodes
-        .stream()
+    return nodes.stream()
         .filter(n -> clusterUUIDs.contains(n.placementUuid))
         .collect(Collectors.toList());
   }
@@ -677,8 +671,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     if (nodes.isEmpty()) {
       return nodes;
     }
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(node -> node.state == NodeState.Live)
                 .thenComparing(node -> leaderMasterAddress.equals(node.cloudInfo.private_ip))
@@ -696,8 +689,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     Map<UUID, Map<UUID, PlacementAZ>> placementAZMapPerCluster =
         PlacementInfoUtil.getPlacementAZMapPerCluster(universe);
     UUID primaryClusterUuid = universe.getUniverseDetails().getPrimaryCluster().uuid;
-    return nodes
-        .stream()
+    return nodes.stream()
         .sorted(
             Comparator.<NodeDetails, Boolean>comparing(
                     // Fully upgrade primary cluster first

@@ -39,7 +39,7 @@
 #include <utility>
 #include <vector>
 
-#include <boost/optional/optional.hpp>
+#include <boost/range/iterator_range_core.hpp>
 
 #include <glog/logging.h>
 
@@ -614,6 +614,14 @@ class Schema {
 
   const std::vector<ColumnId>& column_ids() const {
     return col_ids_;
+  }
+
+  auto hash_key_column_ids() const {
+    return boost::make_iterator_range(col_ids_.begin(), col_ids_.begin() + num_hash_key_columns_);
+  }
+
+  auto key_column_ids() const {
+    return boost::make_iterator_range(col_ids_.begin(), col_ids_.begin() + num_key_columns_);
   }
 
   const std::vector<std::string> column_names() const {

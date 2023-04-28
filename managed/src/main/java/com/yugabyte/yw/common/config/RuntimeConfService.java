@@ -10,8 +10,6 @@
 
 package com.yugabyte.yw.common.config;
 
-import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
-
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Streams;
@@ -90,9 +88,7 @@ public class RuntimeConfService extends AuthenticatedController {
     return Streams.concat(
             keyMetaData.keySet().stream(),
             mutableObjects.stream(),
-            config
-                .entrySet()
-                .stream()
+            config.entrySet().stream()
                 .map(Entry::getKey)
                 .filter(
                     key ->
@@ -273,9 +269,7 @@ public class RuntimeConfService extends AuthenticatedController {
       UUID customerUUID, UUID scopeUUID, boolean isSuperAdmin) {
     RuntimeConfigFormData runtimeConfigFormData =
         listScopes(Customer.getOrBadRequest(customerUUID), isSuperAdmin);
-    return runtimeConfigFormData
-        .scopedConfigList
-        .stream()
+    return runtimeConfigFormData.scopedConfigList.stream()
         .filter(config -> config.uuid.equals(scopeUUID))
         .findFirst();
   }

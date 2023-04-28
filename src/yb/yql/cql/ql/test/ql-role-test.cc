@@ -240,7 +240,7 @@ class TestQLPermission : public QLTestAuthentication {
         role_name, resource);
   }
 
-  void CheckRowContents(const QLRow& row, const string& canonical_resource,
+  void CheckRowContents(const qlexpr::QLRow& row, const string& canonical_resource,
                         const std::vector<string> &permissions, const string& role_name) {
     EXPECT_EQ(role_name, row.column(0).string_value());
     EXPECT_EQ(canonical_resource, row.column(1).string_value());
@@ -281,7 +281,7 @@ class TestQLPermission : public QLTestAuthentication {
 
     EXPECT_EQ(1, row_block->row_count());
 
-    QLRow &row = row_block->row(0);
+    auto& row = row_block->row(0);
     CheckRowContents(row, canonical_resource, permissions, role_name);
 
     std::unordered_map<std::string, uint64_t>  permission_map = {
@@ -385,8 +385,8 @@ TEST_F(TestQLPermission, TestGrantRevokeAll) {
   auto row_block = processor->row_block();
   EXPECT_EQ(2, row_block->row_count());  // 2 Resources found.
 
-  QLRow& keyspaces_row = row_block->row(0);
-  QLRow& roles_row = row_block->row(1);
+  auto& keyspaces_row = row_block->row(0);
+  auto& roles_row = row_block->row(1);
   CheckRowContents(roles_row, canonical_resource_roles, permissions_roles, role_name);
   CheckRowContents(keyspaces_row, canonical_resource_keyspaces, permissions_keyspaces, role_name);
 
@@ -679,7 +679,7 @@ class TestQLRole : public QLTestAuthentication {
     auto row_block = processor->row_block();
     EXPECT_EQ(1, row_block->row_count());
 
-    QLRow &row = row_block->row(0);
+    auto& row = row_block->row(0);
 
     EXPECT_EQ(InternalType::kListValue, row.column(3).type());
     QLSeqValuePB list_value = row.column(3).list_value();
@@ -710,7 +710,7 @@ class TestQLRole : public QLTestAuthentication {
     CHECK(s.ok());
     auto row_block = processor->row_block();
     EXPECT_EQ(2, row_block->row_count());
-    QLRow &row = row_block->row(0);
+    auto& row = row_block->row(0);
 
     EXPECT_EQ(role_name, row.column(0).string_value());
     EXPECT_EQ(can_login, row.column(1).bool_value());
@@ -749,7 +749,7 @@ class TestQLRole : public QLTestAuthentication {
     CHECK_OK(processor->Run(select));
     auto row_block = processor->row_block();
     EXPECT_EQ(1, row_block->row_count());
-    QLRow& row = row_block->row(0);
+    auto& row = row_block->row(0);
 
     EXPECT_EQ(role_name, row.column(0).string_value());
     EXPECT_EQ(can_login, row.column(1).bool_value());

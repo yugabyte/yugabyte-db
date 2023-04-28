@@ -1088,9 +1088,7 @@ public class TablesControllerTest extends FakeDBApplication {
     assertEquals(3, ap_south_1_tablespace.numReplicas);
     assertEquals(3, ap_south_1_tablespace.placementBlocks.size());
     Map<String, PlacementBlock> ap_south_1_tablespace_zones =
-        ap_south_1_tablespace
-            .placementBlocks
-            .stream()
+        ap_south_1_tablespace.placementBlocks.stream()
             .collect(Collectors.toMap(x -> x.zone, Function.identity()));
     assertNotNull(ap_south_1_tablespace_zones.get("ap-south-1a"));
     assertEquals("ap-south-1", ap_south_1_tablespace_zones.get("ap-south-1a").region);
@@ -1281,24 +1279,21 @@ public class TablesControllerTest extends FakeDBApplication {
 
     Assert.assertEquals(
         Util.getUUIDRepresentation(ti1.getId().toStringUtf8()),
-        tableInfoRespList
-            .stream()
+        tableInfoRespList.stream()
             .filter(x -> x.tableName.equals("bank_transactions_india"))
             .findAny()
             .get()
             .parentTableUUID);
     Assert.assertEquals(
         Util.getUUIDRepresentation(ti1.getId().toStringUtf8()),
-        tableInfoRespList
-            .stream()
+        tableInfoRespList.stream()
             .filter(x -> x.tableName.equals("bank_transactions_eu"))
             .findAny()
             .get()
             .parentTableUUID);
     Assert.assertEquals(
         null,
-        tableInfoRespList
-            .stream()
+        tableInfoRespList.stream()
             .filter(x -> x.tableName.equals("bank_transactions"))
             .findAny()
             .get()
@@ -1427,8 +1422,7 @@ public class TablesControllerTest extends FakeDBApplication {
     Assert.assertEquals(7, tableInfoRespList.size());
 
     List<TableInfoResp> db1 =
-        tableInfoRespList
-            .stream()
+        tableInfoRespList.stream()
             .filter(x -> "db1".equals(x.keySpace))
             .collect(Collectors.toList());
 
@@ -1452,8 +1446,7 @@ public class TablesControllerTest extends FakeDBApplication {
         db1.stream().filter(x -> x.tableName.equals("db1.table1")).findAny().get().parentTableUUID);
 
     List<TableInfoResp> db2 =
-        tableInfoRespList
-            .stream()
+        tableInfoRespList.stream()
             .filter(x -> "db2".equals(x.keySpace))
             .collect(Collectors.toList());
     Assert.assertEquals(3, db2.size());
@@ -1469,8 +1462,7 @@ public class TablesControllerTest extends FakeDBApplication {
         db2.stream().filter(x -> x.tableName.equals("db2.table1")).findAny().get().parentTableUUID);
 
     List<TableInfoResp> db3 =
-        tableInfoRespList
-            .stream()
+        tableInfoRespList.stream()
             .filter(x -> "db3".equals(x.keySpace))
             .collect(Collectors.toList());
     Assert.assertEquals(1, db3.size());

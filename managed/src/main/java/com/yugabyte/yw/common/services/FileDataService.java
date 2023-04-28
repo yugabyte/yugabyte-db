@@ -40,7 +40,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -99,8 +98,7 @@ public class FileDataService {
       }
       // List of files on disk with relative path to storage.
       Set<String> filesOnDisk =
-          diskFiles
-              .stream()
+          diskFiles.stream()
               .map(File::getAbsolutePath)
               .map(fileName -> fileName.replace(storagePath, ""))
               .collect(Collectors.toSet());

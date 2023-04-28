@@ -1,10 +1,9 @@
 package com.yugabyte.yw.models.helpers.provider;
 
-import java.util.HashMap;
-import java.util.Map;
-
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
+import java.util.HashMap;
+import java.util.Map;
 
 public class DefaultCloudInfo implements CloudInfoInterface {
 

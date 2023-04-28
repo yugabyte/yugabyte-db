@@ -66,8 +66,7 @@ public class AlertTemplateSettingsService {
     settings.forEach(s -> s.setCustomerUUID(customerUUID));
     List<AlertTemplateSettings> before = Collections.emptyList();
     Set<UUID> existingUuids =
-        settings
-            .stream()
+        settings.stream()
             .filter(configuration -> !configuration.isNew())
             .map(AlertTemplateSettings::getUuid)
             .collect(Collectors.toSet());
@@ -77,13 +76,11 @@ public class AlertTemplateSettingsService {
       before = list(filter);
     }
     Map<UUID, AlertTemplateSettings> beforeMap =
-        before
-            .stream()
+        before.stream()
             .collect(Collectors.toMap(AlertTemplateSettings::getUuid, Function.identity()));
 
     Map<EntityOperation, List<AlertTemplateSettings>> toCreateAndUpdate =
-        settings
-            .stream()
+        settings.stream()
             .peek(s -> prepareForSave(s, beforeMap.get(s.getUuid())))
             .peek(s -> validate(s, beforeMap.get(s.getUuid())))
             .collect(
@@ -119,17 +116,17 @@ public class AlertTemplateSettingsService {
       throw new PlatformServiceException(
           BAD_REQUEST, "Can't get Alert Template Settings by null uuid");
     }
-    return list(AlertTemplateSettingsFilter.builder().uuid(uuid).build())
-        .stream()
+    return list(AlertTemplateSettingsFilter.builder().uuid(uuid).build()).stream()
         .findFirst()
         .orElse(null);
   }
 
   public AlertTemplateSettings get(UUID customerUUID, String template) {
-    return list(AlertTemplateSettingsFilter.builder()
-            .customerUuid(customerUUID)
-            .template(template)
-            .build())
+    return list(
+            AlertTemplateSettingsFilter.builder()
+                .customerUuid(customerUUID)
+                .template(template)
+                .build())
         .stream()
         .findFirst()
         .orElse(null);
@@ -208,8 +205,7 @@ public class AlertTemplateSettingsService {
 
   private void writeDefinitions(UUID customerUUID, List<AlertTemplateSettings> settings) {
     Set<AlertTemplate> templates =
-        settings
-            .stream()
+        settings.stream()
             .map(AlertTemplateSettings::getTemplate)
             .map(AlertTemplate::valueOf)
             .collect(Collectors.toSet());
@@ -224,8 +220,7 @@ public class AlertTemplateSettingsService {
     AlertDefinitionFilter alertDefinitionFilter =
         AlertDefinitionFilter.builder()
             .configurationUuids(
-                affectedConfigurations
-                    .stream()
+                affectedConfigurations.stream()
                     .map(AlertConfiguration::getUuid)
                     .collect(Collectors.toSet()))
             .build();

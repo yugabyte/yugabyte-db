@@ -168,9 +168,7 @@ public class NodeAgentControllerTest extends FakeDBApplication {
     assertOk(result);
 
     NodeConfig pamNode =
-        testNode
-            .nodeConfigs
-            .stream()
+        testNode.nodeConfigs.stream()
             .filter(n -> n.type == NodeConfig.Type.PAM_LIMITS_WRITABLE)
             .findFirst()
             .get();

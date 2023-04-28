@@ -23,8 +23,8 @@ export class HTMLSerializer {
     return this.editor.children.map((child) => this.serializeElementToHTML(child)).join('');
   }
 
-  serializeElement (nodes: Descendant[]) {
-    return nodes.map((child) => this.serializeElementToHTML(child)).join('')
+  serializeElement(nodes: Descendant[]) {
+    return nodes.map((child) => this.serializeElementToHTML(child)).join('');
   }
 
   serializeElementToHTML(node: CustomText | CustomElement): string {

@@ -4,6 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.subtasks.xcluster;
 import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.models.Customer;
@@ -11,9 +12,8 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
-import com.yugabyte.yw.models.XClusterTableConfig;
-import java.util.Collections;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -22,7 +22,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonNet.HostPortPB;
@@ -36,8 +35,9 @@ import org.yb.master.MasterDdlOuterClass;
 public class XClusterConfigSync extends XClusterConfigTaskBase {
 
   @Inject
-  protected XClusterConfigSync(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected XClusterConfigSync(
+      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   @Override
@@ -161,9 +161,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
           // Get table ids for this replication group.
           Map<String, CdcConsumer.StreamEntryPB> tableMap = value.getStreamMapMap();
           Set<String> xClusterConfigTables =
-              tableMap
-                  .values()
-                  .stream()
+              tableMap.values().stream()
                   .map(CdcConsumer.StreamEntryPB::getProducerTableId)
                   .collect(Collectors.toSet());
           log.info(
@@ -218,9 +216,7 @@ public class XClusterConfigSync extends XClusterConfigTaskBase {
       Optional<ProducerEntryPB> txnReplicationGroupOptional) {
     Map<String, CdcConsumer.StreamEntryPB> tableMap = replicationGroupEntry.getStreamMapMap();
     Set<String> xClusterConfigTables =
-        tableMap
-            .values()
-            .stream()
+        tableMap.values().stream()
             .map(CdcConsumer.StreamEntryPB::getProducerTableId)
             .collect(Collectors.toSet());
 

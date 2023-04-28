@@ -307,9 +307,7 @@ public class Scheduler {
 
     List<UUID> universeUUIDs =
         rotateAllUniverses
-            ? customer
-                .getUniversesForProvider(providerUUID)
-                .stream()
+            ? customer.getUniversesForProvider(providerUUID).stream()
                 .map(universe -> universe.getUniverseUUID())
                 .collect(Collectors.toList())
             : taskParams.getUniverseUUIDs();

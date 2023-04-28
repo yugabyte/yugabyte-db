@@ -155,6 +155,43 @@ Result<HybridTime> HybridTime::ParseHybridTime(std::string input) {
   return HybridTime::FromMicros(ts.ToInt64());
 }
 
+uint64_t HybridTime::GetPhysicalValueMillis() const {
+  return GetPhysicalValueMicros() / MonoTime::kMicrosecondsPerMillisecond;
+}
+
+uint64_t HybridTime::GetPhysicalValueNanos() const {
+  // Conversion to nanoseconds here is safe from overflow since 2^kBitsForLogicalComponent is less
+  // than MonoTime::kNanosecondsPerMicrosecond. Although, we still just check for sanity.
+  uint64_t micros = GetPhysicalValueMicros();
+  CHECK_LE(micros, std::numeric_limits<uint64_t>::max() / MonoTime::kNanosecondsPerMicrosecond);
+  return micros * MonoTime::kNanosecondsPerMicrosecond;
+}
+
 const char* const HybridTime::kHybridTimeDebugStrPrefix = "HT";
+
+int CompareHybridTimesToDelta(HybridTime begin, HybridTime end, MonoDelta delta) {
+  if (end < begin) {
+    return -1;
+  }
+  // We use nanoseconds since MonoDelta has nanosecond granularity.
+  uint64_t begin_nanos = begin.GetPhysicalValueNanos();
+  uint64_t end_nanos = end.GetPhysicalValueNanos();
+  uint64_t delta_nanos = delta.ToNanoseconds();
+  if (end_nanos - begin_nanos > delta_nanos) {
+    return 1;
+  } else if (end_nanos - begin_nanos == delta_nanos) {
+    uint64_t begin_logical = begin.GetLogicalValue();
+    uint64_t end_logical = end.GetLogicalValue();
+    if (end_logical > begin_logical) {
+      return 1;
+    } else if (end_logical < begin_logical) {
+      return -1;
+    } else {
+      return 0;
+    }
+  } else {
+    return -1;
+  }
+}
 
 }  // namespace yb

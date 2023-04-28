@@ -445,9 +445,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
 
     List<Cluster> onPremClusters =
-        universeDetails
-            .clusters
-            .stream()
+        universeDetails.clusters.stream()
             .filter(c -> c.userIntent.providerType.equals(CloudType.onprem))
             .collect(Collectors.toList());
     for (Cluster onPremCluster : onPremClusters) {
@@ -457,8 +455,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   private void updateOnPremNodeUuids(Collection<NodeDetails> clusterNodes, Cluster cluster) {
     Map<String, List<NodeDetails>> groupByType =
-        clusterNodes
-            .stream()
+        clusterNodes.stream()
             .collect(Collectors.groupingBy(n -> cluster.userIntent.getInstanceTypeForNode(n)));
     groupByType.forEach(
         (instanceType, nodes) -> {
@@ -468,10 +465,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   public void setCloudNodeUuids(Universe universe) {
     // Set random node UUIDs for nodes in the cloud.
-    universe
-        .getUniverseDetails()
-        .clusters
-        .stream()
+    universe.getUniverseDetails().clusters.stream()
         .filter(c -> !c.userIntent.providerType.equals(CloudType.onprem))
         .flatMap(c -> taskParams().getNodesInCluster(c.uuid).stream())
         .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
@@ -1548,15 +1542,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   public Stream<NodeDetails> findNodesInUniverse(Universe universe, Set<NodeDetails> nodes) {
     // Node names to nodes in Universe map to find.
     Map<String, NodeDetails> nodesInUniverseMap =
-        universe
-            .getUniverseDetails()
-            .nodeDetailsSet
-            .stream()
+        universe.getUniverseDetails().nodeDetailsSet.stream()
             .collect(Collectors.toMap(NodeDetails::getNodeName, Function.identity()));
 
     // Locate the given node in the Universe by using the node name.
-    return nodes
-        .stream()
+    return nodes.stream()
         .map(
             node -> {
               String nodeName = node.getNodeName();
@@ -1682,8 +1672,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    */
   public void createPreflightNodeCheckTasks(Universe universe, Collection<Cluster> clusters) {
     Set<Cluster> onPremClusters =
-        clusters
-            .stream()
+        clusters.stream()
             .filter(cluster -> cluster.userIntent.providerType == CloudType.onprem)
             .collect(Collectors.toSet());
     if (onPremClusters.isEmpty()) {

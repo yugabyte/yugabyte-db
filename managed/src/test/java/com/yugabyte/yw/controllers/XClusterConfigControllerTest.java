@@ -73,7 +73,6 @@ import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterTypes;
 import play.libs.Json;
 import play.mvc.Result;
-import scala.runtime.TraitSetter;
 
 public class XClusterConfigControllerTest extends FakeDBApplication {
 

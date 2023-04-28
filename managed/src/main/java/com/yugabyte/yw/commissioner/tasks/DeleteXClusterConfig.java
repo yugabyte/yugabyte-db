@@ -19,13 +19,10 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class DeleteXClusterConfig extends XClusterConfigTaskBase {
 
-  private final XClusterUniverseService xClusterUniverseService;
-
   @Inject
   protected DeleteXClusterConfig(
       BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
-    super(baseTaskDependencies);
-    this.xClusterUniverseService = xClusterUniverseService;
+    super(baseTaskDependencies, xClusterUniverseService);
   }
 
   @Override
@@ -80,8 +77,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
         // Promote auto flags on all connected universes which were blocked
         // due to the xCluster config.
         createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-            xClusterConnectedUniverseSet
-                .stream()
+            xClusterConnectedUniverseSet.stream()
                 .map(Universe::getUniverseUUID)
                 .collect(Collectors.toSet()),
             alreadyLockedUniverseUUIDSet,

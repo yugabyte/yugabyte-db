@@ -594,14 +594,25 @@ Status XClusterTestBase::WaitForRoleChangeToPropogateToAllTServers(
 Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
     MiniCluster* producer_cluster, YBClient* producer_client,
     const std::vector<std::shared_ptr<yb::client::YBTable>>& tables) {
+  std::vector<string> table_ids;
+  for (const auto& table : tables) {
+    table_ids.push_back(table->id());
+  }
+
+  return BootstrapProducer(producer_cluster, producer_client, table_ids);
+}
+
+Result<std::vector<CDCStreamId>> XClusterTestBase::BootstrapProducer(
+    MiniCluster* producer_cluster, YBClient* producer_client,
+    const std::vector<string>& table_ids) {
   std::unique_ptr<cdc::CDCServiceProxy> producer_cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(
       &producer_client->proxy_cache(),
       HostPort::FromBoundEndpoint(producer_cluster->mini_tablet_server(0)->bound_rpc_addr()));
   cdc::BootstrapProducerRequestPB req;
   cdc::BootstrapProducerResponsePB resp;
 
-  for (const auto& producer_table : tables) {
-    req.add_table_ids(producer_table->id());
+  for (const auto& table_id : table_ids) {
+    req.add_table_ids(table_id);
   }
 
   rpc::RpcController rpc;

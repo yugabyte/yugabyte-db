@@ -135,7 +135,7 @@ TEST_F(TestQLCmd, TestQLCmd) {
               break;
             case ExecutedResult::Type::ROWS: {
               RowsResult* rows_result = static_cast<RowsResult*>(result.get());
-              std::unique_ptr<QLRowBlock> row_block(rows_result->GetRowBlock());
+              auto row_block = rows_result->GetRowBlock();
               cout << row_block->ToString();
               // Extract the paging state from the result (if present) and populate it in the
               // statement parameters to retrieve the next set of rows until the end is reached

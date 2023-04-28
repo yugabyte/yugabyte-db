@@ -69,7 +69,7 @@ struct InFlightOpsGroup {
 
 struct InFlightOpsTransactionMetadata {
   TransactionMetadata transaction;
-  boost::optional<SubTransactionMetadataPB> subtransaction_pb;
+  boost::optional<SubTransactionMetadata> subtransaction;
 };
 
 struct InFlightOpsGroupsWithMetadata {

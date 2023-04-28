@@ -117,3 +117,6 @@ submodules/
 managed/yba-installer/bin/yba-ctl
 managed/yba-installer/yba-ctl
 managed/devops/pex/pexEnv/
+
+*.bad_clang_tidy_output.*
+*.compiler_errors.txt

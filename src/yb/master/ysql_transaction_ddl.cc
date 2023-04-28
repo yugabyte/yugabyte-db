@@ -15,8 +15,8 @@
 
 #include "yb/client/transaction_rpc.h"
 
-#include "yb/common/ql_expr.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -77,21 +77,28 @@ YsqlTransactionDdl::~YsqlTransactionDdl() {
   rpcs_.Shutdown();
 }
 
-Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id,
+Result<bool> YsqlTransactionDdl::PgEntryExists(const TableId& pg_table_id,
                                                PgOid entry_oid,
                                                boost::optional<PgOid> relfilenode_oid) {
-  vector<GStringPiece> col_names = {"oid"};
+  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(pg_table_id));
+
+  auto oid_col = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
+  ColumnIdRep relfilenode_col = kInvalidColumnId.rep();
+
+  dockv::ReaderProjection projection;
+
   bool is_matview = relfilenode_oid.has_value();
   if (is_matview) {
-    col_names.emplace_back("relfilenode");
+    relfilenode_col = VERIFY_RESULT(read_data.ColumnByName("relfilenode"));
+    projection.Init(read_data.schema(), {oid_col, relfilenode_col});
+  } else {
+    projection.Init(read_data.schema(), {oid_col});
   }
 
-  Schema projection;
-  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(pg_table_id,
-        "oid", entry_oid, std::move(col_names), &projection));
+  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, entry_oid, projection));
 
   // If no rows found, the entry does not exist.
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (!VERIFY_RESULT(iter->FetchNext(&row))) {
     return false;
   }
@@ -99,8 +106,7 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id,
   // The entry exists. Expect only one row.
   SCHECK(!VERIFY_RESULT(iter->FetchNext(nullptr)), Corruption, "Too many rows found");
   if (is_matview) {
-    const auto relfilenode_col_id = VERIFY_RESULT(projection.ColumnIdByName("relfilenode")).rep();
-    const auto& relfilenode = row.GetValue(relfilenode_col_id);
+    const auto& relfilenode = row.GetValue(relfilenode_col);
     if (relfilenode->uint32_value() != *relfilenode_oid) {
       return false;
     }
@@ -109,34 +115,19 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(TableId pg_table_id,
 }
 
 Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>>
-YsqlTransactionDdl::GetPgCatalogTableScanIterator(const TableId& pg_catalog_table_id,
-                                                  const string& oid_col_name,
+YsqlTransactionDdl::GetPgCatalogTableScanIterator(const PgTableReadData& read_data,
                                                   PgOid oid_value,
-                                                  std::vector<GStringPiece> col_names,
-                                                  Schema *projection) {
-
-  auto tablet_peer = sys_catalog_->tablet_peer();
-  if (!tablet_peer || !tablet_peer->tablet()) {
-    return STATUS(ServiceUnavailable, "SysCatalog unavailable");
-  }
-  const tablet::Tablet* catalog_tablet = tablet_peer->tablet();
-  DCHECK(catalog_tablet->metadata());
-  const Schema& schema =
-      VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_catalog_table_id))->schema();
-
+                                                  const dockv::ReaderProjection& projection) {
   // Use Scan to query the given table, filtering by lookup_oid_col.
-  RETURN_NOT_OK(schema.CreateProjectionByNames(col_names, projection, schema.num_key_columns()));
-  const auto oid_col_id = VERIFY_RESULT(projection->ColumnIdByName(oid_col_name)).rep();
-  auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
-      projection->CopyWithoutColumnIds(), ReadHybridTime(), pg_catalog_table_id));
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
 
   PgsqlConditionPB cond;
-  cond.add_operands()->set_column_id(oid_col_id);
+  cond.add_operands()->set_column_id(projection.columns.front().id.rep());
   cond.set_op(QL_OP_EQUAL);
   cond.add_operands()->mutable_value()->set_uint32_value(oid_value);
   const dockv::KeyEntryValues empty_key_components;
   docdb::DocPgsqlScanSpec spec(
-      *projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+      read_data.schema(), rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
       &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
   RETURN_NOT_OK(iter->Init(spec));
   return iter;
@@ -254,15 +245,13 @@ void YsqlTransactionDdl::TransactionReceived(
 
 Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>& table) {
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-  const auto& pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgClassTableOid));
 
-  Schema projection;
   PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
-  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(pg_catalog_table_id,
-                                                          "oid" /* oid_col_name */,
-                                                          oid,
-                                                          {"oid", "relname"},
-                                                          &projection));
+  auto oid_col_id = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
+  auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName("relname")).rep();
+  dockv::ReaderProjection projection(read_data.schema(), {oid_col_id, relname_col_id});
+  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection));
 
   auto l = table->LockForRead();
   if (!l->has_ysql_ddl_txn_verifier_state()) {
@@ -273,7 +262,7 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   }
   // Table not found in pg_class. This can only happen in two cases: Table creation failed,
   // or a table deletion went through successfully.
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (!VERIFY_RESULT(iter->FetchNext(&row))) {
     if (l->is_being_deleted_by_ysql_ddl_txn()) {
       return true;
@@ -297,7 +286,6 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
   // Table was being altered. Check whether its current DocDB schema matches
   // that of PG catalog.
   CHECK(l->ysql_ddl_txn_verifier_state().contains_alter_table_op());
-  const auto relname_col_id = VERIFY_RESULT(projection.ColumnIdByName("relname")).rep();
   const auto& relname_col = row.GetValue(relname_col_id);
   const string& table_name = relname_col->string_value();
 
@@ -379,28 +367,22 @@ bool YsqlTransactionDdl::MatchPgDocDBSchemaColumns(
 Result<vector<YsqlTransactionDdl::PgColumnFields>>
 YsqlTransactionDdl::ReadPgAttribute(scoped_refptr<TableInfo> table) {
   // Build schema using values read from pg_attribute.
-  auto tablet_peer = sys_catalog_->tablet_peer();
-  const tablet::TabletPtr tablet = tablet_peer->shared_tablet();
 
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
   const PgOid table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
-  const auto& pg_attribute_table_id = GetPgsqlTableId(database_oid, kPgAttributeTableOid);
+  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgAttributeTableOid));
+  const auto attrelid_col_id = VERIFY_RESULT(read_data.ColumnByName("attrelid")).rep();
+  const auto attname_col_id = VERIFY_RESULT(read_data.ColumnByName("attname")).rep();
+  const auto atttypid_col_id = VERIFY_RESULT(read_data.ColumnByName("atttypid")).rep();
+  const auto attnum_col_id = VERIFY_RESULT(read_data.ColumnByName("attnum")).rep();
 
-  Schema projection;
+  dockv::ReaderProjection projection(
+      read_data.schema(), { attrelid_col_id, attnum_col_id, attname_col_id, atttypid_col_id });
   PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
-  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(
-      pg_attribute_table_id,
-      "attrelid" /* col_name */,
-      oid,
-      {"attrelid", "attnum", "attname", "atttypid"},
-      &projection));
-
-  const auto attname_col_id = VERIFY_RESULT(projection.ColumnIdByName("attname")).rep();
-  const auto atttypid_col_id = VERIFY_RESULT(projection.ColumnIdByName("atttypid")).rep();
-  const auto attnum_col_id = VERIFY_RESULT(projection.ColumnIdByName("attnum")).rep();
+  auto iter = VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection));
 
   vector<PgColumnFields> pg_cols;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attname_col = row.GetValue(attname_col_id);
     const auto& atttypid_col = row.GetValue(atttypid_col_id);

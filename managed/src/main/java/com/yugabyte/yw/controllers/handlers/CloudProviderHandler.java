@@ -11,7 +11,6 @@
 package com.yugabyte.yw.controllers.handlers;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
-import static com.yugabyte.yw.commissioner.Common.CloudType.gcp;
 import static com.yugabyte.yw.commissioner.Common.CloudType.kubernetes;
 import static com.yugabyte.yw.commissioner.Common.CloudType.onprem;
 import static com.yugabyte.yw.common.ConfigHelper.ConfigType.DockerInstanceTypeMetadata;
@@ -22,6 +21,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.api.client.util.Strings;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Multimap;
@@ -68,7 +68,6 @@ import com.yugabyte.yw.models.helpers.provider.GCPCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
 import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import com.yugabyte.yw.models.helpers.provider.region.KubernetesRegionInfo;
-
 import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Container;
 import io.fabric8.kubernetes.api.model.Node;
@@ -132,6 +131,7 @@ public class CloudProviderHandler {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private AvailabilityZoneHandler availabilityZoneHandler;
   @Inject private RegionHandler regionHandler;
+  @Inject private AccessKeyHandler accessKeyHandler;
 
   @Inject private AWSInitializer awsInitializer;
   @Inject private GCPInitializer gcpInitializer;
@@ -799,20 +799,27 @@ public class CloudProviderHandler {
     if (provider.getCloudCode().canAddRegions()) {
       if (editProviderReq.getRegions() != null && !editProviderReq.getRegions().isEmpty()) {
         Map<String, Region> newRegions =
-            editProviderReq
-                .getRegions()
-                .stream()
+            editProviderReq.getRegions().stream()
                 .collect(Collectors.toMap(r -> r.getCode(), r -> r));
-        Set<String> existingRegionCodes =
-            provider
-                .getRegions()
-                .stream()
-                .map(region -> region.getCode())
+        Map<String, Region> existingRegions =
+            Region.getByProvider(provider.getUuid(), false).stream()
+                .collect(Collectors.toMap(r -> r.getCode(), r -> r));
+        Set<String> activeRegionCodes =
+            existingRegions.values().stream()
+                .filter(r -> r.isActive())
+                .map(r -> r.getCode())
                 .collect(Collectors.toSet());
-        newRegions.keySet().removeAll(existingRegionCodes);
-        if (!newRegions.isEmpty()) {
-          regionsToAdd = new HashSet<>(newRegions.values());
-        }
+
+        newRegions.keySet().removeAll(activeRegionCodes);
+        regionsToAdd = new HashSet<>(newRegions.values());
+        regionsToAdd.forEach(
+            reg -> {
+              Region inactive = existingRegions.get(reg.getCode());
+              if (inactive != null) {
+                LOG.debug("Hard deleting region {}", inactive);
+                inactive.delete();
+              }
+            });
       }
     }
     return regionsToAdd;
@@ -820,7 +827,9 @@ public class CloudProviderHandler {
 
   private boolean removeAndUpdateRegions(Provider editProviderReq, Provider provider) {
     Map<String, Region> existingRegions =
-        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
+        provider.getRegions().stream()
+            .filter(r -> r.isActive())
+            .collect(Collectors.toMap(r -> r.getCode(), r -> r));
     boolean result = false;
     for (Region region : editProviderReq.getRegions()) {
       Region oldRegion = existingRegions.get(region.getCode());
@@ -845,6 +854,39 @@ public class CloudProviderHandler {
         result = true;
       }
     }
+    return result;
+  }
+
+  private boolean updateAccessKeys(Provider editProviderReq, Provider provider) {
+    /*
+     * For the access key edits, user can
+     * 1. Switch from YBA Managed <-> Self Managed, & vice-versa.
+     * 2. Update the key Contents for the Self Managed Key.
+     * In case no access key is specified we will create YBA managed access key.
+     * In case sshPrivateKeyContent is specified we will create a Self Managed access key
+     * with the content provider.
+     * In case, keys are specified, that will be treated as no-op from access keys POV.
+     */
+    boolean result = false;
+    List<AccessKey> accessKeys = editProviderReq.getAllAccessKeys();
+    if (accessKeys.size() == 0) {
+      // This is the case for adding YBA managed accessKey to the provider.
+      result = true;
+      accessKeyHandler.doEdit(provider, null, null);
+    }
+
+    for (AccessKey accessKey : accessKeys) {
+      if (!Strings.isNullOrEmpty(accessKey.getKeyInfo().sshPrivateKeyContent)
+          && accessKey.getIdKey() == null) {
+        /*
+         * If the user has provided the accessKey content, this will be the case of
+         * Self Managed Keys, create a new Key, & append with other keys.
+         */
+        result = true;
+        accessKeyHandler.doEdit(provider, accessKey, null);
+      }
+    }
+
     return result;
   }
 
@@ -894,7 +936,8 @@ public class CloudProviderHandler {
     providerModified =
         providerModified
             | addOrRemoveAZs(editProviderReq, provider)
-            | removeAndUpdateRegions(editProviderReq, provider);
+            | removeAndUpdateRegions(editProviderReq, provider)
+            | updateAccessKeys(editProviderReq, provider);
 
     if (!providerModified && taskUUID == null) {
       throw new PlatformServiceException(
@@ -1032,8 +1075,7 @@ public class CloudProviderHandler {
     List<Region> allRegions = new ArrayList<>(provider.getRegions());
     allRegions.addAll(regionsToAdd);
     taskParams.perRegionMetadata =
-        allRegions
-            .stream()
+        allRegions.stream()
             .collect(
                 Collectors.toMap(
                     region -> region.getCode(),
@@ -1156,20 +1198,23 @@ public class CloudProviderHandler {
   private boolean addOrRemoveAZs(Provider editProviderReq, Provider provider) {
     boolean result = false;
     Map<String, Region> currentRegionMap =
-        provider.getRegions().stream().collect(Collectors.toMap(r -> r.getCode(), r -> r));
+        Region.getByProvider(provider.getUuid(), false).stream()
+            .collect(Collectors.toMap(r -> r.getCode(), r -> r));
 
     for (Region region : editProviderReq.getRegions()) {
-      Region currentState = currentRegionMap.get(region.getCode());
-      if (currentState != null) {
+      Region currentRegion = currentRegionMap.get(region.getCode());
+      if (currentRegion != null) {
         Map<String, AvailabilityZone> currentAZs =
-            currentState
-                .getZones()
-                .stream()
+            AvailabilityZone.getAZsForRegion(currentRegion.getUuid(), false).stream()
                 .collect(Collectors.toMap(az -> az.getCode(), az -> az));
         for (AvailabilityZone zone : region.getZones()) {
           AvailabilityZone currentAZ = currentAZs.get(zone.getCode());
-          if (currentAZ == null) {
+          if (currentAZ == null || !currentAZ.isActive()) {
             result = true;
+            if (currentAZ != null) {
+              LOG.debug("Hard deleting zone {}", currentAZ);
+              currentAZ.delete();
+            }
             LOG.debug("Creating zone {} in region {}", zone.getCode(), region.getCode());
             if (provider.getCloudCode().equals(kubernetes)) {
               List<AvailabilityZone> azList = new ArrayList<AvailabilityZone>();
@@ -1185,19 +1230,19 @@ public class CloudProviderHandler {
             }
           } else if (!zone.isActive() && currentAZ.isActive()) {
             LOG.debug(
-                "Deleting zone {} from region {}", currentAZ.getCode(), currentState.getCode());
-            availabilityZoneHandler.deleteZone(currentAZ.getUuid(), currentState.getUuid());
+                "Deleting zone {} from region {}", currentAZ.getCode(), currentRegion.getCode());
+            availabilityZoneHandler.deleteZone(currentAZ.getUuid(), currentRegion.getUuid());
             result = true;
           } else if (currentAZ.shouldBeUpdated(zone) && currentAZ.isActive()) {
             LOG.debug("updating zone {}", zone.getCode());
             if (provider.getCloudCode().equals(kubernetes)) {
               List<AvailabilityZone> azList = new ArrayList<AvailabilityZone>();
               azList.add(zone);
-              bootstrapKubernetesProvider(provider, editProviderReq, currentState, azList, true);
+              bootstrapKubernetesProvider(provider, editProviderReq, currentRegion, azList, true);
             } else {
               availabilityZoneHandler.editZone(
                   currentAZ.getUuid(),
-                  currentState.getUuid(),
+                  currentRegion.getUuid(),
                   az -> {
                     az.setAvailabilityZoneDetails(zone.getAvailabilityZoneDetails());
                     az.setSecondarySubnet(zone.getSecondarySubnet());

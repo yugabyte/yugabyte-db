@@ -18,9 +18,9 @@ import com.yugabyte.yw.common.services.YbcClientService;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
 import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse.PresetThrottleValues;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -29,7 +29,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageNFSData;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -42,7 +41,6 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
-
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -156,10 +154,7 @@ public class YbcManager {
       Map<UUID, Map<String, String>> clusterYbcFlagsMap = new HashMap<>();
 
       // Stream through clusters to populate and set throttle param values.
-      universe
-          .getUniverseDetails()
-          .clusters
-          .stream()
+      universe.getUniverseDetails().clusters.stream()
           .forEach(
               c -> {
                 ControllerObjectTaskThrottleParameters.Builder controllerObjectThrottleParams =
@@ -168,9 +163,7 @@ public class YbcManager {
                 Map<String, String> toAddModify = new HashMap<>();
                 Map<String, Integer> paramsToSet = throttleParams.getThrottleFlagsMap();
                 List<NodeDetails> tsNodes =
-                    universe
-                        .getNodesInCluster(c.uuid)
-                        .stream()
+                    universe.getNodesInCluster(c.uuid).stream()
                         .filter(nD -> nD.isTserver)
                         .collect(Collectors.toList());
                 if (throttleParams.resetDefaults) {
@@ -321,9 +314,7 @@ public class YbcManager {
     try {
       ybcClient = getYbcClient(universeUUID);
       Map<String, Integer> currentThrottleParamMap =
-          getThrottleParamsAsFieldDescriptor(ybcClient)
-              .entrySet()
-              .stream()
+          getThrottleParamsAsFieldDescriptor(ybcClient).entrySet().stream()
               .collect(Collectors.toMap(k -> k.getKey().getName(), v -> (int) v.getValue()));
 
       YbcThrottleParametersResponse throttleParamsResponse = new YbcThrottleParametersResponse();
@@ -582,13 +573,11 @@ public class YbcManager {
    * @return pair of string containing osType and archType of ybc-server-package
    */
   public Pair<String, String> getYbcPackageDetailsForNode(Universe universe, NodeDetails node) {
-    Cluster nodeCluster = Universe.getCluster(universe, node.nodeName);
+    Cluster nodeCluster = universe.getCluster(node.placementUuid);
     String ybSoftwareVersion = nodeCluster.userIntent.ybSoftwareVersion;
     String ybServerPackage =
         nodeManager.getYbServerPackageName(
-            ybSoftwareVersion,
-            getFirstRegion(
-                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
+            ybSoftwareVersion, getFirstRegion(universe, Objects.requireNonNull(nodeCluster)));
     return Util.getYbcPackageDetailsFromYbServerPackage(ybServerPackage);
   }
 
@@ -619,7 +608,7 @@ public class YbcManager {
     String ybcServerPackage =
         releaseMetadata.getFilePath(
             getFirstRegion(
-                universe, Objects.requireNonNull(Universe.getCluster(universe, node.nodeName))));
+                universe, Objects.requireNonNull(universe.getCluster(node.placementUuid))));
     if (StringUtils.isBlank(ybcServerPackage)) {
       throw new RuntimeException("Ybc package cannot be empty.");
     }

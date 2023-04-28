@@ -14,7 +14,6 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
-import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -26,7 +25,6 @@ import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;

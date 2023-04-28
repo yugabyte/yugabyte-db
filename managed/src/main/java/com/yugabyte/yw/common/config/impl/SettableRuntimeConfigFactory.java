@@ -162,9 +162,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
   }
 
   private String toConfigString(Map<String, String> values) {
-    return values
-        .entrySet()
-        .stream()
+    return values.entrySet().stream()
         .map(entry -> entry.getKey() + "=" + maybeQuote(entry))
         .collect(Collectors.joining("\n"));
   }
@@ -181,9 +179,7 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
 
   @VisibleForTesting
   static String toRedactedString(Config config) {
-    return config
-        .entrySet()
-        .stream()
+    return config.entrySet().stream()
         .map(
             entry -> {
               if (SENSITIVE_CONFIG_NAME_PAT.matcher(entry.getKey()).find()) {

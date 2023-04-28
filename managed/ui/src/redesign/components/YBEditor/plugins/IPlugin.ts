@@ -86,7 +86,7 @@ export type IYBSlatePluginReturnProps = {
    */
   isEnabled: () => boolean;
 
-  decorator?: (node: NodeEntry<CustomText>) => Partial<BaseRange>[]
+  decorator?: (node: NodeEntry<CustomText>) => Partial<BaseRange>[];
 };
 
 export type IYBSlatePlugin = (props: IYBSlatePluginInputProps) => IYBSlatePluginReturnProps;

@@ -110,8 +110,7 @@ public class InstanceTypeController extends AuthenticatedController {
               "Full list of instance types: {}. Filtering it based on offerings.",
               instanceTypesMap.keySet());
           Map<Region, Set<String>> azByRegionMap =
-              filterByZoneCodes
-                  .stream()
+              filterByZoneCodes.stream()
                   .map(code -> AvailabilityZone.getByCode(provider, code))
                   .collect(groupingBy(az -> az.getRegion(), mapping(az -> az.getCode(), toSet())));
 
@@ -124,9 +123,7 @@ public class InstanceTypeController extends AuthenticatedController {
           LOG.debug("Instance Type Offerings from cloud: {}.", offeringsByInstanceType);
 
           List<InstanceType> filteredInstanceTypes =
-              offeringsByInstanceType
-                  .entrySet()
-                  .stream()
+              offeringsByInstanceType.entrySet().stream()
                   .filter(kv -> kv.getValue().size() >= filterByZoneCodes.size())
                   .map(Map.Entry::getKey)
                   .map(instanceTypesMap::get)

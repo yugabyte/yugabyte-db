@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/dockv/ql_scanspec.h"
+#include "yb/qlexpr/ql_scanspec.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/docdb/doc_ql_scanspec.h"
@@ -76,7 +76,7 @@ class ScanChoices {
   }
 
   static ScanChoicesPtr Create(
-      const Schema& schema, const dockv::YQLScanSpec& doc_spec,
+      const Schema& schema, const qlexpr::YQLScanSpec& doc_spec,
       const dockv::KeyBytes& lower_doc_key, const dockv::KeyBytes& upper_doc_key);
 
  protected:
@@ -272,14 +272,14 @@ class HybridScanChoices : public ScanChoices {
       const dockv::KeyBytes& upper_doc_key,
       bool is_forward_scan,
       const std::vector<ColumnId>& options_col_ids,
-      const std::shared_ptr<std::vector<dockv::OptionList>>& options,
-      const dockv::QLScanRange* range_bounds,
+      const std::shared_ptr<std::vector<qlexpr::OptionList>>& options,
+      const qlexpr::QLScanRange* range_bounds,
       const ColGroupHolder& col_groups,
       const size_t prefix_length);
 
   HybridScanChoices(
       const Schema& schema,
-      const dockv::YQLScanSpec& doc_spec,
+      const qlexpr::YQLScanSpec& doc_spec,
       const dockv::KeyBytes& lower_doc_key,
       const dockv::KeyBytes& upper_doc_key);
 

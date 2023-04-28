@@ -42,13 +42,13 @@
 #include "yb/client/client.h"
 
 #include "yb/common/colocated_util.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/placement_info.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
@@ -342,7 +342,8 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
-      schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition_schema);
+      schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+      partition_schema);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
@@ -756,8 +757,9 @@ Status SysCatalogTable::GetTableSchema(
   }
   ReadHybridTime read_time = read_hybrid_time ? read_hybrid_time : ReadHybridTime::Max();
   const Schema& schema = doc_read_context_->schema;
+  dockv::ReaderProjection projection(schema);
   auto doc_iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      schema.CopyWithoutColumnIds(), read_time, /* table_id= */ "", CoarseTimePoint::max(),
+      projection, read_time, /* table_id= */ "", CoarseTimePoint::max(),
       tablet::AllowBootstrappingState::kTrue));
 
   const auto type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
@@ -775,7 +777,7 @@ Status SysCatalogTable::GetTableSchema(
   RETURN_NOT_OK(doc_iter->Init(spec));
 
   bool table_schema_found = false;
-  QLTableRow value_map;
+  qlexpr::QLTableRow value_map;
   while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
     QLValue found_entry_type, entry_id, metadata;
     RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
@@ -871,7 +873,7 @@ Status SysCatalogTable::Visit(VisitorBase* visitor) {
 }
 
 // TODO (Sanket): Change this function to use ExtractPgYbCatalogVersionRow.
-Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
+Status SysCatalogTable::ReadYsqlCatalogVersion(const TableId& ysql_catalog_table_id,
                                                uint64_t* catalog_version,
                                                uint64_t* last_breaking_version) {
   TRACE_EVENT0("master", "ReadYsqlCatalogVersion");
@@ -879,7 +881,7 @@ Status SysCatalogTable::ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
       ysql_catalog_table_id, kInvalidOid, catalog_version, last_breaking_version, nullptr);
 }
 
-Status SysCatalogTable::ReadYsqlDBCatalogVersion(TableId ysql_catalog_table_id,
+Status SysCatalogTable::ReadYsqlDBCatalogVersion(const TableId& ysql_catalog_table_id,
                                                  uint32_t db_oid,
                                                  uint64_t* catalog_version,
                                                  uint64_t* last_breaking_version) {
@@ -889,7 +891,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersion(TableId ysql_catalog_table_id,
 }
 
 Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
-    TableId ysql_catalog_table_id,
+    const TableId& ysql_catalog_table_id,
     DbOidToCatalogVersionMap* versions) {
   TRACE_EVENT0("master", "ReadYsqlAllDBCatalogVersions");
   return ReadYsqlDBCatalogVersionImpl(
@@ -897,18 +899,16 @@ Status SysCatalogTable::ReadYsqlAllDBCatalogVersions(
 }
 
 Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
-    TableId ysql_catalog_table_id,
+    const TableId& ysql_catalog_table_id,
     uint32_t db_oid,
     uint64_t* catalog_version,
     uint64_t* last_breaking_version,
     DbOidToCatalogVersionMap* versions) {
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
-  const auto* meta = tablet->metadata();
-  const std::shared_ptr<tablet::TableInfo> ysql_catalog_table_info =
-      VERIFY_RESULT(meta->GetTableInfo(ysql_catalog_table_id));
-  const Schema& schema = ysql_catalog_table_info->schema();
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      schema.CopyWithoutColumnIds(), ReadHybridTime(), ysql_catalog_table_id));
+
+  auto read_data = VERIFY_RESULT(TableReadData(ysql_catalog_table_id));
+  const auto& schema = read_data.schema();
+  dockv::ReaderProjection projection(schema);
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
 
   // If 'versions' is set we read all rows. If 'catalog_version/last_breaking_version' are set,
   // we only read the global catalog version if db_oid is kInvalidOid, or read the per-db catalog
@@ -927,7 +927,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
     }
   }
 
-  QLTableRow source_row;
+  qlexpr::QLTableRow source_row;
   ColumnId db_oid_id = VERIFY_RESULT(schema.ColumnIdByName(kDbOidColumnName));
   ColumnId version_col_id = VERIFY_RESULT(schema.ColumnIdByName(kCurrentVersionColumnName));
   ColumnId last_breaking_version_col_id =
@@ -946,7 +946,7 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   } else {
-    iter->Init(tablet->table_type());
+    iter->Init(read_data.table_info->table_type);
   }
 
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
@@ -997,18 +997,13 @@ Status SysCatalogTable::ReadYsqlDBCatalogVersionImpl(
 Result<shared_ptr<TablespaceIdToReplicationInfoMap>> SysCatalogTable::ReadPgTablespaceInfo() {
   TRACE_EVENT0("master", "ReadPgTablespaceInfo");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
-
-  const auto& pg_tablespace_info =
-      VERIFY_RESULT(tablet->metadata()->GetTableInfo(kPgTablespaceTableId));
-  const Schema& schema = pg_tablespace_info->schema();
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(schema.CopyWithoutColumnIds(),
-                                                   {} /* read_hybrid_time */,
-                                                   kPgTablespaceTableId));
-  QLTableRow source_row;
+  auto read_data = VERIFY_RESULT(TableReadData(kPgTablespaceTableId));
+  const auto& schema = read_data.schema();
+  dockv::ReaderProjection projection(schema);
+  auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
+  qlexpr::QLTableRow source_row;
   ColumnId oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid"));
-  ColumnId options_id =
-      VERIFY_RESULT(schema.ColumnIdByName("spcoptions"));
+  ColumnId options_id = VERIFY_RESULT(schema.ColumnIdByName("spcoptions"));
 
   // Loop through the pg_tablespace catalog table. Each row in this table represents
   // a tablespace. Populate 'tablespace_map' with the tablespace id and corresponding
@@ -1106,23 +1101,16 @@ Status SysCatalogTable::ReadTablespaceInfoFromPgYbTablegroup(
   if (!table_tablespace_map)
     return STATUS(InternalError, "tablegroup_tablespace_map not initialized");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgYbTablegroupTableOid));
+  const auto& schema = read_data.schema();
 
-  const auto &pg_yb_tablegroup_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
-  const auto& pg_tablegroup_info =
-      VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_yb_tablegroup_id));
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto tablespace_col_id = VERIFY_RESULT(schema.ColumnIdByName("grptablespace")).rep();
 
-  Schema projection;
-  RETURN_NOT_OK(pg_tablegroup_info->schema().CreateProjectionByNames({"oid", "grptablespace"},
-                &projection,
-                pg_tablegroup_info->schema().num_key_columns()));
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
-                                                   {} /* read_hybrid_time */,
-                                                   pg_yb_tablegroup_id));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("grptablespace")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, tablespace_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
 
-  QLTableRow source_row;
+  qlexpr::QLTableRow source_row;
 
   // Loop through the pg_yb_tablegroup catalog table. Each row in this table represents
   // a tablegroup. Populate 'table_tablespace_map' with the tablegroup id and corresponding
@@ -1178,29 +1166,27 @@ Status SysCatalogTable::ReadPgClassInfo(
 
   const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-  const auto& table_info = VERIFY_RESULT(
-      tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid));
+  const auto& schema = read_data.schema();
 
-  Schema projection;
-  std::vector<GStringPiece> col_names = {"oid", "relname", "reltablespace", "relkind"};
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName("relname")).rep();
+  const auto tablespace_col_id = VERIFY_RESULT(schema.ColumnIdByName("reltablespace")).rep();
+  const auto relkind_col_id = VERIFY_RESULT(schema.ColumnIdByName("relkind")).rep();
 
+  std::vector<ColumnIdRep> col_ids = {
+      oid_col_id, relname_col_id, tablespace_col_id, relkind_col_id};
+
+  ColumnIdRep reloptions_col_id = -1;
   if (is_colocated_database) {
     VLOG(5) << "Scanning pg_class for colocated database oid " << database_oid;
-    col_names.emplace_back("reloptions");
+    reloptions_col_id = VERIFY_RESULT(schema.ColumnIdByName("reloptions")).rep();
+    col_ids.push_back(reloptions_col_id);
   }
 
-  RETURN_NOT_OK(schema.CreateProjectionByNames(col_names,
-                                               &projection,
-                                               schema.num_key_columns()));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto relname_col_id = VERIFY_RESULT(projection.ColumnIdByName("relname")).rep();
-  const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
-  const auto tablespace_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltablespace")).rep();
+  dockv::ReaderProjection projection(schema, col_ids);
 
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-    projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
@@ -1211,12 +1197,12 @@ Status SysCatalogTable::ReadPgClassInfo(
     cond.add_operands()->mutable_value()->set_uint32_value(kPgFirstNormalObjectId);
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   // pg_class table contains a row for every database object (tables/indexes/
   // composite types etc). Each such row contains a lot of information about the
   // database object itself. But here, we are trying to fetch table->tablespace
@@ -1255,7 +1241,6 @@ Status SysCatalogTable::ReadPgClassInfo(
       // A table in a colocated database is colocated unless it opted out
       // of colocation.
       is_colocated_table = true;
-      const auto reloptions_col_id = VERIFY_RESULT(projection.ColumnIdByName("reloptions")).rep();
       const auto& reloptions_col = row.GetValue(reloptions_col_id);
       if (!reloptions_col) {
         return STATUS(Corruption, "Could not read reloptions column from pg_class for oid " +
@@ -1310,19 +1295,13 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
                                                                 const string& column_name) {
   TRACE_EVENT0("master", "ReadPgClassOidColumn");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid));
+  const auto& schema = read_data.schema();
 
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
-
-  Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", column_name}, &projection,
-                schema.num_key_columns()));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto result_col_id = VERIFY_RESULT(projection.ColumnIdByName(column_name)).rep();
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto result_col_id = VERIFY_RESULT(schema.ColumnIdByName(column_name)).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, result_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
@@ -1330,7 +1309,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   }
@@ -1340,7 +1319,7 @@ Result<uint32_t> SysCatalogTable::ReadPgClassColumnWithOidValue(const uint32_t d
   // database object itself. But here, we are trying to fetch table->relnamespace
   // information only.
   uint32 oid = kInvalidOid;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& result_oid_col = row.GetValue(result_col_id);
@@ -1359,19 +1338,13 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
                                                        const uint32_t relnamespace_oid) {
   TRACE_EVENT0("master", "ReadPgNamespaceNspname");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgNamespaceTableOid));
+  const auto& schema = read_data.schema();
 
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgNamespaceTableOid);
-  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
-
-  Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames({"oid", "nspname"}, &projection,
-                schema.num_key_columns()));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto nspname_col_id = VERIFY_RESULT(projection.ColumnIdByName("nspname")).rep();
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto nspname_col_id = VERIFY_RESULT(schema.ColumnIdByName("nspname")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, nspname_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
@@ -1379,13 +1352,13 @@ Result<string> SysCatalogTable::ReadPgNamespaceNspname(const uint32_t database_o
     cond.add_operands()->mutable_value()->set_uint32_value(relnamespace_oid);
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         &cond, boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
   string name;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     // Process the relnamespace oid for this table/index.
     const auto& nspname_col = row.GetValue(nspname_col_id);
@@ -1409,22 +1382,18 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     const uint32_t database_oid, const uint32_t table_oid) {
   TRACE_EVENT0("master", "ReadPgAttNameTypidMap");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgAttributeTableOid));
+  const auto& schema = read_data.schema();
 
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgAttributeTableOid);
-  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
+  const auto attrelid_col_id = VERIFY_RESULT(schema.ColumnIdByName("attrelid")).rep();
+  const auto attnum_col_id = VERIFY_RESULT(schema.ColumnIdByName("attnum")).rep();
+  const auto attname_col_id = VERIFY_RESULT(schema.ColumnIdByName("attname")).rep();
+  const auto atttypid_col_id = VERIFY_RESULT(schema.ColumnIdByName("atttypid")).rep();
 
-  Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames(
-      {"attrelid", "attnum", "attname", "atttypid"}, &projection, schema.num_key_columns()));
-  const auto attrelid_col_id = VERIFY_RESULT(projection.ColumnIdByName("attrelid")).rep();
-  const auto attnum_col_id = VERIFY_RESULT(projection.ColumnIdByName("attnum")).rep();
-  const auto attname_col_id = VERIFY_RESULT(projection.ColumnIdByName("attname")).rep();
-  const auto atttypid_col_id = VERIFY_RESULT(projection.ColumnIdByName("atttypid")).rep();
+  dockv::ReaderProjection projection(
+      schema, {attrelid_col_id, attnum_col_id, attname_col_id, atttypid_col_id});
 
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(attrelid_col_id);
@@ -1432,13 +1401,13 @@ Result<std::unordered_map<string, uint32_t>> SysCatalogTable::ReadPgAttNameTypid
     cond.add_operands()->mutable_value()->set_uint32_value(table_oid);
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
   std::unordered_map<string, uint32_t> type_oid_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attnum_col = row.GetValue(attnum_col_id);
 
@@ -1484,31 +1453,26 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
     const uint32_t database_oid, uint32_t type_oid) {
   TRACE_EVENT0("master", "ReadPgEnum");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgEnumTableOid);
-  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgEnumTableOid));
+  const auto& schema = read_data.schema();
 
-  Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames(
-      {"oid", "enumtypid", "enumlabel"}, &projection, schema.num_key_columns()));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto enumtypid_col_id = VERIFY_RESULT(projection.ColumnIdByName("enumtypid")).rep();
-  const auto enumlabel_col_id = VERIFY_RESULT(projection.ColumnIdByName("enumlabel")).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto enumtypid_col_id = VERIFY_RESULT(schema.ColumnIdByName("enumtypid")).rep();
+  const auto enumlabel_col_id = VERIFY_RESULT(schema.ColumnIdByName("enumlabel")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, enumtypid_col_id, enumlabel_col_id});
 
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components,
         nullptr /* cond */, boost::none /* hash_code */, boost::none /* max_hash_code */,
         nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
   std::unordered_map<uint32_t, string> enumlabel_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& enumtypid_col = row.GetValue(enumtypid_col_id);
@@ -1535,21 +1499,16 @@ Result<std::unordered_map<uint32_t, string>> SysCatalogTable::ReadPgEnum(
 Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo(
     const uint32_t database_oid, vector<uint32_t>* type_oids) {
   TRACE_EVENT0("master", "ReadPgTypeInfo");
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
 
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgTypeTableOid);
-  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgTypeTableOid));
+  const auto& schema = read_data.schema();
 
-  Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames(
-      {"oid", "typtype", "typbasetype"}, &projection, schema.num_key_columns()));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto typtype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typtype")).rep();
-  const auto typbasetype_col_id = VERIFY_RESULT(projection.ColumnIdByName("typbasetype")).rep();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto typtype_col_id = VERIFY_RESULT(schema.ColumnIdByName("typtype")).rep();
+  const auto typbasetype_col_id = VERIFY_RESULT(schema.ColumnIdByName("typbasetype")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, typtype_col_id, typbasetype_col_id});
 
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(oid_col_id);
@@ -1562,13 +1521,13 @@ Result<std::unordered_map<uint32_t, PgTypeInfo>> SysCatalogTable::ReadPgTypeInfo
 
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, &cond,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
   std::unordered_map<uint32_t, PgTypeInfo> type_oid_info_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& typtype_col = row.GetValue(typtype_col_id);
@@ -1604,23 +1563,16 @@ Result<uint32_t> SysCatalogTable::ReadPgYbTablegroupOid(const uint32_t database_
                                                         const string& tg_grpname) {
   TRACE_EVENT0("master", "ReadPgYbTablegroupOid");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgYbTablegroupTableOid));
+  const auto& schema = read_data.schema();
 
-  const TableId& pg_yb_tablegroup_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
-  const auto& pg_tablegroup_info =
-    VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_yb_tablegroup_id));
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto grpname_col_id = VERIFY_RESULT(schema.ColumnIdByName("grpname")).rep();
 
-  Schema projection;
-  RETURN_NOT_OK(pg_tablegroup_info->schema().CreateProjectionByNames({"oid", "grpname"},
-                &projection,
-                pg_tablegroup_info->schema().num_key_columns()));
-  auto iter = VERIFY_RESULT(tablet->NewRowIterator(projection.CopyWithoutColumnIds(),
-                                                   {} /* read_hybrid_time */,
-                                                   pg_yb_tablegroup_id));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto grpname_col_id = VERIFY_RESULT(projection.ColumnIdByName("grpname")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, grpname_col_id});
+  auto iter = VERIFY_RESULT(read_data.NewIterator(projection));
 
-  QLTableRow source_row;
+  qlexpr::QLTableRow source_row;
 
   while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
     // Fetch the tablegroup grpname.
@@ -1667,10 +1619,10 @@ Status SysCatalogTable::CopyPgsqlTables(
         VERIFY_RESULT(meta->GetTableInfo(source_table_id));
     const std::shared_ptr<tablet::TableInfo> target_table_info =
         VERIFY_RESULT(meta->GetTableInfo(target_table_id));
-    const Schema source_projection = source_table_info->schema().CopyWithoutColumnIds();
+    dockv::ReaderProjection source_projection(source_table_info->schema());
     std::unique_ptr<docdb::YQLRowwiseIteratorIf> iter = VERIFY_RESULT(
         tablet->NewRowIterator(source_projection, {}, source_table_id));
-    QLTableRow source_row;
+    qlexpr::QLTableRow source_row;
 
     while (VERIFY_RESULT(iter->FetchNext(&source_row))) {
       RETURN_NOT_OK(writer->InsertPgsqlTableRow(
@@ -1749,11 +1701,8 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
     uint32_t database_oid, std::vector<uint32_t> table_oids) {
   TRACE_EVENT0("master", "ReadPgAttributeInfo");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
-
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgAttributeTableOid);
-  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgAttributeTableOid));
+  const auto& schema = read_data.schema();
 
   const auto attrelid_col_id = VERIFY_RESULT(schema.ColumnIdByName("attrelid")).rep();
   const auto attname_col_id = VERIFY_RESULT(schema.ColumnIdByName("attname")).rep();
@@ -1776,8 +1725,8 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
   const auto attinhcount_col_id = VERIFY_RESULT(schema.ColumnIdByName("attinhcount")).rep();
   const auto attcollation_col_id = VERIFY_RESULT(schema.ColumnIdByName("attcollation")).rep();
 
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      schema.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  dockv::ReaderProjection projection(schema);
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     PgsqlConditionPB cond;
     cond.add_operands()->set_column_id(attrelid_col_id);
@@ -1794,7 +1743,7 @@ Result<RelIdToAttributesMap> SysCatalogTable::ReadPgAttributeInfo(
   }
 
   RelIdToAttributesMap relid_attribute_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& attrelid_col = row.GetValue(attrelid_col_id);
     const auto& attname_col = row.GetValue(attname_col_id);
@@ -1885,31 +1834,25 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
     uint32_t database_oid, uint32_t type_oid) {
   TRACE_EVENT0("master", "ReadCompositeTypeFromPgClass");
 
-  const tablet::TabletPtr tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
+  auto read_data = VERIFY_RESULT(TableReadData(database_oid, kPgClassTableOid));
+  const auto& schema = read_data.schema();
 
-  const auto& pg_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-  const auto& table_info = VERIFY_RESULT(tablet->metadata()->GetTableInfo(pg_table_id));
-  const Schema& schema = table_info->schema();
+  const auto oid_col_id = VERIFY_RESULT(schema.ColumnIdByName("oid")).rep();
+  const auto reltype_col_id = VERIFY_RESULT(schema.ColumnIdByName("reltype")).rep();
+  const auto relkind_col_id = VERIFY_RESULT(schema.ColumnIdByName("relkind")).rep();
+  dockv::ReaderProjection projection(schema, {oid_col_id, reltype_col_id, relkind_col_id});
 
-  Schema projection;
-  RETURN_NOT_OK(schema.CreateProjectionByNames(
-      {"oid", "reltype", "relkind"}, &projection, schema.num_key_columns()));
-  const auto oid_col_id = VERIFY_RESULT(projection.ColumnIdByName("oid")).rep();
-  const auto reltype_col_id = VERIFY_RESULT(projection.ColumnIdByName("reltype")).rep();
-  const auto relkind_col_id = VERIFY_RESULT(projection.ColumnIdByName("relkind")).rep();
-
-  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), ReadHybridTime(), pg_table_id));
+  auto iter = VERIFY_RESULT(read_data.NewUninitializedIterator(projection));
   {
     const dockv::KeyEntryValues empty_key_components;
     docdb::DocPgsqlScanSpec spec(
-        projection, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
+        schema, rocksdb::kDefaultQueryId, empty_key_components, empty_key_components, nullptr,
         boost::none /* hash_code */, boost::none /* max_hash_code */, nullptr /* where */);
     RETURN_NOT_OK(iter->Init(spec));
   }
 
   RelTypeOIDMap reltype_oid_map;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {
     const auto& oid_col = row.GetValue(oid_col_id);
     const auto& reltype_col = row.GetValue(reltype_col_id);
@@ -1944,6 +1887,45 @@ Result<RelTypeOIDMap> SysCatalogTable::ReadCompositeTypeFromPgClass(
     reltype_oid_map[reltype] = oid;
   }
   return reltype_oid_map;
+}
+
+Result<tablet::TabletPtr> SysCatalogTable::Tablet() const {
+  auto tablet_peer = this->tablet_peer();
+  if (!tablet_peer) {
+    return STATUS(ServiceUnavailable, "SysCatalog unavailable");
+  }
+  return tablet_peer->shared_tablet_safe();
+}
+
+Result<PgTableReadData> SysCatalogTable::TableReadData(const TableId& table_id) const {
+  PgTableReadData result;
+  result.table_id = table_id;
+  result.tablet = VERIFY_RESULT(Tablet());
+  result.table_info = VERIFY_RESULT(result.tablet->metadata()->GetTableInfo(table_id));
+  return result;
+}
+
+Result<PgTableReadData> SysCatalogTable::TableReadData(
+    uint32_t database_oid, uint32_t table_oid) const {
+  return TableReadData(GetPgsqlTableId(database_oid, table_oid));
+}
+
+const Schema& PgTableReadData::schema() const {
+  return table_info->schema();
+}
+
+Result<ColumnId> PgTableReadData::ColumnByName(const std::string& name) const {
+  return schema().ColumnIdByName(name);
+}
+
+Result<std::unique_ptr<docdb::DocRowwiseIterator>> PgTableReadData::NewUninitializedIterator(
+    const dockv::ReaderProjection& projection) const {
+  return tablet->NewUninitializedDocRowIterator(projection, ReadHybridTime(), table_id);
+}
+
+Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> PgTableReadData::NewIterator(
+    const dockv::ReaderProjection& projection) const {
+  return tablet->NewRowIterator(projection, ReadHybridTime(), table_id);
 }
 
 } // namespace master

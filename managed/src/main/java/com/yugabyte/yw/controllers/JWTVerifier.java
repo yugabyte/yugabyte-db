@@ -34,8 +34,7 @@ public class JWTVerifier {
     NODE_AGENT;
 
     public static Optional<ClientType> maybeResolve(String name) {
-      return EnumSet.allOf(ClientType.class)
-          .stream()
+      return EnumSet.allOf(ClientType.class).stream()
           .filter(e -> e.name().equalsIgnoreCase(name))
           .findFirst();
     }

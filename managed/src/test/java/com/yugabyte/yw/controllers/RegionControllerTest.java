@@ -33,11 +33,9 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
-
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.util.Set;
 import java.util.UUID;
-
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.core.AllOf;
 import org.hamcrest.core.Is;

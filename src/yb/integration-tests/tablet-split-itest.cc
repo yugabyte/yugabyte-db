@@ -22,7 +22,7 @@
 #include "yb/client/table_alterer.h"
 
 #include "yb/common/entity_ids_types.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"

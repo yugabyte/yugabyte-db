@@ -22,6 +22,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import javax.annotation.Nullable;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import play.libs.Files.TemporaryFile;
@@ -172,7 +173,17 @@ public class AccessKeyHandler {
         provider.getUuid(), () -> doEdit(provider, accessKey, keyCode));
   }
 
-  private AccessKey doEdit(Provider provider, AccessKey accessKey, String keyCode) {
+  /**
+   * Creates a new accessKey for the given provider as part of accessKey edit.
+   *
+   * @param provider Provider corresponding to which access key is being edited.
+   * @param accessKey Optional accessKey that will be present for the cases of SelfManaged Keys. In
+   *     case not specified, we will create a new YBA managed key.
+   * @param keyCode Optional keyCode to be used for the accessKey.
+   * @return the access key.
+   */
+  public AccessKey doEdit(
+      Provider provider, @Nullable AccessKey accessKey, @Nullable String keyCode) {
     long universesCount = provider.getUniverseCount();
     if (universesCount > 0) {
       throw new PlatformServiceException(
@@ -180,8 +191,19 @@ public class AccessKeyHandler {
     }
 
     ProviderDetails details = provider.getDetails();
-    AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
-    String keyPairName = keyInfo.keyPairName;
+    String keyPairName = null;
+    String sshPrivateKeyContent = null;
+    if (accessKey != null) {
+      AccessKey.KeyInfo keyInfo = accessKey.getKeyInfo();
+      keyPairName = keyInfo.keyPairName;
+      sshPrivateKeyContent = keyInfo.getUnMaskedSshPrivateKeyContent();
+      try {
+        AccessKey.getOrBadRequest(provider.getUuid(), keyPairName);
+        keyPairName = AccessKey.getNewKeyCode(keyPairName);
+      } catch (PlatformServiceException e) {
+        // Do nothing in case accessKey with above keyCode does not exist.
+      }
+    }
     if (keyPairName == null) {
       // If the keyPairName is not specified, generate a new keyCode
       // based on the provider.
@@ -191,7 +213,6 @@ public class AccessKeyHandler {
       // the new Code appending timestamp to the current one.
       keyPairName = AccessKey.getNewKeyCode(keyPairName);
     }
-    String sshPrivateKeyContent = keyInfo.getUnMaskedSshPrivateKeyContent();
     List<Region> regions = Region.getByProvider(provider.getUuid());
     AccessKey newAccessKey = null;
     for (Region region : regions) {

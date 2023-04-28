@@ -24,7 +24,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/pgsql_protocol.pb.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -76,8 +76,8 @@ dockv::KeyEntryValues InitKeyColumnPrimitiveValues(
       //
       // Use regular executor for now.
       LOG(FATAL) << "Expression instead of value";
-      QLExprExecutor executor;
-      QLExprResult expr_result;
+      qlexpr::QLExprExecutor executor;
+      qlexpr::QLExprResult expr_result;
       auto s = executor.EvalExpr(column_value.ToGoogleProtobuf(), nullptr, expr_result.Writer());
 
       result.push_back(dockv::KeyEntryValue::FromQLValuePB(expr_result.Value(), sorting_type));

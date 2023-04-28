@@ -47,7 +47,7 @@ You can restore YugabyteDB universe YCQL data from a backup as follows:
 
     - Select the name of the universe to which you want to restore the backup.
 
-    - Optionally and depending on your cloud provider, if you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the universe keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the key registry on the restore universe with the required universe keys. The universe data files are restored normally afterwards.
+    - Optionally and depending on your cloud provider, if you are restoring data from a universe that has, or previously had, [encryption at rest enabled](../../../security/enable-encryption-at-rest), then you must select the KMS configuration to use so that the master keys referenced in the metadata file can be retrieved. If the universe was previously encrypted at rest, but is not currently, then the retrieved keys assure that any existing files can be decrypted. The retrieved keys are used to build and augment the universe key registry on the restored universe with the required master keys. The universe data files are restored normally afterwards.
 
     - Optionally, specify the number of parallel threads that are allowed to run. This can be any number between `1` and `100`.
 

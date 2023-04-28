@@ -41,7 +41,7 @@
 
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_protocol_util.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema.h"
 
 #include "yb/gutil/strings/numbers.h"
@@ -110,7 +110,8 @@ class TabletPushdownTest : public YBTabletTest {
     ASSERT_EQ(QLResponsePB::YQL_STATUS_OK, result.response.status())
         << "Error: " << result.response.error_message();
 
-    auto row_block = CreateRowBlock(QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
+    auto row_block = qlexpr::CreateRowBlock(
+        QLClient::YQL_CLIENT_CQL, schema_, rows_data.ToBuffer());
     std::vector<std::string> results;
     for (const auto& row : row_block->rows()) {
       results.push_back(row.ToString());

@@ -912,3 +912,13 @@ EXPLAIN (ANALYZE, DIST, COSTS OFF, SUMMARY OFF, TIMING OFF) SELECT * FROM test_m
 (3 rows)
 
 DROP TABLE test_method;
+CREATE TABLE sample (h int primary key);
+INSERT INTO sample VALUES (24), (262095);
+SELECT * FROM sample WHERE h in (24, 262095) ORDER BY h;
+   h    
+--------
+     24
+ 262095
+(2 rows)
+
+DROP TABLE sample;

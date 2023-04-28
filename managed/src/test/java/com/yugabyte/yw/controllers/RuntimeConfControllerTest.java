@@ -118,8 +118,7 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
             "yb.taskGC.task_retention_duration",
             "yb.external_script");
     Set<String> actualKeys =
-        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
-            .stream()
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements()).stream()
             .map(JsonNode::asText)
             .collect(Collectors.toSet());
     assertTrue(String.valueOf(actualKeys), actualKeys.containsAll(expectedKeys));
@@ -499,16 +498,14 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     Result result = doRequestWithAuthToken("GET", LIST_KEYS, authToken);
     assertEquals(OK, result.status());
     Set<String> listKeys =
-        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements())
-            .stream()
+        ImmutableSet.copyOf(Json.parse(contentAsString(result)).elements()).stream()
             .map(JsonNode::asText)
             .collect(Collectors.toSet());
 
     result = doRequestWithAuthToken("GET", LIST_KEY_INFO, authToken);
     assertEquals(OK, result.status());
     Set<String> metaKeys =
-        ImmutableSet.copyOf(Json.parse(contentAsString(result)))
-            .stream()
+        ImmutableSet.copyOf(Json.parse(contentAsString(result))).stream()
             .map(JsonNode -> JsonNode.get("key"))
             .map(JsonNode::asText)
             .collect(Collectors.toSet());

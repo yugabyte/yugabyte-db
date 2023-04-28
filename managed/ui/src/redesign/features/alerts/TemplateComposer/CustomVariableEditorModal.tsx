@@ -86,7 +86,7 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
 
   const validationSchema = Yup.object()
     .shape({
-      customVariableName: Yup.string().required(t('common.requiredField')),
+      customVariableName: Yup.string().required(t('common.requiredField')).matches(/^[a-zA-Z0-9_]*$/, t('alertCustomTemplates.customVariables.createNewVariableModal.nameError')),
       possibleValues: Yup.array()
         .min(1, t('common.requiredField'))
         .of(
@@ -173,6 +173,21 @@ export const CustomVariableEditorModal: FC<CustomVariableEditorModalProps> = ({
     ];
     doCreateVariable.mutate(variables);
   });
+
+  // if no default value is selected, make the first option as default
+  useEffect(() => {
+    if (!open || formValues.possibleValues.length == 0) return;
+    const isDefaultAvailable = formValues.possibleValues.some(v => v.isDefault);
+    if (!isDefaultAvailable) {
+      setValue('possibleValues', [
+        ...formValues.possibleValues.map((t, i) => {
+          return { ...t, isDefault: i === 0 };
+        })
+      ]);
+    }
+  }, [formValues.possibleValues, open])
+
+  if (!open) return null;
 
   return (
     <YBModal

@@ -20,7 +20,7 @@
 #include "yb/client/table_handle.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"

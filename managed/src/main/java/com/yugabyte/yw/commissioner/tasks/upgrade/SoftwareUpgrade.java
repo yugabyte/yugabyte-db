@@ -143,7 +143,9 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
                 Collections.singleton(universe.getUniverseUUID()),
                 Collections.singleton(universe.getUniverseUUID()),
                 xClusterUniverseService,
-                new HashSet<>());
+                new HashSet<>(),
+                universe,
+                newVersion);
           }
 
           // Update software version in the universe metadata.
@@ -200,8 +202,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
 
     // Copy the source certs to the corresponding directory on the target universe.
     Map<UUID, List<XClusterConfig>> sourceUniverseUuidToXClusterConfigsMap =
-        xClusterConfigsAsTarget
-            .stream()
+        xClusterConfigsAsTarget.stream()
             .collect(
                 Collectors.groupingBy(xClusterConfig -> xClusterConfig.getSourceUniverseUUID()));
 

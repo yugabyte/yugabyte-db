@@ -50,6 +50,8 @@ interface SelectedOption {
   label?: string;
   flagname?: string;
   flagvalue?: any;
+  flagvalueobject?: any;
+  previewFlagValue?: string;
 }
 
 interface GflagValidationObject {
@@ -75,7 +77,8 @@ const ADD_GFLAG = 'ADD_GFLAG';
 const CREATE = 'CREATE';
 const EDIT = 'EDIT';
 
-export type GFlagWithId = Gflag & { id: string };
+export type GFlagConf = { ConfValue: any; PreviewConfValue: string };
+export type GFlagWithId = Gflag & { id: string } & GFlagConf;
 
 export const GFlagsField = ({
   dbVersion,
@@ -194,7 +197,12 @@ export const GFlagsField = ({
       }
 
       case ADD_GFLAG: {
-        const obj = { Name: values?.flagname, [values?.server]: values?.flagvalue };
+        const obj = {
+          Name: values?.flagname,
+          [values?.server]: values?.flagvalue,
+          ConfValue: values?.flagvalueobject,
+          PreviewConfValue: values?.previewFlagValue
+        };
         checkExistsAndPush(obj);
         callValidation([obj]);
         setToggleModal(false);
@@ -304,7 +312,9 @@ export const GFlagsField = ({
       modalProps = {
         ...modalProps,
         flagname: row?.Name,
-        flagvalue: row[server]
+        flagvalue: row[server],
+        flagvalueobject: row?.ConfValue,
+        previewFlagValue: row?.PreviewConfValue
       };
       if (isError) modalProps['errorMsg'] = eInfo[server]?.error;
 

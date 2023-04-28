@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_path.h"
@@ -53,51 +53,31 @@ namespace yb {
 namespace docdb {
 
 DocRowwiseIterator::DocRowwiseIterator(
-    const Schema& projection,
-    std::reference_wrapper<const DocReadContext>
-        doc_read_context,
+    const dockv::ReaderProjection& projection,
+    std::reference_wrapper<const DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter,
-    boost::optional<size_t> end_referenced_key_column_index,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
           projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index),
+          pending_op_counter),
       statistics_(statistics) {}
 
 DocRowwiseIterator::DocRowwiseIterator(
-    std::unique_ptr<Schema> projection,
-    std::reference_wrapper<const DocReadContext>
-        doc_read_context,
+    const dockv::ReaderProjection& projection,
+    std::shared_ptr<DocReadContext> doc_read_context,
     const TransactionOperationContext& txn_op_context,
     const DocDB& doc_db,
     CoarseTimePoint deadline,
     const ReadHybridTime& read_time,
     RWOperationCounter* pending_op_counter,
-    boost::optional<size_t> end_referenced_key_column_index,
     const DocDBStatistics* statistics)
     : DocRowwiseIteratorBase(
-          std::move(projection), doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index),
-      statistics_(statistics) {}
-
-DocRowwiseIterator::DocRowwiseIterator(
-    std::unique_ptr<Schema> projection,
-    std::shared_ptr<DocReadContext>
-        doc_read_context,
-    const TransactionOperationContext& txn_op_context,
-    const DocDB& doc_db,
-    CoarseTimePoint deadline,
-    const ReadHybridTime& read_time,
-    RWOperationCounter* pending_op_counter,
-    boost::optional<size_t> end_referenced_key_column_index,
-    const DocDBStatistics* statistics)
-    : DocRowwiseIteratorBase(
-          std::move(projection), doc_read_context, txn_op_context, doc_db, deadline, read_time,
-          pending_op_counter, end_referenced_key_column_index),
+          projection, doc_read_context, txn_op_context, doc_db, deadline, read_time,
+          pending_op_counter),
       statistics_(statistics) {}
 
 DocRowwiseIterator::~DocRowwiseIterator() = default;
@@ -148,7 +128,7 @@ void DocRowwiseIterator::InitResult() {
 }
 
 inline void DocRowwiseIterator::Seek(const Slice& key) {
-  VLOG_WITH_FUNC(3) << " Seeking to " << key;
+  VLOG_WITH_FUNC(3) << " Seeking to " << key << "/" << dockv::DocKey::DebugSliceToString(key);
   db_iter_->Seek(key);
 }
 
@@ -179,10 +159,10 @@ Status DocRowwiseIterator::AdvanceIteratorToNextDesiredRow(bool row_finished) co
 }
 
 Result<bool> DocRowwiseIterator::DoFetchNext(
-    QLTableRow* table_row,
-    const Schema* projection,
-    QLTableRow* static_row,
-    const Schema* static_projection) {
+    qlexpr::QLTableRow* table_row,
+    const dockv::ReaderProjection* projection,
+    qlexpr::QLTableRow* static_row,
+    const dockv::ReaderProjection* static_projection) {
   VLOG(4) << __PRETTY_FUNCTION__ << ", has_next_status_: " << has_next_status_ << ", done_: "
           << done_ << ", db_iter finished: " << db_iter_->IsOutOfRecords();
 
@@ -286,7 +266,7 @@ Result<bool> DocRowwiseIterator::DoFetchNext(
 
     if (doc_reader_ == nullptr) {
       doc_reader_ = std::make_unique<DocDBTableReader>(
-          db_iter_.get(), deadline_, &reader_projection_, table_type_,
+          db_iter_.get(), deadline_, &projection_, table_type_,
           doc_read_context_.schema_packing_storage);
       RETURN_NOT_OK(doc_reader_->UpdateTableTombstoneTime(
           VERIFY_RESULT(GetTableTombstoneTime(doc_key))));
@@ -351,30 +331,33 @@ HybridTime DocRowwiseIterator::TEST_MaxSeenHt() {
 }
 
 Status DocRowwiseIterator::FillRow(
-    QLTableRow* table_row, const Schema* projection_opt) {
+    qlexpr::QLTableRow* table_row, const dockv::ReaderProjection* projection_opt) {
   VLOG(4) << __PRETTY_FUNCTION__;
 
+  const auto& projection = projection_opt ? *projection_opt : projection_;
+
+  if (projection.columns.empty()) {
+    return Status::OK();
+  }
+
   // Copy required key columns to table_row.
-  RETURN_NOT_OK(CopyKeyColumnsToQLTableRow(table_row));
+  RETURN_NOT_OK(CopyKeyColumnsToQLTableRow(projection, table_row));
 
   if (is_flat_doc_) {
     return Status::OK();
   }
 
-  const auto& projection = projection_opt ? *projection_opt : schema();
-
   DVLOG_WITH_FUNC(4) << "subdocument: " << AsString(*row_);
-  for (size_t i = projection.num_key_columns(); i < projection.num_columns(); i++) {
-    const auto& column_id = projection.column_id(i);
-    const auto ql_type = projection.column(i).type();
-    const auto* column_value = row_->GetChild(dockv::KeyEntryValue::MakeColumnId(column_id));
-    if (column_value != nullptr) {
-      QLTableColumn& column = table_row->AllocColumn(column_id);
-      column_value->ToQLValuePB(ql_type, &column.value);
-      column.ttl_seconds = column_value->GetTtl();
-      if (column_value->IsWriteTimeSet()) {
-        column.write_time = column_value->GetWriteTime();
-      }
+  for (const auto& column : projection.value_columns()) {
+    const auto* source = row_->GetChild(column.subkey);
+    if (!source) {
+      continue;
+    }
+    auto& dest = table_row->AllocColumn(column.id);
+    source->ToQLValuePB(column.type, &dest.value);
+    dest.ttl_seconds = source->GetTtl();
+    if (source->IsWriteTimeSet()) {
+      dest.write_time = source->GetWriteTime();
     }
   }
 

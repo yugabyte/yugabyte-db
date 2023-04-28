@@ -41,7 +41,7 @@
 
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"

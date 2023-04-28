@@ -366,8 +366,7 @@ public class ResizeNodeParams extends UpgradeTaskParams {
               StaticInjectorHolder.injector().instanceOf(Config.class),
               allowUnsupportedInstances);
       InstanceType newInstanceType =
-          instanceTypes
-              .stream()
+          instanceTypes.stream()
               .filter(type -> type.getInstanceTypeCode().equals(newInstanceTypeCode))
               .findFirst()
               .orElse(null);
