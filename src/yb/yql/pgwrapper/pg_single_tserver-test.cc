@@ -211,6 +211,28 @@ TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanSkipPK), PgMiniBigPre
       /* compact= */ false, /* aggregate = */ false);
 }
 
+TEST_F_EX(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(ScanBigPK), PgMiniBigPrefetchTest) {
+  constexpr auto kNumRows = kScanRows / 4;
+  constexpr auto kNumRepetitions = 10;
+
+  FLAGS_ysql_enable_packed_row = true;
+  FLAGS_ysql_enable_packed_row_for_colocated_table = true;
+
+  std::string create_cmd = "CREATE TABLE t (k TEXT PRIMARY KEY, value INT)";
+  std::string insert_cmd = "INSERT INTO t (k, value) VALUES (";
+  for (const auto i : Range(kNumRepetitions)) {
+    if (i) {
+      insert_cmd += "||";
+    }
+    insert_cmd += "md5(random()::TEXT)";
+  }
+  insert_cmd += ", generate_series($0, $1))";
+  const std::string select_cmd = "SELECT k FROM t";
+  SetupColocatedTableAndRunBenchmark(
+      create_cmd, insert_cmd, select_cmd, kNumRows, kScanBlockSize, kScanReads,
+      /* compact= */ false, /* aggregate = */ false);
+}
+
 TEST_F(PgSingleTServerTest, YB_DISABLE_TEST_IN_TSAN(BigValue)) {
   constexpr size_t kValueSize = 32_MB;
   constexpr int kKey = 42;

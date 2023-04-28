@@ -24,7 +24,7 @@ using std::string;
 
 namespace yb::dockv {
 
-bool KeyBelongsToDocKeyInTest(const rocksdb::Slice &key, const string &encoded_doc_key) {
+bool KeyBelongsToDocKeyInTest(const Slice &key, const string &encoded_doc_key) {
   if (key.starts_with(encoded_doc_key)) {
     const auto encoded_doc_key_size = encoded_doc_key.size();
     const char* key_data = key.cdata();
@@ -55,37 +55,126 @@ Result<size_t> CheckHybridTimeSizeAndValueType(const Slice& key) {
   return ht_byte_size;
 }
 
-template <char END_OF_STRING>
-void AppendEncodedStrToKey(const string &s, KeyBuffer *dest) {
-  static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
-                "Only characters '\0' and '\xff' allowed as a template parameter");
-  if (END_OF_STRING == '\0' && s.find('\0') == string::npos) {
-    // Fast path: no zero characters, nothing to encode.
-    dest->append(s);
-  } else {
-    for (char c : s) {
-      if (c == '\0') {
-        dest->push_back(END_OF_STRING);
-        dest->push_back(END_OF_STRING ^ 1);
-      } else {
-        dest->push_back(END_OF_STRING ^ c);
-      }
-    }
+namespace {
+
+// Finds a compile-time constant character in string.
+template<char kChar>
+const char* Find(const char* begin, const char* end) {
+  if (kChar == 0) {
+    return begin + strnlen(begin, end - begin);
+  }
+  auto result = static_cast<const char*>(memchr(begin, kChar, end - begin));
+  return result ? result : end;
+}
+
+template<char kChar, class Ch>
+void Xor(Ch* begin, Ch* end) {
+  if (kChar == 0) {
+    return;
+  }
+  for (; begin != end; ++begin) {
+    *begin ^= kChar;
   }
 }
 
-void AppendZeroEncodedStrToKey(const string &s, KeyBuffer *dest) {
-  AppendEncodedStrToKey<'\0'>(s, dest);
-}
-
-void AppendComplementZeroEncodedStrToKey(const string &s, KeyBuffer *dest) {
-  AppendEncodedStrToKey<'\xff'>(s, dest);
+template <bool desc>
+void AppendEncodedStrToKey(const Slice& s, KeyBuffer *dest) {
+  const auto* p = s.cdata();
+  const auto* end = s.cend();
+  size_t old_size = dest->size();
+  for (;;) {
+    const auto* stop = Find<'\0'>(p, end);
+    if (stop == end) {
+      dest->append(p, end);
+      break;
+    }
+    dest->append(p, stop + 1);
+    dest->push_back(1);
+    p = stop + 1;
+  }
+  if (desc) {
+    Xor<'\xff'>(dest->mutable_data() + old_size, dest->mutable_data() + dest->size());
+  }
 }
 
 template <char A>
 inline void TerminateEncodedKeyStr(KeyBuffer *dest) {
-  dest->push_back(A);
-  dest->push_back(A);
+  char buf[2] = {A, A};
+  dest->append(buf, sizeof(buf));
+}
+
+template<char kEndOfString, class Out>
+Status DecodeEncodedStr(Slice* slice, Out* result) {
+  static_assert(kEndOfString == '\0' || kEndOfString == '\xff',
+                "Invalid kEndOfString character. Only '\0' and '\xff' accepted");
+  constexpr char kEndOfStringEscape = kEndOfString ^ 1;
+  const char* p = slice->cdata();
+  const char* end = p + slice->size();
+  auto old_size = result->size();
+
+  while (p != end) {
+    auto stop = Find<kEndOfString>(p, end);
+    if (PREDICT_FALSE(stop > end - 1)) {
+      return STATUS(
+          Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ", kEndOfString));
+    }
+    if (PREDICT_TRUE(stop[1] == kEndOfString)) {
+      result->append(p, stop);
+      p = stop + 2;
+      break;
+    }
+    if (stop[1] != kEndOfStringEscape) {
+      return STATUS(
+          Corruption,
+          StringPrintf(
+              "Invalid sequence in encoded string: "
+              R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
+              kEndOfString, *p, kEndOfString, kEndOfString, kEndOfString, kEndOfStringEscape));
+    }
+    result->append(p, stop + 1);
+    p = stop + 2;
+  }
+  slice->remove_prefix(p - slice->cdata());
+  Xor<kEndOfString>(result->data() + old_size, result->data() + result->size());
+  return Status::OK();
+}
+
+struct DevNull {
+  void append(const char* begin, const char* end) {
+  }
+
+  constexpr size_t size() const {
+    return 0;
+  }
+
+  char* data() const {
+    return nullptr;
+  }
+};
+
+template <class Decoder>
+Result<std::string> FullyDecodeString(const Slice& encoded_str, const Decoder& decoder) {
+  std::string result;
+  result.reserve(encoded_str.size());
+  Slice slice(encoded_str);
+  RETURN_NOT_OK(decoder(&slice, &result));
+  if (!slice.empty()) {
+    return STATUS_FORMAT(
+        Corruption,
+        "Did not consume all characters from a zero-encoded string $0: bytes left: $1",
+        FormatBytesAsStr(encoded_str), slice.size());
+  }
+  return result;
+}
+
+} // namespace
+
+void AppendZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest) {
+  AppendEncodedStrToKey<false>(s, dest);
+}
+
+void AppendComplementZeroEncodedStrToKey(const Slice& s, KeyBuffer *dest) {
+  AppendEncodedStrToKey<true>(s, dest);
 }
 
 void TerminateZeroEncodedKeyStr(KeyBuffer *dest) {
@@ -96,78 +185,35 @@ void TerminateComplementZeroEncodedKeyStr(KeyBuffer *dest) {
   TerminateEncodedKeyStr<'\xff'>(dest);
 }
 
-template<char END_OF_STRING>
-Status DecodeEncodedStr(rocksdb::Slice* slice, string* result) {
-  static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
-                "Invalid END_OF_STRING character. Only '\0' and '\xff' accepted");
-  constexpr char END_OF_STRING_ESCAPE = END_OF_STRING ^ 1;
-  const char* p = slice->cdata();
-  const char* end = p + slice->size();
-
-  while (p != end) {
-    if (*p == END_OF_STRING) {
-      ++p;
-      if (p == end) {
-        return STATUS(Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ",
-                                               END_OF_STRING));
-      }
-      if (*p == END_OF_STRING) {
-        // Found two END_OF_STRING characters, this is the end of the encoded string.
-        ++p;
-        break;
-      }
-      if (*p == END_OF_STRING_ESCAPE) {
-        // 0 is encoded as 00 01 in ascending encoding and FF FE in descending encoding.
-        if (result != nullptr) {
-          result->push_back(0);
-        }
-        ++p;
-      } else {
-        return STATUS(Corruption, StringPrintf(
-            "Invalid sequence in encoded string: "
-            R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
-            END_OF_STRING, *p, END_OF_STRING, END_OF_STRING, END_OF_STRING, END_OF_STRING_ESCAPE));
-      }
-    } else {
-      if (result != nullptr) {
-        result->push_back((*p) ^ END_OF_STRING);
-      }
-      ++p;
-    }
+Status DecodeComplementZeroEncodedStr(Slice* slice, std::string* result) {
+  if (result == nullptr) {
+    DevNull dev_null;
+    return DecodeEncodedStr<'\xff'>(slice, &dev_null);
   }
-  if (result != nullptr) {
-    result->shrink_to_fit();
-  }
-  slice->remove_prefix(p - slice->cdata());
-  return Status::OK();
-}
-
-Status DecodeComplementZeroEncodedStr(rocksdb::Slice* slice, std::string* result) {
   return DecodeEncodedStr<'\xff'>(slice, result);
 }
 
-Status DecodeZeroEncodedStr(rocksdb::Slice* slice, string* result) {
+Result<std::string> DecodeComplementZeroEncodedStr(const Slice& encoded_str) {
+  return FullyDecodeString(encoded_str, [](Slice* slice, std::string* result) {
+    return DecodeComplementZeroEncodedStr(slice, result);
+  });
+}
+
+Status DecodeZeroEncodedStr(Slice* slice, std::string* result) {
+  if (result == nullptr) {
+    DevNull dev_null;
+    return DecodeEncodedStr<'\0'>(slice, &dev_null);
+  }
   return DecodeEncodedStr<'\0'>(slice, result);
 }
 
-string DecodeZeroEncodedStr(string encoded_str) {
-  string result;
-  rocksdb::Slice slice(encoded_str);
-  Status status = DecodeZeroEncodedStr(&slice, &result);
-  if (!status.ok()) {
-    LOG(FATAL) << "Failed to decode zero-encoded string " << FormatBytesAsStr(encoded_str) << ": "
-               << status.ToString();
-  }
-  if (!slice.empty()) {
-    LOG(FATAL) << "Did not consume all characters from a zero-encoded string "
-               << FormatBytesAsStr(encoded_str) << ": "
-               << "bytes left: " << slice.size() << ", "
-               << "encoded_str.size(): " << encoded_str.size();
-  }
-  return result;
+Result<std::string> DecodeZeroEncodedStr(const Slice& encoded_str) {
+  return FullyDecodeString(encoded_str, [](Slice* slice, std::string* result) {
+    return DecodeZeroEncodedStr(slice, result);
+  });
 }
 
-std::string ToShortDebugStr(rocksdb::Slice slice) {
+std::string ToShortDebugStr(Slice slice) {
   return FormatSliceAsStr(slice, QuotesType::kDoubleQuotes, kShortDebugStringLength);
 }
 
