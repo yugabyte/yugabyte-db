@@ -576,6 +576,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
+      new ConfKeyInfo<>(
+          "yb.xcluster.use_ybc",
+          ScopeType.GLOBAL,
+          "Enable YBC for xCluster",
+          "Enable YBC to take backup and restore during xClsuter bootstrap",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<String> pgDumpPath =
       new ConfKeyInfo<>(
           "db.default.pg_dump_path",

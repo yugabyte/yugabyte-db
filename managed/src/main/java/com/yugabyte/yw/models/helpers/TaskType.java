@@ -494,7 +494,9 @@ public enum TaskType {
 
   WaitForNodeAgent(com.yugabyte.yw.commissioner.tasks.subtasks.WaitForNodeAgent.class),
 
-  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class);
+  CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class),
+
+  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class);
 
   private final Class<? extends ITask> taskClass;
 
