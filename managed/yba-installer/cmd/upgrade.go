@@ -51,6 +51,9 @@ var upgradeCmd = &cobra.Command{
 		if err != nil {
 			state = ybactlstate.New()
 		}
+
+		//Todo: this is a temporary hidden feature to migrate data
+		//from Pg to Ybdb and vice-a-versa.
 		results := preflight.Run(preflight.UpgradeChecks, skippedPreflightChecks...)
 		if preflight.ShouldFail(results) {
 			preflight.PrintPreflightResults(results)
@@ -79,6 +82,26 @@ var upgradeCmd = &cobra.Command{
 
 		// Here is the postgres minor version/no upgrade workflow
 		common.Upgrade(common.GetVersion())
+
+		// Check if upgrading requires DB migration.
+
+		dbMigrateFlow := state.GetDbUpgradeWorkFlow()
+
+		var newDbServiceName string
+		if dbMigrateFlow == ybactlstate.PgToYbdb {
+			serviceOrder = serviceOrder[1:]
+			migratePgToYbdbOrFatal()
+			newDbServiceName = YbdbServiceName
+			state.Postgres.IsEnabled = false
+			state.Ybdb.IsEnabled = true
+		} else if dbMigrateFlow == ybactlstate.YbdbToPg {
+			serviceOrder = serviceOrder[1:]
+			migrateYbdbToPgOrFatal()
+			newDbServiceName = PostgresServiceName
+			state.Postgres.IsEnabled = true
+			state.Ybdb.IsEnabled = false
+		}
+
 		for _, name := range serviceOrder {
 			log.Info("About to upgrade component " + name)
 			if err := services[name].Upgrade(); err != nil {
@@ -96,7 +119,9 @@ var upgradeCmd = &cobra.Command{
 		}
 
 		var statuses []common.Status
-		for _, service := range services {
+		serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
+		for _, name := range serviceOrder {
+			service := services[name]
 			status, err := service.Status()
 			if err != nil {
 				log.Fatal("Failed to get status: " + err.Error())

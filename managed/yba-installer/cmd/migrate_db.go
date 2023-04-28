@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/common"
@@ -11,21 +10,16 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/ybactlstate"
 )
 
-var reconfigureCmd = &cobra.Command{
-	Use: "reconfigure",
-	Short: "The reconfigure command is used to apply changes made to yba-ctl.yml to running " +
-		"YugabyteDB Anywhere services.",
+var migrateDbCmd = &cobra.Command{
+	Use: "migrate_db",
+	Short: `The migrate_db command is an experimental feature to migrate
+		data between postgres and ybdb. `,
 	Args: cobra.NoArgs,
 	Long: `
-    The reconfigure command is used to apply changes made to yba-ctl.yml to running
-	YugabyteDB Anywhere services. The process involves restarting all associated services.`,
-	PreRun: func(cmd *cobra.Command, args []string) {
-		if !common.RunFromInstalled() {
-			path := filepath.Join(common.YbactlInstallDir(), "yba-ctl")
-			log.Fatal("reconfigure must be run from " + path +
-				". It may be in the systems $PATH for easy of use.")
-		}
-	},
+    The migrate_db command is an experimental command to migrate data
+	between postgres and ybdb. It reads the db config changes made to
+	yba-ctl.yml and and determines whether to migrate from YBDB to Postgres,
+	vice versa, or take no action. The process restarts the yb-platform service.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.LoadState()
 		if err != nil {
@@ -33,17 +27,38 @@ var reconfigureCmd = &cobra.Command{
 		}
 
 		if err := state.ValidateReconfig(); err != nil {
-			log.Fatal("invalid reconfigure: " + err.Error())
+			log.Fatal("invalid config: " + err.Error())
 		}
+
+		dbMigrateFlow := state.GetDbUpgradeWorkFlow()
+
+		if dbMigrateFlow == ybactlstate.PgToPg || dbMigrateFlow == ybactlstate.YbdbToYbdb {
+			log.Info("Found no change in db config.")
+			return
+		}
+
+		// Remove DB service from service Order
+		serviceOrder = serviceOrder[1:]
 
 		for _, name := range serviceOrder {
 			log.Info("Stopping service " + name)
 			services[name].Stop()
 		}
 
-		// Change into the dir we are in so that we can specify paths relative to ourselves
-		// TODO(minor): probably not a good idea in the long run
 		os.Chdir(common.GetBinaryDir())
+
+		var newDbServiceName string
+		if dbMigrateFlow == ybactlstate.PgToYbdb {
+			migratePgToYbdbOrFatal()
+			state.Postgres.IsEnabled = false
+			state.Ybdb.IsEnabled = true
+			newDbServiceName = YbdbServiceName
+		} else {
+			migrateYbdbToPgOrFatal()
+			state.Postgres.IsEnabled = true
+			state.Ybdb.IsEnabled = false
+			newDbServiceName = PostgresServiceName
+		}
 
 		for _, name := range serviceOrder {
 			log.Info("Regenerating config for service " + name)
@@ -51,6 +66,8 @@ var reconfigureCmd = &cobra.Command{
 			log.Info("Starting service " + name)
 			services[name].Start()
 		}
+
+		serviceOrder = append([]string{newDbServiceName}, serviceOrder...)
 
 		for _, name := range serviceOrder {
 			status, err := services[name].Status()
@@ -63,6 +80,7 @@ var reconfigureCmd = &cobra.Command{
 			}
 		}
 
+		//Update state
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("failed to write state: " + err.Error())
 		}
@@ -70,5 +88,8 @@ var reconfigureCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(reconfigureCmd)
+	//Hide this command behind YBA_MODE=dev env flag.
+	if os.Getenv("YBA_MODE") == "dev" {
+		rootCmd.AddCommand(migrateDbCmd)
+	}
 }

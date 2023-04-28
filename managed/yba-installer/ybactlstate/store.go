@@ -11,7 +11,8 @@ import (
 // LoadState will read the state from the file store, and perform migrations to the latest schema
 // as needed.
 func LoadState() (*State, error) {
-	var state *State
+	//var state *State
+	state := &State{}
 	sp := filepath.Join(common.YbactlInstallDir(), StateFileName)
 	sf, err := os.Open(sp)
 	if err != nil {
