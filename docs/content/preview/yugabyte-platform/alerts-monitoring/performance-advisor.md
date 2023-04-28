@@ -144,7 +144,7 @@ Hot shard can be caused by:
 - An application reading or writing one particular row too often.
 
 **Fix the problem**
-If range sharding is used, analyze reads or writes and recreate the table with more fair shards distribution across nodes.
+If range sharding is used, analyze reads and writes and recreate the table with a more balanced shard distribution across nodes.
 
 ## Limitations
 
