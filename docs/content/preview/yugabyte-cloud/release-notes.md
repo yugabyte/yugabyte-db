@@ -16,6 +16,12 @@ On this page:
 
 ## Releases
 
+### April 28, 2023
+
+**New Features**
+
+- Support for using a customer managed key (CMK) to encrypt a dedicated cluster (preview release). When YugabyteDB encryption at rest is enabled, your cluster (including backups) is encrypted using your own CMK residing in AWS Key Management Service (KMS).
+
 ### March 31, 2023
 
 **Database**
