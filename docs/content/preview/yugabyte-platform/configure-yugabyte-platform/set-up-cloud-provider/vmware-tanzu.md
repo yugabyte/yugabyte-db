@@ -95,36 +95,31 @@ Use the **Image Registry** field to specify the location of the YugabyteDB image
 
 The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
 
-Use the **Kube Config** field to specify the kube config for an availability zone at one of the following levels:
+Use **Kube Config** to upload the `kubeconfig` file. If specified, this configuration file is used for all availability zones in all regions.
 
-- At the **provider level**, in which case this configuration file will be used for all availability zones in all regions. You use the **Cloud Provider Configuration** window for this setting.
-- At the **zone level**, which is important for multi-zone or multi-region deployments. You use the **Add new region** dialog for this setting.
+Alternately, you can define separate `kubeconfig` files for each zone when defining the regions. See [Configure region and zones](#configure-region-and-zones).
 
 Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
 
 ## Configure region and zones
 
-You configure region and zones as follows:
-
-- On the **Create Kubernetes Provider Configuration** page, click **Add region** to open the **Add Region** dialog.
+Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog as follows:
 
 - Use the **Region** field to select the region.
 
-- Complete the fields of the expanded **Add new region** dialog shown in the following illustration:
+1. Click **Add Zone** and complete the corresponding portion of the dialog. Notice that there are might be multiple zones.
 
-  ![Add Region](/images/deploy/pivotal-cloud-foundry/add-region-1.png)
+1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. For example, `topology.kubernetes.io/zone` would place the pods in that zone.
 
-  - Use the **Zone** field to enter a zone label that matches your failure domain zone label `failure-domain.beta.kubernetes.io/zone`
+1. Use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
 
-  - Use the **Kube Config** field to upload the kube config file.
+1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
 
-  - In the **Storage Class** field, provide the storage class that exists in your Kubernetes cluster and matches the one installed on TKG. The valid input is a comma delimited value. The default is standard. That is, the default storage class is `TKG - Multi Cloud: standard-sc`, `TKG - Service: tkg-vsan-storage-policy`.
+1. In the **Kube Domain** field, provide the DNS domain name used in the Kubernetes cluster.
 
-  - In the **Kube Namespace** field, specify an existing namespace into which pods in this zone will be deployed.
+1. Use the **Kube Namespace** field to specify the namespace. If the provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
 
-  - In the **Cluster DNS Domain** field, provide the DNS domain name used in the Kubernetes cluster.
-
-  - Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
+1. Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
 
     To add service-level annotations, use the following overrides:
 
@@ -169,9 +164,9 @@ You configure region and zones as follows:
       annotation2: 'bar'
     ```
 
-  - If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
+If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
 
-  - Click **Add Region**.
+Click **Add Region** when you are done.
 
 ## Create the configuration
 
