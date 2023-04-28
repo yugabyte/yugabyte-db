@@ -2673,7 +2673,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
   public SubTaskGroup createUpgradeYbcTaskOnK8s(UUID universeUUID, String ybcSoftwareVersion) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpgradeYbc");
     InstallYbcSoftwareOnK8s task = createTask(InstallYbcSoftwareOnK8s.class);
-    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    InstallYbcSoftwareOnK8s.Params params = new InstallYbcSoftwareOnK8s.Params();
     params.setUniverseUUID(universeUUID);
     params.setYbcSoftwareVersion(ybcSoftwareVersion);
     task.initialize(params);
