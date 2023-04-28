@@ -150,7 +150,7 @@ If range sharding is used, analyze reads and writes and recreate the table with 
 
 - Currently, you can't schedule periodic performance advisor runs.
 - Currently, you can only configure performance recommendation thresholds via the API.
-- Performance recommendation can be marked resolved only via UI; this state is not persisted.
+- Performance recommendations can only be marked resolved via the UI; this state is not persisted.
 - Limited set of performance recommendations.
 
 ## Learn more
