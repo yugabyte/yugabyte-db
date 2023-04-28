@@ -194,6 +194,10 @@ public class CloudProviderHandler {
         }
       }
     }
+    if (reqProvider.getCloudCode() != kubernetes && !config.getBoolean("yb.cloud.enabled")) {
+      // Always enable for non-k8s providers.
+      reqProvider.getDetails().setEnableNodeAgent(true);
+    }
     Provider provider =
         Provider.create(customer.getUuid(), providerCode, providerName, reqProvider.getDetails());
     maybeUpdateVPC(provider);

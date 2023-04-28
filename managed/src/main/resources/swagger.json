@@ -7650,6 +7650,9 @@
         "cloudInfo" : {
           "$ref" : "#/definitions/CloudInfo"
         },
+        "enableNodeAgent" : {
+          "type" : "boolean"
+        },
         "installNodeExporter" : {
           "type" : "boolean"
         },

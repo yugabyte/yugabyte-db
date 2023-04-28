@@ -392,7 +392,8 @@ public class NodeAgentClient {
   }
 
   public boolean isClientEnabled(Provider provider) {
-    return confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
+    return provider.getDetails().isEnableNodeAgent()
+        && confGetter.getConfForScope(provider, ProviderConfKeys.enableNodeAgentClient);
   }
 
   public boolean isAnsibleOffloadingEnabled(NodeAgent nodeAgent, Provider provider) {
