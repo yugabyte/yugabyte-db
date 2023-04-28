@@ -150,40 +150,21 @@ The `kubeconfig` file needs to be generated for each OpenShift cluster if you ar
 
 Because YugabyteDB Anywhere manages YugabyteDB universes, YugabyteDB Anywhere needs details about the cloud providers. In your case, the provider is your own OCP cluster.
 
-To configure OpenShift, navigate to **Configs > Infrastructure > VMware Tanzu**.
+To configure OpenShift, navigate to **Configs > Infrastructure > Red Hat OpenShift**.
 
 This lists all currently configured providers.
 
-To create an OpenShift provider, click **Create Kubernetes Config** to open the **Create Kubernetes Provider Configuration** page.
+To create an OpenShift provider, click **Create Kubernetes Config** to open the [Create Kubernetes Provider Configuration](../kubernetes/#kubernetes-provider-settings) page.
 
 ### Provider settings
 
-Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
+Set the **Kubernetes Provider Type** to Red Hat OpenShift.
 
-Provider settings are organized in the following sections.
-
-#### Cloud Info
-
-Set the **Kubernetes Provider Type** to RedHat OpenShift.
-
-In the **Service Account** field, enter yugabyte-platform-universe-management.
-
-In the **Image Registry** field, if you are performing Operator-based installation, use  `registry.connect.redhat.com/yugabytedb/yugabyte`, and if you are performing Helm-based installation, use  `quay.io/yugabyte/yugabyte-ubi`
-
-Optionally, use the **Pull Secret File** field to upload the pull secret you received from Yugabyte Support.
-
-Use the **Kube Config** field to select the `kubeconfig` file that you created.
-
-Click **Add Region** and complete the **Add new region** dialog by first selecting the region, and then entering the following information:
-
-- In the **Zone** field, enter the exact zone label (for example, us-east4-a).
-- In the **Namespace** field, enter yb-platform.
-
-Click **Add Region**.
+For information on the Kubernetes Provider settings, refer to [Kubernetes Provider settings](../kubernetes/#kubernetes-provider-settings).
 
 ## Create the configuration
 
-Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you should see the newly-added provider under **Red Hat OpenShift configs**.
+Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you should see the newly-added provider under **Red Hat OpenShift Configs**.
 
 ## Create a universe using the provider
 

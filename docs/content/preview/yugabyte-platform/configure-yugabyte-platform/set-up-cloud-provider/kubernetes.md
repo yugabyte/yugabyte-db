@@ -193,15 +193,15 @@ To view a provider, select it in the list to display the **Overview**. To edit t
 
 To create an Kubernetes provider, click **Create Config** to open the **Create Kubernetes Provider Configuration** page.
 
-### Provider settings
+To fill the provider configuration values using the configuration of the same Kubernetes cluster that your instance of YugabyteDB Anywhere is installed on, click **Autofill local cluster config**.
+
+### Kubernetes Provider settings
 
 Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
 
 Provider settings are organized in the following sections.
 
-To fill these values using the configuration of the same Kubernetes cluster that your instance of YugabyteDB Anywhere is installed on, click **Autofill local cluster config**.
-
-### Cloud Info
+#### Cloud Info
 
 Choose the **Kubernetes Provider Type**.
 
@@ -215,7 +215,7 @@ Alternately, you can define separate `kubeconfig` files for each zone when defin
 
 In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
 
-### Configure region and zones
+#### Configure region and zones
 
 Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog as follows:
 

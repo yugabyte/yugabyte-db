@@ -79,98 +79,60 @@ To configure any TKG edition (that is, either TKG-Integrated, TKG-Service, or TK
 
 This lists all currently configured providers.
 
-To create a TKG provider, click **Create Kubernetes Config** to open the **Create Kubernetes Provider Configuration** page.
+To create a TKG provider, click **Create Kubernetes Config** to open the [Create Kubernetes Provider Configuration](../kubernetes/#kubernetes-provider-settings) page.
 
 ### Provider settings
 
-Enter a Provider name. The Provider name is an internal tag used for organizing cloud providers.
-
-Provider settings are organized in the following sections.
-
-#### Cloud Info
-
 Set the **Kubernetes Provider Type** to VMWare Tanzu.
 
-Use the **Image Registry** field to specify the location of the YugabyteDB image. You should accept the default setting, unless you are hosting your own registry.
+For information on the Kubernetes Provider settings, refer to [Kubernetes Provider settings](../kubernetes/#kubernetes-provider-settings).
 
-The **Pull Secret File** field indicates that the Enterprise YugabyteDB image is in a private repository. Use this field to upload the pull secret for downloading the images. The secret should be supplied by your organization's sales team.
+To add service-level annotations, use the following [overrides](../kubernetes/#overrides):
 
-Use **Kube Config** to upload the `kubeconfig` file. If specified, this configuration file is used for all availability zones in all regions.
+```config
+serviceEndpoints:
+  - name: "yb-master-service"
+    type: "LoadBalancer"
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+    app: "yb-master"
+    ports:
+      ui: "7000"
 
-Alternately, you can define separate `kubeconfig` files for each zone when defining the regions. See [Configure region and zones](#configure-region-and-zones).
+  - name: "yb-tserver-service"
+    type: "LoadBalancer"
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
+    app: "yb-tserver"
+    ports:
+      ycql-port: "9042"
+      yedis-port: "6379"
+      ysql-port: "5433"
+```
 
-Use the **Service Account** field to provide the name of the service account that has the necessary access to manage the cluster, as described in [Create cluster](/preview/deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster).
+To disable LoadBalancer, use the following overrides:
 
-## Configure region and zones
+```configuration
+enableLoadBalancer: False
+```
 
-Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog as follows:
+To change the cluster domain name, use the following overrides:
 
-- Use the **Region** field to select the region.
+```configuration
+domainName: my.cluster
+```
 
-1. Click **Add Zone** and complete the corresponding portion of the dialog. Notice that there are might be multiple zones.
+To add annotations at the StatefulSet level, use the following overrides:
 
-1. Use the **Zone** field to select a zone label that should match the value of failure domain zone label on the nodes. For example, `topology.kubernetes.io/zone` would place the pods in that zone.
-
-1. Use **Kube Config** to upload the `kubeconfig` file. If this file is available at the provider level, you are not required to supply it.
-
-1. Optionally, use the **Storage Classes** field to enter a comma-delimited value. If you do not specify this value, it would default to standard. You need to ensure that this storage class exists in your Kubernetes cluster and takes into account [storage class considerations](../../../install-yugabyte-platform/prepare-environment/kubernetes/#configure-storage-class).
-
-1. In the **Kube Domain** field, provide the DNS domain name used in the Kubernetes cluster.
-
-1. Use the **Kube Namespace** field to specify the namespace. If the provided service account has the `Cluster Admin` permissions, you are not required to complete this field. The service account used in the provided `kubeconfig` file should have access to this namespace.
-
-1. Optionally, complete the **Overrides** field. If not completed, YugabyteDB Anywhere uses the default values specified inside the Helm chart.
-
-    To add service-level annotations, use the following overrides:
-
-    ```config
-    serviceEndpoints:
-      - name: "yb-master-service"
-        type: "LoadBalancer"
-        annotations:
-          service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-        app: "yb-master"
-        ports:
-          ui: "7000"
-
-      - name: "yb-tserver-service"
-        type: "LoadBalancer"
-        annotations:
-          service.beta.kubernetes.io/aws-load-balancer-internal: "0.0.0.0/0"
-        app: "yb-tserver"
-        ports:
-          ycql-port: "9042"
-          yedis-port: "6379"
-          ysql-port: "5433"
-    ```
-
-    To disable LoadBalancer, use the following overrides:
-
-    ```configuration
-    enableLoadBalancer: False
-    ```
-
-    To change the cluster domain name, use the following overrides:
-
-    ```configuration
-    domainName: my.cluster
-    ```
-
-    To add annotations at the StatefulSet level, use the following overrides:
-
-    ```configuration
-    networkAnnotation:
-      annotation1: 'foo'
-      annotation2: 'bar'
-    ```
-
-If required, add a new zone by clicking **Add Zone**, as your configuration may have multiple zones.
-
-Click **Add Region** when you are done.
+```configuration
+networkAnnotation:
+  annotation1: 'foo'
+  annotation2: 'bar'
+```
 
 ## Create the configuration
 
-Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you are redirected to **VMware Tanzu configs**.
+Click **Create Provider Configuration** to save the configuration. If your configuration is successful, you are redirected to **VMware Tanzu Configs**.
 
 ## Appendix: VMware Tanzu application service
 
