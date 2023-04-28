@@ -879,6 +879,8 @@ public class TaskExecutor {
 
     protected abstract TaskExecutionListener getTaskExecutionListener();
 
+    protected abstract UUID getUserTaskUUID();
+
     Duration getTimeLimit() {
       return timeLimit;
     }
@@ -925,6 +927,8 @@ public class TaskExecutor {
           "Task state must be one of " + TaskInfo.ERROR_STATES);
       taskInfo.refresh();
       ObjectNode taskDetails = taskInfo.getDetails().deepCopy();
+      // Method maskConfig does not modify the input as it makes a deep-copy.
+      String maskedTaskDetails = CommonUtils.maskConfig(taskDetails).toString();
       String errorString;
       if (state == TaskInfo.State.Aborted && isShutdown.get()) {
         errorString = "Platform shutdown";
@@ -936,27 +940,25 @@ public class TaskExecutor {
           cause = cause.getCause();
         }
         errorString =
-            "Failed to execute task "
-                + StringUtils.abbreviate(CommonUtils.maskConfig(taskDetails).toString(), 500)
-                + ", hit error:\n\n"
-                + StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000)
-                + ".";
+            String.format(
+                "Failed to execute task %s, git error:\n\n %s.",
+                StringUtils.abbreviate(maskedTaskDetails, 500),
+                StringUtils.abbreviateMiddle(cause.getMessage(), "...", 3000));
       }
       log.error(
           "Failed to execute task type {} UUID {} details {}, hit error.",
           taskInfo.getTaskType(),
           taskInfo.getTaskUUID(),
-          CommonUtils.maskConfig(taskDetails),
+          maskedTaskDetails,
           t);
 
       if (log.isDebugEnabled()) {
         log.debug("Task creator callstack:\n{}", String.join("\n", creatorCallstack));
       }
 
-      ObjectNode details = taskDetails.deepCopy();
-      details.put("errorString", errorString);
+      taskDetails.put("errorString", errorString);
       taskInfo.setTaskState(state);
-      taskInfo.setDetails(details);
+      taskInfo.setDetails(taskDetails);
       taskInfo.update();
     }
 
@@ -1088,6 +1090,11 @@ public class TaskExecutor {
     @Override
     protected TaskExecutionListener getTaskExecutionListener() {
       return taskExecutionListenerRef.get();
+    }
+
+    @Override
+    protected UUID getUserTaskUUID() {
+      return getTaskUUID();
     }
 
     public synchronized void doHeartbeat() {
@@ -1227,7 +1234,7 @@ public class TaskExecutor {
     @Override
     public void run() {
       // Sets the top-level user task UUID.
-      task.setUserTaskUUID(parentRunnableTask.getTaskUUID());
+      task.setUserTaskUUID(getUserTaskUUID());
       int currentAttempt = 0;
       int retryLimit = task.getRetryLimit();
 
@@ -1259,6 +1266,11 @@ public class TaskExecutor {
     @Override
     protected synchronized TaskExecutionListener getTaskExecutionListener() {
       return parentRunnableTask == null ? null : parentRunnableTask.getTaskExecutionListener();
+    }
+
+    @Override
+    protected synchronized UUID getUserTaskUUID() {
+      return parentRunnableTask == null ? null : parentRunnableTask.getUserTaskUUID();
     }
 
     public synchronized void setSubTaskGroupType(SubTaskGroupType subTaskGroupType) {

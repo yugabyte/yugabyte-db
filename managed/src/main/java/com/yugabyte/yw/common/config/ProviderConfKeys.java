@@ -290,15 +290,6 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
-  public static final ConfKeyInfo<Boolean> installNodeAgentServer =
-      new ConfKeyInfo<>(
-          "yb.node_agent.server.install",
-          ScopeType.PROVIDER,
-          "Install Node Agent Server",
-          "Install node agent server on DB nodes.",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<Integer> vmMaxMemCount =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.vm_max_map_count",

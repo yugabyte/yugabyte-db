@@ -183,15 +183,15 @@ public class ShellProcessHandler {
         log.info(logMsg);
       }
 
-      long endTimeSecs = 0;
+      long endTimeMs = 0;
       if (context.getTimeoutSecs() > 0) {
-        endTimeSecs = (System.currentTimeMillis() / 1000) + context.getTimeoutSecs();
+        endTimeMs = System.currentTimeMillis() + context.getTimeoutSecs() * 1000;
       }
       process = pb.start();
       if (context.getUuid() != null) {
         Util.setPID(context.getUuid(), process);
       }
-      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeSecs);
+      waitForProcessExit(process, description, tempOutputFile, tempErrorFile, endTimeMs);
       // We will only read last 20MB of process stderr file.
       // stdout has `data` so we wont limit that.
       boolean logCmdOutput = context.isLogCmdOutput();
@@ -339,7 +339,7 @@ public class ShellProcessHandler {
   }
 
   private static void waitForProcessExit(
-      Process process, String description, File outFile, File errFile, long endTimeSecs)
+      Process process, String description, File outFile, File errFile, long endTimeMs)
       throws IOException, InterruptedException {
     try (FileInputStream outputInputStream = new FileInputStream(outFile);
         InputStreamReader outputReader = new InputStreamReader(outputInputStream);
@@ -352,7 +352,7 @@ public class ShellProcessHandler {
         // get stuck infinitely without getting to the time check
         tailStream(outputStream, 10000 /*maxLines*/);
         tailStream(errorStream, 10000 /*maxLines*/);
-        if (endTimeSecs > 0 && ((System.currentTimeMillis() / 1000) >= endTimeSecs)) {
+        if (endTimeMs > 0 && (System.currentTimeMillis() >= endTimeMs)) {
           log.warn("Aborting command {} forcibly because it took too long", description);
           destroyForcibly(process, description);
           break;

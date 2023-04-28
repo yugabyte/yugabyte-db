@@ -1153,7 +1153,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public SubTaskGroup createInstallNodeAgentTasks(Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup(InstallNodeAgent.class.getSimpleName());
-    NodeAgentManager nodeAgentManager = application.injector().instanceOf(NodeAgentManager.class);
+    NodeAgentClient nodeAgentClient = application.injector().instanceOf(NodeAgentClient.class);
     Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       if (node.cloudInfo == null) {
@@ -1161,7 +1161,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       }
       Cluster cluster = getUniverse().getCluster(node.placementUuid);
       Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
-      if (nodeAgentManager.isServerToBeInstalled(provider)) {
+      if (nodeAgentClient.isClientEnabled(provider)) {
         if (provider.getCloudCode() == CloudType.onprem) {
           AccessKey accessKey =
               AccessKey.getOrBadRequest(provider.getUuid(), cluster.userIntent.accessKeyCode);
@@ -3453,6 +3453,34 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
 
   public boolean isTserverAliveOnNode(NodeDetails node, String masterAddrs) {
     return isServerAlive(node, ServerType.TSERVER, masterAddrs);
+  }
+
+  public UniverseUpdater nodeStateUpdater(final String nodeName, final NodeStatus nodeStatus) {
+    UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          NodeDetails node = universe.getNode(nodeName);
+          if (node == null) {
+            return;
+          }
+          NodeStatus currentStatus = NodeStatus.fromNode(node);
+          log.info(
+              "Changing node {} state from {} to {} in universe {}.",
+              nodeName,
+              currentStatus,
+              nodeStatus,
+              universe.getUniverseUUID());
+          nodeStatus.fillNodeStates(node);
+          if (nodeStatus.getNodeState() == NodeDetails.NodeState.Decommissioned) {
+            node.cloudInfo.private_ip = null;
+            node.cloudInfo.public_ip = null;
+          }
+
+          // Update the node details.
+          universeDetails.nodeDetailsSet.add(node);
+          universe.setUniverseDetails(universeDetails);
+        };
+    return updater;
   }
 
   // Helper API to update the db for the node with the given state.

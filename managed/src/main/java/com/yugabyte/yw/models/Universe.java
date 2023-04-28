@@ -93,8 +93,7 @@ public class Universe extends Model {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "Universe UUID: %s doesn't belong " + "to Customer UUID: %s",
-              universeUUID, customer.getUuid()));
+              "Universe %s doesn't belong to Customer %s", universeUUID, customer.getUuid()));
     }
     return universe;
   }
