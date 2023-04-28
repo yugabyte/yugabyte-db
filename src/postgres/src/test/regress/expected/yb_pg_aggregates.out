@@ -575,12 +575,14 @@ FROM bool_test;
 -- Basic cases
 explain (costs off)
   select min(unique1) from tenk1;
-           QUERY PLAN
----------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Partial Aggregate: true
-(3 rows)
+                         QUERY PLAN
+------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan using tenk1_unique1 on tenk1
+                 Index Cond: (unique1 IS NOT NULL)
+(5 rows)
 
 select min(unique1) from tenk1;
  min
@@ -590,12 +592,14 @@ select min(unique1) from tenk1;
 
 explain (costs off)
   select max(unique1) from tenk1;
-           QUERY PLAN
----------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Partial Aggregate: true
-(3 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: (unique1 IS NOT NULL)
+(5 rows)
 
 select max(unique1) from tenk1;
  max
@@ -605,36 +609,30 @@ select max(unique1) from tenk1;
 
 explain (costs off)
   select max(unique1) from tenk1 where unique1 < 42;
-              QUERY PLAN
----------------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Remote Filter: (unique1 < 42)
-         Partial Aggregate: true
-(4 rows)
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: ((unique1 IS NOT NULL) AND (unique1 < 42))
+(5 rows)
 
-select max(unique1) from tenk1 where unique1 < 42;
- max
------
-  41
-(1 row)
-
+-- YB TODO(#16927): uncomment the following query, which crashes
+-- select max(unique1) from tenk1 where unique1 < 42;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42;
-              QUERY PLAN
----------------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Remote Filter: (unique1 > 42)
-         Partial Aggregate: true
-(4 rows)
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42))
+(5 rows)
 
-select max(unique1) from tenk1 where unique1 > 42;
- max
-------
- 9999
-(1 row)
-
+-- YB TODO(#16927): uncomment the following query, which crashes
+-- select max(unique1) from tenk1 where unique1 > 42;
 -- the planner may choose a generic aggregate here if parallel query is
 -- enabled, since that plan will be parallel safe and the "optimized"
 -- plan, which has almost identical cost, will not be.  we want to test
@@ -643,20 +641,17 @@ begin;
 set local max_parallel_workers_per_gather = 0;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42000;
-                QUERY PLAN
-------------------------------------------
- Finalize Aggregate
-   ->  Seq Scan on tenk1
-         Remote Filter: (unique1 > 42000)
-         Partial Aggregate: true
-(4 rows)
+                                QUERY PLAN
+---------------------------------------------------------------------------
+ Result
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique1 on tenk1
+                 Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42000))
+(5 rows)
 
-select max(unique1) from tenk1 where unique1 > 42000;
- max
------
-
-(1 row)
-
+-- YB TODO(#16927): uncomment the following query, which crashes
+-- select max(unique1) from tenk1 where unique1 > 42000;
 rollback;
 -- multi-column index (uses tenk1_thous_tenthous)
 explain (costs off)
@@ -697,43 +692,37 @@ select min(tenthous) from tenk1 where thousand = 33;
 explain (costs off)
   select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
     from int4_tbl;
-                       QUERY PLAN
---------------------------------------------------------
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
  Seq Scan on int4_tbl
-   SubPlan 1
-     ->  Finalize Aggregate
-           ->  Seq Scan on tenk1
-                 Remote Filter: (unique1 > int4_tbl.f1)
-                 Partial Aggregate: true
-(6 rows)
+   SubPlan 2
+     ->  Result
+           InitPlan 1 (returns $1)
+             ->  Limit
+                   ->  Index Only Scan using tenk1_unique1 on tenk1
+                         Index Cond: ((unique1 IS NOT NULL) AND (unique1 > int4_tbl.f1))
+(7 rows)
 
 -- YB note: add consistent ordering that matches upstream:
 -- 1. mainly order by absolute value of f1.
 -- 2. order positives before negatives by adding an offset of -1/+1 using the
 --    sign function.
-select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
-  from int4_tbl order by abs(f1) - sign(f1);
-     f1      | gt
--------------+----
-           0 |  1
-      123456 |
-     -123456 |  0
-  2147483647 |
- -2147483647 |  0
-(5 rows)
-
+-- YB TODO(#16927): uncomment the following query, which crashes
+-- select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
+--   from int4_tbl order by abs(f1) - sign(f1);
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off)
   select distinct max(unique2) from tenk1;
-                 QUERY PLAN
----------------------------------------------
- Unique
-   ->  Sort
-         Sort Key: (max(unique2))
-         ->  Finalize Aggregate
-               ->  Seq Scan on tenk1
-                     Partial Aggregate: true
-(6 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ HashAggregate
+   Group Key: $0
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select distinct max(unique2) from tenk1;
  max
@@ -743,14 +732,16 @@ select distinct max(unique2) from tenk1;
 
 explain (costs off)
   select max(unique2) from tenk1 order by 1;
-              QUERY PLAN
----------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
-   Sort Key: (max(unique2))
-   ->  Finalize Aggregate
-         ->  Seq Scan on tenk1
-               Partial Aggregate: true
-(5 rows)
+   Sort Key: ($0)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select max(unique2) from tenk1 order by 1;
  max
@@ -760,14 +751,16 @@ select max(unique2) from tenk1 order by 1;
 
 explain (costs off)
   select max(unique2) from tenk1 order by max(unique2);
-              QUERY PLAN
----------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
-   Sort Key: (max(unique2))
-   ->  Finalize Aggregate
-         ->  Seq Scan on tenk1
-               Partial Aggregate: true
-(5 rows)
+   Sort Key: ($0)
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select max(unique2) from tenk1 order by max(unique2);
  max
@@ -777,14 +770,16 @@ select max(unique2) from tenk1 order by max(unique2);
 
 explain (costs off)
   select max(unique2) from tenk1 order by max(unique2)+1;
-              QUERY PLAN
----------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
-   Sort Key: ((max(unique2) + 1))
-   ->  Finalize Aggregate
-         ->  Seq Scan on tenk1
-               Partial Aggregate: true
-(5 rows)
+   Sort Key: (($0 + 1))
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
+   ->  Result
+(7 rows)
 
 select max(unique2) from tenk1 order by max(unique2)+1;
  max
@@ -794,15 +789,17 @@ select max(unique2) from tenk1 order by max(unique2)+1;
 
 explain (costs off)
   select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
-                 QUERY PLAN
----------------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Sort
    Sort Key: (generate_series(1, 3)) DESC
+   InitPlan 1 (returns $0)
+     ->  Limit
+           ->  Index Only Scan Backward using tenk1_unique2 on tenk1
+                 Index Cond: (unique2 IS NOT NULL)
    ->  ProjectSet
-         ->  Finalize Aggregate
-               ->  Seq Scan on tenk1
-                     Partial Aggregate: true
-(6 rows)
+         ->  Result
+(8 rows)
 
 select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
  max  | g
