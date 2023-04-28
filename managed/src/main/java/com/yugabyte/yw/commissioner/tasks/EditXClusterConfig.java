@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.forms.XClusterConfigEditFormData;
+import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
@@ -148,6 +149,15 @@ public class EditXClusterConfig extends CreateXClusterConfig {
         xClusterConfig.updateStatusForTables(
             tablesInPendingStatus, XClusterTableConfig.Status.Failed);
       }
+      // Set backup and restore status to failed and alter load balanced.
+      boolean isLoadBalancerAltered = false;
+      for (Backup backup : backupList) {
+        if (backup.getBackupInfo().alterLoadBalancer) {
+          isLoadBalancerAltered = true;
+        }
+      }
+      handleFailedBackupAndRestore(
+          backupList, restoreList, false /* isAbort */, isLoadBalancerAltered);
       throw new RuntimeException(e);
     } finally {
       // Unlock the source universe.
