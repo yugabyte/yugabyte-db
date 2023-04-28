@@ -15,9 +15,9 @@ type: docs
 
 The [Smart Driver for YSQL](../../../drivers-orms/smart-drivers/) provides advanced cluster-aware load-balancing capabilities that can greatly simplify your application and infrastructure. Typically, to load balance across a set of nodes you would need a separate load balancer through which all requests have to be routed as shown in the illustration.
 
-![External load balancer for distributing load](/images/develop/global-apps/no-smart-driver.png)
+![Cluster-aware load balancer](/images/develop/global-apps/no-smart-driver.png)
 
-## Topology aware load-balancing
+## Cluster-aware load-balancing
 
 With YugabyteDB YSQL Smart Drivers, available in multiple languages, you do not need a separate load balancer service. The smart driver needs the IP/hostname of just one node in the cluster.
 
@@ -37,9 +37,9 @@ If you've set preferred leaders, you can use the `topology_keys` option to send 
 "load_balance=true&topology_keys=aws.us-central.*"
 ```
 
-![External load balancer for distributing load](/images/develop/global-apps/smart-driver-loadbalance.png)
+![Cluster-aware load balancing](/images/develop/global-apps/smart-driver-loadbalance.png)
 
-## Topology aware failover
+## Cluster-aware failover
 
 You can also set a fallback hierarchy by assigning priority to ensure that connections are made to the region with the highest priority, and then fall back to the region with the next priority in case the high-priority region fails. For example:
 
@@ -49,7 +49,7 @@ You can also set a fallback hierarchy by assigning priority to ensure that conne
 
 This ensures that connections are made to `us-central`. In case `us-central` fails, only then will connections will be automatically made to `us-west`.
 
-![External load balancer for distributing load](/images/develop/global-apps/smart-driver-failover.png)
+![Cluster-aware failover](/images/develop/global-apps/smart-driver-failover.png)
 
 ## Using DNS
 
@@ -92,10 +92,9 @@ You can configure this on your cloud provider's DNS like [AWS Route 53](https://
 1. NLBs have their own IP addresses which are different from the IP addresses of the nodes behind them. So applications do not have to worry about caching of the results(like DNS caching) as the resolved IP would be the NLB's IP and not the node IP.
 1. As the DB nodes hide behind the NLB, they are not directly exposed to the world providing additional security to your systems.
 
-One caveat is that even though NLBs are fast (can handle millions of requests per second), they sit in between the client and the DB nodes. This adds an additional hop for your request to get to the DB nodes. Depending on the performance needs of your application, this may be a concern.
+One caveat is that even though NLBs are fast (can handle millions of requests per second), they sit in between the client and the DB nodes. This is an additional hop for your request to get to the DB nodes. Depending on the performance needs of your application, this may be a concern.
 
-
-Most cloud providers offer NLB as a service to their users, for example, [Elastic Load balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/), [Cloud Load Balancing](https://cloud.google.com/load-balancing)
+Most cloud providers offer NLB as a service to their users, for example, [Elastic Load balancer](https://aws.amazon.com/elasticloadbalancing/network-load-balancer/), [GCP Cloud Load Balancer](https://cloud.google.com/load-balancing), [Azure Load Balancer](https://learn.microsoft.com/en-us/azure/load-balancer/load-balancer-overview).
 
 ## Kubernetes-based global apps
 

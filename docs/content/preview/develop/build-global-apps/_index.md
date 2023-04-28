@@ -58,11 +58,13 @@ Running applications in different data centers with data split across them is no
 | ------- | ----------- |
 | [Read Replicas](./design-patterns-basic#unidirectional-async-replication-with-read-replicas) | Separate follower cluster for reducing read latency |
 | [Stretch cluster](./design-patterns-basic#sync-replication-with-stretch-cluster) | Distribute your cluster across different regions |
-| [Multi Master](./design-patterns-basic#bidirectional-async-replication-with-xcluster) | Dual cluster than can handle writes |
+| [Dual Cluster](./design-patterns-basic#bidirectional-async-replication-with-xcluster) | Two clusters that can handle both writes and reads |
 | [Standby Cluster](./design-patterns-basic#unidirectional-async-replication-with-xcluster) | Second cluster than can be used for deploy testing |
-| [Tables in a different location](./design-patterns-compliance#pinning-tables-to-local-geographies) | Place tables in different geographies |
-| [Rows in a different location](./design-patterns-compliance#pinning-partitions-to-local-geographies) | Split your table and place specific rows in a different geography |
-| [Automatic load balancing](./global-apps-smart-driver#topology-aware-load-balancing) | Load balance your cluster with no cost |
+| [Geo Tables](./design-patterns-compliance#pinning-tables-to-local-geographies) | Place tables in different geographies |
+| [Geo Partitions](./design-patterns-compliance#pinning-partitions-to-local-geographies) | Split your table and place specific rows in a different geography |
+| [Identity Index](./global-performance#identity-indexes) | Consistent local reads |
+| [Cluster-aware load balancing](./global-apps-smart-driver#cluster-aware-load-balancing) | Load balance your cluster with no cost |
+| [Cluster-aware failover](./global-apps-smart-driver#cluster-aware-failover) | Failover to a different region automatically |
 
 Adopting such design patterns can vastly accelerate your application development. These are proven paradigms that would save without having to reinvent solutions.
 
