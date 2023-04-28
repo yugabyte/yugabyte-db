@@ -138,7 +138,7 @@ Review your YSQL client's configuration to see if connection pooling is configur
 
 Advisor monitors per-table read and write statistics on each node. Advisor flags nodes that processed 8x more reads or writes for a particular table in the last 10 minutes. Hot shard recommendations are not raised until a node processes at least 600 reads or writes during the last 10 minutes.
 
-Hot shard can be caused by:
+A hot shard can be caused by:
 
 - Using range sharding with sub-optimal shard configuration.
 - An application reading or writing one particular row too often.
