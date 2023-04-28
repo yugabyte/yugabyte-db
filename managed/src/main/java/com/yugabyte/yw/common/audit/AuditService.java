@@ -52,8 +52,13 @@ public class AuditService {
           "$..ycqlAdminPassword",
           "$..ysqlCurrAdminPassword",
           "$..ycqlCurrAdminPassword",
+          "$..ycqlNewPassword",
+          "$..ysqlNewPassword",
+          "$..ycqlCurrentPassword",
+          "$..ysqlCurrentPassword",
           "$..['config.AWS_ACCESS_KEY_ID']",
           "$..['config.AWS_SECRET_ACCESS_KEY']",
+          "$..sshPrivateKeyContent",
           // GCP private key
           "$..['config.config_file_contents.private_key_id']",
           "$..['config.config_file_contents.private_key']",
@@ -61,6 +66,8 @@ public class AuditService {
           "$..config.private_key",
           "$..GCP_CONFIG.private_key_id",
           "$..GCP_CONFIG.private_key",
+          "$..gceApplicationCredentialsPath",
+          "$..gceApplicationCredentials",
           // Azure client secret
           "$..AZURE_CLIENT_ID",
           "$..AZURE_CLIENT_SECRET",
@@ -68,21 +75,24 @@ public class AuditService {
           "$..AZURE_SUBSCRIPTION_ID",
           "$..AZURE_RG",
           "$..CLIENT_SECRET",
+          "$..azuClientSecret",
           // Kubernetes secrets
           "$..KUBECONFIG_PULL_SECRET_CONTENT",
           "$..KUBECONFIG_CONTENT",
+          "$..kubernetesImagePullSecretName",
+          "$..kubernetesPullSecret",
           // onprem and certificate private keys
           "$..keyContent",
           "$..['customServerCertData.serverKeyContent']",
           // S3 storage credentials
           "$..AWS_ACCESS_KEY_ID",
           "$..AWS_SECRET_ACCESS_KEY",
+          "$..awsAccessKeyID",
+          "$..awsAccessKeySecret",
           // GCS storage credentials
           "$..GCS_CREDENTIALS_JSON",
           // Azure storage credentials
           "$..AZURE_STORAGE_SAS_TOKEN",
-          // HA cluster credentials
-          "$..cluster_key",
           // SmartKey API key
           "$..api_key",
           // SMTP password
@@ -95,7 +105,7 @@ public class AuditService {
   public static final List<JsonPath> SECRET_JSON_PATHS =
       SECRET_PATHS.stream().map(JsonPath::compile).collect(Collectors.toList());
 
-  private static final Configuration JSONPATH_CONFIG =
+  public static final Configuration JSONPATH_CONFIG =
       Configuration.builder()
           .jsonProvider(new JacksonJsonNodeJsonProvider())
           .mappingProvider(new JacksonMappingProvider())

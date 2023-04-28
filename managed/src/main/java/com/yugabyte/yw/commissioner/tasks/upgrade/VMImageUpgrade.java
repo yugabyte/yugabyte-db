@@ -100,7 +100,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   Collections.singleton(taskParams().getUniverseUUID()),
                   Collections.singleton(taskParams().getUniverseUUID()),
                   xClusterUniverseService,
-                  new HashSet<>());
+                  new HashSet<>(),
+                  getUniverse(),
+                  newVersion);
             }
 
             // Update software version in the universe metadata.

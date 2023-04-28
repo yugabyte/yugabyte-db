@@ -1050,11 +1050,13 @@ public class CloudProviderHandler {
     // So the user must have entered the VPC Info for the regions, as well as
     // the zone info.
     CloudBootstrap.Params taskParams = new CloudBootstrap.Params();
-    // Assuming that at that point we already have at least one AccessKey.
-    // And we can use actual one.
-    taskParams.keyPairName = AccessKey.getLatestKey(provider.getUuid()).getKeyCode();
-    taskParams.skipKeyPairValidate =
-        runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
+    // In case the providerBootstrap fails, we won't be having accessKey setup
+    // for the provider yet.
+    if (provider.getAllAccessKeys() != null && provider.getAllAccessKeys().size() > 0) {
+      taskParams.keyPairName = AccessKey.getLatestKey(provider.getUuid()).getKeyCode();
+      taskParams.skipKeyPairValidate =
+          runtimeConfigFactory.forProvider(provider).getBoolean(SKIP_KEYPAIR_VALIDATION_KEY);
+    }
     taskParams.providerUUID = provider.getUuid();
     String destVpcId = null;
     String hostVpcId = null;
@@ -1087,6 +1089,11 @@ public class CloudProviderHandler {
     // as GCP has a global network where all the regions are "peered" by default which
     // would have been handled as part of provider creation.
     taskParams.skipBootstrapRegion = skipBootstrap;
+    if (provider.getRegions().size() == 0) {
+      // If the provider is not configured with regions yet, it will be the case for
+      // bootstrap failure, we will force the cloudSetup task here in that case.
+      taskParams.skipBootstrapRegion = false;
+    }
     UUID taskUUID = commissioner.submit(TaskType.CloudBootstrap, taskParams);
     CustomerTask.create(
         customer,

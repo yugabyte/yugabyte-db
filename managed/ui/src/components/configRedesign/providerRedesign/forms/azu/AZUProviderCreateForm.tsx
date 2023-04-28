@@ -401,47 +401,64 @@ export const AZUProviderCreateForm = ({
   );
 };
 
-const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues) => ({
-  code: ProviderCode.AZU,
-  name: formValues.providerName,
-  ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-    ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-    ...(formValues.sshPrivateKeyContent && {
-      sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-    })
-  }),
-  details: {
-    airGapInstall: !formValues.dbNodePublicInternetAccess,
-    cloudInfo: {
-      [ProviderCode.AZU]: {
-        azuClientId: formValues.azuClientId,
-        azuClientSecret: formValues.azuClientSecret,
-        azuHostedZoneId: formValues.azuHostedZoneId,
-        azuRG: formValues.azuRG,
-        azuSubscriptionId: formValues.azuSubscriptionId,
-        azuTenantId: formValues.azuTenantId
-      }
-    },
-    ntpServers: formValues.ntpServers,
-    setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-    sshPort: formValues.sshPort,
-    sshUser: formValues.sshUser
-  },
-  regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
-    code: regionFormValues.code,
+const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues) => {
+  let sshPrivateKeyContent = '';
+  try {
+    sshPrivateKeyContent = formValues.sshPrivateKeyContent
+      ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+      : '';
+  } catch (error) {
+    throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+  }
+
+  return {
+    code: ProviderCode.AZU,
+    name: formValues.providerName,
+    ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
+      allAccessKeys: [
+        {
+          keyInfo: {
+            ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+            ...(formValues.sshPrivateKeyContent && {
+              sshPrivateKeyContent: sshPrivateKeyContent
+            })
+          }
+        }
+      ]
+    }),
     details: {
+      airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.AZU]: {
-          securityGroupId: regionFormValues.securityGroupId,
-          vnet: regionFormValues.vnet,
-          ybImage: regionFormValues.ybImage
+          azuClientId: formValues.azuClientId,
+          azuClientSecret: formValues.azuClientSecret,
+          azuHostedZoneId: formValues.azuHostedZoneId,
+          azuRG: formValues.azuRG,
+          azuSubscriptionId: formValues.azuSubscriptionId,
+          azuTenantId: formValues.azuTenantId
         }
-      }
+      },
+      ntpServers: formValues.ntpServers,
+      setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
+      sshPort: formValues.sshPort,
+      sshUser: formValues.sshUser
     },
-    zones: regionFormValues.zones?.map<AZUAvailabilityZoneMutation>((azFormValues) => ({
-      code: azFormValues.code,
-      name: azFormValues.code,
-      subnet: azFormValues.subnet
+    regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
+      code: regionFormValues.code,
+      details: {
+        cloudInfo: {
+          [ProviderCode.AZU]: {
+            securityGroupId: regionFormValues.securityGroupId,
+            vnet: regionFormValues.vnet,
+            ybImage: regionFormValues.ybImage
+          }
+        }
+      },
+      zones: regionFormValues.zones?.map<AZUAvailabilityZoneMutation>((azFormValues) => ({
+        code: azFormValues.code,
+        name: azFormValues.code,
+        subnet: azFormValues.subnet
+      }))
     }))
-  }))
-});
+  };
+};
