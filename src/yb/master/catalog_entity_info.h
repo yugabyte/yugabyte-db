@@ -43,6 +43,8 @@
 #include "yb/common/index.h"
 #include "yb/common/partition.h"
 
+#include "yb/consensus/consensus_types.pb.h"
+
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_fwd.h"
 #include "yb/master/catalog_entity_info.pb.h"
@@ -55,12 +57,22 @@
 #include "yb/util/cow_object.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/physical_time.h"
 #include "yb/util/status_fwd.h"
 
 namespace yb {
 namespace master {
 
 YB_STRONGLY_TYPED_BOOL(DeactivateOnly);
+
+struct TabletLeaderLeaseInfo {
+  bool initialized = false;
+  consensus::LeaderLeaseStatus leader_lease_status =
+      consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  MicrosTime ht_lease_expiration = 0;
+  // Number of heartbeats that current tablet leader doesn't have a valid lease.
+  uint64 heartbeats_without_leader_lease = 0;
+};
 
 // Drive usage information on a current replica of a tablet.
 // This allows us to look at individual resource usage per replica of a tablet.
@@ -89,11 +101,15 @@ struct TabletReplica {
 
   TabletReplicaDriveInfo drive_info;
 
+  TabletLeaderLeaseInfo leader_lease_info;
+
   TabletReplica() : time_updated(MonoTime::Now()) {}
 
   void UpdateFrom(const TabletReplica& source);
 
   void UpdateDriveInfo(const TabletReplicaDriveInfo& info);
+
+  void UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info);
 
   bool IsStale() const;
 
@@ -235,13 +251,15 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   std::shared_ptr<const TabletReplicaMap> GetReplicaLocations() const;
   Result<TSDescriptor*> GetLeader() const;
   Result<TabletReplicaDriveInfo> GetLeaderReplicaDriveInfo() const;
+  Result<TabletLeaderLeaseInfo> GetLeaderLeaseInfoIfLeader(const std::string& ts_uuid) const;
 
   // Replaces a replica in replica_locations_ map if it exists. Otherwise, it adds it to the map.
   void UpdateReplicaLocations(const TabletReplica& replica);
 
   // Updates a replica in replica_locations_ map if it exists.
-  void UpdateReplicaDriveInfo(const std::string& ts_uuid,
-                              const TabletReplicaDriveInfo& drive_info);
+  void UpdateReplicaInfo(const std::string& ts_uuid,
+                         const TabletReplicaDriveInfo& drive_info,
+                         const TabletLeaderLeaseInfo& leader_lease_info);
 
   // Returns the per-stream replication status bitmasks.
   std::unordered_map<CDCStreamId, uint64_t> GetReplicationStatus();
