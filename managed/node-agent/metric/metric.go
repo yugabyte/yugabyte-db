@@ -47,6 +47,7 @@ func newMetrics() *Metrics {
 				Name: "nodeagent_rpc_total",
 				Help: "Total number of rpc invocations.",
 			}, []string{"host", "uuid", "service", "method", "response_code"}),
+		// The default buckets are in seconds.
 		responseHistogram: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "nodeagent_response_seconds",
 			Help:    "Histogram of response time of RPC methods.",
@@ -143,7 +144,7 @@ func (metrics *Metrics) PublishServerMethodStats(
 	metrics.incrementCounter(metrics.invocationCounter, sName, mName, responseCode)
 	metrics.observeHistogram(
 		metrics.responseHistogram,
-		float64(elapsed.Milliseconds()),
+		elapsed.Seconds(),
 		sName,
 		mName,
 	)
