@@ -49,8 +49,9 @@ const TranslationTypeMap = {
   CPU_SKEW: 'CpuSkew',
   CPU_USAGE: 'CpuUsage',
   UNUSED_INDEX: 'IndexSuggestion',
-  HOT_SHARD: 'HotShard'
-};
+  HOT_SHARD: 'HotShard',
+  REJECTED_CONNECTIONS: 'RejectedConnections'
+} as const;
 
 /** Generates unique string based on recommendation type for the purpose of setting unique key on React component */
 const generateUniqueId = (type: string, ...identifiers: string[]) => {
