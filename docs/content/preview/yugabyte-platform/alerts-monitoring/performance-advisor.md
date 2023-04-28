@@ -22,7 +22,7 @@ To monitor clusters in real time, use the [universe level metrics](../../trouble
 
 Performance Advisor provides recommendations for a number of issues.
 
-To scan a cluster for recommendations, navigate to **Universes > Queries > Performance Advisor** , and click **Scan** as shown in the following illustration:
+To scan a cluster for recommendations, navigate to **Universes > Queries > Performance Advisor** and click **Scan** as shown in the following illustration:
 
 ![Performance Advisor](/images/yp/alerts-monitoring/perf-advisor/perf-advisor-overview.png)
 
