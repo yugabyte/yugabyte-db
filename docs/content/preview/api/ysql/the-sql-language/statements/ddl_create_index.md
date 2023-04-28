@@ -225,19 +225,39 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 
 ## Troubleshooting
 
-If the following troubleshooting tips don't resolve your issue, please ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
+If the following troubleshooting tips don't resolve your issue, ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
 
-**If online `CREATE INDEX` fails**, an invalid index may be left behind.
-Such indexes are not usable in queries.
-Despite that, an invalid index causes internal operations, so it should be dropped.
+### Invalid index
+
+If online `CREATE INDEX` fails, an invalid index may be left behind. These indexes are not usable in queries and cause internal operations, so they should be dropped.
+
+For example, the following commands can create an invalid index:
 
 ```plpgsql
 yugabyte=# CREATE TABLE uniqueerror (i int);
+```
+
+```output
 CREATE TABLE
+```
+
+```plpgsql
 yugabyte=# INSERT INTO uniqueerror VALUES (1), (1);
+```
+
+```output
 INSERT 0 2
+```
+
+```plpgsql
 yugabyte=# CREATE UNIQUE INDEX ON uniqueerror (i);
+```
+
+```output
 ERROR:  ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"
+```
+
+```plpgsql
 yugabyte=# \d uniqueerror
             Table "public.uniqueerror"
  Column |  Type   | Collation | Nullable | Default
@@ -245,48 +265,69 @@ yugabyte=# \d uniqueerror
  i      | integer |           |          |
 Indexes:
     "uniqueerror_i_idx" UNIQUE, lsm (i HASH) INVALID
+```
 
+Drop the invalid index as follows:
+
+```plpgsql
 yugabyte=# DROP INDEX uniqueerror_i_idx;
+```
+
+```output
 DROP INDEX
 ```
 
-A list of common errors follows:
+### Common errors and solutions
 
-- `ERROR:  ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"`
-  - Reason: When creating a unique index, a unique constraint violation was found.
-  - Fix: The conflicting row(s) should be resolved.
+- `ERROR:  duplicate key value violates unique constraint "uniqueerror_i_idx"`
+
+  **Reason**: When creating a unique index, a unique constraint violation was found.
+
+  **Fix**: Resolve the conflicting row(s).
+
 - `ERROR:  Backfilling indexes { timeoutmaster_i_idx } for tablet 42e3857759f54733a47e3bb817636f60 from key '' in state kFailed`
-  - Reason: Server-side backfill timeout is repeatedly hit.
-  - Fix: Do any or all of the following:
-    - Increase master flag `ysql_index_backfill_rpc_timeout_ms` to, for example, 300000 (five minutes).
-    - Increase tserver flag `backfill_index_timeout_grace_margin_ms` to, for example, 60000 (one minute).
-    - Decrease tserver flag `backfill_index_write_batch_size` to, for example, 32.
+
+  **Reason**: Server-side backfill timeout is repeatedly hit.
+
+  **Fixes**
+
+  Do any or all of the following:
+
+  - Increase [YB-Master flag](../../../../../reference/configuration/yb-master/) `ysql_index_backfill_rpc_timeout_ms` to, for example, 300000 (five minutes).
+  - Increase [YB-TServer flag](../../../../../reference/configuration/yb-tserver/) `backfill_index_timeout_grace_margin_ms` to, for example, 60000 (one minute).
+  - Decrease YB-TServer flag `backfill_index_write_batch_size` to, for example, 32.
+
 - `ERROR:  BackfillIndex RPC (request call id 123) to 127.0.0.1:9100 timed out after 86400.000s`
-  - Reason: Client-side backfill timeout is hit.
-  - Fix:
-    - The master leader may have changed during backfill.
-      This is currently [not supported][backfill-master-failover-issue].
-      Retry creating the index, and keep an eye on the master leader.
-    - Try increasing parallelism.
-      Index backfill happens in parallel across each tablet of the table.
-      A one-tablet table in an RF-3 setup would not take advantage of the parallelism.
-      (One-tablet tables are default for range-partitioned tables and colocated tables.)
-      On the other hand, no matter how much parallelism there is, a one-tablet index would be a bottleneck for index backfill writes.
-      Partitioning could be improved with tablet splitting.
-    - In case the backfill really needs more time, increase tserver flag `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
+
+  **Reason**: Client-side backfill timeout is hit.
+
+  **Fixes**
+
+  The master leader may have changed during backfill. This is currently [not supported][backfill-master-failover-issue]. Retry creating the index, and keep an eye on the master leader.
+
+  Try increasing parallelism. Index backfill happens in parallel across each tablet of the table. A one-tablet table in an RF-3 setup would not take advantage of the parallelism. (One-tablet tables are default for range-partitioned tables and colocated tables.) On the other hand, no matter how much parallelism there is, a one-tablet index would be a bottleneck for index backfill writes. Partitioning could be improved with tablet splitting.
+
+  In case the backfill really needs more time, increase YB-TServer flag `backfill_index_client_rpc_timeout_ms` to as long as you expect the backfill to take (for example, one week).
+
 - `ERROR:  backfill failed to connect to DB`
-  - Reason: You may be hitting an issue with authentication.
-  - Fix:
-    - If you're on a stable version prior to 2.4 or a latest (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
-    - For version 2.5.1, you can use `CREATE INDEX NONCONCURRENTLY` as a workaround.
-    - If the version is at least 2.3, you can set `ysql_disable_index_backfill=false` as a workaround.
-    - In all supported versions, you can disable authentication (for example, by using `ysql_enable_auth`, `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
+
+  **Reason**: You may be hitting an issue with authentication.
+
+  If you're on a stable version prior to 2.4 or a preview (2.3.x or 2.5.x) version prior to 2.5.2, online `CREATE INDEX` does not work with authentication enabled.
+
+  **Fixes**
+
+  For version 2.5.1, you can use `CREATE INDEX NONCONCURRENTLY` as a workaround.
+
+  If the version is at least 2.3, you can set `ysql_disable_index_backfill=false` as a workaround.
+
+  In all supported versions, you can disable authentication (for example, by using `ysql_enable_auth`, `ysql_hba_conf`, or `ysql_hba_conf_csv`) as a workaround.
 
 [backfill-master-failover-issue]: https://github.com/yugabyte/yugabyte-db/issues/6218
 
 **To prioritize keeping other transactions alive** during the index backfill, set each of the following to be longer than the longest transaction anticipated:
 
-- Master flag `index_backfill_wait_for_old_txns_ms`
+- YB-Master flag `index_backfill_wait_for_old_txns_ms`
 - YSQL parameter `yb_index_state_flags_update_delay`
 
 **To speed up index creation** by a few seconds when you know there will be no online writes, set the YSQL parameter `yb_index_state_flags_update_delay` to zero.
