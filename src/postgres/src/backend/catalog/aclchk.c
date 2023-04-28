@@ -57,6 +57,7 @@
 #include "catalog/pg_ts_parser.h"
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_transform.h"
+#include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "commands/dbcommands.h"
 #include "commands/event_trigger.h"
@@ -4224,6 +4225,8 @@ pg_class_aclmask(Oid table_oid, Oid roleid,
 		IsSystemClass(table_oid, classForm) &&
 		classForm->relkind != RELKIND_VIEW &&
 		!superuser_arg(roleid) &&
+		/* yb_db_admin is allowed to update pg_yb_catalog_version. */
+		!(IsYbDbAdminUser(roleid) && table_oid == YBCatalogVersionRelationId) &&
 		!allowSystemTableMods)
 	{
 #ifdef ACLDEBUG

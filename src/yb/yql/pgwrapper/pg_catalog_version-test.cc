@@ -615,6 +615,43 @@ TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(DBCatalogVersionGlobalDDL))
   ASSERT_OK(conn_test2.Fetch("SELECT * FROM t5"));
 }
 
+// Test system procedure yb_increment_all_db_catalog_versions works as expected.
+TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(IncrementAllDBCatalogVersions)) {
+  auto conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
+  RestartClusterWithDBCatalogVersionMode();
+  conn_yugabyte = ASSERT_RESULT(EnableCacheEventLog(ConnectToDB(kYugabyteDatabase)));
+
+  // Verify the initial catalog version map.
+  constexpr CatalogVersion kFirstCatalogVersion{1, 1};
+  auto expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kFirstCatalogVersion));
+  }
+  ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
+
+  // Get ready to execute yb_increment_all_db_catalog_versions.
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_non_ddl_txn_for_sys_tables_allowed=1"));
+
+  constexpr CatalogVersion kSecondCatalogVersion{2, 1};
+  ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(false)"));
+  WaitForCatalogVersionToPropagate();
+  expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kSecondCatalogVersion));
+  }
+  ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
+
+  constexpr CatalogVersion kThirdCatalogVersion{3, 3};
+  ASSERT_RESULT(conn_yugabyte.Fetch("SELECT yb_increment_all_db_catalog_versions(true)"));
+  WaitForCatalogVersionToPropagate();
+  expected_versions = ASSERT_RESULT(GetMasterCatalogVersionMap(&conn_yugabyte));
+  for (const auto& entry : expected_versions) {
+    ASSERT_OK(CheckMatch(entry.second, kThirdCatalogVersion));
+  }
+  ASSERT_OK(CheckMatch(expected_versions, ASSERT_RESULT(GetShmCatalogVersionMap())));
+}
+
 TEST_F(PgCatalogVersionTest, YB_DISABLE_TEST_IN_TSAN(NonBreakingDDLMode)) {
   const string kDatabaseName = "yugabyte";
 
