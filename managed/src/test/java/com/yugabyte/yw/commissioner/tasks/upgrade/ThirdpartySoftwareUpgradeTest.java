@@ -149,8 +149,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Override
   protected List<Integer> getRollingUpgradeNodeOrder(UniverseTaskBase.ServerType serverType) {
-    return super.getRollingUpgradeNodeOrder(serverType)
-        .stream()
+    return super.getRollingUpgradeNodeOrder(serverType).stream()
         .filter(idx -> !nodesToFilter.contains(idx))
         .collect(Collectors.toList());
   }

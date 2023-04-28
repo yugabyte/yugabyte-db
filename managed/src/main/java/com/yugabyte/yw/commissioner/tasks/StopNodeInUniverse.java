@@ -59,9 +59,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
         && (currentNode.isMaster || currentNode.masterState == MasterState.ToStop)
         && currentNode.dedicatedTo == null) {
       List<NodeDetails> candidates =
-          universe
-              .getNodes()
-              .stream()
+          universe.getNodes().stream()
               .filter(
                   n ->
                       (n.dedicatedTo == null || n.dedicatedTo != ServerType.TSERVER)
@@ -70,8 +68,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
                           && n.getZone().equals(currentNode.getZone()))
               .collect(Collectors.toList());
       Optional<NodeDetails> optional =
-          candidates
-              .stream()
+          candidates.stream()
               .filter(
                   n ->
                       n.masterState == MasterState.ToStart
@@ -81,8 +78,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
       if (optional.isPresent()) {
         return optional.get();
       }
-      return candidates
-          .stream()
+      return candidates.stream()
           .filter(n -> NodeState.Live.equals(n.state) && !n.isMaster)
           .peek(n -> log.info("Found candidate master node: {}.", n.getNodeName()))
           .findFirst()

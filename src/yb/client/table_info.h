@@ -16,7 +16,7 @@
 #include "yb/client/schema.h"
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
@@ -29,8 +29,8 @@ struct YBTableInfo {
   std::string table_id;
   YBSchema schema;
   dockv::PartitionSchema partition_schema;
-  IndexMap index_map;
-  boost::optional<IndexInfo> index_info;
+  qlexpr::IndexMap index_map;
+  boost::optional<qlexpr::IndexInfo> index_info;
   YBTableType table_type;
   bool colocated; // Accounts for databases and tablegroups but not for YSQL system tables.
   boost::optional<master::ReplicationInfoPB> replication_info;

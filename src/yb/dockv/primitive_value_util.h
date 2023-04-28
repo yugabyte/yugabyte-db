@@ -30,11 +30,4 @@ Status QLKeyColumnValuesToPrimitiveValues(
     const Schema &schema, size_t column_idx, const size_t column_count,
     KeyEntryValues *components);
 
-Result<KeyEntryValues> InitKeyColumnPrimitiveValues(
-    const google::protobuf::RepeatedPtrField<PgsqlExpressionPB> &column_values,
-    const Schema &schema, size_t start_idx);
-
-Result<KeyEntryValues> InitKeyColumnPrimitiveValues(
-    const ArenaList<LWPgsqlExpressionPB> &column_values, const Schema &schema, size_t start_idx);
-
 }  // namespace yb::dockv

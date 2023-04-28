@@ -10,13 +10,13 @@
 
 package com.yugabyte.yw.common.config;
 
-import java.time.Duration;
-import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.VersionCheckMode;
 import com.yugabyte.yw.common.NodeManager.SkipCertValidationType;
 import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
+import java.time.Duration;
+import java.util.List;
 
 public class UniverseConfKeys extends RuntimeConfigKeysModule {
 

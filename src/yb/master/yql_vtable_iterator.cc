@@ -14,8 +14,8 @@
 #include "yb/master/yql_vtable_iterator.h"
 #include <iterator>
 
-#include "yb/common/ql_expr.h"
-#include "yb/common/ql_rowblock.h"
+#include "yb/qlexpr/ql_expr.h"
+#include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 
@@ -27,23 +27,23 @@ namespace yb {
 namespace master {
 
 YQLVTableIterator::YQLVTableIterator(
-    std::shared_ptr<QLRowBlock> vtable,
+    std::shared_ptr<qlexpr::QLRowBlock> vtable,
     const google::protobuf::RepeatedPtrField<QLExpressionPB>& hashed_column_values)
     : vtable_(std::move(vtable)), hashed_column_values_(hashed_column_values) {
   Advance(false /* increment */);
 }
 
 Result<bool> YQLVTableIterator::DoFetchNext(
-    QLTableRow* table_row,
-    const Schema* projection,
-    QLTableRow* static_row,
-    const Schema* static_projection) {
+    qlexpr::QLTableRow* table_row,
+    const dockv::ReaderProjection* projection,
+    qlexpr::QLTableRow* static_row,
+    const dockv::ReaderProjection* static_projection) {
   if (vtable_index_ >= vtable_->row_count()) {
     return false;
   }
 
   // TODO: return columns in projection only.
-  QLRow& row = vtable_->row(vtable_index_);
+  auto& row = vtable_->row(vtable_index_);
   for (size_t i = 0; i < row.schema().num_columns(); i++) {
     table_row->AllocColumn(row.schema().column_id(i), down_cast<const QLValue&>(row.column(i)));
   }
@@ -53,10 +53,6 @@ Result<bool> YQLVTableIterator::DoFetchNext(
 
 std::string YQLVTableIterator::ToString() const {
   return "YQLVTableIterator";
-}
-
-const Schema& YQLVTableIterator::schema() const {
-  return vtable_->schema();
 }
 
 // Advances iterator to next valid row, filtering columns using hashed_column_values_.

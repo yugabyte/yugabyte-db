@@ -69,21 +69,18 @@ public class TableDetails {
     String queryTemplate = "CREATE TABLE %s\"%s\" (%s%s)%s;";
     String ifNotExistsPart = ifNotExists ? "IF NOT EXISTS " : "";
     String fieldsPart =
-        columns
-            .stream()
+        columns.stream()
             .map(column -> "\"" + column.name + "\" " + column.type.type)
             .collect(Collectors.joining(", "));
     List<ColumnDetails> primaryKeys =
-        columns
-            .stream()
+        columns.stream()
             .filter(columnDetails -> columnDetails.isPartitionKey || columnDetails.isClusteringKey)
             .collect(Collectors.toList());
     String primaryKeysPart = "";
     if (!primaryKeys.isEmpty()) {
       primaryKeysPart =
           ", primary key ("
-              + primaryKeys
-                  .stream()
+              + primaryKeys.stream()
                   .map(
                       key ->
                           key.isClusteringKey && key.sortOrder != SortOrder.NONE
@@ -96,8 +93,7 @@ public class TableDetails {
     if (CollectionUtils.isNotEmpty(splitValues)) {
       splitValuesPart =
           " SPLIT AT VALUES ("
-              + splitValues
-                  .stream()
+              + splitValues.stream()
                   .map(value -> "(" + value + ")")
                   .collect(Collectors.joining(", "))
               + ")";

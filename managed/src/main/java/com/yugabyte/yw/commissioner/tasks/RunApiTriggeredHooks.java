@@ -44,8 +44,7 @@ public class RunApiTriggeredHooks extends UniverseTaskBase {
       int countBefore = nodes.size();
       if (taskParams().clusterUUID != null) {
         nodes =
-            nodes
-                .stream()
+            nodes.stream()
                 .filter(x -> x.placementUuid.equals(taskParams().clusterUUID))
                 .collect(Collectors.toList());
       }

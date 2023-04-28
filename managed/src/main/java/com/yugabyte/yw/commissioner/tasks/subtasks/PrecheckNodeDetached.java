@@ -64,9 +64,7 @@ public class PrecheckNodeDetached extends AbstractTaskBase {
             nodeConfigValidator.validateNodeConfigs(
                 provider, nodeUuid, instanceData.nodeConfigs, isDetached);
         List<ValidationResult> failedChecks =
-            result
-                .values()
-                .stream()
+            result.values().stream()
                 .filter(v -> !v.isValid() && v.isRequired())
                 .collect(Collectors.toList());
         if (failedChecks.size() > 0) {

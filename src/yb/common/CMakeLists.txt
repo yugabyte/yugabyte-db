@@ -78,6 +78,7 @@ set(COMMON_SRCS
   colocated_util.cc
   common_flags.cc
   common_types_util.cc
+  common_util.cc
   consistent_read_point.cc
   entity_ids.cc
   hybrid_time.cc
@@ -87,9 +88,13 @@ set(COMMON_SRCS
   pgsql_error.cc
   placement_info.cc
   pg_types.cc
+  ql_protocol_util.cc
   retryable_request.cc
   roles_permissions.cc
+  row.cc
   row_mark.cc
+  schema.cc
+  schema_pbutil.cc
   snapshot.cc
   termination_monitor.cc
   transaction.cc
@@ -118,44 +123,13 @@ ADD_YB_LIBRARY(yb_common
   DEPS ${COMMON_LIBS})
 add_dependencies(yb_common yb_bfql yb_bfpg)
 
-set(QL_SRCS
-  index.cc
-  ql_bfunc.cc
-  ql_expr.cc
-  ql_name.cc
-  ql_protocol_util.cc
-  ql_resultset.cc
-  ql_rowblock.cc
-  ql_serialization.cc
-  row.cc
-  schema.cc
-  ql_wire_protocol.cc
-)
-
-set(QL_LIBS
-  yb_common
-  yb_common_proto
-  yb_common_base
-  yb_dockv
-  consensus_metadata_proto
-  yb_util
-  yb_bfql
-  yb_bfpg
-  gutil)
-
-ADD_YB_LIBRARY(yb_ql_common
-  SRCS ${QL_SRCS}
-  DEPS ${QL_LIBS}
-  )
-
 ADD_YB_TEST_LIBRARY(yb_common_test_util
                     SRCS transaction-test-util.cc wire_protocol-test-util.cc
-                    DEPS yb_common yb_ql_common yb_docdb)
+                    DEPS yb_common yb_docdb)
 
-set(YB_TEST_LINK_LIBS yb_common yb_ql_common yb_common_test_util ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common yb_common_test_util ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(id_mapping-test)
 ADD_YB_TEST(jsonb-test)
-ADD_YB_TEST(ql_table_row-test)
 ADD_YB_TEST(placement_info-test)
 ADD_YB_TEST(schema-test)
 ADD_YB_TEST(types-test)

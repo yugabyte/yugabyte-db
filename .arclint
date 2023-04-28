@@ -20,7 +20,8 @@
      "(^managed/src/main/resources/metric/recording_rules[.]yml$)",
      "(^managed/devops/replicated[.]yml$)",
      "(^python/yb/py[.]typed$)",
-     "(^managed/RUNTIME-FLAGS[.]md$)"
+     "(^managed/RUNTIME-FLAGS[.]md$)",
+     "(^[.]clang-tidy)"
   ],
   "linters": {
     "go-files": {
@@ -43,9 +44,9 @@
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
       "script-and-regex.script":
-      "cd managed; sbt javafmtCheckAll; echo ",
+      "managed/lint/lint-java.sh",
       "script-and-regex.regex":
-        "/^.*(?P<error>javafmtCheck).*(?P<message>Unformatted.*javafmt)\\:\\ (?P<file>.*)$/m"
+        "/(?P<message>.*)/is"
     },
     "text": {
       "type": "text",

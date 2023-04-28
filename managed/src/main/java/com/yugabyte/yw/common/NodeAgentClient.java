@@ -35,6 +35,7 @@ import io.grpc.CallOptions;
 import io.grpc.Channel;
 import io.grpc.ClientCall;
 import io.grpc.ClientInterceptor;
+import io.grpc.ConnectivityState;
 import io.grpc.ForwardingClientCall;
 import io.grpc.ManagedChannel;
 import io.grpc.Metadata;
@@ -357,12 +358,9 @@ public class NodeAgentClient {
     return getNodeAgentJWT(nodeAgentOp.get());
   }
 
-  public static void addNodeAgentClientParams(NodeAgent nodeAgent, List<String> cmdParams) {
-    addNodeAgentClientParams(nodeAgent, cmdParams, null);
-  }
-
   public static void addNodeAgentClientParams(
-      NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> sensitiveCmdParams) {
+      NodeAgent nodeAgent, List<String> cmdParams, Map<String, String> redactedVals) {
+    String token = getNodeAgentJWT(nodeAgent);
     cmdParams.add("--node_agent_ip");
     cmdParams.add(nodeAgent.getIp());
     cmdParams.add("--node_agent_port");
@@ -371,12 +369,9 @@ public class NodeAgentClient {
     cmdParams.add(nodeAgent.getCaCertFilePath().toString());
     cmdParams.add("--node_agent_home");
     cmdParams.add(nodeAgent.getHome());
-    if (sensitiveCmdParams == null) {
-      cmdParams.add("--node_agent_auth_token");
-      cmdParams.add(getNodeAgentJWT(nodeAgent));
-    } else {
-      sensitiveCmdParams.put("--node_agent_auth_token", getNodeAgentJWT(nodeAgent));
-    }
+    cmdParams.add("--node_agent_auth_token");
+    cmdParams.add(token);
+    redactedVals.put(token, "REDACTED");
   }
 
   public Optional<NodeAgent> maybeGetNodeAgent(String ip, Provider provider) {
@@ -422,7 +417,12 @@ public class NodeAgentClient {
       builder.certPath(certPath);
     }
     try {
-      return cachedChannels.get(builder.build());
+      ManagedChannel channel = cachedChannels.get(builder.build());
+      if (channel.getState(true) == ConnectivityState.TRANSIENT_FAILURE) {
+        // Short-circuit the backoff timer and make it reconnect immediately.
+        channel.resetConnectBackoff();
+      }
+      return channel;
     } catch (ExecutionException e) {
       throw new RuntimeException(e.getCause());
     }

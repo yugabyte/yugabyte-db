@@ -39,11 +39,13 @@
 #include <glog/logging.h>
 #include <gtest/gtest.h>
 
-#include "yb/dockv/partial_row.h"
 #include "yb/common/ql_protocol_util.h"
 #include "yb/common/schema.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/partial_row.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/gutil/strings/numbers.h"
 #include "yb/gutil/strings/substitute.h"
@@ -105,12 +107,11 @@ class TestTabletSchema : public YBTabletTest {
     ASSERT_OK(writer.Write(&req));
   }
 
-  void VerifyTabletRows(const Schema& projection,
-                        const std::vector<std::pair<string, string> >& keys) {
+  void VerifyTabletRows(const std::vector<std::pair<string, string> >& keys) {
     typedef std::pair<string, string> StringPair;
 
     vector<string> rows;
-    ASSERT_OK(DumpTablet(*tablet(), projection, &rows));
+    ASSERT_OK(DumpTablet(*tablet(), &rows));
     std::sort(rows.begin(), rows.end());
     for (const string& row : rows) {
       bool found = false;
@@ -135,8 +136,8 @@ class TestTabletSchema : public YBTabletTest {
 // Verify that RowIterator can still be used safely after schema change.
 TEST_F(TestTabletSchema, TestRowIteratorWithAlterSchema) {
   std::atomic<bool> stop(false);
-  SchemaBuilder builder1(*tablet()->metadata()->schema());
-  auto iter = ASSERT_RESULT(tablet()->NewRowIterator(builder1.BuildWithoutIds()));
+  dockv::ReaderProjection projection(*tablet()->metadata()->schema());
+  auto iter = ASSERT_RESULT(tablet()->NewRowIterator(projection));
   std::thread thread([&stop, &iter] {
     // 1. Wait for AlterSchema to finish by sleeping 3 seconds.
     while (!stop.load(std::memory_order_acquire)) {
@@ -151,23 +152,6 @@ TEST_F(TestTabletSchema, TestRowIteratorWithAlterSchema) {
   AlterSchema(builder2.Build());
   stop.store(true, std::memory_order_release);
   thread.join();
-}
-
-// Read from a tablet using a projection schema with columns not present in
-// the original schema. Verify that the server reject the request.
-TEST_F(TestTabletSchema, TestRead) {
-  const size_t kNumRows = 10;
-  Schema projection({ ColumnSchema("key", INT32, false, true),
-                      ColumnSchema("c2", INT64),
-                      ColumnSchema("c3", STRING) },
-                    1);
-
-  InsertRows(0, kNumRows);
-
-  auto iter = tablet()->NewRowIterator(projection);
-  ASSERT_TRUE(!iter.ok() && iter.status().IsInvalidArgument());
-  ASSERT_STR_CONTAINS(iter.status().message().ToBuffer(),
-                      "Some columns are not present in the current schema: c2, c3");
 }
 
 // Write to the table using a projection schema with a renamed field.
@@ -192,7 +176,7 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
     keys.push_back(std::pair<string, string>(Substitute("{ int32_value: $0", i),
                                              Substitute("int32_value: $0 }", i)));
   }
-  VerifyTabletRows(s2, keys);
+  VerifyTabletRows(keys);
 
   // Delete the first two rows
   DeleteRow(/* key= */ 1);
@@ -203,7 +187,7 @@ TEST_F(TestTabletSchema, TestRenameProjection) {
   // Read and verify using the s2 schema
   keys.clear();
   keys.push_back(std::pair<string, string>("{ int32_value: 2", "int32_value: 6 }"));
-  VerifyTabletRows(s2, keys);
+  VerifyTabletRows(keys);
 }
 
 // Verify that removing a column and re-adding it will not result in making old data visible
@@ -216,7 +200,7 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
 
   keys.clear();
   keys.push_back(std::pair<string, string>("{ int32_value: 1", "int32_value: 2 }"));
-  VerifyTabletRows(client_schema_, keys);
+  VerifyTabletRows(keys);
 
   // Switch schema to s2
   SchemaBuilder builder(*tablet()->metadata()->schema());
@@ -230,7 +214,7 @@ TEST_F(TestTabletSchema, TestDeleteAndReAddColumn) {
   // Verify that the new 'c1' have the default value
   keys.clear();
   keys.push_back(std::pair<string, string>("{ int32_value: 1", "null }"));
-  VerifyTabletRows(s2, keys);
+  VerifyTabletRows(keys);
 }
 
 } // namespace tablet

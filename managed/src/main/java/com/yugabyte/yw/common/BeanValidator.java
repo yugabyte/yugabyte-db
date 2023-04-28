@@ -46,9 +46,7 @@ public class BeanValidator {
     to correct messages. Need work to make it work OR use javax.validation or
     hibernate validation annotations - which work out of the box. */
     Map<String, List<String>> validationErrors =
-        validator
-            .validate(bean)
-            .stream()
+        validator.validate(bean).stream()
             .collect(
                 Collectors.groupingBy(
                     e -> getFieldName(e.getPropertyPath().toString(), fieldNamePrefix),

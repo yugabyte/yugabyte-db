@@ -393,7 +393,8 @@ DefineIndex(Oid relationId,
 		pgstat_progress_start_command(PROGRESS_COMMAND_CREATE_INDEX,
 									  relationId);
 		pgstat_progress_update_param(PROGRESS_CREATEIDX_COMMAND,
-									 stmt->concurrent ?
+									 stmt->concurrent &&
+									 IsYBRelationById(relationId) ?
 									 PROGRESS_CREATEIDX_COMMAND_CREATE_CONCURRENTLY :
 									 PROGRESS_CREATEIDX_COMMAND_CREATE);
 	}
@@ -444,11 +445,22 @@ DefineIndex(Oid relationId,
 			PROGRESS_CREATEIDX_TUPLES_TOTAL,
 			PROGRESS_CREATEIDX_TUPLES_DONE,
 		};
-		const int64	values[] = {
-			YB_PROGRESS_CREATEIDX_INITIALIZING,
-			rel->rd_rel->reltuples,
-			0
-		};
+		int64	values[3];
+		values[0] = YB_PROGRESS_CREATEIDX_INITIALIZING;
+		if (IsYBRelation(rel))
+		{
+			values[1] = rel->rd_rel->reltuples;
+			values[2] = 0;
+		}
+		else
+		{
+			/*
+			 * For temp tables, we set tuples_total and tuples_done to an
+			 * invalid value (-1) because we do not compute them.
+			 */
+			values[1] = -1;
+			values[2] = -1;
+		}
 		pgstat_progress_update_multi_param(3, cols, values);
 	}
 
@@ -1260,10 +1272,10 @@ DefineIndex(Oid relationId,
 				child_save_nestlevel = NewGUCNestLevel();
 
 				childidxs = RelationGetIndexList(childrel);
-				attmap =
-					convert_tuples_by_name_map(RelationGetDescr(childrel),
-											   parentDesc,
-											   gettext_noop("could not convert row type"));
+				attmap = convert_tuples_by_name_map(
+					RelationGetDescr(childrel), parentDesc,
+					gettext_noop("could not convert row type"),
+					false /* yb_ignore_type_mismatch */);
 				maplen = parentDesc->natts;
 
 

@@ -46,8 +46,8 @@ extern bool restriction_is_securely_promotable(RestrictInfo *restrictinfo,
  * should be zipped up into smaller clauses and added to the returned list.
  */
 extern List * yb_get_actual_batched_clauses(PlannerInfo *root,
-											List *restrictinfo_list,
-						   					IndexPath *inner_index);
+														  List *restrictinfo_list,
+						   							  Path *inner_path);
 extern List *get_actual_clauses(List *restrictinfo_list);
 extern List *extract_actual_clauses(List *restrictinfo_list,
 					   bool pseudoconstant);

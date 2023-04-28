@@ -17,17 +17,17 @@
 #include <string>
 #include <variant>
 
-#include "yb/docdb/doc_reader.h"
-#include "yb/dockv/dockv_fwd.h"
-#include "yb/docdb/docdb_rocksdb_util.h"
-
 #include "yb/common/hybrid_time.h"
-#include "yb/dockv/ql_scanspec.h"
 #include "yb/common/read_hybrid_time.h"
 #include "yb/common/schema.h"
 
+#include "yb/docdb/doc_reader.h"
+#include "yb/docdb/docdb_rocksdb_util.h"
 #include "yb/docdb/key_bounds.h"
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/dockv_fwd.h"
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/operation_counter.h"
@@ -41,51 +41,29 @@ class ScanChoices;
 class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
  public:
   DocRowwiseIteratorBase(
-      const Schema& projection,
-      std::reference_wrapper<const DocReadContext>
-          doc_read_context,
+      const dockv::ReaderProjection& projection,
+      std::reference_wrapper<const DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const DocDB& doc_db,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      RWOperationCounter* pending_op_counter = nullptr,
-      boost::optional<size_t> end_referenced_key_column_index = boost::none);
+      RWOperationCounter* pending_op_counter = nullptr);
 
   DocRowwiseIteratorBase(
-      std::unique_ptr<Schema> projection,
-      std::shared_ptr<DocReadContext>
-          doc_read_context,
+      const dockv::ReaderProjection& projection,
+      std::shared_ptr<DocReadContext> doc_read_context,
       const TransactionOperationContext& txn_op_context,
       const DocDB& doc_db,
       CoarseTimePoint deadline,
       const ReadHybridTime& read_time,
-      RWOperationCounter* pending_op_counter = nullptr,
-      boost::optional<size_t> end_referenced_key_column_index = boost::none);
-
-  DocRowwiseIteratorBase(
-      std::unique_ptr<Schema> projection,
-      std::reference_wrapper<const DocReadContext>
-          doc_read_context,
-      const TransactionOperationContext& txn_op_context,
-      const DocDB& doc_db,
-      CoarseTimePoint deadline,
-      const ReadHybridTime& read_time,
-      RWOperationCounter* pending_op_counter = nullptr,
-      boost::optional<size_t> end_referenced_key_column_index = boost::none);
-
-  void SetupProjectionSubkeys();
+      RWOperationCounter* pending_op_counter = nullptr);
 
   ~DocRowwiseIteratorBase() override;
 
   // Init scan iterator.
   void Init(TableType table_type, const Slice& sub_doc_key = Slice());
   // Init QL read scan.
-  Status Init(const dockv::YQLScanSpec& spec);
-
-  const Schema& schema() const override {
-    // Note: this is the schema only for the columns in the projection, not all columns.
-    return projection_;
-  }
+  Status Init(const qlexpr::YQLScanSpec& spec);
 
   bool IsFetchedRowStatic() const override;
 
@@ -100,7 +78,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   void SeekTuple(const Slice& tuple_id) override;
 
   // Returns true if tuple was fetched, false otherwise.
-  Result<bool> FetchTuple(const Slice& tuple_id, QLTableRow* row) override;
+  Result<bool> FetchTuple(const Slice& tuple_id, qlexpr::QLTableRow* row) override;
 
   // Retrieves the next key to read after the iterator finishes for the given page.
   Status GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_key) override;
@@ -127,7 +105,8 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status InitIterKey(const Slice& key, bool full_row);
 
   // Parse the row_key_ and copy key required key columns to row.
-  Status CopyKeyColumnsToQLTableRow(QLTableRow* row);
+  Status CopyKeyColumnsToQLTableRow(
+      const dockv::ReaderProjection& projection, qlexpr::QLTableRow* row);
 
   Result<DocHybridTime> GetTableTombstoneTime(const Slice& root_doc_key) const {
     return docdb::GetTableTombstoneTime(
@@ -146,12 +125,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   Status AssignHasNextStatus(const Status& status);
 
   bool is_initialized_ = false;
-
-  const std::unique_ptr<Schema> projection_owner_;
-
-  // Used to maintain ownership of projection_.
-  // Separate field is used since ownership could be optional.
-  const Schema& projection_;
 
   // The schema for all columns, not just the columns we're scanning.
   const std::shared_ptr<DocReadContext> doc_read_context_holder_;
@@ -183,10 +156,6 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // Indicates whether we've already finished iterating.
   bool done_ = false;
 
-  // The next index of last referenced key column index. Restricts the number of key columns present
-  // in output row.
-  const size_t end_referenced_key_column_index_;
-
   // The current row's primary key. It is set to lower bound in the beginning.
   Slice row_key_;
 
@@ -195,7 +164,7 @@ class DocRowwiseIteratorBase : public YQLRowwiseIteratorIf {
   // The current row's iterator key.
   dockv::KeyBytes iter_key_;
 
-  ReaderProjection reader_projection_;
+  const dockv::ReaderProjection& projection_;
 
   // Used for keeping track of errors in HasNext.
   Status has_next_status_;

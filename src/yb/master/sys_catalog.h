@@ -82,6 +82,21 @@ struct PgTypeInfo {
   PgTypeInfo(char typtype_, uint32_t typbasetype_) : typtype(typtype_), typbasetype(typbasetype_) {}
 };
 
+struct PgTableReadData {
+  TableId table_id;
+  tablet::TabletPtr tablet;
+  tablet::TableInfoPtr table_info;
+
+  const Schema& schema() const;
+  Result<ColumnId> ColumnByName(const std::string& name) const;
+
+  Result<std::unique_ptr<docdb::DocRowwiseIterator>> NewUninitializedIterator(
+      const dockv::ReaderProjection& projection) const;
+
+  Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> NewIterator(
+      const dockv::ReaderProjection& projection) const;
+};
+
 // SysCatalogTable is a YB table that keeps track of table and
 // tablet metadata.
 // - SysCatalogTable has only one tablet.
@@ -150,6 +165,11 @@ class SysCatalogTable {
     return std::atomic_load(&tablet_peer_);
   }
 
+  Result<tablet::TabletPtr> Tablet() const;
+
+  Result<PgTableReadData> TableReadData(const TableId& table_id) const;
+  Result<PgTableReadData> TableReadData(uint32_t database_oid, uint32_t table_oid) const;
+
   // Create a new tablet peer with information from the metadata
   void SetupTabletPeer(const scoped_refptr<tablet::RaftGroupMetadata>& metadata);
 
@@ -168,18 +188,18 @@ class SysCatalogTable {
   Status Visit(VisitorBase* visitor);
 
   // Read the global ysql catalog version info from the pg_yb_catalog_version catalog table.
-  Status ReadYsqlCatalogVersion(TableId ysql_catalog_table_id,
+  Status ReadYsqlCatalogVersion(const TableId& ysql_catalog_table_id,
                                 uint64_t* catalog_version,
                                 uint64_t* last_breaking_version);
   // Read the per-db ysql catalog version info from the pg_yb_catalog_version catalog table.
-  Status ReadYsqlDBCatalogVersion(TableId ysql_catalog_table_id,
+  Status ReadYsqlDBCatalogVersion(const TableId& ysql_catalog_table_id,
                                   uint32_t db_oid,
                                   uint64_t* catalog_version,
                                   uint64_t* last_breaking_version);
   // Read the ysql catalog version info for all databases from the pg_yb_catalog_version
   // catalog table.
   Status ReadYsqlAllDBCatalogVersions(
-      TableId ysql_catalog_table_id,
+      const TableId& ysql_catalog_table_id,
       DbOidToCatalogVersionMap* versions);
 
   // Read the pg_class catalog table. There is a separate pg_class table in each
@@ -305,7 +325,7 @@ class SysCatalogTable {
   // all rows in the table and db_oid is ignored.
   // Either 'catalog_version/last_breaking_version' or 'versions' should be set but not both.
   Status ReadYsqlDBCatalogVersionImpl(
-      TableId ysql_catalog_table_id,
+      const TableId& ysql_catalog_table_id,
       uint32_t db_oid,
       uint64_t* catalog_version,
       uint64_t* last_breaking_version,

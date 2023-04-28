@@ -44,7 +44,7 @@
 #include "yb/common/common_types_util.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/dockv/partition.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 #include "yb/common/transaction.h"
 #include "yb/common/wire_protocol.h"

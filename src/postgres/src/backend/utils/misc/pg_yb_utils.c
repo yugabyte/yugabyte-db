@@ -1188,7 +1188,7 @@ YBResetDdlState()
 	}
 	ddl_transaction_state = (struct DdlTransactionState){0};
 	YBResetEnableNonBreakingDDLMode();
-	YBCPgClearSeparateDdlTxnMode();
+	HandleYBStatus(YBCPgClearSeparateDdlTxnMode());
 	HandleYBStatus(status);
 }
 
@@ -1513,6 +1513,17 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 			 * so nothing to do on the cache side.
 			 */
 			*is_breaking_catalog_change = false;
+			/*
+			 * In per-database catalog version mode, we do not need to rely on
+			 * catalog cache refresh to check that the database exists. We
+			 * detect that the database is dropped as we can no longer find
+			 * the row for MyDatabaseId when the table pg_yb_catalog_version
+			 * is prefetched from the master. We do need to rely on catalog
+			 * cache refresh to check that the database exists in global
+			 * catalog version mode.
+			 */
+			if (YBIsDBCatalogVersionMode())
+				*is_catalog_version_increment = false;
 			break;
 
 		// All T_Alter... tags from nodes.h:

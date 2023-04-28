@@ -35,9 +35,7 @@ public class YbcBackupNodeRetriever {
 
   public void initializeNodePoolForBackups(Map<String, ParallelBackupState> backupDBStates) {
     Set<String> nodeIPsAlreadyAssigned =
-        backupDBStates
-            .entrySet()
-            .stream()
+        backupDBStates.entrySet().stream()
             .filter(
                 bDBS ->
                     StringUtils.isNotBlank(bDBS.getValue().nodeIp)
@@ -48,9 +46,7 @@ public class YbcBackupNodeRetriever {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     String certFile = universe.getCertificateNodetoNode();
     int ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
-    universe
-        .getLiveTServersInPrimaryCluster()
-        .stream()
+    universe.getLiveTServersInPrimaryCluster().stream()
         .map(nD -> nD.cloudInfo.private_ip)
         .filter(
             ip ->

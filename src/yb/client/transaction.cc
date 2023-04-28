@@ -418,9 +418,15 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       SetReadTimeIfNeeded(ops_info->groups.size() > 1 || force_consistent_read);
     }
 
-    // Set the transaction's metadata alone. ops_info->metadata.subtransaction_pb has already been
-    // set upsteam in Batcher::FlushAsync.
-    ops_info->metadata.transaction = metadata_;
+    {
+      ops_info->metadata = {
+        .transaction = metadata_,
+        .subtransaction = subtransaction_.active()
+            ? boost::make_optional(subtransaction_.get())
+            : boost::none,
+      };
+    }
+
     return true;
   }
 
@@ -902,12 +908,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool HasSubTransaction(SubTransactionId id) EXCLUDES(mutex_) {
-    return subtransaction_.HasSubTransaction(id);
+    SharedLock<std::shared_mutex> lock(mutex_);
+    return subtransaction_.active() && subtransaction_.HasSubTransaction(id);
   }
 
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline) EXCLUDES(mutex_) {
     SCHECK(
-        subtransaction_.HasSubTransaction(kMinSubTransactionId + 1), InternalError,
+        subtransaction_.active(), InternalError,
         "Attempted to rollback to savepoint before creating any savepoints.");
 
     // A heartbeat should be sent (& waited for) to the txn status tablet(s) as part of a rollback.
@@ -1036,15 +1043,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   void SetLogPrefixTag(const LogPrefixName& name, uint64_t id) {
     log_prefix_.tag.store(LogPrefixTag(&name.Get(), id), boost::memory_order_release);
     VLOG_WITH_PREFIX(2) << "Log prefix tag changed";
-  }
-
-  boost::optional<SubTransactionMetadataPB> GetSubTransactionMetadataPB() const {
-    if (subtransaction_.IsDefaultState()) {
-      return boost::none;
-    }
-    SubTransactionMetadataPB subtxn_metadata_pb;
-    subtransaction_.get().ToPB(&subtxn_metadata_pb);
-    return boost::make_optional(subtxn_metadata_pb);
   }
 
  private:
@@ -1199,7 +1197,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       return;
     }
 
-    if (!subtransaction_.IsDefaultState()) {
+    if (subtransaction_.active()) {
       subtransaction_.get().aborted.ToPB(state.mutable_aborted()->mutable_set());
     }
 
@@ -2349,10 +2347,6 @@ std::unordered_map<TableId, uint64_t> YBTransaction::GetTableMutationCounts() co
 
 void YBTransaction::SetLogPrefixTag(const LogPrefixName& name, uint64_t value) {
   return impl_->SetLogPrefixTag(name, value);
-}
-
-boost::optional<SubTransactionMetadataPB> YBTransaction::GetSubTransactionMetadataPB() const {
-  return impl_->GetSubTransactionMetadataPB();
 }
 
 } // namespace client

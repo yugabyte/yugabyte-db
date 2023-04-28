@@ -104,10 +104,10 @@ Click **Continue** to configure YugabyteDB Anywhere.
 
 If the preflight check fails, review the [Troubleshoot YugabyteDB Anywhere](../../../troubleshoot/) to resolve the issue.
 
-## Set the TLS version for Nginx frontend
+## Set the TLS version for Yugaware frontend
 
 Specify TLS versions via **Application config**, as shown in the following illustration:
 
-![Application Config](/images/replicated/application-config1.png)
+![Application Config](/images/replicated/application-config-tls.png)
 
 The recommended TLS version is 1.2.

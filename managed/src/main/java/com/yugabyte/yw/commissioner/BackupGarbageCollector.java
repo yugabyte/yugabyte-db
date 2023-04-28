@@ -197,8 +197,7 @@ public class BackupGarbageCollector {
       minNumBackupsToRetain = schedule.getTaskParams().get("minNumBackupsToRetain").intValue();
     }
     backupsToDelete.addAll(
-        expiredBackups
-            .stream()
+        expiredBackups.stream()
             .filter(backup -> !backup.getState().equals(BackupState.Completed))
             .collect(Collectors.toList()));
     expiredBackups.removeIf(backup -> !backup.getState().equals(BackupState.Completed));

@@ -185,6 +185,7 @@ export interface AccessKeyMutation {
   keyInfo?: Partial<KeyInfo>;
 }
 export interface AccessKey {
+  creationDate: string;
   idKey: IdKey;
   keyInfo: KeyInfo;
 }

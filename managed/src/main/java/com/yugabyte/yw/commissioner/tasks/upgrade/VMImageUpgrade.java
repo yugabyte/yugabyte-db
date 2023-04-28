@@ -2,19 +2,17 @@
 
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
-import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateRootVolumes;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ReplaceRootVolume;
+import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.ImageBundleUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
@@ -79,7 +77,8 @@ public class VMImageUpgrade extends UpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          Set<NodeDetails> nodeSet = fetchAllNodes(taskParams().upgradeOption);
+          Set<NodeDetails> nodeSet = fetchNodesForCluster();
+
           // Verify the request params and fail if invalid
           taskParams().verifyParams(getUniverse());
 
@@ -101,7 +100,9 @@ public class VMImageUpgrade extends UpgradeTaskBase {
                   Collections.singleton(taskParams().getUniverseUUID()),
                   Collections.singleton(taskParams().getUniverseUUID()),
                   xClusterUniverseService,
-                  new HashSet<>());
+                  new HashSet<>(),
+                  getUniverse(),
+                  newVersion);
             }
 
             // Update software version in the universe metadata.

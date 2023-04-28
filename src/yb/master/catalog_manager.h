@@ -46,7 +46,7 @@
 
 #include "yb/common/constants.h"
 #include "yb/common/entity_ids.h"
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 #include "yb/dockv/partition.h"
 #include "yb/common/transaction.h"
 #include "yb/client/client_fwd.h"
@@ -1268,11 +1268,11 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Find all CDCSDK streams which do not have metadata for the newly added tables.
   Status FindCDCSDKStreamsForAddedTables(TableStreamIdsMap* table_to_unprocessed_streams_map);
 
-  // This method scans the metadata of a CDCSDK streams and compares all tables in the namespace,
-  // to find tables which are not yet processed by CDCSDK streams.
+  // This method compares all tables in the namespace to all the tables added to a CDCSDK stream,
+  // to find tables which are not yet processed by the CDCSDK streams.
   void FindAllTablesMissingInCDCSDKStream(
-      scoped_refptr<CDCStreamInfo> stream_info,
-      yb::master::MetadataCowWrapper<yb::master::PersistentCDCStreamInfo>::WriteLock* stream_lock)
+      const CDCStreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<std::string>& table_ids, const NamespaceId& ns_id)
       REQUIRES(mutex_);
 
   // Add missing table details to the relevant CDCSDK streams.
@@ -2294,7 +2294,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status MaybeCreateLocalTransactionTable(
       const CreateTableRequestPB& request, rpc::RpcContext* rpc);
 
-  int CalculateNumTabletsForTableCreation(
+  Result<int> CalculateNumTabletsForTableCreation(
       const CreateTableRequestPB& request, const Schema& schema,
       const PlacementInfoPB& placement_info);
 
@@ -2721,10 +2721,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   Status WaitForSetupUniverseReplicationToFinish(
       const std::string& producer_uuid, CoarseTimePoint deadline);
 
-  void RemoveTableFromCDCSDKUnprocessedSet(
-      const TableId& table_id, const std::list<scoped_refptr<CDCStreamInfo>>& streams);
-  void RemoveTableFromCDCSDKUnprocessedSet(
-      const TableId& table_id, const scoped_refptr<CDCStreamInfo>& stream);
+  void RemoveTableFromCDCSDKUnprocessedMap(const TableId& table_id, const NamespaceId& ns_id);
 
   void ClearXReplState() REQUIRES(mutex_);
   Status LoadXReplStream() REQUIRES(mutex_);
@@ -2820,6 +2817,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // CDC Stream map: CDCStreamId -> CDCStreamInfo.
   typedef std::unordered_map<CDCStreamId, scoped_refptr<CDCStreamInfo>> CDCStreamInfoMap;
   CDCStreamInfoMap cdc_stream_map_ GUARDED_BY(mutex_);
+
+  mutable MutexType cdcsdk_unprocessed_table_mutex_;
+  // In-memory map containing newly created tables which are yet to be added to CDCSDK stream's
+  // metadata. Will be refreshed on master restart / leadership change thorugh the function:
+  // 'FindAllTablesMissingInCDCSDKStream'.
+  std::unordered_map<NamespaceId, std::unordered_set<TableId>>
+      namespace_to_cdcsdk_unprocessed_table_map_ GUARDED_BY(cdcsdk_unprocessed_table_mutex_);
 
   // Map of tables -> set of cdc streams they are producers for.
   std::unordered_map<TableId, std::unordered_set<CDCStreamId>>

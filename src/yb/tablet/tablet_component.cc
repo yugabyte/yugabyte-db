@@ -13,7 +13,7 @@
 
 #include "yb/tablet/tablet_component.h"
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_metadata.h"

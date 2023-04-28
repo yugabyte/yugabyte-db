@@ -905,8 +905,8 @@ class UniverseDetail extends Component {
             open={showModal && visibleModal === 'manageKeyModal'}
             onClose={() => {
               closeModal();
-              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
               this.props.fetchCustomerTasks();
+              this.props.getUniverseInfo(currentUniverse.data.universeUUID);
             }}
             universeDetails={currentUniverse.data}
           />

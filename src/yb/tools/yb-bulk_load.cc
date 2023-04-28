@@ -122,7 +122,7 @@ class BulkLoadTask : public Runnable {
   Status InsertRow(const string &row,
                    const Schema &schema,
                    uint32_t schema_version,
-                   const IndexMap& index_map,
+                   const qlexpr::IndexMap& index_map,
                    BulkLoadDocDBUtil *const db_fixture,
                    docdb::DocWriteBatch *const doc_write_batch,
                    YBPartitionGenerator *const partition_generator);
@@ -260,7 +260,7 @@ Status BulkLoadTask::PopulateColumnValue(const string &column,
 Status BulkLoadTask::InsertRow(const string &row,
                                const Schema &schema,
                                uint32_t schema_version,
-                               const IndexMap& index_map,
+                               const qlexpr::IndexMap& index_map,
                                BulkLoadDocDBUtil *const db_fixture,
                                docdb::DocWriteBatch *const doc_write_batch,
                                YBPartitionGenerator *const partition_generator) {
@@ -331,7 +331,7 @@ Status BulkLoadTask::InsertRow(const string &row,
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(
       "BULK LOAD: ", TableType::YQL_TABLE_TYPE, schema, schema_version);
   docdb::QLWriteOperation op(
-      req, schema_version, doc_read_context, index_map, nullptr /* unique_index_key_schema */,
+      req, schema_version, doc_read_context, index_map, /* unique_index_key_projection= */ nullptr,
       TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
   RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{

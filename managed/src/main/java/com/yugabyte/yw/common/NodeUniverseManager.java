@@ -248,11 +248,11 @@ public class NodeUniverseManager extends DevopsBase {
     bashCommand.add("-d");
     bashCommand.add(dbName);
     bashCommand.add("-c");
-    // Escaping double quotes at first.
+    // Escaping double quotes and $ at first.
     String escapedYsqlCommand = ysqlCommand.replace("\"", "\\\"");
+    escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
     // Escaping single quotes after for non k8s deployments.
     if (!universe.getNodeDeploymentMode(node).equals(Common.CloudType.kubernetes)) {
-      escapedYsqlCommand = escapedYsqlCommand.replace("$", "\\$");
       escapedYsqlCommand = escapedYsqlCommand.replace("'", "'\"'\"'");
     }
     bashCommand.add("\"" + escapedYsqlCommand + "\"");
@@ -296,7 +296,11 @@ public class NodeUniverseManager extends DevopsBase {
   }
 
   private void addConnectionParams(
-      Universe universe, NodeDetails node, ShellProcessContext context, List<String> commandArgs) {
+      Universe universe,
+      NodeDetails node,
+      List<String> commandArgs,
+      Map<String, String> redactedVals,
+      ShellProcessContext context) {
     UniverseDefinitionTaskParams.Cluster cluster =
         universe.getUniverseDetails().getClusterByUuid(node.placementUuid);
     CloudType cloudType = universe.getNodeDeploymentMode(node);
@@ -340,7 +344,7 @@ public class NodeUniverseManager extends DevopsBase {
       }
       if (optional.isPresent()) {
         commandArgs.add("rpc");
-        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs);
+        NodeAgentClient.addNodeAgentClientParams(optional.get(), commandArgs, redactedVals);
       } else {
         commandArgs.add("ssh");
         // Default SSH port can be the custom port for custom images.
@@ -376,7 +380,7 @@ public class NodeUniverseManager extends DevopsBase {
       List<String> actionArgs,
       ShellProcessContext context) {
     List<String> commandArgs = new ArrayList<>();
-
+    Map<String, String> redactedVals = new HashMap<>();
     commandArgs.add(PY_WRAPPER);
     commandArgs.add(NODE_ACTION_SSH_SCRIPT);
     if (node.isMaster) {
@@ -384,9 +388,13 @@ public class NodeUniverseManager extends DevopsBase {
     }
     commandArgs.add("--node_name");
     commandArgs.add(node.nodeName);
-    addConnectionParams(universe, node, context, commandArgs);
+    addConnectionParams(universe, node, commandArgs, redactedVals, context);
     commandArgs.add(nodeAction.name().toLowerCase());
     commandArgs.addAll(actionArgs);
+    if (MapUtils.isNotEmpty(redactedVals)) {
+      // Create a new context as a context is immutable.
+      context = context.toBuilder().redactedVals(redactedVals).build();
+    }
     return shellProcessHandler.run(commandArgs, context);
   }
 

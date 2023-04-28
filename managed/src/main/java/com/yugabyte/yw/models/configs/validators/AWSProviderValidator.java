@@ -276,9 +276,7 @@ public class AWSProviderValidator extends ProviderFieldsValidator {
   }
 
   private AvailabilityZone getAzBySubnetFromRegion(Region region, String subnet) {
-    return region
-        .getZones()
-        .stream()
+    return region.getZones().stream()
         .filter(zone -> zone.getSubnet().equals(subnet))
         .findFirst()
         .orElseThrow(

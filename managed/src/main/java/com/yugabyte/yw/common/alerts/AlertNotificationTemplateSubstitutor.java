@@ -61,9 +61,7 @@ public class AlertNotificationTemplateSubstitutor {
     }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_LABELS_JSON.getPlaceholderValue())) {
       Map<String, String> labels =
-          alert
-              .getLabels()
-              .stream()
+          alert.getLabels().stream()
               .collect(Collectors.toMap(AlertLabel::getName, AlertLabel::getValue));
       return Json.stringify(Json.toJson(labels));
     }

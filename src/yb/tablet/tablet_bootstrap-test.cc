@@ -32,7 +32,7 @@
 
 #include <vector>
 
-#include "yb/common/index.h"
+#include "yb/qlexpr/index.h"
 
 #include "yb/consensus/consensus-test-util.h"
 #include "yb/consensus/consensus_meta.h"
@@ -41,6 +41,8 @@
 #include "yb/consensus/opid_util.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/server/logical_clock.h"
 
@@ -179,7 +181,8 @@ class BootstrapTest : public LogTestBase {
 
     auto table_info = std::make_shared<TableInfo>(
         "TEST: ", Primary::kTrue, log::kTestTable, log::kTestNamespace, log::kTestTable, kTableType,
-        schema, IndexMap(), boost::none /* index_info */, 0 /* schema_version */, partition.first);
+        schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
+        partition.first);
     auto result = VERIFY_RESULT(RaftGroupMetadata::TEST_LoadOrCreate(RaftGroupMetadataData {
       .fs_manager = fs_manager_.get(),
       .table_info = table_info,
@@ -267,9 +270,10 @@ class BootstrapTest : public LogTestBase {
 
   void IterateTabletRows(const Tablet* tablet,
                          vector<string>* results) {
-    auto iter = tablet->NewRowIterator(schema_);
+    dockv::ReaderProjection projection(*tablet->schema());
+    auto iter = tablet->NewRowIterator(projection);
     ASSERT_OK(iter);
-    ASSERT_OK(IterateToStringList(iter->get(), results));
+    ASSERT_OK(IterateToStringList(iter->get(), *tablet->schema(), results));
     for (const string& result : *results) {
       VLOG(1) << result;
     }

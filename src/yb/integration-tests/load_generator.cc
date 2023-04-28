@@ -579,7 +579,7 @@ ReadStatus YBSingleThreadedReader::PerformRead(
     QLAddStringHashValue(read_op->mutable_request(), key_str);
     table_->AddColumns({"k", "v"}, read_op->mutable_request());
     auto status = session_->TEST_ApplyAndFlush(read_op);
-    boost::optional<QLRowBlock> row_block;
+    boost::optional<qlexpr::QLRowBlock> row_block;
     if (status.ok()) {
       auto result = read_op->MakeRowBlock();
       if (!result.ok()) {

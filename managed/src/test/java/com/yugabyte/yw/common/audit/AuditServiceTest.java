@@ -1,11 +1,11 @@
 package com.yugabyte.yw.common.audit;
 
+import static com.yugabyte.yw.common.audit.AuditService.SECRET_REPLACEMENT;
+import static org.junit.Assert.assertEquals;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.Test;
-
-import static com.yugabyte.yw.common.audit.AuditService.SECRET_REPLACEMENT;
-import static org.junit.Assert.assertEquals;
 
 public class AuditServiceTest {
   @Test

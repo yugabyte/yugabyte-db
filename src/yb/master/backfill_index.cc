@@ -154,18 +154,14 @@ Result<bool> GetPgIndexStatus(
   const Schema& pg_index_schema =
       VERIFY_RESULT(catalog_tablet->metadata()->GetTableInfo(pg_index_id))->schema();
 
-  Schema projection;
-  RETURN_NOT_OK(pg_index_schema.CreateProjectionByNames({"indexrelid", status_col_name},
-                                                        &projection,
-                                                        pg_index_schema.num_key_columns()));
-
-  const auto indexrelid_col_id = VERIFY_RESULT(projection.ColumnIdByName("indexrelid")).rep();
-  const auto status_col_id     = VERIFY_RESULT(projection.ColumnIdByName(status_col_name)).rep();
+  const auto indexrelid_col_id = VERIFY_RESULT(pg_index_schema.ColumnIdByName("indexrelid")).rep();
+  const auto status_col_id = VERIFY_RESULT(pg_index_schema.ColumnIdByName(status_col_name)).rep();
+  dockv::ReaderProjection projection(pg_index_schema, {indexrelid_col_id, status_col_id});
 
   const auto idx_oid = VERIFY_RESULT(GetPgsqlTableOid(idx_id));
 
   auto iter = VERIFY_RESULT(catalog_tablet->NewUninitializedDocRowIterator(
-      projection.CopyWithoutColumnIds(), {} /* read_hybrid_time */, pg_index_id));
+      projection, {} /* read_hybrid_time */, pg_index_id));
 
   // Filtering by 'indexrelid' == idx_oid.
   {
@@ -174,7 +170,7 @@ Result<bool> GetPgIndexStatus(
     cond.set_op(QL_OP_EQUAL);
     cond.add_operands()->mutable_value()->set_uint32_value(idx_oid);
     const dockv::KeyEntryValues empty_key_components;
-    docdb::DocPgsqlScanSpec spec(projection,
+    docdb::DocPgsqlScanSpec spec(pg_index_schema,
                                  rocksdb::kDefaultQueryId,
                                  empty_key_components,
                                  empty_key_components,
@@ -186,7 +182,7 @@ Result<bool> GetPgIndexStatus(
   }
 
   // Expecting one row at most.
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
     return row.GetColumn(status_col_id)->bool_value();
   }

@@ -151,7 +151,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Retrieve expressions from the row according to the added column references
-  Status PreparePgRowData(const QLTableRow& table_row) {
+  Status PreparePgRowData(const qlexpr::QLTableRow& table_row) {
     Status s = Status::OK();
     // If there are no column references the expression context will not be used
     if (!var_map_.empty()) {
@@ -198,7 +198,7 @@ class DocPgExprExecutor::Private {
   }
 
   // Evaluate target expressions and write results into provided vector elements
-  Status EvalTargetExprCalls(std::vector<QLExprResult>* results) {
+  Status EvalTargetExprCalls(std::vector<qlexpr::QLExprResult>* results) {
     // Shortcut if there is nothing to evaluate
     if (targets_.empty()) {
       return Status::OK();
@@ -211,7 +211,7 @@ class DocPgExprExecutor::Private {
     int i = 0;
     for (const DocPgEvalExprData& target : targets_) {
       // Container for the DocDB result
-      QLExprResult &result = (*results)[i++];
+      auto &result = (*results)[i++];
       // Containers for Postgres result
       uint64_t datum;
       bool is_null;
@@ -224,8 +224,8 @@ class DocPgExprExecutor::Private {
     return Status::OK();
   }
 
-  Status Exec(const QLTableRow& table_row,
-              std::vector<QLExprResult>* results,
+  Status Exec(const qlexpr::QLTableRow& table_row,
+              std::vector<qlexpr::QLExprResult>* results,
               bool* match) {
     *match = true;
 
@@ -308,7 +308,7 @@ Status DocPgExprExecutor::AddTargetExpression(const PgsqlExpressionPB& ql_expr) 
 }
 
 Status DocPgExprExecutor::Exec(
-    const QLTableRow& table_row, std::vector<QLExprResult>* results, bool* match) {
+    const qlexpr::QLTableRow& table_row, std::vector<qlexpr::QLExprResult>* results, bool* match) {
   return !private_.get() ? Status::OK() : private_->Exec(table_row, results, match);
 }
 

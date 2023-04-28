@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/url"
 	pb "node-agent/generated/service"
 	"os"
@@ -63,22 +64,23 @@ const (
 	PlatformCaCertPathKey     = "platform.ca_cert_path"
 
 	// Node config keys.
-	NodeIpKey                 = "node.ip"
-	NodePortKey               = "node.port"
-	RequestTimeoutKey         = "node.request_timeout_sec"
-	NodeNameKey               = "node.name"
-	NodeAgentIdKey            = "node.agent.uuid"
-	NodeIdKey                 = "node.uuid"
-	NodeInstanceTypeKey       = "node.instance_type"
-	NodeAzIdKey               = "node.azid"
-	NodeRegionKey             = "node.region"
-	NodeZoneKey               = "node.zone"
-	NodeLoggerKey             = "node.log"
-	NodeAgentRestartKey       = "node.restart"
-	NodeAgentLogLevelKey      = "node.log_level"
-	NodeAgentLogMaxMbKey      = "node.log_max_mb"
-	NodeAgentLogMaxBackupsKey = "node.log_max_backups"
-	NodeAgentLogMaxDaysKey    = "node.log_max_days"
+	NodeIpKey                  = "node.ip"
+	NodePortKey                = "node.port"
+	RequestTimeoutKey          = "node.request_timeout_sec"
+	NodeNameKey                = "node.name"
+	NodeAgentIdKey             = "node.agent.uuid"
+	NodeIdKey                  = "node.uuid"
+	NodeInstanceTypeKey        = "node.instance_type"
+	NodeAzIdKey                = "node.azid"
+	NodeRegionKey              = "node.region"
+	NodeZoneKey                = "node.zone"
+	NodeLoggerKey              = "node.log"
+	NodeAgentRestartKey        = "node.restart"
+	NodeAgentLogLevelKey       = "node.log_level"
+	NodeAgentLogMaxMbKey       = "node.log_max_mb"
+	NodeAgentLogMaxBackupsKey  = "node.log_max_backups"
+	NodeAgentLogMaxDaysKey     = "node.log_max_days"
+	NodeAgentDisableMetricsTLS = "node.disable_metrics_tls"
 )
 
 const (
@@ -315,4 +317,22 @@ func ConvertType(from any, to any) error {
 		return err
 	}
 	return json.Unmarshal(b, to)
+}
+
+// ScanDir scans a directory and invokes the callback for every file/dir.
+func ScanDir(dir string, callback func(os.FileInfo) (bool, error)) error {
+	fInfos, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, fInfo := range fInfos {
+		isContinue, err := callback(fInfo)
+		if err != nil {
+			return err
+		}
+		if !isContinue {
+			break
+		}
+	}
+	return nil
 }

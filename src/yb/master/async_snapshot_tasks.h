@@ -75,6 +75,8 @@ class AsyncTabletSnapshotOp : public RetryingTSRpcTask {
 
   void HandleResponse(int attempt) override;
   bool SendRequest(int attempt) override;
+  std::optional<std::pair<server::MonitoredTaskState, Status>> HandleReplicaLookupFailure(
+      const Status& replica_lookup_status) override;
   void Finished(const Status& status) override;
   bool RetryAllowed(tserver::TabletServerErrorPB::Code code, const Status& status);
 

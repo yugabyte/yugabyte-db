@@ -25,7 +25,8 @@ export default class YBTextArea extends Component {
       infoContent,
       infoTitle,
       infoPlacement,
-      subLabel
+      subLabel,
+      rows
     } = this.props;
     function onChange(event) {
       if (isFunction(onValueChanged)) {
@@ -50,6 +51,7 @@ export default class YBTextArea extends Component {
       <FormControl
         {...input}
         componentClass="textarea"
+        rows={rows}
         placeholder={placeHolder}
         type={type}
         className={className}

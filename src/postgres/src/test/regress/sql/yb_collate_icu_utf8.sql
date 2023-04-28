@@ -452,20 +452,31 @@ select textrange_en_us('A','Z') @> 'b'::text;
 drop type textrange_c;
 drop type textrange_en_us;
 
--- test YB restrictions
 CREATE TABLE tab1(id varchar(10));
 INSERT INTO tab1 values ('aaaa');
 \d tab1
-ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(10) collate "en-US-x-icu"; -- fail
+
+-- test rewrites
+CREATE OR REPLACE FUNCTION trig_rewrite() RETURNS event_trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE NOTICE 'rewriting table';
+END;
+$$;
+create event trigger event_rewrite on table_rewrite
+  execute procedure trig_rewrite();
+
+ALTER TABLE tab1 ALTER COLUMN id SET DATA TYPE varchar(5) collate "en-US-x-icu"; -- rewrite
 \d tab1
 
 CREATE TABLE tab2(id varchar(10) collate "en-US-x-icu");
 CREATE INDEX tab2_id_idx on tab2(id collate "C" desc);
 INSERT INTO tab2 VALUES ('aaaa');
 \d tab2
-ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- ok;
+ALTER TABLE tab2 alter COLUMN id SET DATA TYPE varchar(20) collate "en-US-x-icu"; -- no rewrite
 \d tab2
 
+-- test YB restrictions
 CREATE DATABASE test_db LC_COLLATE = "en-US-x-icu" TEMPLATE template0; -- fail;
 
 CREATE TABLE tab3(id char(10) collate "en-US-x-icu");

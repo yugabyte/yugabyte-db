@@ -2,6 +2,19 @@
 
 package com.yugabyte.yw.common.ybc;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.when;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -11,10 +24,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.BackupUtil.RegionLocations;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
-import com.yugabyte.yw.common.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec;
 import com.yugabyte.yw.common.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
@@ -23,7 +34,6 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.CustomerConfig;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -50,19 +60,6 @@ import org.yb.ybc.BackupServiceTaskExtendedArgs;
 import org.yb.ybc.CloudStoreConfig;
 import org.yb.ybc.TableBackupSpec;
 import play.libs.Json;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.when;
 
 @RunWith(JUnitParamsRunner.class)
 public class YbcBackupUtilTest extends FakeDBApplication {
@@ -478,9 +475,7 @@ public class YbcBackupUtilTest extends FakeDBApplication {
     tableParams.setKeyspace("foo");
     TableBackupSpec tBSpec = ybcBackupUtil.getTableBackupSpec(tableParams);
     Map<String, String> actualTBMap = new HashMap<>();
-    tBSpec
-        .getTablesList()
-        .stream()
+    tBSpec.getTablesList().stream()
         .forEach(
             tB -> {
               actualTBMap.put(tB.getTable(), tB.getKeyspace());

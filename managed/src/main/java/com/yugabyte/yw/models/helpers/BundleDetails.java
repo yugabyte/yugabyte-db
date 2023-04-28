@@ -1,10 +1,9 @@
 package com.yugabyte.yw.models.helpers;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.ebean.annotation.EnumValue;
 import java.util.EnumSet;
 import java.util.stream.Collectors;
-
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
 public class BundleDetails {
 
@@ -78,16 +77,14 @@ public class BundleDetails {
 
   @JsonIgnore
   public EnumSet<ComponentType> getNodeLevelComponents() {
-    return this.components
-        .stream()
+    return this.components.stream()
         .filter(ct -> ComponentLevel.NodeLevel.equals(ct.getComponentLevel()))
         .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
   }
 
   @JsonIgnore
   public EnumSet<ComponentType> getGlobalLevelComponents() {
-    return this.components
-        .stream()
+    return this.components.stream()
         .filter(ct -> ComponentLevel.GlobalLevel.equals(ct.getComponentLevel()))
         .collect(Collectors.toCollection(() -> EnumSet.noneOf(ComponentType.class)));
   }

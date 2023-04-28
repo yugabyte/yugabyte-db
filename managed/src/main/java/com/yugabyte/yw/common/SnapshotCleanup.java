@@ -56,8 +56,7 @@ public class SnapshotCleanup {
         List<SnapshotInfo> scheduledSnapshotsInfos = new ArrayList<>();
         if (CollectionUtils.isNotEmpty(snapshotScheduleInfosList)) {
           scheduledSnapshotsInfos =
-              snapshotScheduleInfosList
-                  .stream()
+              snapshotScheduleInfosList.stream()
                   .filter(sSI -> CollectionUtils.isNotEmpty(sSI.getSnapshotInfoList()))
                   .flatMap(sSI -> sSI.getSnapshotInfoList().stream())
                   .collect(Collectors.toList());
@@ -91,8 +90,7 @@ public class SnapshotCleanup {
 
   private List<SnapshotInfo> getFilterInProgressBackupSnapshots(
       List<SnapshotInfo> snapshotInfoList, Long upperBound) {
-    return snapshotInfoList
-        .stream()
+    return snapshotInfoList.stream()
         .filter(sI -> upperBound > 0 ? (sI.getSnapshotTime() <= upperBound) : true)
         .collect(Collectors.toList());
   }
@@ -137,8 +135,7 @@ public class SnapshotCleanup {
                           String certificate = universe.getCertificateNodetoNode();
                           YBClient ybClient = ybService.getClient(masterHostPorts, certificate);
                           try {
-                            snapshotInfoList
-                                .stream()
+                            snapshotInfoList.stream()
                                 .forEach(
                                     sI -> {
                                       try {

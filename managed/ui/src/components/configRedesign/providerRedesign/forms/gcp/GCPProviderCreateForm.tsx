@@ -182,6 +182,17 @@ export const GCPProviderCreateForm = ({
       }
     }
 
+    let sshPrivateKeyContent = '';
+    try {
+      sshPrivateKeyContent =
+        formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
+        formValues.sshPrivateKeyContent
+          ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
+          : '';
+    } catch (error) {
+      throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
+    }
+
     // Note: Backend expects `useHostVPC` to be true for both host instance VPC and specified VPC for
     //       backward compatability reasons.
     const vpcConfig =
@@ -218,12 +229,17 @@ export const GCPProviderCreateForm = ({
       code: ProviderCode.GCP,
       name: formValues.providerName,
       ...(formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED && {
-        ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
-        ...(formValues.sshPrivateKeyContent && {
-          sshPrivateKeyContent: (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
-        })
+        allAccessKeys: [
+          {
+            keyInfo: {
+              ...(formValues.sshKeypairName && { keyPairName: formValues.sshKeypairName }),
+              ...(formValues.sshPrivateKeyContent && {
+                sshPrivateKeyContent: sshPrivateKeyContent
+              })
+            }
+          }
+        ]
       }),
-
       details: {
         airGapInstall: !formValues.dbNodePublicInternetAccess,
         cloudInfo: {

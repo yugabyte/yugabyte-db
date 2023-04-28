@@ -1,9 +1,9 @@
 package com.yugabyte.yw.forms;
 
 import com.yugabyte.yw.common.NodeActionType;
+import io.swagger.annotations.ApiModelProperty;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
-import io.swagger.annotations.ApiModelProperty;
 
 @Data
 public class NodeActionFormData {

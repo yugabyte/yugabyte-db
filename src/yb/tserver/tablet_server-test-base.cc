@@ -15,13 +15,15 @@
 
 #include "yb/client/yb_table_name.h"
 
-#include "yb/common/ql_expr.h"
+#include "yb/qlexpr/ql_expr.h"
 #include "yb/common/wire_protocol-test-util.h"
 
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.proxy.h"
 
 #include "yb/docdb/ql_rowwise_iterator_interface.h"
+
+#include "yb/dockv/reader_projection.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/proxy.h"
@@ -346,11 +348,12 @@ Status TabletServerTestBase::ShutdownAndRebuildTablet() {
 
 // Verifies that a set of expected rows (key, value) is present in the tablet.
 void TabletServerTestBase::VerifyRows(const Schema& schema, const vector<KeyValue>& expected) {
-  auto iter = tablet_peer_->tablet()->NewRowIterator(schema);
+  dockv::ReaderProjection projection(schema);
+  auto iter = tablet_peer_->tablet()->NewRowIterator(projection);
   ASSERT_OK(iter);
 
   int count = 0;
-  QLTableRow row;
+  qlexpr::QLTableRow row;
   while (ASSERT_RESULT((**iter).FetchNext(&row))) {
     ++count;
   }

@@ -28,6 +28,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTasks;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.forms.YbcThrottleParameters;
+import com.yugabyte.yw.forms.YbcThrottleParametersResponse;
 import com.yugabyte.yw.forms.filters.BackupApiFilter;
 import com.yugabyte.yw.forms.filters.RestoreApiFilter;
 import com.yugabyte.yw.forms.paging.BackupPagedApiQuery;
@@ -963,7 +964,7 @@ public class BackupsController extends AuthenticatedController {
   @ApiOperation(
       value = "Get throttle params from YB-Controller",
       nickname = "getThrottleParams",
-      response = Map.class)
+      response = YbcThrottleParametersResponse.class)
   public Result getThrottleParams(UUID customerUUID, UUID universeUUID) {
     // Validate customer UUID
     Customer.getOrBadRequest(customerUUID);
@@ -978,7 +979,7 @@ public class BackupsController extends AuthenticatedController {
           BAD_REQUEST, "Cannot get throttle params, universe is paused.");
     }
     try {
-      Map<String, String> throttleParams = ybcManager.getThrottleParams(universeUUID);
+      YbcThrottleParametersResponse throttleParams = ybcManager.getThrottleParams(universeUUID);
       return PlatformResults.withData(throttleParams);
     } catch (RuntimeException e) {
       throw new PlatformServiceException(

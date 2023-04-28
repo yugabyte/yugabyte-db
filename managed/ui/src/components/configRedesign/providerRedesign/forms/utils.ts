@@ -8,6 +8,8 @@ import { AxiosError } from 'axios';
 
 import { YBPError, YBPStructuredError } from '../../../../redesign/helpers/dtos';
 import { isYBPBeanValidationError, isYBPError } from '../../../../utils/errorHandlingUtils';
+import { KeyPairManagement } from '../constants';
+import { AccessKey } from '../types';
 
 export const readFileAsText = (sshKeyFile: File) => {
   const reader = new FileReader();
@@ -84,3 +86,36 @@ export const getEditProviderErrorMessage = (error: AxiosError<YBPStructuredError
 
 export const generateLowerCaseAlphanumericId = (stringLength = 14) =>
   Array.from(Array(stringLength), () => Math.floor(Math.random() * 36).toString(36)).join('');
+
+/**
+ * Constructs the access keys portion of the create/edit provider payload.
+ *
+ * If no changes are requested, then return the currentAccessKeys.
+ * If user provides a new access key, then send the user provided access key.
+ * If user opts to let YBA manage the access keys, then omit `allAccessKeys` from the payload.
+ */
+export const constructAccessKeysPayload = (
+  editSSHKeypair: boolean,
+  sshKeypairManagement: KeyPairManagement,
+  newAccessKey: { sshKeypairName: string; sshPrivateKeyContent: string },
+  currentAccessKeys?: AccessKey[]
+) => {
+  if (editSSHKeypair && sshKeypairManagement === KeyPairManagement.YBA_MANAGED) {
+    return {};
+  }
+
+  return {
+    allAccessKeys: editSSHKeypair
+      ? [
+          {
+            keyInfo: {
+              ...(newAccessKey.sshKeypairName && { keyPairName: newAccessKey.sshKeypairName }),
+              ...(newAccessKey.sshPrivateKeyContent && {
+                sshPrivateKeyContent: newAccessKey.sshPrivateKeyContent
+              })
+            }
+          }
+        ]
+      : currentAccessKeys
+  };
+};

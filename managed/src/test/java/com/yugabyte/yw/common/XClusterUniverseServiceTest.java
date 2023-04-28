@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import java.util.Arrays;
@@ -33,6 +34,8 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
 
   private Universe defaultUniverse;
   private XClusterUniverseService xClusterUniverseService;
+  @Mock private PlatformExecutorFactory mockPlatformExecutorFactory;
+  @Mock private YBClientService ybService;
 
   @Mock RuntimeConfGetter mockConfGetter;
 
@@ -41,7 +44,9 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
     ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse("univ-1");
     TestHelper.updateUniverseVersion(defaultUniverse, "2.17.0.0-b1");
-    xClusterUniverseService = new XClusterUniverseService(mockGFlagsValidation, mockConfGetter);
+    xClusterUniverseService =
+        new XClusterUniverseService(
+            mockGFlagsValidation, mockConfGetter, ybService, mockPlatformExecutorFactory);
   }
 
   @Test
@@ -86,7 +91,8 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
       flagsPerServer.autoFlagDetails = Collections.singletonList(flag);
       when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
           .thenReturn(flagsPerServer);
-      assertTrue(xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse));
+      assertTrue(
+          xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse, "2.17.0.0-b1"));
       GFlagsValidation.AutoFlagsPerServer flagsPerServer2 =
           new GFlagsValidation.AutoFlagsPerServer();
       GFlagsValidation.AutoFlagDetails flag2 = new GFlagsValidation.AutoFlagDetails();
@@ -97,7 +103,8 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
           .thenReturn(flagsPerServer)
           .thenReturn(flagsPerServer2)
           .thenReturn(flagsPerServer2);
-      assertFalse(xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse));
+      assertFalse(
+          xClusterUniverseService.canPromoteAutoFlags(universeSet, defaultUniverse, "2.17.0.0-b1"));
     } catch (Exception e) {
       System.out.println(e.getMessage());
       fail();

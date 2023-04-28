@@ -129,7 +129,7 @@ You can calculate ranges beforehand using [IP Address Guide's CIDR to IPv4 Conve
 
 ### Restrictions
 
-Addresses have the following additional restrictions:
+If you are using VPC peering, addresses have the following additional restrictions:
 
 - VPC addresses can overlap with other VPCs, but not in the following circumstances:
   - You want to use the VPCs for the same multi-region cluster in AWS. For example, if you have two VPCs in different regions with overlapping addresses, you won't be able to use both for deploying a multi-region cluster.

@@ -629,8 +629,8 @@ CREATE TABLE test6a OF priv_testtype1;
 CREATE TABLE test10a (a int[], b priv_testtype1[]);
 
 CREATE TABLE test9a (a int, b int);
--- ALTER TABLE test9a ADD COLUMN c priv_testdomain1;
--- ALTER TABLE test9a ALTER COLUMN b TYPE priv_testdomain1;
+ALTER TABLE test9a ADD COLUMN c priv_testdomain1;
+ALTER TABLE test9a ALTER COLUMN b TYPE priv_testdomain1;
 
 CREATE TYPE test7a AS (a int, b priv_testdomain1);
 
@@ -666,9 +666,7 @@ CREATE TABLE test10b (a int[], b priv_testtype1[]);
 CREATE TABLE test9b (a int, b int);
 ALTER TABLE test9b ADD COLUMN c priv_testdomain1;
 
--- NOT SUPPORTED
---
--- ALTER TABLE test9b ALTER COLUMN b TYPE priv_testdomain1;
+ALTER TABLE test9b ALTER COLUMN b TYPE priv_testdomain1;
 -- IF THIS LINE CAUSES A FAILURE, THIS REGION MAY BE SUPPORTED
 CREATE TYPE test7b AS (a int, b priv_testdomain1);
 

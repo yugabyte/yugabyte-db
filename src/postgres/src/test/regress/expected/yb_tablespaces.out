@@ -314,19 +314,19 @@ SELECT * FROM testschema.test_default_tab;
 
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
-ERROR:  This ALTER TABLE command is not yet supported.
 \d testschema.test_index1
-   Index "testschema.test_index1"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index1"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
+Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
-   Index "testschema.test_index2"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index2"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -340,19 +340,19 @@ SELECT * FROM testschema.test_default_tab;
 SET default_tablespace TO '';
 -- tablespace should not change if no rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
-ERROR:  This ALTER TABLE command is not yet supported.
 \d testschema.test_index1
-   Index "testschema.test_index1"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index1"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
+Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
-   Index "testschema.test_index2"
- Column |  Type  | Key? | Definition
---------+--------+------+------------
- id     | bigint | yes  | id
+    Index "testschema.test_index2"
+ Column |  Type   | Key? | Definition
+--------+---------+------+------------
+ id     | integer | yes  | id
 lsm, for table "testschema.test_default_tab"
 Tablespace: "regress_tblspace"
 
@@ -364,6 +364,7 @@ ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
 --------+--------+------+------------
  id     | bigint | yes  | id
 lsm, for table "testschema.test_default_tab"
+Tablespace: "regress_tblspace"
 
 \d testschema.test_index2
    Index "testschema.test_index2"
@@ -453,7 +454,7 @@ SET SESSION ROLE regress_tablespace_user2;
 CREATE TABLE tablespace_table (i int) TABLESPACE regress_tblspace; -- fail
 ERROR:  permission denied for tablespace regress_tblspace
 ALTER TABLE testschema.tablespace_acl ALTER c TYPE bigint;
-ERROR:  This ALTER TABLE command is not yet supported.
+ERROR:  permission denied for schema testschema
 RESET ROLE;
 ALTER TABLESPACE regress_tblspace RENAME TO regress_tblspace_renamed;
 ERROR:  ALTER TABLESPACE not supported yet

@@ -56,9 +56,7 @@ public class ManageAlertDefinitions extends UniverseTaskBase {
               .build();
 
       List<AlertDefinition> definitions =
-          alertDefinitionService
-              .list(filter)
-              .stream()
+          alertDefinitionService.list(filter).stream()
               .map(definition -> definition.setActive(taskParams().active))
               .map(definition -> definition.setConfigWritten(false))
               .collect(Collectors.toList());

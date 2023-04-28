@@ -24,10 +24,10 @@
 #include "yb/common/entity_ids.h"
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/pg_system_attr.h"
-#include "yb/common/ql_name.h"
+#include "yb/qlexpr/ql_name.h"
 #include "yb/common/ql_type.h"
 #include "yb/common/ql_type_util.h"
-#include "yb/common/ql_wire_protocol.h"
+#include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
 #include "yb/master/catalog_entity_info.h"
@@ -3112,6 +3112,13 @@ Status CatalogManager::ValidateTableSchema(
            Substitute("Source and target colocation IDs don't match for colocated table: "
                       "Source: $0, Target: $1, Source colocation ID: $2, Target colocation ID: $3",
                       info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
+  }
+
+  {
+    SharedLock lock(mutex_);
+    if (xcluster_consumer_tables_to_stream_map_.contains(table->table_id())) {
+      return STATUS(IllegalState, "N:1 replication topology not supported");
+    }
   }
 
   return Status::OK();

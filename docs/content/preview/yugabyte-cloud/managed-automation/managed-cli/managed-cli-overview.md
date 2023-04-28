@@ -85,6 +85,7 @@ You can set the following ybm environment variables.
 | :--- | :--- |
 | YBM_APIKEY | The API key to use to authenticate to your YugabyteDB Managed account. |
 | YBM_CI | Set to `true` to avoid outputting unnecessary log lines. |
+| YBM_AWS_SECRET_KEY | AWS secret access key. For encryption at rest of AWS clusters. |
 <!--| YBM_HOST | The host address of the cluster you are managing. By default, https is added to the host if no scheme is provided. |-->
 
 ## Autocompletion

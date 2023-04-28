@@ -65,7 +65,7 @@ Build options:
 
   --skip-build, --sb
     Skip all kinds of build (C++, Java)
-  --skip-java-build, --skip-java, --sjb, --sj
+  --skip-java-build, --skip-java, --sjb, --sj, --no-java, --nj
     Do not package and install java source code.
   --skip-cxx-build, --scb
     Skip C++ build. This is useful when repeatedly debugging tests using this tool and not making
@@ -160,6 +160,8 @@ Build options:
     Enable Clang static analyzer
   --clangd-index
     Build a static Clangd index using clangd-indexer.
+  --clangd-index-only, --cio
+    A combination of --clangd-index, --skip-initdb, and --skip-java
   --clangd-index-format <format>
     Clangd index format ("binary" or "yaml"). A YAML index can be moved to another directory.
   --mvn-opts <maven_options>
@@ -169,7 +171,7 @@ Build options:
     https://llvm.org/docs/LinkTimeOptimization.html and https://clang.llvm.org/docs/ThinLTO.html).
     Can also be specified by setting environment variable YB_LINKING_TYPE to thin-lto or full-lto.
     Set YB_LINKING_TYPE to 'dynamic' to disable LTO.
-  --no-initdb
+  --no-initdb, --skip-initdb
     Skip the initdb step. The initdb build step is mostly single-threaded and can be executed on a
     low-CPU build machine even if the majority of the build is being executed on a high-CPU host.
   --skip-test-log-rewrite
@@ -991,6 +993,12 @@ while [[ $# -gt 0 ]]; do
     # --clangd-* options have to precede the catch-all --clang* option that specifies compiler type.
     --clangd-index)
       enable_clangd_index_build
+      build_java=false
+    ;;
+    --clangd-index-only|--cio)
+      enable_clangd_index_build
+      build_java=false
+      disable_initdb
     ;;
     --clangd-index-format)
       clangd_index_format=$2
@@ -1011,7 +1019,7 @@ while [[ $# -gt 0 ]]; do
         fatal "--gcc / --clang is expected to be followed by compiler major version"
       fi
     ;;
-    --skip-java-build|--skip-java|--sjb|--sj)
+    --skip-java-build|--skip-java|--sjb|--sj|--no-java|--nj)
       build_java=false
     ;;
     --run-java-tests|--java-tests)
@@ -1300,6 +1308,15 @@ while [[ $# -gt 0 ]]; do
     --sanitizers-enable-coredump)
       export YB_SANITIZERS_ENABLE_COREDUMP=1
     ;;
+    --valgrind-path)
+      ensure_option_has_arg "$@"
+      valgrind_path=$(realpath "$2")
+      shift
+      if [[ ! -f $valgrind_path ]]; then
+        fatal "Valgrind file doesn't exist: $valgrind_path"
+      fi
+      export YB_VALGRIND_PATH=$valgrind_path
+    ;;
     --extra-daemon-flags|--extra-daemon-args)
       ensure_option_has_arg "$@"
       log "Setting YB_EXTRA_DAEMON_FLAGS to: $2"
@@ -1405,7 +1422,7 @@ while [[ $# -gt 0 ]]; do
     --no-linuxbrew)
       export YB_USE_LINUXBREW=0
     ;;
-    --no-initdb)
+    --no-initdb|--skip-initdb)
       disable_initdb
     ;;
     --skip-test-log-rewrite)
@@ -1726,6 +1743,11 @@ set_pythonpath
 find_or_download_thirdparty
 detect_toolchain
 find_make_or_ninja_and_update_cmake_opts
+find_compiler_by_type
+cmake_opts+=(
+  "-DYB_RESOLVED_C_COMPILER=${cc_executable}"
+  "-DYB_RESOLVED_CXX_COMPILER=${cxx_executable}"
+)
 
 if ! using_default_thirdparty_dir && [[ ${NO_REBUILD_THIRDPARTY:-0} != "1" ]]; then
   log "YB_THIRDPARTY_DIR ('$YB_THIRDPARTY_DIR') is not what we expect based on the source root " \
@@ -1770,6 +1792,8 @@ fi
 
 if [[ ${no_tcmalloc} == "true" ]]; then
   cmake_opts+=( -DYB_TCMALLOC_ENABLED=0 )
+elif [[ -n ${YB_TCMALLOC_ENABLED:-} ]]; then
+  cmake_opts+=( "-DYB_TCMALLOC_ENABLED=$YB_TCMALLOC_ENABLED" )
 fi
 
 if [[ ${use_google_tcmalloc} == "true" ]]; then

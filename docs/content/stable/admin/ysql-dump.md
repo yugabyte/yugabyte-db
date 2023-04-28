@@ -109,7 +109,7 @@ Dump only the object definitions (schema), not data.
 
 This option is the inverse of [`-a|--data-only`](#a-data-only).
 
-(Do not confuse this with the [[`-n|--schema`](#n-schema-schema-schema)`](#n-schema) option, which uses the word “schema” in a different meaning.)
+(Do not confuse this with the [`-n|--schema`](#n-schema-schema-schema) option, which uses the word “schema” in a different meaning.)
 
 To exclude table data for only a subset of tables in the database, see [`--exclude-table-data`](#exclude-table-data).
 

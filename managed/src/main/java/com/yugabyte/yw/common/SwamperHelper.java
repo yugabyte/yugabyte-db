@@ -358,10 +358,7 @@ public class SwamperHelper {
     }
 
     fileContent +=
-        configuration
-            .getThresholds()
-            .keySet()
-            .stream()
+        configuration.getThresholds().keySet().stream()
             .map(
                 severity -> {
                   AlertRuleTemplateSubstitutor substitutor =
