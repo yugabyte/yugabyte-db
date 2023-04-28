@@ -73,6 +73,10 @@ Status RedisSet(std::shared_ptr<client::YBSession> session,
 void YBBackupTest::SetUp() {
   pgwrapper::PgCommandTestBase::SetUp();
   ASSERT_OK(CreateClient());
+  test_admin_client_ = std::make_unique<TestAdminClient>(cluster_.get(), client_.get());
+  snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+  snapshot_util_->SetProxy(&client_->proxy_cache());
+  snapshot_util_->SetCluster(cluster_.get());
 }
 
 string YBBackupTest::GetTempDir(const string& subdir) {
@@ -194,6 +198,17 @@ void YBBackupTest::ManualSplitTablet(
 
   auto tablets = ASSERT_RESULT(GetTablets(table_name, "wait-split", namespace_name));
   ASSERT_EQ(tablets.size(), expected_num_tablets);
+}
+
+void YBBackupTest::LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets) {
+  for (const auto& tablet : tablets) {
+    if (VLOG_IS_ON(1)) {
+      VLOG(1) << "tablet location:\n" << tablet.DebugString();
+    } else {
+      LOG(INFO) << "tablet_id: " << tablet.tablet_id() << ", split_depth: " << tablet.split_depth()
+                << ", partition: " << tablet.partition().ShortDebugString();
+    }
+  }
 }
 
 void YBBackupTest::LogTabletsInfo(

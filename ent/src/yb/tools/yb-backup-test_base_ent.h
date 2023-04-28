@@ -14,7 +14,8 @@
 #pragma once
 
 #include "yb/client/table_handle.h"
-
+#include "yb/tools/test_admin_client.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/tools/tools_test_utils.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper_test_base.h"
@@ -62,6 +63,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
       const string& tablet_id, const string& table_name, const int expected_num_tablets,
       bool wait_for_parent_deletion, const std::string& namespace_name = string());
 
+  void LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets);
   void LogTabletsInfo(
       const google::protobuf::RepeatedPtrField<yb::master::TabletLocationsPB>& tablets);
 
@@ -75,6 +77,8 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
 
   client::TableHandle table_;
   TmpDirProvider tmp_dir_;
+  std::unique_ptr<TestAdminClient> test_admin_client_;
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
 };
 
 }  // namespace tools
