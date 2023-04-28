@@ -1,6 +1,6 @@
 ---
 title: Mirantis Kubernetes Engine
-linkTitle: Mirantis
+linkTitle: Mirantis MKE
 description: Mirantis
 menu:
   preview_integrations:
