@@ -317,17 +317,15 @@ public class AlertConfiguration extends Model {
     if (filter.getTarget() != null) {
       AlertConfigurationTarget filterTarget = filter.getTarget();
       Junction<AlertConfiguration> orExpr = expression.or();
-      if (CollectionUtils.isNotEmpty(filterTarget.getUuids())) {
-        // All target always match particular UUID target
+      // All targets only when all is true
+      if (filterTarget.isAll()) {
         orExpr.like("target", "%\"all\":true%");
+      } else {
+        orExpr.not().like("target", "%\"all\":true%");
+      }
+      if (CollectionUtils.isNotEmpty(filterTarget.getUuids())) {
         for (UUID target : filterTarget.getUuids()) {
           orExpr.like("target", "%\"uuids\":%\"" + target + "\"%");
-        }
-      } else {
-        if (filterTarget.isAll()) {
-          orExpr.like("target", "%\"all\":true%");
-        } else {
-          orExpr.not().like("target", "%\"all\":true%");
         }
       }
       expression.endOr();
