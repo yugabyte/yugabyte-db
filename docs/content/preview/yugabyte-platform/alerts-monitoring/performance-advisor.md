@@ -22,7 +22,7 @@ To monitor clusters in real time, use the [universe level metrics](../../trouble
 
 Performance Advisor provides recommendations for a number of issues.
 
-To scan a cluster for recommendations, navigate to **Universes > Queries > Performance Advisor** , and click **Scan** as shown in the following illustration:
+To scan a cluster for recommendations, navigate to **Universes > Queries > Performance Advisor** and click **Scan** as shown in the following illustration:
 
 ![Performance Advisor](/images/yp/alerts-monitoring/perf-advisor/perf-advisor-overview.png)
 
@@ -121,7 +121,7 @@ Review the sharding strategies for your primary and secondary indexes. Consisten
 
 ### Rejected connections
 
-Advisor monitors rejected YSQL connections. Advisor flags nodes, which rejected 1 or more connections in the last hour. By default each YB-TServer can handle up to 300 simultaneous connections. This number can be configured with [ysql-max-connections](../../../reference/configuration/yb-tserver/#ysql-max-connections) YB-Tserver flag.
+Advisor monitors rejected YSQL connections. Advisor flags nodes that rejected one or more connections in the last hour. By default each YB-TServer can handle up to 300 simultaneous connections. This number can be configured using the [ysql-max-connections](../../../reference/configuration/yb-tserver/#ysql-max-connections) YB-Tserver flag.
 
 Rejected connections can be caused by:
 
@@ -132,25 +132,25 @@ Rejected connections can be caused by:
 
 **Fix the problem**
 
-Review your YSQL clients configuration to see, if connection pooling is configured and pool sizes are correct. If you need more connections, review YB-TServer memory usage. If enough free memory is present, increase the number of `ysql-max-connections`. Otherwise increase the number of YB-TServers to spread connections across them.
+Review your YSQL client's configuration to see if connection pooling is configured and pool sizes are correct. If you need more connections, review YB-TServer memory usage. If enough free memory is present, increase the number of `ysql-max-connections`. Otherwise increase the number of YB-TServers to spread connections across them.
 
 ### Hot shard
 
-Advisor monitors per-table read or write statistics on each node. Advisor flags nodes, which processed 8x more reads or writes for a particular table in the last 10 minutes. Hot shard recommendation is not raised until a node processes at least 600 reads or writes during the last 10 minutes.
+Advisor monitors per-table read and write statistics on each node. Advisor flags nodes that processed 8x more reads or writes for a particular table in the last 10 minutes. Hot shard recommendations are not raised until a node processes at least 600 reads or writes during the last 10 minutes.
 
-Hot shard can be caused by:
+A hot shard can be caused by:
 
 - Using range sharding with sub-optimal shard configuration.
 - An application reading or writing one particular row too often.
 
 **Fix the problem**
-If range sharding is used, analyze reads or writes and recreate the table with more fair shards distribution across nodes.
+If range sharding is used, analyze reads and writes and recreate the table with a more balanced shard distribution across nodes.
 
 ## Limitations
 
 - Currently, you can't schedule periodic performance advisor runs.
-- Currently, you can configure performance recommendation thresholds only via the API.
-- Performance recommendation can be marked resolved only via UI; this state is not persisted.
+- Currently, you can only configure performance recommendation thresholds via the API.
+- Performance recommendations can only be marked resolved via the UI; this state is not persisted.
 - Limited set of performance recommendations.
 
 ## Learn more
