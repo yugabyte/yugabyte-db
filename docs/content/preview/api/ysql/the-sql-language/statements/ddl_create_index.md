@@ -229,7 +229,7 @@ If the following troubleshooting tips don't resolve your issue, please ask for h
 
 **If online `CREATE INDEX` fails**, an invalid index may be left behind.
 Such indexes are not usable in queries.
-Even so, an invalid index causes internal operations, so it should be dropped.
+Despite that, an invalid index causes internal operations, so it should be dropped.
 
 ```plpgsql
 yugabyte=# CREATE TABLE uniqueerror (i int);
