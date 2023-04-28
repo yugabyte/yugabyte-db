@@ -318,7 +318,8 @@
           "QueryLoadSkew": "QUERY LOAD SKEW",
           "CpuSkew": "CPU SKEW",
           "CpuUsage": "CPU USAGE",
-          "HotShard": "HOT SHARD"
+          "HotShard": "HOT SHARD",
+          "RejectedConnections": "REJECTED CONNECTIONS"
         },
         "suggestionTypes": {
           "All": "All Recommendation Types",
@@ -328,7 +329,8 @@
           "ConnectionSkew": "Connection Skew",
           "QueryLoadSkew": "Query Load Skew",
           "IndexSuggestion": "Index Suggestion",
-          "HotShard": "Hot Shard"
+          "HotShard": "Hot Shard",
+          "RejectedConnections": "Rejected Connections"
         },
         "chartTitle": {
           "CpuUsagePercentage": "CPU Usage (Percentage)",
