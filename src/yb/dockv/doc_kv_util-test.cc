@@ -24,10 +24,14 @@
 #include "yb/rocksdb/util/random.h"
 
 #include "yb/util/monotime.h"
+#include "yb/util/random_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/slice.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tsan_util.h"
 
 using namespace std::literals;
+using namespace yb::size_literals;
 using std::string;
 using std::vector;
 
@@ -38,16 +42,16 @@ TEST(DocKVUtilTest, KeyBelongsToDocKeyInTest) {
   actual_key.push_back('\x0');
   const string actual_key_with_one_zero = actual_key;
   actual_key.push_back('\x0');
-  ASSERT_TRUE(KeyBelongsToDocKeyInTest(rocksdb::Slice(actual_key), "mydockey"));
-  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice(actual_key_with_one_zero), "mydockey"));
-  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice("mydockey"), "mydockey"));
-  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice(""), ""));
+  ASSERT_TRUE(KeyBelongsToDocKeyInTest(Slice(actual_key), "mydockey"));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(Slice(actual_key_with_one_zero), "mydockey"));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(Slice("mydockey"), "mydockey"));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(Slice(""), ""));
 
   string just_two_zeros;
   just_two_zeros.push_back('\x0');
   just_two_zeros.push_back('\x0');
-  ASSERT_TRUE(KeyBelongsToDocKeyInTest(rocksdb::Slice(just_two_zeros), ""));
-  ASSERT_FALSE(KeyBelongsToDocKeyInTest(rocksdb::Slice(just_two_zeros), just_two_zeros));
+  ASSERT_TRUE(KeyBelongsToDocKeyInTest(Slice(just_two_zeros), ""));
+  ASSERT_FALSE(KeyBelongsToDocKeyInTest(Slice(just_two_zeros), just_two_zeros));
 }
 
 TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
@@ -63,7 +67,7 @@ TEST(DocKVUtilTest, EncodeAndDecodeHybridTimeInKey) {
         const auto write_id = std::numeric_limits<IntraTxnWriteId>::max() / kNumWriteIdsToTry * k;
         const auto htw = DocHybridTime(HybridTime(cur_ht_value), write_id);
         htw.AppendEncodedInDocDbFormat(&buf);
-        rocksdb::Slice slice(buf);
+        Slice slice(buf);
         DocHybridTime decoded_ht = ASSERT_RESULT(DocHybridTime::DecodeFromEnd(slice));
         ASSERT_EQ(htw, decoded_ht);
       }
@@ -96,25 +100,237 @@ TEST(DocKVUtilTest, TerminateZeroEncodedKeyStr) {
   ASSERT_EQ('\x0', buf[2]);
 }
 
-TEST(DocKVUtilTest, ZeroEncodingAndDecoding) {
-  rocksdb::Random rng(12345); // initialize with a fixed seed
-  for (int i = 0; i < 1000; ++i) {
-    int len = rng.Next() % 200;
-    string s;
-    s.reserve(len);
-    for (int j = 0; j < len; ++j) {
-      s.push_back(static_cast<char>(rng.Next()));
+namespace {
+
+template <char END_OF_STRING>
+void NaiveAppendEncodedStr(const string &s, std::string *dest) {
+  static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
+                "Only characters '\0' and '\xff' allowed as a template parameter");
+  if (END_OF_STRING == '\0' && s.find('\0') == string::npos) {
+    // Fast path: no zero characters, nothing to encode.
+    dest->append(s);
+  } else {
+    for (char c : s) {
+      if (c == '\0') {
+        dest->push_back(END_OF_STRING);
+        dest->push_back(END_OF_STRING ^ 1);
+      } else {
+        dest->push_back(END_OF_STRING ^ c);
+      }
     }
-    string encoded_str = ZeroEncodeStr(s);
-    size_t expected_size_when_no_zeros = s.size() + kEncodedKeyStrTerminatorSize;
-    if (s.find('\0') == string::npos) {
-      ASSERT_EQ(expected_size_when_no_zeros, encoded_str.size());
-    } else {
-      ASSERT_LT(expected_size_when_no_zeros, encoded_str.size());
-    }
-    string decoded_str = DecodeZeroEncodedStr(encoded_str);
-    ASSERT_EQ(s, decoded_str);
   }
+  dest->push_back(END_OF_STRING);
+  dest->push_back(END_OF_STRING);
+}
+
+std::string NaiveZeroEncodeStr(const string &s) {
+  std::string result;
+  NaiveAppendEncodedStr<'\0'>(s, &result);
+  return result;
+}
+
+std::string NaiveComplementZeroEncodeStr(const string &s) {
+  std::string result;
+  NaiveAppendEncodedStr<'\xff'>(s, &result);
+  return result;
+}
+
+template<char END_OF_STRING>
+Status NaiveDecodeEncodedStr(Slice* slice, string* result) {
+  static_assert(END_OF_STRING == '\0' || END_OF_STRING == '\xff',
+                "Invalid END_OF_STRING character. Only '\0' and '\xff' accepted");
+  constexpr char END_OF_STRING_ESCAPE = END_OF_STRING ^ 1;
+  const char* p = slice->cdata();
+  const char* end = p + slice->size();
+
+  while (p != end) {
+    if (*p == END_OF_STRING) {
+      ++p;
+      if (p == end) {
+        return STATUS(Corruption, StringPrintf("Encoded string ends with only one \\0x%02x ",
+                                               END_OF_STRING));
+      }
+      if (*p == END_OF_STRING) {
+        // Found two END_OF_STRING characters, this is the end of the encoded string.
+        ++p;
+        break;
+      }
+      if (*p == END_OF_STRING_ESCAPE) {
+        // 0 is encoded as 00 01 in ascending encoding and FF FE in descending encoding.
+        if (result != nullptr) {
+          result->push_back(0);
+        }
+        ++p;
+      } else {
+        return STATUS(Corruption, StringPrintf(
+            "Invalid sequence in encoded string: "
+            R"#(\0x%02x\0x%02x (must be either \0x%02x\0x%02x or \0x%02x\0x%02x))#",
+            END_OF_STRING, *p, END_OF_STRING, END_OF_STRING, END_OF_STRING, END_OF_STRING_ESCAPE));
+      }
+    } else {
+      if (result != nullptr) {
+        result->push_back((*p) ^ END_OF_STRING);
+      }
+      ++p;
+    }
+  }
+  if (result != nullptr) {
+    result->shrink_to_fit();
+  }
+  slice->remove_prefix(p - slice->cdata());
+  return Status::OK();
+}
+
+std::string NaiveDecodeComplementZeroEncodedStr(Slice slice) {
+  std::string result;
+  CHECK_OK(NaiveDecodeEncodedStr<'\xff'>(&slice, &result));
+  return result;
+}
+
+std::string NaiveDecodeZeroEncodedStr(Slice slice) {
+  std::string result;
+  CHECK_OK(NaiveDecodeEncodedStr<'\0'>(&slice, &result));
+  return result;
+}
+
+} // namespace
+
+template <class Encoder, class Decoder, class NaiveEncoder, class NaiveDecoder, class Cmp>
+void TestStringCoding(
+    const Encoder& encoder, const Decoder& decoder, const NaiveEncoder& naive_encoder,
+    const NaiveDecoder& naive_decoder, const Cmp& cmp) {
+  std::mt19937_64 rng(12345); // initialize with a fixed seed
+  std::vector<std::string> strings;
+  for (int i = 0; i < 1000; ++i) {
+    strings.push_back(RandomString(RandomUniformInt(0, 200, &rng), &rng));
+  }
+
+  strings.push_back("a");
+  strings.push_back("aa");
+
+  size_t kLen = 4;
+  for (size_t mask = 0; mask != 1ULL << kLen; ++mask) {
+    std::string str;
+    for (size_t i = 0; i != kLen; ++i) {
+      if (mask & (1 << i)) {
+        str.push_back(0);
+      } else {
+        str.push_back(RandomUniformInt(1, 0xff, &rng));
+      }
+    }
+    strings.push_back(str);
+  }
+
+  std::sort(strings.begin(), strings.end(), cmp);
+  std::string prev;
+  for (const auto& str : strings) {
+    auto encoded_str = encoder(str);
+    ASSERT_EQ(encoded_str, naive_encoder(str));
+    if (!prev.empty()) {
+      ASSERT_LE(prev, encoded_str);
+    }
+    prev = encoded_str;
+
+    size_t expected_size =
+        str.size() + kEncodedKeyStrTerminatorSize + std::count(str.begin(), str.end(), '\0');
+
+    ASSERT_EQ(expected_size, encoded_str.size());
+    auto decoded_str = ASSERT_RESULT(decoder(encoded_str));
+    ASSERT_EQ(str, decoded_str);
+    ASSERT_EQ(decoded_str, naive_decoder(encoded_str));
+  }
+}
+
+TEST(DocKVUtilTest, ZeroEncodingAndDecoding) {
+  TestStringCoding(
+      &ZeroEncodeStr, [](const auto& s) {
+        return DecodeZeroEncodedStr(s);
+      },
+      &NaiveZeroEncodeStr, &NaiveDecodeZeroEncodedStr, std::less<void>()
+  );
+}
+
+TEST(DocKVUtilTest, ComplementZeroEncodingAndDecoding) {
+  TestStringCoding(
+      &ComplementZeroEncodeStr, [](const auto& s) {
+        return DecodeComplementZeroEncodedStr(s);
+      },
+      &NaiveComplementZeroEncodeStr, &NaiveDecodeComplementZeroEncodedStr, std::greater<void>()
+  );
+}
+
+template <class Generator, class Coder>
+void TestStringCodingPerf(const Generator& generator, const Coder& coder) {
+  constexpr size_t kNumStrings = 10000;
+  constexpr size_t kNumIterations = RegularBuildVsDebugVsSanitizers(100, 10, 1);
+  constexpr size_t kStringLength = 1_KB;
+  std::vector<std::string> strings(kNumStrings);
+  strings.reserve(kNumStrings);
+  for (size_t i = 0; i != kNumStrings; ++i) {
+    strings.push_back(generator(kStringLength));
+  }
+
+  auto start = std::chrono::high_resolution_clock::now();
+  for (size_t i = 0; i != kNumIterations; ++i) {
+    for (const auto& str : strings) {
+      coder(str);
+    }
+  }
+  auto stop = std::chrono::high_resolution_clock::now();
+
+  LOG(INFO) << "Time taken: " << MonoDelta(stop - start).ToString();
+}
+
+TEST(DocKVUtilTest, ZeroDecodingPerf) {
+  std::string buffer;
+  TestStringCodingPerf(
+      [](size_t len) {
+        return ZeroEncodeStr(RandomString(len));
+      },
+      [&buffer](Slice slice) {
+        buffer.clear();
+        ASSERT_OK_FAST(DecodeZeroEncodedStr(&slice, &buffer));
+      }
+  );
+}
+
+TEST(DocKVUtilTest, ZeroEncodingPerf) {
+  KeyBuffer buffer;
+  TestStringCodingPerf(
+      [](size_t len) {
+        return RandomString(len);
+      },
+      [&buffer](const Slice& str) {
+        buffer.clear();
+        AppendZeroEncodedStrToKey(str, &buffer);
+      }
+  );
+}
+
+TEST(DocKVUtilTest, ComplementZeroDecodingPerf) {
+  std::string buffer;
+  TestStringCodingPerf(
+      [](size_t len) {
+        return ComplementZeroEncodeStr(RandomString(len));
+      },
+      [&buffer](Slice slice) {
+        buffer.clear();
+        ASSERT_OK_FAST(DecodeComplementZeroEncodedStr(&slice, &buffer));
+      }
+  );
+}
+
+TEST(DocKVUtilTest, ComplementZeroEncodingPerf) {
+  KeyBuffer buffer;
+  TestStringCodingPerf(
+      [](size_t len) {
+        return RandomString(len);
+      },
+      [&buffer](const Slice& str) {
+        buffer.clear();
+        AppendComplementZeroEncodedStrToKey(str, &buffer);
+      }
+  );
 }
 
 TEST(DocKVUtilTest, TableTTL) {
@@ -195,7 +411,7 @@ TEST(DocKVUtilTest, FloatEncoding) {
     string s;
     util::AppendFloatToKey(numbers[i], &s);
     strings.push_back(s);
-    EXPECT_EQ(numbers[i], util::DecodeFloatFromKey(rocksdb::Slice(s)));
+    EXPECT_EQ(numbers[i], util::DecodeFloatFromKey(Slice(s)));
   }
   for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
@@ -209,7 +425,7 @@ TEST(DocKVUtilTest, DoubleEncoding) {
     string s;
     util::AppendDoubleToKey(numbers[i], &s);
     strings.push_back(s);
-    EXPECT_EQ(numbers[i], util::DecodeDoubleFromKey(rocksdb::Slice(s)));
+    EXPECT_EQ(numbers[i], util::DecodeDoubleFromKey(Slice(s)));
   }
   for (size_t i = 1; i < numbers.size(); i++) {
     EXPECT_LT(strings[i-1], strings[i]);
