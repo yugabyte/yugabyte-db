@@ -69,12 +69,12 @@ interface OnPremProviderEditFormFieldValues {
   regions: ConfigureOnPremRegionFormValues[];
   skipProvisioning: boolean;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
 
-  nodeExporterPort?: number;
+  nodeExporterPort?: number | null;
   nodeExporterUser?: string;
   ybHomeDir?: string;
 }
@@ -252,7 +252,7 @@ export const OnPremProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   fullWidth
                   disabled={isFormDisabled}
                 />
@@ -420,7 +420,7 @@ const constructDefaultFormValues = (
   dbNodePublicInternetAccess: !providerConfig.details.airGapInstall,
   editSSHKeypair: false,
   installNodeExporter: !!providerConfig.details.installNodeExporter,
-  nodeExporterPort: providerConfig.details.nodeExporterPort,
+  nodeExporterPort: providerConfig.details.nodeExporterPort ?? null,
   nodeExporterUser: providerConfig.details.nodeExporterUser ?? '',
   ntpServers: providerConfig.details.ntpServers,
   ntpSetupType: getNtpSetupType(providerConfig),
@@ -434,7 +434,7 @@ const constructDefaultFormValues = (
     }))
   })),
   skipProvisioning: providerConfig.details.skipProvisioning,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
   ybHomeDir: providerConfig.details.cloudInfo.onprem.ybHomeDir ?? ''
@@ -468,17 +468,19 @@ const constructProviderPayload = async (
       airGapInstall: !formValues.dbNodePublicInternetAccess,
       cloudInfo: {
         [ProviderCode.ON_PREM]: {
-          ybHomeDir: formValues.ybHomeDir
+          ...(formValues.ybHomeDir && { ybHomeDir: formValues.ybHomeDir })
         }
       },
       installNodeExporter: formValues.installNodeExporter,
-      nodeExporterPort: formValues.nodeExporterPort,
-      nodeExporterUser: formValues.nodeExporterUser,
+      ...(formValues.nodeExporterPort && { nodeExporterPort: formValues.nodeExporterPort }),
+      ...(formValues.nodeExporterUser && { nodeExporterUser: formValues.nodeExporterUser }),
       ntpServers: formValues.ntpServers,
+      passwordlessSudoAccess: providerConfig.details.passwordlessSudoAccess,
+      provisionInstanceScript: providerConfig.details.provisionInstanceScript,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
       skipProvisioning: formValues.skipProvisioning,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<OnPremRegionMutation>((regionFormValues) => {

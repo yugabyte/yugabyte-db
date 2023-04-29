@@ -84,7 +84,7 @@ export interface AZUProviderEditFormFieldValues {
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -331,7 +331,7 @@ export const AZUProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -480,7 +480,7 @@ const constructDefaultFormValues = (
     zones: region.zones
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version
 });
@@ -515,7 +515,7 @@ const constructProviderPayload = async (
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
           azuClientSecret: formValues.azuClientSecret,
-          azuHostedZoneId: formValues.azuHostedZoneId,
+          ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
           azuSubscriptionId: formValues.azuSubscriptionId,
           azuTenantId: formValues.azuTenantId
@@ -523,8 +523,8 @@ const constructProviderPayload = async (
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<AZURegionMutation>((regionFormValues) => {
@@ -541,9 +541,15 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.AZU]: {
-                securityGroupId: regionFormValues.securityGroupId,
-                vnet: regionFormValues.vnet,
-                ybImage: regionFormValues.ybImage
+                ...(regionFormValues.securityGroupId && {
+                  securityGroupId: regionFormValues.securityGroupId
+                }),
+                ...(regionFormValues.vnet && {
+                  vnet: regionFormValues.vnet
+                }),
+                ...(regionFormValues.ybImage && {
+                  ybImage: regionFormValues.ybImage
+                })
               }
             }
           },
