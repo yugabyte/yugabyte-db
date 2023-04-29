@@ -858,6 +858,10 @@ public class CloudProviderHandler {
   }
 
   private boolean updateAccessKeys(Provider editProviderReq, Provider provider) {
+    if (provider.getCloudCode().equals(CloudType.kubernetes)) {
+      // For k8s provider, access keys does not exist.
+      return false;
+    }
     /*
      * For the access key edits, user can
      * 1. Switch from YBA Managed <-> Self Managed, & vice-versa.
