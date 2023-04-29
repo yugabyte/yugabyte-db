@@ -141,7 +141,7 @@ VMware Tanzu Application Service is no longer actively supported and the followi
 If you choose to use VMware Tanzu Application Service, before creating the service instance, ensure that the following is available:
 
 - The YugabyteDB tile is installed in your PCF marketplace.
-- The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment .
+- The cloud provider is configured in the YugabyteDB Anywhere instance in your PCF environment.
 
 ### Create a YugabyteDB service instance
 

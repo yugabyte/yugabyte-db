@@ -213,8 +213,6 @@ Use **Kube Config** to upload the `kubeconfig` file. If specified, this configur
 
 Alternately, you can define separate `kubeconfig` files for each zone when defining the regions. See [Configure region and zones](#configure-region-and-zones).
 
-In the **Service Account** field, provide the name of the [service account](#service-account) which has necessary access to manage the cluster (see [Create cluster](../../../../deploy/kubernetes/single-zone/oss/helm-chart/#create-cluster)).
-
 #### Configure region and zones
 
 Continue configuring your Kubernetes provider by clicking **Add region** and completing the **Add new region** dialog as follows:
