@@ -90,7 +90,7 @@ export const ConfigureRegionModal = ({
       providerCode === ProviderCode.AZU ? 'Security Group Name (Optional)' : 'Security Group ID',
     ybImage:
       providerCode === ProviderCode.AWS
-        ? 'Custom AMI ID'
+        ? 'AMI ID'
         : providerCode === ProviderCode.AZU
         ? 'Marketplace Image URN/Shared Gallery Image ID (Optional)'
         : 'Custom Machine Image ID (Optional)',

@@ -89,7 +89,7 @@ interface GCPProviderEditFormFieldValues {
   regions: CloudVendorRegionField[];
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
-  sshPort: number;
+  sshPort: number | null;
   sshPrivateKeyContent: File;
   sshUser: string;
   version: number;
@@ -435,7 +435,7 @@ export const GCPProviderEditForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -597,7 +597,7 @@ const constructDefaultFormValues = (
     )
   })),
   sshKeypairManagement: getLatestAccessKey(providerConfig.allAccessKeys)?.keyInfo.managementState,
-  sshPort: providerConfig.details.sshPort ?? '',
+  sshPort: providerConfig.details.sshPort ?? null,
   sshUser: providerConfig.details.sshUser ?? '',
   version: providerConfig.version,
   vpcSetupType: providerConfig.details.cloudInfo.gcp.vpcType,
@@ -686,13 +686,13 @@ const constructProviderPayload = async (
           ...providerConfig.details.cloudInfo.gcp,
           ...vpcConfig,
           ...(formValues.editCloudCredentials && { ...gcpCredentials }),
-          ybFirewallTags: formValues.ybFirewallTags
+          ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
         }
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: [
       ...formValues.regions.map<GCPRegionMutation>((regionFormValues) => {
@@ -709,17 +709,25 @@ const constructProviderPayload = async (
           details: {
             cloudInfo: {
               [ProviderCode.GCP]: {
-                ybImage: regionFormValues.ybImage
+                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
               }
             }
           },
-          zones: GCP_REGIONS[regionFormValues.code]?.zones.map<GCPAvailabilityZoneMutation>(
-            (zoneSuffix: string) => ({
-              code: `${regionFormValues.code}${zoneSuffix}`,
-              name: `${regionFormValues.code}${zoneSuffix}`,
-              subnet: regionFormValues.sharedSubnet ?? ''
-            })
-          )
+          zones: existingRegion
+            ? existingRegion.zones.map((zone) => ({
+                active: zone.active,
+                code: zone.code,
+                name: zone.name,
+                subnet: regionFormValues.sharedSubnet ?? '',
+                uuid: zone.uuid
+              }))
+            : GCP_REGIONS[regionFormValues.code]?.zones.map<GCPAvailabilityZoneMutation>(
+                (zoneSuffix: string) => ({
+                  code: `${regionFormValues.code}${zoneSuffix}`,
+                  name: `${regionFormValues.code}${zoneSuffix}`,
+                  subnet: regionFormValues.sharedSubnet ?? ''
+                })
+              )
         };
       }),
       ...getDeletedRegions(providerConfig.regions, formValues.regions)
