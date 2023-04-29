@@ -296,7 +296,7 @@ export const AZUProviderCreateForm = ({
                   control={formMethods.control}
                   name="sshPort"
                   type="number"
-                  inputProps={{ min: 0, max: 65535 }}
+                  inputProps={{ min: 1, max: 65535 }}
                   disabled={isFormDisabled}
                   fullWidth
                 />
@@ -432,7 +432,7 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
           azuClientSecret: formValues.azuClientSecret,
-          azuHostedZoneId: formValues.azuHostedZoneId,
+          ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
           azuSubscriptionId: formValues.azuSubscriptionId,
           azuTenantId: formValues.azuTenantId
@@ -440,17 +440,23 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
       },
       ntpServers: formValues.ntpServers,
       setUpChrony: formValues.ntpSetupType !== NTPSetupType.NO_NTP,
-      sshPort: formValues.sshPort,
-      sshUser: formValues.sshUser
+      ...(formValues.sshPort && { sshPort: formValues.sshPort }),
+      ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
     regions: formValues.regions.map<AZURegionMutation>((regionFormValues) => ({
       code: regionFormValues.code,
       details: {
         cloudInfo: {
           [ProviderCode.AZU]: {
-            securityGroupId: regionFormValues.securityGroupId,
-            vnet: regionFormValues.vnet,
-            ybImage: regionFormValues.ybImage
+            ...(regionFormValues.securityGroupId && {
+              securityGroupId: regionFormValues.securityGroupId
+            }),
+            ...(regionFormValues.vnet && {
+              vnet: regionFormValues.vnet
+            }),
+            ...(regionFormValues.ybImage && {
+              ybImage: regionFormValues.ybImage
+            })
           }
         }
       },
