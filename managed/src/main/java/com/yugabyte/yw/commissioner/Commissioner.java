@@ -306,9 +306,9 @@ public class Commissioner {
   }
 
   // Returns a map of target to updating task UUID.
-  public Map<UUID, String> getUpdatingTaskUUIDsForTargets() {
+  public Map<UUID, String> getUpdatingTaskUUIDsForTargets(Long customerId) {
     return Universe.getUniverseDetailsFields(
-        String.class, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
+        String.class, customerId, UniverseDefinitionTaskParams.UPDATING_TASK_UUID_FIELD);
   }
 
   public JsonNode getTaskDetails(UUID taskUUID) {
