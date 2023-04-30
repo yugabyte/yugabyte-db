@@ -562,12 +562,11 @@ Add a tablet to a transaction status table.
 yb-admin \
     -master_addresses <master-addresses> \
     add_transaction_tablet \
-    <keyspace> <table_name>
+    <table_id>
 ```
 
 * *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *keyspace*: The name of the keyspace.
-* *table_name*: The name of the transaction status table name.
+* *table_id*: The identifier (ID) of the table.
 
 **Example**
 
