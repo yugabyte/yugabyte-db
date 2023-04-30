@@ -332,6 +332,7 @@ void Schema::CopyFrom(const Schema& other) {
   cotable_id_ = other.cotable_id_;
   colocation_id_ = other.colocation_id_;
   pgschema_name_ = other.pgschema_name_;
+  key_prefix_encoded_len_ = other.key_prefix_encoded_len_;
 
   // Schema cannot have both cotable ID and colocation ID.
   DCHECK(cotable_id_.IsNil() || colocation_id_ == kColocationIdNotSet);
@@ -351,6 +352,7 @@ void Schema::swap(Schema& other) {
   std::swap(cotable_id_, other.cotable_id_);
   std::swap(colocation_id_, other.colocation_id_);
   std::swap(pgschema_name_, other.pgschema_name_);
+  std::swap(key_prefix_encoded_len_, other.key_prefix_encoded_len_);
 
   // Schema cannot have both cotable ID and colocation ID.
   DCHECK(cotable_id_.IsNil() || colocation_id_ == kColocationIdNotSet);
@@ -406,6 +408,8 @@ Status Schema::Reset(const vector<ColumnSchema>& cols,
       has_statics_ = true;
     }
   }
+
+  UpdateKeyPrefixEncodedLen();
 
   if (PREDICT_FALSE(key_columns > cols_.size())) {
     return STATUS(InvalidArgument,
@@ -503,12 +507,6 @@ vector<ColumnId> DefaultColumnIds(ColumnIdRep num_columns) {
 void Schema::InitColumnIdsByDefault() {
   CHECK(!has_column_ids());
   ResetColumnIds(DefaultColumnIds(narrow_cast<ColumnIdRep>(cols_.size())));
-}
-
-Schema Schema::CopyWithoutColumnIds() const {
-  CHECK(has_column_ids());
-  return Schema(cols_, num_key_columns_, table_properties_, cotable_id_,
-                colocation_id_, pgschema_name_);
 }
 
 Status Schema::VerifyProjectionCompatibility(const Schema& projection) const {
@@ -669,6 +667,19 @@ void SchemaBuilder::Reset() {
   colocation_id_ = kColocationIdNotSet;
   pgschema_name_ = "";
   cotable_id_ = Uuid::Nil();
+}
+
+void Schema::UpdateKeyPrefixEncodedLen() {
+  key_prefix_encoded_len_ = 0;
+  if (has_cotable_id()) {
+    key_prefix_encoded_len_ += 1 + kUuidSize;
+  }
+  if (has_colocation_id()) {
+    key_prefix_encoded_len_ += 1 + sizeof(ColocationId);
+  }
+  if (num_hash_key_columns_) {
+    key_prefix_encoded_len_ += 1 + sizeof(uint16_t);
+  }
 }
 
 void SchemaBuilder::Reset(const Schema& schema) {
