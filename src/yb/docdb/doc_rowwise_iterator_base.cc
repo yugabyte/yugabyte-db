@@ -333,19 +333,26 @@ Status DocRowwiseIteratorBase::CopyKeyColumnsToQLTableRow(
     return Status::OK();
   }
 
+  const auto& schema = doc_read_context_.schema;
+  // In the release mode we just skip key prefix encoded len, in debug mode we decode this prefix,
+  // and check that number of decoded bytes matches key prefix encoded len.
+#ifdef NDEBUG
+  dockv::DocKeyDecoder decoder(row_key_.WithoutPrefix(schema.key_prefix_encoded_len()));
+#else
   dockv::DocKeyDecoder decoder(row_key_);
   RETURN_NOT_OK(decoder.DecodeCotableId());
   RETURN_NOT_OK(decoder.DecodeColocationId());
-  bool has_hash_components = VERIFY_RESULT(decoder.DecodeHashCode());
+  RETURN_NOT_OK(decoder.DecodeHashCode());
+  CHECK_EQ(schema.key_prefix_encoded_len(), decoder.left_input().data() - row_key_.data());
+#endif
 
   // Populate the key column values from the doc key. The key column values in doc key were
   // written in the same order as in the table schema (see DocKeyFromQLKey). If the range columns
   // are present, read them also.
   auto projected_column = projection.columns.begin();
   const auto projected_key_end = projected_column + projection.num_key_columns;
-  const auto& schema = doc_read_context_.schema;
   dockv::KeyEntryValue key_entry_value;
-  if (has_hash_components) {
+  if (schema.num_hash_key_columns()) {
     for (size_t schema_idx = 0; schema_idx != schema.num_hash_key_columns(); ++schema_idx) {
       if (projected_column->id == schema.column_id(schema_idx)) {
         RETURN_NOT_OK(decoder.DecodeKeyEntryValue(&key_entry_value));
