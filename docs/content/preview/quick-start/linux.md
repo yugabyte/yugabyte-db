@@ -151,6 +151,13 @@ The cluster you have created consists of two processes: [YB-Master](../../archit
 
 Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, and perform certain administrative operations. The [YB-Master Admin UI](../../reference/configuration/yb-master/#admin-ui) is available at <http://127.0.0.1:7000> and the [YB-TServer Admin UI](../../reference/configuration/yb-tserver/#admin-ui) is available at <http://127.0.0.1:9000>.
 
+{{< note title="Note" >}}
+
+The correct ip will be printed from `./bin/yugabyted status` or `./bin/yugabyted start` commands.
+
+{{< /note >}}
+
+
 #### Overview and YB-Master status
 
 The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
