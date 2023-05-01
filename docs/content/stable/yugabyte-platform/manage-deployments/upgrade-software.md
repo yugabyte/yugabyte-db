@@ -13,19 +13,36 @@ type: docs
 
 The YugabyteDB release that is powering a universe can be upgraded to get new features and fixes included in the release.
 
-Before starting the upgrade: 
+Before starting the upgrade:
 
-- Ensure that the YB Controller port 18018 is open on all YugabyteDB nodes. 
+- Ensure that the YB Controller port 18018 is open on all YugabyteDB nodes.
 
 - Consider importing a specific YugabyteDB release into YugabyteDB Anywhere, as follows:
 
   - Click the user profile icon and select **Releases**.
 
-  - Click **Import** to open the **Import Releases** dialog shown in the following illustration:<br>
+  - Click **Import** to open the **Import Releases** dialog shown in the following illustration:
 
     ![Import Releases](/images/yp/import-releases.png)<br>
 
   - Specify the release version to import.
+
+    {{< note title="Manually-provisioned on-premises universe upgrades" >}}
+
+  For v2.16.3, YB Controller does not get installed during a YugabyteDB software upgrade of a manually provisioned [on-premises](../../configure-yugabyte-platform/set-up-cloud-provider/on-premises/) cron-managed universe.
+
+  The workaround is to explicitly install the YB Controller by calling the following API after the software upgrade:
+
+  ```sh
+  curl --location --request PUT '<YBA-url>/api/v1/customers/<customerUUID>/universes/<universeUUID>/ybc/install' \
+       --header 'X-AUTH-YW-API-TOKEN: <YBA-api-auth-token>'
+  ```
+
+  To view your Customer ID and API Token, click the **Profile** icon in the top right corner of the YugabyteDB Anywhere window.
+
+  You can view your Universe ID from your YugabyteDB Anywhere universe URL (`<node-ip>/universes/<universeID>`).
+
+     {{< /note >}}
 
   - Select the storage or URL that contains the release. If the release is located on Amazon S3, you would need to provide the access information; if the release is located on Google Cloud Storage, you would need to copy and paste the contents of the JSON file with the access credentials; if the release is accessible via a HTTP, you would need to specify the checksum value of the download.
 
