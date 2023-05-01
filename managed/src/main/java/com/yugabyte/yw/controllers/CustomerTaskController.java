@@ -134,12 +134,12 @@ public class CustomerTaskController extends AuthenticatedController {
     }
   }
 
-  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(UUID customerUUID, UUID targetUUID) {
+  private Map<UUID, List<CustomerTaskFormData>> fetchTasks(Customer customer, UUID targetUUID) {
     Query<CustomerTask> customerTaskQuery =
         CustomerTask.find
             .query()
             .where()
-            .eq("customer_uuid", customerUUID)
+            .eq("customer_uuid", customer.getUuid())
             .orderBy("create_time desc");
 
     if (targetUUID != null) {
@@ -162,7 +162,8 @@ public class CustomerTaskController extends AuthenticatedController {
         TaskInfo.find(taskUuids)
             .stream()
             .collect(Collectors.toMap(TaskInfo::getTaskUUID, Function.identity()));
-    Map<UUID, String> updatingTaskByTargetMap = commissioner.getUpdatingTaskUUIDsForTargets();
+    Map<UUID, String> updatingTaskByTargetMap =
+        commissioner.getUpdatingTaskUUIDsForTargets(customer.getCustomerId());
     for (CustomerTask task : customerTaskList) {
       TaskInfo taskInfo = taskInfoMap.get(task.getTaskUUID());
       commissioner
@@ -183,9 +184,8 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result list(UUID customerUUID) {
-    Customer.getOrBadRequest(customerUUID);
-
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, null);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customer, null);
     return PlatformResults.withData(taskList);
   }
 
@@ -194,9 +194,9 @@ public class CustomerTaskController extends AuthenticatedController {
       response = CustomerTaskFormData.class,
       responseContainer = "List")
   public Result tasksList(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     List<CustomerTaskFormData> flattenList = new ArrayList<CustomerTaskFormData>();
-    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customerUUID, universeUUID);
+    Map<UUID, List<CustomerTaskFormData>> taskList = fetchTasks(customer, universeUUID);
     for (List<CustomerTaskFormData> task : taskList.values()) {
       flattenList.addAll(task);
     }
@@ -205,10 +205,10 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   public Result universeTasks(UUID customerUUID, UUID universeUUID) {
-    Customer.getOrBadRequest(customerUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID);
     Map<UUID, List<CustomerTaskFormData>> taskList =
-        fetchTasks(customerUUID, universe.universeUUID);
+        fetchTasks(customer, universe.getUniverseUUID());
     return PlatformResults.withData(taskList);
   }
 

@@ -391,15 +391,20 @@ public class Universe extends Model {
    * Find a single attribute from universe_details_json column of all Universe records.
    *
    * @param clazz the attribute type.
+   * @param customerId the customer ID primary key.
    * @param fieldName the name of the field.
    * @return the attribute values for all universes.
    */
-  public static <T> Map<UUID, T> getUniverseDetailsFields(Class<T> clazz, String fieldName) {
+  public static <T> Map<UUID, T> getUniverseDetailsFields(
+      Class<T> clazz, Long customerId, String fieldName) {
     String query =
         String.format(
-            "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe",
+            "select universe_uuid, universe_details_json::jsonb->>'%s' as field from universe"
+                + " where customer_id = :customerId",
             fieldName);
-    return Ebean.createSqlQuery(query)
+    SqlQuery sqlQuery = Ebean.createSqlQuery(query);
+    sqlQuery.setParameter("customerId", customerId);
+    return sqlQuery
         .findList()
         .stream()
         .filter(r -> r.get("field") != null && clazz.isAssignableFrom(r.get("field").getClass()))
