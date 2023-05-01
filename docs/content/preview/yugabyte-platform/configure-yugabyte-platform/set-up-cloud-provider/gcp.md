@@ -78,7 +78,11 @@ To configure GCP providers, navigate to **Configs > Infrastructure > Google Clou
 
 This lists all currently configured providers.
 
-To view a provider, select it in the list to display the **Overview**. To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
+To view a provider, select it in the list to display the **Overview**. You can perform the following on a profile configuration:
+
+- To edit the configuration, select **Config Details**, make changes, and click **Apply Changes**. Note that, depending on whether the configuration has been used to create a universe, you can only edit a subset of options.
+- To view the universes created using the profile, select **Universes**.
+- To delete the configuration, click **Actions** and choose **Delete Configuration**. You can only delete configurations that are not in use by a universe.
 
 To create a GCP provider, click **Create Config** to open the **Create GCP Provider Configuration** page.
 
