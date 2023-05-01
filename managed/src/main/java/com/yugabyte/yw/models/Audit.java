@@ -509,6 +509,15 @@ public class Audit extends Model {
     @EnumValue("Set YB-Controller throttle params")
     SetThrottleParams,
 
+    @EnumValue("Create Image Bundle")
+    CreateImageBundle,
+
+    @EnumValue("Delete Image Bundle")
+    DeleteImageBundle,
+
+    @EnumValue("Edit Image Bundle")
+    EditImageBundle,
+
     @EnumValue("Export")
     Export,
 

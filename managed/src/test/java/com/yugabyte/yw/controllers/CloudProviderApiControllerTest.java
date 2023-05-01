@@ -54,6 +54,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.gcp.GCPCloudImpl;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -69,6 +70,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -1544,6 +1547,31 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   private void assertBadRequestValidationResult(Result result, JsonNode errorContent) {
     assertEquals(BAD_REQUEST, result.status());
     assertEquals(errorContent, Json.parse(contentAsString(result)));
+  }
+
+  @Test
+  public void testGCPProviderCreateWithImageBundle() {
+    when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.gcp)))
+        .thenReturn(Json.newObject().put("network", "234234").put("host_project", "PROJ"));
+    Provider provider = buildProviderReq("gcp", "Google");
+    Region region = new Region();
+    region.setName("region1");
+    region.setProvider(provider);
+    region.setCode("region1");
+    provider.setRegions(ImmutableList.of(region));
+    provider = createProviderTest(provider, ImmutableList.of(), UUID.randomUUID());
+
+    ImageBundleDetails details = new ImageBundleDetails();
+    details.setGlobalYbImage("Global-AMI-Image");
+    details.setArch(Architecture.x86_64);
+    ImageBundle ib1 = new ImageBundle();
+    ib1.setName("ImageBundle-1");
+    ib1.setProvider(provider);
+    ib1.setUseAsDefault(true);
+    ib1.save();
+
+    ImageBundle bundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+    assertEquals(ib1.getUuid(), bundle.getUuid());
   }
 
   @Test

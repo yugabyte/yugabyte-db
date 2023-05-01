@@ -497,7 +497,13 @@ public enum TaskType {
 
   CloudProviderDelete(com.yugabyte.yw.commissioner.tasks.CloudProviderDelete.class),
 
-  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class);
+  YBCBackupSucceeded(com.yugabyte.yw.commissioner.tasks.subtasks.YBCBackupSucceeded.class),
+
+  CloudImageBundleSetup(
+      com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup.class),
+
+  UpdateClusterUserIntent(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent.class);
 
   private final Class<? extends ITask> taskClass;
 

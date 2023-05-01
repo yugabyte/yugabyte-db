@@ -1036,7 +1036,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     Result result =
         assertPlatformException(
             () -> doRequestWithAuthTokenAndBody("POST", url, authToken, Json.newObject()));
-    assertBadRequest(result, "JsonProcessingException parsing request body");
+    assertBadRequest(result, "machineImages/imageBundle param is required.");
 
     ArgumentCaptor<VMImageUpgradeParams> argCaptor =
         ArgumentCaptor.forClass(VMImageUpgradeParams.class);
