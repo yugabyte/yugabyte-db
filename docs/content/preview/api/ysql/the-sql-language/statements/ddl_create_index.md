@@ -295,7 +295,7 @@ DROP INDEX
 
   - Increase [YB-Master flag](../../../../../reference/configuration/yb-master/) `ysql_index_backfill_rpc_timeout_ms` from 60000 (one minute) to 300000 (five minutes).
   - Increase [YB-TServer flag](../../../../../reference/configuration/yb-tserver/) `backfill_index_timeout_grace_margin_ms` from -1 (one second) to 60000 (one minute).
-  - Decrease YB-TServer flag `backfill_index_write_batch_size` from 128 to 32.
+  - Decrease [YB-TServer flag](../../../../../reference/configuration/yb-tserver/) `backfill_index_write_batch_size` from 128 to 32.
 
 - `ERROR:  BackfillIndex RPC (request call id 123) to 127.0.0.1:9100 timed out after 86400.000s`
 
