@@ -142,9 +142,6 @@ class TransactionCoordinator {
 
   std::string DumpTransactions();
 
-  // Returns count of external transactions. Used in tests.
-  size_t TEST_CountExternalTransactions() const;
-
   // Returns count of managed transactions. Used in tests.
   size_t test_count_transactions() const;
 

@@ -1290,17 +1290,6 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
     ExecutePostponedLeaderActions(&actions);
   }
 
-  size_t TEST_CountExternalTransactions() {
-    std::lock_guard<std::mutex> lock(managed_mutex_);
-    auto count = 0;
-    for (const auto& transaction : managed_transactions_) {
-      if (transaction.is_external()) {
-        count++;
-      }
-    }
-    return count;
-  }
-
   size_t test_count_transactions() {
     std::lock_guard<std::mutex> lock(managed_mutex_);
     return managed_transactions_.size();
@@ -1851,10 +1840,6 @@ void TransactionCoordinator::ProcessAborted(const AbortedData& data) {
 
 int64_t TransactionCoordinator::PrepareGC(std::string* details) {
   return impl_->PrepareGC(details);
-}
-
-size_t TransactionCoordinator::TEST_CountExternalTransactions() const {
-  return impl_->TEST_CountExternalTransactions();
 }
 
 size_t TransactionCoordinator::test_count_transactions() const {

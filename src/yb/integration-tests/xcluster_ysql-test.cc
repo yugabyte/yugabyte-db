@@ -114,8 +114,8 @@ DECLARE_bool(TEST_disable_apply_committed_transactions);
 DECLARE_uint64(ysql_session_max_batch_size);
 DECLARE_bool(use_libbacktrace);
 DECLARE_uint64(consensus_max_batch_size_bytes);
-DECLARE_bool(TEST_xcluster_disable_replication_transaction_status_table);
 DECLARE_uint64(aborted_intent_cleanup_ms);
+DECLARE_uint32(external_intent_cleanup_secs);
 DECLARE_bool(TEST_force_get_checkpoint_from_cdc_state);
 DECLARE_bool(ysql_legacy_colocated_database_creation);
 DECLARE_bool(TEST_cdc_skip_replication_poll);
@@ -664,6 +664,11 @@ constexpr int kTransactionalConsistencyTestDurationSecs = 30;
 
 class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
  public:
+  void SetUp() override {
+    FLAGS_xcluster_consistent_wal = true;
+    XClusterYsqlTest::SetUp();
+  }
+
   void MultiTransactionConsistencyTest(
       uint32_t transaction_size, uint32_t num_transactions, const YBTableName& producer_table,
       const YBTableName& consumer_table, bool commit_all_transactions) {
@@ -755,11 +760,6 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
     auto producer_table = tables.first;
     auto consumer_table = tables.second;
     std::vector<std::shared_ptr<client::YBTable>> tables_to_replicate = {producer_table};
-    if (!FLAGS_xcluster_consistent_wal) {
-      RETURN_NOT_OK(producer_client()->OpenTable(
-          producer_transaction_table_name, &producer_transaction_table_));
-      tables_to_replicate.push_back(producer_transaction_table_);
-    }
     RETURN_NOT_OK(SetupUniverseReplication(
         kUniverseId, tables_to_replicate, {LeaderOnly::kTrue, Transactional::kTrue}));
     // Verify that universe was setup on consumer.
@@ -778,57 +778,16 @@ class XClusterYSqlTestConsistentTransactionsTest : public XClusterYsqlTest {
   }
 
   Status WaitForIntentsCleanedUpOnConsumer() {
-    if (FLAGS_xcluster_consistent_wal) {
-      // There is nothing to cleanup in this mode.
-      return Status::OK();
-    }
-
     return WaitFor(
         [&]() { return CountIntents(consumer_cluster()) == 0; }, MonoDelta::FromSeconds(30),
         "Intents cleaned up");
   }
-
- protected:
-  std::shared_ptr<client::YBTable> producer_transaction_table_;
 };
 
 constexpr uint32_t kTransactionSize = 50;
 constexpr uint32_t kNumTransactions = 100;
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactions) {
-  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
-
-  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
-      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
-      true /* commit_all_transactions */));
-
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-}
-
-class XClusterYSqlTestConsistentWAL : public XClusterYSqlTestConsistentTransactionsTest {
- public:
-  Result<std::pair<client::YBTablePtr, client::YBTablePtr>> CreateClusterAndTable(
-      int num_masters = 3) override {
-    FLAGS_xcluster_consistent_wal = true;
-    auto tables = VERIFY_RESULT(SetUpWithParams({4}, {4}, 3, num_masters));
-    auto producer_table = tables[0];
-    auto consumer_table = tables[1];
-    return std::make_pair(producer_table, consumer_table);
-  }
-};
-
-TEST_F(XClusterYSqlTestConsistentWAL, ConsistentTransactions) {
-  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
-
-  ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
-      kTransactionSize, kNumTransactions, tables_pair.first->name(), tables_pair.second->name(),
-      true /* commit_all_transactions */));
-
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-}
-
-TEST_F(XClusterYSqlTestConsistentTransactionsTest, ConsistentTransactionsWithApplyDisabled) {
-  FLAGS_TEST_disable_apply_committed_transactions = true;
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
@@ -914,9 +873,6 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
     return conn.ExecuteFormat("create table $0(id int, name text, salary int);", table_name);
   }));
 
-  ASSERT_OK(producer_client()->OpenTable(
-      producer_transaction_table_name, &producer_transaction_table_));
-
   auto table_name_with_id_list = ASSERT_RESULT(producer_client()->ListTables(table_name));
   ASSERT_EQ(table_name_with_id_list.size(), 1);
   auto table_name_with_id = table_name_with_id_list[0];
@@ -924,8 +880,8 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
   auto yb_table = ASSERT_RESULT(producer_client()->OpenTable(table_name_with_id.table_id()));
 
   const string kUniverseId = ASSERT_RESULT(GetUniverseId(&producer_cluster_));
-  ASSERT_OK(SetupUniverseReplication(kUniverseId, {yb_table, producer_transaction_table_},
-                                     {LeaderOnly::kTrue, Transactional::kTrue}));
+  ASSERT_OK(
+      SetupUniverseReplication(kUniverseId, {yb_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
   // Verify that universe was setup on consumer.
   master::GetUniverseReplicationResponsePB resp;
   ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
@@ -1162,48 +1118,9 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, ReplicationPause) {
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 }
 
-TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithCompactions) {
-  // This test ensures that the compactions flow does not cleanup external intents from transactions
-  // thought to be aborted. In the xcluster case, it is possible that a transaction is thought to
-  // be aborted when the consumer has just yet to replicate the CREATE + COMMIT records for this
-  // transaction.
-  auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
-  FLAGS_TEST_xcluster_disable_replication_transaction_status_table = true;
-  FLAGS_aborted_intent_cleanup_ms = 0;
-  auto producer_table = tables_pair.first;
-  auto consumer_table = tables_pair.second;
-  ASSERT_NO_FATALS(WriteGenerateSeries(0, 50, &producer_cluster_, producer_table->name()));
-  master::WaitForReplicationDrainRequestPB req;
-  PopulateWaitForReplicationDrainRequest({tables_pair.first}, &req);
-  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
-      &producer_client()->proxy_cache(),
-      ASSERT_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
-
-  ASSERT_OK(consumer_cluster()->FlushTablets());
-  ASSERT_NO_FATALS(WriteGenerateSeries(51, 100 , &producer_cluster_, producer_table->name()));
-  ASSERT_OK(WaitForReplicationDrain(master_proxy, req, 0 /* expected_num_nondrained */));
-
-  ASSERT_OK(consumer_cluster()->FlushTablets());
-  // 2. Trigger a compaction on the consumer cluster.
-  ASSERT_OK(consumer_cluster()->CompactTablets());
-
-  // 3. Enable replication of txn status table.
-  FLAGS_TEST_xcluster_disable_replication_transaction_status_table = false;
-  // 4. Ensure records match.
-  ASSERT_OK(VerifyWrittenRecords(producer_table->name(), consumer_table->name()));
-
-  ASSERT_OK(consumer_cluster()->FlushTablets());
-  ASSERT_OK(consumer_cluster()->CompactTablets());
-  ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
-
-  ASSERT_OK(DeleteUniverseReplication(kUniverseId));
-}
-
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransactions) {
   // This test ensures that transactions older than the retention window are cleaned up on both
   // the coordinator and participant.
-  FLAGS_xcluster_consistent_wal = true;
   auto tables_pair = ASSERT_RESULT(CreateTableAndSetupReplication());
   auto producer_table = tables_pair.first;
   auto consumer_table = tables_pair.second;
@@ -1226,14 +1143,10 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, GarbageCollectExpiredTransact
   // do not come in.
   ASSERT_OK(DeleteUniverseReplication(kUniverseId));
 
-  // Set the retention window to 0 and ensure that the transaction is cleaned up on the coordinator.
-  FLAGS_external_transaction_retention_window_secs = 0;
-  ASSERT_OK(WaitFor([&]() -> Result<bool> {
-    return CountExternalTransactions(consumer_cluster()) == 0;
-  },  MonoDelta::FromSeconds(30), "Wait for transactions to be cleaned up on coordinator"));
-
   // Trigger a compaction and ensure that the transaction has been cleaned up on the participant.
   FLAGS_aborted_intent_cleanup_ms = 0;
+  FLAGS_external_intent_cleanup_secs = 0;
+  ASSERT_OK(consumer_cluster()->FlushTablets());
   ASSERT_OK(consumer_cluster()->CompactTablets());
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
 }
@@ -1249,13 +1162,11 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, UnevenTxnStatusTablets) {
     if (!perform_bootstrap) {
       ASSERT_OK(SetupReplicationAndWaitForValidSafeTime(tables_pair));
     } else {
-      // Need to also include the transaction table for bootstrapping.
-      auto bootstrap_ids = ASSERT_RESULT(BootstrapProducer(
-          producer_cluster(), producer_client(), {producer_table, producer_transaction_table_}));
+      auto bootstrap_ids =
+          ASSERT_RESULT(BootstrapProducer(producer_cluster(), producer_client(), {producer_table}));
       ASSERT_OK(SetupUniverseReplication(
-          producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId,
-          {producer_table, producer_transaction_table_}, bootstrap_ids,
-          {LeaderOnly::kFalse, Transactional::kTrue}));
+          producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table},
+          bootstrap_ids, {LeaderOnly::kFalse, Transactional::kTrue}));
       ASSERT_OK(ChangeXClusterRole(cdc::XClusterRole::STANDBY));
       ASSERT_OK(WaitForValidSafeTimeOnAllTServers(consumer_table->name().namespace_id()));
     }
@@ -1370,7 +1281,7 @@ TEST_F(XClusterYsqlTest, ChangeRole) {
 
   // 2. Test that a universe cannot change a role to its same role.
   ASSERT_OK(SetupUniverseReplication(
-      kUniverseId, {producer_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
+      kUniverseId, {producer_table}, {LeaderOnly::kFalse, Transactional::kTrue}));
 
   ASSERT_OK(VerifyUniverseReplication(kUniverseId, &resp));
   ASSERT_EQ(resp.entry().producer_id(), kUniverseId);
@@ -1604,8 +1515,8 @@ TEST_F(XClusterYsqlTest, ReplicationWithBasicDDL) {
   count += kRecordBatch;
 
   // 2. Setup replication.
-  ASSERT_OK(SetupUniverseReplication(producer_cluster(), consumer_cluster(), consumer_client(),
-      kUniverseId, {producer_table}));
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kUniverseId, {producer_table}));
 
   // 3. Verify everything is setup correctly.
   master::GetUniverseReplicationResponsePB get_universe_replication_resp;
@@ -3345,6 +3256,7 @@ class XClusterYsqlTestReadOnly : public XClusterYsqlTest {
 
  protected:
   void SetUp() override {
+    FLAGS_xcluster_consistent_wal = true;
     XClusterYsqlTest::SetUp();
   }
 
